@@ -2587,7 +2587,16 @@ class TensorFlowTestCase(googletest.TestCase):
       return np.array(a)
     return a
 
+  def evaluate_if_both_tensors(self, a, b):
+    if (tensor_util.is_tf_type(a) and tensor_util.is_tf_type(b) and
+        not isinstance(a, ops._EagerTensorBase) and
+        not isinstance(b, ops._EagerTensorBase)):
+      return self.evaluate((a, b))
+    else:
+      return (a, b)
+
   def _assertArrayLikeAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # When the array rank is small, print its contents. Numpy array printing is
@@ -2673,6 +2682,7 @@ class TensorFlowTestCase(googletest.TestCase):
       # Try to directly compare a, b as ndarrays; if not work, then traverse
       # through the sequence, which is more expensive.
       try:
+        (a, b) = self.evaluate_if_both_tensors(a, b)
         a_as_ndarray = self._GetNdArray(a)
         b_as_ndarray = self._GetNdArray(b)
         self._assertArrayLikeAllClose(
@@ -2774,6 +2784,7 @@ class TensorFlowTestCase(googletest.TestCase):
       bfloat16_atol: absolute tolerance for bfloat16.
       msg: Optional message to report on failure.
     """
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # types with lower tol are put later to overwrite previous ones.
@@ -2828,6 +2839,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if (ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b)):
       return self._assertRaggedEqual(a, b, msg)
     msg = msg if msg else ""
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # Arbitrary bounds so that we don't print giant tensors.
@@ -2905,6 +2917,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertGreater(np.min(a), comparison_target)
 
@@ -2917,6 +2930,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertLess(np.max(a), comparison_target)
 
@@ -2929,6 +2943,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertGreaterEqual(np.min(a), comparison_target)
 
@@ -2941,6 +2956,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertLessEqual(np.max(a), comparison_target)
 

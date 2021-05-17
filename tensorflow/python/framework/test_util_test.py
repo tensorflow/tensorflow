@@ -40,6 +40,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -821,6 +822,13 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     test_object.test_modes_function()
     self.assertTrue(test_object.graph_mode_tested)
     self.assertTrue(test_object.inside_function_tested)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_consistent_random_seed_in_assert_all_equal(self):
+    random_seed.set_seed(1066)
+    index = random_ops.random_shuffle([0, 1, 2, 3, 4], seed=2021)
+    # This failed when `a` and `b` were evaluated in separate sessions.
+    self.assertAllEqual(index, index)
 
   def test_with_forward_compatibility_horizons(self):
 
