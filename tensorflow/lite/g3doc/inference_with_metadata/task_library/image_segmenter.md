@@ -10,7 +10,7 @@ classification</a>, which classifies the overall image. See the
 more information about image segmenters.
 
 Use the Task Library `ImageSegmenter` API to deploy your custom image segmenters
-or pretrained ones into your model apps.
+or pretrained ones into your mobile apps.
 
 ## Key features of the ImageSegmenter API
 
@@ -65,6 +65,10 @@ dependencies {
 }
 ```
 
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
+
 ### Step 2: Using the model
 
 ```java
@@ -81,10 +85,6 @@ See the
 for more options to configure `ImageSegmenter`.
 
 ## Run inference in C++
-
-Note: we are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
 
 ```c++
 // Initialization

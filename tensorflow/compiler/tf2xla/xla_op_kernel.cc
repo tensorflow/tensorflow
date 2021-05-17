@@ -74,12 +74,11 @@ TensorShape XlaOpKernelContext::InputShape(absl::string_view name) {
   return GetInputTensorByName(name).shape();
 }
 
-xla::StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
+StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
   return builder()->GetShape(Input(index));
 }
 
-xla::StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(
-    absl::string_view name) {
+StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(absl::string_view name) {
   return builder()->GetShape(Input(name));
 }
 
@@ -135,8 +134,8 @@ Status XlaOpKernelContext::ConstantInput(int index,
                                constant_literal, mode);
 }
 
-static xla::StatusOr<int> InputIndex(XlaOpKernelContext* context,
-                                     absl::string_view name) {
+static StatusOr<int> InputIndex(XlaOpKernelContext* context,
+                                absl::string_view name) {
   int start, stop;
   TF_RETURN_IF_ERROR(context->op_kernel().InputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -160,7 +159,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
     xla::ValueInferenceMode mode) {
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
-  xla::StatusOr<absl::optional<Tensor>> constant_or_status =
+  StatusOr<absl::optional<Tensor>> constant_or_status =
       e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
   if (!constant_or_status.ok()) {
     Status status = constant_or_status.status();
@@ -268,7 +267,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   xla::Literal literal;
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
-  xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
     // dynamic. This could happen if the input depends on some ops like
@@ -299,7 +298,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
   xla::Literal literal;
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
-  xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
     // dynamic. This could happen if the input depends on some ops like

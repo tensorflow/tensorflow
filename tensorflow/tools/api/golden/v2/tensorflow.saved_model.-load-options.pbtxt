@@ -10,8 +10,12 @@ tf_class {
     name: "experimental_io_device"
     mtype: "<type \'member_descriptor\'>"
   }
+  member {
+    name: "experimental_skip_checkpoint"
+    mtype: "<type \'member_descriptor\'>"
+  }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'allow_partial_checkpoint\', \'experimental_io_device\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'self\', \'allow_partial_checkpoint\', \'experimental_io_device\', \'experimental_skip_checkpoint\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'False\'], "
   }
 }

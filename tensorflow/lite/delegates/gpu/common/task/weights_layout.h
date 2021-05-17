@@ -23,12 +23,14 @@ namespace gpu {
 
 enum class WeightsLayout {
   kUnknown,
-  kOHWIOGroupI4O4,
-  kOHWIOGroupO4I4,
+  // Spatial is DHW/HW depending on amount of spatial dimensions (Depth, Height,
+  // Width).
+  kOSpatialIOGroupI4O4,
+  kOSpatialIOGroupO4I4,
   kOICustomSpatialI4O4,
   kOICustomSpatialO4I4,
-  k2DX4I4YIsHWIAndXIsOOGroupO4,
-  k2DX4O4YIsHWIAndXIsOOGroupI4,
+  k2DX4I4YIsSpatialIAndXIsOOGroupO4,
+  k2DX4O4YIsSpatialIAndXIsOOGroupI4,
 };
 
 struct WeightsDescription {

@@ -356,8 +356,6 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
             << ctx->HostCPU()->name();
     return Status::OK();
   }
-  // TODO(b/143914772): Potential memory leak if rendezvous has pending
-  // tensors for removed / replaced workers.
 
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
@@ -591,7 +589,6 @@ Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
 
     if (!s.ok()) {
       if (stream_id != kInvalidStreamId) {
-        // TODO(b/138847548): Cleanup the executor when StreamCall is deleted.
         context->Context()->RemoteMgr()->DeleteExecutorForStream(stream_id);
       }
       return s;

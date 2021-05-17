@@ -16,16 +16,11 @@
 """Tests for `DatasetCreator` with `Model.fit` across usages and strategies."""
 
 import os
-from absl import logging
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute import sharded_variable
-from tensorflow.python.framework import config
 from tensorflow.python.keras import callbacks as callbacks_lib
-from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core as core_layers
 from tensorflow.python.keras.layers.preprocessing import string_lookup
@@ -33,6 +28,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.utils import dataset_creator
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
@@ -96,17 +92,6 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
         if self._prev_epoch != 9:
           raise RuntimeError("Unexpected last epoch: {}".format(
               self._prev_epoch))
-
-    # TODO(b/182193218): Use ParameterServerStrategy as a proper strategy
-    # combination.
-    if strategy == "ParameterServerStrategy":
-      gpu_devices = config.list_physical_devices("GPU")
-      if len(gpu_devices) > 1:
-        self.skipTest("b/178452835: Multi-GPUs not supported in "
-                      "ParameterServerStrategy.")
-      strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-          multi_worker_testing_utils.make_parameter_server_cluster(3, 2),
-          variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
 
     with strategy.scope():
       model = sequential.Sequential([core_layers.Dense(10)])

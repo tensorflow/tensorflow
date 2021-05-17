@@ -11,7 +11,7 @@ data specifying where each object appears in the image. See the
 for more information about object detectors.
 
 Use the Task Library `ObjectDetector` API to deploy your custom object detectors
-or pretrained ones into your model apps.
+or pretrained ones into your mobile apps.
 
 ## Key features of the ObjectDetector API
 
@@ -36,6 +36,9 @@ API.
 
 *   Models created by
     [AutoML Vision Edge Object Detection](https://cloud.google.com/vision/automl/object-detection/docs).
+
+*   Models created by
+    [TensorFlow Lite Model Maker for object detector](https://www.tensorflow.org/lite/guide/model_maker).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -71,6 +74,10 @@ dependencies {
 }
 ```
 
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
+
 ### Step 2: Using the model
 
 ```java
@@ -87,10 +94,6 @@ See the
 for more options to configure `ObjectDetector`.
 
 ## Run inference in C++
-
-Note: we are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
 
 ```c++
 // Initialization

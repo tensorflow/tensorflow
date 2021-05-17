@@ -1472,8 +1472,6 @@ class BaseSession(SessionInterface):
         tf_session.TF_DeleteBuffer(options_ptr)
 
     def __call__(self, *args, **kwargs):
-      # TODO(b/74355905): Support argument and return value nested structures,
-      # and tensor-like objects such as SparseTensors.
       run_metadata = kwargs.get('run_metadata', None)
       try:
         run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
@@ -1499,8 +1497,6 @@ class BaseSession(SessionInterface):
 
   # pylint: enable=protected-access
 
-  # TODO(b/74355905): Reimplement `Session.make_callable()` using this method
-  # where possible.
   def _make_callable_from_options(self, callable_options):
     """Returns a handle to a "callable" with the given options.
 

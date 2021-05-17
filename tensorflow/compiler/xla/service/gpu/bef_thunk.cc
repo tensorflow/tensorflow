@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 #if BEF_THUNKS
+#include "tfrt/bef/bef_buffer.h"
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"
 #include "tfrt/core_runtime/core_runtime.h"
 #include "tfrt/gpu/gpu_types.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tfrt/host_context/chain.h"
 #include "tfrt/host_context/execution_context.h"
 #include "tfrt/host_context/host_context.h"
-#include "tfrt/support/aligned_buffer.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -41,10 +41,13 @@ namespace {
 
 #if BEF_THUNKS
 StatusOr<std::unique_ptr<tfrt::gpu::Program>> ConvertToGpuProgram(
-    mlir::Operation* op) {
+    mlir::Operation* op, tfrt::HostContext* host) {
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(op->getContext()));
-  if (tensorflow::LhloGpuOpToTfrtCudaModule(op, module.get()).failed()) {
+  const std::string func_name = "main";
+  // TODO(hanbinyoon): Merge with the async lhlo->tfrt_gpu lowering pipeline.
+  if (tensorflow::LhloGpuOpToTfrtCudaModule(op, module.get(), func_name)
+          .failed()) {
     return tensorflow::errors::Internal(
         "Failed to lower lmhlo_gpu op to tfrt_gpu dialect.");
   }
@@ -55,11 +58,9 @@ StatusOr<std::unique_ptr<tfrt::gpu::Program>> ConvertToGpuProgram(
     return tensorflow::errors::Internal("Failed to translate MLIR to BEF.");
   }
 
-  auto buffer = tfrt::AlignedBuffer<8>(bef.data(), bef.data() + bef.size());
-  auto* host = runtime().core_runtime()->GetHostContext();
-  // TODO(hanbinyoon): Programmatically get the function name after b/186927461.
-  return absl::make_unique<tfrt::gpu::Program>(std::move(buffer),
-                                               "main_sync_region", host);
+  auto buffer = tfrt::BefBuffer(bef.data(), bef.data() + bef.size());
+  return absl::make_unique<tfrt::gpu::Program>(std::move(buffer), func_name,
+                                               host);
 }
 #endif  // BEF_THUNKS
 
@@ -83,7 +84,9 @@ StatusOr<std::unique_ptr<BefThunk>> BefThunk::Create(
   TF_ASSIGN_OR_RETURN(auto kind, GetThunkKind(op));
   auto thunk = absl::WrapUnique(
       new BefThunk(thunk_info, kind, std::move(inputs), std::move(outputs)));
-  TF_ASSIGN_OR_RETURN(thunk->program_, ConvertToGpuProgram(op));
+  TF_ASSIGN_OR_RETURN(
+      thunk->gpu_program_,
+      ConvertToGpuProgram(op, runtime().core_runtime()->GetHostContext()));
   return thunk;
 #endif  // BEF_THUNKS
 }
@@ -119,7 +122,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto context =
       tfrt::gpu::wrapper::Context(se_gpu_executor->gpu_context()->context());
   auto stream = tfrt::gpu::wrapper::Stream(se_gpu_stream->gpu_stream());
-  tfrt::gpu::BorrowedGpuStream gpu_stream(host, context, stream);
+  tfrt::gpu::BorrowedGpuStream gpu_stream(context, stream);
 
   // Prepare arguments for BEF execution.
   auto get_async_value_ref = [&](const BufferAllocation::Slice& slice) {
@@ -127,9 +130,11 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
         params.buffer_allocations->GetDeviceAddress(slice);
     tfrt::gpu::wrapper::Pointer<void> pointer(
         data.opaque(), tfrt::gpu::wrapper::Platform::CUDA);
-    auto buffer = tfrt::gpu::GpuBuffer::Borrow(pointer, data.size());
+    auto allocator =
+        tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
+            host, pointer);
     return tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuBuffer>(
-        host, std::move(buffer));
+        host, std::move(allocator), pointer, data.size());
   };
 
   llvm::SmallVector<tfrt::AsyncValueRef<tfrt::gpu::GpuBuffer>, 4> inputs;
@@ -148,7 +153,9 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   // TODO(hanbinyoon): BorrowedGpuStream releases context/stream information
   // upon destruction. Change it to not use wrapper::OwningContext and
   // wrapper::OwningStream.
-  host->Await(chain);
+  // TODO(b/184696034): Remove this. Right now we need this to ensure kernels
+  // in bef function have been dispatched to stream.
+  host->Quiesce();
   return Status::OK();
 #endif  // BEF_THUNKS
 }

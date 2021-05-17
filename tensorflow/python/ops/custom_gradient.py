@@ -312,6 +312,10 @@ def _get_dependent_variables(input_ops, output_ops):
   return tf_vars
 
 
+def generate_name():
+  return "CustomGradient-%s" % ops.uid()
+
+
 def _graph_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for graph mode."""
   # TODO(rsepassi): Add support for kwargs
@@ -319,7 +323,7 @@ def _graph_mode_decorator(f, args, kwargs):
     raise ValueError(
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
-  name = "CustomGradient-%s" % ops.uid()
+  name = generate_name()
   args = nest.map_structure(ops.convert_to_tensor, args)
 
   # Checking global and local variables attempts to ensure that no non-resource

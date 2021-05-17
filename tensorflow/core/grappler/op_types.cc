@@ -297,7 +297,7 @@ bool IsFusedBatchNormGrad(const NodeDef& node) {
 
 bool IsGather(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Gather" || op == "GatherV2" || op == "ResourceGather";
+  return op == "Gather" || op == "GatherV2";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }

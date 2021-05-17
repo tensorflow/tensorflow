@@ -138,8 +138,8 @@ class XlaCompiler {
 
   using CompilationResult = ::tensorflow::XlaCompilationResult;
 
-  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
-                                                  bool)>
+  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType,
+                                             bool)>
       ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. It must be set by the caller.
@@ -290,7 +290,7 @@ class XlaCompiler {
   void PushNodeTokenMapping();
   Status PopNodeTokenMapping();
   Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
-  xla::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
+  StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,

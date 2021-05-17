@@ -27,7 +27,7 @@ namespace gpu {
 
 void BufferDescriptor::Release() { data.clear(); }
 
-GPUResources BufferDescriptor::GetGPUResources() const {
+GPUResources BufferDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   GPUResources resources;
   GPUBufferDescriptor desc;
   desc.data_type = element_type;

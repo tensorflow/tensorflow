@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -74,7 +75,7 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
  protected:
-  xla::StatusOr<std::vector<int64>> GetKernelSize(XlaOpKernelContext* ctx) {
+  StatusOr<std::vector<int64>> GetKernelSize(XlaOpKernelContext* ctx) {
     if (ctx->num_inputs() == 1) {
       return ksize_;
     }
@@ -98,7 +99,7 @@ class PoolingOp : public XlaOpKernel {
     return ksize;
   }
 
-  xla::StatusOr<std::vector<int64>> GetStride(XlaOpKernelContext* ctx) {
+  StatusOr<std::vector<int64>> GetStride(XlaOpKernelContext* ctx) {
     if (ctx->num_inputs() == 1) {
       return stride_;
     }
@@ -257,12 +258,7 @@ class AvgPool2DOp : public AvgPoolOp {
 };
 REGISTER_XLA_OP(Name("AvgPool"), AvgPool2DOp);
 
-class AvgPool3DOp : public AvgPoolOp {
- public:
-  explicit AvgPool3DOp(OpKernelConstruction* ctx)
-      : AvgPoolOp(ctx, /*num_spatial_dims=*/3) {}
-};
-REGISTER_XLA_OP(Name("AvgPool3D"), AvgPool3DOp);
+REGISTER_XLA_OP(Name("AvgPool3D"), MlirXlaOpKernel);
 
 // The operation to compute MaxPool gradients.
 // It takes three inputs:
@@ -386,12 +382,7 @@ REGISTER_XLA_OP(Name("MaxPoolGradV2")
                     .CompileTimeConstantInput("strides"),
                 MaxPool2DGradOp);
 
-class MaxPool3DGradOp : public MaxPoolGradOp {
- public:
-  explicit MaxPool3DGradOp(OpKernelConstruction* ctx)
-      : MaxPoolGradOp(ctx, /*num_spatial_dims=*/3) {}
-};
-REGISTER_XLA_OP(Name("MaxPool3DGrad"), MaxPool3DGradOp);
+REGISTER_XLA_OP(Name("MaxPool3DGrad"), MlirXlaOpKernel);
 
 // Average-pooling gradient
 class AvgPoolGradOp : public XlaOpKernel {

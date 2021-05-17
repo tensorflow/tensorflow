@@ -566,11 +566,15 @@ OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
   // Fold broadcast if operand and result types are the same and all dimensions
   // are statically known (no-op broadcast).
   auto result_ty = getType().dyn_cast<ShapedType>();
-  if (result_ty && result_ty.hasStaticShape() && result_ty == input.getType()) {
-    return input;
-  }
+  if (!result_ty || !result_ty.hasStaticShape()) return {};
 
-  return {};
+  if (result_ty == input.getType()) return input;
+
+  DenseIntElementsAttr cst_attr;
+  if (!matchPattern(input, m_Constant(&cst_attr))) return {};
+  if (!cst_attr.isSplat()) return {};
+
+  return DenseElementsAttr::get(result_ty, cst_attr.getSplatValue());
 }
 
 //===----------------------------------------------------------------------===//

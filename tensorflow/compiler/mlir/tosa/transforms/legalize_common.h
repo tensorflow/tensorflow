@@ -31,10 +31,17 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 
+// Lowers the Pack operator to TOSA.
+llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
+                                    Value result_value,
+                                    SmallVector<Value, 8>& inputs,
+                                    int32_t axis);
+
 // Lowers the Unpack operator to TOSA.
-llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
-                                           Operation* op, Value input_value,
-                                           int32_t axis);
+llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
+                                                   Operation* op,
+                                                   Value input_value,
+                                                   int32_t axis);
 
 // Lowers the Select operator to TOSA.
 llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
@@ -62,6 +69,12 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 // Lowers the Round operator to TOSA.
 llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
                                      Value result, Value input);
+
+// Lowers ConcatV2 to TOSA.
+llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
+                                        Operation* op, Value result_value,
+                                        SmallVector<Value, 8>& values,
+                                        int32_t axis);
 
 // Lowers SpaceToBatchND to TOSA.
 llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
@@ -93,7 +106,8 @@ llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers Softmax to a sequence of TOSA ops.
 llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
-                                       Value result_value, Value logits_value);
+                                       Value result_value, Value logits_value,
+                                       double beta);
 
 // Lowers LogSoftmax to a sequence of TOSA ops.
 llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
@@ -115,17 +129,14 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
                                             StringAttr data_format);
 
 // Lowers Split to a sequence of TOSA ops.
-llvm::Optional<ValueRange> convertSplitOp(PatternRewriter& rewriter,
-                                          Operation* op, Value result_value,
-                                          Value input_value, int32_t num_split,
-                                          int32_t axis);
+llvm::Optional<SmallVector<Value>> convertSplitOp(
+    PatternRewriter& rewriter, Operation* op, Value result_value,
+    Value input_value, int32_t num_split, int32_t axis);
 
 // Lowers SplitV to a sequence of TOSA ops.
-llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
-                                           Operation* op, Value result_value,
-                                           Value input_value,
-                                           SmallVector<int32_t, 4>& size_split,
-                                           int32_t axis);
+llvm::Optional<SmallVector<Value>> convertSplitVOp(
+    PatternRewriter& rewriter, Operation* op, Value result_value,
+    Value input_value, SmallVector<int32_t, 4>& size_split, int32_t axis);
 
 // Lowers StridedSlice to a sequence of TOSA ops.
 llvm::Optional<Value> convertStridedSliceOp(

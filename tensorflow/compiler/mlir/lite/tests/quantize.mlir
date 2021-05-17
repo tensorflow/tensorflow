@@ -354,6 +354,22 @@ func @NotQuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127
 // CHECK-NEXT: }) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
 }
 
+// CHECK-LABEL: NotQuantizableValues
+func @NotQuantizableValues(%arg0: tensor<1x!tf.string>) -> (tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>, tensor<1x!tf.string>, tensor<1xi32>) {
+  %0:3 = "tfl.custom_tf"(%arg0) ( {
+  ^bb0(%arg1: tensor<1x!tf.string>):  // no predecessors
+    %1:3 = "tf.SequenceStringProjection"(%arg1) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf.string>, tensor<1xi32>)
+    "tfl.yield"(%1#0, %1#1, %1#2) : (tensor<1x?x16xf32>, tensor<1x!tf.string>, tensor<1xi32>) -> ()
+  }) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf.string>, tensor<1xi32>)
+  %2 = "tfl.quantize"(%0#0) {qtype = tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>} : (tensor<1x?x16xf32>) -> tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>
+  return %2, %0#1, %0#2 : tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>, tensor<1x!tf.string>, tensor<1xi32>
+
+// CHECK: "tfl.custom_tf"(%arg0) ( {
+// CHECK-NEXT: ^bb0(%arg1: tensor<1x!tf.string>):  // no predecessors
+// CHECK-NEXT:   "tf.SequenceStringProjection"(%arg1) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf.string>, tensor<1xi32>)
+// CHECK-NEXT:   "tfl.yield"
+// CHECK: }) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf.string>) -> (tensor<1x?x16x!quant.uniform<u8:f32, 1.000000e-01:128>>, tensor<1x!tf.string>, tensor<1xi32>)
+}
 
 // Checks that legacy path correctly handles asymmetric quantized values.
 // LEGACY-LABEL: CheckLegacyQuantizeAdd

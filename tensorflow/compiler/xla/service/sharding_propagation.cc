@@ -132,12 +132,17 @@ bool IsConvolutionKernelSmall(const HloInstruction* instruction) {
   CHECK_EQ(instruction->opcode(), HloOpcode::kConvolution);
   const HloInstruction* rhs = instruction->operand(1);
   const auto& dnums = instruction->convolution_dimension_numbers();
+  int64 kernel_dim_prod = 1;
+  int64 output_dim_prod = 1;
   for (int64 i = 0; i < dnums.input_spatial_dimensions().size(); ++i) {
     int64 kernel_dim =
         rhs->shape().dimensions(dnums.kernel_spatial_dimensions(i));
+    kernel_dim_prod *= kernel_dim;
     int64 output_dim =
         instruction->shape().dimensions(dnums.output_spatial_dimensions(i));
-    if (kernel_dim >= output_dim) {
+    output_dim_prod *= output_dim;
+    if (kernel_dim >= output_dim &&
+        (i < 2 || kernel_dim > 3 || kernel_dim_prod >= output_dim_prod)) {
       return false;
     }
   }

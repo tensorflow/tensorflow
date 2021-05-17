@@ -56,10 +56,13 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     target_dist_t = ops.convert_to_tensor(target_dist, name="target_dist")
+    target_dist_t = math_ops.cast(target_dist_t, dtypes.float32)
 
     # Get initial distribution.
     if initial_dist is not None:
       initial_dist_t = ops.convert_to_tensor(initial_dist, name="initial_dist")
+      initial_dist_t = math_ops.cast(initial_dist_t, dtypes.float32)
+
       acceptance_dist, prob_of_original = (
           _calculate_acceptance_probs_with_mixing(initial_dist_t,
                                                   target_dist_t))
@@ -168,9 +171,12 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_func, seed):
 
   current_probabilities_and_class_and_data_ds = dataset_ops.Dataset.zip(
       (acceptance_dist_ds, dataset)).map(_gather_and_copy)
-  filtered_ds = (
-      current_probabilities_and_class_and_data_ds.filter(
-          lambda _1, p, _2: random_ops.random_uniform([], seed=seed) < p))
+
+  def _reject(unused_class_val, p, unused_data):
+    return random_ops.random_uniform([], seed=seed, dtype=p.dtype) < p
+
+  filtered_ds = current_probabilities_and_class_and_data_ds.filter(_reject)
+
   return filtered_ds.map(lambda class_value, _, data: (class_value, data))
 
 

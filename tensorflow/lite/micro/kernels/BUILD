@@ -233,8 +233,10 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro:micro_allocator",
         "//tensorflow/lite/micro:micro_error_reporter",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:mock_micro_graph",
+        "//tensorflow/lite/micro:test_helpers",
     ],
 )
 
@@ -282,6 +284,7 @@ cc_library(
         "floor_div.cc",
         "floor_mod.cc",
         "gather_nd.cc",
+        "if.cc",
         "l2norm.cc",
         "l2_pool_2d.cc",
         "leaky_relu.cc",
@@ -344,8 +347,9 @@ cc_library(
         ":kernel_util",
         ":micro_utils",
         ":xtensa",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -355,8 +359,10 @@ cc_library(
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:micro_graph",
         "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
@@ -616,7 +622,7 @@ cc_test(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -764,6 +770,20 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "if_test",
+    srcs = ["if_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:mock_micro_graph",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",

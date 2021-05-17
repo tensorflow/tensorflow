@@ -199,7 +199,7 @@ Status VerifyBodyInputAndOutputShapeMatch(
   return Status::OK();
 }
 
-xla::StatusOr<xla::XlaComputation> BuildWrappedCond(
+StatusOr<xla::XlaComputation> BuildWrappedCond(
     XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& cond) {
   xla::Shape cond_input_shape = cond.xla_input_shapes[0];
   std::unique_ptr<xla::XlaBuilder> cb =
@@ -210,7 +210,7 @@ xla::StatusOr<xla::XlaComputation> BuildWrappedCond(
   return cb->Build();
 }
 
-xla::StatusOr<xla::XlaComputation> BuildWrappedBody(
+StatusOr<xla::XlaComputation> BuildWrappedBody(
     XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& body,
     const std::vector<bool>& compile_time_const_arg_indices,
     int num_compile_time_const_args, bool has_token_input_output) {
@@ -567,12 +567,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Building while loop";
 
   // Wraps the condition in a computation that unpacks the output tuple.
-  xla::StatusOr<xla::XlaComputation> cond_result = BuildWrappedCond(ctx, cond);
+  StatusOr<xla::XlaComputation> cond_result = BuildWrappedCond(ctx, cond);
   OP_REQUIRES_OK(ctx, cond_result.status());
   xla::XlaComputation wrapped_cond = std::move(cond_result.ValueOrDie());
 
   // Remove compile time const args from the list of body outputs.
-  xla::StatusOr<xla::XlaComputation> body_result =
+  StatusOr<xla::XlaComputation> body_result =
       BuildWrappedBody(ctx, body, compile_time_const_arg_indices,
                        num_compile_time_const_args, has_token_input_output_);
   OP_REQUIRES_OK(ctx, body_result.status());
