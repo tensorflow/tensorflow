@@ -2163,12 +2163,20 @@ def HLO_ReducePrecisionOp :
 }
 
 def HLO_H2DOp: HLO_Op<"h2d", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "H2D operator";
+  let description = [{
+    Copy `operand` from host to device.
+  }];
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
 }
 
 def HLO_D2HOp: HLO_Op<"d2h", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "D2H operator";
+  let description = [{
+    Copy `operand` from device to host.
+  }];
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
@@ -2178,6 +2186,13 @@ def HLO_RealDynamicSliceOp: HLO_Op<
       "dynamic_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
        AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
+  let summary = "Real Dynamic Slice operator";
+  let description = [{
+    The dynamic shape version of SliceOp. Extracts a sub-array from the input 
+    array according to start_indices, limit_indices and strides. Expect 
+    start_indices/limit_indices/strides to be statically shaped and matching 
+    the rank of the input.
+  }];
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$start_indices,
@@ -2185,22 +2200,21 @@ def HLO_RealDynamicSliceOp: HLO_Op<
     HLO_Tensor:$strides
   );
   let results = (outs HLO_Tensor:$result);
-  let extraClassDeclaration = [{
-    // Infers output type for given operand and attributes. Result type is
-    // unranked if any of the attributes is illegal.
-    static Type InferOutputTypes(Builder *builder, Value operand,
-                                 Value *start_indices,
-                                 Value *limit_indices,
-                                 Value *strides);
-  }];
   let hasCustomHLOConverter = 1;
-  let hasCanonicalizer = 0;
-  let hasFolder = 0;
 }
 
 def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
       [NoSideEffect, AllElementTypesMatch<["operand", "padding_value", "result"]>,
       AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
+  let summary = "Dynamic Pad operator";
+  let description = [{
+    The dynamic shape version of PadOp. Pads the edges of `operand` with the 
+    `padding_value` and according to the passed configuration. Expect 
+    edge_padding_low/edge_padding_high/interior_padding to be statically shaped 
+    and matching the rank of the input. 
+    See 
+    https://www.tensorflow.org/xla/operation_semantics#pad
+  }];
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$padding_value,
@@ -2210,7 +2224,7 @@ def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
   );
   let results = (outs HLO_Tensor:$result);
   let description = [{
-    Dynamically Pads the `operand` according to TBD, with amount of padding added at
+    Dynamically Pads the `operand`, with amount of padding added at
     low-end/high-end/interior is passed through input tensors.
   }];
   let hasCanonicalizer = 1;
@@ -2218,6 +2232,12 @@ def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
 }
 
 def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather", [NoSideEffect]> {
+  string summary = "Dynamic Gather operator";
+  string description = [{
+    The dynamic shape version of GatherOp. Stitches together several slices of an input 
+    array. slice_sizes is a compile-time variable.
+  }];
+  
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_IntTensor:$start_indices,
@@ -2231,6 +2251,11 @@ def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather", [NoSideEffect]> {
 }
 
 def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp {
+  let summary = "Dynamic Convolution operator";
+  let description = [{
+    The dynamic shape version of ConvOp. Computes a convolution with dynamic padding.
+  }];
+
   let arguments = !con(
     (ins
        HLO_Tensor:$lhs,
@@ -2241,11 +2266,11 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp 
   let hasCustomHLOConverter = 1;
 }
 
-// For test
+// For test use
 def HLO_DebugPrintOp : HLO_Op<"debug_print", [NoSideEffect]> {
-  let summary = "call_external_func operation";
+  let summary = "debug print operation";
   let description = [{
-    call external function
+    This operation is used to debug tensor.
   }];
 
   // The operation takes an input tensor to print.
