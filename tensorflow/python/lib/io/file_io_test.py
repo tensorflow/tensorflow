@@ -61,7 +61,7 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     f = file_io.FileIO("", mode="r")
     with self.assertRaises(errors.NotFoundError):
       _ = f.read()
-    
+
   def testJoinUrlLike(self):
     """file_io.join joins url-like filesystems with '/' on all platform.
     """
@@ -87,11 +87,26 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
   def testJoinFilesystem(self):
     """file_io.join respects the os.path.join behavior for native filesystems.
     """
-    self.assertEqual(os.path.join("a", "b", "c"), file_io.join("a", "b", "c"))
-    self.assertEqual(os.path.join(os.sep + "a", "b", "c"), file_io.join(os.sep + "a", "b", "c"))
-    self.assertEqual(os.path.join("a", os.sep + "b", "c"), file_io.join("a", os.sep + "b", "c"))
-    self.assertEqual(os.path.join("file://a", "b", "c"), file_io.join("file://a", "b", "c"))
-    self.assertEqual(os.path.join("file://a", os.sep + "b", "c"), file_io.join("file://a", os.sep + "b", "c"))
+    self.assertEqual(
+      os.path.join("a", "b", "c"),
+      file_io.join("a", "b", "c")
+    )
+    self.assertEqual(
+      os.path.join(os.sep + "a", "b", "c"),
+      file_io.join(os.sep + "a", "b", "c")
+    )
+    self.assertEqual(
+      os.path.join("a", os.sep + "b", "c"),
+      file_io.join("a", os.sep + "b", "c")
+    )
+    self.assertEqual(
+      os.path.join("file://a", "b", "c"),
+      file_io.join("file://a", "b", "c")
+    )
+    self.assertEqual(
+      os.path.join("file://a", os.sep + "b", "c"),
+      file_io.join("file://a", os.sep + "b", "c")
+    )
 
   @run_all_path_types
   def testFileDoesntExist(self, join):
