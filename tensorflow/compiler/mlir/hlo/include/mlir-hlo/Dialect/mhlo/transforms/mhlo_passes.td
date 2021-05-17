@@ -128,3 +128,8 @@ def RankSpecializationClusterPass
     : Pass<"mhlo-rank-specialization-cluster", "FuncOp"> {
   let constructor = "createRankSpecializationClusterPass()";
 }
+
+def RankSpecializationToSCFPass
+    : Pass<"mhlo-rank-specialization-to-scf", "FuncOp"> {
+  let constructor = "createRankSpecializationToSCFPass()";
+}

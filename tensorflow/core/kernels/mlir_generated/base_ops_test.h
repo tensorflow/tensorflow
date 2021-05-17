@@ -252,6 +252,17 @@ absl::InlinedVector<T, 10> ComplexInputFromValues(
 }
 
 template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
+                                           std::complex<double>>::value,
+                           bool> = true>
+absl::InlinedVector<T, 10> DefaultInputNonZero() {
+  auto real = test::DefaultInputNonZero<typename T::value_type>();
+  auto imag = real;
+  std::reverse(imag.begin(), imag.end());
+  return test::ComplexInputFromValues<T>(real, imag);
+}
+
+template <typename T,
           std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInput() {
   return InputAsVector<T, bool>({true, false, true, true, false});

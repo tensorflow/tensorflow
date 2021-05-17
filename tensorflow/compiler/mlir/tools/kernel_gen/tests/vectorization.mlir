@@ -44,3 +44,34 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NEXT:      return
 // CHECK-NEXT:    }
 
+// -----
+
+// Check for:
+// 1. Expected tiling of 1x4
+// 2. Expected vectorization of vector<4xf64>
+// 3. Expected removal of  linalg.generic
+// CHECK-LABEL: func @Add(
+// CHECK-NOT:     linalg.generic
+// CHECK:         for{{.*}}%c1
+// CHECK:           for{{.*}}%c4
+// CHECK-NOT:         linalg.generic
+// CHECK:             addf {{.*}}vector<4xf64>
+// CHECK-NOT:     linalg.generic
+func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
+    %rhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
+    %out: memref<?x?xf64>) {
+
+ linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+       affine_map<(d0, d1) -> (d0, d1)>,
+       affine_map<(d0, d1) -> (d0, d1)>],
+     iterator_types = ["parallel", "parallel"]}
+     ins(%lhs, %rhs
+         : memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
+           memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>)
+     outs(%out : memref<?x?xf64>) {
+  ^bb0(%arg2: f64, %arg3: f64, %arg4: f64):  // no predecessors
+    %65 = addf %arg2, %arg3 : f64
+    linalg.yield %65 : f64
+  }
+  return
+}
