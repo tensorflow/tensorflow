@@ -57,6 +57,10 @@
         `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
         enable this feature.
 
+*   TF Core:
+    *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
+        peak memory returned by `tf.config.experimental.get_memory_info`.
+
 ## Bug Fixes and Other Changes
 
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>

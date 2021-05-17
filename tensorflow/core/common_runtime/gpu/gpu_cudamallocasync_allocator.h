@@ -81,7 +81,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 
   absl::optional<AllocatorStats> GetStats() override;
 
-  void ClearStats() override;
+  bool ClearStats() override;
 
   void SetStream(void* stream) override {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
