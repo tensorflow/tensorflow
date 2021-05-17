@@ -57,8 +57,9 @@ class TableOpModel : public SingleOpModel {
   int output_;
 };
 
-// A LUT of 256 values is used in the int8 case and 512 values for the int16
-// case
+// A LUT of 256 values is used in the int8 case. For the int16 case a 513 LUT is
+// used but as the last value is only used for interpolation we only have 512
+// quantized steps.
 template <typename T>
 inline float GetLUTTolerance(float input_min, float input_max, float output_min,
                              float output_max) {
