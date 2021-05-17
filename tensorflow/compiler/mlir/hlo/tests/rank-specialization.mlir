@@ -1,4 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file --mhlo-rank-specialization-cluster | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --mhlo-rank-specialization-cluster --mhlo-rank-specialization-to-scf | FileCheck %s --check-prefix CHECK-SCF
 
 // CHECK-LABEL: @add_mul
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>, %[[ARG2:.*]]: tensor<*xf32>)
@@ -36,6 +37,18 @@ func @sqrt(%arg : tensor<*xf32>) -> tensor<*xf32> {
   %2 = "mhlo.sqrt"(%1) : (tensor<*xf32>) -> tensor<*xf32>
   return %2 : tensor<*xf32>
 }
+
+// CHECK-SCF-LABEL: @sqrt
+// CHECK-SCF-SAME:  (%[[ARG:.*]]: tensor<*xf32>)
+// CHECK-SCF:       %[[SHAPE:.*]] = shape.shape_of %[[ARG]]
+// CHECK-SCF:       %[[N:.*]] = shape.num_elements %[[SHAPE]]
+// CHECK-SCF:       %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
+// CHECK-SCF:       %[[FLAT_ARG:.*]] = "mhlo.dynamic_reshape"(%[[ARG]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+// CHECK-SCF:       %[[TMP0:.*]] = "mhlo.sqrt"(%[[FLAT_ARG]]) : (tensor<?xf32>)
+// CHECK-SCF:       %[[TMP1:.*]] = "mhlo.sqrt"(%[[TMP0]]) : (tensor<?xf32>)
+// CHECK-SCF:       %[[TMP2:.*]] = "mhlo.sqrt"(%[[TMP1]]) : (tensor<?xf32>)
+// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[TMP2]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:       return %[[RES]]
 
 // -----
 
