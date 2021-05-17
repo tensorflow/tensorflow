@@ -115,18 +115,15 @@ class CPUAllocator : public Allocator {
   }
 
   absl::optional<AllocatorStats> GetStats() override {
-    if (!cpu_allocator_collect_stats) return absl::nullopt;
     mutex_lock l(mu_);
     return stats_;
   }
 
-  bool ClearStats() override {
-    if (!cpu_allocator_collect_stats) return false;
+  void ClearStats() override {
     mutex_lock l(mu_);
     stats_.num_allocs = 0;
     stats_.peak_bytes_in_use = stats_.bytes_in_use;
     stats_.largest_alloc_size = 0;
-    return true;
   }
 
   size_t AllocatedSizeSlow(const void* ptr) const override {

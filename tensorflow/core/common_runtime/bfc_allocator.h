@@ -75,7 +75,7 @@ class BFCAllocator : public Allocator {
 
   absl::optional<AllocatorStats> GetStats() override;
 
-  bool ClearStats() override;
+  void ClearStats() override;
 
   void SetTimingCounter(SharedCounter* sc) { timing_counter_ = sc; }
 

@@ -294,13 +294,12 @@ absl::optional<AllocatorStats> GpuCudaMallocAsyncAllocator::GetStats() {
   return *stats_;
 }
 
-bool GpuCudaMallocAsyncAllocator::ClearStats() {
-  if (!stats_) return false;
+void GpuCudaMallocAsyncAllocator::ClearStats() {
+  if (!stats_) return;
   mutex_lock l(lock_);
   stats_->num_allocs = 0;
   stats_->peak_bytes_in_use = stats_->bytes_in_use;
   stats_->largest_alloc_size = 0;
-  return true;
 }
 
 }  // namespace tensorflow

@@ -1469,12 +1469,6 @@ class Context(object):
     self.ensure_initialized()
     return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
 
-  def reset_memory_stats(self, dev):
-    """Resets the tracked memory stats for the device."""
-    self._initialize_physical_devices()
-    self.ensure_initialized()
-    pywrap_tfe.TFE_ResetMemoryStats(self._context_handle, dev)
-
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
     self._initialize_physical_devices()

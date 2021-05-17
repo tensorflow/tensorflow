@@ -84,14 +84,13 @@ class MklSmallSizeAllocator : public Allocator {
     return stats_;
   }
 
-  bool ClearStats() override {
+  void ClearStats() override {
     mutex_lock l(mutex_);
     stats_.num_allocs = 0;
     stats_.peak_bytes_in_use = 0;
     stats_.largest_alloc_size = 0;
     stats_.bytes_in_use = 0;
     stats_.bytes_limit = 0;
-    return true;
   }
 
  private:
@@ -258,10 +257,9 @@ class MklCPUAllocator : public Allocator {
     return stats_;
   }
 
-  bool ClearStats() override {
-    bool stats_cleared = small_size_allocator_->ClearStats();
-    stats_cleared &= large_size_allocator_->ClearStats();
-    return stats_cleared;
+  void ClearStats() override {
+    small_size_allocator_->ClearStats();
+    large_size_allocator_->ClearStats();
   }
 
  private:
