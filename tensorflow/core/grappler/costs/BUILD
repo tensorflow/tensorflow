@@ -373,6 +373,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/util:overflow",
     ] + tf_protos_grappler(),
     alwayslink = 1,
 )
