@@ -56,9 +56,67 @@ using cudaError_t = int;
 using cublasFillMode_t = rocblas_fill;
 using cusolverStatus_t = rocsolver_status;
 
-#define cusolverDnCreate rocblas_create_handle
-#define cusolverDnSetStream rocblas_set_stream
-#define cusolverDnDestroy rocblas_destroy_handle
+namespace rocblas_wrap {
+
+using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
+using tensorflow::Env;
+
+#ifdef PLATFORM_GOOGLE
+#define ROCBLAS_API_WRAPPER(__name)           \
+  struct WrapperShim__##__name {              \
+    static const char* kName;                 \
+    template <typename... Args>               \
+    rocblas_status operator()(Args... args) { \
+      return ::__name(args...);               \
+    }                                         \
+  } __name;                                   \
+  const char* WrapperShim__##__name::kName = #__name;
+
+#else
+
+#define ROCBLAS_API_WRAPPER(__name)                                        \
+  struct DynLoadShim__##__name {                                           \
+    static const char* kName;                                              \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;           \
+    static void* GetDsoHandle() {                                          \
+      auto s = GetRocblasDsoHandle();                                      \
+      return s.ValueOrDie();                                               \
+    }                                                                      \
+    static FuncPtrT LoadOrDie() {                                          \
+      void* f;                                                             \
+      auto s =                                                             \
+          Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), kName, &f); \
+      CHECK(s.ok()) << "could not find " << kName                          \
+                    << " in rocblas DSO; dlerror: " << s.error_message();  \
+      return reinterpret_cast<FuncPtrT>(f);                                \
+    }                                                                      \
+    static FuncPtrT DynLoad() {                                            \
+      static FuncPtrT f = LoadOrDie();                                     \
+      return f;                                                            \
+    }                                                                      \
+    template <typename... Args>                                            \
+    rocblas_status operator()(Args... args) {                              \
+      return DynLoad()(args...);                                           \
+    }                                                                      \
+  } __name;                                                                \
+  const char* DynLoadShim__##__name::kName = #__name;
+
+#endif
+
+// clang-format off
+#define FOREACH_ROCBLAS_API(__macro)	        \
+  __macro(rocblas_create_handle)		\
+  __macro(rocblas_destroy_handle)		\
+  __macro(rocblas_set_stream)
+// clang-format on
+
+FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
+
+}  // namespace rocblas_wrap
+
+#define cusolverDnCreate rocblas_wrap::rocblas_create_handle
+#define cusolverDnSetStream rocblas_wrap::rocblas_set_stream
+#define cusolverDnDestroy rocblas_wrap::rocblas_destroy_handle
 
 #define CUBLAS_FILL_MODE_UPPER rocblas_fill_upper
 #define CUBLAS_FILL_MODE_LOWER rocblas_fill_lower
