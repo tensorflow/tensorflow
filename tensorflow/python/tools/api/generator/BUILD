@@ -11,7 +11,6 @@ package(
 
 exports_files(
     [
-        "LICENSE",
         "create_python_api.py",
     ],
 )
