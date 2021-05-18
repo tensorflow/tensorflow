@@ -35,7 +35,6 @@ list(APPEND TFLITE_BENCHMARK_SRCS
 
 list(APPEND TFLITE_BENCHMARK_LIBS
   tensorflow-lite
-  ${CMAKE_DL_LIBS}
 )
 
 # TODO(b/171007016): Enable performance options on Windows.
