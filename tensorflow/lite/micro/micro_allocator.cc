@@ -1008,7 +1008,7 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
                                    memory_allocator_->GetHeadBuffer(),
                                    allocation_info, allocation_info_count));
 #ifdef TF_LITE_SHOW_MEMORY_USE
-  planner.PrintMemoryPlan(error_reporter_);
+  planner.PrintMemoryPlan();
 #endif
   head_usage = planner.GetMaximumMemorySize();
 
