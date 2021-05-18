@@ -7828,7 +7828,7 @@ ENTRY entry {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
-  std::cerr << module->ToString();
+  VLOG(1) << module->ToString();
 
   // Check that the partitioned code does not have all-reduce or trivial
   // collective permute. Also make sure modifiers have the right dependencies.

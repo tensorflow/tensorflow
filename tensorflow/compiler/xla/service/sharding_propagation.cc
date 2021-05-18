@@ -326,6 +326,7 @@ bool SupportSpatialPartitioning(const HloInstruction* instruction,
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
     case HloOpcode::kReduce:
+    case HloOpcode::kRngBitGenerator:
       return true;
     case HloOpcode::kAllReduce:
       // Only if channel_id is not specified.
