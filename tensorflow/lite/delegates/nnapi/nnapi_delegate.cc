@@ -3801,8 +3801,15 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
                                   "completing NNAPI compilation", nnapi_errno);
   nn_compilation_.reset(compilation);
 
+  bool should_use_burst_mode = delegate_options.use_burst_computation;
+  // Override should_use_burst_mode to true if the selected NNAPI devices are of
+  // NNAPI feature level 5 or higher.
+  if (!nnapi_devices_.empty() &&
+      target_sdk_version_ >= kNNAPIRuntimeFeatureLevel5) {
+    should_use_burst_mode = true;
+  }
   // Create burst object to be reused across a sequence of executions
-  if (delegate_options.use_burst_computation &&
+  if (should_use_burst_mode &&
       nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
       nnapi_->ANeuralNetworksBurst_create) {
     ANeuralNetworksBurst* burst = nullptr;
