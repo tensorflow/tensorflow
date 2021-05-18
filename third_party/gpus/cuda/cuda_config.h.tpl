@@ -27,4 +27,6 @@ limitations under the License.
 
 #define TF_CUDA_TOOLKIT_PATH "%{cuda_toolkit_path}"
 
+#define TF_CUDA_COMPUTE_CAPABILITIES %{cuda_compute_capabilities}
+
 #endif  // CUDA_CUDA_CONFIG_H_
