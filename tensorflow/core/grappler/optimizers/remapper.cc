@@ -1009,6 +1009,8 @@ bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
     return true;
   };
 
+  if (ctx.xla_auto_clustering_on) return false;
+
   if (!valid_batch_norm_grad(*node_view)) return false;
 
   if (node_view->NumRegularFanins() < 1) return false;
