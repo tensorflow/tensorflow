@@ -6421,7 +6421,8 @@ LogicalResult legalizeTF(
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
   if (legalize_chlo) {
-    chlo::PopulateLegalizeChloToHloPatterns(context, &patterns);
+    chlo::PopulateDecomposeChloPatterns(context, &patterns);
+    chlo::PopulateChloBroadcastingPatterns(context, &patterns);
   }
   // ConstantLike op is convenient to create splat constants, but is
   // canonicalized to plain HLO constant if statically shaped. Add the
