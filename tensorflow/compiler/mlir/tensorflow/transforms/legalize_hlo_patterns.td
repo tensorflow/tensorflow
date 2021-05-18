@@ -241,7 +241,7 @@ def SameValue : Constraint<CPred<"$0 == $1">>;
 def FloatOrDefaultCompare : Constraint<CPred<
   "!$0 || $0.getValue() == \"FLOAT\"">>;
 
-// Converts a soup of HLOs representing banker rounding (round x.5 to nearest
+// Converts a dag of HLOs representing banker rounding (round x.5 to nearest
 // even) to tf.round.
 // The pattern matched executes the following computation:
 // frac = x - floor(x)
@@ -290,7 +290,7 @@ def : Pat<(HLO_SelectOp
            (FloatOrDefaultCompare $compare_type1),
            (FloatOrDefaultCompare $compare_type2)]>;
 
-// Converts a soup of HLOs representing floor_mod to tf.FloorMod.
+// Converts a dag of HLOs representing floor_mod to tf.FloorMod.
 // The pattern matched executes the following computation:
 //
 // rem = remainder(arg0, arg1)
@@ -324,7 +324,7 @@ def : Pat<
 (FloatOrDefaultCompare $compare_type1),
 (FloatOrDefaultCompare $compare_type2)]>;
 
-// Converts a soup of HLOs representing floor_mod with a constant to
+// Converts a dag of HLOs representing floor_mod with a constant to
 // tf.FloorMod. The pattern matched executes the following computation:
 //
 // cst = value that is > 0
@@ -356,7 +356,7 @@ def : Pat<
 (FloatOrDefaultCompare $compare_type),
 (FloatOrDefaultCompare $compare_type3)]>;
 
-// Converts a soup of HLOs representing floor_div to tf.FloorDiv.
+// Converts a dag of HLOs representing floor_div to tf.FloorDiv.
 // The pattern matched executes the following computation:
 //
 // rem = remainder(arg0, arg1)
@@ -410,7 +410,7 @@ def : Pat<
 (FloatOrDefaultCompare $compare_type),
 (FloatOrDefaultCompare $compare_type1)]>;
 
-// Converts a soup of HLOs representing floor_div with a splat constant to
+// Converts a dag of HLOs representing floor_div with a splat constant to
 // tf.FloorDiv. The pattern matched executes the following computation:
 // This particular pattern matches multiplication with the reciprocal of the
 // constant instead of dividing by the constant.
@@ -469,7 +469,7 @@ def : Pat<
 (FloatOrDefaultCompare $compare_type),
 (FloatOrDefaultCompare $compare_type1)]>;
 
-// Converts a soup of HLOs representing floor_div with a broadcasted vector
+// Converts a dag of HLOs representing floor_div with a broadcasted vector
 // constant to tf.FloorDiv. The pattern matched executes the following
 // computation:
 // scs = sign(cst)
