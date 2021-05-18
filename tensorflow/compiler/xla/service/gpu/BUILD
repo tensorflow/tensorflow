@@ -964,7 +964,7 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cusolver_lib",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocsolver",
+        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
         "@local_config_rocm//rocm:rocblas",
     ]),
 )

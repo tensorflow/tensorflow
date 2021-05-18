@@ -21,7 +21,7 @@ limitations under the License.
 #if !TENSORFLOW_USE_ROCM
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 #else
-#include "rocsolver.h"
+#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
 typedef rocsolver_handle cusolverDnHandle_t;
 #endif
 
