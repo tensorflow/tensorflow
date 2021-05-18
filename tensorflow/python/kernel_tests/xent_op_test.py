@@ -21,17 +21,56 @@ from __future__ import print_function
 import itertools
 import sys
 
+import numpy as np
+
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests import xent_op_test_base
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
-XentOpTest = xent_op_test_base.XentOpTestBase
+class XentOpTest(xent_op_test_base.XentOpTestBase):
+
+  @test_util.run_deprecated_v1
+  def testRankTooLarge(self):
+    for dtype in np.float16, np.float32:
+      np_features = np.array([[[1., 1., 1., 1.]], [[1., 2., 3.,
+                                                    4.]]]).astype(dtype)
+      np_labels = np.array([[[0., 0., 0., 1.]], [[0., .5, .5,
+                                                  0.]]]).astype(dtype)
+      self.assertRaisesRegex(ValueError, "rank 2, but is rank 3",
+                             gen_nn_ops.softmax_cross_entropy_with_logits,
+                             np_features, np_labels)
+
+  def testFeaturesBroadcast(self):
+    np_f = np.array([[1., 2., 3., 4.],
+                     [1., 2., 3., 4.]]).astype(np.float32)
+    np_l = np.array([[0., 0., 0., 1.],
+                     [0., .5, .5, 0.]]).astype(np.float32)
+    np_loss, np_backprop = self._npXent(labels=np_l, logits=np_f)
+    tf_f = constant_op.constant(
+        np.array([[1., 2., 3., 4.]]).astype(np.float32))
+    tf_l = constant_op.constant(
+        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
+    with test_util.device(use_gpu=True):
+      loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
+          tf_f, tf_l)
+      tf_loss, tf_backprop = self.evaluate([loss, backprop])
+    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
+
+  @test_util.run_deprecated_v1
+  def testNotMatrix(self):
+    with self.cached_session():
+      with self.assertRaises(ValueError):
+        gen_nn_ops.softmax_cross_entropy_with_logits(
+            [0., 1., 2., 3.], [0., 1., 0., 1.])
 
 
 class XentBenchmark(test.Benchmark):

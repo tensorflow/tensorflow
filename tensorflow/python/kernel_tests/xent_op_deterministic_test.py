@@ -24,14 +24,45 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests import xent_op_test_base
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
 # The following import is required to register the gradient function.
 from tensorflow.python.ops.nn_grad import _SoftmaxCrossEntropyWithLogitsGrad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+
+
+class SoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(test.TestCase):
+  """Test d9m-unimplemented exceptions from SoftmaxCrossEntropyWithLogits.
+
+  Test that tf.errors.UnimplementedError is thrown or not thrown, as
+  appropriate, by the GPU code-paths for SoftmaxCrossEntropyWithLogits when
+  deterministic ops are enabled.
+
+  This test assumes that xent_op_test.py runs equivalent test cases when
+  deterministic ops are not enabled and will therefore detect erroneous
+  exception throwing in those cases.
+  """
+
+  @test_util.run_cuda_only
+  @test_util.run_in_graph_and_eager_modes
+  def testExceptionThrowing(self):
+    with self.session(), test_util.force_gpu():
+      for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+        labels = constant_op.constant([[0.2, 0.4], [0.1, 0.2]], dtype=dtype)
+        features = constant_op.constant([[0.3, 0.5], [0.5, 0.6]], dtype=dtype)
+        with self.assertRaisesRegex(
+            errors_impl.UnimplementedError,
+            "The GPU implementation of SoftmaxCrossEntropyWithLogits that " +
+            "would have been executed is not deterministic. Note that the " +
+            "Python API uses an alternative, deterministic path when " +
+            "determinism is enabled."):
+          result = gen_nn_ops.softmax_cross_entropy_with_logits(
+              features=features, labels=labels)
+          self.evaluate(result)
 
 
 class XentDeterministicTest(xent_op_test_base.XentOpTestBase):
@@ -73,78 +104,44 @@ class XentDeterministicTest(xent_op_test_base.XentOpTestBase):
 
   @test_util.run_in_graph_and_eager_modes
   def testForward(self):
-    for use_gpu in [False, True]:
-      if use_gpu and self._gpuNotAvailable():
-        continue
-      with self.cached_session(), test_util.device(use_gpu):
-        # Even in eager mode, the above line will be able to pin ops to CPU.
-        for dtype in [np.float16, np.float32, np.float64]:
-          for trial in range(5):
-            seed = 123 + trial
-            labels, logits = self._generateInputs(
-                dtype, seed=seed, forward_not_backward=True)
-            result_a = nn_ops.softmax_cross_entropy_with_logits(
-                labels=labels, logits=logits)
-            result_b = nn_ops.softmax_cross_entropy_with_logits(
-                labels=labels, logits=logits)
-            self.assertAllEqual(result_a, result_b)
-
-  def _testBackward(self, labels_not_logits=False):
-    for use_gpu in [False, True]:
-      if use_gpu and self._gpuNotAvailable():
-        continue
-      with self.cached_session(), test_util.device(use_gpu):
-        # Even in eager mode, the above line will be able to pin ops to CPU.
-        for dtype in [np.float16, np.float32, np.float64]:
-          labels, logits = self._generateInputs(dtype, seed=456)
-          output_shape = labels.shape[0]
-
-          def gradients(seed=789):
-            np.random.seed(seed)
-            upstream_gradients = self._randomFloats(output_shape, dtype)
-            with backprop.GradientTape(persistent=True) as tape:
-              tape.watch(labels)
-              tape.watch(logits)
-              op_output = nn_ops.softmax_cross_entropy_with_logits(
-                  labels=labels, logits=logits)
-              gradient_injector_output = op_output * upstream_gradients
-            return tape.gradient(gradient_injector_output, [labels, logits])
-
-          for trial in range(5):
-            seed = 456 + trial
-            labels_grad_a, logits_grad_a = gradients(seed=seed)
-            labels_grad_b, logits_grad_b = gradients(seed=seed)
-            if labels_not_logits:
-              self.assertAllEqual(labels_grad_a, labels_grad_b)
-            else:
-              self.assertAllEqual(logits_grad_a, logits_grad_b)
+    with self.cached_session(), test_util.device(use_gpu=True):
+      for dtype in [np.float16, np.float32, np.float64]:
+        for trial in range(5):
+          seed = 123 + trial
+          labels, logits = self._generateInputs(
+              dtype, seed=seed, forward_not_backward=True)
+          result_a = nn_ops.softmax_cross_entropy_with_logits(
+              labels=labels, logits=logits)
+          result_b = nn_ops.softmax_cross_entropy_with_logits(
+              labels=labels, logits=logits)
+          self.assertAllEqual(result_a, result_b)
 
   @test_util.run_in_graph_and_eager_modes
-  def testBackwardLabels(self):
-    self._testBackward(labels_not_logits=True)
+  def testBackward(self):
+    with self.cached_session(), test_util.device(use_gpu=True):
+      for dtype in [np.float16, np.float32, np.float64]:
+        labels, logits = self._generateInputs(dtype, seed=456)
+        output_shape = labels.shape[0]
 
-  @test_util.run_in_graph_and_eager_modes
-  def testBackwardLogits(self):
-    self._testBackward(labels_not_logits=False)
+        def gradients(seed):
+          np.random.seed(seed)
+          upstream_gradients = self._randomFloats(output_shape, dtype)
+          with backprop.GradientTape(persistent=True) as tape:
+            tape.watch(labels)
+            tape.watch(logits)
+            op_output = nn_ops.softmax_cross_entropy_with_logits(
+                labels=labels, logits=logits)
+            gradient_injector_output = op_output * upstream_gradients
+          return tape.gradient(gradient_injector_output, [labels, logits])
+
+        for trial in range(5):
+          seed = 456 + trial
+          labels_grad_a, logits_grad_a = gradients(seed=seed)
+          labels_grad_b, logits_grad_b = gradients(seed=seed)
+          self.assertAllEqual(labels_grad_a, labels_grad_b)
+          self.assertAllEqual(logits_grad_a, logits_grad_b)
 
   # Modifications to the parent class (xent_op_test_base.XentOpTestBase) follow
-
-  def _coreOp(self, features, labels):
-    """ Run a substitute for the core op under test.
-
-    In the code-under-test, when op determinism is enabled, the call to
-    gen_nn_ops.softmax_cross_entropy_with_logits is replaced with a
-    small network of discrete TF ops. The following modification enables
-    existing test cases that run on
-    gen_nn_ops.softmax_cross_entropy_with_logits to be reused by emulating
-    it using nn_ops.softmax_cross_entropy_with_logits.
-    """
-    features = ops.convert_to_tensor(features) # needed for the gradient tape
-    with backprop.GradientTape() as tape:
-      tape.watch(features)
-      loss = nn_ops.softmax_cross_entropy_with_logits(
-          labels=labels, logits=features, dim=-1)
-    return loss, tape.gradient(loss, features)
 
   def testSingleClass(self):
     """Disable testing of backprop for single-class case.
@@ -157,27 +154,6 @@ class XentDeterministicTest(xent_op_test_base.XentOpTestBase):
     """
     self._testSingleClass(test_backprop=False)
 
-  def testRankTooLarge(self):
-    """This test is not relevant for nn_ops.softmax_cross_entropy_with_logits.
-
-    Whereas gen_nn_ops.softmax_cross_entropy_with_logits operates on
-    two-dimensional matrices, nn_ops.softmax_cross_entropy_with_logits supports
-    more than one dimension beyond the class dimension. Therefore, this test
-    has been disabled.
-    """
-    pass
-
-  def testFeaturesBroadcast(self):
-    """This test is not relevant for nn_ops.softmax_cross_entrop_with_logits.
-
-    Whereas gen_nn_ops.softmax_cross_entropy_with_logits supports broadcasting
-    of logits (features) across batch, softmax_cross_entropy_with_logits cannot
-    expose the results because it tries to reshape the resulting cost matrix
-    (created using broadcast logits) into the smaller shape of the incoming
-    logits (minus the axis dimension). Therefore, this test has been disabled.
-    """
-    pass
-
   def testLabelsBroadcast(self):
     """Disable testing of backprop for labels-broadcast case.
 
@@ -188,17 +164,6 @@ class XentDeterministicTest(xent_op_test_base.XentOpTestBase):
                        this case.
     """
     self._testLabelsBroadcast(test_backprop=False)
-
-
-  def testNotMatrix(self):
-    """This test is not relevant for nn_ops.softmax_cross_entropy_with_logits.
-
-    Whereas gen_nn_ops.softmax_cross_entropy_with_logits requires that both
-    features and labels are two-dimensional,
-    nn_ops.softmax_cross_entropy_with_logits doens not. Therefore, this test
-    has been disabled.
-    """
-    pass
 
 
 if __name__ == "__main__":
