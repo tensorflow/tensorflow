@@ -607,12 +607,20 @@ class TFLiteConverterBase(object):
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset, graph_def)
     converter_kwargs.update({
-        "optimization_default": quant_mode.any_optimization_enabled(),
+        "optimization_default":
+            quant_mode.any_optimization_enabled(),
+        "optimization_post_training_dynamic_range":
+            quant_mode.post_training_dynamic_range_int8(),
+        "optimization_post_training_float16":
+            quant_mode.post_training_fp16(),
         "optimization_post_training_integer_quantize":
             quant_mode.is_post_training_integer_quantize(),
+        "optimization_qat":
+            quant_mode.is_training_time_int8_allow_float(),
         "optimization_sparsify":
             self._sparsify_model(),
-        "activations_type": quant_mode.activations_type()
+        "activations_type":
+            quant_mode.activations_type()
     })
     converter_kwargs.update(
         quant_mode.converter_flags(inference_type, inference_input_type))
