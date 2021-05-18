@@ -234,7 +234,8 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
 }
 
 bool LmhloOpIsElementwise(mlir::Operation* op) {
-  CHECK(op->getDialect() == op->getContext()->getLoadedDialect("lmhlo"));
+  CHECK(op->getDialect() ==
+        op->getContext()->getLoadedDialect<mlir::lmhlo::LmhloDialect>());
   auto opcode = *MhloToHloOpcode(op);
   if (HloInstruction::IsOpElementwise(opcode)) {
     return true;
@@ -257,7 +258,8 @@ bool LmhloOpIsElementwise(mlir::Operation* op) {
 }
 
 bool MayPreventVectorization(mlir::Operation* op) {
-  CHECK(op->getDialect() == op->getContext()->getLoadedDialect("lmhlo"));
+  CHECK(op->getDialect() ==
+        op->getContext()->getLoadedDialect<mlir::lmhlo::LmhloDialect>());
   auto opcode = *MhloToHloOpcode(op);
 
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
@@ -267,7 +269,8 @@ bool MayPreventVectorization(mlir::Operation* op) {
               &instr)) {
         continue;
       }
-      CHECK(instr.getDialect() == instr.getContext()->getLoadedDialect("mhlo"))
+      CHECK(instr.getDialect() ==
+            instr.getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>())
           << MlirToString(op);
       switch (*MhloToHloOpcode(&instr)) {
         case HloOpcode::kReduceWindow:
