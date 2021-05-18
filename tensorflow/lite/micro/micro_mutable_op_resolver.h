@@ -451,6 +451,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       Register_SPACE_TO_BATCH_ND(), ParseSpaceToBatchNd);
   }
 
+  TfLiteStatus AddSpaceToDepth() {
+    return AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH(),
+                      ParseSpaceToDepth);
+  }
+
   TfLiteStatus AddSplit() {
     return AddBuiltin(BuiltinOperator_SPLIT,
                       tflite::ops::micro::Register_SPLIT(), ParseSplit);

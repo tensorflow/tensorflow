@@ -12,16 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/space_to_depth.h"
+
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 
@@ -29,6 +27,10 @@ namespace {
 
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
+constexpr int kBatchRank = 0;
+constexpr int kHeightRank = 1;
+constexpr int kWidthRank = 2;
+constexpr int kDepthRank = 3;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
@@ -51,32 +53,38 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   const int block_size = params->block_size;
-  const int input_height = input->dims->data[1];
-  const int input_width = input->dims->data[2];
+  const int input_height = input->dims->data[kHeightRank];
+  const int input_width = input->dims->data[kWidthRank];
   int output_height = input_height / block_size;
   int output_width = input_width / block_size;
 
   TF_LITE_ENSURE_EQ(context, input_height, output_height * block_size);
   TF_LITE_ENSURE_EQ(context, input_width, output_width * block_size);
 
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
-  output_size->data[0] = input->dims->data[0];
-  output_size->data[1] = output_height;
-  output_size->data[2] = output_width;
-  output_size->data[3] = input->dims->data[3] * block_size * block_size;
+  // Relocate dims to the persistent storage arena before changing them,
+  // otherwise we'd be modifying temporary copies made by the interpreters each
+  // time they process the layer.
+  TfLiteEvalTensor* output_eval =
+      micro::GetEvalOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE_OK(context, micro::CreateWritableTensorDimsWithCopy(
+                                 context, output, output_eval));
 
-  return kTfLiteError;
+  output->dims->data[kBatchRank] = input->dims->data[kBatchRank];
+  output->dims->data[kHeightRank] = output_height;
+  output->dims->data[kWidthRank] = output_width;
+  output->dims->data[kDepthRank] =
+      input->dims->data[kDepthRank] * block_size * block_size;
+
+  return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteSpaceToDepthParams*>(node->builtin_data);
 
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteEvalTensor* input =
+      micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output = micro::GetEvalOutput(context, node, kOutputTensor);
 
   SpaceToDepthParams op_params;
   op_params.block_size = params->block_size;
@@ -95,8 +103,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                   micro::GetTensorData<int8_t>(output));
       break;
     default:
-      TF_LITE_KERNEL_LOG(context, "Type '%s' not currently supported.",
-                         TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(
+          context, "SPACE_TO_DEPTH only supports FLOAT32 and INT8, got %s.",
+          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 
@@ -105,6 +114,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace
 
-TfLiteRegistration* Register_SPACE_TO_DEPTH() { return nullptr; }
+TfLiteRegistration Register_SPACE_TO_DEPTH() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
+}
 
 }  // namespace tflite

@@ -43,7 +43,7 @@ inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
   const int output_height = output_shape.Dims(1);
   const int output_batch = output_shape.Dims(0);
 
-  const int32 block_size = op_params.block_size;
+  const int32_t block_size = op_params.block_size;
 
   TFLITE_DCHECK_EQ(input_width, output_width * block_size);
   TFLITE_DCHECK_EQ(input_height, output_height * block_size);

@@ -54,6 +54,7 @@ TfLiteRegistration Register_RESIZE_BILINEAR();
 TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPACE_TO_BATCH_ND();
+TfLiteRegistration Register_SPACE_TO_DEPTH();
 TfLiteRegistration Register_SQUEEZE();
 TfLiteRegistration Register_SVDF();
 TfLiteRegistration Register_TRANSPOSE_CONV();
