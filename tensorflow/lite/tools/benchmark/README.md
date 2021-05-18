@@ -145,7 +145,13 @@ the profile of ops on hexagon DSP will be added to the profile table. Note that,
 the reported data on hexagon is in cycles, not in ms like on cpu.
 
 #### XNNPACK delegate
-*   `use_xnnpack`: `bool` (default=false)
+*   `use_xnnpack`: `bool` (default=false) \
+Note if this option is explicitly set to `false`, the TfLite runtime will use
+its original CPU kernels for model execution. In other words, after enabling
+the feature that the XNNPACK delegate is applied by default in TfLite runtime,
+explictly setting this flag to `false` will cause the benchmark tool to disable
+the feature at runtime, and to use the original non-delegated CPU execution path
+for model benchmarking.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)

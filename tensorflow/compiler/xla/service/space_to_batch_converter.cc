@@ -741,7 +741,8 @@ StatusOr<bool> ConvolutionVisitor::Run() {
   for (auto conv : conv_visitor_list_) {
     // If we expect to see an unpropagatable op, space-to-batch may not be
     // beneficial.
-    if (DoesConvolutionFeedUnpropagatableOp(conv)) {
+    if (ctrl_.disable_starting_on_small_chains &&
+        DoesConvolutionFeedUnpropagatableOp(conv)) {
       VLOG(1) << "Giving up on conv " << conv->ToString()
               << " because it feeds an unpropagatable op";
       convs_to_visit_.erase(conv);

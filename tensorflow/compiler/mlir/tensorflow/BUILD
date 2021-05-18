@@ -21,6 +21,7 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/mobile/lite/tf_runtime/...",
         "//learning/pathways/data_parallel/tf2xla/...",
+        "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
@@ -658,6 +659,7 @@ cc_library(
         "ir/tf_executor.cc.inc",
         "ir/tf_executor.h.inc",
         "ir/tf_saved_model.cc",
+        "transforms/tf_device_passes.h.inc",
     ],
     hdrs = [
         "dialect_registration.h",
@@ -977,6 +979,29 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "tf_device_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TensorFlowDevice",
+            ],
+            "transforms/tf_device_passes.h.inc",
+        ),
+        (
+            ["-gen-pass-doc"],
+            "g3doc/includes/tf_device_passes.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/tf_device_passes.td",
+    td_srcs = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
     name = "tf_savedmodel_pass_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -1107,6 +1132,8 @@ cc_library(
         "ir/tf_ops_helpers.inc",
         "transforms/passes_detail.h",
         "transforms/savedmodel_passes_detail.h",
+        "transforms/tf_device_passes_detail.h",
+        "transforms/tf_device_passes.h.inc",
         "transforms/tf_passes.h.inc",
         "transforms/tf_savedmodel_passes.h.inc",
     ],
@@ -2174,6 +2201,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

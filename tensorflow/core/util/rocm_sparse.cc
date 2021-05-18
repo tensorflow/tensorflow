@@ -122,6 +122,35 @@ HandleMap* GetHandleMapSingleton() {
 
 }  // namespace
 
+// Type traits to get HIP complex types from std::complex<>
+
+template <typename T>
+struct HipComplexT {
+  typedef T type;
+};
+
+template <>
+struct HipComplexT<std::complex<float>> {
+  typedef hipFloatComplex type;
+};
+
+template <>
+struct HipComplexT<std::complex<double>> {
+  typedef hipDoubleComplex type;
+};
+
+// Convert pointers of std::complex<> to pointers of
+// hipFloatComplex/hipDoubleComplex. No type conversion for non-complex types.
+template <typename T>
+inline const typename HipComplexT<T>::type* AsHipComplex(const T* p) {
+  return reinterpret_cast<const typename HipComplexT<T>::type*>(p);
+}
+
+template <typename T>
+inline typename HipComplexT<T>::type* AsHipComplex(T* p) {
+  return reinterpret_cast<typename HipComplexT<T>::type*>(p);
+}
+
 GpuSparse::GpuSparse(OpKernelContext* context)
     : initialized_(false), context_(context) {
   auto hip_stream_ptr =
@@ -154,7 +183,8 @@ Status GpuSparse::Initialize() {
 
 // Macro that specializes a sparse method for all 4 standard
 // numeric types.
-#define TF_CALL_HIP_LAPACK_TYPES(m) m(float, S) m(double, D)
+#define TF_CALL_HIP_LAPACK_TYPES(m) \
+  m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 
 // Macros to construct hipsparse method names.
 #define SPARSE_FN(method, sparse_prefix) wrap::hipsparse##sparse_prefix##method
@@ -185,10 +215,10 @@ static inline Status CsrmmImpl(
     const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
     const int* csrSortedColIndA, const Scalar* B, int ldb,
     const Scalar* beta_host, Scalar* C, int ldc) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(op(hipsparse_handle, transA, transB, m, n, k,
-                                  nnz, alpha_host, descrA, csrSortedValA,
-                                  csrSortedRowPtrA, csrSortedColIndA, B, ldb,
-                                  beta_host, C, ldc));
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      hipsparse_handle, transA, transB, m, n, k, nnz, AsHipComplex(alpha_host),
+      descrA, AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsHipComplex(B), ldb, AsHipComplex(beta_host), AsHipComplex(C), ldc));
   return Status::OK();
 }
 
@@ -221,8 +251,9 @@ static inline Status CsrmvImpl(SparseFnT op, OpKernelContext* context,
                                const int* csrSortedColIndA, const Scalar* x,
                                const Scalar* beta_host, Scalar* y) {
   TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, transA, m, n, nnz, alpha_host, descrA, csrSortedValA,
-         csrSortedRowPtrA, csrSortedColIndA, x, beta_host, y));
+      op(hipsparse_handle, transA, m, n, nnz, AsHipComplex(alpha_host), descrA,
+         AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+         AsHipComplex(x), AsHipComplex(beta_host), AsHipComplex(y)));
   return Status::OK();
 }
 
@@ -270,11 +301,11 @@ static inline Status CsrgemmImpl(
     const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
     const int* csrSortedColIndB, const hipsparseMatDescr_t descrC,
     Scalar* csrSortedValC, int* csrSortedRowPtrC, int* csrSortedColIndC) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, transA, transB, m, n, k, descrA, nnzA, csrSortedValA,
-         csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB, csrSortedValB,
-         csrSortedRowPtrB, csrSortedColIndB, descrC, csrSortedValC,
-         csrSortedRowPtrC, csrSortedColIndC));
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      hipsparse_handle, transA, transB, m, n, k, descrA, nnzA,
+      AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA, descrB,
+      nnzB, AsHipComplex(csrSortedValB), csrSortedRowPtrB, csrSortedColIndB,
+      descrC, AsHipComplex(csrSortedValC), csrSortedRowPtrC, csrSortedColIndC));
   return Status::OK();
 }
 
@@ -306,9 +337,10 @@ static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
                                  const int* csrRowPtr, const int* csrColInd,
                                  Scalar* cscVal, int* cscRowInd, int* cscColPtr,
                                  const hipsparseAction_t copyValues) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, m, n, nnz, csrVal, csrRowPtr, csrColInd, cscVal,
-         cscRowInd, cscColPtr, copyValues, HIPSPARSE_INDEX_BASE_ZERO));
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(hipsparse_handle, m, n, nnz,
+                                  AsHipComplex(csrVal), csrRowPtr, csrColInd,
+                                  AsHipComplex(cscVal), cscRowInd, cscColPtr,
+                                  copyValues, HIPSPARSE_INDEX_BASE_ZERO));
   return Status::OK();
 }
 

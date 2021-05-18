@@ -189,7 +189,7 @@ class XlaDevice : public LocalDevice {
   Status RefreshStatus() override TF_LOCKS_EXCLUDED(mu_);
 
  private:
-  xla::StatusOr<xla::LocalClient*> GetOrCreateClient() const;
+  StatusOr<xla::LocalClient*> GetOrCreateClient() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureStreamOkLocked(xla::Backend* backend, const string& name,
@@ -198,9 +198,8 @@ class XlaDevice : public LocalDevice {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Return a pair of device context, the second one is fast_mem device context.
-  xla::StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
+  StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
   GetDeviceContextLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
 
   Status MakeTensorFromProto(XlaDeviceContext* device_context,
                              const TensorProto& tensor_proto,

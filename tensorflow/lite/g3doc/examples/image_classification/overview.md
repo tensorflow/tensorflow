@@ -15,12 +15,10 @@ Android.
 
 <img src="images/android_banana.png" alt="Screenshot of Android example" width="30%">
 
-*Quick tips*:
-
-*   To integrate an existing model, try
-    [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/image_classifier).
-*   To customize a model, try
-    [TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification).
+Note: (1) To integrate an existing model, try
+[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/image_classifier).
+(2) To customize a model, try
+[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification).
 
 ## Get started
 

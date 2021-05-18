@@ -119,7 +119,7 @@ tf_py_test(
     name = "multi_worker_tutorial_test",
     srcs = ["multi_worker_tutorial_test.py"],
     python_version = "PY3",
-    shard_count = 3,
+    shard_count = 6,
     tags = [
         "no_windows",  # TODO(b/183102726)
         "noasan",  # TODO(b/156029134)

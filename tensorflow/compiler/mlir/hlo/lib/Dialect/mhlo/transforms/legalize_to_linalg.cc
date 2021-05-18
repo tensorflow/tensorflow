@@ -2354,7 +2354,8 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    ReduceRegionXLAOpConversion<mhlo::OrOp>,
                    ReduceRegionXLAOpConversion<mhlo::SelectOp>,
                    ReduceRegionXLAOpConversion<mhlo::CompareOp>,
-                   ReduceRegionReturnOpConversion>(context);
+                   ReduceRegionReturnOpConversion>(context,
+                                                   PatternBenefit(1000));
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {

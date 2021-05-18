@@ -214,7 +214,7 @@ class UniqueOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp input = ctx->Input(0);
-    xla::StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
+    StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.ValueOrDie();
     ctx->SetOutput(0, DataOutputFastPath(ctx, input, input_shape));

@@ -22,9 +22,11 @@ if not os.path.splitext(__file__)[0].endswith(
     os.path.join("tflite_runtime", "analyzer")):
   # This file is part of tensorflow package.
   from tensorflow.lite.tools import visualize
+  from tensorflow.lite.python.analyzer_wrapper import _pywrap_analyzer_wrapper as _analyzer_wrapper
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import visualize
+  from tflite_runtime import _pywrap_analyzer_wrapper as _analyzer_wrapper
 
 
 def _handle_webserver(host_name, server_port, html_body):
@@ -66,5 +68,7 @@ class ModelAnalyzer:
     elif result_format == "webserver":
       html_body = visualize.create_html(tflite_model)
       _handle_webserver("localhost", 8080, html_body)
+    elif result_format == "txt":
+      return _analyzer_wrapper.ModelAnalyzer(tflite_model)
     else:
       raise ValueError(f"result_format '{result_format}' is not supported")

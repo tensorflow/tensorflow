@@ -369,6 +369,7 @@ cc_library(
     name = "CAPISparseTensor",
     srcs = [
         "lib/CAPI/Dialect/SparseTensor.cpp",
+        "lib/CAPI/Dialect/SparseTensorPasses.cpp",
     ],
     hdrs = [
         "include/mlir-c/Dialect/SparseTensor.h",
@@ -376,7 +377,10 @@ cc_library(
     includes = ["include"],
     deps = [
         ":CAPIIR",
+        ":Pass",
         ":SparseTensor",
+        ":SparseTensorPassIncGen",
+        ":SparseTensorTransforms",
         ":Support",
     ],
 )
@@ -417,6 +421,7 @@ cc_library(
     deps = [
         ":CAPIIR",
         ":ExecutionEngine",
+        ":ExecutionEngineUtils",
         ":LLVMToLLVMIRTranslation",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
@@ -453,12 +458,7 @@ cc_library(
 #----------------------------------------------------------------------------##
 
 exports_files(
-    [
-        "lib/Bindings/Python/LinalgPasses.cpp",
-        "lib/Bindings/Python/MainModule.cpp",
-        "lib/Bindings/Python/Conversions/Conversions.cpp",
-        "lib/Bindings/Python/Transforms/Transforms.cpp",
-    ],
+    glob(["lib/Bindings/Python/**/*.cpp"]),
 )
 
 cc_library(
@@ -1324,6 +1324,20 @@ gentbl_cc_library(
             ],
             "include/mlir/Dialect/SparseTensor/Transforms/Passes.h.inc",
         ),
+        (
+            [
+                "-gen-pass-capi-header",
+                "--prefix=SparseTensor",
+            ],
+            "include/mlir/Dialect/SparseTensor/Transforms/Passes.capi.h.inc",
+        ),
+        (
+            [
+                "-gen-pass-capi-impl",
+                "--prefix=SparseTensor",
+            ],
+            "include/mlir/Dialect/SparseTensor/Transforms/Passes.capi.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/SparseTensor/Transforms/Passes.td",
@@ -1362,6 +1376,7 @@ cc_library(
         ":SparseTensorPassIncGen",
         ":StandardOps",
         ":StandardOpsTransforms",
+        ":TensorDialect",
         ":Transforms",
         ":VectorOps",
         "@llvm-project//llvm:Support",
@@ -1635,6 +1650,7 @@ cc_library(
         ":LinalgToSPIRV",
         ":LinalgToStandard",
         ":MathToLibm",
+        ":OpenACCToLLVM",
         ":OpenMPToLLVM",
         ":PDLToPDLInterp",
         ":SCFToGPUPass",
@@ -1985,7 +2001,11 @@ cc_library(
             "lib/Dialect/StandardOps/EDSC/*.cpp",
             "lib/Dialect/StandardOps/Utils/*.cpp",
         ],
-    ),
+    ) +
+    # TODO: Stop depending on MemRefOps.
+    [
+        "include/mlir/Dialect/MemRef/IR/MemRef.h",
+    ],
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
         "include/mlir/Dialect/StandardOps/EDSC/*.h",
@@ -1997,8 +2017,11 @@ cc_library(
         ":CastOpInterfaces",
         ":CommonFolders",
         ":ControlFlowInterfaces",
+        ":CopyOpInterface",  # TODO: Stop depending on MemRefOps.
         ":EDSC",
         ":IR",
+        ":MemRefBaseIncGen",  # TODO: Stop depending on MemRefOps.
+        ":MemRefOpsIncGen",  # TODO: Stop depending on MemRefOps.
         ":SideEffectInterfaces",
         ":StandardOpsIncGen",
         ":Support",
@@ -4317,6 +4340,24 @@ cc_library(
 )
 
 cc_library(
+    name = "OpenACCToLLVMIRTranslation",
+    srcs = glob(["lib/Target/LLVMIR/Dialect/OpenACC/*.cpp"]),
+    hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/OpenACC/*.h"]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":OpenACCDialect",
+        ":OpenACCToLLVM",
+        ":Support",
+        ":ToLLVMIRTranslation",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:FrontendOpenMP",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "OpenMPToLLVMIRTranslation",
     srcs = glob(["lib/Target/LLVMIR/Dialect/OpenMP/*.cpp"]),
     hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/OpenMP/*.h"]),
@@ -4342,6 +4383,7 @@ cc_library(
         ":ArmSVEToLLVMIRTranslation",
         ":LLVMToLLVMIRTranslation",
         ":NVVMToLLVMIRTranslation",
+        ":OpenACCToLLVMIRTranslation",
         ":OpenMPToLLVMIRTranslation",
         ":ROCDLToLLVMIRTranslation",
         ":X86VectorToLLVMIRTranslation",
@@ -4615,16 +4657,24 @@ cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir/test:TestAffine",
         "@llvm-project//mlir/test:TestAnalysis",
+        "@llvm-project//mlir/test:TestDLTI",
         "@llvm-project//mlir/test:TestDialect",
+        "@llvm-project//mlir/test:TestGPU",
         "@llvm-project//mlir/test:TestIR",
+        "@llvm-project//mlir/test:TestLinalg",
+        "@llvm-project//mlir/test:TestMath",
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestRewrite",
+        "@llvm-project//mlir/test:TestSCF",
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestShapeDialect",
+        "@llvm-project//mlir/test:TestStandardOps",
+        "@llvm-project//mlir/test:TestStandardToLLVM",
         "@llvm-project//mlir/test:TestTosaDialect",
         "@llvm-project//mlir/test:TestTransforms",
         "@llvm-project//mlir/test:TestTypeDialect",
+        "@llvm-project//mlir/test:TestVector",
     ],
 )
 
@@ -4640,6 +4690,7 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":LLVMToLLVMIRTranslation",
+        ":OpenACCToLLVMIRTranslation",
         ":OpenMPToLLVMIRTranslation",
         ":Parser",
         ":Pass",
@@ -4696,6 +4747,7 @@ cc_binary(
         ":LLVMDialect",
         ":LLVMToLLVMIRTranslation",
         ":MlirJitRunner",
+        ":OpenACCToLLVMIRTranslation",
         ":OpenMPToLLVMIRTranslation",
         ":ToLLVMIRTranslation",
         "@llvm-project//llvm:AsmParser",
@@ -5068,6 +5120,30 @@ cc_library(
         ":OpenMPOpsIncGen",
         ":SideEffectInterfaces",
         ":StandardOps",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "OpenACCToLLVM",
+    srcs = glob([
+        "lib/Conversion/OpenACCToLLVM/*.cpp",
+        "lib/Conversion/OpenACCToLLVM/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/OpenACCToLLVM/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":LLVMDialect",
+        ":OpenACCDialect",
+        ":Pass",
+        ":StandardOps",
+        ":StandardToLLVM",
+        ":Transforms",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )

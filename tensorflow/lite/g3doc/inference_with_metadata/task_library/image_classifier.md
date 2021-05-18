@@ -11,7 +11,7 @@ the
 for more information about image classifiers.
 
 Use the Task Library `ImageClassifier` API to deploy your custom image
-classifiers or pretrained ones into your model apps.
+classifiers or pretrained ones into your mobile apps.
 
 ## Key features of the ImageClassifier API
 
@@ -95,10 +95,6 @@ See the
 for more options to configure `ImageClassifier`.
 
 ## Run inference in C++
-
-Note: we are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
 
 ```c++
 // Initialization

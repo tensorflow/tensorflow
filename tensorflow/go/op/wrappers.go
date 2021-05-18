@@ -4771,6 +4771,14 @@ func CTCGreedyDecoderMergeRepeated(value bool) CTCGreedyDecoderAttr {
 	}
 }
 
+// CTCGreedyDecoderBlankIndex sets the optional blank_index attribute to value.
+// If not specified, defaults to -1
+func CTCGreedyDecoderBlankIndex(value int64) CTCGreedyDecoderAttr {
+	return func(m optionalAttr) {
+		m["blank_index"] = value
+	}
+}
+
 // Performs greedy decoding on the logits given in inputs.
 //
 // A note about the attribute merge_repeated: if enabled, when

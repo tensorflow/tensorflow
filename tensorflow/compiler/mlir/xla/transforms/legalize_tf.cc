@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -77,15 +78,8 @@ namespace {
 
 constexpr char kShardingAttr[] = "mhlo.sharding";
 
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect,
-                    shape::ShapeDialect, StandardOpsDialect>();
-  }
-
+class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
  public:
-  LegalizeTF() = default;
-  LegalizeTF(const LegalizeTF &) {}
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
                       llvm::Optional<StringRef> tf2xla_fallback_device_type) {
     allow_partial_conversion_ = allow_partial_conversion;
@@ -95,31 +89,8 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
       device_type_ = tf2xla_fallback_device_type.getValue().str();
     }
   }
-
   /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
-
- private:
-  Option<bool> allow_partial_conversion_{
-      *this, "allow-partial-conversion",
-      llvm::cl::desc("Allow operations that can't be legalized."),
-      llvm::cl::init(false)};
-  Option<bool> legalize_chlo_{
-      *this, "legalize-chlo",
-      llvm::cl::desc(
-          "Also legalizes intermediate chlo ops to hlo (default true)"),
-      llvm::cl::init(true)};
-  Option<bool> use_tf2xla_fallback_{
-      *this, "use-tf2xla-fallback",
-      llvm::cl::desc(
-          "Also use TF2XLA fallback for legalization (default false)"),
-      llvm::cl::init(false)};
-  Option<std::string> device_type_{
-      *this, "device-type",
-      llvm::cl::desc(
-          "The device type used by TF2XLA fallback. Must be specified if "
-          "use-tf2xla-fallback is true, otherwise not used."),
-      llvm::cl::init("INVALID_DEVICE_TYPE")};
 };
 
 /// Returns if the given TF data format string is the default format.
@@ -6403,9 +6374,6 @@ void LegalizeTF::runOnFunction() {
     signalPassFailure();
   }
 }
-
-static PassRegistration<LegalizeTF> pass(
-    "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
 
 }  // end namespace
 
