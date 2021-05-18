@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-namespace tflite {
 namespace {
+
+using namespace tflite;
 
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
@@ -52,13 +53,6 @@ class SpaceToDepthOpModel : public SingleOpModel {
   int input_;
   int output_;
 };
-
-#ifdef GTEST_HAS_DEATH_TEST
-TEST(SpaceToDepthOpModel, BadBlockSize) {
-  EXPECT_DEATH(SpaceToDepthOpModel({TensorType_FLOAT32, {1, 2, 2, 1}}, 3),
-               "Cannot allocate tensors");
-}
-#endif
 
 TEST(SpaceToDepthOpModel, Float32) {
   SpaceToDepthOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, 2);
@@ -105,4 +99,3 @@ TEST(SpaceToDepthOpModel, Int64) {
 }
 
 }  // namespace
-}  // namespace tflite
