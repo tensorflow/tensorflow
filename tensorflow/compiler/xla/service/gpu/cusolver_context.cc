@@ -17,6 +17,64 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
+namespace rocblas_wrap {
+
+using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
+using tensorflow::Env;
+
+#ifdef PLATFORM_GOOGLE
+#define ROCBLAS_API_WRAPPER(__name)           \
+  struct WrapperShim__##__name {              \
+    static const char* kName;                 \
+    template <typename... Args>               \
+    rocblas_status operator()(Args... args) { \
+      return ::__name(args...);               \
+    }                                         \
+  } __name;                                   \
+  const char* WrapperShim__##__name::kName = #__name;
+
+#else
+
+#define ROCBLAS_API_WRAPPER(__name)                                        \
+  struct DynLoadShim__##__name {                                           \
+    static const char* kName;                                              \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;           \
+    static void* GetDsoHandle() {                                          \
+      auto s = GetRocblasDsoHandle();                                      \
+      return s.ValueOrDie();                                               \
+    }                                                                      \
+    static FuncPtrT LoadOrDie() {                                          \
+      void* f;                                                             \
+      auto s =                                                             \
+          Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), kName, &f); \
+      CHECK(s.ok()) << "could not find " << kName                          \
+                    << " in rocblas DSO; dlerror: " << s.error_message();  \
+      return reinterpret_cast<FuncPtrT>(f);                                \
+    }                                                                      \
+    static FuncPtrT DynLoad() {                                            \
+      static FuncPtrT f = LoadOrDie();                                     \
+      return f;                                                            \
+    }                                                                      \
+    template <typename... Args>                                            \
+    rocblas_status operator()(Args... args) {                              \
+      return DynLoad()(args...);                                           \
+    }                                                                      \
+  } __name;                                                                \
+  const char* DynLoadShim__##__name::kName = #__name;
+
+#endif
+
+// clang-format off
+#define FOREACH_ROCBLAS_API(__macro)	        \
+  __macro(rocblas_create_handle)		\
+  __macro(rocblas_destroy_handle)		\
+  __macro(rocblas_set_stream)
+// clang-format on
+
+FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
+
+}  // namespace rocblas_wrap
+
 namespace xla {
 namespace gpu {
 
@@ -48,9 +106,9 @@ struct GpuComplexT<std::complex<double>> {
 
 using gpuStream_t = hipStream_t;
 
-#define GpuSolverCreate rocblas_create_handle
-#define GpuSolverSetStream rocblas_set_stream
-#define GpuSolverDestroy rocblas_destroy_handle
+#define GpuSolverCreate rocblas_wrap::rocblas_create_handle
+#define GpuSolverSetStream rocblas_wrap::rocblas_set_stream
+#define GpuSolverDestroy rocblas_wrap::rocblas_destroy_handle
 
 template <>
 struct GpuComplexT<std::complex<float>> {
