@@ -43,6 +43,7 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
+#include <fp16.h>
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -548,6 +549,7 @@ enum {
   NN_TENSOR_FLAG_INT8_CONVERSION = 1U << 1,
   NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED = 1U << 2,
   NN_TENSOR_FLAG_FORCE_PER_CHANNEL = 1U << 3,
+  NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION = 1U << 4,
 };
 
 // Returns the SDK level to target when delegating to the given devices.
@@ -1163,6 +1165,11 @@ class NNAPIOpBuilder {
     return result;
   }
 
+  void ClearInputOuputLists() {
+    augmented_inputs_.clear();
+    augmented_outputs_.clear();
+  }
+
  private:
   // Returns a TF Lite type which has the same memory representation as a
   // provided NN API type.
@@ -1277,6 +1284,9 @@ class NNAPIOpBuilder {
         tensor_flags & NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED;
     const bool force_per_channel =
         tensor_flags & NN_TENSOR_FLAG_FORCE_PER_CHANNEL;
+    const bool need_half2float_conversion =
+        tensor_flags & NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION;
+
     int ann_tensor_index = operand_mapping_->lite_index_to_ann(tensor_index);
     if (ann_tensor_index != -1) {
       indices->push_back(ann_tensor_index);
@@ -1305,6 +1315,13 @@ class NNAPIOpBuilder {
         return kTfLiteOk;
       case kTfLiteFloat32:
         nn_type = ANEURALNETWORKS_TENSOR_FLOAT32;
+        break;
+      case kTfLiteFloat16:
+        nn_type = ANEURALNETWORKS_TENSOR_FLOAT16;
+        if (need_half2float_conversion) {
+          nn_type = ANEURALNETWORKS_TENSOR_FLOAT32;
+          operand_mapping_->add_type_conversion(tensor_index, kTfLiteFloat32);
+        }
         break;
       case kTfLiteUInt8:
         nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM;
@@ -1449,6 +1466,34 @@ class NNAPIOpBuilder {
             context_,
             nnapi_->ANeuralNetworksModel_setOperandValue(
                 nn_model_, ann_tensor_index, new_tensor->data.raw,
+                new_tensor->bytes),
+            "setting new operand value", tensor, nnapi_errno_);
+      } else if (tensor_type == kTfLiteFloat16 && need_half2float_conversion) {
+        // We need to convert the constant fp16 weights to fp32. The new_tensor
+        // is needed for lifetime management for the converted weights.
+        int new_tensor_index = -1;
+        TF_LITE_ENSURE_OK(context_,
+                          context_->AddTensors(context_, 1, &new_tensor_index));
+        TfLiteTensor* new_tensor = &context_->tensors[new_tensor_index];
+        new_tensor->type = kTfLiteFloat32;
+        new_tensor->allocation_type = kTfLiteDynamic;
+        // Not removing the new tensor in case of resizing errors since it will
+        // be cleared by the context
+        TF_LITE_ENSURE_OK(
+            context_, context_->ResizeTensor(context_, new_tensor,
+                                             // Resize Tensor takes ownership of
+                                             // the dims array passed as param
+                                             TfLiteIntArrayCopy(tensor->dims)));
+        // Convert the fp16 value into corresponding fp32 value;
+        const auto num_elements = NumElements(tensor);
+        for (int i = 0; i < num_elements; ++i) {
+          new_tensor->data.f[i] = fp16_ieee_to_fp32_value(
+              reinterpret_cast<uint16_t*>(tensor->data.data)[i]);
+        }
+        RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
+            context_,
+            nnapi_->ANeuralNetworksModel_setOperandValue(
+                nn_model_, ann_tensor_index, new_tensor->data.data,
                 new_tensor->bytes),
             "setting new operand value", tensor, nnapi_errno_);
 #ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
@@ -4308,6 +4353,15 @@ void NNAPIDelegateKernel::AddDequantizeOperatorsWhereNeeded(
   }
 }
 
+static bool IsDequantizeConstFloat16(TfLiteContext* context,
+                                     const TfLiteNode* node,
+                                     const TfLiteRegistration* registration) {
+  return registration->builtin_code == kTfLiteBuiltinDequantize &&
+         context->tensors[node->inputs->data[0]].type ==
+             TfLiteType::kTfLiteFloat16 &&
+         IsConstantTensor(&context->tensors[node->inputs->data[0]]);
+}
+
 TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     TfLiteContext* context, int* nnapi_errno, bool allow_dynamic_dimensions) {
   DequantizeMapping dequantize_mapping;
@@ -4324,7 +4378,21 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     TF_LITE_ENSURE_STATUS(GetTargetSdkVersion(
         context, nnapi_, nnapi_devices_, &target_sdk_version_, nnapi_errno));
   }
-  // Add Tensors.
+  // First path, handle fp16->fp32 dequantize if needed.
+  for (auto node_index : nodes_) {
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
+    TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
+        context, node_index, &node, &registration));
+    if (IsDequantizeConstFloat16(context, node, registration)) {
+      builder.AddTensorInput(node->inputs->data[0], /*hybrid_op=*/false,
+                             NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION);
+    }
+  }
+  // Clear the input and output lists for the dequantize path.
+  builder.ClearInputOuputLists();
+
+  // Add other tensors.
   for (auto node_index : nodes_) {
     // Obtain the op and registration.
     TfLiteNode* node;
@@ -4434,6 +4502,11 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
         NeedInt8Conversion(context, reg->builtin_code, node);
     const bool use_int8_asymm_signed =
         target_sdk_version_ >= kMinSdkVersionForNNAPI13 && !hybrid_op;
+
+    // skip DEQUANTIZE (fp16 -> fp32) as it is handled elsewhere
+    if (IsDequantizeConstFloat16(context, node, reg)) {
+      continue;
+    }
 
     int input_tensor_flags = 0;
     if (scalar_as_tensor) {
@@ -5172,6 +5245,42 @@ TfLiteStatus StatefulNnApiDelegate::LimitDelegatedPartitions(
   return kTfLiteOk;
 }
 
+static std::vector<int> GetSupportedOpsWithFp16WeightRemapping(
+    TfLiteContext* context, int target_sdk_version,
+    bool is_accelerator_specified, int max_number_delegated_partitions) {
+  std::vector<int> supported_nodes;
+  delegates::IsNodeSupportedFn node_supported_fn =
+      [=](TfLiteContext* context, TfLiteNode* node,
+          TfLiteRegistration* registration,
+          std::string* unsupported_details) -> bool {
+    std::vector<delegate::nnapi::NNAPIValidationFailure> map_failures;
+    const auto is_supported = NNAPIDelegateKernel::Validate(
+        context, registration->builtin_code, registration->version,
+        target_sdk_version, node, is_accelerator_specified, &map_failures);
+    if (!is_supported) {
+      if (unsupported_details) {
+        for (auto& failure : map_failures) {
+          unsupported_details->append(failure.message.c_str());
+        }
+      }
+      return false;
+    }
+    return true;
+  };
+
+  delegates::FP16GraphPartitionHelper partition_helper(context,
+                                                       node_supported_fn);
+  std::set<std::string> unsupported_nodes_info;
+  if (partition_helper.Partition(&unsupported_nodes_info) == kTfLiteOk) {
+    // By default, we simply get 1st largest partition as
+    // 'max_delegate_partions'
+    // is set to 1 by default.
+    supported_nodes = partition_helper.GetNodesOfFirstNLargestPartitions(
+        max_number_delegated_partitions);
+  }
+  return supported_nodes;
+}
+
 TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                                               TfLiteDelegate* delegate) {
   auto* delegate_data = static_cast<Data*>(delegate->data_);
@@ -5238,27 +5347,47 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   const bool is_accelerator_specified = ShouldUseTargetDevices(
       delegate_options, nnapi, /*exclude_nnapi_reference=*/true);
   std::vector<delegate::nnapi::NNAPIValidationFailure> map_failures;
-  for (int node_index : TfLiteIntArrayView(plan)) {
-    TfLiteNode* node;
-    TfLiteRegistration* registration;
+  bool should_prune_fp16_dequantize = false;
+  for (int i = 0; i < plan->size; ++i) {
+    const int node_id = plan->data[i];
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
     TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-        context, node_index, &node, &registration));
-    if (NNAPIDelegateKernel::Validate(context, registration->builtin_code,
-                                      registration->version, target_sdk_version,
-                                      node, is_accelerator_specified,
-                                      &map_failures)) {
-      supported_nodes.push_back(node_index);
+        context, node_id, &node, &registration));
+    if (delegate::nnapi::IsDequantizeConstFloat16(context, node,
+                                                  registration)) {
+      should_prune_fp16_dequantize = true;
+      break;
     }
+  }
+  if (should_prune_fp16_dequantize) {
+    supported_nodes = GetSupportedOpsWithFp16WeightRemapping(
+        context, target_sdk_version, is_accelerator_specified,
+        delegate_options.max_number_delegated_partitions);
+  } else {
+    for (int node_index : TfLiteIntArrayView(plan)) {
+      TfLiteNode* node;
+      TfLiteRegistration* registration;
+      TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
+          context, node_index, &node, &registration));
+      if (NNAPIDelegateKernel::Validate(
+              context, registration->builtin_code, registration->version,
+              target_sdk_version, node, is_accelerator_specified,
+              &map_failures)) {
+        supported_nodes.push_back(node_index);
+      }
 #ifdef NNAPI_VERBOSE_VALIDATION
-    for (auto& failure : map_failures) {
-      TFLITE_LOG_PROD(
-          TFLITE_LOG_WARNING, "Operator %s (v%d) refused by NNAPI delegate: %s",
-          tflite::EnumNameBuiltinOperator(
-              static_cast<BuiltinOperator>(registration->builtin_code)),
-          registration->version, failure.message.c_str());
-    }
-    map_failures.clear();
+      for (auto& failure : map_failures) {
+        TFLITE_LOG_PROD(
+            TFLITE_LOG_WARNING,
+            "Operator %s (v%d) refused by NNAPI delegate: %s",
+            tflite::EnumNameBuiltinOperator(
+                static_cast<BuiltinOperator>(registration->builtin_code)),
+            registration->version, failure.message.c_str());
+      }
+      map_failures.clear();
 #endif
+    }
   }
 
   // If there are no delegated nodes, short-circuit node replacement.
