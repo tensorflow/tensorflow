@@ -104,6 +104,20 @@ namespace wrap {
   __macro(hipsparseZcsrmm2)             \
   __macro(hipsparseZcsrmv)
 
+#if TF_ROCM_VERSION >= 40200
+#define FOREACH_HIPSPARSE_ROCM42_API(__macro)   \
+  __macro(hipsparseCreateCsr)                   \
+  __macro(hipsparseCreateDnMat)                 \
+  __macro(hipsparseDestroyDnMat)                \
+  __macro(hipsparseDestroySpMat)                \
+  __macro(hipsparseSpMM_bufferSize)             \
+  __macro(hipsparseSpMM)                        
+
+FOREACH_HIPSPARSE_ROCM42_API(HIPSPARSE_API_WRAPPER)
+
+#undef FOREACH_HIPSPARSE_ROCM42_API
+#endif
+
 // clang-format on
 
 FOREACH_HIPSPARSE_API(HIPSPARSE_API_WRAPPER)
