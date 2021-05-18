@@ -978,6 +978,7 @@ tf_py_test(
     name = "zip_test",
     size = "small",
     srcs = ["zip_test.py"],
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
