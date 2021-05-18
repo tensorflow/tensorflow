@@ -105,7 +105,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -3715,14 +3714,12 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
   std::vector<std::pair<std::string, TensorInfo>> inputs(
       signature_def.inputs().begin(), signature_def.inputs().end());
   llvm::sort(inputs, [](const auto& lhs, const auto& rhs) {
-    return tensorflow::Fingerprint64(lhs.first) <
-           tensorflow::Fingerprint64(rhs.first);
+    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
   });
   std::vector<std::pair<std::string, TensorInfo>> outputs(
       signature_def.outputs().begin(), signature_def.outputs().end());
   llvm::sort(outputs, [](const auto& lhs, const auto& rhs) {
-    return tensorflow::Fingerprint64(lhs.first) <
-           tensorflow::Fingerprint64(rhs.first);
+    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
   });
 
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
