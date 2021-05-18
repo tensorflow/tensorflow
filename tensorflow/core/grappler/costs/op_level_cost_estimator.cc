@@ -764,7 +764,6 @@ DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
       }
     } else {
       // Architecture is not available (ex: pluggable device), return default value.
-      gb_per_sec = 100;
       gflops = 100;     // Dummy value;
       gb_per_sec = 12;  // default PCIe x16 gen3.
      }
