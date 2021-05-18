@@ -145,7 +145,7 @@ function install_ubuntu_16_pip_deps {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   "${PIP_CMD}" install --user --upgrade 'tb-nightly ~= 2.4.0.a'
-  "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.4.0'
+  "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.5.0'
   # Test dependencies
   "${PIP_CMD}" install --user 'grpcio >= 1.37.0, < 2.0'
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
