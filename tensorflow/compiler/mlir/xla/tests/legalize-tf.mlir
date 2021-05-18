@@ -524,8 +524,10 @@ func @clip_static_broadcast(%arg0 : tensor<5xf32>, %arg1 : tensor<f32>, %arg2 : 
 // CHECK-LABEL: @clip_dynamic_broadcast
 func @clip_dynamic_broadcast(%arg0 : tensor<?xf32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<?xf32> {
   // CHECK-DAG: [[SHP:%.+]] = shape.shape_of %arg0
-  // CHECK-DAG: [[EXT:%.+]] = shape.to_extent_tensor [[SHP]]
-  // CHECK-DAG: [[SHPIDX:%.+]] = index_cast %1
+  // CHECK: [[SHPIDX:%.+]] = tensor.generate {
+  // CHECK: [[INDEX:%.+]] = tensor.extract [[SHP]][%arg3] : tensor<1xindex>
+  // CHECK: [[CAST:%.+]] = index_cast [[INDEX]] : index to i32
+  // CHECK: tensor.yield [[CAST]] : i32
   // CHECK-DAG: [[BROADCAST_MIN:%.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, [[SHPIDX]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
   // CHECK-DAG: [[BROADCAST_MAX:%.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg2, [[SHPIDX]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
   // CHECK-DAG: [[CLAMP:%.+]] = "mhlo.clamp"([[BROADCAST_MIN]], %arg0, [[BROADCAST_MAX]])
@@ -1999,33 +2001,40 @@ func @rfft_1D_dynamic(%arg0: tensor<?xf32>) -> tensor<8xcomplex<f32>> {
 // CHECK-LABEL: func @shape_1D
 func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
   // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
-  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
+  // CHECK: [[TENSOR:%.+]] = tensor.generate {
+  // CHECK: [[INDEX:%.+]] = tensor.extract [[SHAPE]][%arg1] : tensor<1xindex>
+  // CHECK: [[CAST:%.+]] = index_cast [[INDEX]] : index to i32
+  // CHECK: tensor.yield [[CAST]] : i32
   %0 = "tf.Shape"(%arg0) : (tensor<?xf32>) -> tensor<1xi32>
 
-  // CHECK: return [[CAST]]
+  // CHECK: return [[TENSOR]]
   return %0 : tensor<1xi32>
 }
 
 // CHECK-LABEL: func @shape_2D
 func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
   // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
-  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
+  // CHECK: [[TENSOR:%.+]] = tensor.generate {
+  // CHECK: [[INDEX:%.+]] = tensor.extract [[SHAPE]][%arg1] : tensor<2xindex>
+  // CHECK: [[CAST:%.+]] = index_cast [[INDEX]] : index to i32
+  // CHECK: tensor.yield [[CAST]] : i32
   %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
 
-  // CHECK: return [[CAST]]
+  // CHECK: return [[TENSOR]]
   return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL: func @shape_rankless
 func @shape_rankless(%arg0: tensor<*xf32>) -> tensor<?xi32> {
   // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
-  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
+  // CHECK: [[RANK:%.+]] = rank %arg0
+  // CHECK: [[TENSOR:%.+]] = tensor.generate [[RANK]] {
+  // CHECK: [[INDEX:%.+]] = tensor.extract [[SHAPE]][%arg1] : tensor<?xindex>
+  // CHECK: [[CAST:%.+]] = index_cast [[INDEX]] : index to i32
+  // CHECK: tensor.yield [[CAST]] : i32
   %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
 
-  // CHECK: return [[CAST]]
+  // CHECK: return [[TENSOR]]
   return %0 : tensor<?xi32>
 }
 
