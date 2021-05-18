@@ -59,7 +59,7 @@ TEST(MakeMeanFromGlobalAveragePooling, Smoke) {
   ASSERT_EQ(2, graph.values().size());
 
   auto transformation = NewGlobalPoolingToReduceOp();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("global_average_pooling_to_mean", transformation.get());
 
   ASSERT_EQ(1, graph.nodes().size());

@@ -21,8 +21,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Graph* BM_CombinedNonMaxSuppression(int batches, int box_num,
-                                           int class_num, int q) {
+static Graph* CombinedNonMaxSuppression(int batches, int box_num, int class_num,
+                                        int q) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor boxes(DT_FLOAT, TensorShape({batches, box_num, q, 4}));
   boxes.flat<float>().setRandom();
@@ -48,12 +48,14 @@ static Graph* BM_CombinedNonMaxSuppression(int batches, int box_num,
   return g;
 }
 
-#define BM_CombinedNonMaxSuppressionDev(DEVICE, B, BN, CN, Q)                \
-  static void BM_CombinedNMS_##DEVICE##_##B##_##BN##_##CN##_##Q(int iters) { \
-    testing::ItemsProcessed(iters* B);                                       \
-    test::Benchmark(#DEVICE, BM_CombinedNonMaxSuppression(B, BN, CN, Q))     \
-        .Run(iters);                                                         \
-  }                                                                          \
+#define BM_CombinedNonMaxSuppressionDev(DEVICE, B, BN, CN, Q)         \
+  static void BM_CombinedNMS_##DEVICE##_##B##_##BN##_##CN##_##Q(      \
+      ::testing::benchmark::State& state) {                           \
+    test::Benchmark(#DEVICE, CombinedNonMaxSuppression(B, BN, CN, Q), \
+                    /*old_benchmark_api*/ false)                      \
+        .Run(state);                                                  \
+    state.SetItemsProcessed(state.iterations() * B);                  \
+  }                                                                   \
   BENCHMARK(BM_CombinedNMS_##DEVICE##_##B##_##BN##_##CN##_##Q);
 
 #define BM_Batch(BN, CN, Q)                            \

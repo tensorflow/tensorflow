@@ -350,6 +350,14 @@ message RPCOptions {
 
   // Disables TCP connection sharing when opening a new RPC channel.
   bool disable_session_connection_sharing = 5;
+
+  // Setting num_channels_per_target > 0 allows uses of multiple channels to
+  // communicate to the same target. This can be used to improve the aggregate
+  // throughput on high speed links (e.g 100G) where single connection is not
+  // sufficient to maximize link utilization. Note that a single RPC only goes
+  // on a single channel, this only helps in situations where there are multiple
+  // transfers to the same target overlapping in time.
+  int32 num_channels_per_target = 6;
 }
 
 // Metadata about the session.
@@ -593,6 +601,18 @@ message ConfigProto {
       MLIR_BRIDGE_ROLLOUT_ENABLED = 1;
       // Disabling the MLIR bridge disables it for all graphs in this session.
       MLIR_BRIDGE_ROLLOUT_DISABLED = 2;
+      // Enable the MLIR bridge on a per graph basis based on an analysis of
+      // the features used in the graph. If the features used by the graph are
+      // supported by the MLIR bridge, the MLIR bridge will be used to run the
+      // graph.
+      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED = 3;
+      // Enable the MLIR bridge in a fallback mode on a per graph basis based
+      // on an analysis of the features used in the graph.
+      // Running the MLIR bridge in the fallback mode means that it is
+      // executed and it commits all the changes to the TF graph in case
+      // of success. And it does not in case of failures and let the old bridge
+      // to process the TF graph.
+      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED = 4;
     }
     // This field is underdevelopment, for now use enable_mlir_bridge
     // (b/166038521).
@@ -620,6 +640,11 @@ message ConfigProto {
     // The XLA fusion autotuner can improve performance by executing a heuristic
     // search on the compiler parameters.
     int64 xla_fusion_autotuner_thresh = 15;
+
+    // Whether runtime execution uses TFRT.
+    bool use_tfrt = 18;
+
+    // Next: 19
   }
 
   Experimental experimental = 16;

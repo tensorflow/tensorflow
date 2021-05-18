@@ -38,25 +38,27 @@ constexpr float kHexagonMinRelativeScale = 0.0009766f;
 
 }  // namespace
 
-TfLiteStatus Conv2dOpBuilder::ProcessPerChannelQuantizedWeights(
+TfLiteStatus ProcessPerChannelQuantizedWeights(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
-    TfLiteContext* context, float* weights_min, float* weights_max) {
+    TfLiteContext* context, float* weights_min, float* weights_max,
+    GraphBuilder* graph_builder, PerChannelQuantData* per_channel_quant) {
+  if (!per_channel_quant) return kTfLiteError;
   const auto& weights_tensor = context->tensors[inputs->data[1]];
   TfLiteAffineQuantization* weights_quant_params =
       reinterpret_cast<TfLiteAffineQuantization*>(
           weights_tensor.quantization.params);
 
   // Retrieve channel scales.
-  num_scale_values_ = weights_quant_params->scale->size;
+  per_channel_quant->num_scale_values = weights_quant_params->scale->size;
   // Normalize the scales as expected by Hexagon.
-  scales_data_ = weights_quant_params->scale->data;
+  per_channel_quant->scales_data = weights_quant_params->scale->data;
   std::vector<float> normalized_scales;
-  normalized_scales.reserve(num_scale_values_);
+  normalized_scales.reserve(per_channel_quant->num_scale_values);
   float scale_max = 0.0;
-  for (int i = 0; i < num_scale_values_; ++i) {
-    normalized_scales.push_back(scales_data_[i]);
-    if (scales_data_[i] > scale_max) {
-      scale_max = scales_data_[i];
+  for (int i = 0; i < per_channel_quant->num_scale_values; ++i) {
+    normalized_scales.push_back(per_channel_quant->scales_data[i]);
+    if (per_channel_quant->scales_data[i] > scale_max) {
+      scale_max = per_channel_quant->scales_data[i];
     }
   }
   if (scale_max == 0.0) {
@@ -64,17 +66,72 @@ TfLiteStatus Conv2dOpBuilder::ProcessPerChannelQuantizedWeights(
                        weights_tensor.name);
     return kTfLiteError;
   }
-  for (int i = 0; i < num_scale_values_; ++i) {
+  for (int i = 0; i < per_channel_quant->num_scale_values; ++i) {
     normalized_scales[i] =
         std::max(normalized_scales[i] / scale_max, kHexagonMinRelativeScale);
   }
   // Add node for channel scales data.
-  const std::vector<int> scales_shape = {1, 1, 1, num_scale_values_};
-  channel_scales_node_ = graph_builder_->AddConstNodeWithData(
+  const std::vector<int> scales_shape = {1, 1, 1,
+                                         per_channel_quant->num_scale_values};
+  per_channel_quant->channel_scales_node = graph_builder->AddConstNodeWithData(
       scales_shape.data(), reinterpret_cast<char*>(normalized_scales.data()),
       normalized_scales.size() * sizeof(normalized_scales[0]));
   *weights_min = -128 * scale_max;
   *weights_max = 127 * scale_max;
+  return kTfLiteOk;
+}
+
+TfLiteStatus ProcessPerChannelQuantizedBias(
+    const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
+    TfLiteContext* context, float* bias_min, float* bias_max,
+    GraphBuilder* graph_builder, PerChannelQuantData* per_channel_quant,
+    OpBuilder** bias_const_node) {
+  const auto& bias_tensor = context->tensors[inputs->data[2]];
+
+  const TfLiteAffineQuantization* input_quant_params =
+      static_cast<const TfLiteAffineQuantization*>(
+          context->tensors[inputs->data[0]].quantization.params);
+  const float input_scale = input_quant_params->scale->data[0];
+  // Now dequantize bias values to float first, to adjust for the
+  // normalization of channel scales.
+  auto* bias_data = bias_tensor.data.i32;
+  const int bias_size = NumElements(&bias_tensor);
+  if (bias_size != per_channel_quant->num_scale_values) {
+    TF_LITE_KERNEL_LOG(
+        context, "Bias/channel scales number mismatch for bias tensor: %s",
+        bias_tensor.name);
+    return kTfLiteError;
+  }
+  std::vector<float> dequantized_bias;
+  dequantized_bias.reserve(bias_size);
+  for (int i = 0; i < bias_size; ++i) {
+    const float dequantized_value =
+        bias_data[i] * input_scale * per_channel_quant->scales_data[i];
+    const float abs_dequantized_value = std::abs(dequantized_value);
+    if (abs_dequantized_value > *bias_max) {
+      *bias_max = abs_dequantized_value;
+    }
+    dequantized_bias.push_back(dequantized_value);
+  }
+  *bias_max = *bias_max * 8;
+  *bias_min = -1 * *bias_max;
+  // Now requantize the bias values to the new min/max values.
+  std::vector<int> preprocessed_bias_data;
+  preprocessed_bias_data.reserve(per_channel_quant->num_scale_values);
+  for (int i = 0; i < bias_size; ++i) {
+    preprocessed_bias_data.push_back(static_cast<int>(
+        std::round(std::pow(2, 31) * (dequantized_bias[i] / *bias_max))));
+  }
+  // Add nodes for bias.
+  const std::vector<int> bias_shape = {1, 1, 1, bias_size};
+  auto* bias_data_node = graph_builder->AddConstNodeWithData(
+      bias_shape.data(), reinterpret_cast<char*>(preprocessed_bias_data.data()),
+      preprocessed_bias_data.size() * sizeof(preprocessed_bias_data[0]));
+  if (bias_const_node) {
+    *bias_const_node = bias_data_node;
+  }
+  graph_builder->AddTensorWithID(inputs->data[2], bias_data_node->GetID(), 0,
+                                 /*overwrite=*/true);
   return kTfLiteOk;
 }
 
@@ -174,7 +231,8 @@ TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
   float weights_max = 0;
   if (is_per_channel_quant) {
     ProcessPerChannelQuantizedWeights(inputs, outputs, context, &weights_min,
-                                      &weights_max);
+                                      &weights_max, graph_builder_,
+                                      &per_channel_quant_);
   } else {
     TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
         weights_tensor, &weights_min, &weights_max));
@@ -189,55 +247,6 @@ TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
   return kTfLiteOk;
 }
 
-TfLiteStatus Conv2dOpBuilder::ProcessPerChannelQuantizedBias(
-    const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
-    TfLiteContext* context, float* bias_min, float* bias_max) {
-  const auto& bias_tensor = context->tensors[inputs->data[2]];
-
-  const TfLiteAffineQuantization* input_quant_params =
-      static_cast<const TfLiteAffineQuantization*>(
-          context->tensors[inputs->data[0]].quantization.params);
-  const float input_scale = input_quant_params->scale->data[0];
-  // Now dequantize bias values to float first, to adjust for the
-  // normalization of channel scales.
-  auto* bias_data = bias_tensor.data.i32;
-  const int bias_size = NumElements(&bias_tensor);
-  if (bias_size != num_scale_values_) {
-    TF_LITE_KERNEL_LOG(
-        context, "Bias/channel scales number mismatch for bias tensor: %s",
-        bias_tensor.name);
-    return kTfLiteError;
-  }
-  std::vector<float> dequantized_bias;
-  dequantized_bias.reserve(bias_size);
-  for (int i = 0; i < bias_size; ++i) {
-    const float dequantized_value =
-        bias_data[i] * input_scale * scales_data_[i];
-    const float abs_dequantized_value = std::abs(dequantized_value);
-    if (abs_dequantized_value > *bias_max) {
-      *bias_max = abs_dequantized_value;
-    }
-    dequantized_bias.push_back(dequantized_value);
-  }
-  *bias_max = *bias_max * 8;
-  *bias_min = -1 * *bias_max;
-  // Now requantize the bias values to the new min/max values.
-  std::vector<int> preprocessed_bias_data;
-  preprocessed_bias_data.reserve(num_scale_values_);
-  for (int i = 0; i < bias_size; ++i) {
-    preprocessed_bias_data.push_back(static_cast<int>(
-        std::round(std::pow(2, 31) * (dequantized_bias[i] / *bias_max))));
-  }
-  // Add nodes for bias.
-  const std::vector<int> bias_shape = {1, 1, 1, bias_size};
-  auto* bias_data_node = graph_builder_->AddConstNodeWithData(
-      bias_shape.data(), reinterpret_cast<char*>(preprocessed_bias_data.data()),
-      preprocessed_bias_data.size() * sizeof(preprocessed_bias_data[0]));
-  graph_builder_->AddTensorWithID(inputs->data[2], bias_data_node->GetID(), 0,
-                                  /*overwrite=*/true);
-  return kTfLiteOk;
-}
-
 TfLiteStatus Conv2dOpBuilder::InitializeBiasNodes(const TfLiteIntArray* inputs,
                                                   const TfLiteIntArray* outputs,
                                                   TfLiteContext* context) {
@@ -247,9 +256,10 @@ TfLiteStatus Conv2dOpBuilder::InitializeBiasNodes(const TfLiteIntArray* inputs,
 
   float bias_min = 0;
   float bias_max = 0;
-  if (channel_scales_node_ != nullptr) {
+  if (per_channel_quant_.channel_scales_node != nullptr) {
     ProcessPerChannelQuantizedBias(inputs, outputs, context, &bias_min,
-                                   &bias_max);
+                                   &bias_max, graph_builder_,
+                                   &per_channel_quant_);
   } else {
     auto* bias_data_node =
         graph_builder_->AddConstNodeWithData(inputs->data[2], bias_tensor);

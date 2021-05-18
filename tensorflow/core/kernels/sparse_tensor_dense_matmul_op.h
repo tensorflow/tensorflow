@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -29,7 +30,7 @@ template <typename Device, typename T, typename Tindices, bool ADJ_A,
           bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor {
   static EIGEN_ALWAYS_INLINE Status Compute(
-      const Device& d, typename TTypes<T>::Matrix out,
+      OpKernelContext* ctx, typename TTypes<T>::Matrix out,
       typename TTypes<Tindices>::ConstMatrix a_indices,
       typename TTypes<T>::ConstVec a_values, typename TTypes<T>::ConstMatrix b);
 };
@@ -52,7 +53,7 @@ class MaybeAdjoint<MATRIX, false> {
 
 template <typename T>
 EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T MaybeConj(T v) {
-  return v;
+  return Eigen::numext::conj(v);
 }
 
 template <typename MATRIX>
@@ -66,6 +67,16 @@ class MaybeAdjoint<MATRIX, true> {
 
  private:
   const MATRIX m_;
+};
+
+template <typename T>
+struct SumType {
+  using type = T;
+};
+
+template <>
+struct SumType<Eigen::half> {
+  using type = float;  // Use fp32 accumulator for fp16 input values
 };
 
 }  // end namespace functor

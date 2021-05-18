@@ -112,13 +112,13 @@ func @my_map_and_batch_dataset(%input: tensor<*x!tf.variant>,
     : (tensor<*x!tf.variant>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf.variant>
   return %0 : tensor<*x!tf.variant>
 
-// CHECK-NEXT: %[[BATCH:.*]] = "tf.Const"() {value = dense<1000> : tensor<i64>} : () -> tensor<i64>
-// CHECK-NEXT: %[[PARAL:.*]] = "tf.Const"() {value = dense<8> : tensor<i64>} : () -> tensor<i64>
-// CHECK-NEXT: %[[KEEP:.*]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-// CHECK-NEXT: %[[CAST:.*]] = "tf.Cast"(%arg2) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
-// CHECK-NEXT: %[[RET:.*]] = "tf.MapAndBatchDatasetV0"(%arg0, %[[BATCH]], %[[PARAL]], %[[KEEP]], %arg1, %[[CAST]])
+// CHECK-DAG: %[[BATCH:.*]] = "tf.Const"() {value = dense<1000> : tensor<i64>} : () -> tensor<i64>
+// CHECK-DAG: %[[PARAL:.*]] = "tf.Const"() {value = dense<8> : tensor<i64>} : () -> tensor<i64>
+// CHECK-DAG: %[[KEEP:.*]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+// CHECK: %[[CAST:.*]] = "tf.Cast"(%arg2) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+// CHECK: %[[RET:.*]] = "tf.MapAndBatchDatasetV0"(%arg0, %[[BATCH]], %[[PARAL]], %[[KEEP]], %arg1, %[[CAST]])
 // CHECK-SAME: {f = @__some_func, output_shapes = [#tf.shape<>], output_types = [f32], preserve_cardinality = true} : (tensor<*x!tf.variant>, tensor<i64>, tensor<i64>, tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*x!tf.variant>
-// CHECK-NEXT: return %[[RET]] : tensor<*x!tf.variant>
+// CHECK: return %[[RET]] : tensor<*x!tf.variant>
 }
 
 //=================> decomposition functions, translated from tf.compose api <====================
@@ -159,7 +159,7 @@ tfr.func @tf__my_pack(%values: !tfr.tensor_list,
                       %axis: i32 {tfr.name="axis"}) -> !tfr.tensor {
   %index = constant 0 : index
   %cst = constant 1 : i32
-  %eq = cmpi "eq", %n, %cst : i32
+  %eq = cmpi eq, %n, %cst : i32
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %temp = tfr.call @tf__my_expand_dims(%v1, %axis) : (!tfr.tensor, i32) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
@@ -182,7 +182,7 @@ tfr.func @tf__my_add_n(%values: !tfr.tensor_list,
                        %n: i32 {tfr.name="N"}) -> !tfr.tensor {
   %index = constant 0 : index
   %cst = constant 1 : i32
-  %eq = cmpi "eq", %n, %cst : i32
+  %eq = cmpi eq, %n, %cst : i32
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
     scf.yield %v1 : !tfr.tensor

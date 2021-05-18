@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
@@ -29,37 +31,42 @@ namespace xla {
 LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                    LocalClient* client,
                                    AllocationModel allocation_model,
-                                   bool asynchronous, bool allow_event_reuse)
+                                   int max_inflight_computations,
+                                   bool allow_event_reuse,
+                                   bool use_callback_stream)
     : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
-      compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1),
+      compute_semaphore_(
+          /*capacity=*/max_inflight_computations),
       executor_(executor),
       client_(client),
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {
-  compute_stream_ = absl::make_unique<se::Stream>(executor);
-  host_to_device_stream_ = absl::make_unique<se::Stream>(executor);
-  callback_stream_ = absl::make_unique<se::Stream>(executor);
+  compute_stream_ = std::make_unique<se::Stream>(executor);
+  host_to_device_stream_ = std::make_unique<se::Stream>(executor);
   compute_stream_->Init();
   host_to_device_stream_->Init();
-  callback_stream_->Init();
+  if (use_callback_stream) {
+    callback_stream_ = std::make_unique<se::Stream>(executor);
+    callback_stream_->Init();
+  }
   device_to_host_streams_.reserve(kNumDeviceToHostStreams);
   for (int i = 0; i < kNumDeviceToHostStreams; ++i) {
-    auto stream = absl::make_unique<se::Stream>(executor);
+    auto stream = std::make_unique<se::Stream>(executor);
     stream->Init();
     device_to_host_streams_.push_back(std::move(stream));
   }
   device_to_device_streams_.reserve(kNumDeviceToDeviceStreams);
   for (int i = 0; i < kNumDeviceToDeviceStreams; ++i) {
-    auto stream = absl::make_unique<se::Stream>(executor);
+    auto stream = std::make_unique<se::Stream>(executor);
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
   }
-  execute_thread_ = absl::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                    "py_xla_execute");
-  callback_thread_ = absl::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                     "py_xla_callback");
+  execute_thread_ = std::make_unique<WorkerThread>(tensorflow::Env::Default(),
+                                                   "py_xla_execute");
+  callback_thread_ = std::make_unique<WorkerThread>(tensorflow::Env::Default(),
+                                                    "py_xla_callback");
 }
 
 LocalDeviceState::~LocalDeviceState() {
@@ -77,7 +84,9 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   // stopped, also block on the compute stream. If SynchronizeAllActivity is
   // fixed, we could remove the BlockHostUntilDone call.
   status.Update(compute_stream_->BlockHostUntilDone());
-  status.Update(callback_stream_->BlockHostUntilDone());
+  if (callback_stream_) {
+    status.Update(callback_stream_->BlockHostUntilDone());
+  }
   bool ok = compute_stream_->parent()->SynchronizeAllActivity();
   if (!ok) {
     status.Update(Unknown("SynchronizeAllActivity failed."));
@@ -95,9 +104,14 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
   return Status::OK();
 }
 
-void LocalDeviceState::ThenExecuteOnCallbackThread(
+void LocalDeviceState::ThenExecuteCallback(
     se::Stream* stream, std::function<void()> callback) const {
-  stream->ThenDoHostCallback([this, callback]() mutable {
+  tensorflow::profiler::TraceMe traceme("ThenExecuteCallback");
+  if (callback_stream_ && callback_stream_.get() != stream) {
+    callback_stream_->ThenWaitFor(stream);
+    stream = callback_stream_.get();
+  }
+  stream->ThenDoHostCallback([this, callback{std::move(callback)}]() mutable {
     callback_thread_->Schedule(std::move(callback));
   });
 }
@@ -121,21 +135,27 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
 std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
   absl::MutexLock lock(&mu_);
   if (usage_stream_pool_.empty()) {
-    auto stream = absl::make_unique<se::Stream>(compute_stream_->parent());
+    auto stream = std::make_unique<se::Stream>(compute_stream_->parent());
     stream->Init();
     return stream;
   } else {
     std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
     usage_stream_pool_.pop();
-    stream->RefreshStatus().IgnoreError();  // Can return error::Unimplemented
-    QCHECK(stream->ok());
+    auto status = stream->RefreshStatus();  // Can return error::Unimplemented
+    // Stream may fail with "ABORTED: Bad connection".
+    if (status.code() != tensorflow::error::ABORTED) {
+      CHECK(stream->ok()) << status;
+    }
     return stream;
   }
 }
 
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
-  stream->RefreshStatus().IgnoreError();  // Can return error::Unimplemented
-  QCHECK(stream->ok());
+  auto status = stream->RefreshStatus();  // Can return error::Unimplemented
+  // Stream may fail with "ABORTED: Bad connection".
+  if (status.code() != tensorflow::error::ABORTED) {
+    CHECK(stream->ok()) << status;
+  }
   absl::MutexLock lock(&mu_);
   usage_stream_pool_.push(std::move(stream));
 }

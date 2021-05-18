@@ -1,0 +1,150 @@
+diff --git a/algo/kernels/basic/hifi4/xa_nn_dot_prod_16x16.c b/algo/kernels/basic/hifi4/xa_nn_dot_prod_16x16.c
+index 0c58a3c..7439d6d 100644
+--- a/algo/kernels/basic/hifi4/xa_nn_dot_prod_16x16.c
++++ b/algo/kernels/basic/hifi4/xa_nn_dot_prod_16x16.c
+@@ -90,8 +90,8 @@ WORD32 xa_nn_dot_prod_16x16_asym8s(
+   ae_int32x2 d_bias;
+   int i;
+ 
+-  /* inp1 and inp2 8-byte aligned case */
+-  if(((vec_length & 3) == 0) && (((int)p_inp1_start & 7) == 0) && (((int)p_inp2_start & 7) == 0))
++ /* handle cases where vec_length is multiple of 8 */
++  if(vec_length == 8)
+   {
+     /* Assumption: 
+      * p_inp1_start - memory is continuous => vec_count1 end and vect_count2 start are continuous 
+@@ -100,19 +100,21 @@ WORD32 xa_nn_dot_prod_16x16_asym8s(
+     pt_inp1 = (const ae_int16x4 *)((WORD16 *)p_inp1_start);
+     pt_inp2 = (const ae_int16x4 *)((WORD16 *)p_inp2_start);
+ 
++    align_inp1 = AE_LA64_PP(pt_inp1);
++    align_inp2 = AE_LA64_PP(pt_inp2);
+     /* TBD: multiple vec_count processing in a single loop can be done */
+     for(loopcnt = 0; loopcnt < vec_count; loopcnt++)
+     {
+       AE_L32_XP(d_bias, (ae_int32 *)p_bias_load, bias_address_increment);
+ 
+       d_out64_0 = ZERO64;
++      AE_LA16X4_IP(d_inp1_0, align_inp1, pt_inp1);
++      AE_LA16X4_IP(d_inp2_0, align_inp2, pt_inp2);
++      AE_MULAAAAQ16(d_out64_0, d_inp1_0, d_inp2_0);
++      AE_LA16X4_IP(d_inp1_0, align_inp1, pt_inp1);
++      AE_LA16X4_IP(d_inp2_0, align_inp2, pt_inp2);
++      AE_MULAAAAQ16(d_out64_0, d_inp1_0, d_inp2_0);
+ 
+-      for(i = 0; i < (vec_length >> 2); i++)
+-      {
+-        AE_L16X4_IP(d_inp1_0, pt_inp1, 8);
+-        AE_L16X4_IP(d_inp2_0, pt_inp2, 8);
+-        AE_MULAAAAQ16(d_out64_0, d_inp1_0, d_inp2_0);
+-      }
+       AE_SAT32X2_HIFI4(d_out32, d_out64_0);
+       d_out32 = AE_ADD32S(d_out32, d_bias);
+ 
+@@ -122,8 +124,7 @@ WORD32 xa_nn_dot_prod_16x16_asym8s(
+       *p_out++ = (WORD8)AE_MOVAD32_L(d_out32);
+     }
+   }
+-  /* handle cases where vec_length is multiple of 8 */
+-  else if(vec_length == 8)
++  else if(vec_length == 32)
+   {
+     /* Assumption: 
+      * p_inp1_start - memory is continuous => vec_count1 end and vect_count2 start are continuous 
+@@ -140,13 +141,13 @@ WORD32 xa_nn_dot_prod_16x16_asym8s(
+       AE_L32_XP(d_bias, (ae_int32 *)p_bias_load, bias_address_increment);
+ 
+       d_out64_0 = ZERO64;
+-      AE_LA16X4_IP(d_inp1_0, align_inp1, pt_inp1);
+-      AE_LA16X4_IP(d_inp2_0, align_inp2, pt_inp2);
+-      AE_MULAAAAQ16(d_out64_0, d_inp1_0, d_inp2_0);
+-      AE_LA16X4_IP(d_inp1_0, align_inp1, pt_inp1);
+-      AE_LA16X4_IP(d_inp2_0, align_inp2, pt_inp2);
+-      AE_MULAAAAQ16(d_out64_0, d_inp1_0, d_inp2_0);
+-
++#pragma loop_count min=3
++      for(i = 0; i < (vec_length >> 2); i++)
++      {
++        AE_LA16X4_IP(d_inp1_0, align_inp1, pt_inp1);
++        AE_LA16X4_IP(d_inp2_0, align_inp2, pt_inp2);
++        AE_MULAAAAQ16(d_out64_0, d_inp1_0, d_inp2_0);
++      }
+       AE_SAT32X2_HIFI4(d_out32, d_out64_0);
+       d_out32 = AE_ADD32S(d_out32, d_bias);
+ 
+@@ -156,7 +157,8 @@ WORD32 xa_nn_dot_prod_16x16_asym8s(
+       *p_out++ = (WORD8)AE_MOVAD32_L(d_out32);
+     }
+   }
+-  else if(vec_length == 32)
++  /* inp1 and inp2 8-byte aligned case */
++  else if(((vec_length & 3) == 0) && (((int)p_inp1_start & 7) == 0) && (((int)p_inp2_start & 7) == 0))
+   {
+     /* Assumption: 
+      * p_inp1_start - memory is continuous => vec_count1 end and vect_count2 start are continuous 
+@@ -165,19 +167,17 @@ WORD32 xa_nn_dot_prod_16x16_asym8s(
+     pt_inp1 = (const ae_int16x4 *)((WORD16 *)p_inp1_start);
+     pt_inp2 = (const ae_int16x4 *)((WORD16 *)p_inp2_start);
+ 
+-    align_inp1 = AE_LA64_PP(pt_inp1);
+-    align_inp2 = AE_LA64_PP(pt_inp2);
+     /* TBD: multiple vec_count processing in a single loop can be done */
+     for(loopcnt = 0; loopcnt < vec_count; loopcnt++)
+     {
+       AE_L32_XP(d_bias, (ae_int32 *)p_bias_load, bias_address_increment);
+ 
+       d_out64_0 = ZERO64;
+-#pragma loop_count min=3
++
+       for(i = 0; i < (vec_length >> 2); i++)
+       {
+-        AE_LA16X4_IP(d_inp1_0, align_inp1, pt_inp1);
+-        AE_LA16X4_IP(d_inp2_0, align_inp2, pt_inp2);
++        AE_L16X4_IP(d_inp1_0, pt_inp1, 8);
++        AE_L16X4_IP(d_inp2_0, pt_inp2, 8);
+         AE_MULAAAAQ16(d_out64_0, d_inp1_0, d_inp2_0);
+       }
+       AE_SAT32X2_HIFI4(d_out32, d_out64_0);
+@@ -189,7 +189,7 @@ WORD32 xa_nn_dot_prod_16x16_asym8s(
+       *p_out++ = (WORD8)AE_MOVAD32_L(d_out32);
+     }
+   }
+-  else if(((vec_length & 3) == 0) && (((int)p_inp1_start & 7) == 0))
++   else if(((vec_length & 3) == 0) && (((int)p_inp1_start & 7) == 0))
+   {
+     /* Assumption: 
+      * p_inp1_start - memory is continuous => vec_count1 end and vect_count2 start are continuous 
+diff --git a/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise.c b/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise.c
+index 3e29856..320987b 100644
+--- a/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise.c
++++ b/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise.c
+@@ -249,8 +249,6 @@ WORD32 xa_nn_conv2d_depthwise_getsize
+     XA_NNLIB_CHK_COND((kernel_height <= 0), -1);
+     XA_NNLIB_CHK_COND((kernel_width <= 0), -1);
+     XA_NNLIB_CHK_COND((channels_multiplier <= 0), -1);
+-    XA_NNLIB_CHK_COND((x_stride <= 0 || x_stride > kernel_width), -1);
+-    XA_NNLIB_CHK_COND((y_stride <= 0 || y_stride > kernel_height), -1);
+     XA_NNLIB_CHK_COND((x_padding < 0), -1);
+     XA_NNLIB_CHK_COND((y_padding < 0), -1);
+     XA_NNLIB_CHK_COND((output_height <= 0), -1);
+diff --git a/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise_sym8sxasym8s.c b/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise_sym8sxasym8s.c
+index e719da1..5b7390f 100644
+--- a/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise_sym8sxasym8s.c
++++ b/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise_sym8sxasym8s.c
+@@ -659,7 +659,6 @@ WORD32 xa_nn_conv2d_depthwise_per_chan_sym8sxasym8s
+     XA_NNLIB_ARG_CHK_COND((input_channels <= 0), -1);
+     XA_NNLIB_ARG_CHK_COND((kernel_height <= 0 || kernel_width <= 0), -1);
+     XA_NNLIB_ARG_CHK_COND((kernel_height > input_height), -1);
+-    XA_NNLIB_ARG_CHK_COND((kernel_width > input_width), -1);
+     XA_NNLIB_ARG_CHK_COND((channels_multiplier <= 0), -1);
+     XA_NNLIB_ARG_CHK_COND((y_stride <= 0 || x_stride <= 0), -1);
+     XA_NNLIB_ARG_CHK_COND((y_padding < 0 || x_padding < 0), -1);
+@@ -671,8 +670,6 @@ WORD32 xa_nn_conv2d_depthwise_per_chan_sym8sxasym8s
+     XA_NNLIB_ARG_CHK_COND((inp_data_format != 0 && inp_data_format != 1), -1);
+     XA_NNLIB_ARG_CHK_COND((out_data_format != 0), -1);
+     /* Implementation dependent checks */
+-    XA_NNLIB_ARG_CHK_COND((y_stride > kernel_height), -1);
+-    XA_NNLIB_ARG_CHK_COND((x_stride > kernel_width), -1);
+ 
+     if(inp_data_format == 0)
+     {

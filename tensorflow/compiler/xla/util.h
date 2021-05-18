@@ -328,39 +328,6 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 // uniformly replaced with "indentation".
 string Reindent(absl::string_view original, absl::string_view indentation);
 
-// Checks whether permutation is a permutation of the [0, rank) integer range.
-bool IsPermutation(absl::Span<const int64> permutation, int64 rank);
-
-// Applies `permutation` on `input` and returns the permuted array.
-// For each i, output[permutation[i]] = input[i].
-//
-// Precondition:
-// 1. `permutation` is a permutation of 0..permutation.size()-1.
-// 2. permutation.size() == input.size().
-template <typename Container>
-std::vector<typename Container::value_type> Permute(
-    absl::Span<const int64> permutation, const Container& input) {
-  using T = typename Container::value_type;
-  absl::Span<const T> data(input);
-  CHECK(IsPermutation(permutation, data.size()));
-  std::vector<T> output(data.size());
-  for (size_t i = 0; i < permutation.size(); ++i) {
-    output[permutation[i]] = data[i];
-  }
-  return output;
-}
-
-// Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
-std::vector<int64> InversePermutation(
-    absl::Span<const int64> input_permutation);
-
-// Composes two permutations: output[i] = p1[p2[i]].
-std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
-                                       absl::Span<const int64> p2);
-
-// Returns true iff permutation == {0, 1, 2, ...}.
-bool IsIdentityPermutation(absl::Span<const int64> permutation);
-
 template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
   return std::distance(container.begin(), absl::c_find(container, value));
@@ -479,10 +446,23 @@ inline bool IsPowerOfTwo(T x) {
   return x != 0 && (x & (x - 1)) == 0;
 }
 
-// Returns a mask with "bits" number of least significant bits set.
-inline uint32 LsbMaskU32(int bits) {
-  CHECK_GE(bits, 0);
-  return (1U << bits) - 1;
+// Returns a mask with "width" number of least significant bits set.
+template <typename T>
+inline T LsbMask(int width) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  CHECK_GE(width, 0) << "Unsupported width " << width;
+  CHECK_LE(width, std::numeric_limits<T>::digits)
+      << "Unsupported width " << width;
+  return width == 0
+             ? 0
+             : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
+}
+
+// Returns the value with every bit except the lower 'width' bits set to zero.
+template <typename T>
+inline T ClearUpperBits(T value, int width) {
+  return value & LsbMask<T>(width);
 }
 
 // Utility for performing a static_cast<> on a std::unique_ptr<>.
@@ -502,8 +482,10 @@ int64 Product(absl::Span<const int64> xs);
 //         b[j_k] × b[j_k + 1] × ... × b[j_(k+1) - 1]
 // where `CommonFactors(a, b)[CommonFactors(a, b).size - 1] = (a.size, b.size)`
 //
-// If the given shapes have non-zero size, returns the bounds of the shortest
-// possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
+// If input and output are the same, return {(0, 0), {1, 1}, ... {a.size,
+// b.size}}, otherwise if the given shapes have non-zero size, returns the
+// bounds of the shortest possible such subsequences; else, returns `{(0, 0),
+// (a.size, b.size)}`.
 absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     absl::Span<const int64> a, absl::Span<const int64> b);
 

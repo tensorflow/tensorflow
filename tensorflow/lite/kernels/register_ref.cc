@@ -56,7 +56,7 @@ TfLiteRegistration* Register_EMBEDDING_LOOKUP_SPARSE();
 TfLiteRegistration* Register_FULLY_CONNECTED_REF();
 TfLiteRegistration* Register_LSH_PROJECTION();
 TfLiteRegistration* Register_HASHTABLE_LOOKUP();
-TfLiteRegistration* Register_SOFTMAX();
+TfLiteRegistration* Register_SOFTMAX_REF();
 TfLiteRegistration* Register_CONCATENATION_REF();
 TfLiteRegistration* Register_ADD_REF();
 TfLiteRegistration* Register_SPACE_TO_BATCH_ND_REF();
@@ -83,15 +83,15 @@ TfLiteRegistration* Register_SPLIT();
 TfLiteRegistration* Register_SPLIT_V();
 TfLiteRegistration* Register_SQUEEZE();
 TfLiteRegistration* Register_STRIDED_SLICE_REF();
-TfLiteRegistration* Register_EXP();
+TfLiteRegistration* Register_EXP_REF();
 TfLiteRegistration* Register_TOPK_V2();
 TfLiteRegistration* Register_LOG();
 TfLiteRegistration* Register_LOG_SOFTMAX_REF();
 TfLiteRegistration* Register_CAST();
-TfLiteRegistration* Register_DEQUANTIZE();
-TfLiteRegistration* Register_PRELU();
-TfLiteRegistration* Register_MAXIMUM();
-TfLiteRegistration* Register_MINIMUM();
+TfLiteRegistration* Register_DEQUANTIZE_REF();
+TfLiteRegistration* Register_PRELU_REF();
+TfLiteRegistration* Register_MAXIMUM_REF();
+TfLiteRegistration* Register_MINIMUM_REF();
 TfLiteRegistration* Register_ARG_MAX();
 TfLiteRegistration* Register_ARG_MIN();
 TfLiteRegistration* Register_GREATER();
@@ -106,6 +106,7 @@ TfLiteRegistration* Register_REDUCE_PROD_REF();
 TfLiteRegistration* Register_REDUCE_MAX_REF();
 TfLiteRegistration* Register_REDUCE_MIN_REF();
 TfLiteRegistration* Register_REDUCE_ANY_REF();
+TfLiteRegistration* Register_REDUCE_ALL_REF();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE_REF();
 TfLiteRegistration* Register_SIN();
@@ -120,7 +121,7 @@ TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SHAPE();
 TfLiteRegistration* Register_RANK();
 TfLiteRegistration* Register_POW();
-TfLiteRegistration* Register_FAKE_QUANT();
+TfLiteRegistration* Register_FAKE_QUANT_REF();
 TfLiteRegistration* Register_PACK();
 TfLiteRegistration* Register_ONE_HOT();
 TfLiteRegistration* Register_LOGICAL_OR();
@@ -143,7 +144,7 @@ TfLiteRegistration* Register_GATHER_ND();
 TfLiteRegistration* Register_WHERE();
 TfLiteRegistration* Register_REVERSE_SEQUENCE();
 TfLiteRegistration* Register_MATRIX_DIAG();
-TfLiteRegistration* Register_QUANTIZE();
+TfLiteRegistration* Register_QUANTIZE_REF();
 TfLiteRegistration* Register_MATRIX_SET_DIAG();
 TfLiteRegistration* Register_IF();
 TfLiteRegistration* Register_WHILE();
@@ -157,6 +158,10 @@ TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
 TfLiteRegistration* Register_SELECT_V2();
 TfLiteRegistration* Register_SEGMENT_SUM();
 TfLiteRegistration* Register_BROADCAST_TO();
+TfLiteRegistration* Register_CONV_3D_REF();
+TfLiteRegistration* Register_IMAG();
+TfLiteRegistration* Register_REAL();
+TfLiteRegistration* Register_COMPLEX_ABS();
 
 namespace {
 
@@ -241,7 +246,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version */ 9);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
-  AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
+  AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX_REF(),
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION_REF(),
@@ -268,7 +273,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   // of builtin op code shortage problem.
   AddBuiltin(BuiltinOperator_BROADCAST_TO, Register_BROADCAST_TO(),
              /* min_version = */ 2,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORM_REF());
   AddBuiltin(BuiltinOperator_LSTM, Register_LSTM(), /* min_version */ 1,
@@ -280,13 +285,13 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_PAD, Register_PAD_REF(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_PADV2, Register_PADV2_REF(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
              Register_RESIZE_NEAREST_NEIGHBOR_REF(),
              /* min_version = */ 1,
@@ -321,7 +326,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE_REF(),
              /* min_version = */ 1,
              /* max_version = */ 4);
-  AddBuiltin(BuiltinOperator_EXP, Register_EXP());
+  AddBuiltin(BuiltinOperator_EXP, Register_EXP_REF());
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -330,14 +335,14 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_CAST, Register_CAST());
-  AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(),
+  AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE_REF(),
              /* min_version = */ 1,
              /* max_version = */ 4);
-  AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
-  AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM(),
+  AddBuiltin(BuiltinOperator_PRELU, Register_PRELU_REF());
+  AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM_REF(),
              /* min_version = */ 1,
              /* max_version = */ 4);
-  AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM(),
+  AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM_REF(),
              /* min_version = */ 1,
              /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX(),
@@ -366,7 +371,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_COS, Register_COS());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSECONV_REF(),
@@ -386,6 +391,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY_REF());
+  AddBuiltin(BuiltinOperator_REDUCE_ALL, Register_REDUCE_ALL_REF());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE(),
              /* min_version = */ 1,
@@ -397,11 +403,15 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
-  AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
+  AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
   AddBuiltin(BuiltinOperator_RANK, Register_RANK());
   AddBuiltin(BuiltinOperator_POW, Register_POW());
-  AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
+  AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT_REF(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_PACK, Register_PACK(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -422,10 +432,12 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_LEAKY_RELU, Register_LEAKY_RELU(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_SQUARED_DIFFERENCE, Register_SQUARED_DIFFERENCE());
-  AddBuiltin(BuiltinOperator_FILL, Register_FILL(),
+  AddBuiltin(BuiltinOperator_SQUARED_DIFFERENCE, Register_SQUARED_DIFFERENCE(),
              /* min_version = */ 1,
              /* max_version = */ 2);
+  AddBuiltin(BuiltinOperator_FILL, Register_FILL(),
+             /* min_version = */ 1,
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -436,11 +448,11 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_WHERE, Register_WHERE());
   AddBuiltin(BuiltinOperator_REVERSE_SEQUENCE, Register_REVERSE_SEQUENCE());
   AddBuiltin(BuiltinOperator_MATRIX_DIAG, Register_MATRIX_DIAG());
-  AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE(),
+  AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE_REF(),
              /* min_version = */ 1,
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_MATRIX_SET_DIAG, Register_MATRIX_SET_DIAG());
@@ -455,6 +467,10 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL_REF(),
              /* min_version = */ 1,
              /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_CONV_3D, Register_CONV_3D_REF());
+  AddBuiltin(BuiltinOperator_IMAG, Register_IMAG());
+  AddBuiltin(BuiltinOperator_REAL, Register_REAL());
+  AddBuiltin(BuiltinOperator_COMPLEX_ABS, Register_COMPLEX_ABS());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

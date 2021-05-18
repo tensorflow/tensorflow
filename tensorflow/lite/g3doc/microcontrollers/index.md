@@ -41,6 +41,9 @@ The following development boards are supported:
 *   [Adafruit Circuit Playground Bluefruit](https://learn.adafruit.com/tensorflow-lite-for-circuit-playground-bluefruit-quickstart?view=all)
 *   [Espressif ESP32-DevKitC](https://www.espressif.com/en/products/hardware/esp32-devkitc/overview)
 *   [Espressif ESP-EYE](https://www.espressif.com/en/products/hardware/esp-eye/overview)
+*   [Wio Terminal: ATSAMD51](https://www.seeedstudio.com/Wio-Terminal-p-4509.html)
+*   [Himax WE-I Plus EVB Endpoint AI Development Board](https://www.sparkfun.com/products/17256)
+*   [Synopsys DesignWare ARC EM Software Development Platform](https://www.synopsys.com/dw/ipdir.php?ds=arc-em-software-development-platform)
 
 ## Explore the examples
 
@@ -53,7 +56,7 @@ platform, as given below:
 *   [Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world) -
     Demonstrates the absolute basics of using TensorFlow Lite for
     Microcontrollers
-    *   [Tutorial using any supported device](get_started.md)
+    *   [Tutorial using any supported device](get_started_low_level.md)
 *   [Micro speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech) -
     Captures audio with a microphone to detect the words "yes" and "no"
     *   [Tutorial using SparkFun Edge](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0)
@@ -97,8 +100,8 @@ The following limitations should be considered:
 
 ## Next steps
 
-*   [Get started with microcontrollers](get_started.md) to try the example
-    application and learn how to use the API.
+*   [Get started with microcontrollers](get_started_low_level.md) to try the
+    example application and learn how to use the API.
 *   [Understand the C++ library](library.md) to learn how to use the library in
     your own project.
 *   [Build and convert models](build_convert.md) to learn more about training

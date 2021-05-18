@@ -23,16 +23,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -319,9 +319,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     ~ParallelInterleaveIterator() override {
       CancelThreads(/*wait=*/true);
-      if (deregister_fn_) deregister_fn_();
     }
 
+    // TODO(jsimsa): Register cancellation callback once the implementation is
+    // refactored not to hold mu_ while calling `GetNext` on the input.
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       // Note that if `ctx->thread_pool()` is non-null, then instead of creating
@@ -344,11 +345,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
-      // TODO(jsimsa): Register cancellation callback once the implementation is
-      // refactored not to hold mu_ while calling `GetNext` on the input.
       ctx_ = std::make_unique<IteratorContext>(*ctx);
-      TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          IteratorContext(params), this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -490,16 +492,40 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     TraceMeMetadata GetTraceMeMetadata() const override {
       int64 parallelism = -1;
+      int64 results_ready = -1;
+      int64 active_elements = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
         parallelism = num_parallel_calls_->value;
+        results_ready = 0;
+        active_elements = 0;
+        for (int i = 0; i < current_elements_.size(); ++i) {
+          if (current_elements_[i]) {
+            results_ready += current_elements_[i]->results.size();
+            if (current_elements_[i]->active) {
+              active_elements++;
+            }
+          }
+        }
         mu_->unlock();
       }
       auto result = dataset()->traceme_metadata_;
       result.push_back(std::make_pair(
           "parallelism",
-          strings::Printf("%lld", static_cast<long long>(parallelism))));
+          parallelism == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(parallelism))));
+      result.push_back(std::make_pair(
+          "results_ready", results_ready == -1
+                               ? kTraceInfoUnavailable
+                               : strings::Printf("%lld", static_cast<long long>(
+                                                             results_ready))));
+      result.push_back(std::make_pair(
+          "active_elements",
+          results_ready == -1 ? kTraceInfoUnavailable
+                              : strings::Printf("%lld", static_cast<long long>(
+                                                            active_elements))));
       return result;
     }
 
@@ -561,6 +587,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // cancelled. Optionally, the method waits until all threads finish
     // executing.
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(*mu_);
       cancelled_ = true;
       // Wake up all threads so that they can exit. This will also wake up any
@@ -1278,6 +1305,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 absl::StrCat(kResultsSuffix, "[", i, "][", j, "]"),
                 &result->return_values.back()));
           }
+          RecordBufferEnqueue(ctx, result->return_values);
           element->results[i] = std::move(result);
         }
         if (!reader->Contains(iterator_name,
@@ -1317,7 +1345,20 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(*mu_);
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(prefix(), kCurrentElementsSize, &size));
-        DCHECK_EQ(current_elements_.size(), size);
+        if (current_elements_.size() != size) {
+          // This could mean two things: (1) the user created their checkpoint
+          // from a dataset with one cycle_length, then changed the cycle_length
+          // and tried to restore from the old checkpoint, or (2) the user set
+          // the cycle length to tf.data.AUTOTUNE, wrote the checkpoint from one
+          // machine, then tried to restore the checkpoint on another machine
+          // with a different CPU budget (causing autotune to pick a different
+          // cycle length).
+          return errors::FailedPrecondition(
+              "The iterator cycle length ", current_elements_.size(),
+              " is different from the cycle length to restore from the "
+              "checkpoint: ",
+              size);
+        }
       }
       if (size == 0) {
         return Status::OK();
@@ -1326,6 +1367,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           ReadElementsParallel(ctx, reader, size, kCurrentElements, &elements));
       mutex_lock l(*mu_);
+      for (auto& element : current_elements_) {
+        DCHECK(element == nullptr);
+      }
       for (int idx = 0; idx < size; ++idx) {
         current_elements_[idx] = std::move(elements[idx]);
       }
@@ -1348,6 +1392,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           ReadElementsParallel(ctx, reader, size, kFutureElements, &elements));
       mutex_lock l(*mu_);
+      for (auto& element : future_elements_) {
+        DCHECK(element == nullptr);
+      }
       for (int idx = 0; idx < size; ++idx) {
         future_elements_[idx] = std::move(elements[idx]);
       }
@@ -1481,6 +1528,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // Determines whether outputs can be produced in deterministic order.
     const bool deterministic_;
 
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
+
     // Iterator for input elements.
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
@@ -1528,9 +1579,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Identifies whether background threads should be cancelled.
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
-
-    // Method for deregistering the cancellation callback.
-    std::function<void()> deregister_fn_;
   };
 
   const DatasetBase* const input_;

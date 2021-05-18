@@ -70,14 +70,9 @@ std::string GetNameFromLoc(Location loc) {
       if (!name.empty()) names_is_nonempty = true;
       continue;
     } else if (auto call_loc = curr_loc.dyn_cast<CallSiteLoc>()) {
-      // Add name if CallSiteLoc's callee has a NameLoc (as should be the
-      // case if imported with DebugInfo).
-      if (auto name_loc = call_loc.getCallee().dyn_cast<NameLoc>()) {
-        auto name = name_loc.getName().strref().split('@').first;
-        loc_names.push_back(name);
-        if (!name.empty()) names_is_nonempty = true;
-        continue;
-      }
+      // Use location of the Callee to generate the name.
+      locs.push_back(call_loc.getCallee());
+      continue;
     } else if (auto fused_loc = curr_loc.dyn_cast<FusedLoc>()) {
       // Push all locations in FusedLoc in reverse order, so locations are
       // visited based on order in FusedLoc.

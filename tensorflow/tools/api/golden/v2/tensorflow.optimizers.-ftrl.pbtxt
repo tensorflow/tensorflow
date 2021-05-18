@@ -30,7 +30,7 @@ tf_class {
   }
   member_method {
     name: "add_slot"
-    argspec: "args=[\'self\', \'var\', \'slot_name\', \'initializer\'], varargs=None, keywords=None, defaults=[\'zeros\'], "
+    argspec: "args=[\'self\', \'var\', \'slot_name\', \'initializer\', \'shape\'], varargs=None, keywords=None, defaults=[\'zeros\', \'None\'], "
   }
   member_method {
     name: "add_weight"

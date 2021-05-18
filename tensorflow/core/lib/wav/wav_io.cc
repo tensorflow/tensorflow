@@ -108,12 +108,13 @@ Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
   return Status::OK();
 }
 
-Status ExpectText(const string& data, const string& expected_text,
+Status ExpectText(const std::string& data, const std::string& expected_text,
                   int* offset) {
   int new_offset;
   TF_RETURN_IF_ERROR(
       IncrementOffset(*offset, expected_text.size(), data.size(), &new_offset));
-  const string found_text(data.begin() + *offset, data.begin() + new_offset);
+  const std::string found_text(data.begin() + *offset,
+                               data.begin() + new_offset);
   if (found_text != expected_text) {
     return errors::InvalidArgument("Header mismatch: Expected ", expected_text,
                                    " but found ", found_text);
@@ -122,12 +123,12 @@ Status ExpectText(const string& data, const string& expected_text,
   return Status::OK();
 }
 
-Status ReadString(const string& data, int expected_length, string* value,
-                  int* offset) {
+Status ReadString(const std::string& data, int expected_length,
+                  std::string* value, int* offset) {
   int new_offset;
   TF_RETURN_IF_ERROR(
       IncrementOffset(*offset, expected_length, data.size(), &new_offset));
-  *value = string(data.begin() + *offset, data.begin() + new_offset);
+  *value = std::string(data.begin() + *offset, data.begin() + new_offset);
   *offset = new_offset;
   return Status::OK();
 }
@@ -209,18 +210,18 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
   return Status::OK();
 }
 
-template Status EncodeAudioAsS16LEWav<string>(const float* audio,
-                                              size_t sample_rate,
-                                              size_t num_channels,
-                                              size_t num_frames,
-                                              string* wav_string);
+template Status EncodeAudioAsS16LEWav<std::string>(const float* audio,
+                                                   size_t sample_rate,
+                                                   size_t num_channels,
+                                                   size_t num_frames,
+                                                   std::string* wav_string);
 template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
                                                size_t sample_rate,
                                                size_t num_channels,
                                                size_t num_frames,
                                                tstring* wav_string);
 
-Status DecodeLin16WaveAsFloatVector(const string& wav_string,
+Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
                                     std::vector<float>* float_values,
                                     uint32* sample_count, uint16* channel_count,
                                     uint32* sample_rate) {
@@ -287,7 +288,7 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
 
   bool was_data_found = false;
   while (offset < wav_string.size()) {
-    string chunk_id;
+    std::string chunk_id;
     TF_RETURN_IF_ERROR(ReadString(wav_string, 4, &chunk_id, &offset));
     uint32 chunk_size;
     TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &chunk_size, &offset));

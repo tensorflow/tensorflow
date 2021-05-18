@@ -327,6 +327,21 @@ bool TpuExecutor::MemcpyDeviceToDevice(
   LOG(FATAL) << __func__ << " not supported on TpuExecutor";
 }
 
+Status TpuExecutor::UnloadAllPrograms() {
+  StatusHelper status;
+  tpu::ExecutorApiFn()->TpuExecutor_UnloadAllProgramsFn(executor_,
+                                                        status.c_status);
+  return status.status();
+}
+
+Status TpuExecutor::EnqueueCompactionOnStreamForHbm(Stream* compaction_stream) {
+  StatusHelper status;
+  tpu::ExecutorApiFn()->TpuExecutor_EnqueueCompactionOnStreamForHbmFn(
+      executor_, get_stream(compaction_stream->implementation()),
+      status.c_status);
+  return status.status();
+}
+
 struct HostCallbackContext {
   std::function<Status()> callback;
 };

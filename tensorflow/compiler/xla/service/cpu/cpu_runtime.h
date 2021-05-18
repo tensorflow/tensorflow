@@ -71,6 +71,7 @@ extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName;
 extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
+extern const char* const kPrintfToStderrSymbolName;
 extern const char* const kKeyValueSortSymbolName;
 extern const char* const kTopKF32SymbolName;
 extern const char* const kAllReduceSymbolName;
@@ -93,6 +94,8 @@ XfeedManager* GetXfeedManager(int device_ordinal);
 }  // namespace xla
 
 extern "C" {
+
+extern int __xla_cpu_runtime_PrintfToStderr(const char* format, ...);
 
 extern xla::int64 __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
@@ -166,7 +169,7 @@ extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
 // Perform all reduce on a CPU.
 //
 // participating_replicas: array of replica IDs participating in the reduction,
-// cf. GetParticipatingReplicas.
+// cf. GetParticipatingIDs.
 // channel_id_present, op_id: whether op_id is a channel ID or a module ID.
 // reduction_kind: operator used for a reduction, cf. ReductionKind.
 // shape_ptr: shape of all input/output buffers.

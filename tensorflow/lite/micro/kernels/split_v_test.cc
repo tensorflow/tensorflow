@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,9 +31,9 @@ struct OutputTensors {
   float* expected_output_data[N];
 };
 template <int N>
-void TestSplitVFloat(const int* input_dims_data, const float* input_data,
-                     const int* axis_dims_data, const int32_t* axis_data,
-                     const int* split_dims_data, const int32_t* split_data,
+void TestSplitVFloat(int* input_dims_data, const float* input_data,
+                     int* axis_dims_data, const int32_t* axis_data,
+                     int* split_dims_data, const int32_t* split_data,
                      const OutputTensors<N>& output_tensors) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
@@ -84,7 +84,7 @@ void TestSplitVFloat(const int* input_dims_data, const float* input_data,
   const TfLiteRegistration registration =
       tflite::ops::micro::Register_SPLIT_V();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, nullptr, micro_test::reporter);
+                             outputs_array, nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

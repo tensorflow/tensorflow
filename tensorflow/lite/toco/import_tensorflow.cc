@@ -57,6 +57,7 @@ using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
 using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
+using tensorflow::DT_UINT32;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
@@ -185,6 +186,8 @@ ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
     return ArrayDataType::kBool;
   else if (dtype == DT_INT32)
     return ArrayDataType::kInt32;
+  else if (dtype == DT_UINT32)
+    return ArrayDataType::kUint32;
   else if (dtype == DT_INT64)
     return ArrayDataType::kInt64;
   else if (dtype == DT_STRING)
@@ -290,6 +293,18 @@ struct TensorTraits<int32> {
   static std::string accessor_name() { return "int_val"; }
   static std::string type_name() { return "int32"; }
   static void CopyFromContent(const TensorProto& p, std::vector<int32>* data) {
+    toco::port::CopyToBuffer(p.tensor_content(),
+                             reinterpret_cast<char*>(data->data()));
+  }
+};
+
+template <>
+struct TensorTraits<uint32> {
+  static int size(const TensorProto& p) { return p.uint32_val_size(); }
+  static int32 get(const TensorProto& p, int i) { return p.uint32_val(i); }
+  static std::string accessor_name() { return "uint32_val"; }
+  static std::string type_name() { return "uint32"; }
+  static void CopyFromContent(const TensorProto& p, std::vector<uint32>* data) {
     toco::port::CopyToBuffer(p.tensor_content(),
                              reinterpret_cast<char*>(data->data()));
   }
@@ -430,6 +445,23 @@ tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   return ImportTensorData<int32>(input_tensor, input_flat_size,
                                  &output_int_data);
+}
+
+tensorflow::Status ImportUint32Array(const TensorProto& input_tensor,
+                                     Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_UINT32);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 6);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
+  auto& output_int_data =
+      output_array->GetMutableBuffer<ArrayDataType::kUint32>().data;
+  output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  return ImportTensorData<uint32>(input_tensor, input_flat_size,
+                                  &output_int_data);
 }
 
 tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
@@ -756,6 +788,10 @@ tensorflow::Status ConvertConstOperator(
     case DT_INT32:
       array.data_type = ArrayDataType::kInt32;
       status = ImportInt32Array(tensor, &array);
+      break;
+    case DT_UINT32:
+      array.data_type = ArrayDataType::kUint32;
+      status = ImportUint32Array(tensor, &array);
       break;
     case DT_QUINT8:
       array.data_type = ArrayDataType::kUint8;
@@ -1473,7 +1509,6 @@ tensorflow::Status ConditionallyConvertConstOperator(
                                         model);
     }
   }
-
   switch (GetDataTypeAttr(node, "dtype")) {
     case DT_FLOAT:
     case DT_INT32:

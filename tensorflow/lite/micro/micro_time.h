@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_MICRO_TIME_H_
 #define TENSORFLOW_LITE_MICRO_MICRO_TIME_H_
 
-#include <stdint.h>
+#include <cstdint>
 
 namespace tflite {
 
@@ -25,6 +25,11 @@ int32_t ticks_per_second();
 
 // Return time in ticks.  The meaning of a tick varies per platform.
 int32_t GetCurrentTimeTicks();
+
+inline int32_t TicksToMs(int32_t ticks) {
+  return static_cast<int32_t>(1000.0f * static_cast<float>(ticks) /
+                              static_cast<float>(ticks_per_second()));
+}
 
 }  // namespace tflite
 

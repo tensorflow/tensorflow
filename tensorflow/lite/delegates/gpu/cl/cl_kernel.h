@@ -22,16 +22,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-struct KernelInfo {
-  int private_memory_size;
-  int max_work_group_size;
-};
 
 // Arguments binding to CLKernel can be manual or automatic
 // In manual you specify binding index explicitly

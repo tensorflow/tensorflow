@@ -29,11 +29,13 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
@@ -42,6 +44,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -167,6 +170,19 @@ class TPUTest(test.TestCase):
 @parameterized.named_parameters([("PackedVar", True), ("", False)])
 class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
+  def test_handle_in_cross_replica_context(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    with strategy.scope():
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def func():
+      self.assertEndsWith(v.handle.device, "device:TPU:0")
+      return v + 1.0
+
+    ret = func()
+    self.assertAllEqual(ret, 2.0)
+
   def test_function_compile_with_xla(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     with strategy.scope():
@@ -281,13 +297,13 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     def train_fn(iterator):
 
       def step_fn(inputs):
-        _, inputs = inputs
-        return math_ops.reduce_sum(inputs)
+        input0, input1 = inputs
+        return array_ops.size(input0), math_ops.reduce_sum(input1)
 
       return strategy.experimental_local_results(
           strategy.run(step_fn, args=(next(iterator),)))
 
-    with self.assertRaisesRegex(errors.InternalError, "Compilation failure"):
+    with self.assertRaises(errors.InvalidArgumentError):
       logging.info(train_fn(iterator))
 
   def test_computation_on_subset_cores(self, enable_packed_var):
@@ -379,6 +395,43 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     train_step()
     self.assertEqual(2.0, v.numpy())
 
+  def test_cluster_conditional_with_dynamic_shape(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def shape_list(tensor):
+        shape = tensor.shape.as_list()
+
+        non_static_indexes = []
+        for (index, dim) in enumerate(shape):
+          if dim is None:
+            non_static_indexes.append(index)
+
+        if not non_static_indexes:
+          return shape
+
+        dynamic_shape = array_ops.shape(input=tensor)
+        for index in non_static_indexes:
+          shape[index] = dynamic_shape[index]
+
+        return shape
+
+      def step_fn(condition):
+        where = array_ops.where(condition)
+        if array_ops.shape(where)[0] > 0:
+          tensor_shape = shape_list(where)
+          d1 = tensor_shape[0]
+          d2 = tensor_shape[1]
+          where = array_ops.reshape(where, [d1, d2])
+        return where
+
+      return strategy.run(step_fn, args=([True, False, True],))
+
+    outputs = strategy.experimental_local_results(train_step())
+    self.assertAllEqual(outputs[0].numpy(), [[0], [2]])
+
   def test_cluster_in_graph_and_while_body_fn(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
 
@@ -413,6 +466,133 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return foo(x)
 
     bar(1)
+
+  def test_tpu_variable_run_argument(self, enable_packed_var):
+    # TPUStrategy.run() casts inputs to Tensor, but has logic to preserve
+    # variables to avoid unintuitive errors.
+    # Here we test that a TPUDistributedVariable passed to TPUStrategy.run()
+    # remains a variable.
+
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    with strategy.scope():
+      tpu_variable = variables.Variable(1)
+
+    def replica_step(first_arg, variable):
+      del first_arg  # Just here to make sure we're not relying on arg position.
+
+      if variable is not None:
+        self.assertIsInstance(variable, tpu_values.TPUDistributedVariable)
+
+    @def_function.function
+    def step():
+      strategy.run(
+          replica_step, args=(
+              2,
+              tpu_variable,
+          ))
+
+    step()
+
+  def test_tpu_run_arg_parsing(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    with strategy.scope():
+      tpu_vars = [variables.Variable(1)]
+
+    def only_star_args(*args):
+      del args
+
+    def pos_and_star_args(first_arg, *args):
+      del first_arg
+      del args
+
+    def named_args(first_arg, second_arg):
+      del first_arg
+      del second_arg
+
+    def star_args_and_kw_only(*args, kw):
+      del args
+      del kw
+
+    # pylint:disable=function-redefined
+    @def_function.function
+    def step():
+      strategy.run(only_star_args, args=(2,))
+
+    step()
+
+    @def_function.function
+    def step():
+      strategy.run(named_args, kwargs={"first_arg": 2, "second_arg": 3})
+
+    step()
+
+    with self.assertRaisesRegex(TypeError, r"got multiple values for argument"):
+
+      @def_function.function
+      def step():
+        strategy.run(
+            named_args, args=(1,), kwargs={
+                "first_arg": 2,
+                "second_arg": 3
+            })
+
+      step()
+
+    with self.assertRaisesRegex(ValueError,
+                                r"cannot handle Variables passed to \*args"):
+
+      @def_function.function
+      def step():
+        strategy.run(
+            only_star_args, args=(
+                2,
+                tpu_vars,
+            ))
+
+      step()
+
+    @def_function.function
+    def step():
+      strategy.run(pos_and_star_args, args=(2, 3, 4))
+
+    step()
+
+    @def_function.function
+    def step():
+      strategy.run(star_args_and_kw_only, args=(2, 3), kwargs={"kw": tpu_vars})
+
+    step()
+
+    with self.assertRaisesRegex(ValueError,
+                                r"mix of positional args and \*args"):
+
+      @def_function.function
+      def step():
+        strategy.run(pos_and_star_args, args=(tpu_vars, 3, 4))
+
+      step()
+
+    with self.assertRaisesRegex(ValueError, r"Too many positional arguments"):
+
+      @def_function.function
+      def step():
+        strategy.run(named_args, args=(2, 3, 4))
+
+      step()
+
+    class DummyClass:
+
+      @def_function.function
+      def method(self, arg_1):
+        del arg_1
+
+      def step(self):
+        strategy.run(self.method, args=(tpu_vars,))
+
+    DummyClass().step()
+    # pylint:enable=function-redefined
 
   def test_using_external_variable_inside_tf_function(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
@@ -494,6 +674,56 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual("/job:localhost/replica:0/task:0/device:TPU:1",
                         results[1].backing_device)
 
+  def test_run_passing_and_returning_nones(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      # Note that this input None is nested.
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=([1, [2, None]],)))
+      return outputs
+
+    results = train_step()
+
+    self.assertAllEqual(1, results[0][0])
+    self.assertAllEqual(2, results[0][1][0])
+    self.assertIsNone(results[0][1][1])
+
+  def test_run_passing_and_returning_empty_list(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=([],)))
+      return outputs
+
+    self.assertEqual([], train_step()[0])
+
+  def test_run_passing_and_returning_empty_dict(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=({},)))
+      return outputs
+
+    self.assertEqual({}, train_step()[0])
+
   def test_composite_input_output(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     if strategy.num_replicas_in_sync != 2:
@@ -532,7 +762,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     dataset = iter(
         strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     sparse, result = sparse_lookup(dataset)
 
@@ -582,7 +812,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     dataset = iter(
         strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     output = sparse_lookup(dataset)
 
@@ -638,10 +868,76 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         strategy.distribute_datasets_from_function(
             dataset_fn,
             options=distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+                experimental_fetch_to_device=False)))
 
     result = sparse_lookup(dataset)
     self.assertAllEqual(result, [[0.0, 2.0], [1.5, 5.0]])
+
+  def test_composite_input_with_non_flat_components(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    class TestCompositeTypeSpec(type_spec.TypeSpec):
+
+      def __init__(self, component_type_spec):
+        self._component_type_spec = component_type_spec
+
+      @property
+      def value_type(self):
+        return TestComposite
+
+      def _to_components(self, value):
+        return value.values
+
+      def _from_components(self, components):
+        return TestComposite(components[0], components[1][0], components[1][1])
+
+      @property
+      def _component_specs(self):
+        return [self._component_type_spec,
+                [self._component_type_spec, self._component_type_spec]]
+
+      def _serialize(self):
+        return (self._component_type_spec,)
+
+    class TestComposite(composite_tensor.CompositeTensor):
+
+      def __init__(self, value1, value2, value3):
+        self.values = [value1, [value2, value3]]
+
+      @property
+      def _type_spec(self):
+        return TestCompositeTypeSpec(
+            tensor_spec.TensorSpec.from_tensor(self.values[0]))
+
+      def _shape_invariant_to_type_spec(self, shape):
+        return [shape, [shape, shape]]
+
+    @def_function.function
+    def test_fn(test_composite):
+
+      def tpu_function(composite):
+        return (composite,
+                composite.values[0] + (
+                    composite.values[1][0] + composite.values[1][1])/2)
+
+      return nest.map_structure(
+          strategy.experimental_local_results,
+          strategy.run(tpu_function, args=(test_composite,)))
+
+    a = array_ops.constant([0.1])
+    b = array_ops.constant([1.2])
+    c = array_ops.constant([-0.4])
+    test_composite = TestComposite(a, b, c)
+
+    composite, result = test_fn(test_composite)
+
+    # All replicas return identical reults.
+    for replica in range(strategy.num_replicas_in_sync):
+      self.assertIsInstance(composite[replica], TestComposite)
+      self.assertAllEqual(composite[replica].values[0], a)
+      self.assertAllEqual(composite[replica].values[1][0], b)
+      self.assertAllEqual(composite[replica].values[1][1], c)
+      self.assertAllEqual(result[replica], array_ops.constant([0.50000006]))
 
   def test_per_device_tracing_of_mirrored_variables(self, enable_packed_var):
     # Define trace_count as a list to avoid python scoping error
@@ -688,7 +984,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
         output_type=dtypes.float32).batch(strategy.num_replicas_in_sync)
 
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=True)
+        experimental_fetch_to_device=True)
     dataset_item = next(iter(strategy.experimental_distribute_dataset(
         dataset, options=input_options)))
     dataset_location = tf_device.DeviceSpec.from_string(
@@ -703,7 +999,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
 
     # Should be CPU when prefetch_to_device is False.
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset_item = next(iter(strategy.experimental_distribute_dataset(
         dataset, options=input_options)))
     dataset_location = tf_device.DeviceSpec.from_string(

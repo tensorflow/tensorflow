@@ -217,6 +217,7 @@ class BandedTriangularSolveOpCpu : public OpKernel {
     const Tensor& in1 = ctx->input(1);
 
     ValidateInputTensors(ctx, in0, in1);
+    if (!ctx->status().ok()) return;
 
     MatMulBCast bcast(in0.shape().dim_sizes(), in1.shape().dim_sizes());
     OP_REQUIRES(
@@ -275,6 +276,14 @@ class BandedTriangularSolveOpCpu : public OpKernel {
     OP_REQUIRES(
         ctx, in1.dims() >= 2,
         errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims()));
+
+    OP_REQUIRES(ctx, in0.NumElements() > 0,
+                errors::InvalidArgument("In[0] must not be an empty tensor: ",
+                                        in0.DebugString()));
+
+    OP_REQUIRES(ctx, in1.NumElements() > 0,
+                errors::InvalidArgument("In[1] must not be an empty tensor: ",
+                                        in1.DebugString()));
   }
   bool lower_;
   bool adjoint_;

@@ -24,15 +24,13 @@ load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_strict_library(
     name = "model_utils",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":export_output",
         ":export_utils",
@@ -43,7 +41,7 @@ py_strict_library(
 py_strict_library(
     name = "export_output",
     srcs = ["export_output.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -58,7 +56,7 @@ py_strict_test(
     name = "export_output_test",
     srcs = ["export_output_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":export_output",
         "//tensorflow/core:protos_all_py",
@@ -79,7 +77,7 @@ py_strict_test(
 py_strict_library(
     name = "export_utils",
     srcs = ["export_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":export_output",
         ":mode_keys",
@@ -96,7 +94,7 @@ py_strict_test(
     name = "export_test",
     srcs = ["export_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":export_output",
         ":export_utils",
@@ -115,7 +113,7 @@ py_strict_test(
 py_strict_library(
     name = "mode_keys",
     srcs = ["mode_keys.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow/python:util"],
 )
 
@@ -123,7 +121,7 @@ py_strict_test(
     name = "mode_keys_test",
     srcs = ["mode_keys_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":mode_keys",
         "//tensorflow/python:client_testlib",

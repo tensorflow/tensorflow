@@ -28,9 +28,15 @@ def make_depth_to_space_tests(options):
   """Make a set of tests to do depth_to_space."""
 
   test_parameters = [{
-      "dtype": [tf.float32, tf.int32, tf.uint8, tf.int64],
+      "dtype": [tf.int32, tf.uint8, tf.int64],
       "input_shape": [[2, 3, 4, 16]],
       "block_size": [2, 4],
+      "fully_quantize": [False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[2, 3, 4, 16]],
+      "block_size": [2, 4],
+      "fully_quantize": [True, False],
   }]
 
   def build_graph(parameters):
@@ -43,8 +49,15 @@ def make_depth_to_space_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
+    if not parameters["fully_quantize"]:
+      input_values = create_tensor_data(parameters["dtype"],
+                                        parameters["input_shape"])
+    else:
+      input_values = create_tensor_data(
+          parameters["dtype"],
+          parameters["input_shape"],
+          min_value=-1,
+          max_value=1)
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 

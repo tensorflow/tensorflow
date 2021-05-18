@@ -120,28 +120,12 @@ class PriorityTracker {
   }
 };
 
-std::vector<EventTypeSpan> ToNonOverlappedEvents(
-    const std::vector<EventTypeSpan>& overlapped_events) {
-  std::vector<EventBoundary> event_boundaries =
-      GenerateEventBoundaries(overlapped_events);
-  std::vector<EventTypeSpan> result;
-  if (event_boundaries.empty()) return result;
-  result.reserve(event_boundaries.size());
-  PriorityTracker priority_tracker;
-  for (int64 i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
-    EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
-    result.push_back({highest_priority, Timespan::FromEndPoints(
-                                            event_boundaries[i].time_ps,
-                                            event_boundaries[i + 1].time_ps)});
-  }
-  return result;
-}
-
 void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   dst->AppendMarkers(src.Markers());
   dst->AppendEvents(src.Events());
   dst->AppendCollectives(src.Collectives());
   dst->AggregateDeviceMemoryTransfers(src.DeviceMemoryTransfers());
+  if (dst->StepName().empty()) dst->SetStepName(src.StepName());
 }
 
 EventType ClassifyDeviceCompute(absl::string_view event_name,
@@ -306,6 +290,23 @@ void CombineStepEvents(const StepEvents& src, StepEvents* dst) {
   }
 }
 
+std::vector<EventTypeSpan> ToNonOverlappedEvents(
+    const std::vector<EventTypeSpan>& overlapped_events) {
+  std::vector<EventBoundary> event_boundaries =
+      GenerateEventBoundaries(overlapped_events);
+  std::vector<EventTypeSpan> result;
+  if (event_boundaries.empty()) return result;
+  result.reserve(event_boundaries.size());
+  PriorityTracker priority_tracker;
+  for (int64 i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
+    EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
+    result.push_back({highest_priority, Timespan::FromEndPoints(
+                                            event_boundaries[i].time_ps,
+                                            event_boundaries[i + 1].time_ps)});
+  }
+  return result;
+}
+
 // Converts from overlapped step-events to non-overlapped step-events.
 StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
   StepEvents non_overlapped_step_events;
@@ -320,6 +321,7 @@ StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
         step_details.Collectives();
     *non_overlapped_step_events[step_id].MutableDeviceMemoryTransfers() =
         step_details.DeviceMemoryTransfers();
+    non_overlapped_step_events[step_id].SetStepName(step_details.StepName());
   }
   return non_overlapped_step_events;
 }

@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 r"""Benchmarks on Keras components with different Keras model types."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import time
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import tensorflow as tf
 
@@ -91,7 +87,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     if execution_mode == context.ASYNC:
       get_executor().wait()
     start = time.time()
-    for _ in xrange(num_iters):
+    for _ in range(num_iters):
       func()
     if execution_mode == context.ASYNC:
       get_executor().wait()
@@ -217,8 +213,7 @@ class KerasComponentsBenchmarks(test.Benchmark):
     with context.graph_mode():
       model = make_keras_model(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
-    result = profiler.stop(save=False)
-    assert result is not None
+    profiler.stop(save=False)
 
   def benchmark_keras_model_functional_fit_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
@@ -229,8 +224,7 @@ class KerasComponentsBenchmarks(test.Benchmark):
     profiler.start("")
     model = make_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_fit(model, run_eagerly=True)
-    result = profiler.stop(save=False)
-    assert result is not None
+    profiler.stop(save=False)
 
   def benchmark_keras_model_sequential_fit(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")

@@ -68,7 +68,9 @@ string MatMulFunction(const string& matmul_device) {
 
 void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
                                    bool heavy_load_on_streaming_rpc,
-                                   bool remote_func_outputs) {
+                                   bool remote_func_outputs,
+                                   bool has_packed_input) {
+  CHECK(!has_packed_input || func);
   tensorflow::ServerDef server_def = GetServerDef(3);
 
   // This server def has the task index set to 0.
@@ -123,6 +125,15 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
       TFE_TensorHandleCopyToDevice(h1_task0, ctx, task2_name, status);
   ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
+  TFE_TensorHandle* packed_handle = nullptr;
+  if (has_packed_input) {
+    int num_replicas = 1;
+    std::vector<TFE_TensorHandle*> packed_handles = {h1_task2};
+    packed_handle = TFE_CreatePackedTensorHandle(ctx, packed_handles.data(),
+                                                 &num_replicas, status);
+    ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  }
+
   TFE_Op* matmul = nullptr;
   if (func) {
     const string matmul_device = remote_func_outputs ? task2_name : "";
@@ -135,7 +146,7 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
     ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
     TFE_OpAddInput(matmul, h0_task0, status);
     ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-    TFE_OpAddInput(matmul, h1_task2, status);
+    TFE_OpAddInput(matmul, has_packed_input ? packed_handle : h1_task2, status);
     ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
   } else {
     // Handles are on task0 (local), and task2, but op is on task1.
@@ -194,6 +205,9 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
 
   TFE_DeleteTensorHandle(h0_task0);
   TFE_DeleteTensorHandle(h1_task0);
+  if (packed_handle) {
+    TFE_DeleteTensorHandle(packed_handle);
+  }
   TFE_DeleteTensorHandle(h1_task2);
   TFE_DeleteTensorHandle(retvals[0]);
   for (auto* h : handles_task0) {

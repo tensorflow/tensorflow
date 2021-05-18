@@ -46,15 +46,15 @@ class MatrixSolveOp : public XlaOpKernel {
     xla::XlaOp rhs = ctx->Input(1);
 
     // TODO(b/111271662): Using LU decomposition instead of QR should be faster.
-    auto qr = xla::QRDecomposition(matrix, /*full_matrices=*/false);
-    OP_REQUIRES_OK(ctx, qr.status());
+    xla::XlaOp q, r;
+    xla::QrExplicit(matrix, /*full_matrices=*/false, q, r);
 
-    xla::XlaOp inv = xla::TriangularSolve(
-        qr.ValueOrDie().r, xla::TransposeInMinorDims(qr.ValueOrDie().q),
-        /*left_side=*/true,
-        /*lower=*/false, /*unit_diagonal=*/false,
-        /*transpose_a=*/
-        xla::TriangularSolveOptions::NO_TRANSPOSE);
+    xla::XlaOp inv =
+        xla::TriangularSolve(r, xla::TransposeInMinorDims(q),
+                             /*left_side=*/true,
+                             /*lower=*/false, /*unit_diagonal=*/false,
+                             /*transpose_a=*/
+                             xla::TriangularSolveOptions::NO_TRANSPOSE);
 
     xla::XlaOp output =
         xla::BatchDot(inv, adjoint_, rhs,

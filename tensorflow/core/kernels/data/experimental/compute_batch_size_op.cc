@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/kernels/data/serialization_utils.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
@@ -44,13 +44,15 @@ constexpr std::array<const char*, 2> kMultipleInputDatasetOps = {
     "ZipDataset",
 };
 
-constexpr std::array<const char*, 14> kPassThroughOps = {
+constexpr std::array<const char*, 16> kPassThroughOps = {
     "AssertCardinalityDataset",
     "CacheDataset",
     "FilterDataset",
+    "FinalizeDataset",
     "Identity",
     "ModelDataset",
     "OptimizeDataset",
+    "OptionsDataset",
     "ParseExampleDataset",
     "PrefetchDataset",
     "RepeatDataset",

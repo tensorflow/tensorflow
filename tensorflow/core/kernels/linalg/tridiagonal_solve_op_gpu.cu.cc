@@ -223,12 +223,16 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
   void SolveForSizeOneOrTwo(OpKernelContext* context, const Scalar* diagonals,
                             const Scalar* rhs, Scalar* output, int m, int k) {
     const Eigen::GpuDevice& device = context->eigen_device<Eigen::GpuDevice>();
-    GpuLaunchConfig cfg = GetGpuLaunchConfig(1, device);
+    GpuLaunchConfig cfg = GetGpuLaunchConfig(
+        /*work_element_count=*/1, device, &SolveForSizeOneOrTwoKernel<Scalar>,
+        /*dynamic_shared_memory_size=*/0,
+        /*block_size_limit=*/0);
     bool* not_invertible_dev;
     cudaMalloc(&not_invertible_dev, sizeof(bool));
     TF_CHECK_OK(GpuLaunchKernel(SolveForSizeOneOrTwoKernel<Scalar>,
-                                cfg.block_count, cfg.thread_per_block, 0,
-                                device.stream(), m, diagonals, rhs, k, output,
+                                cfg.block_count, cfg.thread_per_block,
+                                /*shared_memory_size_bytes=*/0, device.stream(),
+                                m, diagonals, rhs, k, output,
                                 not_invertible_dev));
     bool not_invertible_host;
     cudaMemcpy(&not_invertible_host, not_invertible_dev, sizeof(bool),

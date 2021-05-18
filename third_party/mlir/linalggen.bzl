@@ -27,7 +27,7 @@ def genlinalg(name, linalggen, src, linalg_outs):
             srcs = [src],
             outs = [out],
             tools = [linalggen],
-            cmd = ("echo " + " ".join(base_args) + " -o $@; " + " ".join(base_args) + " -o $@"),
+            cmd = (" ".join(base_args)),
         )
 
     # List of opts that do not generate cc files.

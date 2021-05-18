@@ -50,6 +50,8 @@ class SinkConstantsToControlFlowPass
       } else if (auto if_op = llvm::dyn_cast<IfOp>(op)) {
         SinkToRegion(&if_op.true_branch());
         SinkToRegion(&if_op.false_branch());
+      } else if (auto reduce_window_op = llvm::dyn_cast<ReduceWindowOp>(op)) {
+        SinkToRegion(&reduce_window_op.body());
       } else if (auto sort_op = llvm::dyn_cast<SortOp>(op)) {
         SinkToRegion(&sort_op.comparator());
       }

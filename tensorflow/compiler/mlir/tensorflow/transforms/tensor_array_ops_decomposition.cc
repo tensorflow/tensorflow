@@ -24,13 +24,13 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace mlir {
-
 namespace {
 
 namespace cutil = TF::collection_ops_util;
@@ -68,8 +67,8 @@ using std::string;
 // shape.
 //
 struct TensorArrayOpsDecompositionPass
-    : public PassWrapper<TensorArrayOpsDecompositionPass,
-                         OperationPass<ModuleOp>> {
+    : public TF::TensorArrayOpsDecompositionPassBase<
+          TensorArrayOpsDecompositionPass> {
   void runOnOperation() override;
 };
 
@@ -108,7 +107,7 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
   auto element_shape = ta.element_shapeAttr().cast<mlir::TF::ShapeAttr>();
   if (element_shape.hasStaticShape()) {
     auto shape = element_shape.getShape();
-    // Convert int64 to int64_.
+    // Convert int64 to int64_t.
     llvm::SmallVector<int64_t, 8> dims(shape.begin(), shape.end());
     return dims;
   }
@@ -141,6 +140,20 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
           if (!t || t.getShape().empty()) return llvm::None;
           return RankedTensorType::get(t.getShape().drop_front(),
                                        t.getElementType());
+        } else if (auto gather =
+                       llvm::dyn_cast<TF::TensorArrayGatherV3Op>(user)) {
+          // Try to infer from result type of gather.
+          auto t = gather.value().getType().dyn_cast<RankedTensorType>();
+          if (t && !t.getShape().empty())
+            return RankedTensorType::get(t.getShape().drop_front(),
+                                         t.getElementType());
+          // Try to infer from `element_shape` attribute of gather.
+          auto element_shape = gather.element_shapeAttr()
+                                   .dyn_cast_or_null<mlir::TF::ShapeAttr>();
+          if (element_shape && element_shape.hasStaticShape()) {
+            return RankedTensorType::get(element_shape.getShape(),
+                                         gather.dtype());
+          }
         }
         return llvm::None;
       });
@@ -152,7 +165,7 @@ void ReplaceAllUsesWithCast(Value old_val, Value new_val) {
   if (old_val.use_empty()) return;
   auto cast_op =
       OpBuilder(old_val.getDefiningOp())
-          .create<TensorCastOp>(old_val.getLoc(), old_val.getType(), new_val);
+          .create<tensor::CastOp>(old_val.getLoc(), old_val.getType(), new_val);
   old_val.replaceAllUsesWith(cast_op);
 }
 
@@ -447,10 +460,9 @@ LogicalResult HandleTensorArrayScatterV3Op(
 void UpdateFuncType(FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
-  func.setType(FunctionType::get(
-      arg_types,
-      llvm::to_vector<8>(func.front().getTerminator()->getOperandTypes()),
-      func.getContext()));
+  func.setType(
+      FunctionType::get(func.getContext(), arg_types,
+                        func.front().getTerminator()->getOperandTypes()));
 }
 
 // Finds the accessed gradient sources for each tensor array argument.
@@ -612,7 +624,7 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
   OpBuilder builder(while_op);
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  operands, while_op.getAttrs());
+                                  operands, while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -679,7 +691,7 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
   OpBuilder builder(if_op);
   auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
                                          then_branch.getType().getResults(),
-                                         operands, if_op.getAttrs());
+                                         operands, if_op->getAttrs());
   auto ret_forwards_input = [](FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = retval.dyn_cast<BlockArgument>();
@@ -738,8 +750,8 @@ LogicalResult HandlePartitionedCallOp(
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
-        new_operands, call.getAttrs());
-    new_call.setAttr(
+        new_operands, call->getAttrs());
+    new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (const auto& entry : info.ret_forward_input) {
@@ -772,7 +784,7 @@ LogicalResult HandlePartitionedCallOp(
   if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
-    lowered_callee.setVisibility(SymbolTable::Visibility::Private);
+    lowered_callee.setPrivate();
   }
   auto grads = AccessedGradients({lowered_callee}, module);
   for (int64_t i = 0; i < lowered_callee.getNumArguments(); ++i) {
@@ -931,13 +943,10 @@ void TensorArrayOpsDecompositionPass::runOnOperation() {
   }
 }
 
-static PassRegistration<TensorArrayOpsDecompositionPass> pass(
-    "tf-tensor-array-ops-decomposition",
-    "Decompose tensor array operations into local variable operations.");
-
 }  // namespace
 
 namespace TF {
+
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass() {
   return std::make_unique<TensorArrayOpsDecompositionPass>();

@@ -13,24 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 """Correctness tests for tf.keras using DistributionStrategy."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
-
 from absl.testing import parameterized
 import numpy as np
-import six
+
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.distribute.strategy_combinations import multi_worker_mirrored_strategies
@@ -171,7 +166,7 @@ def get_data_size(data):
   if isinstance(data, (list, tuple)):
     return len(data[0])
 
-  return len(six.next(six.itervalues(data)))
+  return len(data.values())
 
 
 def get_shapes(data):
@@ -317,17 +312,14 @@ def compare_results(results_with_ds,
     default_tolerance = 1e-3
     relaxed_tolerance = 1e-3
   else:
-    default_tolerance = 1e-5
+    default_tolerance = 4e-5
     relaxed_tolerance = 1e-4
 
   def _get_compare_result_tolerance(key):
     """Returns tolerance to compare results."""
-    # TODO(b/119257215): For MirroredStrategy, weights are not exactly the same,
-    # so use larger tolerance for now. Predict should be related to weights.
-    if (isinstance(distribution,
-                   (mirrored_strategy.MirroredStrategy,
-                    mirrored_strategy.MirroredStrategyV1,
-                    distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
+    # See b/119257215 for more details. DS test run on GPU could have larger
+    # variance then test on CPU.
+    if (test_util.is_gpu_available() and
         key.startswith(('weights_1', 'weights_2', 'predict_result'))):
       return relaxed_tolerance
 
@@ -419,7 +411,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     We only provide a default implementation of this method here. If you need
     more customized way of providing input to your model, overwrite this method.
 
-    Arguments:
+    Args:
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:
@@ -526,7 +518,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     We only provide a default implementation of this method here. If you need
     more customized way of providing input to your model, overwrite this method.
 
-    Arguments:
+    Args:
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:

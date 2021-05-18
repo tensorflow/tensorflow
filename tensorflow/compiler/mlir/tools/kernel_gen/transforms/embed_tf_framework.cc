@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -42,11 +44,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
       conversion.addInputs(arg_type.index(), arg_type.value());
     }
 
-    TypeConverter type_converter;
-    if (failed(rewriter.convertRegionTypes(&func.getBody(), type_converter,
-                                           &conversion))) {
-      return failure();
-    }
+    rewriter.applySignatureConversion(&func.getBody(), conversion);
 
     // Update the signature of the function.
     rewriter.updateRootInPlace(func, [&] {
@@ -59,14 +57,14 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
 
 // Converts std.alloc to tf_framework.alloc_raw using OpKernelContextType arg of
 // the parent function.
-class AllocOpConverter : public OpConversionPattern<AllocOp> {
+class TFAllocOpConverter : public OpConversionPattern<memref::AllocOp> {
  public:
-  using OpConversionPattern<AllocOp>::OpConversionPattern;
+  using OpConversionPattern<memref::AllocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      AllocOp alloc, ArrayRef<Value> operands,
+      memref::AllocOp alloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    auto func = alloc.getParentOfType<FuncOp>();
+    auto func = alloc->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
       return failure();
     }
@@ -76,25 +74,30 @@ class AllocOpConverter : public OpConversionPattern<AllocOp> {
     }
     // Symbolic operands that bind to the symbols of the memref's layout map are
     // not supported by TFAllocOp.
-    if (alloc.getNumSymbolicOperands() != 0) {
+    if (!alloc.symbolOperands().empty()) {
       return failure();
     }
+    auto reuse_input_candidates = alloc->getAttrOfType<ArrayAttr>(
+        TFAllocOp::kReuseInputCandidatesAttrName);
+    auto reuse_output_index =
+        alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
     rewriter.replaceOpWithNewOp<TFAllocOp>(alloc, alloc.getType(), ctx,
-                                           operands);
+                                           operands, reuse_input_candidates,
+                                           reuse_output_index);
     return success();
   }
 };
 
 // Converts std.dealloc to tf_framework.dealloc_raw using OpKernelContextType
 // arg of the parent function.
-class TFDeallocOpConverter : public OpConversionPattern<DeallocOp> {
+class TFDeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
  public:
-  using OpConversionPattern<DeallocOp>::OpConversionPattern;
+  using OpConversionPattern<memref::DeallocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      DeallocOp dealloc, ArrayRef<Value> operands,
+      memref::DeallocOp dealloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    FuncOp func = dealloc.getParentOfType<FuncOp>();
+    auto func = dealloc->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
       return failure();
     }
@@ -107,19 +110,73 @@ class TFDeallocOpConverter : public OpConversionPattern<DeallocOp> {
     if (!operand_memref_type.getAffineMaps().empty()) {
       return failure();
     }
-    DeallocOp::Adaptor transformed(operands);
+    memref::DeallocOp::Adaptor transformed(operands);
     rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, ctx,
                                              transformed.memref());
     return success();
   }
 };
 
+// Converts std.assert to tf_framework.assert with using OpKernelContextType
+// arg of the parent function.
+class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
+ public:
+  using OpConversionPattern<AssertOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      AssertOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    auto func = op->getParentOfType<FuncOp>();
+    if (func.getNumArguments() == 0) {
+      return failure();
+    }
+    Value ctx = func.getArgument(0);
+    if (!ctx.getType().isa<OpKernelContextType>()) {
+      return failure();
+    }
+    Location loc = op.getLoc();
+    AssertOp::Adaptor transformed(operands, op->getAttrDictionary());
+
+    // Split the block to insert CondBr.
+    OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
+    Block *split_block = rewriter.splitBlock(
+        rewriter.getInsertionBlock(), std::next(rewriter.getInsertionPoint()));
+
+    Block *error_reporting_block =
+        rewriter.createBlock(&func.getRegion(), {}, {});
+    rewriter.create<ReportErrorOp>(loc, ctx, ErrorCode::INVALID_ARGUMENT,
+                                   transformed.msg().getValue());
+
+    SmallVector<Value, 2> null_memrefs;
+    for (auto type : func.getType().getResults()) {
+      // This can be extended to support various result types if necessary.
+      if (!type.isa<UnrankedMemRefType>()) {
+        op.emitError("only UnrankedMemRefType results are supported");
+        return failure();
+      }
+      null_memrefs.push_back(rewriter.create<NullMemRefOp>(loc, type));
+    }
+    rewriter.create<ReturnOp>(loc, null_memrefs);
+
+    rewriter.restoreInsertionPoint(ip);
+    rewriter.replaceOpWithNewOp<CondBranchOp>(
+        op, transformed.arg(), split_block, llvm::None, error_reporting_block,
+        llvm::None);
+    return success();
+  }
+};
+
 }  // namespace
 
-void PopulateEmbedTFFrameworkConversionPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns) {
-  patterns->insert<AllocOpConverter, TFDeallocOpConverter, FuncOpConverter>(
+void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
+    MLIRContext *context, RewritePatternSet *patterns) {
+  patterns->insert<TFAllocOpConverter, TFDeallocOpConverter, FuncOpConverter>(
       context);
+}
+
+void PopulateEmbedTFFrameworkAssertConversionPatterns(
+    MLIRContext *context, RewritePatternSet *patterns) {
+  patterns->insert<TFAssertOpConverter, FuncOpConverter>(context);
 }
 
 }  // namespace tf_framework

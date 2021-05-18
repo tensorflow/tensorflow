@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/mkl_threadpool.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -194,8 +193,7 @@ inline std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os,
-                                const MklTensorFormat& format) {
+inline void operator<<(std::ostream& os, const MklTensorFormat& format) {
   if (format == MklTensorFormat::FORMAT_NHWC) {
     os << "FORMAT_NHWC";
   } else if (format == MklTensorFormat::FORMAT_NCHW) {
@@ -224,16 +222,12 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
   return true;
 }
 
-inline mkldnn::stream* CreateStream(OpKernelContext* ctx,
+inline mkldnn::stream* CreateStream(MklDnnThreadPool* eigen_tp,
                                     const engine& engine) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
-  stream_attr tp_stream_attr(engine::kind::cpu);
-  if (ctx != nullptr) {
-    auto eigen_tp =
-        MklDnnThreadPoolWrapper::GetInstance().CreateThreadPoolPtr(ctx);
-    tp_stream_attr.set_threadpool(eigen_tp);
+#ifndef ENABLE_ONEDNN_OPENMP
+  if (eigen_tp != nullptr) {
     stream* tp_stream =
-        new stream(engine, stream::flags::default_flags, tp_stream_attr);
+        new stream(dnnl::threadpool_interop::make_stream(engine, eigen_tp));
     return tp_stream;
   } else {
     stream* tp_stream = new stream(engine);
@@ -242,12 +236,12 @@ inline mkldnn::stream* CreateStream(OpKernelContext* ctx,
 #else
   stream* tp_stream = new stream(engine);
   return tp_stream;
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 }
 
 class MklDnnShape {
  private:
-  typedef struct {
+  struct MklShapeData {
     // Flag to indicate if the tensor is an MKL tensor or not
     bool is_mkl_tensor_ = false;
     // Number of dimensions in Tensorflow format
@@ -259,7 +253,7 @@ class MklDnnShape {
     mkldnn_memory_desc_t mkl_md_;
     /// TF dimension corresponding to this MKL dimension
     mkldnn_dims_t map_;
-  } MklShapeData;
+  };
   MklShapeData data_;
 
   typedef std::remove_extent<mkldnn_dims_t>::type mkldnn_dim_t;
@@ -475,7 +469,6 @@ class MklDnnShape {
     } else {
       auto format_tag =
           MklTensorFormatToMklDnnDataFormat(data_.tf_data_format_);
-      DCHECK_NE(format_tag, memory::format_tag::undef);
       return memory::desc(dims, data_.T_, format_tag);
     }
   }
@@ -613,12 +606,18 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
                              OpKernelContext* context = nullptr) {
   DCHECK(net_args);
   DCHECK_EQ(net.size(), net_args->size());
-  stream* cpu_stream = CreateStream(context, cpu_engine);
+  std::unique_ptr<stream> cpu_stream;
+  MklDnnThreadPool eigen_tp;
+  if (context != nullptr) {
+    eigen_tp = MklDnnThreadPool(context);
+    cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
+  } else {
+    cpu_stream.reset(CreateStream(nullptr, cpu_engine));
+  }
   for (size_t i = 0; i < net.size(); ++i) {
     net.at(i).execute(*cpu_stream, net_args->at(i));
   }
   cpu_stream->wait();
-  delete cpu_stream;
 }
 template <typename T>
 inline Status ConvertMklToTF(OpKernelContext* context,
@@ -994,11 +993,7 @@ memory::data_type MklDnnType<qint32>() {
 }
 template <>
 memory::data_type MklDnnType<bfloat16>() {
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
   return memory::data_type::bf16;
-#else
-  return memory::data_type::f32;
-#endif
 }
 
 // Map MklTensorFormat to MKL-DNN format tag
@@ -1388,11 +1383,11 @@ class MklDnnData {
                                   std::shared_ptr<stream> t_stream = nullptr) {
     CHECK_NOTNULL(user_memory_);
     CHECK_NOTNULL(data_buffer);
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     user_memory_->set_data_handle(data_buffer, *t_stream);
 #else
     user_memory_->set_data_handle(data_buffer);
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
   }
 
   /// Set function for data buffer of user memory primitive.
@@ -1496,7 +1491,13 @@ class MklDnnData {
       reorder_memory_ = new memory(op_md, engine);
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::shared_ptr<stream> cpu_stream;
-      cpu_stream.reset(CreateStream(context, prim->GetEngine()));
+      MklDnnThreadPool eigen_tp;
+      if (context != nullptr) {
+        eigen_tp = MklDnnThreadPool(context);
+        cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
+      } else {
+        cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
+      }
       std::vector<primitive> net;
       net.push_back(*(prim->GetPrimitive()));
       std::vector<MemoryArgsMap> net_args;
@@ -1557,7 +1558,13 @@ class MklDnnData {
       reorder_memory_ = new memory(op_md, engine, reorder_data_handle);
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::shared_ptr<stream> cpu_stream;
-      cpu_stream.reset(CreateStream(context, prim->GetEngine()));
+      MklDnnThreadPool eigen_tp;
+      if (context != nullptr) {
+        eigen_tp = MklDnnThreadPool(context);
+        cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
+      } else {
+        cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
+      }
       std::vector<primitive> net;
       net.push_back(*(prim->GetPrimitive()));
       std::vector<MemoryArgsMap> net_args;
@@ -1663,7 +1670,13 @@ class MklDnnData {
     net_args.push_back(
         {{MKLDNN_ARG_FROM, *reorder_memory_}, {MKLDNN_ARG_TO, *user_memory_}});
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, prim->GetEngine()));
+    MklDnnThreadPool eigen_tp;
+    if (ctx != nullptr) {
+      eigen_tp = MklDnnThreadPool(ctx);
+      cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
+    } else {
+      cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
+    }
     execute_primitives(net, cpu_stream, net_args);
   }
 };
@@ -1849,6 +1862,12 @@ class FactoryKeyCreator {
     Append(StringPiece(buffer, sizeof(T)));
   }
 
+  // generalisation to handle pointers
+  void AddAsKey(const void* data) {
+    auto buffer = reinterpret_cast<const char*>(&data);
+    Append(StringPiece(buffer, sizeof(data)));
+  }
+
   string GetKey() { return key_; }
 
  private:
@@ -1924,7 +1943,6 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     FactoryKeyCreator key_creator;
     auto const& from_desc = from->get_desc().data;
     auto const& to_desc = to->get_desc().data;
-    const int kIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
     auto from_strides = from_desc.format_desc.blocking.strides;
@@ -2015,7 +2033,6 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 
 #define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 #define REGISTER_TEST_BFLOAT16(TEST) \
   REGISTER_TEST(TEST, DT_BFLOAT16, BFloat16Input);
 
@@ -2024,7 +2041,6 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
   REGISTER_TEST_BFLOAT16(TEST);
 #else
 #define REGISTER_TEST_ALL_TYPES(TEST) REGISTER_TEST_FLOAT32(TEST);
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_

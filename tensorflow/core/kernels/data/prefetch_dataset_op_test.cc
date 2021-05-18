@@ -12,7 +12,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -60,7 +60,8 @@ class PrefetchDatasetParams : public DatasetParams {
     attr_vector->emplace_back(PrefetchDatasetOp::kSlackPeriod, slack_period_);
     attr_vector->emplace_back(PrefetchDatasetOp::kLegacyAutotune,
                               legacy_autotune_);
-    attr_vector->emplace_back("buffer_size_min", buffer_size_min_);
+    attr_vector->emplace_back(PrefetchDatasetOp::kBufferSizeMin,
+                              buffer_size_min_);
     return Status::OK();
   }
 

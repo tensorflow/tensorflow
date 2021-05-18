@@ -36,16 +36,17 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gen_list_ops
@@ -83,22 +84,45 @@ def _variant_handle_data(t):
   handle_data = resource_variable_ops.get_eager_safe_handle_data(t)
   if not handle_data.is_set:
     return None
-  if len(handle_data.shape_and_type) != 1:
-    raise ValueError("Expected handle data of length 1, got {!r} of length {}"
-                     .format(handle_data, len(handle_data.shape_and_type)))
-  return handle_data.shape_and_type[0]
+  return handle_data.shape_and_type
 
 
-def _is_tensor_list(t):
-  """True if `t` is a TensorList, False if it isn't, None if unknown."""
+def _is_variant_with_internal_stacking(t):
+  """Identifies variant tensors which pfor always maintains as scalars.
+
+  For these, the pfor tensor is recorded as "stacked" if the content of the
+  variant tensor (e.g. the elements of a TensorList) are all stacked.
+
+  Args:
+    t: A tensor to identify.
+  Returns:
+    True if `t` is a TensorList/Optional, False not, None if unknown.
+  """
   if t.dtype != dtypes.variant:
     return False
-  shape_and_type = _variant_handle_data(t)
-  if shape_and_type is None:
-    # TODO(b/169968286): Identify all variant tensors (e.g. optionals) and we
-    # can make this an error instead of assuming TensorLists have handle data.
-    return None  # Presumed not a TensorList
-  return shape_and_type.specialized_type == types_pb2.ST_TENSOR_LIST
+  shapes_and_types = _variant_handle_data(t)
+  if shapes_and_types is None or not shapes_and_types:
+    # TODO(b/169968286): Identify all variant tensors (e.g. maps) and we can
+    # make this an error instead of assuming TensorLists have handle data.
+    return None  # Presumed not a TensorList/Optional
+  return (shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST or
+          shapes_and_types[0].specialized_type == types_pb2.ST_OPTIONAL)
+
+
+def _parse_variant_shapes_and_types(t):
+  """Extracts shape and dtype information from a variant tensor `t`."""
+  shapes_and_types = _variant_handle_data(t)
+  if shapes_and_types is None or not shapes_and_types:
+    raise ValueError("Required handle data not set for {!r}".format(t))
+  if shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST:
+    return shapes_and_types
+  else:
+    if shapes_and_types[0].specialized_type != types_pb2.ST_INVALID:
+      return shapes_and_types
+    else:
+      raise ValueError(
+          "Attempted to stack a variant-dtype tensor with no type set ({!r})"
+          .format(t))
 
 
 def _stack(t, length):
@@ -109,23 +133,19 @@ def _stack(t, length):
   # suitable since operations on stacked handles may expect a vectorized version
   # of the variant.
   if t.dtype == dtypes.variant:
-    shape_and_type = _variant_handle_data(t)
-    if shape_and_type is None:
-      raise ValueError("Required handle data not set for {!r}".format(t))
-    if shape_and_type.specialized_type == types_pb2.ST_TENSOR_LIST:
+    shapes_and_types = _parse_variant_shapes_and_types(t)
+    if shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST:
+      if len(shapes_and_types) != 1:
+        raise ValueError(
+            "Expected handle data of length 1, got {!r} of length {}"
+            .format(shapes_and_types, len(shapes_and_types)))
       return wrap(
-          _stack_tensor_list(t, shape_and_type.dtype, length),
+          _stack_tensor_list(t, shapes_and_types[0].dtype, length),
           True)
     else:
-      if shape_and_type.specialized_type != types_pb2.ST_INVALID:
-        raise ValueError(
-            ("Attempted to stack an unhandled variant-dtype tensor of "
-             "type {!r} ({!r})").format(
-                 shape_and_type.specialized_type, t))
-      else:
-        raise ValueError(
-            "Attempted to stack a variant-dtype tensor with no type set ({!r})"
-            .format(t))
+      raise ValueError(
+          ("Attempted to stack an unhandled variant-dtype tensor of "
+           "type {!r} ({!r})").format(shapes_and_types[0].specialized_type, t))
   ones = array_ops.ones_like(array_ops.shape(t))
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
@@ -1052,7 +1072,7 @@ def _wrap_and_tile_variants(tensor, length):
 
 def _fallback_converter(pfor_input, warn=True):
   if warn:
-    logging.warn("Using a while_loop for converting %s", pfor_input.op_type)
+    logging.warning("Using a while_loop for converting %s", pfor_input.op_type)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -1098,6 +1118,8 @@ class PForConfig(object):
 
   def _set_iters(self, iters):
     """Set number of pfor iterations."""
+    if isinstance(iters, ops.Tensor):
+      iters = tensor_util.constant_value(iters)
     self._maybe_iters = iters
 
   def reduce(self, fn, *args):
@@ -1407,7 +1429,7 @@ class PFor(object):
 
   def _convert_reduction(self, y):
     # Handle reductions.
-    if self._pfor_config is None:
+    if self._pfor_config is None or isinstance(y, ops.Operation):
       return None
     reduction = self._pfor_config._lookup_reduction(y)
     if reduction is None:
@@ -1629,7 +1651,7 @@ class PFor(object):
                 else:
                   batch_dim = tensor_shape.TensorShape(loop_len)
                 output_shape = batch_dim.concatenate(output_shape)
-              if _is_tensor_list(new_output.t):
+              if _is_variant_with_internal_stacking(new_output.t):
                 new_output.t.set_shape([])
               else:
                 new_output.t.set_shape(output_shape)
@@ -1972,7 +1994,7 @@ def _convert_conv2d_backprop_filter(pfor_input):
   dilations = pfor_input.get_attr("dilations")
   if inputs_stacked:
     # TODO(agarwal): Implement this efficiently.
-    logging.warn("Conv2DBackpropFilter uses a while_loop. Fix that!")
+    logging.warning("Conv2DBackpropFilter uses a while_loop. Fix that!")
 
     def while_body(i, ta):
       inp_i = inputs[i, ...]
@@ -2516,8 +2538,8 @@ def _convert_matmul(pfor_input):
       # TODO(agarwal): This check can be done inside Transpose kernel.
       b_shape = array_ops.shape(b)
       min_dim = math_ops.minimum(b_shape[0], b_shape[1])
-      perm = control_flow_ops.cond(
-          math_ops.equal(min_dim, 1), lambda: [0, 1, 2], lambda: [1, 0, 2])
+      perm = array_ops.where(
+          math_ops.equal(min_dim, 1), [0, 1, 2], [1, 0, 2])
       new_shape = array_ops.stack([b_shape[1], b_shape[0], b_shape[2]])
       b = array_ops.transpose(b, perm)
       b = array_ops.reshape(b, new_shape)
@@ -2762,121 +2784,133 @@ def _convert_cast(pfor_input):
   return wrap(math_ops.cast(inp, dtype), True)
 
 
-@RegisterPForWithArgs("Abs", math_ops.abs)
-@RegisterPForWithArgs("Acos", math_ops.acos)
-@RegisterPForWithArgs("Acosh", math_ops.acosh)
-@RegisterPForWithArgs("Add", math_ops.add)
-@RegisterPForWithArgs("AddV2", math_ops.add_v2)
-@RegisterPForWithArgs("Angle", math_ops.angle)
-@RegisterPForWithArgs("Asin", math_ops.asin)
-@RegisterPForWithArgs("Asinh", math_ops.asinh)
-@RegisterPForWithArgs("Atan", math_ops.atan)
-@RegisterPForWithArgs("Atan2", math_ops.atan2)
-@RegisterPForWithArgs("Atanh", math_ops.atanh)
-@RegisterPForWithArgs("BesselI0", special_math_ops.bessel_i0)
-@RegisterPForWithArgs("BesselI1", special_math_ops.bessel_i1)
-@RegisterPForWithArgs("BesselI0e", special_math_ops.bessel_i0e)
-@RegisterPForWithArgs("BesselI1e", special_math_ops.bessel_i1e)
-@RegisterPForWithArgs("BesselK0", special_math_ops.bessel_k0)
-@RegisterPForWithArgs("BesselK1", special_math_ops.bessel_k1)
-@RegisterPForWithArgs("BesselK0e", special_math_ops.bessel_k0e)
-@RegisterPForWithArgs("BesselK1e", special_math_ops.bessel_k1e)
-@RegisterPForWithArgs("BesselJ0", special_math_ops.bessel_j0)
-@RegisterPForWithArgs("BesselJ1", special_math_ops.bessel_j1)
-@RegisterPForWithArgs("BesselY0", special_math_ops.bessel_y0)
-@RegisterPForWithArgs("BesselY1", special_math_ops.bessel_y1)
-@RegisterPForWithArgs("BitwiseAnd", bitwise_ops.bitwise_and)
-@RegisterPForWithArgs("BitwiseOr", bitwise_ops.bitwise_or)
-@RegisterPForWithArgs("BitwiseXor", bitwise_ops.bitwise_xor)
-@RegisterPForWithArgs("Ceil", math_ops.ceil)
-@RegisterPForWithArgs("Complex", math_ops.complex)
-@RegisterPForWithArgs("ComplexAbs", math_ops.complex_abs)
-@RegisterPForWithArgs("Conj", math_ops.conj)
-@RegisterPForWithArgs("Cos", math_ops.cos)
-@RegisterPForWithArgs("Cosh", math_ops.cosh)
-@RegisterPForWithArgs("Dawsn", special_math_ops.dawsn)
-@RegisterPForWithArgs("Digamma", math_ops.digamma)
-@RegisterPForWithArgs("Div", math_ops.div)
-@RegisterPForWithArgs("DivNoNan", math_ops.div_no_nan)
-@RegisterPForWithArgs("Elu", nn_ops.elu)
-@RegisterPForWithArgs("Erf", math_ops.erf)
-@RegisterPForWithArgs("Erfc", math_ops.erfc)
-@RegisterPForWithArgs("Erfinv", math_ops.erfinv)
-@RegisterPForWithArgs("Exp", math_ops.exp)
-@RegisterPForWithArgs("Expint", special_math_ops.expint)
-@RegisterPForWithArgs("Expm1", math_ops.expm1)
-@RegisterPForWithArgs("Floor", math_ops.floor)
-@RegisterPForWithArgs("FloorDiv", math_ops.floor_div)
-@RegisterPForWithArgs("FloorMod", math_ops.floor_mod)
-@RegisterPForWithArgs("FresnelCos", special_math_ops.fresnel_cos)
-@RegisterPForWithArgs("FresnelSin", special_math_ops.fresnel_sin)
-@RegisterPForWithArgs("Greater", math_ops.greater)
-@RegisterPForWithArgs("GreaterEqual", math_ops.greater_equal)
-@RegisterPForWithArgs("Igamma", math_ops.igamma)
-@RegisterPForWithArgs("IgammaGradA", math_ops.igamma_grad_a)
-@RegisterPForWithArgs("Igammac", math_ops.igammac)
-@RegisterPForWithArgs("Imag", math_ops.imag)
-@RegisterPForWithArgs("Inv", math_ops.inv)
-@RegisterPForWithArgs("Invert", bitwise_ops.invert)
-@RegisterPForWithArgs("IsFinite", math_ops.is_finite)
-@RegisterPForWithArgs("IsInf", math_ops.is_inf)
-@RegisterPForWithArgs("IsNan", math_ops.is_nan)
-@RegisterPForWithArgs("LeftShift", bitwise_ops.left_shift)
-@RegisterPForWithArgs("Less", math_ops.less)
-@RegisterPForWithArgs("LessEqual", math_ops.less_equal)
-@RegisterPForWithArgs("Lgamma", math_ops.lgamma)
-@RegisterPForWithArgs("Log", math_ops.log)
-@RegisterPForWithArgs("Log1p", math_ops.log1p)
-@RegisterPForWithArgs("LogicalAnd", math_ops.logical_and)
-@RegisterPForWithArgs("LogicalNot", math_ops.logical_not)
-@RegisterPForWithArgs("LogicalOr", math_ops.logical_or)
-@RegisterPForWithArgs("LogicalXor", math_ops.logical_xor)
-@RegisterPForWithArgs("Maximum", math_ops.maximum)
-@RegisterPForWithArgs("Minimum", math_ops.minimum)
-@RegisterPForWithArgs("Mod", math_ops.mod)
-@RegisterPForWithArgs("Mul", math_ops.multiply)
-@RegisterPForWithArgs("MulNoNan", math_ops.mul_no_nan)
-@RegisterPForWithArgs("Ndtri", math_ops.ndtri)
-@RegisterPForWithArgs("Neg", math_ops.negative)
-@RegisterPForWithArgs("Polygamma", math_ops.polygamma)
-@RegisterPForWithArgs("Pow", math_ops.pow)
-@RegisterPForWithArgs("Real", math_ops.real)
-@RegisterPForWithArgs("RealDiv", math_ops.divide)
-@RegisterPForWithArgs("Reciprocal", math_ops.reciprocal)
-@RegisterPForWithArgs("Relu", nn_ops.relu)
-@RegisterPForWithArgs("Relu6", nn_ops.relu6)
-@RegisterPForWithArgs("RightShift", bitwise_ops.right_shift)
-@RegisterPForWithArgs("Rint", math_ops.rint)
-@RegisterPForWithArgs("Round", math_ops.round)
-@RegisterPForWithArgs("Rsqrt", math_ops.rsqrt)
-@RegisterPForWithArgs("Selu", nn_ops.selu)
-@RegisterPForWithArgs("Sigmoid", math_ops.sigmoid)
-@RegisterPForWithArgs("Sign", math_ops.sign)
-@RegisterPForWithArgs("Sin", math_ops.sin)
-@RegisterPForWithArgs("Sinh", math_ops.sinh)
-@RegisterPForWithArgs("Softplus", nn_ops.softplus)
-@RegisterPForWithArgs("Softsign", nn_ops.softsign)
-@RegisterPForWithArgs("Spence", special_math_ops.spence)
-@RegisterPForWithArgs("Sqrt", math_ops.sqrt)
-@RegisterPForWithArgs("Square", math_ops.square)
-@RegisterPForWithArgs("SquaredDifference", math_ops.squared_difference)
-@RegisterPForWithArgs("Sub", math_ops.subtract)
-@RegisterPForWithArgs("Tan", math_ops.tan)
-@RegisterPForWithArgs("Tanh", math_ops.tanh)
-@RegisterPForWithArgs("TruncateDiv", math_ops.truncate_div)
-@RegisterPForWithArgs("TruncateMod", math_ops.truncate_mod)
-@RegisterPForWithArgs("Xdivy", math_ops.xdivy)
-@RegisterPForWithArgs("Xlogy", math_ops.xlogy)
-@RegisterPForWithArgs("Xlog1py", math_ops.xlog1py)
-@RegisterPForWithArgs("Zeta", math_ops.zeta)
-def _convert_cwise(pfor_input, op_type, op_func):
-  # Note that ops handled here do not have attributes except those listed below
-  # and hence don't need extra arguments passed to the cwise_op call below.
-  for attr in pfor_input.op.node_def.attr.keys():
-    assert attr in [u"T", u"Tout", u"_xla_compile_id"], (op_type, attr)
+@RegisterPFor("Abs")
+@RegisterPFor("Acos")
+@RegisterPFor("Acosh")
+@RegisterPFor("Add")
+@RegisterPFor("AddV2")
+@RegisterPFor("Angle")
+@RegisterPFor("Asin")
+@RegisterPFor("Asinh")
+@RegisterPFor("Atan")
+@RegisterPFor("Atan2")
+@RegisterPFor("Atanh")
+@RegisterPFor("BesselI0")
+@RegisterPFor("BesselI1")
+@RegisterPFor("BesselI0e")
+@RegisterPFor("BesselI1e")
+@RegisterPFor("BesselK0")
+@RegisterPFor("BesselK1")
+@RegisterPFor("BesselK0e")
+@RegisterPFor("BesselK1e")
+@RegisterPFor("BesselJ0")
+@RegisterPFor("BesselJ1")
+@RegisterPFor("BesselY0")
+@RegisterPFor("BesselY1")
+@RegisterPFor("BitwiseAnd")
+@RegisterPFor("BitwiseOr")
+@RegisterPFor("BitwiseXor")
+@RegisterPFor("Ceil")
+@RegisterPFor("Complex")
+@RegisterPFor("ComplexAbs")
+@RegisterPFor("Conj")
+@RegisterPFor("Cos")
+@RegisterPFor("Cosh")
+@RegisterPFor("Dawsn")
+@RegisterPFor("Digamma")
+@RegisterPFor("Div")
+@RegisterPFor("DivNoNan")
+@RegisterPFor("Elu")
+@RegisterPFor("Erf")
+@RegisterPFor("Erfc")
+@RegisterPFor("Erfinv")
+@RegisterPFor("Exp")
+@RegisterPFor("Expint")
+@RegisterPFor("Expm1")
+@RegisterPFor("Floor")
+@RegisterPFor("FloorDiv")
+@RegisterPFor("FloorMod")
+@RegisterPFor("FresnelCos")
+@RegisterPFor("FresnelSin")
+@RegisterPFor("Greater")
+@RegisterPFor("GreaterEqual")
+@RegisterPFor("Igamma")
+@RegisterPFor("IgammaGradA")
+@RegisterPFor("Igammac")
+@RegisterPFor("Imag")
+@RegisterPFor("Inv")
+@RegisterPFor("Invert")
+@RegisterPFor("IsFinite")
+@RegisterPFor("IsInf")
+@RegisterPFor("IsNan")
+@RegisterPFor("LeftShift")
+@RegisterPFor("Less")
+@RegisterPFor("LessEqual")
+@RegisterPFor("Lgamma")
+@RegisterPFor("Log")
+@RegisterPFor("Log1p")
+@RegisterPFor("LogicalAnd")
+@RegisterPFor("LogicalNot")
+@RegisterPFor("LogicalOr")
+@RegisterPFor("LogicalXor")
+@RegisterPFor("Maximum")
+@RegisterPFor("Minimum")
+@RegisterPFor("Mod")
+@RegisterPFor("Mul")
+@RegisterPFor("MulNoNan")
+@RegisterPFor("Ndtri")
+@RegisterPFor("Neg")
+@RegisterPFor("Polygamma")
+@RegisterPFor("Pow")
+@RegisterPFor("Real")
+@RegisterPFor("RealDiv")
+@RegisterPFor("Reciprocal")
+@RegisterPFor("Relu")
+@RegisterPFor("Relu6")
+@RegisterPFor("RightShift")
+@RegisterPFor("Rint")
+@RegisterPFor("Round")
+@RegisterPFor("Rsqrt")
+@RegisterPFor("Selu")
+@RegisterPFor("Sigmoid")
+@RegisterPFor("Sign")
+@RegisterPFor("Sin")
+@RegisterPFor("Sinh")
+@RegisterPFor("Softplus")
+@RegisterPFor("Softsign")
+@RegisterPFor("Spence")
+@RegisterPFor("Sqrt")
+@RegisterPFor("Square")
+@RegisterPFor("SquaredDifference")
+@RegisterPFor("Sub")
+@RegisterPFor("Tan")
+@RegisterPFor("Tanh")
+@RegisterPFor("TruncateDiv")
+@RegisterPFor("TruncateMod")
+@RegisterPFor("Xdivy")
+@RegisterPFor("Xlogy")
+@RegisterPFor("Xlog1py")
+@RegisterPFor("Zeta")
+def _convert_cwise(pfor_input):
   if pfor_input.num_inputs > 1:
     pfor_input.expanddim_inputs_for_broadcast()
-  return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
+
+  out = _create_op(
+      pfor_input.op_type, [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
+  assert len(out) == 1
+  out = out[0]
+
+  op_output = wrap(out, True)
+  return op_output
+
+
+@RegisterPFor("XlaSharding")
+def _convert_xla_sharding(pfor_input):
+  t = pfor_input.stacked_input(0)
+  sharding = pfor_input.get_attr("sharding")
+  return wrap(xla.sharding(t, sharding=sharding), True)
 
 
 @RegisterPFor("LeakyRelu")
@@ -3013,14 +3047,14 @@ def _convert_select(pfor_input):
   t = pfor_input.stacked_input(1)
   e = pfor_input.stacked_input(2)
   cond_rank = array_ops.rank(cond)
-  cond, t, e = control_flow_ops.cond(
+  cond, t, e = smart_cond.smart_cond(
       cond_rank > 1, lambda: _inputs_with_flattening(pfor_input, [0, 1, 2]),
       lambda: [cond, t, e])
   outputs = _create_op(
       pfor_input.op_type, [cond, t, e], [x.dtype for x in pfor_input.outputs],
       attrs=pfor_input.op.node_def.attr).outputs
   n = pfor_input.pfor.loop_len_vector
-  out = control_flow_ops.cond(cond_rank > 1,
+  out = smart_cond.smart_cond(cond_rank > 1,
                               lambda: _unflatten_first_dim(outputs[0], n),
                               lambda: outputs[0])
   return [wrap(out, True) for x in outputs]
@@ -3159,15 +3193,17 @@ def _convert_stateless_multinomial(pfor_input):
 @RegisterPForWithArgs("XlaEinsum")
 @RegisterPForWithArgs("Einsum")
 def _convert_einsum(pfor_input, op_type):
-  first_input, first_input_stacked, _ = pfor_input.input(0)
-  second_input, second_input_stacked, _ = pfor_input.input(1)
+  # Einsum may have either 1 or 2 inputs.
+  inputs, input_stacked, _ = zip(*[
+      pfor_input.input(i)
+      for i in range(pfor_input.num_inputs)])
 
   # Parse the einsum equation.
   equation = pfor_input.get_attr("equation").decode("utf-8")
   input_expr, output_expr = equation.split("->")
-  input_a_expr, input_b_expr = input_expr.split(",")
+  input_exprs = input_expr.split(",")
 
-  # pick a placeholder symbol to use for the new axis
+  # Pick a placeholder symbol to use for the new axis.
   chosen_symbol = None
   for s in string.ascii_letters:
     if s in equation:
@@ -3179,19 +3215,22 @@ def _convert_einsum(pfor_input, op_type):
   if chosen_symbol is None:
     raise ValueError("Could not figure out what symbol to use for new axis.")
 
-  assert first_input_stacked or second_input_stacked
-  if first_input_stacked:
-    input_a_expr = "{}{}".format(chosen_symbol, input_a_expr)
-  if second_input_stacked:
-    input_b_expr = "{}{}".format(chosen_symbol, input_b_expr)
+  assert any(input_stacked)
+  for i in range(len(inputs)):
+    if input_stacked[i]:
+      input_exprs[i] = "{}{}".format(chosen_symbol, input_exprs[i])
   output_expr = "{}{}".format(chosen_symbol, output_expr)
 
-  new_equation = "{},{}->{}".format(input_a_expr, input_b_expr, output_expr)
+  new_equation = "{}->{}".format(",".join(input_exprs), output_expr)
+
   if op_type == "XlaEinsum":
-    result = xla.einsum(equation=new_equation, a=first_input, b=second_input)
+    if len(inputs) == 1:
+      result = xla.einsum(equation=new_equation, a=inputs[0])
+    else:
+      result = xla.einsum(equation=new_equation, a=inputs[0], b=inputs[1])
   else:
     assert op_type == "Einsum"
-    result = special_math_ops.einsum(new_equation, first_input, second_input)
+    result = special_math_ops.einsum(new_equation, *inputs)
 
   return wrap(result, True)
 
@@ -3602,7 +3641,7 @@ def _stack_tensor_list_shape(shape, first_dim):
 
 def _tile_variant_with_length(t, length):
   """stacks `t` `length` times."""
-  if _is_tensor_list(t):
+  if _is_variant_with_internal_stacking(t):
     # The content of TensorLists is vectorized, not the variant itself.
     return t
   original_tensor = t
@@ -3622,14 +3661,39 @@ def _tile_variant(t, pfor_input):
 
 
 def _untile_variant(t):
-  if _is_tensor_list(t):
+  if _is_variant_with_internal_stacking(t):
     # The content of TensorLists is vectorized, not the variant itself.
     if not t.shape.is_compatible_with([]):
       raise AssertionError(
-          "Unexpectedly saw a TensorList with non-scalar shape: {!r}"
-          .format(t))
+          ("Unexpectedly saw a vectorized variant (e.g. TensorList) with "
+           "non-scalar shape: {!r}").format(t))
     return t
   return array_ops.gather(t, 0)
+
+
+@RegisterPFor("OptionalFromValue")
+def _convert_optional_from_value(pfor_input):
+  pfor_input.stack_inputs()
+  return wrap(
+      gen_dataset_ops.optional_from_value([x.t for x in pfor_input.inputs]),
+      True)
+
+
+@RegisterPFor("OptionalGetValue")
+def _convert_optional_get_value(pfor_input):
+  handle = pfor_input.stacked_input(0)
+  output_types = pfor_input.get_attr("output_types")
+  original_output_shapes = pfor_input.get_attr("output_shapes")
+  output_shapes = []
+  for shape in original_output_shapes:
+    shape = tensor_shape.TensorShape(shape)
+    loop_len_shape = tensor_shape.TensorShape(
+        [tensor_util.constant_value(pfor_input.pfor.loop_len_vector)])
+    shape = loop_len_shape.concatenate(shape)
+    output_shapes.append(shape.as_proto())
+  results = gen_dataset_ops.optional_get_value(handle, output_types,
+                                               output_shapes)
+  return [wrap(t, True) for t in results]
 
 
 @RegisterPFor("TensorListReserve")
@@ -4275,7 +4339,7 @@ class WhileV2(object):
       shape = shape.merge_with(output_shapes[i])
       pfor_input = self._pfor_input.input(i)
       if pfor_input.is_stacked:
-        if _is_tensor_list(pfor_input.t):
+        if _is_variant_with_internal_stacking(pfor_input.t):
           shape = tensor_shape.TensorShape([]).concatenate(shape)
         else:
           shape = tensor_shape.TensorShape([None]).concatenate(shape)

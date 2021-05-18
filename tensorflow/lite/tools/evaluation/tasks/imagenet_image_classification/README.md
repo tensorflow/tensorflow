@@ -97,6 +97,9 @@ If there is any conflict (for example, `num_threads` vs
 `num_interpreter_threads` here), the parameters of this
 script are given precedence.
 
+Note, one could specify `--help` when launching the binary to see the full list
+of supported arguments.
+
 ## Downloading ILSVRC
 
 In order to use this tool to run evaluation on the full 50K ImageNet dataset,

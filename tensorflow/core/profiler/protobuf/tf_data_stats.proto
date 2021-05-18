@@ -45,6 +45,8 @@ message IteratorMetadata {
 message InputPipelineStat {
   // Id of the blocking iterator with the longest self time.
   int64 bottleneck_iterator_id = 2;
+  // Latency of the bottleneck iterator.
+  int64 bottleneck_iterator_latency_ps = 3;
   // Stats per iterator.
   map<int64, IteratorStat> iterator_stats = 1;
 }
@@ -101,6 +103,8 @@ message TfDataBottleneckAnalysis {
   string iterator_name = 4;
   // Long name of the bottleneck iterator.
   string iterator_long_name = 5;
+  // Latency of the bottleneck iterator.
+  int64 iterator_latency_ps = 7;
   // Suggestion to resolve the bottleneck.
   string suggestion = 6;
 }
@@ -112,7 +116,7 @@ message CombinedTfDataStats {
   // Summary of the analysis.
   string summary = 4;
   // Bottleneck analysis result.
-  TfDataBottleneckAnalysis bottleneck_analysis = 1;
+  repeated TfDataBottleneckAnalysis bottleneck_analysis = 1;
   // TfDataStats per host.
   map<string, TfDataStats> tf_data_stats = 2;
 }

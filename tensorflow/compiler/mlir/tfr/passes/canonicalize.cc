@@ -151,9 +151,21 @@ LogicalResult SimplifySCFIfOp::InlineRegion(Location loc,
 
 }  // namespace
 
-void populateSCFOpsCanonicalizationPatterns(OwningRewritePatternList &results,
-                                            MLIRContext *context) {
-  results.insert<UnrollSCFForOp, SimplifySCFIfOp>(context);
+void populateCanonicalizationPatterns(FuncOp func,
+                                      OwningRewritePatternList &patterns) {
+  MLIRContext *context = func.getContext();
+  mlir::Dialect *tf = context->getLoadedDialect<mlir::TF::TensorFlowDialect>();
+  // Load all official canonicalization patterns. Here we skip the
+  // canonicalization of the ops in the tf dialect, because they couldn't
+  // propagate the attributes correctly. These optimization will be played by
+  // bridge.
+  func->walk([&](Operation *op) {
+    if (op->getDialect() != tf) {
+      op->getAbstractOperation()->getCanonicalizationPatterns(patterns,
+                                                              context);
+    }
+  });
+  patterns.insert<UnrollSCFForOp, SimplifySCFIfOp>(context);
 }
 
 }  // namespace TFR

@@ -20,6 +20,8 @@ from __future__ import print_function
 import os
 import threading
 
+from absl.testing import parameterized
+
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -31,7 +33,9 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
@@ -119,7 +123,7 @@ class _VirtualDeviceTestCase(test.TestCase):
     self.assertIn(self.device_type + ":1", self.device.components[1])
 
 
-class ParallelDeviceTests(_VirtualDeviceTestCase):
+class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
 
   def test_register_parallel_device(self):
     with self.device:
@@ -132,6 +136,21 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
+  def test_string_representation(self):
+    x = self.device.pack(
+        [constant_op.constant([5., 6.]),
+         constant_op.constant([6., 7.])])
+    parallel_str = str(x)
+    self.assertIn("5", parallel_str)
+    self.assertIn("7", parallel_str)
+    self.assertIn(self.device_type + ":0", parallel_str)
+    self.assertIn(self.device_type + ":1", parallel_str)
+    parallel_repr = repr(x)
+    self.assertIn("5", parallel_repr)
+    self.assertIn("7", parallel_repr)
+    self.assertIn(self.device_type + ":0", parallel_repr)
+    self.assertIn(self.device_type + ":1", parallel_repr)
+
   def test_device_id(self):
     device_ids = self.device.unpack(self.device.device_ids)
     self.assertAllClose([0, 1], device_ids)
@@ -139,6 +158,26 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     # Currently backing_device is CPU.
     self.assertIn(self.device.components[0], device_ids[0].device)
     self.assertIn(self.device.components[1], device_ids[1].device)
+
+  def test_zeros(self):
+    with self.device:
+      x = array_ops.zeros([array_ops.identity(constant_op.constant(10))])
+    for component in self.device.unpack(x):
+      self.assertAllClose([0.] * 10, component)
+
+  def test_generator(self):
+    with self.device:
+      g_same = stateful_random_ops.Generator.from_seed(0)
+      g_different = stateful_random_ops.Generator.from_seed(
+          self.device.device_ids)
+      same = g_same.normal([10])
+      different = g_different.normal([10])
+    same_unpacked = self.device.unpack(same)
+    different_unpacked = self.device.unpack(different)
+    for same_component, different_component in zip(same_unpacked[1:],
+                                                   different_unpacked[1:]):
+      self.assertAllClose(same_component, same_unpacked[0])
+      self.assertNotAllClose(different_component, different_unpacked[0])
 
   def test_collective_reduce(self):
     if self.device_type == "TPU":
@@ -190,6 +229,47 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     finally:
       context._reset_context()
       config.set_synchronous_execution(previous)
+
+  @parameterized.named_parameters(
+      [("RunFunctionsEagerly", True),
+       ("", False)])
+  def test_cond(self, run_functions_eagerly):
+    try:
+      def_function.run_functions_eagerly(run_functions_eagerly)
+      with self.device:
+        pred = self.device.pack([True, False])
+        capture = self.device.pack([[1.], [2.]])
+        result = control_flow_ops.cond(
+            pred,
+            def_function.function(lambda: capture * 2.),
+            def_function.function(lambda: capture * 4.))
+      self.assertAllClose(
+          [[2.], [8.]], self.device.unpack(result))
+    finally:
+      def_function.run_functions_eagerly(False)
+
+  def test_cond_with_variable(self):
+    with self.device:
+      pred = self.device.pack([True, False])
+      capture = self.device.pack([[1.], [2.]])
+      v = None
+      @def_function.function
+      def true_branch():
+        nonlocal v
+        if v is None:
+          v = variables.Variable(constant_op.constant(2.))
+        return v * capture
+      result = control_flow_ops.cond(
+          pred, true_branch, def_function.function(lambda: capture * 4.))
+    self.assertAllClose(
+        [[2.], [8.]], self.device.unpack(result))
+    self.assertAllClose(
+        [2., 2.], self.device.unpack(v))
+    # There are two unique variable handles with separate storage.
+    h1, _ = self.device.unpack(v.handle)
+    gen_resource_variable_ops.assign_variable_op(h1, constant_op.constant(3.))
+    self.assertAllClose(
+        [3., 2.], self.device.unpack(v))
 
   def test_collective_in_function(self):
     if self.device_type == "TPU":
@@ -360,6 +440,24 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       packed_outputs = m(array_ops.ones([]))
       outputs = self.device.unpack(packed_outputs)
     self.assertAllClose([16., 16.], outputs)
+
+  def test_different_shapes(self):
+    with self.device:
+      x = self.device.pack(
+          [constant_op.constant([1., 2.]),
+           constant_op.constant([5.])])
+      y = x * 2.
+    with self.assertRaisesRegex(Exception,
+                                "components do not all have the same shape"):
+      y.shape  # pylint: disable=pointless-statement
+    self.assertAllClose([[2., 4.], [10.]], self.device.unpack(y))
+
+    different_axes = self.device.pack(
+        [constant_op.constant([1., 2.]),
+         constant_op.constant([[5.]])])
+    with self.assertRaisesRegex(Exception,
+                                "components do not all have the same shape"):
+      different_axes.shape  # pylint: disable=pointless-statement
 
 
 class LayerTests(_VirtualDeviceTestCase):

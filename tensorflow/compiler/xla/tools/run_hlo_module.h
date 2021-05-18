@@ -33,9 +33,12 @@ struct RunHloModuleOptions {
       : platform(""),
         reference_platform("default"),
         print_literals(false),
+        flatten_control_flow(false),
         run_test_hlo_passes(true),
         run_reference_hlo_passes(true),
-        use_large_float_range(true),
+        // Using small float range by default, as otherwise all reductions
+        // miscompare vs. the interpreter with inf/nan.
+        use_large_float_range(false),
         // TODO(b/68721786): These tolerances are set to match the values in the
         // isolation test. The goal is to lower these to 0.001.
         abs_error_bound(0.1),
@@ -46,6 +49,7 @@ struct RunHloModuleOptions {
   std::string platform;
   std::string reference_platform;
   bool print_literals;
+  bool flatten_control_flow;
   bool run_test_hlo_passes;
   bool run_reference_hlo_passes;
   bool use_large_float_range;
@@ -68,7 +72,8 @@ Status RunAndCompare(
     const RunHloModuleOptions& options,
     std::function<Status(const HloModule&,
                          const ::stream_executor::Platform::Id&, HloModule*)>
-        reference_module_modifier_hook = {});
+        reference_module_modifier_hook = {},
+    std::function<void(HloModuleConfig*)> config_modifier_hook = {});
 
 }  // namespace xla
 

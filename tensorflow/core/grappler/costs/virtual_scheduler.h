@@ -37,6 +37,7 @@ ABSL_CONST_INIT extern const char kAttrSrcDevice[];
 ABSL_CONST_INIT extern const char kAttrDstDevice[];
 ABSL_CONST_INIT extern const char kAttrTensorName[];
 ABSL_CONST_INIT extern const char kChannelDevice[];
+ABSL_CONST_INIT extern const char kStreaming[];
 
 struct NodeState {
   // A node (i.e., an op) takes a set of input:port pairs and produces
@@ -123,6 +124,14 @@ struct DeviceState {
   // Same to nodes_in_memory, it's a set of NodeDef* and port_num pairs.
   std::unordered_set<std::pair<const NodeDef*, int>, NodePairHash>
       mem_usage_snapshot_at_peak;
+
+  // Vector of temporary memory usage trace in execution order.
+  // Each pair represents the current node name and current (accumulated)
+  // temporary memory usage of the device when the node is scheduled.
+  // Only enabled when mem_usage_tracking is enabled.
+  // Note: CPU uses an inter-op threadpool, so the execution order on CPU may
+  // not be deterministic.
+  std::vector<std::pair<std::string, int64_t>> temporary_memory_usage_trace;
 
   Costs device_costs;
   std::map<string, Costs> op_to_cost;  // Per-op cost.
@@ -218,23 +227,18 @@ class HeapReadyManager : public ReadyNodeManager {
   Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
   ~HeapReadyManager() override {}
-  void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
+  void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
   bool Empty() const override;
 
  protected:
   virtual std::function<bool(const NodeDef*, const NodeDef*)> Greater() = 0;
-  // Move all the nodes in the waiting_queue_ to nodes_.
-  void DrainWaitingQueue();
 
   // nodes_ is the main queue, where we construct heap, and the front is the
   // current node.
   std::vector<const NodeDef*> nodes_;
-  // Newly added nodes are added to waiting_queue_. That way, GetCurrNode(),
-  // which returns the front of the nodes_, always returns the same node,
-  // even if any of new nodes has time_ready smaller than the current node's.
-  std::vector<const NodeDef*> waiting_queue_;
+
   // Comparator functor for heap; stl heap is max heap, so we use "greater than"
   // functor for keeping the smallest time_ready node at the front of heap.
   std::function<bool(const NodeDef*, const NodeDef*)> greater_;
@@ -242,6 +246,9 @@ class HeapReadyManager : public ReadyNodeManager {
   // NodeState structure from SchedulerState to get time_ready of ready nodes.
   // Not owned by FirstReadyManager.
   const std::unordered_map<const NodeDef*, NodeState>* node_map_;
+
+  // Cached curr node. Set back to nullptr from RemoveCurrNode().
+  const NodeDef* curr_node_;
 };
 
 // FirstReadyManager picks a node with the minimum time_ready value.
@@ -438,7 +445,7 @@ class SchedulerState {
   // Auxiliary data structures for constructing NodeState and DeviceState.
   std::unique_ptr<GraphProperties> graph_properties_;  // Initialized in Init().
   Cluster* cluster_;                                   // Not owned.
-  const GrapplerItem* grappler_item_;  // Not owned.
+  const GrapplerItem* grappler_item_;                  // Not owned.
   bool use_static_shapes_;
   bool initialized_;
   bool track_mem_usage_snapshot_;

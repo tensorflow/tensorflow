@@ -4,8 +4,8 @@
 # functions with arg name that are the same as the graph input name
 
 # CHECK: func @main(%arg0: tensor<{{.*}}i32>) -> tensor<{{.*}}i32>
-# CHECK: func @while_body
-# CHECK: func @while_cond
+# CHECK: func private @while_body
+# CHECK: func private @while_cond
 
 node {
   name: "input"

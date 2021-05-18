@@ -89,6 +89,9 @@ If there is any conflict (for example, `num_threads` vs
 `num_interpreter_threads` here), the parameters of this
 script are given precedence.
 
+Note, one could specify `--help` when launching the binary to see the full list
+of supported arguments.
+
 ### Debug Mode
 
 The script also supports a debug mode with the following parameter:

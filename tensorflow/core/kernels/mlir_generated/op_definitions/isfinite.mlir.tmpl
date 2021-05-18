@@ -1,5 +1,0 @@
-func @Isfinite_elem_type(%arg0: tensor<*xelem_type>)
-    -> tensor<*xi1> attributes {tf_entry, llvm.emit_c_interface} {
-  %0 = "tf.IsFinite"(%arg0) : (tensor<*xelem_type>) -> tensor<*xi1>
-  return %0 : tensor<*xi1>
-}

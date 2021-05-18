@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import cross_device_ops
+from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -29,6 +32,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
 
 
@@ -268,6 +272,28 @@ class OptimizerTest(test.TestCase):
       # Validate updated params
       self.assertAllClose([-0.1, -0.1], self.evaluate(var0))
       self.assertAllClose([0., 0.], self.evaluate(var1))
+
+  @test_util.run_deprecated_v1
+  def testGetSlotUnderDistributedStrategy(self):
+    # Only run this test in graph mode so we don't need actual GPU.
+    ds = mirrored_strategy.MirroredStrategy(
+        ['CPU:0', 'GPU:0'],
+        cross_device_ops=cross_device_ops.HierarchicalCopyAllReduce())
+    # We need an optimizer that creates slots.
+    optimizer = adam.AdamOptimizer()
+
+    def f():
+      v = variables.Variable([1.0])
+      self.assertTrue(distribute_utils.is_distributed_variable(v))
+      # Slot variables are created in the first call to apply_gradients.
+      optimizer.apply_gradients([(ops.convert_to_tensor([1.0]), v)])
+      self.assertTrue(optimizer.get_slot_names())
+      for name in optimizer.get_slot_names():
+        slot = optimizer.get_slot(v, name)
+        self.assertIsNotNone(slot)
+        self.assertTrue(distribute_utils.is_distributed_variable(slot))
+
+    ds.run(f)
 
 
 if __name__ == '__main__':

@@ -9,7 +9,7 @@ package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are all tests.
@@ -246,6 +246,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
     ],
 )

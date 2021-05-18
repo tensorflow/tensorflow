@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/numerical_utils.h"
@@ -92,7 +92,7 @@ class KernelSpecs {
 
   KernelSpecs& WithSignature(const KernelSpecs::Signature& signature,
                              const ScaleFn& fn) {
-    Add(signature, {ScaleConstraintType::CustomScale, fn});
+    (void)Add(signature, {ScaleConstraintType::CustomScale, fn});
     return *this;
   }
 

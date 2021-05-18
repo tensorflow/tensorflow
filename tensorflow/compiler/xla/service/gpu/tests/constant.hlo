@@ -1,0 +1,13 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+HloModule Test
+
+ENTRY main {
+// CHECK: @buffer_for_b = global [4 x i8] zeroinitializer, align 64
+// CHECK: @buffer_for_a = global [4 x i8] zeroinitializer, align 64
+// CHECK: %{{.*}} = getelementptr inbounds i8, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @buffer_for_a, i32 0, i32 0), i32 %{{.*}}
+// CHECK: %{{.*}} = getelementptr inbounds i8, i8* getelementptr inbounds ([4 x i8], [4 x i8]* @buffer_for_b, i32 0, i32 0), i32 %{{.*}}
+  a = pred[2, 2]{1,0} constant({{false, true}, {true, false}})
+  b = pred[2, 2]{1,0} constant({{false, true}, {false, true}})
+  ROOT xor = pred[2, 2]{1, 0} xor(a, b)
+}

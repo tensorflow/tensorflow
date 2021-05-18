@@ -1,6 +1,7 @@
 # Description:
 #   Eigen is a C++ template library for linear algebra: vectors,
 #   matrices, and related algorithms.
+# This is the BUILD file with extra code to patch into @eigen_archive.
 
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
@@ -36,7 +37,7 @@ cc_library(
     includes = if_mkl(["./mkl_include"]),
     visibility = ["//visibility:public"],
     deps = [
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3",
     ],
 )
 

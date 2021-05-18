@@ -67,7 +67,7 @@ def _set_handle_data(list_handle, element_shape, element_dtype):
   # TODO(b/169968286): It would be better if we had a consistent story for
   # creating handle data from eager operations (shared with VarHandleOp).
   if isinstance(list_handle, ops.EagerTensor):
-    if tensor_util.is_tensor(element_shape):
+    if tensor_util.is_tf_type(element_shape):
       element_shape = tensor_shape.TensorShape(None)
     elif not isinstance(element_shape, tensor_shape.TensorShape):
       element_shape = tensor_shape.TensorShape(element_shape)

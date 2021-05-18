@@ -2,12 +2,13 @@ load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_cc_shared_object",
     "tflite_copts",
+    "tflite_custom_c_library",
 )
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Generates a platform-specific shared library containing the TensorFlow Lite C
@@ -60,15 +61,16 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":c_api_internal",
-        ":common",
+        ":c_api_types",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 cc_library(
@@ -83,7 +85,14 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+cc_library(
+    name = "c_api_types",
+    hdrs = ["c_api_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
 )
 
 cc_test(
@@ -99,7 +108,34 @@ cc_test(
         ":c_api",
         ":common",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tflite_custom_c_library(
+    name = "selectively_built_c_api_test_lib",
+    testonly = 1,
+    models = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+cc_test(
+    name = "selectively_built_c_api_test",
+    size = "small",
+    srcs = ["c_api_test.cc"],
+    copts = tflite_copts(),
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+    ],
+    deps = [
+        ":common",
+        ":selectively_built_c_api_test_lib",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -114,8 +150,9 @@ cc_test(
         ":c_api_experimental",
         ":common",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -127,16 +164,29 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    deps = ["//tensorflow/lite:builtin_ops"],
-    alwayslink = 1,
+    copts = tflite_copts(),
+    deps = [
+        ":c_api_types",
+    ],
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 # For use with library targets that can't use relative paths.
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
+    "c_api_types.h",
     "common.h",
 ])
+
+# For use in selective build rule for C API.
+filegroup(
+    name = "c_api_srcs",
+    srcs = [
+        "c_api.cc",
+        "c_api_internal.h",
+    ],
+)
 
 # Test the C extension API code.
 cc_test(

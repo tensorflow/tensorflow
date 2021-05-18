@@ -26,20 +26,46 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
+using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
+
+template <typename Device>
 class SparseReshapeOp : public OpKernel {
  public:
   explicit SparseReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    ReshapeSparseTensor(context, context->input(0), context->input(1),
-                        context->input(2), 0 /* output indices index */,
-                        1 /* output shape index */);
+    const Tensor& input_indices_in = context->input(0);
+    const Tensor& input_shape_in = context->input(1);
+
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices_in.shape()),
+                errors::InvalidArgument("Input must be a matrix."));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape_in.shape()),
+                errors::InvalidArgument("Input shape must be a vector."));
+    OP_REQUIRES(context,
+                input_indices_in.dim_size(1) == input_shape_in.dim_size(0),
+                errors::InvalidArgument(
+                    "Input tensor rank must match input shape length."));
+    ReshapeSparseTensor<Device>(context, context->input(0), context->input(1),
+                                context->input(2), 0 /* output indices index */,
+                                1 /* output shape index */);
   }
 };
 
 REGISTER_KERNEL_BUILDER(Name("SparseReshape").Device(DEVICE_CPU),
-                        SparseReshapeOp)
+                        SparseReshapeOp<CPUDevice>)
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("SparseReshape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input_shape")
+                            .HostMemory("new_shape")
+                            .HostMemory("output_shape"),
+                        SparseReshapeOp<GPUDevice>)
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

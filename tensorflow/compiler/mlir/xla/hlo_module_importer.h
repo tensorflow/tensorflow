@@ -19,9 +19,8 @@ limitations under the License.
 #include <unordered_map>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -38,7 +37,8 @@ class Shape;
 // dialect. HloModuleImporter does not take ownership.
 class HloModuleImporter {
  public:
-  explicit HloModuleImporter(mlir::ModuleOp module);
+  explicit HloModuleImporter(mlir::ModuleOp module,
+                             bool import_all_computation = false);
 
   // Import the HloModule into the MLIR Module.
   Status Import(const xla::HloModule& module);
@@ -47,6 +47,7 @@ class HloModuleImporter {
   Status Import(const xla::HloModuleProto& module);
 
  private:
+  bool import_all_computation_;
   mlir::ModuleOp module_;
   mlir::Builder builder_;
 

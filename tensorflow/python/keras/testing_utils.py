@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for unit-testing Keras."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import functools
@@ -38,7 +34,6 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -66,7 +61,7 @@ def get_test_data(train_samples,
                   random_seed=None):
   """Generates test data to train a model on.
 
-  Arguments:
+  Args:
     train_samples: Integer, how many training samples to generate.
     test_samples: Integer, how many test samples to generate.
     input_shape: Tuple of integers, shape of the inputs.
@@ -100,10 +95,11 @@ def layer_test(layer_cls,
                validate_training=True,
                adapt_data=None,
                custom_objects=None,
-               test_harness=None):
+               test_harness=None,
+               supports_masking=None):
   """Test routine for a layer with a single input and single output.
 
-  Arguments:
+  Args:
     layer_cls: Layer class object.
     kwargs: Optional dictionary of keyword arguments for instantiating the
       layer.
@@ -122,6 +118,8 @@ def layer_test(layer_cls,
       in the layer class. This is helpful for testing custom layers.
     test_harness: The Tensorflow test, if any, that this function is being
       called in.
+    supports_masking: Optional boolean to check the `supports_masking` property
+      of the layer. If None, the check will not be performed.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -164,6 +162,13 @@ def layer_test(layer_cls,
   # instantiation
   kwargs = kwargs or {}
   layer = layer_cls(**kwargs)
+
+  if (supports_masking is not None
+      and layer.supports_masking != supports_masking):
+    raise AssertionError(
+        'When testing layer %s, the `supports_masking` property is %r'
+        'but expected to be %r.\nFull kwargs: %s' %
+        (layer_cls.__name__, layer.supports_masking, supports_masking, kwargs))
 
   # Test adapt, if data was passed.
   if adapt_data is not None:
@@ -313,7 +318,7 @@ def model_type_scope(value):
 
   The model type gets restored to its original value upon exiting the scope.
 
-  Arguments:
+  Args:
      value: model type value
 
   Yields:
@@ -334,7 +339,7 @@ def run_eagerly_scope(value):
 
   The boolean gets restored to its original value upon exiting the scope.
 
-  Arguments:
+  Args:
      value: Bool specifying if we should run models eagerly in the active test.
      Should be True or False.
 
@@ -348,29 +353,6 @@ def run_eagerly_scope(value):
   finally:
     # Restore model type to initial value.
     _thread_local_data.run_eagerly = previous_value
-
-
-@tf_contextlib.contextmanager
-def use_keras_tensors_scope(value):
-  """Provides a scope within which we use KerasTensors in the func. API or not.
-
-  The boolean gets restored to its original value upon exiting the scope.
-
-  Arguments:
-     value: Bool specifying if we should build functional models
-      using KerasTensors in the active test.
-     Should be True or False.
-
-  Yields:
-    The provided value.
-  """
-  previous_value = keras_tensor._KERAS_TENSORS_ENABLED  # pylint: disable=protected-access
-  try:
-    keras_tensor._KERAS_TENSORS_ENABLED = value  # pylint: disable=protected-access
-    yield value
-  finally:
-    # Restore KerasTensor usage to initial value.
-    keras_tensor._KERAS_TENSORS_ENABLED = previous_value  # pylint: disable=protected-access
 
 
 def should_run_eagerly():
@@ -390,7 +372,7 @@ def saved_model_format_scope(value, **kwargs):
   The saved model format gets restored to its original value upon exiting the
   scope.
 
-  Arguments:
+  Args:
      value: saved model format value
      **kwargs: optional kwargs to pass to the save function.
 
@@ -459,8 +441,13 @@ def get_small_functional_mlp(num_hidden, num_classes, input_dim):
 class SmallSubclassMLP(models.Model):
   """A subclass model based small MLP."""
 
-  def __init__(self, num_hidden, num_classes, use_bn=False, use_dp=False):
-    super(SmallSubclassMLP, self).__init__(name='test_model')
+  def __init__(self,
+               num_hidden,
+               num_classes,
+               use_bn=False,
+               use_dp=False,
+               **kwargs):
+    super(SmallSubclassMLP, self).__init__(name='test_model', **kwargs)
     self.use_bn = use_bn
     self.use_dp = use_dp
 

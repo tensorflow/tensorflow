@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -91,15 +92,6 @@ absl::Status LinearStorage::CreateFromTensorLinearDescriptor(
     return CreateRGBAImage2D(context->context(), depth_, 1,
                              DataTypeToChannelType(desc.element_type), data_ptr,
                              &memory_);
-  }
-}
-
-LinearStorageType DeduceLinearStorageType(
-    TensorStorageType tensor_storage_type) {
-  if (tensor_storage_type == TensorStorageType::BUFFER) {
-    return LinearStorageType::BUFFER;
-  } else {
-    return LinearStorageType::TEXTURE_2D;
   }
 }
 

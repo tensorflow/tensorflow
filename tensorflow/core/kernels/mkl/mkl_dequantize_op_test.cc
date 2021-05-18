@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -60,6 +60,24 @@ TEST_F(MklDequantizeOpTest, small) {
                           {0.0, 7.84, 39.21, 31.37, 19.6, 90.2, 149.0, 200});
   const Tensor& output = *GetOutput(0);
   test::ExpectTensorNear<float>(expected, output, 0.1);
+}
+
+Tensor CreateMklInput() {
+  MklDnnShape mkl_shape;
+  memory::desc md =
+      memory::desc({1, 2, 2, 2}, MklDnnType<uint8>(), memory::format_tag::nhwc);
+  mkl_shape.SetMklTensor(true);
+  mkl_shape.SetMklLayout(&md);
+  mkl_shape.SetElemType(MklDnnType<uint8>());
+  mkl_shape.SetTfLayout(4, {1, 2, 2, 2}, MklTensorFormat::FORMAT_NHWC);
+
+  DataType dtype = DataTypeToEnum<uint8>::v();
+  Tensor mkl_tensor(dtype,
+                    {static_cast<int64>(mkl_shape.GetSerializeBufferSize())});
+  mkl_shape.SerializeMklDnnShape(
+      mkl_tensor.flat<uint8>().data(),
+      mkl_tensor.flat<uint8>().size() * sizeof(uint8));
+  return mkl_tensor;
 }
 
 template <typename T>
@@ -112,7 +130,8 @@ TEST_F(MklDequantizeOpTest, MKLInput) {
   AddInputFromArray<float>(TensorShape({1}), {0});
   // max_range = 200
   AddInputFromArray<float>(TensorShape({1}), {200.0f});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  auto mkl_tensor = CreateMklInput();
+  AddInputFromArray<uint8>(mkl_tensor.shape(), mkl_tensor.flat<uint8>());
   AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
   AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
   TF_ASSERT_OK(RunOpKernel());
@@ -125,4 +144,4 @@ TEST_F(MklDequantizeOpTest, MKLInput) {
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

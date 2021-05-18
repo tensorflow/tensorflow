@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -128,8 +128,8 @@ LogicalResult UpdateEmbeddingEnqueueOpInput(
     auto outside_compilation_attr =
         embedding_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr);
     if (outside_compilation_attr)
-      enqueue_mode.setAttr(kXlaOutsideCompilationAttr,
-                           outside_compilation_attr);
+      enqueue_mode->setAttr(kXlaOutsideCompilationAttr,
+                            outside_compilation_attr);
 
     mode_enqueue_operand.set(enqueue_mode);
   }

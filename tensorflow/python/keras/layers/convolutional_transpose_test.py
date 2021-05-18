@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for convolutional transpose layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -36,7 +32,7 @@ class Conv2DTransposeTest(keras_parameterized.TestCase):
     num_row = 7
     num_col = 6
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Conv2DTranspose,
           kwargs=kwargs,
@@ -67,7 +63,7 @@ class Conv2DTransposeTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv2DTranspose(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -86,7 +82,7 @@ class Conv2DTransposeTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv2DTranspose(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
@@ -127,7 +123,7 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
     num_col = 6
     depth = 5
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Conv3DTranspose,
           kwargs=kwargs,
@@ -159,7 +155,7 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv3DTranspose(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -178,7 +174,7 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv3DTranspose(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
@@ -186,7 +182,7 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
 
   def test_conv3d_transpose_dynamic_shape(self):
     input_data = np.random.random((1, 3, 3, 3, 3)).astype(np.float32)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # Won't raise error here.
       testing_utils.layer_test(
           keras.layers.Conv3DTranspose,

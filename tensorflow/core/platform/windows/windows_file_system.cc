@@ -147,6 +147,34 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     *result = StringPiece(scratch, dst - scratch);
     return s;
   }
+
+#if defined(TF_CORD_SUPPORT)
+  Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
+    if (n == 0) {
+      return Status::OK();
+    }
+    if (n < 0) {
+      return errors::InvalidArgument(
+          "Attempting to read ", n,
+          " bytes. You cannot read a negative number of bytes.");
+    }
+
+    char* scratch = new char[n];
+    if (scratch == nullptr) {
+      return errors::ResourceExhausted("Unable to allocate ", n,
+                                       " bytes for file reading.");
+    }
+
+    StringPiece tmp;
+    Status s = Read(offset, n, &tmp, scratch);
+
+    absl::Cord tmp_cord = absl::MakeCordFromExternal(
+        absl::string_view(static_cast<char*>(scratch), tmp.size()),
+        [scratch](absl::string_view) { delete[] scratch; });
+    cord->Append(tmp_cord);
+    return s;
+  }
+#endif
 };
 
 class WindowsWritableFile : public WritableFile {
@@ -176,6 +204,24 @@ class WindowsWritableFile : public WritableFile {
     assert(size_t(bytes_written) == data.size());
     return Status::OK();
   }
+
+#if defined(TF_CORD_SUPPORT)
+  // \brief Append 'data' to the file.
+  Status Append(const absl::Cord& cord) override {
+    for (const auto& chunk : cord.Chunks()) {
+      DWORD bytes_written = 0;
+      DWORD data_size = static_cast<DWORD>(chunk.size());
+      BOOL write_result =
+          ::WriteFile(hfile_, chunk.data(), data_size, &bytes_written, NULL);
+      if (FALSE == write_result) {
+        return IOErrorFromWindowsError("Failed to WriteFile: " + filename_);
+      }
+
+      assert(size_t(bytes_written) == chunk.size());
+    }
+    return Status::OK();
+  }
+#endif
 
   Status Tell(int64* position) override {
     Status result = Flush();
@@ -570,9 +616,9 @@ bool WindowsFileSystem::Match(const string& filename, const string& pattern) {
 Status WindowsFileSystem::Stat(const string& fname, TransactionToken* token,
                                FileStatistics* stat) {
   Status result;
-  struct _stat sbuf;
+  struct _stat64 sbuf;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
-  if (_wstat(ws_translated_fname.c_str(), &sbuf) != 0) {
+  if (_wstat64(ws_translated_fname.c_str(), &sbuf) != 0) {
     result = IOError(fname, errno);
   } else {
     stat->mtime_nsec = sbuf.st_mtime * 1e9;

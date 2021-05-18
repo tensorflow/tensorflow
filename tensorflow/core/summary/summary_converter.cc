@@ -38,6 +38,7 @@ Status TensorValueAt(Tensor t, int64 i, T* out) {
     break;
   // clang-format off
   switch (t.dtype()) {
+    TF_CALL_bool(CASE)
     TF_CALL_half(CASE)
     TF_CALL_float(CASE)
     TF_CALL_double(CASE)
@@ -270,9 +271,13 @@ Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
   } else if (tensor.dtype() == DT_FLOAT) {
     TF_RETURN_IF_ERROR(NormalizeAndAddImages<float>(
         tensor, max_images, h, w, hw, depth, batch_size, tag, bad_color, s));
+  } else if (tensor.dtype() == DT_DOUBLE) {
+    TF_RETURN_IF_ERROR(NormalizeAndAddImages<double>(
+        tensor, max_images, h, w, hw, depth, batch_size, tag, bad_color, s));
   } else {
     return errors::InvalidArgument(
-        "Only DT_INT8, DT_HALF, and DT_FLOAT images are supported. Got ",
+        "Only DT_INT8, DT_HALF, DT_DOUBLE, and DT_FLOAT images are supported. "
+        "Got ",
         DataTypeString(tensor.dtype()));
   }
   return Status::OK();

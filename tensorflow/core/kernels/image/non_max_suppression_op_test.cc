@@ -692,7 +692,7 @@ TEST_F(NonMaxSuppressionV5OpTest, TestSelectFromThreeClustersWithSoftNMS) {
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
   AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {6});
-  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  AddInputFromArray<float>(TensorShape({}), {0.5f});
   AddInputFromArray<float>(TensorShape({}), {0.0f});
   AddInputFromArray<float>(TensorShape({}), {0.5f});
   TF_ASSERT_OK(RunOpKernel());

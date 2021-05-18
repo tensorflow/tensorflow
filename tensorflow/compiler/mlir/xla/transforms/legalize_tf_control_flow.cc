@@ -27,17 +27,17 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 
 using mlir::PassRegistration;
 
@@ -45,7 +45,7 @@ namespace mlir {
 namespace mhlo {
 namespace {
 class LegalizeTFControlFlow
-    : public PassWrapper<LegalizeTFControlFlow, OperationPass<ModuleOp>> {
+    : public LegalizeTFControlFlowBase<LegalizeTFControlFlow> {
  public:
   void runOnOperation() override;
 };
@@ -398,6 +398,3 @@ void LegalizeTFControlFlow::runOnOperation() {
 }  // namespace mhlo
 }  // namespace mlir
 
-static PassRegistration<mlir::mhlo::LegalizeTFControlFlow> cfpass(
-    "xla-legalize-tf-control-flow",
-    "Legalize TensorFlow control flow to the XLA dialect");

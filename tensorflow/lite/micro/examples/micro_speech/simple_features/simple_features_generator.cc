@@ -136,7 +136,7 @@ TfLiteStatus GenerateSimpleFeatures(tflite::ErrorReporter* error_reporter,
     // Quantize the result into eight bits, effectively multiplying by two.
     // The 127.5 constant here has to match the features_max value defined in
     // tensorflow/examples/speech_commands/input_data.py, and this also assumes
-    // that features_min is zero. It it wasn't, we'd have to subtract it first.
+    // that features_min is zero. If it wasn't, we'd have to subtract it first.
     int quantized_average = roundf(average * (255.0f / 127.5f));
     if (quantized_average < 0) {
       quantized_average = 0;

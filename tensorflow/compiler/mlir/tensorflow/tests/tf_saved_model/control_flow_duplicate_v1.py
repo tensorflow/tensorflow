@@ -35,8 +35,8 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: else_branch = @[[else]]
 # CHECK-SAME: then_branch = @[[then]]
 
-# CHECK: func @[[else]](
-# CHECK: func @[[then]](
+# CHECK: func private @[[else]](
+# CHECK: func private @[[then]](
 
 
 def Test():

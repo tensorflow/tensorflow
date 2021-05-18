@@ -4,7 +4,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cuda_py_test(
@@ -149,7 +149,6 @@ cuda_py_test(
     srcs = ["linear_operator_circulant_test.py"],
     shard_count = 10,
     tags = [
-        "no_rocm",  # calls BLAS ops for complex types
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],
@@ -410,6 +409,7 @@ cuda_py_test(
     srcs = ["linear_operator_tridiag_test.py"],
     shard_count = 5,
     tags = [
+        "no_windows_gpu",
         "noasan",
         "optonly",
     ],

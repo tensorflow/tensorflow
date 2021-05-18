@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/cache_ops.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
@@ -887,8 +887,12 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         {
-          int64 temp;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
+          // kIndex will not be set if we are restoring from a checkpoint
+          // written by a MemoryWriterIterator that has completed its cache.
+          int64 temp = cache_->size();
+          if (reader->Contains(full_name(kIndex))) {
+            TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
+          }
           index_ = static_cast<size_t>(temp);
         }
         return Status::OK();

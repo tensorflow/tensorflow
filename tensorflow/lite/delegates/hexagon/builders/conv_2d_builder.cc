@@ -176,7 +176,7 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   static int dummy = 0;
   stride_shape_ = {1, stride_height, stride_width, 1};
   auto* stride_node = graph_builder_->AddConstNodeWithData(
-      stride_shape_.data(), (char*)&dummy, sizeof(dummy));
+      stride_shape_.data(), reinterpret_cast<char*>(&dummy), sizeof(dummy));
 
   // Output dimensions.
   int output_batch_size, output_height_size, output_width_size,
@@ -237,13 +237,16 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
         dilation_factors_h_w_, padding_type, &space_to_batch_paddings_,
         &batch_to_space_crops_);
     auto* dilation_factors_const = graph_builder_->AddConstNodeWithData(
-        dilation_factors_shape.data(), (char*)dilation_factors_h_w_.data(),
+        dilation_factors_shape.data(),
+        reinterpret_cast<char*>(dilation_factors_h_w_.data()),
         dilation_factors_h_w_.size() * sizeof(stride_height));
     auto* paddings_const = graph_builder_->AddConstNodeWithData(
-        paddings_shape.data(), (char*)space_to_batch_paddings_.data(),
+        paddings_shape.data(),
+        reinterpret_cast<char*>(space_to_batch_paddings_.data()),
         space_to_batch_paddings_.size() * sizeof(stride_height));
     auto* crops_const = graph_builder_->AddConstNodeWithData(
-        paddings_shape.data(), (char*)batch_to_space_crops_.data(),
+        paddings_shape.data(),
+        reinterpret_cast<char*>(batch_to_space_crops_.data()),
         batch_to_space_crops_.size() * sizeof(stride_height));
 
     // 1. SpaceToBatch.
@@ -278,8 +281,9 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     conv_op->AddInput(TensorID(bias_max_node_->GetID(), 0));
     conv_op->AddInput(TensorID(conv_output_min_const->GetID(), 0));
     conv_op->AddInput(TensorID(conv_output_max_const->GetID(), 0));
-    if (channel_scales_node_ != nullptr) {
-      conv_op->AddInput(TensorID(channel_scales_node_->GetID(), 0));
+    if (per_channel_quant_.channel_scales_node != nullptr) {
+      conv_op->AddInput(
+          TensorID(per_channel_quant_.channel_scales_node->GetID(), 0));
     }
     // The padding is handled by the SpaceToBatch/BatchToSpace ops surrounding
     // this node. Hence, this op's padding remains VALID only.
@@ -341,8 +345,8 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     AddInput(TensorID(bias_max_node_->GetID(), 0));
     AddInput(TensorID(conv_output_min_const->GetID(), 0));
     AddInput(TensorID(conv_output_max_const->GetID(), 0));
-    if (channel_scales_node_ != nullptr) {
-      AddInput(TensorID(channel_scales_node_->GetID(), 0));
+    if (per_channel_quant_.channel_scales_node != nullptr) {
+      AddInput(TensorID(per_channel_quant_.channel_scales_node->GetID(), 0));
     }
     // Outputs
     output_tensor = AddOutput(sizeof(uint8_t), 4,

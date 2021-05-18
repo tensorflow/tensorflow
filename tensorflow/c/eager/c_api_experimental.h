@@ -265,13 +265,13 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
 TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
 
-// Sets whether to copy the remote inputs of a function lazily.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
-    TFE_ContextOptions*, bool lazy_copy);
-
 // Sets whether to use TFRT
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
+
+// Sets whether to use TFRT distributed runtime
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrtDistributedRuntime(
+    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime);
 
 // Returns the context_id from the EagerContext which is used by the
 // EagerService to maintain consistency between client and worker. The
@@ -388,9 +388,11 @@ TF_CAPI_EXPORT extern void* TFE_TensorHandleDevicePointer(TFE_TensorHandle*,
 TF_CAPI_EXPORT extern size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle*,
                                                               TF_Status*);
 
-// Creates a new TensorHandle from memory residing in device_name. Takes
-// ownership of the memory, and will call deleter to release it after TF
-// no longer needs it or in case of error.
+// Creates a new TensorHandle from memory residing in the physical device
+// device_name. Takes ownership of the memory, and will call deleter to release
+// it after TF no longer needs it or in case of error.
+//
+// Custom devices must use TFE_NewCustomDeviceTensorHandle instead.
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     TFE_Context* ctx, const char* device_name, TF_DataType, const int64_t* dims,
     int num_dims, void* data, size_t len,
@@ -439,16 +441,16 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
 // to have a non-string representation of devices (TF_Device) extracted from
 // tensors/ops/etc. and usable in APIs like OpSetDevice/ResetOp/etc.
 
-#define TFE_CUSTOM_DEVICE_VERSION 3
+#define TFE_CUSTOM_DEVICE_VERSION 4
 
-// Struct to be filled in
+// Struct to be filled in. Functions are required except where indicated.
 typedef struct TFE_CustomDevice {
   int version = TFE_CUSTOM_DEVICE_VERSION;
   // Method to copy a tensor to the custom device.
   TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
                                              TFE_TensorHandle* tensor,
                                              TF_Status* status,
-                                             void* device_info) = nullptr;
+                                             void* device_info);
 
   // Method to copy a tensor from the custom device to a target device.
   TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
@@ -472,6 +474,16 @@ typedef struct TFE_CustomDevice {
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);
+
+  // Implements TFE_CreatePackedTensorHandle when one of `handles` is on this
+  // custom device.
+  //
+  // Many devices will want to simply return an "unimplemented" status
+  // here. This is the default behavior if `pack` is null when passed to
+  // TFE_RegisterCustomDevice.
+  TFE_TensorHandle* (*pack)(TFE_Context* context, TFE_TensorHandle** handles,
+                            int num_handles, TF_Status* s,
+                            void* device_info) = nullptr;
 } TFE_CustomDevice;
 
 // Registers a custom device for use with eager execution.
@@ -510,6 +522,48 @@ TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
                                                     const char* device_name,
                                                     void* device_info,
                                                     TF_Status* status);
+
+// Struct to be filled in to define a custom device tensor handle. Fields are
+// required except where indicated.
+typedef struct TFE_CustomDeviceTensorHandleMethods {
+  int version = TFE_CUSTOM_DEVICE_VERSION;
+
+  // Computes the rank of the tensor handle.
+  //
+  // Shapes are specified via callbacks because retrieving the shape of a tensor
+  // is a blocking operation for async eager; custom devices should avoid
+  // retrieving shapes of tensors they wrap until the custom device tensor's
+  // shape is explicitly requested where possible.
+  int (*num_dims)(void* data, TF_Status* status);
+
+  // Computes the axis length at `dim_index`.
+  int64_t (*dim)(void* data, int dim_index, TF_Status* status);
+
+  void (*deallocator)(void* data);
+
+  // Summarizes the value of this tensor. The caller takes ownership of the
+  // returned buffer. If `status` is not TF_OK, instead returns a null pointer.
+  //
+  // Does not include the shape and dtype of the tensor (which is generally
+  // appended later), but should include any information specific to this custom
+  // device which would be useful for debugging.
+  //
+  // Optional. If null, defaults to resolving the TFE_TensorHandle into a
+  // TF_Tensor and summarizing that.
+  TF_Buffer* (*summarize)(void* data, TF_Status* status) = nullptr;
+} TFE_CustomDeviceTensorHandle;
+
+// Creates a new TensorHandle from memory residing in a custom device. Takes
+// ownership of the memory pointed to by `tensor_handle_data`, and calls
+// `methods.deallocator` to release it after TF no longer needs it or in case of
+// an error.
+//
+// This call is similar to `TFE_NewTensorHandleFromDeviceMemory`, but supports
+// custom devices instead of physical devices and does not require blocking
+// waiting for exact shapes.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
+    TFE_Context*, const char* device_name, TF_DataType, void* data,
+    TFE_CustomDeviceTensorHandle methods, TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      const char* function_name,
@@ -560,6 +614,21 @@ TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
 // Returns the device ID of the operation that produced `h`.
 TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
                                                    TF_Status* status);
+
+// Get a comma-separated list of op names executed in graph functions dispatched
+// to `ctx`. This feature is currently only enabled for TFRT debug builds, for
+// performance and simplicity reasons.
+TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
+                                                  TF_Buffer* buf,
+                                                  TF_Status* status);
+
+// Set logical devices to the context's device manager.
+// If logical devices are already configured at context initialization
+// through TFE_ContextOptions, this method should not be called.
+TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
+                                                    int num_cpus,
+                                                    const char* prefix,
+                                                    TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

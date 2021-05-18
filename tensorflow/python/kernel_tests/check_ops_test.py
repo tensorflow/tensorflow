@@ -285,9 +285,8 @@ First 2 elements of y:
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
-                                (r"Incompatible shapes: \[3\] vs. \[2\]|"
-                                 r"Dimensions must be equal, but are 3 and 2")):
+    with self.assertRaisesIncompatibleShapesError(
+        (errors.InvalidArgumentError, ValueError)):
       with ops.control_dependencies([check_ops.assert_equal(small, small_2)]):
         out = array_ops.identity(small)
       self.evaluate(out)
@@ -353,9 +352,8 @@ class AssertNoneEqualTest(test.TestCase):
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                (r"Incompatible shapes: \[3\] vs. \[2\]|"
-                                 r"Dimensions must be equal, but are 3 and 2")):
+    with self.assertRaisesIncompatibleShapesError(
+        (ValueError, errors.InvalidArgumentError)):
       with ops.control_dependencies(
           [check_ops.assert_none_equal(small, big)]):
         out = array_ops.identity(small)
@@ -581,10 +579,8 @@ class AssertLessTest(test.TestCase):
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
-        (ValueError, errors.InvalidArgumentError),
-        (r"Incompatible shapes: \[3\] vs. \[2\]|"
-         "Dimensions must be equal, but are 3 and 2")):
+    with self.assertRaisesIncompatibleShapesError(
+        (ValueError, errors.InvalidArgumentError)):
       with ops.control_dependencies([check_ops.assert_less(small, big)]):
         out = array_ops.identity(small)
       self.evaluate(out)
@@ -1556,6 +1552,14 @@ class AssertTypeTest(test.TestCase):
         constant_op.constant([500], dtypes.int64))
     with self.assertRaisesRegexp(TypeError, "must be of type.*float32"):
       check_ops.assert_type(sparse_float16, dtypes.float32)
+
+  def test_raise_when_tf_type_is_not_dtype(self):
+    # Test case for GitHub issue:
+    # https://github.com/tensorflow/tensorflow/issues/45975
+    value = constant_op.constant(0.0)
+    with self.assertRaisesRegexp(TypeError,
+                                 "Cannot convert.*to a TensorFlow DType"):
+      check_ops.assert_type(value, (dtypes.float32,))
 
 
 class AssertShapesTest(test.TestCase):

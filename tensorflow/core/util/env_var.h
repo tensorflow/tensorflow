@@ -44,7 +44,7 @@ Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
 // Returns a string into "value" from the environmental variable "env_var_name".
 // If it is unset, the default value is used.
 Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
-                            string* value);
+                            std::string* value);
 
 }  // namespace tensorflow
 

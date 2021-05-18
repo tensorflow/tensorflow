@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,27 +14,35 @@
 # ==============================================================================
 r"""This tool converts an image file into a CSV data array.
 
-Designed to help create test inputs that can be shared between Python and
-on-device test cases to investigate accuracy issues.
+Loads JPEG or PNG input files, resizes them, optionally converts to grayscale,
+and writes out as comma-separated variables, one image per row. Designed to
+help create test inputs that can be shared between Python and on-device test
+cases to investigate accuracy issues.
 
-Example usage:
-
-python convert_image_to_csv.py some_image.jpg --width=16 --height=20 \
-  --want_grayscale
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import sys
+
+from absl import app
+from absl import flags
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.platform import app
+
+FLAGS = flags.FLAGS
+
+flags.DEFINE_multi_string("image_file_names", None,
+                          "List of paths to the input images.")
+flags.DEFINE_integer("width", 96, "Width to scale images to.")
+flags.DEFINE_integer("height", 96, "Height to scale images to.")
+flags.DEFINE_boolean("want_grayscale", False,
+                     "Whether to convert the image to monochrome.")
 
 
 def get_image(width, height, want_grayscale, filepath):
@@ -55,10 +62,9 @@ def get_image(width, height, want_grayscale, filepath):
     with session.Session():
       file_data = io_ops.read_file(filepath)
       channels = 1 if want_grayscale else 3
-      image_tensor = image_ops.decode_image(file_data,
-                                            channels=channels).eval()
-      resized_tensor = image_ops.resize_images_v2(
-          image_tensor, (height, width)).eval()
+      image_tensor = image_ops.decode_image(file_data, channels=channels).eval()
+      resized_tensor = image_ops.resize_images_v2(image_tensor,
+                                                  (height, width)).eval()
   return resized_tensor
 
 
@@ -73,43 +79,19 @@ def array_to_int_csv(array_data):
   """
   flattened_array = array_data.flatten()
   array_as_strings = [item.astype(int).astype(str) for item in flattened_array]
-  return ','.join(array_as_strings)
+  return ",".join(array_as_strings)
 
 
-def run_main(_):
-  """Application run loop."""
-  parser = argparse.ArgumentParser(
-      description='Loads JPEG or PNG input files, resizes them, optionally'
-      ' converts to grayscale, and writes out as comma-separated variables,'
-      ' one image per row.')
-  parser.add_argument(
-      'image_file_names',
-      type=str,
-      nargs='+',
-      help='List of paths to the input images.')
-  parser.add_argument(
-      '--width', type=int, default=96, help='Width to scale images to.')
-  parser.add_argument(
-      '--height', type=int, default=96, help='Height to scale images to.')
-  parser.add_argument(
-      '--want_grayscale',
-      action='store_true',
-      help='Whether to convert the image to monochrome.')
-  args = parser.parse_args()
-
-  for image_file_name in args.image_file_names:
+def main(_):
+  for image_file_name in FLAGS.image_file_names:
     try:
-      image_data = get_image(args.width, args.height, args.want_grayscale,
+      image_data = get_image(FLAGS.width, FLAGS.height, FLAGS.want_grayscale,
                              image_file_name)
       print(array_to_int_csv(image_data))
     except NotFoundError:
-      sys.stderr.write('Image file not found at {0}\n'.format(image_file_name))
+      sys.stderr.write("Image file not found at {0}\n".format(image_file_name))
       sys.exit(1)
 
 
-def main():
-  app.run(main=run_main, argv=sys.argv[:1])
-
-
-if __name__ == '__main__':
-  main()
+if __name__ == "__main__":
+  app.run(main)

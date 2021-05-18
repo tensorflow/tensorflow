@@ -75,7 +75,7 @@ TfLiteStatus GetSortedFileNames(
     while ((ent = readdir(dir)) != nullptr) {
       if (ent->d_type == DT_DIR) continue;
       std::string filename(std::string(ent->d_name));
-      size_t lastdot = filename.find_last_of(".");
+      size_t lastdot = filename.find_last_of('.');
       std::string ext = lastdot != std::string::npos ? filename.substr(lastdot)
                                                      : std::string();
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -93,7 +93,6 @@ TfLiteStatus GetSortedFileNames(
 }
 #endif
 
-// TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
 TfLiteDelegatePtr CreateNNAPIDelegate() {
 #if defined(__ANDROID__)
   return TfLiteDelegatePtr(
@@ -169,8 +168,7 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 }
 #endif
 
-// TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
-#if defined(__Fuchsia__) || defined(TFLITE_WITHOUT_XNNPACK)
+#if defined(TFLITE_WITHOUT_XNNPACK)
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
   return CreateNullDelegate();
 }

@@ -15,9 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
 
-// TODO(ghodrat): Remove this header file and the dependency to internal data
-// structure.
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 
 #if defined(_MSC_VER)
@@ -265,11 +262,6 @@ void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                            result);
 }
 
-void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                          float* batch_vector) {
-  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
-}
-
 void Sub1Vector(const float* vector, int v_size, float* result) {
   PortableSub1Vector(vector, v_size, result);
 }
@@ -302,8 +294,9 @@ void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                              reduction_size);
 }
 
-void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch) {
+void MeanStddevNormalization(const float* __restrict__ input_vector,
+                             float* __restrict__ output_vector, int v_size,
+                             int n_batch) {
   PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
 }
 

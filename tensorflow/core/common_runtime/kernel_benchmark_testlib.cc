@@ -61,6 +61,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
   }
 
   old_benchmark_api_ = old_benchmark_api;
+  CHECK(!old_benchmark_api) << "Expected new API only";
   if (old_benchmark_api_) testing::StopTiming();
   string t = absl::AsciiStrToUpper(device);
   // Allow NewDevice to allocate a new threadpool with different number of
@@ -138,7 +139,6 @@ Benchmark::~Benchmark() {
   }
 }
 
-void Benchmark::Run(int iters) { RunWithRendezvousArgs({}, {}, iters); }
 
 void Benchmark::Run(::testing::benchmark::State& state) {
   RunWithRendezvousArgs({}, {}, state);
@@ -208,59 +208,6 @@ void Benchmark::RunWithRendezvousArgs(
     }
   }
   TF_CHECK_OK(device_->Sync());
-}
-
-void Benchmark::RunWithRendezvousArgs(
-    const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& outputs, int iters) {
-  CHECK(old_benchmark_api_) << "This method should only be called when running "
-                               "with old benchmark API";
-  if (!device_ || iters == 0) {
-    return;
-  }
-  Tensor unused;  // In benchmark, we don't care the return value.
-  bool is_dead;
-
-  // Warm up
-  Executor::Args args;
-  args.rendezvous = rendez_;
-  args.runner = [this](std::function<void()> closure) {
-    pool_->Schedule(closure);
-  };
-  static const int kWarmupRuns = 3;
-  for (int i = 0; i < kWarmupRuns; ++i) {
-    for (const auto& p : inputs) {
-      Rendezvous::ParsedKey parsed;
-      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
-      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
-    }
-    TF_CHECK_OK(exec_->Run(args));
-    for (const string& key : outputs) {
-      Rendezvous::ParsedKey parsed;
-      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
-      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
-    }
-  }
-  TF_CHECK_OK(device_->Sync());
-  VLOG(3) << kWarmupRuns << " warmup runs done.";
-
-  testing::StartTiming();
-  while (iters-- > 0) {
-    for (const auto& p : inputs) {
-      Rendezvous::ParsedKey parsed;
-      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
-      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
-    }
-    TF_CHECK_OK(exec_->Run(args));
-    for (const string& key : outputs) {
-      Rendezvous::ParsedKey parsed;
-      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
-      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
-    }
-  }
-
-  TF_CHECK_OK(device_->Sync());
-  testing::StopTiming();
 }
 
 }  // end namespace test

@@ -114,6 +114,16 @@ TEST_P(SliceOpTest, In3D) {
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 }
 
+TEST_P(SliceOpTest, In5D) {
+  SliceOpModel<float, int32_t> m({5, 1, 1, 1, 1}, {5}, {1, 0, 0, 0, 0}, {5},
+                                 {3, 1, 1, 1, 1}, TensorType_INT32,
+                                 TensorType_FLOAT32, GetParam());
+  m.SetInput({1, 2, 3, 4, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1, 1, 1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
+}
+
 TEST_P(SliceOpTest, InputFloat) {
   SliceOpModel<float, int32_t> m({4, 1, 1, 1}, {4}, {1, 0, 0, 0}, {4},
                                  {3, 1, 1, 1}, TensorType_INT32,

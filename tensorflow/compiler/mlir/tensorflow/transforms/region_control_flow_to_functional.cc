@@ -23,8 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-region-cf-to-functional"
@@ -46,9 +46,14 @@ namespace TF {
 
 namespace {
 
+constexpr char kElseFuncNameAttr[] = "_else_func_name";
+constexpr char kThenFuncNameAttr[] = "_then_func_name";
+constexpr char kXlaPropagateCompileTimeConsts[] =
+    "_xla_propagate_compile_time_consts";
+
 struct RegionControlFlowToFunctional
-    : public PassWrapper<RegionControlFlowToFunctional,
-                         OperationPass<ModuleOp>> {
+    : public TF::RegionControlFlowToFunctionalPassBase<
+          RegionControlFlowToFunctional> {
   void runOnOperation() override;
 
  private:
@@ -94,6 +99,21 @@ llvm::SmallVector<Value, 4> CollectExternValues(Region& first, Region& second) {
   return llvm::to_vector<4>(extern_values);
 }
 
+// Copies over optional attributes from source region op `src` to the given
+// functional op `dst` and appropriately overrides any necessary attributes.
+void CopyAndOverrideAttributes(Operation* src, Operation* dst,
+                               OpBuilder* builder) {
+  CopyDeviceAndUnderscoredAttributes(src, dst);
+
+  // Explicitly override attribute to propagate constants to the functions
+  // before compiling to XLA. This is necessary along with conversion to
+  // functional format because inlined regions may have moved loop invariant ops
+  // outside of the region which may cause some new legalization failures.
+  // TODO(b/126739593): Enable this attribute in TensorFlow by default. Also,
+  // see b/185542519 for the context.
+  dst->setAttr(kXlaPropagateCompileTimeConsts, builder->getBoolAttr(true));
+}
+
 // Extracts the contents of a region with a single block into a new function.
 // `extern_values` is the set of external values that the region refers to.
 //
@@ -122,7 +142,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   if (extern_values_passthrough)
     for (auto input : extern_values) return_types.push_back(input.getType());
 
-  auto type = FunctionType::get(input_types, return_types, region.getContext());
+  auto type = FunctionType::get(region.getContext(), input_types, return_types);
 
   // Create new function and extract region body into the function.
   auto outlined_func = builder.create<FuncOp>(loc, name, type);
@@ -150,7 +170,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   builder.create<ReturnOp>(terminator->getLoc(), return_values);
   terminator->erase();
 
-  outlined_func.setVisibility(FuncOp::Visibility::Private);
+  outlined_func.setPrivate();
 
   // Add the outlined function to the worklist in case its body has
   // IfRegion or WhileRegion ops that need to converted.
@@ -211,14 +231,22 @@ using ArgMatcherFn = function_ref<bool(Value, Region&, Value, Region&)>;
 bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
   if (first.getNumOperands() != second.getNumOperands()) return false;
 
-  Region& first_region = *first.getParentRegion();
-  Region& second_region = *second.getParentRegion();
+  Region& first_region = *first->getParentRegion();
+  Region& second_region = *second->getParentRegion();
 
   for (auto it : llvm::zip(first.getArgOperands(), second.getArgOperands())) {
     // Get the defining Op, skipping over casts.
     auto get_defining_op = [](Value value) {
-      while (llvm::isa_and_nonnull<CastOp>(value.getDefiningOp()))
-        value = cast<CastOp>(value.getDefiningOp()).getOperand();
+      while (auto cast_op =
+                 llvm::dyn_cast_or_null<CastOp>(value.getDefiningOp())) {
+        // Consider cast compatibility in case
+        //    %cast = "tf.Cast"(%0) : (tensor<2xi64>) -> tensor<2xf32>
+        // is skipped.
+        if (cast_op.SrcT() != cast_op.DstT()) {
+          break;
+        }
+        value = cast_op.getOperand();
+      }
       return value;
     };
     Value first_arg = get_defining_op(std::get<0>(it));
@@ -299,11 +327,25 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
     // Create 2 new functions with the input signature matching this order,
     // and outline the `then` and `else` regions by moving the bodies of these
     // regions into these functions. Replace tf.yield with a regular return.
-    then_name = GetName(if_region, "_then");
+    if (if_region->hasAttrOfType<StringAttr>(kThenFuncNameAttr) &&
+        !if_region._then_func_nameAttr().getValue().empty()) {
+      then_name =
+          mapper.GetUniqueName(if_region._then_func_nameAttr().getValue())
+              .str();
+    } else {
+      then_name = GetName(if_region, "_then");
+    }
     ExtractSingleBlockRegion(if_region.then_branch(), then_name, extern_values,
                              worklist, /*extern_values_passthrough=*/false);
 
-    else_name = GetName(if_region, "_else");
+    if (if_region->hasAttrOfType<StringAttr>(kElseFuncNameAttr) &&
+        !if_region._else_func_nameAttr().getValue().empty()) {
+      else_name =
+          mapper.GetUniqueName(if_region._else_func_nameAttr().getValue())
+              .str();
+    } else {
+      else_name = GetName(if_region, "_else");
+    }
     ExtractSingleBlockRegion(if_region.else_branch(), else_name, extern_values,
                              worklist, /*extern_values_passthrough=*/false);
   }
@@ -320,7 +362,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
   auto if_op = builder.create<IfOp>(
       if_region.getLoc(), if_region.getResultTypes(), cond, extern_values,
       then_name, else_name, if_region.is_stateless());
-  CopyDeviceAndUnderscoredAttributes(if_region, if_op);
+  CopyAndOverrideAttributes(if_region, if_op, &builder);
+
   if_region.replaceAllUsesWith(if_op.getResults());
   if_region.erase();
 
@@ -398,8 +441,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   OpBuilder builder(while_region);
   auto while_op = builder.create<WhileOp>(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
-      while_region.parallel_iterations(), while_region.is_stateless());
-  CopyDeviceAndUnderscoredAttributes(while_region, while_op);
+      while_region.parallel_iterations(), while_region.is_stateless(),
+      while_region.shape_invariant());
+  CopyAndOverrideAttributes(while_region, while_op, &builder);
 
   // Redirect old results to new results.
   for (auto it : llvm::zip(
@@ -444,10 +488,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFRegionControlFlowToFunctional() {
   return std::make_unique<RegionControlFlowToFunctional>();
 }
-
-static PassRegistration<RegionControlFlowToFunctional> pass(
-    "tf-region-control-flow-to-functional",
-    "Transform region bases control flow Ops to functional counterparts");
 
 }  // namespace TF
 }  // namespace mlir

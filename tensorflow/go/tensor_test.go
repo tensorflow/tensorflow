@@ -276,6 +276,14 @@ func TestReadTensorReadAll(t *testing.T) {
 	}
 }
 
+func TestReadTensorNegativeDimention(t *testing.T) {
+	buf := new(bytes.Buffer)
+	_, err := ReadTensor(Int32, []int64{-1, 1}, buf)
+	if err == nil {
+		t.Fatal("ReadTensor should failed if shape contains negative dimention")
+	}
+}
+
 func benchmarkNewTensor(b *testing.B, v interface{}) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -349,4 +357,32 @@ func BenchmarkTensor(b *testing.B) {
 		}
 	})
 
+}
+
+func TestReshape(t *testing.T) {
+	tensor, err := NewTensor([]int64{1, 2})
+	if err != nil {
+		t.Fatalf("Unable to create new tensor: %v", err)
+	}
+
+	if got, want := len(tensor.Shape()), 1; got != want {
+		t.Fatalf("len(tensor.Shape()): got %d, want %d", got, want)
+	}
+	if got, want := tensor.Shape()[0], int64(2); got != want {
+		t.Errorf("tensor.Shape()[0]: got %d, want %d", got, want)
+	}
+
+	if err := tensor.Reshape([]int64{1, 2}); err != nil {
+		t.Fatalf("tensor.Reshape([1, 2]) failed: %v", err)
+	}
+
+	if got, want := len(tensor.Shape()), 2; got != want {
+		t.Fatalf("After reshape, len(tensor.Shape()): got %d, want %d", got, want)
+	}
+	if got, want := tensor.Shape()[0], int64(1); got != want {
+		t.Errorf("After reshape, tensor.Shape()[0]: got %d, want %d", got, want)
+	}
+	if got, want := tensor.Shape()[1], int64(2); got != want {
+		t.Errorf("After reshape, tensor.Shape()[1]: got %d, want %d", got, want)
+	}
 }

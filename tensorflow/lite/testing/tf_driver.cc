@@ -162,6 +162,10 @@ void TfDriver::SetInput(const string& values_as_string,
       num_values_available =
           FillTensorWithData<int32_t>(tensor, values_as_string);
       break;
+    case tensorflow::DT_UINT32:
+      num_values_available =
+          FillTensorWithData<uint32_t>(tensor, values_as_string);
+      break;
     case tensorflow::DT_UINT8:
       num_values_available =
           FillTensorWithData<uint8_t>(tensor, values_as_string);
@@ -224,6 +228,8 @@ string TfDriver::ReadOutput(const tensorflow::Tensor& tensor) {
       return TensorDataToCsvString<float>(tensor);
     case tensorflow::DT_INT32:
       return TensorDataToCsvString<int32_t>(tensor);
+    case tensorflow::DT_UINT32:
+      return TensorDataToCsvString<uint32_t>(tensor);
     case tensorflow::DT_INT64:
       return TensorDataToCsvString<tensorflow::int64>(tensor);
     case tensorflow::DT_UINT8:

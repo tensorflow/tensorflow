@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -109,6 +110,32 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
       << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
       << " should have a layout.";
   Delinearize(&multidim_, linear, shape, b);
+}
+
+IrArray::Index::Index(llvm::Value* linear,
+                      absl::Span<llvm::Value* const> multidim,
+                      const Shape& shape, llvm::IRBuilder<>* b)
+    : multidim_(shape.rank()),
+      linear_(linear),
+      layout_(shape.layout()),
+      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
+  CHECK_NE(linear, nullptr);
+  index_type_ = linear->getType();
+  CHECK_EQ(multidim.size(), shape.rank());
+  for (auto dim : multidim) {
+    if (dim) {
+      CHECK_EQ(dim->getType(), index_type_);
+    }
+  }
+  CHECK(LayoutUtil::HasLayout(shape))
+      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
+      << " should have a layout.";
+  Delinearize(&multidim_, linear, shape, b);
+  for (int i = 0; i < multidim.size(); ++i) {
+    if (multidim[i] != nullptr) {
+      multidim_[i] = multidim[i];
+    }
+  }
 }
 
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
@@ -285,7 +312,7 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64> dimension_mapping) const {
   std::vector<llvm::Value*> operand_multidim_index =
-      Permute(dimension_mapping, multidim());
+      PermuteInverse(multidim(), dimension_mapping);
 
   if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
       LayoutUtil::HasLayout(shape) &&
@@ -343,7 +370,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     source_index[i] = multidim_[dimension_mapping[i]];
   }
   if (linear_ == nullptr || !LayoutUtil::HasLayout(operand_shape) ||
-      !LayoutUtil::HasLayout(shape)) {
+      !LayoutUtil::HasLayout(shape) || rank == 1) {
     return Index(source_index, operand_shape, index_type_);
   }
   // High-level idea: we can reuse the linear index if the broadcasted
@@ -503,7 +530,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
                                            bool use_linear_index) const {
   llvm::Value* element_address =
       EmitArrayElementAddress(index, b, name, use_linear_index);
-  llvm::LoadInst* load = b->CreateLoad(element_address);
+  llvm::LoadInst* load = b->CreateLoad(element_address, name.data());
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }

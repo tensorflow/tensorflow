@@ -528,9 +528,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
               ],
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/155501444): Handle _UnaryOpsComposition ops from Grappler")
-  def testFloatOpsDisabledOnMlirBridge(self):
+  def testSigmoidNumericalStability(self):
     for dtype in self.float_types:
       if dtype != np.float16:
         self._assertOpOutputMatchesExpected(
@@ -545,10 +543,21 @@ class UnaryOpsTest(xla_test.XLATestCase):
         return array_ops.quantize_and_dequantize(
             x, -127, 127, signed_input=True, num_bits=8)
 
-      self._assertOpOutputMatchesExpected(
-          quantize_and_dequantize_v2,
-          np.array([-1, -0.5, 0, 0.3], dtype=dtype),
-          expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
+      def quantize_and_dequantize_v3(x):
+        return array_ops.quantize_and_dequantize_v3(
+            x, -127, 127, num_bits=8, signed_input=True, range_given=False)
+
+      def quantize_and_dequantize_v4(x):
+        return array_ops.quantize_and_dequantize_v2(
+            x, -127, 127, signed_input=True, num_bits=8)
+
+      test_fns = (quantize_and_dequantize_v2, quantize_and_dequantize_v3,
+                  quantize_and_dequantize_v4)
+      for test_fn in test_fns:
+        self._assertOpOutputMatchesExpected(
+            test_fn,
+            np.array([-1, -0.5, 0, 0.3], dtype=dtype),
+            expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
       def quantize_and_dequantize_v2_round_half_up(x):
         return array_ops.quantize_and_dequantize(
@@ -615,15 +624,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
                   1,
               ],
               dtype=dtype))
-
-      def quantize_and_dequantize_v3(x):
-        return array_ops.quantize_and_dequantize_v3(
-            x, -127, 127, num_bits=8, signed_input=True, range_given=False)
-
-      self._assertOpOutputMatchesExpected(
-          quantize_and_dequantize_v3,
-          np.array([-1, -0.5, 0, 0.3], dtype=dtype),
-          expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
   def testComplexOps(self):
     for dtype in self.complex_types:
@@ -782,10 +782,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
           expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
 
-  @test_util.disable_mlir_bridge(
-      "TF_PopulationCount is missing and is required to translate to "
-      "xla::PopulationCount."
-  )
   def testIntOps(self):
     for dtype in self.int_types:
       self._assertOpOutputMatchesExpected(
@@ -891,8 +887,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             [[[1., 2.], [3., 4.]], [[5., 6.], [7., 8.]]], dtype=np.float32),
         expected=np.array([14., 22.], dtype=np.float32))
 
-  @test_util.disable_mlir_bridge("TODO(b/153812660): Handle tf.Cast compilation"
-                                )
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
     types = {
@@ -940,8 +934,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             src,
             expected=dst)
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.Bitcast compilation")
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.int32),

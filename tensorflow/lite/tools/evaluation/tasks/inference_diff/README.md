@@ -70,6 +70,9 @@ If there is any conflict (for example, `num_threads` vs
 `num_interpreter_threads` here), the parameters of this
 script are given precedence.
 
+Note, one could specify `--help` when launching the binary to see the full list
+of supported arguments.
+
 ## Running the binary on Android
 
 (1) Build using the following command:

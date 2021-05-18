@@ -100,10 +100,11 @@ static APFloat GetScalarLimitOfFloatType(FloatType float_ty,
 static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
                                          ScalarLimit limit) {
   unsigned width = integer_ty.getWidth();
+  bool is_bool = (width == 1);
   switch (limit) {
     case kLowest:
     case kInfinityLowest:
-      if (integer_ty.isUnsigned()) {
+      if (integer_ty.isUnsigned() || is_bool) {
         return APInt::getMinValue(width);
       } else {
         return APInt::getSignedMinValue(width);
@@ -111,7 +112,7 @@ static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
 
     case kMax:
     case kInfinityMax:
-      if (integer_ty.isUnsigned()) {
+      if (integer_ty.isUnsigned() || is_bool) {
         return APInt::getMaxValue(width);
       } else {
         return APInt::getSignedMaxValue(width);
@@ -130,6 +131,29 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
         scalar_ty, GetScalarLimitOfIntegerType(integer_ty, limit));
   }
   llvm_unreachable("unsupported type");
+}
+
+std::string LmhloToMhloOpName(llvm::StringRef op_name,
+                              mlir::MLIRContext *context) {
+  assert(op_name.startswith("lmhlo.") && "Expected an LMHLO op");
+
+  if (op_name == "lmhlo.dot") {
+    return "mhlo.dot_general";
+  }
+
+  if (op_name == "lmhlo.dynamic_slice") {
+    return "mhlo.dynamic-slice";
+  }
+
+  std::string mhlo_op_name(op_name.drop_front(1));
+  if (context->isOperationRegistered(mhlo_op_name)) return mhlo_op_name;
+  return "";
+}
+
+bool IsSequenceStartingWith0(DenseIntElementsAttr attr) {
+  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
+    if (attr.getValue<IntegerAttr>(i).getInt() != i) return false;
+  return true;
 }
 
 }  // namespace hlo

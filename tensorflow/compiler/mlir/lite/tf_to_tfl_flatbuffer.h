@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -42,7 +42,8 @@ LoadFromGraphdefOrMlirSource(
     const GraphImportConfig& specs, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
+    absl::string_view control_output_arrays, llvm::SourceMgr* source_mgr,
+    mlir::MLIRContext* context);
 
 // Load Saved model (either v1 or v2) into MLIR.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
@@ -63,6 +64,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_set<std::string>& select_user_tf_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result, mlir::PassManager* pass_manager);

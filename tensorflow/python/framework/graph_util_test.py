@@ -19,27 +19,30 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
 # Utility device function to use for testing
-def test_device_func_pin_variable_to_cpu(op):
+def TestDeviceFuncPinVariableToCpu(op):
   if op.device:
     return op.device
   return "/cpu:0" if op.node_def.op in ["Variable", "VariableV2"] else op.device
 
 
-class DeviceFunctionsTest(test.TestCase):
+class GraphUtilTest(test.TestCase):
 
   def testTwoDeviceFunctions(self):
     with ops.Graph().as_default() as g:
@@ -49,7 +52,7 @@ class DeviceFunctionsTest(test.TestCase):
           name="var_0",
           container="",
           shared_name="")
-      with g.device(test_device_func_pin_variable_to_cpu):
+      with g.device(TestDeviceFuncPinVariableToCpu):
         var_1 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
@@ -68,7 +71,7 @@ class DeviceFunctionsTest(test.TestCase):
           name="var_3",
           container="",
           shared_name="")
-      with g.device(test_device_func_pin_variable_to_cpu):
+      with g.device(TestDeviceFuncPinVariableToCpu):
         var_4 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
@@ -101,7 +104,7 @@ class DeviceFunctionsTest(test.TestCase):
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
       var_0 = variables.VariableV1(0)
-      with ops.device(test_device_func_pin_variable_to_cpu):
+      with ops.device(TestDeviceFuncPinVariableToCpu):
         var_1 = variables.VariableV1(1)
         with ops.device(lambda op: "/device:GPU:0"):
           var_2 = variables.VariableV1(2)
@@ -136,7 +139,7 @@ class DeviceFunctionsTest(test.TestCase):
 
   def testDefaultDevice(self):
     with ops.Graph().as_default() as g, g.device(
-        test_device_func_pin_variable_to_cpu):
+        TestDeviceFuncPinVariableToCpu):
       with g.device("/job:ps"):
         const_0 = constant_op.constant(5.0)
       with g.device("/device:GPU:0"):
@@ -302,6 +305,162 @@ class DeviceFunctionsTest(test.TestCase):
 
     self.assertProtoEquals(graph_def,
                            graph_util.remove_training_nodes(graph_def))
+
+  def testSimpleGraphdefsCompareEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
+
+  def testNodeDefsInDifferentOrderCompareEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", []),
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+    ])
+
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
+
+  def testDifferentGraphDefsCompareNotEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def("C", 2, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+    self.assertFalse(graph_util.graph_defs_equal(graph_def1, graph_def2))
+
+  def testGraphdefsWithNanCompareNonEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_constant_node_def(
+            "C", float("nan"), dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def(
+            "C", float("nan"), dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+    self.assertFalse(graph_util.graph_defs_equal(graph_def1, graph_def2))
+
+  def testSimpleGraphdefEqualityWithNansEqual(self):
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.node.extend([
+        self.create_constant_node_def(
+            "C", float("nan"), dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.node.extend([
+        self.create_constant_node_def(
+            "C", float("nan"), dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+    self.assertTrue(
+        graph_util.graph_defs_equal(
+            graph_def1, graph_def2, treat_nan_as_equal=True))
+
+  def testGraphDefsWithFunctionLibsCompareEqual(self):
+
+    @function.Defun(dtypes.float32)
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    library = function_pb2.FunctionDefLibrary()
+    library.function.extend([F1.definition])
+
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.library.CopyFrom(library)
+
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.library.CopyFrom(library)
+
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
+
+  def testGraphDefsWithPermutedFunctionsCompareEqual(self):
+
+    @function.Defun(dtypes.float32)
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    @function.Defun(dtypes.float32)
+    def F2(x):
+      return math_ops.exp(x)
+
+    definition_1 = F1.definition
+    definition_2 = F2.definition
+    library = function_pb2.FunctionDefLibrary()
+    library.function.extend([definition_1, definition_2])
+
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.library.CopyFrom(library)
+
+    reversed_library = function_pb2.FunctionDefLibrary()
+    reversed_library.function.extend([definition_2, definition_1])
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.library.CopyFrom(reversed_library)
+
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
+
+  def testGraphDefsWithPermutedNodesInFunctionsCompareEqual(self):
+
+    @function.Defun(dtypes.float32)
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    f1_def = F1.definition
+
+    library = function_pb2.FunctionDefLibrary()
+    library.function.extend([f1_def])
+
+    graph_def1 = graph_pb2.GraphDef()
+    graph_def1.library.CopyFrom(library)
+
+    reversed_function = function_pb2.FunctionDef()
+    reversed_function.CopyFrom(f1_def)
+    # Clear the node_def attribute.
+    del reversed_function.node_def[:]
+    reversed_function.node_def.extend(reversed(f1_def.node_def))
+    reversed_library = function_pb2.FunctionDefLibrary()
+    reversed_library.function.extend([reversed_function])
+    graph_def2 = graph_pb2.GraphDef()
+    graph_def2.library.CopyFrom(reversed_library)
+
+    self.assertTrue(graph_util.graph_defs_equal(graph_def1, graph_def2))
 
 
 if __name__ == "__main__":

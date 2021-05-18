@@ -33,11 +33,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-static xla::StatusOr<xla::LocalExecutable*> GetLocalExecutable(
+static StatusOr<xla::LocalExecutable*> GetLocalExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompileOptions& compile_options,
     const NameAttrList& function, XlaCompilationCache* cache,
-    absl::Span<XlaCompiler::Argument const> args, const XlaCompiler& compiler) {
+    const std::vector<XlaCompiler::Argument>& args,
+    const XlaCompiler& compiler) {
   const XlaCompiler::CompilationResult* compilation_result = nullptr;
   xla::LocalExecutable* executable = nullptr;
   TF_RETURN_IF_ERROR(cache->Compile(options, function, args, compile_options,
@@ -46,7 +47,7 @@ static xla::StatusOr<xla::LocalExecutable*> GetLocalExecutable(
   return executable;
 }
 
-xla::StatusOr<std::string> GetCompilerIr(
+StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, Device* dev, EagerContext* context,
     absl::Span<const TensorHandle* const> inputs_handles) {
@@ -96,16 +97,15 @@ xla::StatusOr<std::string> GetCompilerIr(
   TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<XlaCompilationCache>(
       rmgr->default_container(), "xla_cache", &cache,
       [&](XlaCompilationCache** cache_write_into) {
-        return BuildXlaCompilationCache(dev, platform_info, cache_write_into);
+        return BuildXlaCompilationCache(dev, flr, platform_info,
+                                        cache_write_into);
       }));
   core::ScopedUnref cache_ref(cache);
-
-  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
 
   XlaCompiler::Options options =
       GenerateCompilerOptions(*cache, *flr, dev,
                               /*stream=*/nullptr, platform_info,
-                              /*has_ref_vars=*/false, &tf_allocator_adapter);
+                              /*has_ref_vars=*/false);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.always_return_tuple = false;
@@ -113,13 +113,14 @@ xla::StatusOr<std::string> GetCompilerIr(
 
   XlaCompiler compiler(options);
 
-  xla::StatusOr<std::vector<XlaCompiler::Argument>> args =
+  StatusOr<std::vector<XlaCompiler::Argument>> args =
       XlaComputationLaunchContext::BuildXlaCompilerArguments(
           constant_arg_indices, inputs, variable_infos, dev);
   TF_RETURN_IF_ERROR(args.status());
 
   switch (stage) {
-    case IrExportStage::HLO: {
+    case IrExportStage::HLO:
+    case IrExportStage::HLO_SERIALIZED: {
       XlaCompiler::CompilationResult result;
       TF_RETURN_IF_ERROR(
           compiler.CompileFunction(compile_options, function, *args, &result));
@@ -131,19 +132,29 @@ xla::StatusOr<std::string> GetCompilerIr(
           std::unique_ptr<xla::HloModule> new_module,
           xla::HloModule::CreateFromProto(result.computation->proto(), config));
 
-      return new_module->ToString();
+      if (stage == IrExportStage::HLO_SERIALIZED) {
+        return new_module->ToProto().SerializeAsString();
+      } else {
+        return new_module->ToString();
+      }
     }
-    case IrExportStage::OPTIMIZED_HLO: {
-      xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
+    case IrExportStage::OPTIMIZED_HLO:
+    case IrExportStage::OPTIMIZED_HLO_SERIALIZED: {
+      StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
           options, compile_options, function, cache, *args, compiler);
       TF_RETURN_IF_ERROR(executable.status());
-      return (*executable)->executable()->module().ToString();
+      xla::Executable* new_executable = (*executable)->executable();
+      if (stage == IrExportStage::OPTIMIZED_HLO_SERIALIZED) {
+        return new_executable->module().ToProto().SerializeAsString();
+      } else {
+        return new_executable->module().ToString();
+      }
     }
     case IrExportStage::OPTIMIZED_HLO_DOT: {
-      xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
+      StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
           options, compile_options, function, cache, *args, compiler);
       TF_RETURN_IF_ERROR(executable.status());
-      xla::StatusOr<std::string> graph = xla::RenderGraph(
+      StatusOr<std::string> graph = xla::RenderGraph(
           *(*executable)->executable()->module().entry_computation(),
           "Visualization",
           /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,

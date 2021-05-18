@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <fnmatch.h>
@@ -69,7 +70,8 @@ class PThread : public Thread {
     }
     int ret = pthread_create(&thread_, &attributes, &ThreadFn, params);
     // There is no mechanism for the thread creation API to fail, so we CHECK.
-    CHECK_EQ(ret, 0) << "Thread creation via pthread_create() failed.";
+    CHECK_EQ(ret, 0) << "Thread " << name
+                     << " creation via pthread_create() failed.";
     pthread_attr_destroy(&attributes);
   }
 
@@ -149,9 +151,7 @@ class PosixEnv : public Env {
         return true;
       }
     }
-#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
-    return false;
-#else
+#if defined(__GLIBC__) || defined(__FreeBSD__)
     char buf[100];
 #ifdef __FreeBSD__
     int res = 0;
@@ -164,6 +164,8 @@ class PosixEnv : public Env {
     }
     *name = buf;
     return true;
+#else
+    return false;
 #endif
   }
 
@@ -242,12 +244,45 @@ class PosixEnv : public Env {
   }
 };
 
+#if defined(LIBTPU_ON_GCE)
+// This is a temporary fix for including GCS file system on TPU builds.
+// Will be removed once b/176954917 is fully resolved with the build fix.
+bool RegisterGcsFileSystemForTpu() {
+  int fd = shm_open(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data(),
+                    O_RDWR, S_IRUSR | S_IWUSR);
+  if (fd == -1) {
+    LOG(WARNING) << "Unable to register GCS file system for the TPU build.";
+    return false;
+  }
+
+  void* (**fn)() = reinterpret_cast<void* (**)()>(mmap(
+      nullptr, sizeof(void* (*)()), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+  if (fn == MAP_FAILED) {
+    LOG(WARNING) << "Unable to register GCS file system for the TPU build.";
+    return false;
+  }
+
+  FileSystem* fs = reinterpret_cast<FileSystem*>((*fn)());
+  tensorflow::Env::Default()
+      ->RegisterFileSystem("gs", std::unique_ptr<FileSystem>(fs))
+      .IgnoreError();
+
+  munmap(fn, sizeof(void* (*)()));
+  close(fd);
+  return true;
+}
+#endif
+
 }  // namespace
 
 #if defined(PLATFORM_POSIX) || defined(__APPLE__) || defined(__ANDROID__)
 REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 REGISTER_FILE_SYSTEM("ram", RamFileSystem);
+
+#if defined(LIBTPU_ON_GCE)
+bool register_gcs_for_tpu = RegisterGcsFileSystemForTpu();
+#endif
 
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;

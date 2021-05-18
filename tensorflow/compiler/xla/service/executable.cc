@@ -256,16 +256,11 @@ Status ExecuteWrapperAfterExecution(
     }
   }
 
-  const auto& dump_path =
-      executable->module_config().debug_options().xla_dump_to();
   if (executable->module_config().debug_options().xla_hlo_profile() &&
-      state.profile_ptr != nullptr && !dump_path.empty()) {
-    const std::string full_path =
-        tensorflow::io::JoinPath(dump_path, "hlo_execution_profile_data");
-    TF_CHECK_OK(tensorflow::WriteStringToFile(
-        tensorflow::Env::Default(), full_path,
-        state.profile_ptr->ToProto().SerializeAsString()))
-        << "Error saving HloExecutionProfileData to " << full_path;
+      state.profile_ptr != nullptr) {
+    DumpToFileInDir(executable->module(), /*file_prefix=*/"",
+                    /*file_suffix=*/"hlo_execution_profile_data",
+                    state.profile_ptr->ToProto().SerializeAsString());
   }
 
   if (state.profile_ptr != nullptr) {
@@ -273,7 +268,8 @@ Status ExecuteWrapperAfterExecution(
         &stream->parent()->GetDeviceDescription();
     std::shared_ptr<HloExecutionProfile> profile = state.profile_ptr;
     stream->ThenDoHostCallback([profile, device_description]() {
-      XLA_LOG_LINES(tensorflow::INFO, profile->ToString(*device_description));
+      XLA_LOG_LINES(tensorflow::INFO,
+                    profile->ToString(device_description->clock_rate_ghz()));
     });
   }
 

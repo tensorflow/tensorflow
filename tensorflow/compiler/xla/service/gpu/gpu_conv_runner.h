@@ -119,8 +119,30 @@ Status RunGpuConv(const GpuConvConfig& conv_config,
                   se::ScratchAllocator* scratch_allocator, se::Stream* stream,
                   RunConvOptions = {});
 
+// Struct to describe properties of a convolution without being tied to specific
+// IR. Will be used to help build Convolution thunks from either XLA HLO or
+// LHLO GPU dialect in MLIR.
+struct GpuConvDescriptor {
+  CudnnConvKind kind;
+  CudnnConvBackendConfig backend_config;
+  Shape operand0_shape;
+  Shape operand1_shape;
+  Shape result_shape;
+  size_t scratch_size;
+  Window window;
+  ConvolutionDimensionNumbers dnums;
+  int64 feature_group_count;
+};
+
+// Returns the convolution configuration given a XLA HLO instruction.
 StatusOr<GpuConvConfig> GetGpuConvConfig(
     const HloCustomCallInstruction* cudnn_call);
+
+// Returns the convolution configuration given a convolution descriptor `desc`
+// and a string representation of the convolution instruction `inst_as_string`
+// (for error reporting).
+StatusOr<GpuConvConfig> GetGpuConvConfig(const GpuConvDescriptor& desc,
+                                         absl::string_view inst_as_string);
 
 // Implementation details exposed for debugging and log analysis.
 StatusOr<GpuConvParams> GetGpuConvParams(

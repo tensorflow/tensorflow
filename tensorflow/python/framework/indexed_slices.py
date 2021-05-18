@@ -81,6 +81,18 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
   gradients for operations that have sparse gradients
   (e.g. `tf.gather`).
 
+  >>> v = tf.Variable([[0.,1, 2], [2, 3, 4], [4, 5, 6], [6, 7, 8]])
+  >>> with tf.GradientTape() as tape:
+  ...   r = tf.gather(v, [1,3])
+  >>> index_slices = tape.gradient(r,v)
+  >>> index_slices
+  <...IndexedSlices object ...>
+  >>> index_slices.indices.numpy()
+  array([1, 3], dtype=int32)
+  >>> index_slices.values.numpy()
+  array([[1., 1., 1.],
+         [1., 1., 1.]], dtype=float32)
+
   Contrast this representation with
   `tf.sparse.SparseTensor`,
   which uses multi-dimensional indices and scalar values.

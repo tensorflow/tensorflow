@@ -1,0 +1,6 @@
+func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %arg1: tensor<*xelem_type>)
+    -> tensor<*xoutput_type> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = "tf.FloorDiv"(%arg0, %arg1) {T = elem_type, device = ""}
+    : (tensor<*xelem_type>, tensor<*xelem_type>) -> tensor<*xoutput_type>
+  return %0 : tensor<*xoutput_type>
+}

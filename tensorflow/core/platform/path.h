@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace io {
 namespace internal {
-string JoinPathImpl(std::initializer_list<tensorflow::StringPiece> paths);
+std::string JoinPathImpl(std::initializer_list<tensorflow::StringPiece> paths);
 }
 
 // Utility routines for processing filenames
@@ -43,7 +43,7 @@ string JoinPathImpl(std::initializer_list<tensorflow::StringPiece> paths);
 // string path = io::JoinPath(FLAGS_test_srcdir, filename);
 // string path = io::JoinPath("/full", "path", "to", "filename");
 template <typename... T>
-string JoinPath(const T&... args) {
+std::string JoinPath(const T&... args) {
   return internal::JoinPathImpl({args...});
 }
 #endif /* SWIG */
@@ -64,6 +64,15 @@ tensorflow::StringPiece Basename(tensorflow::StringPiece path);
 // there is no "." in the basename, the result is empty.
 tensorflow::StringPiece Extension(tensorflow::StringPiece path);
 
+// Returns the largest common subpath of `paths`.
+//
+// For example, for "/alpha/beta/gamma" and "/alpha/beta/ga" returns
+// "/alpha/beta/". For "/alpha/beta/gamma" and "/alpha/beta/gamma" returns
+// "/alpha/beta/".
+//
+// Does not perform any path normalization.
+std::string CommonPathPrefix(absl::Span<std::string const> paths);
+
 // Collapse duplicate "/"s, resolve ".." and "." path elements, remove
 // trailing "/".
 //
@@ -71,7 +80,7 @@ tensorflow::StringPiece Extension(tensorflow::StringPiece path);
 // invoke any system calls (getcwd(2)) in order to resolve relative
 // paths with respect to the actual working directory.  That is, this is purely
 // string manipulation, completely independent of process state.
-string CleanPath(tensorflow::StringPiece path);
+std::string CleanPath(tensorflow::StringPiece path);
 
 // Populates the scheme, host, and path from a URI. scheme, host, and path are
 // guaranteed by this function to point into the contents of uri, even if
@@ -86,11 +95,12 @@ void ParseURI(tensorflow::StringPiece uri, tensorflow::StringPiece* scheme,
 
 // Creates a URI from a scheme, host, and path. If the scheme is empty, we just
 // return the path.
-string CreateURI(tensorflow::StringPiece scheme, tensorflow::StringPiece host,
-                 tensorflow::StringPiece path);
+std::string CreateURI(tensorflow::StringPiece scheme,
+                      tensorflow::StringPiece host,
+                      tensorflow::StringPiece path);
 
 // Creates a temporary file name with an extension.
-string GetTempFilename(const string& extension);
+std::string GetTempFilename(const std::string& extension);
 
 // Reads the TEST_UNDECLARED_OUTPUTS_DIR environment variable, and if set
 // assigns `dir` to the value. `dir` is not modified if the environment variable
@@ -99,7 +109,7 @@ string GetTempFilename(const string& extension);
 //
 // Note: This function obviates the need to deal with Bazel's odd path decisions
 // on Windows, and should be preferred over a simple `getenv`.
-bool GetTestUndeclaredOutputsDir(string* dir);
+bool GetTestUndeclaredOutputsDir(std::string* dir);
 
 }  // namespace io
 }  // namespace tensorflow

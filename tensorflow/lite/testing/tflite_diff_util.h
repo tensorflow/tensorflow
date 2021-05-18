@@ -47,6 +47,8 @@ struct DiffOptions {
   int num_runs_per_pass;
   // The type of delegate to apply during inference.
   TfLiteDriver::DelegateType delegate;
+  // Path of tflite model used to generate golden values.
+  std::string reference_tflite_model = "";
 };
 
 // Run a single TensorFLow Lite diff test with a given options.

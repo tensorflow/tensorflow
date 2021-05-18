@@ -106,6 +106,12 @@ class BufferSequencingEvent {
   // example because it uses storage borrowed from elsewhere.
   EventPool::Handle event_;
 
+  // Cache of event_->sequence_number that avoids synchronization overhead.
+  // TODO(phawkins): In fact, event_->sequence_number is unused beyond the
+  // initial population of sequence_number_, and we could remove it if we
+  // refactored the EventPool API.
+  std::atomic<uint64_t> sequence_number_{0};
+
   mutable absl::Mutex mu_;
   // A list of all streams for which the buffer's content is known to be defined
   // at the tail of the queue, i.e., for any newly enqueued command.
@@ -137,11 +143,8 @@ class TrackedDeviceBuffer {
       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
           definition_events);
 
-  // Builds a ShapedBuffer view onto the buffers of 'tree'. We require but do
-  // not verify that TransferManager::HostShapeToDeviceShape(on_host_shape) ==
-  // on_device_shape().
-  ShapedBuffer AsShapedBuffer(const Shape& on_host_shape,
-                              const Shape& on_device_shape) const;
+  // Builds a ShapedBuffer view onto the buffers of 'tree'.
+  ShapedBuffer AsShapedBuffer(const Shape& on_device_shape) const;
 
   // Adds the owned device buffers in order to 'iterator'. Used to add the
   // buffers to an ExecutionInput. We require but do not verify that 'iterator'

@@ -14,9 +14,6 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Contains the base Layer class, from which all layers inherit."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import functools
@@ -25,8 +22,6 @@ import threading
 import warnings
 
 import numpy as np
-import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
@@ -61,7 +56,6 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
@@ -96,7 +90,7 @@ class Layer(base_layer.Layer):
     once. Should actually perform the logic of applying the layer to the
     input tensors (which should be passed in as the first argument).
 
-  Arguments:
+  Args:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
     dtype: The dtype of the layer's computations and weights (default of
@@ -274,7 +268,7 @@ class Layer(base_layer.Layer):
 
     This is typically used to create the weights of `Layer` subclasses.
 
-    Arguments:
+    Args:
       input_shape: Instance of `TensorShape`, or list of instances of
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
@@ -287,7 +281,7 @@ class Layer(base_layer.Layer):
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
-    Arguments:
+    Args:
         inputs: Input tensor, or list/tuple of input tensors.
         **kwargs: Additional keyword arguments.
 
@@ -300,7 +294,7 @@ class Layer(base_layer.Layer):
   def _add_trackable(self, trackable_object, trainable):
     """Adds a Trackable object to this layer's state.
 
-    Arguments:
+    Args:
       trackable_object: The tf.tracking.Trackable object to add.
       trainable: Boolean, whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases) or
@@ -309,7 +303,10 @@ class Layer(base_layer.Layer):
     Returns:
       The TrackableWeightHandler used to track this object.
     """
-    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
+    if isinstance(trackable_object, base_layer_utils.TrackableWeightHandler):
+      handler = trackable_object
+    else:
+      handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
       self._trainable_weights.append(handler)
     else:
@@ -332,7 +329,7 @@ class Layer(base_layer.Layer):
                  **kwargs):
     """Adds a new variable to the layer.
 
-    Arguments:
+    Args:
       name: Variable name.
       shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
@@ -376,6 +373,7 @@ class Layer(base_layer.Layer):
       if kwarg not in ['getter', 'collections', 'experimental_autocast',
                        'caching_device']:
         raise TypeError('Unknown keyword argument:', kwarg)
+    has_custom_getter = 'getter' in kwargs
     getter = kwargs.pop('getter', base_layer_utils.make_variable)
     collections_arg = kwargs.pop('collections', None)
     # 'experimental_autocast' can be set to False by the caller to indicate an
@@ -417,7 +415,10 @@ class Layer(base_layer.Layer):
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
         initializer = initializers.zeros()
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
-      else:
+      elif not has_custom_getter:
+        # When `getter` is specified, it's possibly fine for `initializer` to be
+        # None since it's up to the custom `getter` to raise error in case it
+        # indeed needs `initializer`.
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
@@ -433,8 +434,9 @@ class Layer(base_layer.Layer):
       # disable it if it is specified.
       # TODO(b/142020079): Reenable it once the bug is fixed.
       if caching_device is not None:
-        tf_logging.warn('`caching_device` does not work with mixed precision '
-                        'API. Ignoring user specified `caching_device`.')
+        tf_logging.warning(
+            '`caching_device` does not work with mixed precision API. Ignoring '
+            'user specified `caching_device`.')
         caching_device = None
 
     variable = self._add_variable_with_custom_getter(
@@ -524,7 +526,7 @@ class Layer(base_layer.Layer):
     dictionary. It does not handle layer connectivity
     (handled by Network), nor weights (handled by `set_weights`).
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the
             output of get_config.
 
@@ -540,7 +542,7 @@ class Layer(base_layer.Layer):
     layer. This assumes that the layer will later be used with inputs that
     match the input shape provided here.
 
-    Arguments:
+    Args:
         input_shape: Shape tuple (tuple of integers)
             or list of shape tuples (one per output tensor of the layer).
             Shape tuples can include None for free dimensions,
@@ -567,12 +569,11 @@ class Layer(base_layer.Layer):
           try:
             outputs = self(inputs, training=False)
           except TypeError as e:
-            six.raise_from(
-                NotImplementedError(
-                    'We could not automatically infer the static shape of the '
-                    'layer\'s output. Please implement the '
-                    '`compute_output_shape` method on your layer (%s).' %
-                    self.__class__.__name__), e)
+            raise NotImplementedError(
+                'We could not automatically infer the static shape of the '
+                'layer\'s output. Please implement the '
+                '`compute_output_shape` method on your layer (%s).' %
+                self.__class__.__name__) from e
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
@@ -619,7 +620,7 @@ class Layer(base_layer.Layer):
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
-    Arguments:
+    Args:
         inputs: Tensor or list of tensors.
         mask: Tensor or list of tensors.
 
@@ -640,7 +641,7 @@ class Layer(base_layer.Layer):
   def __call__(self, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
-    Arguments:
+    Args:
       *args: Positional arguments to be passed to `self.call`.
       **kwargs: Keyword arguments to be passed to `self.call`.
 
@@ -735,7 +736,7 @@ class Layer(base_layer.Layer):
       if self._expects_training_arg and training_value is not None:
         # Force the training_value to be bool type which matches to the contract
         # for layer/model call args.
-        if tensor_util.is_tensor(training_value):
+        if tensor_util.is_tf_type(training_value):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
@@ -754,8 +755,6 @@ class Layer(base_layer.Layer):
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
         # the corresponding TF subgraph inside `backend.get_graph()`
-        # TODO(reedwm): We should assert input compatibility after the inputs
-        # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         graph = backend.get_graph()
@@ -1015,7 +1014,7 @@ class Layer(base_layer.Layer):
     The `get_losses_for` method allows to retrieve the losses relevant to a
     specific set of inputs.
 
-    Arguments:
+    Args:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
       inputs: Ignored when executing eagerly. If anything other than None is
@@ -1035,7 +1034,7 @@ class Layer(base_layer.Layer):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
-      if not tensor_util.is_tensor(loss):
+      if not tensor_util.is_tf_type(loss):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
@@ -1051,7 +1050,7 @@ class Layer(base_layer.Layer):
         continue
       if loss is None:
         continue
-      if not tensor_util.is_tensor(loss):
+      if not tensor_util.is_tf_type(loss):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
@@ -1168,7 +1167,7 @@ class Layer(base_layer.Layer):
     updates are run on the fly and thus do not need to be tracked for later
     execution).
 
-    Arguments:
+    Args:
       updates: Update op, or list/tuple of update ops, or zero-arg callable
         that returns an update op. A zero-arg callable should be passed in
         order to disable running the updates by setting `trainable=False`
@@ -1200,7 +1199,7 @@ class Layer(base_layer.Layer):
     def process_update(x):
       """Standardize update ops.
 
-      Arguments:
+      Args:
         x: Tensor, op, or callable.
 
       Returns:
@@ -1256,7 +1255,7 @@ class Layer(base_layer.Layer):
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
 
-    Arguments:
+    Args:
         weights: a list of Numpy arrays. The number
             of arrays and their shape must match
             number of the dimensions of the weights
@@ -1293,11 +1292,12 @@ class Layer(base_layer.Layer):
         weight_index += num_tensors
       else:
         weight = weights[weight_index]
+        weight_shape = weight.shape if hasattr(weight, 'shape') else ()
         ref_shape = param.shape
-        if not ref_shape.is_compatible_with(weight.shape):
+        if not ref_shape.is_compatible_with(weight_shape):
           raise ValueError(
               'Layer weight shape %s not compatible with provided weight '
-              'shape %s' % (ref_shape, weight.shape))
+              'shape %s' % (ref_shape, weight_shape))
         weight_value_tuples.append((param, weight))
         weight_index += 1
 
@@ -1350,7 +1350,7 @@ class Layer(base_layer.Layer):
   def get_updates_for(self, inputs):
     """Retrieves updates relevant to a specific set of inputs.
 
-    Arguments:
+    Args:
       inputs: Input tensor or list/tuple of input tensors.
 
     Returns:
@@ -1369,7 +1369,7 @@ class Layer(base_layer.Layer):
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
 
-    Arguments:
+    Args:
       inputs: Input tensor or list/tuple of input tensors.
 
     Returns:
@@ -1388,7 +1388,7 @@ class Layer(base_layer.Layer):
   def get_input_mask_at(self, node_index):
     """Retrieves the input mask tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1407,7 +1407,7 @@ class Layer(base_layer.Layer):
   def get_output_mask_at(self, node_index):
     """Retrieves the output mask tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1468,7 +1468,7 @@ class Layer(base_layer.Layer):
   def get_input_shape_at(self, node_index):
     """Retrieves the input shape(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1487,7 +1487,7 @@ class Layer(base_layer.Layer):
   def get_output_shape_at(self, node_index):
     """Retrieves the output shape(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1506,7 +1506,7 @@ class Layer(base_layer.Layer):
   def get_input_at(self, node_index):
     """Retrieves the input tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1524,7 +1524,7 @@ class Layer(base_layer.Layer):
   def get_output_at(self, node_index):
     """Retrieves the output tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1683,7 +1683,7 @@ class Layer(base_layer.Layer):
 
     This is an alias of `self.__call__`.
 
-    Arguments:
+    Args:
       inputs: Input tensor(s).
       *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
@@ -1751,6 +1751,11 @@ class Layer(base_layer.Layer):
       self._dtype_policy = dtype
     elif isinstance(dtype, dict):
       self._dtype_policy = policy.deserialize(dtype)
+    elif isinstance(dtype, str) and dtype in ('mixed_float16',
+                                              'mixed_bfloat16'):
+      # The isinstance check is required since np.dtype raises an error if
+      # compared to a non-dtype string.
+      self._dtype_policy = policy.Policy(dtype)
     elif dtype:
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
@@ -2029,7 +2034,7 @@ class Layer(base_layer.Layer):
         - get_input_at
         etc...
 
-    Arguments:
+    Args:
         node_index: Integer index of the node from which
             to retrieve the attribute.
         attr: Exact node attribute name.
@@ -2149,8 +2154,10 @@ class Layer(base_layer.Layer):
     # For any super.__delattr__() call, we will directly use the implementation
     # in Trackable and skip the behavior in AutoTrackable. The Layer was
     # originally use Trackable as base class, the change of using Module as base
-    # class forced us to have AutoTrackable in the class hierarchy. Skipping
-    # the __delattr__ and __setattr__ in AutoTrackable will keep the status quo.
+    # class forced us to have AutoTrackable in the class hierarchy.
+    #
+    # TODO(b/180760306) Keeping the status quo of skipping _delattr__ and
+    # __setattr__ in AutoTrackable may be unsustainable.
     existing_value = getattr(self, name, None)
 
     # If this value is replacing an existing object assigned to an attribute, we
@@ -2240,11 +2247,7 @@ class Layer(base_layer.Layer):
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
     for val in nest.flatten(value):
-      # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
-      # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):
-        continue
-      if isinstance(val, resource_variable_ops._UnreadVariable):  # pylint: disable=protected-access
         continue
 
       # Users may add extra weights/variables
@@ -2262,8 +2265,8 @@ class Layer(base_layer.Layer):
 
       backend.track_variable(val)
 
-    # Skip the auto trackable from tf.Module to keep status quo. See the comment
-    # at __delattr__.
+    # TODO(b/180760306) Skip the auto trackable from tf.Module to keep status
+    # quo. See the comment at __delattr__.
     super(tracking.AutoTrackable, self).__setattr__(name, value)
 
   # This is a hack so that the is_layer (within
@@ -2272,15 +2275,19 @@ class Layer(base_layer.Layer):
   def _is_layer(self):
     return True
 
-  def _init_call_fn_args(self):
+  def _init_call_fn_args(self, expects_training_arg=None):
     # Clear cached call function arguments.
     self.__class__._call_full_argspec.fget.cache.pop(self, None)
     self.__class__._call_fn_args.fget.cache.pop(self, None)
     self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
 
     call_fn_args = self._call_fn_args
-    self._expects_training_arg = ('training' in call_fn_args or
-                                  self._call_accepts_kwargs)
+    if expects_training_arg is None:
+      self._expects_training_arg = ('training' in call_fn_args or
+                                    self._call_accepts_kwargs)
+    else:
+      # Use value encoded into the metadata when loading from the SavedModel.
+      self._expects_training_arg = expects_training_arg
     self._expects_mask_arg = ('mask' in call_fn_args or
                               self._call_accepts_kwargs)
 

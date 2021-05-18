@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "LoadTPUEmbeddingFrequencyEstimatorParameters"
+  visibility: HIDDEN
+  in_arg {
+    name: "parameters"
+    description: <<END
+Value of parameters used in the frequency estimator optimization algorithm.
+END
+  }
+  in_arg {
+    name: "last_hit_step"
+    description: <<END
+Value of last_hit_step used in the frequency estimator optimization algorithm.
+END
+  }
+  summary: "Load frequency estimator embedding parameters."
+  description: <<END
+An op that loads optimization parameters into HBM for embedding. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+embedding table configuration. For example, this op is used to install
+parameters that are loaded from a checkpoint before a training loop is
+executed.
+END
+}

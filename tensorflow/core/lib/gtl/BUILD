@@ -19,7 +19,7 @@ package(
         # tensorflow/core/util uses array_slice, inlined_vector
         "//tensorflow/core/util:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.
@@ -194,7 +194,10 @@ filegroup(
     srcs = [
         "cleanup.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+    ],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

@@ -284,12 +284,8 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(
     const uint64 context_id, EagerContext* ctx, WorkerSession* worker_session) {
-  if (ctx->LazyCopyFunctionRemoteInputs()) {
-    return new EagerClusterFunctionLibraryRuntime(
-        context_id, ctx, worker_session->remote_device_mgr());
-  } else {
-    return worker_session->cluster_flr();
-  }
+  return new EagerClusterFunctionLibraryRuntime(
+      context_id, ctx, worker_session->remote_device_mgr());
 }
 
 }  // namespace eager

@@ -101,7 +101,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(operand, start_indices),
         expected=np.array([[5, 6, 7]]))
 
-  @test_util.disable_mlir_bridge('Dynamic result types not supported')
   def testShiftRightLogical(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_logical,
@@ -113,7 +112,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(np.array([0xFFFFFFFF, 16], dtype=np.uint32), np.uint32(4)),
         expected=np.array([0x0FFFFFFF, 1], dtype=np.uint32))
 
-  @test_util.disable_mlir_bridge('Dynamic result types not supported')
   def testShiftRightArithmetic(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_arithmetic,
@@ -157,7 +155,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             padding=((2, 1),),
             lhs_dilation=(1,),
             rhs_dilation=(2,),
-            dimension_numbers=dnums)
+            dimension_numbers=dnums,
+            precision_config=precision_config)
 
       self._assertOpOutputMatchesExpected(
           conv_1d_fn,
@@ -166,6 +165,43 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
               np.array([[[-2, -3]]], dtype=dtype),
           ),
           expected=np.array([[[-9, -12, -21, -26, -10]]], dtype=dtype))
+
+  def testConvPreferredElementType(self):
+    dtype = np.float16
+    preferred_element_type = np.float32
+
+    def conv_1d_fn(lhs, rhs):
+      dnums = xla_data_pb2.ConvolutionDimensionNumbers()
+      num_spatial_dims = 1
+      dnums.input_batch_dimension = 0
+      dnums.input_feature_dimension = 1
+      dnums.output_batch_dimension = 0
+      dnums.output_feature_dimension = 1
+      dnums.kernel_output_feature_dimension = 0
+      dnums.kernel_input_feature_dimension = 1
+      dnums.input_spatial_dimensions.extend(range(2, 2 + num_spatial_dims))
+      dnums.kernel_spatial_dimensions.extend(range(2, 2 + num_spatial_dims))
+      dnums.output_spatial_dimensions.extend(range(2, 2 + num_spatial_dims))
+      precision_config = None
+      return xla.conv(
+          lhs,
+          rhs,
+          window_strides=(1,),
+          padding=((2, 1),),
+          lhs_dilation=(1,),
+          rhs_dilation=(2,),
+          dimension_numbers=dnums,
+          precision_config=precision_config,
+          preferred_element_type=preferred_element_type)
+
+    self._assertOpOutputMatchesExpected(
+        conv_1d_fn,
+        args=(
+            np.array([[[3, 4, 5, 6]]], dtype=dtype),
+            np.array([[[-2, -3]]], dtype=dtype),
+        ),
+        expected=np.array([[[-9, -12, -21, -26, -10]]],
+                          dtype=preferred_element_type))
 
   @parameterized.parameters(*PRECISION_VALUES)
   def testDotGeneral(self, precision):
@@ -206,6 +242,35 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                   [[95, 106, 117], [129, 144, 159]],
               ],
               dtype=dtype))
+
+  def testDotGeneralInt8xInt8ToInt32(self):
+
+    def dot_fn(lhs, rhs):
+      dnums = xla_data_pb2.DotDimensionNumbers()
+      dnums.lhs_contracting_dimensions.append(2)
+      dnums.rhs_contracting_dimensions.append(1)
+      dnums.lhs_batch_dimensions.append(0)
+      dnums.rhs_batch_dimensions.append(0)
+      return xla.dot_general(
+          lhs, rhs, dimension_numbers=dnums, preferred_element_type=np.int32)
+
+    lhs = np.array([
+        [[1, 2], [3, 4]],
+        [[5, 6], [7, 8]],
+    ], dtype=np.int8)
+    rhs = np.array([
+        [[1, 2, 3], [4, 5, 6]],
+        [[7, 8, 9], [10, 11, 12]],
+    ],
+                   dtype=np.int8)
+    self._assertOpOutputMatchesExpected(
+        dot_fn,
+        args=(lhs, rhs),
+        expected=np.array([
+            [[9, 12, 15], [19, 26, 33]],
+            [[95, 106, 117], [129, 144, 159]],
+        ],
+                          dtype=np.int32))
 
   def testNeg(self):
     for dtype in self.numeric_types - {np.uint8, np.int8}:
@@ -250,6 +315,100 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           expected=np.array(
               [[7, 7, 1, 7], [7, 7, 7, 7], [7, 7, 4, 7], [7, 7, 7, 7]],
               dtype=dtype))
+
+  def testPadShapeInference(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 3))
+
+    c = xla.pad(
+        a,
+        padding_value=7,
+        padding_low=[2, 1],
+        padding_high=[1, 2],
+        padding_interior=[1, 4])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 14]))
+
+    c = xla.pad(
+        a,
+        padding_value=7,
+        padding_low=[2, -2],
+        padding_high=[1, -2],
+        padding_interior=[1, 2])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 3]))
+
+    c = xla.pad(
+        array_ops.placeholder(np.float32, shape=(None, 2)),
+        padding_value=7,
+        padding_low=[0, 1],
+        padding_high=[0, 2],
+        padding_interior=[0, 4])
+    self.assertEqual(c.shape.as_list(), [None, 9])
+
+    # 0-sized input dimension and interior padding
+    c = xla.pad(
+        array_ops.placeholder(np.float32, shape=(2, 0)),
+        padding_value=7,
+        padding_low=[2, 1],
+        padding_high=[1, 1],
+        padding_interior=[1, 2])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 2]))
+
+    with self.assertRaisesRegex(
+        ValueError, 'padding_value input must be scalar, found rank 1 '):
+      xla.pad(
+          a,
+          padding_value=[0, 1],
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(ValueError,
+                                'padding_low must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(ValueError,
+                                'padding_high must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(
+        ValueError, 'padding_interior must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0])
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'padding_interior must contain only non-negative values, found -2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[-2, 0])
+
+    with self.assertRaisesRegex(
+        ValueError, 'resulting padded dimension has negative size -1 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[-3, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
 
   @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):

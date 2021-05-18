@@ -2,6 +2,11 @@ path: "tensorflow.keras.preprocessing.image.DirectoryIterator"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.preprocessing.image.DirectoryIterator\'>"
   is_instance: "<class \'keras_preprocessing.image.directory_iterator.DirectoryIterator\'>"
+  is_instance: "<class \'keras_preprocessing.image.iterator.BatchFromFilesMixin\'>"
+  is_instance: "<class \'tensorflow.python.keras.preprocessing.image.Iterator\'>"
+  is_instance: "<class \'keras_preprocessing.image.iterator.Iterator\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.data_utils.Sequence\'>"
+  is_instance: "<type \'object\'>"
   member {
     name: "allowed_class_modes"
     mtype: "<type \'set\'>"

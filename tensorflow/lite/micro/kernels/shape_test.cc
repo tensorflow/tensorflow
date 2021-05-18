@@ -34,7 +34,7 @@ void ValidateShape(TfLiteTensor* tensors, const int tensor_count,
 
   const TfLiteRegistration registration = tflite::Register_SHAPE();
   micro::KernelRunner runner(registration, tensors, tensor_count, inputs_array,
-                             outputs_array, nullptr, micro_test::reporter);
+                             outputs_array, nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -44,8 +44,8 @@ void ValidateShape(TfLiteTensor* tensors, const int tensor_count,
   }
 }
 
-void TestShape(const int* input_dims_data, const float* input_data,
-               const int* output_dims_data, const int32_t* expected_output_data,
+void TestShape(int* input_dims_data, const float* input_data,
+               int* output_dims_data, const int32_t* expected_output_data,
                int32_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);

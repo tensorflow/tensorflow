@@ -22,6 +22,7 @@ import atexit
 import collections
 import contextlib
 import copy
+import functools
 import weakref
 
 from absl import logging
@@ -37,6 +38,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
@@ -54,6 +56,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
@@ -62,6 +65,7 @@ from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 _XLA_OP_BY_OP_INPUTS_LIMIT = 200
@@ -99,6 +103,122 @@ def validate_run_function(fn):
         "`strategy.run` is a `tf.function` or "
         "`strategy.run` is called inside a `tf.function` if "
         "eager behavior is enabled.")
+
+
+def _maybe_partial_apply_variables(fn, args, kwargs):
+  """Inspects arguments to partially apply any DistributedVariable.
+
+  This avoids an automatic cast of the current variable value to tensor.
+
+  Note that a variable may be captured implicitly with Python scope instead of
+  passing it to run(), but supporting run() keeps behavior consistent
+  with MirroredStrategy.
+
+  Since positional arguments must be applied from left to right, this function
+  does some tricky function inspection to move variable positional arguments
+  into kwargs. As a result of this, we can't support passing Variables as *args,
+  nor as args to functions which combine both explicit positional arguments and
+  *args.
+
+  Args:
+    fn: The function to run, as passed to run().
+    args: Positional arguments to fn, as passed to run().
+    kwargs: Keyword arguments to fn, as passed to run().
+
+  Returns:
+    A tuple of the function (possibly wrapped), args, kwargs (both
+    possibly filtered, with members of args possibly moved to kwargs).
+    If no variables are found, this function is a noop.
+
+  Raises:
+    ValueError: If the function signature makes unsupported use of *args, or if
+      too many arguments are passed.
+  """
+
+  def is_distributed_var(x):
+    flat = nest.flatten(x)
+    return flat and isinstance(flat[0], values.DistributedVariable)
+
+  # We will split kwargs into two dicts, one of which will be applied now.
+  var_kwargs = {}
+  nonvar_kwargs = {}
+
+  if kwargs:
+    var_kwargs = {k: v for k, v in kwargs.items() if is_distributed_var(v)}
+  if var_kwargs:
+    nonvar_kwargs = {
+        k: v for k, v in kwargs.items() if not is_distributed_var(v)
+    }
+
+  # Dump the argument names of `fn` to a list. This will include both positional
+  # and keyword arguments, but since positional arguments come first we can
+  # look up names of positional arguments by index.
+  positional_args = []
+  index_of_star_args = None
+  for i, p in enumerate(tf_inspect.signature(fn).parameters.values()):
+    # Class methods define "self" as first argument, but we don't pass "self".
+    # Note that this is a heuristic, as a method can name its first argument
+    # something else, and a function can define a first argument "self" as well.
+    # In both of these cases, using a Variable will fail with an unfortunate
+    # error about the number of arguments.
+    # inspect.is_method() seems not to work here, possibly due to the use of
+    # tf.function().
+    if i == 0 and p.name == "self":
+      continue
+
+    if p.kind == tf_inspect.Parameter.POSITIONAL_OR_KEYWORD:
+      positional_args.append(p.name)
+
+    elif p.kind == tf_inspect.Parameter.VAR_POSITIONAL:
+      # We'll raise an error later if a variable is passed to *args, since we
+      # can neither pass it by name nor partially apply it. This case only
+      # happens once at most.
+      index_of_star_args = i
+
+    elif p.kind == tf_inspect.Parameter.POSITIONAL_ONLY:
+      # This is a rare Python feature, indicating a / in the arg list.
+      if var_kwargs or any(is_distributed_var(a) for a in args):
+        raise ValueError(
+            "Mixing Variables and positional-only parameters not supported by "
+            "TPUStrategy.")
+      return fn, args, kwargs
+
+  star_args = []
+  have_seen_var_arg = False
+
+  for i, a in enumerate(args):
+    if is_distributed_var(a):
+      if index_of_star_args is not None and i >= index_of_star_args:
+        raise ValueError(
+            "TPUStrategy.run() cannot handle Variables passed to *args. "
+            "Either name the function argument, or capture the Variable "
+            "implicitly.")
+      if len(positional_args) <= i:
+        raise ValueError(
+            "Too many positional arguments passed to call to TPUStrategy.run()."
+        )
+      var_kwargs[positional_args[i]] = a
+      have_seen_var_arg = True
+    else:
+      if index_of_star_args is not None and i >= index_of_star_args:
+        if have_seen_var_arg:
+          raise ValueError(
+              "TPUStrategy.run() cannot handle both Variables and a mix of "
+              "positional args and *args. Either remove the *args, or capture "
+              "the Variable implicitly.")
+        else:
+          star_args.append(a)
+          continue
+
+      if len(positional_args) <= i:
+        raise ValueError(
+            "Too many positional arguments passed to call to TPUStrategy.run()."
+        )
+      nonvar_kwargs[positional_args[i]] = a
+
+  if var_kwargs:
+    return functools.partial(fn, **var_kwargs), star_args, nonvar_kwargs
+  return fn, args, kwargs
 
 
 @tf_export("distribute.TPUStrategy", v1=[])
@@ -202,9 +322,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
     """Synchronous training in TPU donuts or Pods.
 
     Args:
-      tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
-        which provides information about the TPU cluster. If None, it will
-        assume running on a local TPU worker.
+      tpu_cluster_resolver: A
+        `tf.distribute.cluster_resolver.TPUClusterResolver` instance, which
+        provides information about the TPU cluster. If None, it will assume
+        running on a local TPU worker.
       experimental_device_assignment: Optional
         `tf.tpu.experimental.DeviceAssignment` to specify the placement of
         replicas on the TPU cluster.
@@ -271,6 +392,8 @@ class TPUStrategyV2(distribute_lib.Strategy):
       objects, or `Tensor`s (for example, if running on a single replica).
     """
     validate_run_function(fn)
+
+    fn, args, kwargs = _maybe_partial_apply_variables(fn, args, kwargs)
 
     # Note: the target function is converted to graph even when in Eager mode,
     # so autograph is on by default here.
@@ -409,10 +532,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
 
       split_size = partition_dimensions[dim_index]
       if dim_size % split_size != 0:
-        raise ValueError("Tensor shape at dimension ({}) must be "
+        raise ValueError("Tensor shape at dimension {} ({}) must be "
                          "divisible by corresponding value specified "
                          "by `partition_dimensions` ({}).".format(
-                             dim_index, split_size))
+                             dim_index, dim_size, split_size))
 
     if num_partition_splits != num_logical_devices_per_replica:
       raise ValueError("Number of logical devices ({}) does not match the "
@@ -533,6 +656,8 @@ class TPUStrategy(distribute_lib.Strategy):
     """See base class."""
     validate_run_function(fn)
 
+    fn, args, kwargs = _maybe_partial_apply_variables(fn, args, kwargs)
+
     # Note: the target function is converted to graph even when in Eager mode,
     # so autograph is on by default here.
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
@@ -647,6 +772,8 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     """
     validate_run_function(fn)
 
+    fn, args, kwargs = _maybe_partial_apply_variables(fn, args, kwargs)
+
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
     options = options or distribute_lib.RunOptions()
     return self.extended.tpu_run(fn, args, kwargs, options)
@@ -738,10 +865,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           context.async_wait()
       atexit.register(async_wait)
 
-    # Flag to turn on VariablePolicy
+    # Flag to turn on VariablePolicy.
     self._use_var_policy = True
 
-    # Flag to enable TF2 SPMD
+    # Flag to enable XLA SPMD partitioning.
+    # TODO(b/170873313): Enable XLA SPMD partitioning in TPUStrategy.
     self._use_spmd_for_xla_partitioning = False
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
@@ -782,7 +910,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         session)
 
   def _get_input_workers(self, options):
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers(
           tuple(self._device_input_worker_devices.items()))
     else:
@@ -801,7 +929,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             "distributed datasets with device prefetch when using sparse or "
             "ragged tensors. If you intend to use sparse or ragged tensors, "
             "please pass a tf.distribute.InputOptions object with "
-            "experimental_prefetch_to_device set to False to your dataset "
+            "experimental_fetch_to_device set to False to your dataset "
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
@@ -812,14 +940,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           "is only supported in "
           "`experimental_distribute_datasets_from_function`."
       )
-    if options is None or options.experimental_prefetch_to_device:
+    if options is None or options.experimental_fetch_to_device:
       self._check_spec(dataset.element_spec)
 
     return input_lib.get_distributed_dataset(
         dataset,
         self._get_input_workers(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -842,10 +971,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset_fn,
         input_workers,
         input_contexts,
-        self._container_strategy())
+        self._container_strategy(),
+        options=options)
 
     # We can only check after the dataset_fn is called.
-    if options is None or options.experimental_prefetch_to_device:
+    if options is None or options.experimental_fetch_to_device:
       self._check_spec(distributed_dataset.element_spec)
     return distributed_dataset
 
@@ -974,7 +1104,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._logical_device_stack.append(logical_device_id)
     try:
-      if tpu_values.enclosing_tpu_context() is None:
+      if tpu_util.enclosing_tpu_context() is None:
         yield
       else:
         with ops.device(tpu.core(logical_device_id)):
@@ -1042,12 +1172,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if not isinstance(value, values.DistributedValues):
       return value
 
-    value_list = value.values
+    value_list = list(value.values)
     # pylint: disable=protected-access
     if isinstance(
         value,
         values.DistributedVariable) and value._packed_variable is not None:
-      value_list = tuple(
+      value_list = list(
           value._packed_variable.on_device(d)
           for d in value._packed_variable.devices)
     # pylint: enable=protected-access
@@ -1087,8 +1217,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _reduce_to(self, reduce_op, value, destinations, options):
     if (isinstance(value, values.DistributedValues) or
-        tensor_util.is_tensor(value)
-       ) and tpu_values.enclosing_tpu_context() is not None:
+        tensor_util.is_tf_type(value)
+       ) and tpu_util.enclosing_tpu_context() is not None:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self._num_replicas_in_sync)
@@ -1135,7 +1265,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
         var, resource_variable_ops.BaseResourceVariable)
-    if tpu_values.enclosing_tpu_context() is not None:
+    if tpu_util.enclosing_tpu_context() is not None:
       if group:
         return fn(var, *args, **kwargs)
       else:
@@ -1153,6 +1283,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       for value in var.values:
         values_and_devices.append((value, value.device))
 
+    if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
+        var.aggregation != variables_lib.VariableAggregation.NONE):
+      distribute_utils.assert_mirrored(args)
+      distribute_utils.assert_mirrored(kwargs)
     for i, value_and_device in enumerate(values_and_devices):
       value = value_and_device[0]
       device = value_and_device[1]
@@ -1162,19 +1296,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
            ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(
-            fn(value, *distribute_utils.select_replica_mirrored(i, args),
-               **distribute_utils.select_replica_mirrored(i, kwargs)))
+            fn(value, *distribute_utils.select_replica(i, args),
+               **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
 
   def read_var(self, var):
     assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
-
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val.values
-    return (val,)
 
   def value_container(self, value):
     return value
@@ -1188,7 +1317,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # since the `1` gets broadcast as an int32 but global_step is int64.
     if isinstance(tensor, (float, int)):
       return tensor
-    if tpu_values.enclosing_tpu_context() is not None:
+    if tpu_util.enclosing_tpu_context() is not None:
       broadcast_tensor = [tensor for _ in range(self._num_replicas_in_sync)]
       result = tpu_ops.all_to_all(
           broadcast_tensor,
@@ -1309,15 +1438,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       if kwargs is None:
         kwargs = {}
 
-      # Remove None at the end of args as they are not replicatable
-      # If there are None in the middle we can't do anything about it
-      # so let those cases fail.
-      # For example when Keras model predict is used they pass the targets as
-      # None. We want to handle it here so all client libraries don't have to
-      # do this as other strategies can handle None values better.
-      while args and args[-1] is None:
-        args = args[:-1]
-
       # Used to re-structure flattened output tensors from `tpu.replicate()`
       # into a structured format.
       result = [[]]
@@ -1341,7 +1461,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         maximum_shapes = []
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
-          if tensor_util.is_tensor(input_tensor):
+          if tensor_util.is_tf_type(input_tensor):
             rank = input_tensor.shape.rank
           else:
             rank = np.ndim(input_tensor)
@@ -1358,29 +1478,28 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         padding_spec = None
 
       with strategy.scope():
+        xla_options = options.experimental_xla_options or tpu.XLAOptions(
+            use_spmd_for_xla_partitioning=self._use_spmd_for_xla_partitioning)
         replicate_outputs = tpu.replicate(
             replicated_fn,
             replicate_inputs,
             device_assignment=self._device_assignment,
             maximum_shapes=maximum_shapes,
             padding_spec=padding_spec,
-            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
-                                       ._use_spmd_for_xla_partitioning))
+            xla_options=xla_options)
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
+      filter_ops = lambda x: [o for o in x if not isinstance(o, ops.Operation)]
       if isinstance(result[0], list):
-        result[0] = [
-            output for output in result[0] if not isinstance(
-                output, ops.Operation)
-        ]
+        result[0] = filter_ops(result[0])
 
       # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
       if result[0] is None or isinstance(result[0], ops.Operation):
         replicate_outputs = [None] * len(replicate_outputs)
       else:
         replicate_outputs = [
-            nest.pack_sequence_as(result[0], nest.flatten(replica_output))
-            for replica_output in replicate_outputs
+            nest.pack_sequence_as(result[0], filter_ops(nest.flatten(output)))
+            for output in replicate_outputs
         ]
       return distribute_utils.regroup(replicate_outputs)
 

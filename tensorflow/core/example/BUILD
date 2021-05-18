@@ -11,6 +11,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_jspb_proto_library",
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
@@ -19,7 +20,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # TODO(bmzhao): Refactor this target to use granular dependencies
@@ -96,6 +97,7 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
 )
 
 tf_proto_library(
@@ -133,6 +135,11 @@ tf_pyclif_proto_library(
     name = "feature_pyclif",
     proto_lib = "//tensorflow/core:protos_all",
     proto_srcfile = "feature.proto",
+)
+
+tf_jspb_proto_library(
+    name = "example_jspb_proto",
+    deps = [":example_protos"],
 )
 
 closure_proto_library(

@@ -21,11 +21,22 @@ include "mlir/Pass/PassBase.td"
 def TFKernelToLLVMPass : Pass<"tf-kernel-to-llvm", "ModuleOp"> {
   let summary = "Pass for applying LLVM legalization patterns.";
   let constructor = "transforms::CreateTFKernelToLLVMPass()";
+  let options = [
+      Option<"blob_annotation_", "blob-annotation", "std::string",
+           /*default=*/"\"gpu.binary_blob\"", "Blob attribute name">,
+  ];
 }
 
-def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
-  let summary = "Pass to embed TF Framework for allocation and error reporting";
-  let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
+def EmbedTFFrameworkFunctionAndAllocPass
+    : Pass<"embed-tf-framework-func-and-alloc", "ModuleOp"> {
+  let summary = "Pass to embed TF Framework for allocation and context";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkFunctionAndAllocPass()";
+}
+
+def EmbedTFFrameworkAssertPass
+    : Pass<"embed-tf-framework-assert", "ModuleOp"> {
+  let summary = "Pass to rewrite assertions to TF framework calls";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkAssertPass()";
 }
 
 def BufferReusePass : FunctionPass<"buffer-reuse"> {
@@ -38,30 +49,39 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def BufferizePass : Pass<"bufferize", "ModuleOp"> {
-  let summary = "Pass to transform operations on values to buffer based ones";
-  let constructor = "transforms::CreateBufferizePass()";
+def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform compute operations (hlo and linalg) on "
+                "values to buffer based ones.";
+  let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
 }
 
-def MaterializeBroadcastsPass : FunctionPass<"materialize-broadcast"> {
-  let summary = "Pass to materialize broadcasts";
-  let constructor = "transforms::CreateMaterializeBroadcastsPass()";
+def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform late operations on values to buffer based "
+                "ones.";
+  let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
-def UnfuseBatchNormPass : FunctionPass<"unfuse-batch-norm"> {
-  let summary = "Pass to unfuse batch norm";
-  let constructor = "transforms::CreateUnfuseBatchNormPass()";
+def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
+  let summary = "Pass to transform a gpu module to nvvm.";
+  let constructor = "transforms::CreateGpuKernelToNvvmPass()";
+}
+
+def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
+  let summary = "Pass to transform a gpu module to rocdl.";
+  let constructor = "transforms::CreateGpuKernelToRocdlPass()";
 }
 
 def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let summary = "Pass to annotate GPU Module with its PTX";
   let options = [
     Option<"blob_annotation_", "blob-annotation", "std::string",
-           /*default=*/"", "Blob attribute name">,
+           /*default=*/"\"gpu.binary_blob\"", "Blob attribute name">,
     ListOption<"architectures_", "arch", "std::string", "GPU architectures">,
     Option<"generate_fatbin_", "generate-fatbin", "bool", /*default=*/"true",
            "Bundle machine code for the different architectures in one "
            "fatbin.">,
+    Option<"print_ptx_", "print-ptx", "bool", /*default=*/"false",
+           "Print generated PTX code per target architecture.">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
@@ -69,16 +89,6 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
 def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
   let summary = "Pass to convert scf::ParallelOp to scf::ForOp";
   let constructor = "transforms::CreateParallelLoopsToSequential()";
-}
-
-def PropagateTensorFlowABIKnowledgePass
-    : Pass<"propagate-tf-abi-knowledge", "LLVM::LLVMFuncOp"> {
-  let summary = "Pass to propagate TF ABI knowledge, e.g. offsets, alignment";
-  let options = [
-    ListOption<"same_shape_", "same-shape", "uint32_t",
-               "List of same shape args">,
-  ];
-  let constructor = "transforms::CreatePropagateTensorFlowABIKnowledgePass()";
 }
 
 def PropagateTfAbiKnowledgeToKernels
@@ -96,6 +106,51 @@ def PropagateShapeKnowledgeToKernels
 def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
   let summary = "Pass to print content of memrefs";
   let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
+}
+
+def MapParallelLoopsPass
+    : FunctionPass<"map-parallel-loops-to-gpu"> {
+  let summary = "Greedily maps loops to GPU hardware dimensions.";
+  let constructor = "transforms::CreateMapParallelLoopsPass()";
+  let description = [{
+    Greedily maps loops to GPU hardware dimensions.
+  }];
+}
+
+def FuseInnerParallelLoopsPass
+    : FunctionPass<"fuse-inner-parallel-loops"> {
+  let summary = "Limited pass to forward stores to loads.";
+  let constructor = "transforms::CreateFuseInnerParallelLoopsPass()";
+  let description = [{
+    Directs parallel loop fusion to the inner loops. This cannot be done with
+    a passmanager alone ATM, as nested pass managers require operations to
+    be closed from above.
+  }];
+}
+
+def ShapeSimplification
+    : FunctionPass<"kernelgen-shape-simplification"> {
+  let summary = "Simplify shape ops";
+  let constructor = "transforms::CreateShapeSimplification()";
+}
+
+def VectorizationPass : FunctionPass<"vectorization"> {
+  let summary = "Pass to create vectorized operations for CPU.";
+  let constructor = "transforms::CreateVectorizationPass()";
+  let description = [{
+    Takes linalg loops on buffers and vectorizes the loads/stores and operations
+    in between. This is intended for the CPU backend.
+  }];
+}
+
+def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
+  let summary = "Pass to remove dead code in VectorizationPass.";
+  let constructor = "transforms::CreateVectorizationCleanupPass()";
+  let description = [{
+    VectorizationPass creates some memory transfers that are unneeded but cannot
+    be safely removed by current generic infrastructure. This removes the
+    specific operations.
+  }];
 }
 
 #endif // TF_KERNEL_GEN_PASSES

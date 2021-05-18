@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -116,7 +116,7 @@ void TPUColocateCompositeResourceOps::runOnFunction() {
 
   OpBuilder builder(&getContext());
   for (auto execute_launch : execute_launches) {
-    auto replicate = execute_launch.getParentOfType<tf_device::ReplicateOp>();
+    auto replicate = execute_launch->getParentOfType<tf_device::ReplicateOp>();
     if (!replicate) continue;
 
     ColocateCompositeResourceOpsInReplicate(replicate, &builder);

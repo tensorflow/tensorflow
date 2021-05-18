@@ -15,13 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TYPE_TO_TFLITETYPE_H_
 #define TENSORFLOW_LITE_TYPE_TO_TFLITETYPE_H_
 
+#include <complex>
 #include <string>
 
 #include "tensorflow/lite/c/common.h"
 
 // Most of the definitions have been moved to this subheader so that Micro
-// can include it without relying on <string>, which isn't available on all
-// platforms.
+// can include it without relying on <string> and <complex>, which isn't
+// available on all platforms.
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 
 namespace tflite {
@@ -29,6 +30,9 @@ namespace tflite {
 // TODO(b/163167649): This string conversion means that only the first entry
 // in a string tensor will be returned as a std::string, so it's deprecated.
 MATCH_TYPE_AND_TFLITE_TYPE(std::string, kTfLiteString);
+
+MATCH_TYPE_AND_TFLITE_TYPE(std::complex<float>, kTfLiteComplex64);
+MATCH_TYPE_AND_TFLITE_TYPE(std::complex<double>, kTfLiteComplex128);
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TYPE_TO_TFLITETYPE_H_

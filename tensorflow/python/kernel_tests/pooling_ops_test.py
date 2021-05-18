@@ -906,7 +906,7 @@ class PoolingTest(test.TestCase):
     self._testDepthwiseMaxPoolInvalidConfig([1, 2, 2, 4], [1, 1, 1, 3],
                                             [1, 1, 1, 3], "evenly divide")
     if test.is_gpu_available():
-      with self.session(use_gpu=True):
+      with self.session():
         t = variables.Variable(np.ones([1, 2, 2, 4]))
         self.evaluate(variables.global_variables_initializer())
         with self.assertRaisesOpError("for CPU devices"):
@@ -922,7 +922,7 @@ class PoolingTest(test.TestCase):
     for dtype in [np.float32, np.float16] \
         + [np.float64] if not test.is_built_with_rocm() else []:
       tensor_input = np.random.rand(*input_shape).astype(dtype)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         t = constant_op.constant(tensor_input, shape=input_shape)
         out_op, _ = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
         gpu_val = self.evaluate(out_op)
@@ -942,7 +942,7 @@ class PoolingTest(test.TestCase):
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
       tensor_output = np.random.rand(*output_shape).astype(dtype)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         t = constant_op.constant(tensor_input, shape=input_shape)
         _, argmax_op = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
         argmax = self.evaluate(argmax_op)
@@ -1004,12 +1004,14 @@ class PoolingTest(test.TestCase):
     ]
 
     Config = collections.namedtuple(
-        "Config", ["use_gpu", "include_batch_in_index", "argmax"])
+        "Config", ["use_gpu", "include_batch_in_index", "argmax", "Targmax"])
     configs = [
-        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8]),
-        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17]),
-        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8]),
-        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17])
+        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int64),
+        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int64),
+        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int32),
+        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int32),
+        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int64),
+        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int64),
     ]
 
     for config in configs:
@@ -1019,7 +1021,7 @@ class PoolingTest(test.TestCase):
             t,
             ksize=[1, 2, 2, 1],
             strides=[1, 1, 1, 1],
-            Targmax=dtypes.int64,
+            Targmax=config.Targmax,
             padding="VALID",
             include_batch_in_index=config.include_batch_in_index)
         out, argmax = self.evaluate([out_op, argmax_op])

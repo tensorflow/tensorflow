@@ -150,8 +150,7 @@ class ProcessFunctionLibraryRuntime {
   // is set to the device backing the resource.
   // REQUIRES: `handle` identifies a multi-device function.
   Status GetOutputDevices(FunctionLibraryRuntime::Handle handle,
-                          std::vector<Device*>* output_devices,
-                          const bool eager_lazy_copy) const;
+                          std::vector<Device*>* output_devices) const;
 
   // Returns true if function with handle `handle` was instantiated on device
   // `device_name`. Returns false for multi-device functions.
@@ -208,8 +207,9 @@ class ProcessFunctionLibraryRuntime {
     return device_set_;
   }
 
-  // Initialize the set of local and remote devices for op device selection.
-  void InitializeDeviceSet();
+  // Initialize the set of local and remote devices and corresponding flr for op
+  // device selection.
+  void InitializeDeviceAndFlr();
 
   const ConfigProto* config() const { return config_ ? &(*config_) : nullptr; }
 
@@ -479,6 +479,9 @@ class ProcessFunctionLibraryRuntime {
   int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;
   const Rendezvous::Factory rendezvous_factory_;
+
+  const OptimizerOptions optimizer_options_;
+  const int graph_def_version_;
 };
 
 }  // namespace tensorflow

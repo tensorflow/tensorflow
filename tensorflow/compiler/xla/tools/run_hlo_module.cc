@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
 #include "tensorflow/compiler/xla/tools/prepare_reference_module.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -117,7 +118,8 @@ Status RunAndCompare(
     const RunHloModuleOptions& options,
     std::function<Status(const HloModule&,
                          const ::stream_executor::Platform::Id&, HloModule*)>
-        reference_module_modifier_hook) {
+        reference_module_modifier_hook,
+    std::function<void(HloModuleConfig*)> config_modifier_hook) {
   se::Platform* test_platform =
       xla::PlatformUtil::GetPlatform(test_platform_name).ValueOrDie();
   se::Platform* reference_platform =
@@ -125,12 +127,23 @@ Status RunAndCompare(
           ? nullptr
           : xla::PlatformUtil::GetPlatform(reference_platform_name)
                 .ValueOrDie();
-  auto config_modifier = [](HloModuleConfig* config) { config->set_seed(42); };
+  if (!config_modifier_hook) {
+    config_modifier_hook = [](HloModuleConfig* config) {
+      config->set_seed(42);
+    };
+  }
 
   std::unique_ptr<HloModule> test_module =
       LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier)
+                         options.input_format, config_modifier_hook)
           .ValueOrDie();
+
+  if (options.flatten_control_flow) {
+    HloControlFlowFlattening control_flow_flattening(
+        /*while_execution_count=*/1);
+    TF_RETURN_IF_ERROR(control_flow_flattening.Run(test_module.get()).status());
+  }
+
   const HloModuleProto test_module_proto = test_module->ToProto();
 
   std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
@@ -148,10 +161,10 @@ Status RunAndCompare(
   if (reference_platform != nullptr) {
     // PrepareReferenceModule needs to know the *test* platform, in order to
     // properly match the test platform's numerics.
-    reference_module =
-        PrepareReferenceModule(*test_module, test_platform->id(),
-                               config_modifier, reference_module_modifier_hook)
-            .ConsumeValueOrDie();
+    reference_module = PrepareReferenceModule(*test_module, test_platform->id(),
+                                              config_modifier_hook,
+                                              reference_module_modifier_hook)
+                           .ConsumeValueOrDie();
   }
 
   Literal test_result = ExecuteOnPlatform(

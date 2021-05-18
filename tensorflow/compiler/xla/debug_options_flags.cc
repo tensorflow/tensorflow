@@ -40,11 +40,13 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_asm_extra_flags("");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
+  opts.set_xla_dump_fusion_visualization(false);
   opts.set_xla_dump_include_timestamp(true);
   opts.set_xla_dump_max_hlo_modules(-1);
-#ifdef INTEL_MKL
+  opts.set_xla_dump_module_metadata(false);
+#ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
-#endif  // INTEL_MKL
+#endif  // ENABLE_MKL
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
@@ -74,7 +76,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
-  opts.set_xla_detailed_logging(true);
+  opts.set_xla_detailed_logging_and_dumping(true);
   return opts;
 }
 
@@ -171,6 +173,12 @@ static void AllocateFlags() {
     return true;
   };
 
+  // Custom "sub-parser" lambda for xla_gpu_llvm_ir_file.
+  auto setter_for_xla_gpu_llvm_ir_file = [](const string& value) {
+    flag_values->add_xla_gpu_llvm_ir_file(value);
+    return true;
+  };
+
   // Custom "sub-parser" lambda for xla_backend_extra_options.
   auto setter_for_xla_backend_extra_options =
       [](string comma_separated_values) {
@@ -230,7 +238,6 @@ static void AllocateFlags() {
   };
 
   flag_objects = new std::vector<tensorflow::Flag>();
-  flag_objects->reserve(55);
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -369,7 +376,15 @@ static void AllocateFlags() {
       "If non-empty, specifies a file containing ptx to use. The filename "
       "prefix must have the same pattern as PTX dumped by XLA. This allows to "
       "match one specific module. General workflow. Get the generated module "
-      "ptx from XLA. Modify it. Then pass it back via this option."));
+      "ptx from XLA, modify it, then pass it back via this option."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_llvm_ir_file", setter_for_xla_gpu_llvm_ir_file, "",
+      "If non-empty, specifies a file containing textual LLVM IR to use. The "
+      "filename prefix must have the same pattern as LLVM dumped by XLA "
+      "(i.e. module_0001.ir-no-opt.ll -> module_0001.MY_NEW_FILE.ll). This "
+      "allows to match one specific module. General workflow. Get the not "
+      "optimized LLVM IR from XLA, modify it, then pass it back via this "
+      "option."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_test_all_output_layouts",
       bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
@@ -484,6 +499,15 @@ static void AllocateFlags() {
       "default; you need to add a plugin which calls "
       "RegisterGraphToURLRenderer()."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_fusion_visualization",
+      bool_setter_for(&DebugOptions::set_xla_dump_fusion_visualization),
+      flag_values->xla_dump_fusion_visualization(),
+      "Tries to generate HLO fusion visualization as an HTML page to the "
+      "directory specified by --xla_dump_to). This is not implemented by "
+      "default; you need to add a plugin which calls "
+      "RegisterGraphToURLRenderer(). Generates a file per computation. "
+      "Currently only implemented for the GPU backend."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_dump_hlo_snapshots",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_snapshots),
       flag_values->xla_dump_hlo_snapshots(),
@@ -514,6 +538,17 @@ static void AllocateFlags() {
       "Max number of hlo module dumps in a directory. Set to < 0 for "
       "unbounded."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_module_metadata",
+      bool_setter_for(&DebugOptions::set_xla_dump_module_metadata),
+      flag_values->xla_dump_module_metadata(),
+      "Dumps HloModuleMetadata as text protos to the directory specified "
+      "by --xla_dump_to."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_compress_protos",
+      bool_setter_for(&DebugOptions::set_xla_dump_compress_protos),
+      flag_values->xla_dump_compress_protos(),
+      "Gzip-compress protos dumped by --xla_dump_hlo_as_proto."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_hlo_graph_addresses",
       bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
       flag_values->xla_hlo_graph_addresses(),
@@ -534,7 +569,12 @@ static void AllocateFlags() {
       "xla_gpu_force_conv_nchw",
       bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
       flag_values->xla_gpu_force_conv_nchw(),
-      "For cuDNN convolutions, always NCHW layouts."));
+      "For cuDNN convolutions, always use NCHW layouts."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_conv_nhwc",
+      bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nhwc),
+      flag_values->xla_gpu_force_conv_nhwc(),
+      "For cuDNN convolutions, always use NHWC layouts."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_algorithm_denylist_path",
       string_setter_for(&DebugOptions::set_xla_gpu_algorithm_denylist_path),
@@ -582,6 +622,18 @@ static void AllocateFlags() {
       "fragmentation. The constraint is soft, so it works with tensors "
       "larger than the given constraint size. -1 corresponds to no "
       "constraints."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_compilation_parallelism",
+      int32_setter_for(
+          &DebugOptions::set_xla_gpu_force_compilation_parallelism),
+      flag_values->xla_gpu_force_compilation_parallelism(),
+      "Overrides normal multi-threaded compilation settting to use this many "
+      "threads. Setting to 0 (the default value) means no enforcement."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_deterministic_ops",
+      bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
+      flag_values->xla_gpu_deterministic_ops(),
+      "Guarantees run-to-run determinism on GPU."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

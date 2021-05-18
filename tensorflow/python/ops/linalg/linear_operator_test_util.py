@@ -356,9 +356,17 @@ def _test_matmul_base(
     # else test only `Tensor` `x`. In both cases, evaluate all results in a
     # single `sess.run` call to avoid re-sampling the random `x` in graph mode.
     if blockwise_arg and len(operator.operators) > 1:
+      # pylint: disable=protected-access
+      block_dimensions = (
+          operator._block_range_dimensions() if adjoint else
+          operator._block_domain_dimensions())
+      block_dimensions_fn = (
+          operator._block_range_dimension_tensors if adjoint else
+          operator._block_domain_dimension_tensors)
+      # pylint: enable=protected-access
       split_x = linear_operator_util.split_arg_into_blocks(
-          operator._block_domain_dimensions(),  # pylint: disable=protected-access
-          operator._block_domain_dimension_tensors,  # pylint: disable=protected-access
+          block_dimensions,
+          block_dimensions_fn,
           x, axis=-2)
       if adjoint_arg:
         split_x = [linalg.adjoint(y) for y in split_x]
@@ -574,9 +582,17 @@ def _test_solve_base(
     # else test only `Tensor` rhs. In both cases, evaluate all results in a
     # single `sess.run` call to avoid re-sampling the random rhs in graph mode.
     if blockwise_arg and len(operator.operators) > 1:
+      # pylint: disable=protected-access
+      block_dimensions = (
+          operator._block_range_dimensions() if adjoint else
+          operator._block_domain_dimensions())
+      block_dimensions_fn = (
+          operator._block_range_dimension_tensors if adjoint else
+          operator._block_domain_dimension_tensors)
+      # pylint: enable=protected-access
       split_rhs = linear_operator_util.split_arg_into_blocks(
-          operator._block_domain_dimensions(),  # pylint: disable=protected-access
-          operator._block_domain_dimension_tensors,  # pylint: disable=protected-access
+          block_dimensions,
+          block_dimensions_fn,
           rhs, axis=-2)
       if adjoint_arg:
         split_rhs = [linalg.adjoint(y) for y in split_rhs]
@@ -914,7 +930,7 @@ def random_positive_definite_matrix(shape,
     `Tensor` with desired shape and dtype.
   """
   dtype = dtypes.as_dtype(dtype)
-  if not tensor_util.is_tensor(shape):
+  if not tensor_util.is_tf_type(shape):
     shape = tensor_shape.TensorShape(shape)
     # Matrix must be square.
     shape.dims[-1].assert_is_compatible_with(shape.dims[-2])

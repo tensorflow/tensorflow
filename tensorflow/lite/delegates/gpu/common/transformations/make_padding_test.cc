@@ -49,7 +49,7 @@ TEST(MakePadding, Smoke) {
   output->tensor.shape = BHWC(1, 7, 3, 5);
 
   auto const_node = graph.NewNode();
-  const_node->operation.type = ToString(OperationType::CONST);
+  const_node->operation.type = ToString(OperationType::CONSTANT);
   ConstTensorAttributes const_attr;
   const_attr.tensor.shape = BHWC(1, 5, 3, 5);
   const_attr.tensor.data =
@@ -64,7 +64,7 @@ TEST(MakePadding, Smoke) {
   ASSERT_EQ(2, graph.nodes().size());
 
   auto transformation = NewMakePaddingFromConcat();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("make_padding", transformation.get());
 
   ASSERT_EQ(1, graph.nodes().size());

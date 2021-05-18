@@ -33,6 +33,10 @@ class PrefetchBenchmark(benchmark_base.DatasetBenchmarkBase):
       self.run_and_report_benchmark(
           dataset,
           num_elements=num_elements,
+          extras={
+              "model_name": "prefetch.benchmark.1",
+              "parameters": "%d" % prefetch_buffer,
+          },
           name="prefetch_{}".format(prefetch_buffer))
 
 

@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -131,7 +131,7 @@ llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     const TF::SideEffectAnalysis& side_effect_analysis,
     tf_device::ClusterOp cluster) {
   const auto& analysis = side_effect_analysis.GetAnalysisForFunc(
-      cluster.getParentOfType<FuncOp>());
+      cluster->getParentOfType<FuncOp>());
   Region* cluster_region = &cluster.body();
   llvm::SmallSetVector<Operation*, 4> head_outside_compiled_ops;
 
@@ -161,7 +161,9 @@ llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     auto walk_result = cluster_op.walk([&](Operation* op) {
       for (Value operand : op->getOperands()) {
         Operation* operand_op = GetOpOfValue(operand);
-        if (head_outside_compiled_ops.count(operand_op)) continue;
+        if (head_outside_compiled_ops.count(operand_op) ||
+            operand_op == &cluster_op)
+          continue;
 
         if (operand_op->getParentRegion() == cluster_region)
           return WalkResult::interrupt();
@@ -227,7 +229,7 @@ void FindOutsideCompiledOpsAtTailAndClusterResults(
     llvm::SmallVectorImpl<Operation*>* tail_outside_compiled_ops,
     llvm::SmallVectorImpl<Value>* cluster_results) {
   const auto& analysis = side_effect_analysis.GetAnalysisForFunc(
-      cluster.getParentOfType<FuncOp>());
+      cluster->getParentOfType<FuncOp>());
   Region* cluster_region = &cluster.body();
   llvm::SmallSetVector<Operation*, 4> tail_outside_compiled_ops_set;
   Operation* terminator = cluster.GetBody().getTerminator();
@@ -277,10 +279,14 @@ void FindOutsideCompiledOpsAtTailAndClusterResults(
     // Remove results of op to be extracted as there are no uses in the cluster.
     for (Value result : cluster_op.getResults())
       cluster_results_set.remove(result);
-    tail_outside_compiled_ops_set.insert(&cluster_op);
+    // Insert all ops including nested ops for checking outputs/side effects.
+    cluster_op.walk(
+        [&](Operation* op) { tail_outside_compiled_ops_set.insert(op); });
+
+    // Only add top level ops to output vector.
+    tail_outside_compiled_ops->push_back(&cluster_op);
   }
 
-  *tail_outside_compiled_ops = tail_outside_compiled_ops_set.takeVector();
   *cluster_results = cluster_results_set.takeVector();
 }
 
@@ -326,7 +332,7 @@ tf_device::ClusterOp UpdateClusterResults(
 
   auto new_cluster = builder->create<tf_device::ClusterOp>(
       cluster.getLoc(), new_cluster_result_types,
-      /*operands=*/llvm::ArrayRef<Value>{}, cluster.getAttrs());
+      /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
   new_cluster.body().takeBody(cluster.body());
 
   auto operand_not_in_cluster = [&](OpOperand& operand) {
@@ -400,7 +406,7 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   builder->setInsertionPoint(cluster);
   auto new_cluster = builder->create<tf_device::ClusterOp>(
       cluster.getLoc(), new_cluster_result_types,
-      /*operands=*/llvm::ArrayRef<Value>{}, cluster.getAttrs());
+      /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
   new_cluster.body().takeBody(cluster.body());
   new_cluster.GetBody().getTerminator()->setOperands(new_cluster_results);
 

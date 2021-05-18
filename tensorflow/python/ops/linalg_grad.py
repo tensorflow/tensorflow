@@ -487,9 +487,11 @@ def _CholeskyGrad(op, grad):
 @ops.RegisterGradient("Qr")
 def _QrGrad(op, dq, dr):
   """Gradient for Qr."""
+
+  # The methodology is explained in detail in https://arxiv.org/abs/2009.10071
+  # QR and LQ Decomposition Matrix Backpropagation Algorithms for
+  # Square, Wide, and Deep, Real and Complex, Matrices and Their Software Implementation
   q, r = op.outputs
-  if q.dtype.is_complex:
-    raise NotImplementedError("QrGrad not implemented for dtype: %s" % q.dtype)
   if (r.shape.ndims is None or r.shape.as_list()[-2] is None or
       r.shape.as_list()[-1] is None):
     raise NotImplementedError("QrGrad not implemented with dynamic shapes.")
@@ -516,7 +518,17 @@ def _QrGrad(op, dq, dr):
 
     grad_a = math_ops.matmul(q, dr + _TriangularSolve(tril, r))
     grad_b = _TriangularSolve(dq - math_ops.matmul(q, qdq), r)
-    return grad_a + grad_b
+    ret = grad_a + grad_b
+
+    if q.dtype.is_complex:
+      # need to add a correction to the gradient formula for complex case
+      m = rdr - _linalg.adjoint(qdq)
+      eyem = _linalg.set_diag(array_ops.zeros_like(m), _linalg.diag_part(m))
+      correction = eyem - math_ops.cast(math_ops.real(eyem), q.dtype)
+      ret = ret + _TriangularSolve(
+          math_ops.matmul(q, _linalg.adjoint(correction)), r)
+
+    return ret
 
   num_rows, num_cols = q.shape.dims[-2].value, r.shape.dims[-1]
 
@@ -524,7 +536,6 @@ def _QrGrad(op, dq, dr):
     return _QrGradSquareAndDeepMatrices(q, r, dq, dr)
 
   # Partition a = [x, y], r = [u, v] and reduce to the square case
-  # The methodology is explained in detail in https://arxiv.org/abs/2009.10071
   a = op.inputs[0]
   y = a[..., :, num_rows:]
   u = r[..., :, :num_rows]

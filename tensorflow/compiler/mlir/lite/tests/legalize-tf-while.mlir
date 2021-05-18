@@ -1,5 +1,5 @@
 // RUN: tf-opt --tfl-legalize-tf-while %s -o - | FileCheck %s
-// RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline="disable-simplify" | FileCheck %s --check-prefix=INLINE
+// RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline='default-pipeline=''' | FileCheck %s --check-prefix=INLINE
 // RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline | FileCheck %s --check-prefix=CANON
 
 func @while_main(%arg0: tensor<?x256x256xf32>) -> (tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "Identity,Identity_1,Identity_2"}} {
@@ -65,8 +65,8 @@ func @while_cond_10_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: t
 // CANON:             "tfl.yield"([[VAL_10]]) : (tensor<*xi1>) -> ()
 // CANON:           },  {
 // CANON:           ^bb0([[VAL_11:%.*]]: tensor<*xi32>, [[VAL_12:%.*]]: tensor<*xi32>, [[VAL_13:%.*]]: tensor<*xf32>):
-// CANON:             [[VAL_4:%.*]] = constant dense<1> : tensor<i32>
-// CANON:             [[VAL_5:%.*]] = "tf.Const"() {value = dense<2.560000e+02> : tensor<256x256xf32>} : () -> tensor<?x?xf32>
+// CANON-DAG:         [[VAL_4:%.*]] = constant dense<1> : tensor<i32>
+// CANON-DAG:         [[VAL_5:%.*]] = "tf.Const"() {value = dense<2.560000e+02> : tensor<256x256xf32>} : () -> tensor<?x?xf32>
 // CANON:             [[VAL_14:%.*]] = "tf.AddV2"([[VAL_12]], [[VAL_4]])
 // CANON:             [[VAL_15:%.*]] = "tf.AddV2"([[VAL_13]], [[VAL_5]])
 // CANON:             [[VAL_16:%.*]] = "tf.AddV2"([[VAL_11]], [[VAL_4]])

@@ -411,11 +411,11 @@ versions {
 # CHECK-NEXT: constant dense<[5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00]>
 # CHECK:      "tf.If"{{.+}}else_branch = @cond_false_10{{.+}}is_stateless = true{{.+}}then_branch = @cond_true_10
 # CHECK:      "tf.If"{{.+}}else_branch = @cond_false0{{.+}}is_stateless = false{{.+}}then_branch = @cond_true0
-# CHECK:      func @cond_false_10
+# CHECK:      func private @cond_false_10
 # CHECK-NEXT: tfl.div
-# CHECK:      func @cond_true_10
+# CHECK:      func private @cond_true_10
 # CHECK-NEXT: tfl.sub
-# CHECK:      func @cond_false0
+# CHECK:      func private @cond_false0
 # CHECK-NEXT: tfl.mul
-# CHECK:      func @cond_true0
+# CHECK:      func private @cond_true0
 # CHECK-NEXT: tfl.add

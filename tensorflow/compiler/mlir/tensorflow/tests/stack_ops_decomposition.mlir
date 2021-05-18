@@ -287,14 +287,14 @@ func @main(%arg0: tensor<i1>) -> () {
 }
 
 // CHECK: func @callee(%[[AARG0:.*]]: tensor<!tf.resource>, %[[AARG1:.*]]: tensor<i1>) -> tensor<!tf.resource>
-func @callee(%arg0: tensor<!tf.resource>, %arg1: tensor<i1>) -> tensor<!tf.resource> attributes {sym_visibility = "public"} {
+func @callee(%arg0: tensor<!tf.resource>, %arg1: tensor<i1>) -> tensor<!tf.resource> {
   %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
   // CHECK: tf.StackPushV2"
   %push = "tf.StackPushV2"(%arg0, %elem) {swap_memory = false} : (tensor<!tf.resource>, tensor<f32>) -> tensor<f32>
   return %arg0 : tensor<!tf.resource>
 }
 
-// CHECK: func @callee_stack_decomposed(%[[ARG0:.*]]: tensor<!tf.resource<tensor<10xf32>>>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<!tf.resource<tensor<1xi32>>>)
+// CHECK: func private @callee_stack_decomposed(%[[ARG0:.*]]: tensor<!tf.resource<tensor<10xf32>>>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<!tf.resource<tensor<1xi32>>>)
 // CHECK-NOT: "tf.StackPushV2"
 // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"
 // CHECK: "tf.AssignVariableOp"(%[[TARG0:.*]], %[[UPDATE]])
@@ -326,8 +326,8 @@ func @main(%arg0: tensor<i1>) -> () {
   return
 }
 
-// CHECK: func @callee(%[[ARG0:.*]]: tensor<!tf.resource<tensor<10xf32>>>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<!tf.resource<tensor<1xi32>>>)
-func @callee(%arg0: tensor<!tf.resource>, %arg1: tensor<i1>) -> tensor<!tf.resource> attributes {sym_visibility = "private"} {
+// CHECK: func private @callee(%[[ARG0:.*]]: tensor<!tf.resource<tensor<10xf32>>>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<!tf.resource<tensor<1xi32>>>)
+func private @callee(%arg0: tensor<!tf.resource>, %arg1: tensor<i1>) -> tensor<!tf.resource> {
   %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
   // CHECK-NOT: "tf.StackPushV2"
   // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"
@@ -348,7 +348,7 @@ func @main() -> () {
   return
 }
 // CHECK: func @callee()
-func @callee() -> () attributes {sym_visibility = "public"} {
+func @callee() -> () {
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.Stack
   %stack = "tf.StackV2"(%max_size) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>

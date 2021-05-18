@@ -62,7 +62,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
-    pip \
+    "pip<20.3" \
     setuptools
 
 # Some TF tools expect a "python" binary
@@ -96,7 +96,7 @@ RUN python3 -m pip --no-cache-dir install \
     enum34
 
 # Build and install bazel
-ENV BAZEL_VERSION 3.1.0
+ENV BAZEL_VERSION 3.7.2
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \

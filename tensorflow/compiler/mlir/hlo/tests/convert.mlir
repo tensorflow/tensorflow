@@ -123,6 +123,17 @@ func @const_int_bf16() -> tensor<bf16> {
 
 // -----
 
+// CHECK-LABEL: func @const_bool_f32
+func @const_bool_f32() -> tensor<2xf32> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<[0.000000e+00, 1.000000e+00]> : tensor<2xf32>
+  %cst = mhlo.constant dense<[0, 1]> : tensor<2xi1>
+  %0 = "mhlo.convert"(%cst) : (tensor<2xi1>) -> tensor<2xf32>
+  // CHECK-NEXT: return [[CST]]
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @const_bf16_int
 func @const_bf16_int() -> tensor<i16> {
   // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<42> : tensor<i16>
@@ -145,13 +156,24 @@ func @const_int_narrowing() -> tensor<i32> {
 
 // -----
 
-// CHECK-LABEL: func @const_int_widening
-func @const_int_widening() -> tensor<i64> {
+// CHECK-LABEL: func @const_bool_widening
+func @const_bool_widening() -> tensor<i64> {
   // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<42> : tensor<i64>
   %cst = mhlo.constant dense<42> : tensor<i32>
   %0 = "mhlo.convert"(%cst) : (tensor<i32>) -> tensor<i64>
   // CHECK-NEXT: return [[CST]]
   return %0 : tensor<i64>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_int_widening
+func @const_int_widening() -> tensor<2xi32> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<[0, 1]> : tensor<2xi32>
+  %cst = mhlo.constant dense<[0, 1]> : tensor<2xi1>
+  %0 = "mhlo.convert"(%cst) : (tensor<2xi1>) -> tensor<2xi32>
+  // CHECK-NEXT: return [[CST]]
+  return %0 : tensor<2xi32>
 }
 
 // -----
@@ -223,3 +245,53 @@ func @const_high_rank_tensor() -> tensor<2x3xi32> {
   return %0 : tensor<2x3xi32>
 }
 
+// -----
+
+// CHECK-LABEL: func @const_int_complex
+func @const_int_complex() -> tensor<2xcomplex<f32>> {
+  %cst = mhlo.constant dense<[0, 1]> : tensor<2xi1>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<2xi1>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_float_complex
+func @const_float_complex() -> tensor<2xcomplex<f64>> {
+  %cst = mhlo.constant dense<[0.0, 1.0]> : tensor<2xf32>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<2xf32>) -> tensor<2xcomplex<f64>>
+  return %0 : tensor<2xcomplex<f64>>
+}
+
+
+// -----
+
+// CHECK-LABEL: func @const_complex_int
+func @const_complex_int() -> tensor<i32> {
+  %cst = mhlo.constant dense<(0.0, 1.0)> : tensor<complex<f32>>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<complex<f32>>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_complex_float
+func @const_complex_float() -> tensor<f32> {
+  %cst = mhlo.constant dense<(0.0, 1.0)> : tensor<complex<f32>>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<complex<f32>>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_complex_complex
+func @const_complex_complex() -> tensor<complex<f64>> {
+  %cst = mhlo.constant dense<(0.0, 1.0)> : tensor<complex<f32>>
+  // CHECK: mhlo.convert
+  %0 = "mhlo.convert"(%cst) : (tensor<complex<f32>>) -> tensor<complex<f64>>
+  return %0 : tensor<complex<f64>>
+}

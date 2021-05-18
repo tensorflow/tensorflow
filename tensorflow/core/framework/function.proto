@@ -16,6 +16,7 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framewo
 message FunctionDefLibrary {
   repeated FunctionDef function = 1;
   repeated GradientDef gradient = 2;
+  repeated RegisteredGradient registered_gradients = 3;
 }
 
 // A function can be instantiated when the runtime can bind every attr
@@ -123,4 +124,13 @@ message FunctionDef {
 message GradientDef {
   string function_name = 1;  // The function name.
   string gradient_func = 2;  // The gradient function's name.
+}
+
+// RegisteredGradient stores a gradient function that is registered in the
+// gradients library and used in the ops of a function in the function library.
+// Unlike GradientDef, these gradients are identified by op type, and not
+// directly linked to any function.
+message RegisteredGradient {
+  string gradient_func = 1;       // The gradient function's name.
+  string registered_op_type = 2;  // The gradient function's registered op type.
 }

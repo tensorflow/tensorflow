@@ -18,9 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_HexagonDelegate_createDelegate(
@@ -51,6 +49,4 @@ Java_org_tensorflow_lite_HexagonDelegate_setAdspLibraryPath(
              : JNI_FALSE;
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

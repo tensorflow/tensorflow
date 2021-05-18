@@ -19,7 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_execution_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -32,6 +35,12 @@ namespace tensorflow {
 namespace tensorrt {
 
 using absl::StrCat;
+
+ExecutionContext ExecutionContext::Create(nvinfer1::ICudaEngine* cuda_engine) {
+  nvinfer1::IExecutionContext* execution_context =
+      cuda_engine->createExecutionContextWithoutDeviceMemory();
+  return ExecutionContext(execution_context);
+}
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
                           const nvinfer1::IExecutionContext* execution_context,
@@ -58,8 +67,9 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
         "Explicit batch mode is only supported with TensorRT 6 and above.");
 #endif
   }
-  TF_RETURN_IF_ERROR(
-      TrtDimsToTensorShape(dims, use_implicit_batch, batch_size, shape));
+  TF_RETURN_IF_ERROR(TrtDimsToTensorShape(
+      dims, &shape,
+      use_implicit_batch ? absl::optional<int>(batch_size) : absl::nullopt));
   return Status::OK();
 }
 
@@ -96,8 +106,9 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
                           const int trt_profile_idx,
                           std::vector<void*>& buffers, bool use_implicit_batch,
-                          int num_batch, OpKernelContext* ctx,
-                          const DataVec* input_vec) {
+                          int num_batch,
+                          const TrtShapeOptimizationProfile& profiles,
+                          OpKernelContext* ctx, const DataVec* input_vec) {
   int n_inputs = ctx ? ctx->num_inputs() : (input_vec ? input_vec->size() : 0);
   // Setup engine inputs.
   for (int i = 0; i < n_inputs; i++) {
@@ -122,12 +133,22 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     // Set known input dimensions. This is necessary because TRT network
     // could be made with dynamic dimensions.
     if (!use_implicit_batch) {
-      nvinfer1::Dims trt_dims;
-      trt_dims.nbDims = input_shape.dims();
-      for (int k = 0; k < input_shape.dims(); k++) {
-        trt_dims.d[k] = input_shape.dim_size(k);
+      TF_RETURN_IF_ERROR(profiles.SetInputShapeBinding(
+          i, binding_index, cuda_engine, execution_context));
+
+      if (cuda_engine->isExecutionBinding(binding_index)) {
+        nvinfer1::Dims trt_dims;
+        TF_RETURN_IF_ERROR(TensorShapeToTrtDims(input_shape, false, &trt_dims));
+        VLOG(2) << "Setting binding dimensions for idx " << binding_index;
+        bool ret =
+            execution_context->setBindingDimensions(binding_index, trt_dims);
+        if (!ret) {
+          VLOG(2) << "Error setting engine input " << binding_index << " "
+                  << DebugString(trt_dims);
+          return errors::Internal(
+              "Binding dimension does not fit selected profile.");
+        }
       }
-      execution_context->setBindingDimensions(binding_index, trt_dims);
     }
 #endif
     // Setup input bindings.
@@ -201,7 +222,9 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
       bool status = output_tensor->CopyFrom(*output_tensor, output_shape);
       if (!status) {
         return errors::Internal(
-            "Buffer size do not match while reshaping output tensors");
+            "Buffer size (", output_tensor->NumElements(),
+            ") do not match while reshaping output tensors to shape ",
+            output_shape.DebugString());
       }
     }
 

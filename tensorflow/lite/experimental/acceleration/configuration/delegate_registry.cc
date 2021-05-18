@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,11 +32,7 @@ std::unique_ptr<DelegatePluginInterface> DelegatePluginRegistry::CreateImpl(
     const std::string& name, const TFLiteSettings& settings) {
   absl::MutexLock lock(&mutex_);
   auto it = factories_.find(name);
-  if (it != factories_.end()) {
-    return it->second(settings);
-  } else {
-    return nullptr;
-  }
+  return (it != factories_.end()) ? it->second(settings) : nullptr;
 }
 
 DelegatePluginRegistry* DelegatePluginRegistry::GetSingleton() {

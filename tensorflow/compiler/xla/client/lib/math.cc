@@ -928,6 +928,8 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
   auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
     XlaOp is_nan = Or(IsNan(a), IsNan(x));
     XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp x_is_infinity =
+        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
     XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
     XlaOp use_igammac = And(Gt(x, ScalarLike(x, 1)), Gt(x, a));
     XlaOp ax = a * Log(x) - x - Lgamma(a);
@@ -941,6 +943,7 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
                                ax, x, a, And(enabled, use_igammac), type),
         IgammaSeries<VALUE>(ax, x, a, And(enabled, Not(use_igammac)), type));
     output = Select(x_is_zero, ZerosLike(output), output);
+    output = Select(x_is_infinity, FullLike(output, 1), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
   };
@@ -953,14 +956,16 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
           a_shape.ToString(), x_shape.ToString());
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
+    PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast =
         a_shape.element_type() == F16 || a_shape.element_type() == BF16;
 
     if (needs_upcast) {
       a = ConvertElementType(a, F32);
       x = ConvertElementType(x, F32);
+      a_x_type = F32;
     }
-    XlaOp result = doit(a, x, a_shape.element_type());
+    XlaOp result = doit(a, x, a_x_type);
     if (needs_upcast) {
       result = ConvertElementType(result, a_shape.element_type());
     }
@@ -1076,6 +1081,9 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
                                       ax, x, a, And(enabled, use_igamma), type),
                IgammacContinuedFraction<VALUE>(
                    ax, x, a, And(enabled, Not(use_igamma)), type));
+    XlaOp x_is_infinity =
+        Eq(x, ScalarLike(x, std::numeric_limits<float>::infinity()));
+    result = Select(x_is_infinity, ZerosLike(result), result);
     return Select(out_of_range, FullLike(a, 1), result);
   };
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -1088,20 +1096,23 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
           a_shape.ToString(), x_shape.ToString());
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igammac", a));
+    PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast =
         a_shape.element_type() == F16 || a_shape.element_type() == BF16;
 
     if (needs_upcast) {
       a = ConvertElementType(a, F32);
       x = ConvertElementType(x, F32);
+      a_x_type = F32;
     }
-    XlaOp result = doit(a, x, a_shape.element_type());
+    XlaOp result = doit(a, x, a_x_type);
     if (needs_upcast) {
       result = ConvertElementType(result, a_shape.element_type());
     }
     return result;
   });
 }
+
 // Implements Banker's rounding: numbers that are equidistant between two
 // integers are rounded towards even.
 XlaOp RoundToEven(XlaOp x) {
@@ -1949,16 +1960,26 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
     XlaOp output =
         Select(Lt(Abs(neg_power), Abs(initial_sum) * Epsilon(&builder, type)),
                initial_sum, s);
+
     // This is the harmonic series.
     output = Select(Eq(x, ScalarLike(x, 1.)), ScalarLike(x, inf), output);
+
     // Function is not defined for x < 1.
     output = Select(Lt(x, ScalarLike(x, 1.)), ScalarLike(x, nan), output);
-    // If q <= 0, then when q is an integer or x is not an integer, this is
-    // NaN.
-    XlaOp domain_error = And(Le(q, ScalarLike(x, 0.)), Ne(x, Floor(x)));
-    XlaOp negative_integer_q = And(Le(q, ScalarLike(x, 0.)), Eq(q, Floor(q)));
-    output = Select(negative_integer_q, ScalarLike(x, inf), output);
-    output = Select(domain_error, ScalarLike(x, nan), output);
+
+    // For q <= 0, x must be an integer.
+    XlaOp x_domain_error = And(Le(q, ScalarLike(x, 0.)), Ne(x, Floor(x)));
+    output = Select(x_domain_error, ScalarLike(x, nan), output);
+
+    // For all integer q <= 0, zeta has a pole. The limit is only defined as
+    // +inf if x is and even integer.
+    XlaOp at_pole = And(Le(q, ScalarLike(x, 0.)), Eq(q, Floor(q)));
+    XlaOp x_is_even_int =
+        And(Eq(Rem(x, ScalarLike(x, 2.)), ScalarLike(x, 0.)), Eq(x, Floor(x)));
+    output = Select(
+        at_pole, Select(x_is_even_int, ScalarLike(x, inf), ScalarLike(x, nan)),
+        output);
+
     return output;
   };
   return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {

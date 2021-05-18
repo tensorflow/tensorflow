@@ -102,17 +102,21 @@ TfLiteStatus AdjustWeightsForBiasScale(QuantizationParametersT* quant_params,
                                        const float input_scale,
                                        ErrorReporter* error_reporter);
 
-// Quantize tensor with per channel.
+// Quantizes tensor with per channel.
 TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                                int32_t channel_dim_index,
                                                ErrorReporter* error_reporter);
 
-// Symmetrically quantized float to 16bits.
+// Symmetrically quantizes float to 16bits.
 TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
                                             float scaling_factor,
                                             ErrorReporter* error_reporter);
 
-// Symmetrically quantized the bias for per-layer ops (i.e. FullyConnected).
+std::vector<int16_t> SymmetricQuantizeFloatsToInt16(const float* data,
+                                                    uint64_t num_elements,
+                                                    float scaling_factor);
+
+// Symmetrically quantizes the bias for per-layer ops (i.e. FullyConnected).
 template <typename BiasType>
 TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
                                            float scaling_factor,
@@ -126,6 +130,11 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              const float* weight_scales,
                                              int number_of_dimension,
                                              ErrorReporter* error_reporter);
+
+template <typename BiasType>
+std::vector<BiasType> SymmetricBiasQuantize(const float* data,
+                                            uint64_t num_elements,
+                                            const std::vector<float>& scales);
 
 // Quantize weight with or without per channel.
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,

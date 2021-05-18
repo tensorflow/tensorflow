@@ -105,7 +105,7 @@ int MainImpl(int argc, char** argv) {
     const tensorflow::protobuf::FileDescriptor* fd =
         importer.Import(proto_path);
 
-    const int index = proto_path.find_last_of(".");
+    const int index = proto_path.find_last_of('.');
     string proto_path_no_suffix = proto_path.substr(0, index);
 
     proto_path_no_suffix =

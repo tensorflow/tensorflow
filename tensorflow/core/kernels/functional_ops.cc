@@ -150,7 +150,7 @@ class IfOp : public AsyncOpKernel {
 
   mutex mu_;
   std::unordered_map<FunctionLibraryRuntime*, std::pair<FHandle, FHandle>>
-      handles_ GUARDED_BY(mu_);
+      handles_ ABSL_GUARDED_BY(mu_);
 
   class State {
    public:
@@ -395,7 +395,7 @@ class WhileOp : public AsyncOpKernel {
 
   mutex mu_;
   std::unordered_map<FunctionLibraryRuntime*, std::pair<FHandle, FHandle>>
-      handles_ GUARDED_BY(mu_);
+      handles_ ABSL_GUARDED_BY(mu_);
 
   static Status CondResultToBool(OpKernelContext* ctx,
                                  const FunctionLibraryRuntime::Options& opts,
@@ -876,19 +876,18 @@ class FakeParamOp : public OpKernel {
       }
     }
 
-    // Create a persistent tensor that we can repeatedly return to save memory.
+    // Create a tensor that we can repeatedly return to save memory.
     // TODO(b/119612758): add optimization to prevent sending this across
     // devices on each Compute() call.
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                dtype, shape, &value_handle_, nullptr));
+    OP_REQUIRES_OK(context, context->allocate_temp(dtype, shape, &value_));
   }
 
   void Compute(OpKernelContext* context) override {
-    context->set_output(0, *value_handle_.AccessTensor(context));
+    context->set_output(0, value_);
   }
 
  private:
-  PersistentTensor value_handle_;
+  Tensor value_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);
@@ -918,7 +917,6 @@ class DeviceIndexOp : public OpKernel {
   }
 
  private:
-  PersistentTensor value_handle_;
   std::vector<string> device_names_;
 };
 

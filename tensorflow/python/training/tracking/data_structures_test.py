@@ -30,7 +30,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.layers import core as non_keras_core
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
@@ -40,6 +39,7 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 
 
 class ListTests(test.TestCase):
@@ -47,7 +47,7 @@ class ListTests(test.TestCase):
   def testJSONSerialization(self):
     obj = tracking.AutoTrackable()
     obj.l = [1]
-    json.dumps(obj.l, default=json_utils.get_json_type)
+    json.dumps(obj.l, default=serialization.get_json_type)
 
   def testNotTrackable(self):
     class NotTrackable(object):
@@ -337,7 +337,7 @@ class MappingTests(test.TestCase):
   def testJSONSerialization(self):
     obj = tracking.AutoTrackable()
     obj.d = {"a": 2}
-    json.dumps(obj.d, default=json_utils.get_json_type)
+    json.dumps(obj.d, default=serialization.get_json_type)
 
   def testNoOverwrite(self):
     mapping = data_structures.Mapping()
@@ -519,7 +519,7 @@ class TupleTests(test.TestCase, parameterized.TestCase):
   def testJSONSerialization(self):
     obj = tracking.AutoTrackable()
     obj.l = (1,)
-    json.dumps(obj.l, default=json_utils.get_json_type)
+    json.dumps(obj.l, default=serialization.get_json_type)
 
   def testNonLayerVariables(self):
     v = resource_variable_ops.ResourceVariable([1.])
@@ -613,6 +613,14 @@ class TupleTests(test.TestCase, parameterized.TestCase):
     self.assertIs(
         v, m._checkpoint_dependencies[0].ref._checkpoint_dependencies[0].ref)
     self.assertEqual(2, m.nt.y)
+
+  def testNamedTupleConflictingAttributes(self):
+    named = collections.namedtuple("Named", ("x", "weights"))
+    v = variables.Variable(2)
+    nt = named(x=v, weights=3)
+    m = module.Module()
+    m.nt = nt
+    self.assertEqual(3, m.nt.weights)
 
   def testNamedSubclassing(self):
     named = collections.namedtuple("Named", ("x", "y"))

@@ -34,40 +34,49 @@ namespace {
 
 class DelegateContext {
  public:
+  struct DelegateData {
+    std::vector<int> input_ids;
+    std::vector<int> output_ids;
+    GraphFloat32* graph;
+  };
   bool Init(TfLiteContext* context,
             const TfLiteDelegateParams* delegate_params) {
-    auto denormalized_graph =
-        reinterpret_cast<GraphFloat32*>(delegate_params->delegate->data_);
-    return denormalized_graph
-               ? BuildModel(context, delegate_params, denormalized_graph).ok()
-               : false;
+    const auto* delegate_data =
+        reinterpret_cast<DelegateData*>(delegate_params->delegate->data_);
+
+    return delegate_data->graph &&
+           BuildModelEnforceIO(context, delegate_params,
+                               delegate_data->input_ids,
+                               delegate_data->output_ids, delegate_data->graph)
+               .ok();
   }
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  const TfLiteRegistration kRegistration = {
-      .init = [](TfLiteContext* context, const char* buffer, size_t) -> void* {
-        auto* delegate_context = new DelegateContext();
-        if (!delegate_context->Init(
-                context,
-                reinterpret_cast<const TfLiteDelegateParams*>(buffer))) {
-          delete delegate_context;
-          return nullptr;
-        }
-        return delegate_context;
-      },
-      .free = [](TfLiteContext* context, void* buffer) -> void {
-        delete reinterpret_cast<DelegateContext*>(buffer);
-      },
-      .prepare = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
-        return node->user_data ? kTfLiteOk : kTfLiteError;
-      },
-      .invoke = nullptr,
+  TfLiteRegistration registration;
+  registration.init = [](TfLiteContext* context, const char* buffer,
+                         size_t) -> void* {
+    auto* delegate_context = new DelegateContext();
+    if (!delegate_context->Init(
+            context, reinterpret_cast<const TfLiteDelegateParams*>(buffer))) {
+      delete delegate_context;
+      return nullptr;
+    }
+    return delegate_context;
   };
+  registration.free = [](TfLiteContext* context, void* buffer) -> void {
+    delete reinterpret_cast<DelegateContext*>(buffer);
+  };
+  registration.prepare = [](TfLiteContext* context,
+                            TfLiteNode* node) -> TfLiteStatus {
+    return node->user_data ? kTfLiteOk : kTfLiteError;
+  };
+  registration.invoke = nullptr;
+  registration.custom_name = nullptr;
 
   TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
   const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, kRegistration, ops_to_replace, delegate);
+      context, registration, ops_to_replace, delegate);
   TfLiteIntArrayFree(ops_to_replace);
   return status;
 }
@@ -82,7 +91,11 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
     return absl::InternalError("Unable to prepare TfLite interpreter.");
   }
   TfLiteDelegate delegate;
-  delegate.data_ = graph;
+
+  DelegateContext::DelegateData delegate_data{interpreter->inputs(),
+                                              interpreter->outputs(), graph};
+
+  delegate.data_ = &delegate_data;
   delegate.flags = kTfLiteDelegateFlagsNone;
   delegate.Prepare = DelegatePrepare;
   delegate.CopyFromBufferHandle = nullptr;
@@ -93,8 +106,7 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
     return absl::InternalError("Conversion from TfLite model failed.");
   }
 
-  NullTransformationReporter reporter;
-  ModelTransformer transformer(graph, &reporter);
+  ModelTransformer transformer(graph);
   if (!ApplyModelTransformations(&transformer)) {
     return absl::InternalError("Graph transformations failed");
   }

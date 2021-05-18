@@ -35,9 +35,9 @@ limitations under the License.
 
 using namespace std;
 
-static const char *TAG = "TF_LITE_AUDIO_PROVIDER";
+static const char* TAG = "TF_LITE_AUDIO_PROVIDER";
 /* ringbuffer to hold the incoming audio data */
-ringbuf_t *g_audio_capture_buffer;
+ringbuf_t* g_audio_capture_buffer;
 volatile int32_t g_latest_audio_timestamp = 0;
 /* model requires 20ms new data from g_audio_capture_buffer and 10ms old data
  * each time , storing old data in the histrory buffer , {
@@ -96,13 +96,13 @@ static void i2s_init(void) {
   }
 }
 
-static void CaptureSamples(void *arg) {
+static void CaptureSamples(void* arg) {
   size_t bytes_read;
   uint8_t i2s_read_buffer[i2s_bytes_to_read] = {};
   i2s_init();
   while (1) {
     /* read 100ms data at once from i2s */
-    i2s_read((i2s_port_t)1, (void *)i2s_read_buffer, i2s_bytes_to_read,
+    i2s_read((i2s_port_t)1, (void*)i2s_read_buffer, i2s_bytes_to_read,
              &bytes_read, 10);
     if (bytes_read <= 0) {
       ESP_LOGE(TAG, "Error in I2S read : %d", bytes_read);
@@ -112,7 +112,7 @@ static void CaptureSamples(void *arg) {
       }
       /* write bytes read by i2s into ring buffer */
       int bytes_written = rb_write(g_audio_capture_buffer,
-                                   (uint8_t *)i2s_read_buffer, bytes_read, 10);
+                                   (uint8_t*)i2s_read_buffer, bytes_read, 10);
       /* update the timestamp (in ms) to let the model know that new data has
        * arrived */
       g_latest_audio_timestamp +=
@@ -127,7 +127,7 @@ static void CaptureSamples(void *arg) {
   vTaskDelete(NULL);
 }
 
-TfLiteStatus InitAudioRecording(tflite::ErrorReporter *error_reporter) {
+TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   g_audio_capture_buffer = rb_init("tf_ringbuffer", kAudioCaptureBufferSize);
   if (!g_audio_capture_buffer) {
     ESP_LOGE(TAG, "Error creating ring buffer");
@@ -142,9 +142,9 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter *error_reporter) {
   return kTfLiteOk;
 }
 
-TfLiteStatus GetAudioSamples(tflite::ErrorReporter *error_reporter,
+TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
                              int start_ms, int duration_ms,
-                             int *audio_samples_size, int16_t **audio_samples) {
+                             int* audio_samples_size, int16_t** audio_samples) {
   if (!g_is_audio_initialized) {
     TfLiteStatus init_status = InitAudioRecording(error_reporter);
     if (init_status != kTfLiteOk) {
@@ -153,14 +153,14 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter *error_reporter,
     g_is_audio_initialized = true;
   }
   /* copy 160 samples (320 bytes) into output_buff from history */
-  memcpy((void *)(g_audio_output_buffer), (void *)(g_history_buffer),
+  memcpy((void*)(g_audio_output_buffer), (void*)(g_history_buffer),
          history_samples_to_keep * sizeof(int16_t));
 
   /* copy 320 samples (640 bytes) from rb at ( int16_t*(g_audio_output_buffer) +
    * 160 ), first 160 samples (320 bytes) will be from history */
   int32_t bytes_read =
       rb_read(g_audio_capture_buffer,
-              ((uint8_t *)(g_audio_output_buffer + history_samples_to_keep)),
+              ((uint8_t*)(g_audio_output_buffer + history_samples_to_keep)),
               new_samples_to_get * sizeof(int16_t), 10);
   if (bytes_read < 0) {
     ESP_LOGE(TAG, " Model Could not read data from Ring Buffer");
@@ -173,8 +173,8 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter *error_reporter,
   }
 
   /* copy 320 bytes from output_buff into history */
-  memcpy((void *)(g_history_buffer),
-         (void *)(g_audio_output_buffer + new_samples_to_get),
+  memcpy((void*)(g_history_buffer),
+         (void*)(g_audio_output_buffer + new_samples_to_get),
          history_samples_to_keep * sizeof(int16_t));
 
   *audio_samples_size = kMaxAudioSampleSize;

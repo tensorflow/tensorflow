@@ -114,6 +114,9 @@ class DeviceContext : public core::RefCounted {
                              std::function<void()> func) {
     return errors::Internal("ThenExecute not supported by device");
   }
+
+  // check if device is a pluggable device
+  virtual bool IsPluggableDevice() { return false; }
 };
 
 class DeviceBase {
@@ -173,7 +176,6 @@ class DeviceBase {
   // Does not take ownership.
   void set_eigen_cpu_device(Eigen::ThreadPoolDevice* d);
 
-
   // Return the Allocator implementation to use based on the allocator
   // attributes requested.  See allocator.h for more details.
   virtual Allocator* GetAllocator(AllocatorAttributes /*attr*/) {
@@ -203,7 +205,6 @@ class DeviceBase {
   }
 
   virtual const Eigen::ThreadPoolDevice* eigen_cpu_device();
-
 
   // Caller owns the return value. The OpKernelContext calls this even
   // for devices that do not implement an eigen_gpu_device. Overridden

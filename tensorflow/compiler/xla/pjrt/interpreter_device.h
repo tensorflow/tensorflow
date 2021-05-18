@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
-class InterpreterDevice : public PjRtDevice {
+class InterpreterDevice : public PjRtStreamExecutorDevice {
  public:
   InterpreterDevice(int id,
                     std::unique_ptr<LocalDeviceState> local_device_state);

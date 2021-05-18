@@ -133,6 +133,14 @@ class HloModuleConfig {
   }
   int64 num_partitions() const { return num_partitions_; }
 
+  const std::vector<bool> param_requires_broadcast_via_collectives() const {
+    return param_requires_broadcast_via_collectives_;
+  }
+  void set_param_requires_broadcast_via_collectives(
+      const std::vector<bool> require_broadcast) {
+    param_requires_broadcast_via_collectives_ = std::move(require_broadcast);
+  }
+
   void set_use_spmd_partitioning(bool use_spmd_partitioning) {
     use_spmd_partitioning_ = use_spmd_partitioning;
   }
@@ -248,6 +256,9 @@ class HloModuleConfig {
 
   // The number of partitions (model parallelism) to compile this binary for.
   int64 num_partitions_ = 1;
+
+  // Whether to broadcast args across all replicas. One entry per arg.
+  std::vector<bool> param_requires_broadcast_via_collectives_;
 
   // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
   // needs to partition the module.

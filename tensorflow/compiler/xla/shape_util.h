@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <tuple>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
@@ -80,6 +81,7 @@ class ShapeIndex {
 
   // push_front is O(n), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
+  void pop_front() { indices_.erase(indices_.begin()); }
 
   using container_type = absl::InlinedVector<int64, 2>;
 
@@ -92,6 +94,9 @@ class ShapeIndex {
 
   int64 back() const { return indices_.back(); }
   int64& back() { return indices_.back(); }
+
+  int64 front() const { return indices_.front(); }
+  int64& front() { return indices_.front(); }
 
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }
@@ -246,6 +251,11 @@ class ShapeUtil {
   // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
+  // Returns whether the LHS and RHS shapes have the same rank; note: does
+  // not check element type.
+  // Precondition: IsArray(lhs) && IsArray(rhs)
+  static bool SameRank(const Shape& lhs, const Shape& rhs);
+
   // Returns whether the lhs and rhs shapes have the same element type.
   static bool SameElementType(const Shape& lhs, const Shape& rhs) {
     return lhs.element_type() == rhs.element_type();
@@ -266,21 +276,8 @@ class ShapeUtil {
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
-    if (SameElementType(a, b)) {
-      return a.element_type();
-    }
-    // If only one of A and B are floating use the floating point type.
-    if (ElementIsFloating(a) && !ElementIsFloating(b)) {
-      return a.element_type();
-    }
-    if (ElementIsFloating(b) && !ElementIsFloating(a)) {
-      return b.element_type();
-    }
-    // Use the higher precision type.
-    return primitive_util::BitWidth(a.element_type()) <
-                   primitive_util::BitWidth(b.element_type())
-               ? b.element_type()
-               : a.element_type();
+    return primitive_util::HigherPrecisionType(a.element_type(),
+                                               b.element_type());
   }
 
   // Returns true if the rank, dimension sizes, and element type are
@@ -292,6 +289,11 @@ class ShapeUtil {
   // and layout are ignored. Tuple elements are compared recursively for
   // compatibility.
   static bool CompatibleIgnoringElementType(const Shape& lhs, const Shape& rhs);
+
+  // Returns true if the tuple tree shapes and leaf ranks are identical.
+  // Leaf dimensions, element type, and layout are ignored. Tuple elements are
+  // compared recursively for compatibility.
+  static bool CompatibleKind(const Shape& lhs, const Shape& rhs);
 
   // As Compatible, but allow one of lhs and rhs to be BF16 while the other
   // being F32. Tuple elements are compared recursively for compatibility.
@@ -440,6 +442,12 @@ class ShapeUtil {
                                    int64 element_size_in_bits = 0,
                                    int64 memory_space = 0);
 
+  // Constructs a new shape with the given dimension `dim` as the most major
+  // dimension in the layout. If the shape does not have a layout, assumes a
+  // default layout. If the shape is a tuple, apply this to all the leaf shapes
+  // of the tuple.
+  static Shape MoveDimToMajor(const Shape& shape, int64 dim);
+
   // Returns the same shape except with all dimensions set to be static.
   static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 
@@ -572,13 +580,13 @@ class ShapeUtil {
   static Shape DropDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  // return_value.dimensions[i] = argument.dimensions[permutation[i]].
   //
   // Postcondition: For any valid permutation,
   //
   //   !HasLayout(shape) ||
   //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
-  //                      InversePermutation(permutation)).
+  //                      permutation).
   static Shape PermuteDimensions(absl::Span<const int64> permutation,
                                  const Shape& shape);
 
@@ -787,7 +795,16 @@ class ShapeUtil {
   // information, from a shape.
   static Shape DeviceShapeToHostShape(Shape s);
 
+  // Returns true iff element type of shape `from` can be safely upcasted to
+  // element type of shape `to`.
+  static bool ElementCanUpcast(const Shape& from, const Shape& to);
+
  private:
+  // Fills *shape. Returns true on success.
+  // REQUIRES: *shape is empty.
+  static bool FillNewShape(PrimitiveType element_type,
+                           absl::Span<const int64> dimensions, Shape* shape);
+
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
   static Status ValidateShapeSize(const Shape& shape);

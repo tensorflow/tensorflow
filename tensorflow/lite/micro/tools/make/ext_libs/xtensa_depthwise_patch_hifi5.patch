@@ -1,0 +1,45 @@
+diff --git a/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise.c b/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise.c
+index 48fccdc..3c10040 100644
+--- a/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise.c
++++ b/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise.c
+@@ -348,8 +348,6 @@ WORD32 xa_nn_conv2d_depthwise_getsize
+   XA_NNLIB_CHK_COND((kernel_height <= 0), -1);
+   XA_NNLIB_CHK_COND((kernel_width <= 0), -1);
+   XA_NNLIB_CHK_COND((channels_multiplier <= 0), -1);
+-  XA_NNLIB_CHK_COND((x_stride <= 0 || x_stride > kernel_width), -1); //TODO: x_stride > kernel_width is supported ?
+-  XA_NNLIB_CHK_COND((y_stride <= 0 || y_stride > kernel_height), -1);
+   XA_NNLIB_CHK_COND((x_padding < 0), -1);
+   XA_NNLIB_CHK_COND((y_padding < 0), -1);
+   XA_NNLIB_CHK_COND((output_height <= 0), -1);
+diff --git a/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise_sym8sxasym8s.c b/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise_sym8sxasym8s.c
+index 71611f4..0fd19ae 100644
+--- a/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise_sym8sxasym8s.c
++++ b/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise_sym8sxasym8s.c
+@@ -2122,10 +2122,7 @@ WORD32 xa_nn_conv2d_depthwise_nhwc_per_chan_sym8sxasym8s_k3x3
+   /* Implementation dependent checks */
+   //TOOD: support y_stride 2
+   XA_NNLIB_ARG_CHK_COND((y_stride != 1) && (y_stride != 2), -1);
+-  XA_NNLIB_ARG_CHK_COND((y_stride > kernel_height), -1);
+-  XA_NNLIB_ARG_CHK_COND((x_stride > kernel_width), -1);
+   XA_NNLIB_ARG_CHK_COND((kernel_height > input_height), -1);
+-  XA_NNLIB_ARG_CHK_COND((kernel_width > input_width), -1);
+ 
+ #ifndef DISABLE_DEPTHWISE_CONV2D_K3X3_SPECIAL_CASE
+   WORD32 input_zero_bias_neg = -input_zero_bias;
+@@ -2271,7 +2268,6 @@ WORD32 xa_nn_conv2d_depthwise_per_chan_sym8sxasym8s_generic
+   XA_NNLIB_ARG_CHK_COND((input_channels <= 0), -1);
+   XA_NNLIB_ARG_CHK_COND((kernel_height <= 0 || kernel_width <= 0), -1);
+   XA_NNLIB_ARG_CHK_COND((kernel_height > input_height), -1);
+-  XA_NNLIB_ARG_CHK_COND((kernel_width > input_width), -1);
+   XA_NNLIB_ARG_CHK_COND((channels_multiplier <= 0), -1);
+   XA_NNLIB_ARG_CHK_COND((y_stride <= 0 || x_stride <= 0), -1);
+   XA_NNLIB_ARG_CHK_COND((y_padding < 0 || x_padding < 0), -1);
+@@ -2282,8 +2278,6 @@ WORD32 xa_nn_conv2d_depthwise_per_chan_sym8sxasym8s_generic
+   XA_NNLIB_ARG_CHK_COND((inp_data_format != 0 && inp_data_format != 1), -1);
+   XA_NNLIB_ARG_CHK_COND((out_data_format != 0), -1);
+   /* Implementation dependent checks */
+-  XA_NNLIB_ARG_CHK_COND((y_stride > kernel_height), -1);
+-  XA_NNLIB_ARG_CHK_COND((x_stride > kernel_width), -1);
+ 
+   if(inp_data_format == 0)
+   {

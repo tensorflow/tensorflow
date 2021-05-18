@@ -28,11 +28,18 @@ Status WrapError(const std::string& message, const ::grpc::Status& status);
 
 // Retries the given function if the function produces UNAVAILABLE, ABORTED, or
 // CANCELLED status codes. We retry these codes because they can all indicate
-// preemption of a server. The retries continue until the deadline is exceeded.
-// `description` may be used to log that retries are happening. It should
-// contain a description of the action being retried, e.g. "register dataset"
-// The retry loop uses exponential backoff between retries.
-// `deadline_micros` is interpreted as microseconds since the epoch.
+// preemption of a server. The retries continue until the deadline is exceeded
+// or the `should_retry` callback returns false. `description` may be used to
+// log that retries are happening. It should contain a description of the action
+// being retried, e.g. "register dataset" The retry loop uses exponential
+// backoff between retries. `deadline_micros` is interpreted as microseconds
+// since the epoch.
+Status Retry(const std::function<Status()>& f,
+             const std::function<bool()>& should_retry,
+             const std::string& description, int64 deadline_micros);
+
+// Same as `Retry` above, but with a `should_retry` callback that always returns
+// `true`.
 Status Retry(const std::function<Status()>& f, const std::string& description,
              int64 deadline_micros);
 

@@ -19,8 +19,10 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Cosh", functor::cosh, float, double, bfloat16,
           complex64, complex128);
 
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER2(UnaryOp, GPU, "Cosh", functor::cosh, float, double);
 #endif
+#endif
+
 }  // namespace tensorflow

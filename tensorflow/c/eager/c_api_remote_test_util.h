@@ -21,6 +21,7 @@ limitations under the License.
 // is not ready when we start running an op or a function.
 void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
                                    bool heavy_load_on_streaming_rpc,
-                                   bool remote_func_outputs = false);
+                                   bool remote_func_outputs = false,
+                                   bool has_packed_input = false);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_REMOTE_TEST_UTIL_H_

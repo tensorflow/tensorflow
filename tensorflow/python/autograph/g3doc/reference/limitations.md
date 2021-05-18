@@ -303,25 +303,39 @@ while x > 0:
   c.y += 1  # Okay -- c.y can now be properly tracked!
 ```
 
-Another possibility is to rely on immutable objects. This may lead to many
-temporary objects when executing eagerly, but their number is greatly reduced
-in `@tf.function`:
+Another possibility is to rely on immutable objects with value semantics. This
+may lead to many temporary objects when executing eagerly, but their number is
+greatly reduced in `@tf.function`:
 
 ```
-class MyClass(object):
+class MyClass(collections.namedtuple('MyClass', ('y',))):
   def change(self):
-    self.y += 1
-    return self
+    new_y = self.y + 1
+    return MyClass(new_y)
 
 c = MyClass()
 while x > 0:
   c = c.change()  # Okay -- c is now a loop var.
 ```
 
+It is also recommended to use a functional programming style with such immutable
+objects - that is, all arguments are inputs, all changes are return values:
+
+```
+def use_my_class(c: MyClass) -> MyClass:
+  new_c = c.change()
+  return new_c
+```
+
+Don't worry about creating a few extra objects - they are only used at trace
+time, and don't exist at graph execution.
+
 Note: TensorFlow control flow does not currently support arbitrary Python
 objects, but it does support basic collection objects such as `list`, `dict`,
 `tuple`, `namedtuple` and their subclasses. Design your objects as subclasses
-of [namedtuple](https://docs.python.org/3/library/collections.html#collections.namedtuple).
+of [namedtuple](https://docs.python.org/3/library/collections.html#collections.namedtuple),
+or other types that [tf.nest](https://www.tensorflow.org/api_docs/python/tf/nest/map_structure)
+recognizes.
 
 #### Variables closed over by lambda functions
 
@@ -693,12 +707,25 @@ exceptions exist:
  * functions created dynamically, using `exec` or `eval`
 
 Use
-[inspect.getsource](https://docs.python.org/3/library/inspect.html#inspect.getsource)
+[inspect.findsource](https://docs.python.org/3/library/inspect.html#inspect.findsource)
 to quickly diagnose whether the source code is available for a function.
+
+For example:
+
+```
+import inspect
+
+def simple_function():
+  return 1
+
+# If this raises an error, then AutoGraph prints a warning.
+# If it returns source code, then AutoGraph should work as well.
+inspect.findsource(simple_function)
+```
 
 #### Source code of lambda functions
 
-##### Changes in TF 2.4
+##### TF 2.4 and newer
 
 Key Point: When nesting lambda functions, use distinguishing argument names
 to avoid parse errors.
@@ -726,7 +753,7 @@ use distinct argument names:
 l = lambda outer_x: lambda inner_x: inner_x + 1
 ```
 
-##### TF 2.3 and older
+##### Before TF 2.3 and older
 
 In older versions of TensorFlow, the loading code for lambda functions is not
 robust. Follow the guidance below to avoid errors.

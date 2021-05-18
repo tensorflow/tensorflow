@@ -6,6 +6,10 @@ tf_class {
     mtype: "<enum \'Optimize\'>"
   }
   member {
+    name: "EXPERIMENTAL_SPARSITY"
+    mtype: "<enum \'Optimize\'>"
+  }
+  member {
     name: "OPTIMIZE_FOR_LATENCY"
     mtype: "<enum \'Optimize\'>"
   }

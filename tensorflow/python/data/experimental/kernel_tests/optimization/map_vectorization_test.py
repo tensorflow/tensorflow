@@ -564,8 +564,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Tests that vectorization maintains the determinism setting.
     expect_determinism = local_determinism or (local_determinism is None and
                                                global_determinism)
-    elements = list(range(1000))
-
+    num_elements = 10
     def dataset_fn(delay_ms):
 
       def sleep(x):
@@ -574,12 +573,11 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       def map_function(x):
         if math_ops.equal(x, 0):
-          return check_ops.ensure_shape(
-              script_ops.py_func(sleep, [x], x.dtype, stateful=False), ())
+          return script_ops.py_func(sleep, [x], x.dtype)
         else:
           return x
 
-      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+      dataset = dataset_ops.Dataset.range(num_elements)
       dataset = dataset.map(
           map_function, num_parallel_calls=10, deterministic=local_determinism)
       dataset = dataset.batch(1)
@@ -595,7 +593,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.checkDeterminism(
         dataset_fn,
         expect_determinism,
-        expected_elements=[[element] for element in elements])
+        expected_elements=[[element] for element in range(num_elements)])
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptimizationIgnoreStateful(self):

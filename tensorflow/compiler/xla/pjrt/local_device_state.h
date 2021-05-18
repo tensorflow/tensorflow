@@ -89,8 +89,9 @@ class LocalDeviceState {
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
-                   AllocationModel allocation_model, bool asynchronous,
-                   bool allow_event_reuse);
+                   AllocationModel allocation_model,
+                   int max_inflight_computations, bool allow_event_reuse,
+                   bool use_callback_stream);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
@@ -131,12 +132,17 @@ class LocalDeviceState {
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
 
-  // Enqueues a host callback on 'stream', to be executed by callback_thread_.
-  // ThenDoHostCallback is often constrained in what it can do, in particular,
-  // on GPU the callback runs on a thread belonging to the GPU runtime and
-  // cannot perform GPU operations itself.
-  void ThenExecuteOnCallbackThread(se::Stream* stream,
-                                   std::function<void()> callback) const;
+  // Enqueues a host callback on 'stream'. `stream` may, but need not, wait for
+  // `callback` to complete. It is safe to call runtime methods from the
+  // callback.
+  // This API differs from ThenDoHostCallback in two ways:
+  // a) ThenDoHostCallback is often constrained in what it can do, in
+  //    particular, on GPU the callback runs on a thread belonging to the GPU
+  //    runtime and cannot perform GPU operations itself. On GPU, callbacks
+  //    execute in a separate thread.
+  // b) ThenDoHostCallback waits for the callback to complete.
+  void ThenExecuteCallback(se::Stream* stream,
+                           std::function<void()> callback) const;
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -144,14 +150,10 @@ class LocalDeviceState {
   // thread or on the worker thread (depending on thread schedules), not a
   // device callback, so it is safe if the destructor frees device resource
   // (e.g., GPU objects).
-  // TODO(phawkins): use move-capture when we can use C++14 features.
   template <typename T>
-  void ThenRelease(se::Stream* stream, T object) const {
-    if (callback_stream_.get() != stream) {
-      callback_stream_->ThenWaitFor(stream);
-    }
-    ThenExecuteOnCallbackThread(callback_stream_.get(),
-                                [object]() { /* releases object */ });
+  void ThenRelease(se::Stream* stream, T&& object) const {
+    ThenExecuteCallback(
+        stream, [object = std::forward<T>(object)]() { /* releases object */ });
   }
 
   Semaphore& compute_semaphore() { return compute_semaphore_; }

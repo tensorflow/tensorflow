@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import inspect
 import re
 
 from tensorflow.python.platform import tf_logging as logging
@@ -28,7 +29,6 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util import tf_stack
 from tensorflow.tools.docs import doc_controls
 
 
@@ -100,15 +100,18 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
-  stack = tf_stack.extract_stack(limit=4)
-  length = len(stack)
-  if length == 0:  # should never happen as we're in a function
-    return 'UNKNOWN'
-  index = length-4 if outer else length-3
-  if index < 0:
-    index = 0
-  frame = stack[index]
-  return '{}:{}'.format(frame.filename, frame.lineno)
+  # Two up: <_call_location>, <_call_location's caller>
+  f = inspect.currentframe().f_back.f_back
+  parent = f.f_back
+  if outer and parent is not None:
+    f = parent
+  return '{}:{}'.format(f.f_code.co_filename, f.f_lineno)
+
+
+def _safe_eq(a, b):
+  if a is None or b is None:
+    return a is None and b is None
+  return a == b
 
 
 def _wrap_decorator(wrapped_function):
@@ -592,7 +595,8 @@ def deprecated_arg_values(date, instructions, warn_once=True,
       if _PRINT_DEPRECATION_WARNINGS:
         named_args = tf_inspect.getcallargs(func, *args, **kwargs)
         for arg_name, arg_value in deprecated_kwargs.items():
-          if arg_name in named_args and named_args[arg_name] == arg_value:
+          if arg_name in named_args and _safe_eq(named_args[arg_name],
+                                                 arg_value):
             if (func, arg_name) not in _PRINTED_WARNING:
               if warn_once:
                 _PRINTED_WARNING[(func, arg_name)] = True

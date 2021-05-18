@@ -1,26 +1,35 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/experimental/ops:counter",
+        "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/experimental/ops:random_ops",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
 py_library(
     name = "compat",
     srcs = ["compat.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:util",
@@ -35,6 +44,10 @@ tf_py_test(
     deps = [
         ":compat",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variable_scope",
     ],
 )
 

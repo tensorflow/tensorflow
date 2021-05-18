@@ -255,7 +255,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
       intermediate_zp.push_back(0);
     }
   }
-  // In the absense of projection, hidden becomes otuput and this intermediate
+  // In the absence of projection, hidden becomes output and this intermediate
   // is ignored.
   TfLiteTensor* hidden;
   TF_LITE_ENSURE_OK(context, GetIntermediatesSafe(context, node, 4, &hidden));
@@ -2369,8 +2369,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  // TODO(ycling): Investigate if this copy can be avoided with the 5-inputs
-  // LSTM kernel.
   memcpy(prev_activation->data.raw, activation_out->data.raw,
          activation_out->bytes);
   memcpy(prev_state->data.raw, state_out->data.raw, state_out->bytes);

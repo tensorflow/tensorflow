@@ -29,6 +29,14 @@ namespace tensorflow {
                               .HostMemory("feature_group_count")               \
                               .Device(DEVICE),                                 \
                           XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaConvV2")                                    \
+                              .HostMemory("window_strides")                    \
+                              .HostMemory("padding")                           \
+                              .HostMemory("lhs_dilation")                      \
+                              .HostMemory("rhs_dilation")                      \
+                              .HostMemory("feature_group_count")               \
+                              .Device(DEVICE),                                 \
+                          XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("XlaBroadcastHelper").HostMemory("broadcast_dims").Device(DEVICE),  \
       XlaCompileOnDemandOp);                                                   \
@@ -37,6 +45,8 @@ namespace tensorflow {
   REGISTER_KERNEL_BUILDER(Name("XlaSvd").Device(DEVICE),                       \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaDot").Device(DEVICE),                       \
+                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaDotV2").Device(DEVICE),                     \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("XlaDynamicSlice").HostMemory("size_indices").Device(DEVICE),       \
@@ -74,6 +84,9 @@ namespace tensorflow {
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaKeyValueSort").Device(DEVICE),              \
                           XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("XlaVariadicSort").HostMemory("dimension").Device(DEVICE),          \
+      XlaCompileOnDemandOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("XlaWhile").Device(DEVICE),                     \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaDequantize").Device(DEVICE),                \

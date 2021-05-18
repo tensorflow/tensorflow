@@ -11,7 +11,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -75,8 +75,6 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service/gpu:infeed_manager",
-        "//tensorflow/compiler/xla/service/gpu:outfeed_manager",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -94,7 +92,6 @@ tf_cc_binary(
     ],
 )
 
-# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "replay_computation_gpu",
     tags = ["gpu"],
@@ -260,6 +257,7 @@ cc_library(
     name = "hlo_module_loader",
     srcs = ["hlo_module_loader.cc"],
     hdrs = ["hlo_module_loader.h"],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
@@ -306,6 +304,7 @@ cc_library(
     srcs = ["run_hlo_module.cc"],
     hdrs = ["run_hlo_module.h"],
     deps = [
+        ":hlo_control_flow_flattening",
         ":hlo_module_loader",
         ":prepare_reference_module",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -328,7 +327,6 @@ cc_library(
     ],
 )
 
-# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "run_hlo_module",
     testonly = True,
@@ -348,6 +346,32 @@ tf_cc_binary(
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),
+)
+
+cc_library(
+    name = "hlo_control_flow_flattening",
+    srcs = ["hlo_control_flow_flattening.cc"],
+    hdrs = ["hlo_control_flow_flattening.h"],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:tuple_util",
+        "@com_google_absl//absl/flags:flag",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_control_flow_flattening_test",
+    srcs = ["hlo_control_flow_flattening_test.cc"],
+    deps = [
+        ":hlo_control_flow_flattening",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
 )
 
 # This target is used to reproduce miscompiles in OSS outside of TF, and it can

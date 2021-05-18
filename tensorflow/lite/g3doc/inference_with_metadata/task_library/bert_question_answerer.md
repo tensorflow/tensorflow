@@ -18,7 +18,7 @@ documentation for the Question-Answer model
 The following models are compatible with the `BertNLClassifier` API.
 
 *   Models created by
-    [TensorFlow Lite Model Maker for Question Answer](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
+    [TensorFlow Lite Model Maker for BERT Question Answer](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
 
 *   The
     [pretrained BERT models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/bert-question-answerer/1).
@@ -49,9 +49,13 @@ dependencies {
     // Other dependencies
 
     // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
 }
 ```
+
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
 
 ### Step 2: Run inference using the API
 
@@ -97,10 +101,6 @@ See the
 for more details.
 
 ## Run inference in C++
-
-Note: we are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
 
 ```c++
 // Initialization

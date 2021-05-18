@@ -293,6 +293,9 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
     const int depth = x.dimension(3);
+    OP_REQUIRES(
+        context, depth != 0,
+        errors::Internal("The 4th element in the input shape cannot be 0."));
     const int size = x.size();
     const int rest_size = size / depth;
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
@@ -1248,7 +1251,7 @@ class FusedBatchNormOpBase : public OpKernel {
     const Tensor& estimated_variance = context->input(4);
     const Tensor* side_input = has_side_input_ ? &context->input(5) : nullptr;
 
-    OP_REQUIRES(context, x.dims() == 4 or x.dims() == 5,
+    OP_REQUIRES(context, x.dims() == 4 || x.dims() == 5,
                 errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,
@@ -1279,6 +1282,32 @@ class FusedBatchNormOpBase : public OpKernel {
                   errors::InvalidArgument("Error during tensor copy."));
     }
 
+    const auto num_channels = GetTensorDim(x, tensor_format_, 'C');
+    OP_REQUIRES(
+        context, scale.NumElements() == num_channels,
+        errors::InvalidArgument("scale must have the same number of elements "
+                                "as the channels of x, got ",
+                                scale.NumElements(), " and ", num_channels));
+    OP_REQUIRES(
+        context, offset.NumElements() == num_channels,
+        errors::InvalidArgument("offset must have the same number of elements "
+                                "as the channels of x, got ",
+                                offset.NumElements(), " and ", num_channels));
+    if (estimated_mean.NumElements() != 0) {
+      OP_REQUIRES(context, estimated_mean.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "mean must be empty or have the same number of "
+                      "elements as the channels of x, got ",
+                      estimated_mean.NumElements(), " and ", num_channels));
+    }
+    if (estimated_variance.NumElements() != 0) {
+      OP_REQUIRES(context, estimated_variance.NumElements() == num_channels,
+                  errors::InvalidArgument(
+                      "variance must be empty or have the same number of "
+                      "elements as the channels of x, got ",
+                      estimated_variance.NumElements(), " and ", num_channels));
+    }
+
     if (has_side_input_) {
       OP_REQUIRES(context, side_input->shape() == x.shape(),
                   errors::InvalidArgument(
@@ -1291,7 +1320,7 @@ class FusedBatchNormOpBase : public OpKernel {
       // NOTE(ezhulenev): This requirement is coming from implementation
       // details of cudnnBatchNormalizationForwardTrainingEx.
       OP_REQUIRES(
-          context, !is_training_ || x.dim_size(3) % 4 == 0,
+          context, !is_training_ || num_channels % 4 == 0,
           errors::InvalidArgument("FusedBatchNorm with activation requires "
                                   "channel dimension to be a multiple of 4."));
     }
@@ -1408,10 +1437,10 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // saves inverted variance.
     const Tensor& saved_maybe_inv_var_or_pop_var = context->input(4);
 
-    OP_REQUIRES(context, y_backprop.dims() == 4 or y_backprop.dims() == 5,
+    OP_REQUIRES(context, y_backprop.dims() == 4 || y_backprop.dims() == 5,
                 errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         y_backprop.shape().DebugString()));
-    OP_REQUIRES(context, x.dims() == 4 or x.dims() == 5,
+    OP_REQUIRES(context, x.dims() == 4 || x.dims() == 5,
                 errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,

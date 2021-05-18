@@ -25,18 +25,18 @@ landing_page:
     items:
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/models/object_detection/overview">
+        <a href="/lite/examples/object_detection/overview">
           <h3 class="no-link">Object Detection</h3>
         </a>
         Detect objects in real time from a camera feed with a MobileNet model.
-      path: /lite/models/object_detection/overview
+      path: /lite/examples/object_detection/overview
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/models/bert_qa/overview">
-          <h3 class="no-link">Question and Answer</h3>
+        <a href="/lite/examples/audio_classification/overview">
+          <h3 class="no-link">Audio Classification</h3>
         </a>
-        Answer any questions related to a given text with a MobileBERT model.
-      path: /lite/models/bert_qa/overview
+        Identify what an audio represents, e.g. clapping or typing.
+      path: /lite/examples/audio_classification/overview
 
   # Mobile developers
   - classname: devsite-landing-row-100
@@ -158,7 +158,7 @@ landing_page:
           <li>
             Try out the different domain tutorials (e.g. vision, speech) from the left navigation
             bar. They show you how to train a model for a specific machine learning task, such as
-            <a href="https://blog.tensorflow.org/2018/07/training-and-serving-realtime-mobile-object-detector-cloud-tpus.html">object detection</a>
+            <a href="/lite/tutorials/model_maker_object_detection">object detection</a>
             or
             <a href="/lite/tutorials/model_maker_text_classification">sentiment analysis</a>.
           </li>

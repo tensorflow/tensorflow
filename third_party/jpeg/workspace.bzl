@@ -1,16 +1,16 @@
 """loads the jpeg library, used by TF."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "libjpeg_turbo",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.4.tar.gz",
-            "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.4.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.1.0.tar.gz",
+            "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.1.0.tar.gz",
         ],
-        sha256 = "7777c3c19762940cff42b3ba4d7cd5c52d1671b39a79532050c85efb99079064",
-        strip_prefix = "libjpeg-turbo-2.0.4",
+        sha256 = "d6b7790927d658108dfd3bee2f0c66a2924c51ee7f9dc930f62c452f4a638c52",
+        strip_prefix = "libjpeg-turbo-2.1.0",
         build_file = "//third_party/jpeg:BUILD.bazel",
         system_build_file = "//third_party/jpeg:BUILD.system",
     )

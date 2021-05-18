@@ -155,7 +155,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
     int ncontrol_outputs, const TF_Operation* const* control_outputs,
     const char* const* control_output_names, const TF_FunctionOptions* opts,
     const char* description, TF_Status* status) {
-  tensorflow::mutex_lock l(*const_cast<tensorflow::mutex*>(&fn_body->mu));
+  tensorflow::mutex_lock l(fn_body->mu);
 
   // Process inputs.
   std::vector<tensorflow::OutputTensor> input_tensors;
@@ -196,6 +196,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
 
   // Compute body nodes.
   std::vector<const Node*> control_output_nodes;
+  control_output_nodes.reserve(ncontrol_outputs);
   for (int i = 0; i < ncontrol_outputs; ++i) {
     control_output_nodes.push_back(&control_outputs[i]->node);
   }
@@ -213,6 +214,11 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
     TF_DeleteFunction(tf_function);
     return nullptr;
   }
+
+  for (const Node* n : fn_body->graph.nodes()) {
+    tf_function->stack_traces[n->name()] = n->GetStackTrace();
+  }
+
   return tf_function;
 }
 

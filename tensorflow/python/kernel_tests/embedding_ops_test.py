@@ -288,7 +288,7 @@ class EmbeddingLookupTest(test.TestCase):
       norms = math_ops.sqrt(
           math_ops.reduce_sum(embeddings * embeddings, axis=1))
       normalized = embeddings / array_ops.stack([norms, norms], axis=1)
-      self.assertAllEqual(embedding, 2 * self.evaluate(normalized))
+      self.assertAllClose(embedding, 2 * self.evaluate(normalized))
 
   @test_util.run_deprecated_v1
   def testSimpleShardedPartitionedVariable(self):
@@ -746,6 +746,29 @@ class EmbeddingLookupSparseTest(test.TestCase):
         atol = rtol
         self.assertAllClose(np_embedding_sum, tf_embedding_sum, rtol, atol)
 
+  def testMissingInSparseIds(self):
+    # Github issue, 36359
+    with self.test_session():
+      x = array_ops.ones((4, 5))
+      sp_ids = sparse_tensor.SparseTensor(
+          constant_op.constant([[1, 0], [3, 0]], dtypes.int64),
+          constant_op.constant([0, 2], dtypes.int32),
+          constant_op.constant([4, 1], dtypes.int64))
+      sp_weights = sparse_tensor.SparseTensor(
+          constant_op.constant([[1, 0], [3, 0]], dtypes.int64),
+          constant_op.constant([1, 1], dtypes.float32),
+          constant_op.constant([4, 1], dtypes.int64))
+
+      for combiner in ["sum", "mean", "sqrtn"]:
+        embedding_sum = embedding_ops.embedding_lookup_sparse(
+            x, sp_ids, sp_weights, combiner=combiner)
+
+        tf_embedding_sum = ops.convert_to_tensor(embedding_sum)
+        self.assertAllClose(tf_embedding_sum[0], np.zeros(5))
+        self.assertAllClose(tf_embedding_sum[1], np.ones(5))
+        self.assertAllClose(tf_embedding_sum[2], np.zeros(5))
+        self.assertAllClose(tf_embedding_sum[3], np.ones(5))
+
   @test_util.run_deprecated_v1
   def testGradientsEmbeddingLookupSparse(self):
     vocab_size = 12
@@ -1048,7 +1071,7 @@ class DynamicStitchOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testCint32Gpu(self):
-    with self.session(use_gpu=True):
+    with self.session():
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -1076,7 +1099,7 @@ class DynamicStitchOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInt32Gpu(self):
-    with self.session(use_gpu=True):
+    with self.session():
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])

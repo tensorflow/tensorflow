@@ -209,6 +209,19 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgOutput64) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
 }
 
+TEST_P(ArgMinMaxOpTest, GetMaxArgFloatLastAxis) {
+  std::vector<float> input{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};
+  for (int i = 1; i < 10; ++i) {
+    ArgMaxOpModel model({i}, TensorType_FLOAT32, 0, AxisType(), ConstantAxis(),
+                        OutputType());
+    model.PopulateTensor<float>(
+        model.input(), std::vector<float>(input.begin(), input.begin() + i));
+    model.Invoke();
+
+    ValidateOutput(model, {i - 1});
+  }
+}
+
 TEST_P(ArgMinMaxOpTest, GetMinArgFloat) {
   ArgMinOpModel model({1, 1, 1, 4}, TensorType_FLOAT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
@@ -257,6 +270,59 @@ TEST_P(ArgMinMaxOpTest, GetMinArgOutput64) {
 
   ValidateOutput(model, {1, 0});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
+}
+
+TEST_P(ArgMinMaxOpTest, GetMinArgFloatLastAxis) {
+  std::vector<float> input{1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1};
+  for (int i = 1; i < 10; ++i) {
+    ArgMinOpModel model({i}, TensorType_FLOAT32, 0, AxisType(), ConstantAxis(),
+                        OutputType());
+    model.PopulateTensor<float>(
+        model.input(), std::vector<float>(input.begin(), input.begin() + i));
+    model.Invoke();
+
+    ValidateOutput(model, {i - 1});
+  }
+}
+
+TEST_P(ArgMinMaxOpTest, GetMaxArgInt8LastAxis) {
+  // Vector size for int8 is 16 elements, so 35 covers two SIMD widths
+  // Plus extras for testing
+  constexpr int INPUT_SIZE = 35;
+  std::vector<int8_t> input;
+  input.reserve(INPUT_SIZE);
+  for (int i = 0; i < INPUT_SIZE; i++) {
+    input.push_back(INPUT_SIZE - i);
+  }
+  for (int i = 1; i < INPUT_SIZE; ++i) {
+    ArgMinOpModel model({i}, TensorType_INT8, 0, AxisType(), ConstantAxis(),
+                        OutputType());
+    model.PopulateTensor<int8_t>(
+        model.input(), std::vector<int8_t>(input.begin(), input.begin() + i));
+    model.Invoke();
+
+    ValidateOutput(model, {i - 1});
+  }
+}
+
+TEST_P(ArgMinMaxOpTest, GetMaxArgUInt8LastAxis) {
+  // Vector size for int8 is 16 elements, so 35 covers two SIMD widths
+  // Plus extras for testing
+  constexpr int INPUT_SIZE = 35;
+  std::vector<uint8_t> input;
+  input.reserve(INPUT_SIZE);
+  for (unsigned int i = 0; i < INPUT_SIZE; i++) {
+    input.push_back(INPUT_SIZE - i);
+  }
+  for (int i = 1; i < INPUT_SIZE; ++i) {
+    ArgMinOpModel model({i}, TensorType_UINT8, 0, AxisType(), ConstantAxis(),
+                        OutputType());
+    model.PopulateTensor<uint8_t>(
+        model.input(), std::vector<uint8_t>(input.begin(), input.begin() + i));
+    model.Invoke();
+
+    ValidateOutput(model, {i - 1});
+  }
 }
 
 }  // namespace

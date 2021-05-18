@@ -23,6 +23,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
@@ -53,6 +55,20 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 # pylint: disable=protected-access
+
+# Controls parallelism in the presence of side-effecting ops like variable
+# operations, print, py_function, etc. Can be set to True, False, or
+# "stateless_cond" (default).
+# Note that loops without side-effecting operations always execute with maximum
+# parallelism, ignoring this setting. When False, loops with side-effecting ops
+# execute sequentially, one iteration at a time.
+# When True, loops with side-effecting ops may execute parts of different
+# iterations in parallel; caution: if the loop condition contains
+# side-effecting ops, this mode produces unspecified results.
+# Setting it to "stateless_cond" automatically sets this mode to True when
+# the loop condition is free of side-effecting ops.
+# TODO(b/152548567): Change this to "stateless_cond".
+glob_stateful_parallelism = False
 
 
 def while_loop(cond,
@@ -128,7 +144,7 @@ def while_loop(cond,
       # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
       # and packs it into the structure of `orig_loop_vars`.
       pred = cond(*_pack_sequence_as(orig_loop_vars, args))
-      if (tensor_util.is_tensor(pred) and
+      if (tensor_util.is_tf_type(pred) and
           (pred.shape.dims is None or pred.shape.dims)):
         pred = array_ops.squeeze_v2(pred)
 
@@ -149,6 +165,12 @@ def while_loop(cond,
         func_graph=util.WhileCondFuncGraph(
             cond_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
+
+    if glob_stateful_parallelism == "stateless_cond":
+      stateful_parallelism = (not any(
+          op._is_stateful for op in cond_graph.get_operations()))
+    else:
+      stateful_parallelism = glob_stateful_parallelism
 
     def wrapped_body(loop_counter, maximum_iterations_arg, *args):
       """Loop body augmented with counter update.
@@ -197,7 +219,8 @@ def while_loop(cond,
         signature=signature,
         func_graph=util.WhileBodyFuncGraph(
             body_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
-        add_control_dependencies=add_control_dependencies)
+        add_control_dependencies=add_control_dependencies,
+        acd_record_initial_resource_uses=stateful_parallelism)
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
@@ -277,7 +300,8 @@ def while_loop(cond,
           output_shapes=output_shapes,
           parallel_iterations=parallel_iterations,
           name=scope,
-          num_original_outputs=num_original_outputs)
+          num_original_outputs=num_original_outputs,
+          stateful_parallelism=stateful_parallelism)
     if not ops.get_default_graph().building_function:
       # In V1 graph mode, return identities for each output of the While op,
       # rather than the output of the While op directly. This makes pruning work
@@ -325,6 +349,11 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   except:  # pylint: disable=bare-except
     num_original_outputs = len(while_op.outputs)
 
+  try:
+    stateful_parallelism = while_op.get_attr("_stateful_parallelism")
+  except:  # pylint: disable=bare-except
+    stateful_parallelism = False
+
   num_intermediates = len(while_op.outputs) - num_original_outputs
   grads = [
       _preprocess_grad(grad, body_out, while_in, while_out)  # pylint: disable=g-complex-comprehension
@@ -351,7 +380,8 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   body_grad_graph, args = _create_grad_func(
       ys, xs, non_none_grads, cond_graph, body_graph,
-      util.unique_grad_fn_name(body_graph.name), op, maximum_iterations)
+      util.unique_grad_fn_name(body_graph.name), op, maximum_iterations,
+      stateful_parallelism)
 
   if body_grad_graph.while_op_needs_rewrite:
     # Modify 'op' to output the intermediate accumulators needed by the grad
@@ -412,7 +442,8 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name,
-      num_original_outputs=len(body_grad_graph.outputs))
+      num_original_outputs=len(body_grad_graph.outputs),
+      stateful_parallelism=stateful_parallelism)
 
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
@@ -420,7 +451,8 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
 
 def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
-                    parallel_iterations, name, num_original_outputs):
+                    parallel_iterations, name, num_original_outputs,
+                    stateful_parallelism):
   """Builds the functional StatelessWhile/While op."""
   cond_stateful_ops = [
       op for op in cond_graph.get_operations() if op._is_stateful
@@ -448,6 +480,8 @@ def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
     # This is needed so we do not compute derivative wrt these extra outputs.
     while_op._set_attr("_num_original_outputs",
                        attr_value_pb2.AttrValue(i=num_original_outputs))
+    while_op._set_attr("_stateful_parallelism",
+                       attr_value_pb2.AttrValue(b=stateful_parallelism))
     # The while op may be created inside a tf.function, in which case ops
     # needs to capture "through" it when taking gradients; outer_graph is used
     # as a sanity check that capturing only happens from parent to child.
@@ -604,7 +638,7 @@ def _get_graph(while_op, func_attr_name, attr_graph_name):
 
 
 def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
-                      maximum_iterations):
+                      maximum_iterations, stateful_parallelism):
   """Builds and returns the gradient FuncGraph of `func_graph` and its args.
 
   The returned grad_func_graph must be called with the returned
@@ -619,6 +653,7 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
     name: Name of the returned gradient function.
     while_op: The forward While op.
     maximum_iterations: Tensor. The maximum number of iterations.
+    stateful_parallelism: Bool, see tf.while_loop.
 
   Returns:
     2-tuple of (grad_func_graph, args).
@@ -648,7 +683,8 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
       args, {},
       func_graph=_WhileBodyGradFuncGraph(name, cond_graph, body_graph,
                                          maximum_iterations, while_op,
-                                         body_graph_inputs, body_graph_outputs))
+                                         body_graph_inputs, body_graph_outputs),
+      acd_record_initial_resource_uses=stateful_parallelism)
 
   # Update the list of outputs with tensors corresponding to the captured
   # tensors. We capture 3 types of tensors when building the grad fn:
@@ -862,6 +898,19 @@ def _get_accumulator(tensor):
   return None
 
 
+OptimizedReductionOpsCacheKey = collections.namedtuple(
+    "OptimizedReductionOpsCacheKey", [
+        "op_type",
+        "inputs",
+        "dtypes",
+        "input_types",
+        "name",
+        "attrs",
+        "op_def",
+        "compute_device",
+    ])
+
+
 class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   """FuncGraph for the gradient function of the body of a While op.
 
@@ -957,29 +1006,25 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     # This optimization is currently also disabled when under a persistent tape,
     # since it leads to an unbounded number of side outputs. With caching it may
     # be possible to re-enable it.
-    if (op_type in {"Shape", "Size", "Rank"} and
+    optimized_reduction_ops = {
+        "Shape", "Size", "Rank", "TensorListElementShape", "TensorListLength"
+    }
+    if (op_type in optimized_reduction_ops and
+        not util.output_all_intermediates() and
         all(input.graph is self._forward_graph for input in inputs) and
         all(_get_accumulator(input) is None for input in inputs) and
         not util_v1.GraphOrParentsInXlaContext(self._forward_graph) and
         not util.graph_wrapped_for_higher_order_tape_gradients(
             self._forward_graph)):
-      with self._forward_graph.as_default():
-        # `name` was built using name_scope stack of gradient graph and may not
-        # be unique in the forward graph. `Graph.create_op` does not uniquify
-        # names which are name scopes i.e. end in `/`. To ensure that the op
-        # created gets a unique name in the forward graph we get rid of the
-        # trailing slash.
-        name = ops.name_from_scope_name(name)
-        result = self._forward_graph._create_op_internal(
-            op_type,
-            inputs,
-            dtypes=dtypes,
-            input_types=input_types,
-            name=name,
-            attrs=attrs,
-            op_def=op_def,
-            compute_device=compute_device)
-        return result
+      return self._move_op_to_forward_graph(
+          op_type,
+          inputs,
+          dtypes=dtypes,
+          input_types=input_types,
+          name=name,
+          attrs=attrs,
+          op_def=op_def,
+          compute_device=compute_device)
 
     return super(_WhileBodyGradFuncGraph, self)._create_op_internal(
         op_type,
@@ -990,6 +1035,83 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         attrs=attrs,
         op_def=op_def,
         compute_device=compute_device)
+
+  def _move_op_to_forward_graph(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
+    # We have a cache of reduction ops that have already been moved to the
+    # forward graph, and we will check it first to avoid moving an op twice.
+    if not hasattr(self._forward_graph, "_optimized_reduction_ops_cache"):
+      self._forward_graph._optimized_reduction_ops_cache = {}
+    cache_key = self._get_optimized_reduction_ops_cache_key(
+        op_type, inputs, dtypes, input_types, name, attrs, op_def,
+        compute_device)
+    cached_op = self._forward_graph._optimized_reduction_ops_cache.get(
+        cache_key)
+    if cached_op is not None:
+      # This op has already been moved to the forward graph and we have it in
+      # the cache.
+      return cached_op
+
+    with self._forward_graph.as_default():
+      # `name` was built using name_scope stack of gradient graph and may not
+      # be unique in the forward graph. `Graph.create_op` does not uniquify
+      # names which are name scopes i.e. end in `/`. To ensure that the op
+      # created gets a unique name in the forward graph we get rid of the
+      # trailing slash.
+      name = ops.name_from_scope_name(name)
+      result = self._forward_graph._create_op_internal(
+          op_type,
+          inputs,
+          dtypes=dtypes,
+          input_types=input_types,
+          name=name,
+          attrs=attrs,
+          op_def=op_def,
+          compute_device=compute_device)
+
+      # Store the op we just moved to the forward graph so that it does
+      # not need to be added there again.
+      self._forward_graph._optimized_reduction_ops_cache[cache_key] = result
+      return result
+
+  def _get_optimized_reduction_ops_cache_key(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
+    # We need all elements of CacheKey to be hashable.
+    inputs = tuple(map(lambda t: t.ref(), inputs))
+
+    if dtypes is not None:
+      dtypes = tuple(dtypes)
+
+    if input_types is not None:
+      input_types = tuple(input_types)
+
+    if attrs is not None:
+      hashable_attrs = []
+      for attr_name, attr_value in sorted(attrs.items()):
+        hashable_attrs.append((attr_name, attr_value.SerializeToString()))
+      attrs = tuple(hashable_attrs)
+
+    if op_def is not None:
+      op_def = op_def.SerializeToString()
+
+    return OptimizedReductionOpsCacheKey(op_type, inputs, dtypes, input_types,
+                                         name, attrs, op_def, compute_device)
 
   def _capture_helper(self, tensor, name):
     """Implements the capturing described in the class docstring."""

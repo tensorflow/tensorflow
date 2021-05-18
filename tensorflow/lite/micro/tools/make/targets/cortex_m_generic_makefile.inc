@@ -1,3 +1,18 @@
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Generic Makefile target for ARM Cortex M builds.
 # For more info see: tensorflow/lite/micro/cortex_m_generic/README.md
 
@@ -25,11 +40,12 @@ else ifeq ($(TARGET_ARCH), cortex-m33+nodsp)
 else ifeq ($(TARGET_ARCH), cortex-m4)
   CORE=M4
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M4.no_fp
+  GCC_TARGET_ARCH := cortex-m4+nofp
 
 else ifeq ($(TARGET_ARCH), cortex-m4+fp)
   CORE=M4
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M4
-  TARGET_SPECIFIC_FLAGS += -D__FPU_PRESENT=1 -mfpu=fpv4-sp-d16
+  TARGET_SPECIFIC_FLAGS += -D__FPU_PRESENT=1
   FLOAT=hard
   GCC_TARGET_ARCH := cortex-m4
 
@@ -51,6 +67,7 @@ else ifeq ($(TARGET_ARCH), cortex-m55+nofp)
 else ifeq ($(TARGET_ARCH), cortex-m7)
   CORE=M7
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M7.no_fp
+  GCC_TARGET_ARCH := cortex-m7+nofp
 
 else ifeq ($(TARGET_ARCH), cortex-m7+fp)
   CORE=M7
@@ -63,10 +80,6 @@ else
 endif
 
 ifneq ($(filter cortex-m55%,$(TARGET_ARCH)),)
-  ifeq ($(TOOLCHAIN), gcc)
-    $(error "Micro architecure support is not available for arm-gcc for TARGET_ARCH=$(TARGET_ARCH)")
-  endif
-
   # soft-abi=soft disables MVE - use softfp instead for M55.
   ifeq ($(FLOAT),soft)
     FLOAT=softfp
@@ -97,12 +110,18 @@ ifeq ($(TOOLCHAIN), armclang)
   MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
 
 else ifeq ($(TOOLCHAIN), gcc)
-  export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
-  $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
+  TARGET_DEFAULT_TOOLCHAIN_ROOT := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/
+  TARGET_TOOLCHAIN_ROOT := $(TARGET_DEFAULT_TOOLCHAIN_ROOT)
+  ifeq ($(TARGET_TOOLCHAIN_ROOT), $(TARGET_DEFAULT_TOOLCHAIN_ROOT))
+    DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
+    ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+      $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+    endif
+  endif
 
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 
-  FLAGS_GCC = -mcpu=$(GCC_TARGET_ARCH)
+  FLAGS_GCC = -mcpu=$(GCC_TARGET_ARCH) -mfpu=auto
   CXXFLAGS += $(FLAGS_GCC)
   CCFLAGS += $(FLAGS_GCC)
 
@@ -110,12 +129,19 @@ else
   $(error "TOOLCHAIN=$(TOOLCHAIN) is not supported.")
 endif
 
+# TODO(#47718): resolve warnings.
+OMIT_ERRORS = \
+  -Wno-implicit-fallthrough \
+  -Wno-strict-aliasing \
+  -Wno-unused-variable
+
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
   -mthumb \
   -mfloat-abi=$(FLOAT) \
   -funsigned-char \
   -mlittle-endian \
+   ${OMIT_ERRORS} \
   -Wno-type-limits \
   -Wno-unused-private-field \
   -fomit-frame-pointer \
@@ -126,3 +152,12 @@ PLATFORM_FLAGS = \
 # Common + C/C++ flags
 CXXFLAGS += $(PLATFORM_FLAGS)
 CCFLAGS += $(PLATFORM_FLAGS)
+
+# Needed for the project generation interface.
+MICROLITE_CC_HDRS := \
+  tensorflow/lite/micro/cortex_m_generic/debug_log_callback.h
+
+EXCLUDED_EXAMPLE_TESTS := \
+  tensorflow/lite/micro/examples/micro_speech/Makefile.inc
+MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
+

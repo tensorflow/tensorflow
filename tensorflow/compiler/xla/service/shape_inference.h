@@ -105,12 +105,14 @@ class ShapeInference {
                                                  const Shape& output_grad_shape,
                                                  int64 feature_index);
 
-  // Infers the shape produced by applying the given convolutional
-  // filter (rhs) to lhs in the way specified by the fields on window.
+  // Infers the shape produced by applying the given convolutional filter (rhs)
+  // to lhs in the way specified by the fields on window. An optional
+  // preferred_element_type can be specified to upcast the element type.
   static StatusOr<Shape> InferConvolveShape(
       const Shape& lhs, const Shape& rhs, int64 feature_group_count,
       int64 batch_group_count, const Window& window,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      absl::optional<PrimitiveType> preferred_element_type);
 
   // Infers the shape produced by the given FFT type on the given operand.
   static StatusOr<Shape> InferFftShape(const Shape& in, FftType fft_type,
@@ -125,9 +127,9 @@ class ShapeInference {
 
   // Infers the shape produced by an all-gather with the given operand shape,
   // concat dimension, and shard count.
-  static StatusOr<Shape> InferAllGatherShape(const Shape& operand_shape,
-                                             int64 all_gather_dimension,
-                                             int64 shard_count);
+  static StatusOr<Shape> InferAllGatherShape(
+      absl::Span<const Shape* const> operand_shapes, int64 all_gather_dimension,
+      int64 shard_count);
 
   // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
@@ -146,7 +148,16 @@ class ShapeInference {
       absl::Span<const Shape* const> operand_shapes);
 
   // Infers the shape of a collective permute operation.
-  static StatusOr<Shape> InferCollectivePermuteShape(const Shape& shape);
+  static StatusOr<Shape> InferCollectivePermuteShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape of a collective permute start operation.
+  static StatusOr<Shape> InferCollectivePermuteStartShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape of a collective permute operation.
+  static StatusOr<Shape> InferCollectivePermuteDoneShape(
+      const Shape& operand_shape);
 
   // Infers the shape produced by applying the given reduction computation
   // shape to the given input operand shape.
@@ -298,10 +309,12 @@ class ShapeInference {
       absl::Span<const Shape* const> arg_shapes, const ProgramShape& to_apply);
 
   // Helper that infers the shape produced by performing a dot operation with
-  // the given LHS and RHS shapes.
+  // the given LHS and RHS shapes. An optional preferred_element_type can be
+  // specified to upcast the element type.
   static StatusOr<Shape> InferDotOpShape(
       const Shape& lhs, const Shape& rhs,
-      const DotDimensionNumbers& dimension_numbers);
+      const DotDimensionNumbers& dimension_numbers,
+      absl::optional<PrimitiveType> preferred_element_type);
 
   // Helper that infers the shape of the tensor produced by a gather operation
   // with the given input shape, gather indices shape and gather dimension

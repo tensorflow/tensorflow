@@ -31,8 +31,14 @@ namespace profiler {
 TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 // Name prefix of XPlane that contains GPU events.
 TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
+// Name prefix of XPlane that contains TPU events.
+TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Name prefix of XPlane that contains TPU runtime events.
+TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
 TF_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
+// Name of XPlane that contains Roctracer API generated events.
+TF_CONST_INIT extern const absl::string_view kRoctracerApiPlaneName;
 // Name of XPlane that contains profile metadata such as XLA debug info.
 TF_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 // Name of XPlane that contains kpi related metrics.
@@ -47,6 +53,7 @@ TF_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
+TF_CONST_INIT extern const absl::string_view kSourceLineName;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -107,6 +114,7 @@ enum HostEventType {
   kMergeInputTensors,
   kScheduleWithoutSplit,
   kScheduleWithSplit,
+  kASBSQueueSchedule,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.
@@ -145,6 +153,7 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
+  kTensorLayout,
   kKpiName,
   kKpiValue,
   kElementId,
@@ -160,9 +169,15 @@ enum StatType {
   kDeviceId,
   kContextId,
   kCorrelationId,
+  // TODO(b/176137043): These "details" should differentiate between activity
+  // and API event sources.
   kMemcpyDetails,
   kMemallocDetails,
+  kMemFreeDetails,
+  kMemsetDetails,
+  kMemoryResidencyDetails,
   kKernelAnnotation,
+  kNVTXRange,
   kKernelDetails,
   kStream,
   // Stats added when processing traces.
@@ -180,6 +195,7 @@ enum StatType {
   kFlops,
   kBytesAccessed,
   kSelectedGroupIds,
+  kSourceInfo,
   // Performance counter related.
   kRawValue,
   kScaledValue,
@@ -199,7 +215,11 @@ enum StatType {
   kBatchSizeAfterPadding,
   kPaddingAmount,
   kBatchingInputTaskSize,
-  kLastStatType = kBatchingInputTaskSize,
+  // GPU occupancy metrics
+  kTheoreticalOccupancyPct,
+  kOccupancyMinGridSize,
+  kOccupancySuggestedBlockSize,
+  kLastStatType = kOccupancySuggestedBlockSize,
 };
 
 inline std::string GpuPlaneName(int32 device_ordinal) {

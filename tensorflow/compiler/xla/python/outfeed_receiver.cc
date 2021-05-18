@@ -18,11 +18,13 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <memory>
+#include <queue>
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -187,8 +189,8 @@ class OutfeedReceiverImpl {
   Status SendShutdownOutfeedHeader(int device_idx);
 
   // Receives a raw Literal from a device outfeed.
-  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(
-      const PjRtDevice* device, const Shape& shape);
+  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(PjRtDevice* device,
+                                                           const Shape& shape);
 
   // Enqueues received data in the callbaback queue.
   void EnqueueReceivedData(std::unique_ptr<OutfeedData> received)
@@ -230,8 +232,8 @@ OutfeedReceiverImpl::OutfeedReceiverImpl(
   callback_ = callback;
   max_callback_queue_size_bytes_ = max_callback_queue_size_bytes;
   for (const auto& client : clients) {
-    for (const auto& device : client->devices()) {
-      devices_.push_back(device.get());
+    for (auto device : client->addressable_devices()) {
+      devices_.push_back(device);
     }
   }
   CHECK_GT(devices_.size(), 0);
@@ -339,16 +341,10 @@ void OutfeedReceiverImpl::EnqueueReceivedData(
 }
 
 StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
-    const PjRtDevice* device, const Shape& shape) {
-  std::shared_ptr<Literal> literal_shared;
-
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
-  TF_ASSIGN_OR_RETURN(Literal literal,
-                      local_device->client()->TransferFromOutfeedLocal(
-                          shape, local_device->device_ordinal()));
-
-  return absl::make_unique<Literal>(std::move(literal));
+    PjRtDevice* device, const Shape& shape) {
+  auto literal = std::make_unique<Literal>(shape);
+  TF_RETURN_IF_ERROR(device->TransferFromOutfeed(literal.get()));
+  return literal;
 }
 
 void OutfeedReceiverImpl::CallbackThreadLoop() {
@@ -413,8 +409,9 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
                       devices_[device_idx]->client()->Compile(
                           computation, std::move(compile_options)));
   ExecuteOptions execute_options;
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                      executable->Execute({}, execute_options));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
+      executable->Execute({{}}, execute_options));
   return Status::OK();
 }
 
@@ -449,11 +446,15 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
 
   std::vector<uint32_t> header{kOutfeedHeaderStart, consumer_id};
   XlaOp header_op = ConstantR1<uint32_t>(builder, header);
+  // We assign the outfeed to the first device. This must match the sharding
+  // for the paired infeed.
+  builder->SetSharding(sharding_builder::AssignDevice(0));
   token = OutfeedWithToken(
       header_op, token, ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords}), "");
   if (consumer_id != kOutfeedCidShutdown) {
     token = OutfeedWithToken(data, token, shape_with_layout, "");
   }
+  builder->ClearSharding();
   return token;
 }
 

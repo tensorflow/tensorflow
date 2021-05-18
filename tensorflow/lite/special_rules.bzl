@@ -20,9 +20,21 @@ def tflite_ios_per_kernel_test(**kwargs):
     _ignore = [kwargs]
     pass
 
-def ios_visibility_whitelist():
+def ios_visibility_allowlist():
     """This is a no-op outside of Google."""
     pass
+
+def internal_visibility_allowlist():
+    """Grant public visibility to internal targets so that other repos can depend on them."""
+    return [
+        "//visibility:public",
+    ]
+
+def op_resolver_internal_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/core/api:op_resolver_internal.
+
+    This is a no-op outside of Google."""
+    return []
 
 def tflite_extra_gles_deps():
     """This is a no-op outside of Google."""
@@ -38,7 +50,7 @@ def if_nnapi(supported, not_supported = [], supported_android = None):
     if supported_android == None:
         supported_android = supported
 
-    # We use a blacklist rather than a whitelist for known unsupported platforms.
+    # We use a denylist rather than a allowlist for known unsupported platforms.
     return select({
         clean_dep("//tensorflow:emscripten"): not_supported,
         clean_dep("//tensorflow:ios"): not_supported,
@@ -64,7 +76,7 @@ def tflite_hexagon_nn_skel_libraries():
         name = "libhexagon_nn_skel",
         srcs = glob(["*.so"]),
     )
-    you need to modify this macro to specifiy the build target.
+    you need to modify this macro to specify the build target.
     return ["//third_party/hexagon_nn_skel:libhexagon_nn_skel"]
     """
     return []
@@ -90,3 +102,7 @@ def flex_portable_tensorflow_deps():
         "@icu//:common",
         "//third_party/icu/data:conversion_data",
     ]
+
+def tflite_copts_extra():
+    """Defines extra compile time flags for tflite_copts(). Currently empty."""
+    return []
