@@ -113,9 +113,9 @@ std::string Node::DebugString() const {
   } else if (IsSink()) {
     strings::StrAppend(&ret, " sink}");
   } else {
-    strings::StrAppend(&ret, " op device:");
-    strings::StrAppend(&ret, "{", assigned_device_name(), "}");
-    strings::StrAppend(&ret, " def:{", SummarizeNode(*this), "}}");
+    strings::StrAppend(&ret, " op device:", "{requested: '", requested_device(),
+                       "', assigned: '", assigned_device_name(), "'}", " def:{",
+                       SummarizeNode(*this), "}}");
   }
   return ret;
 }

@@ -2457,6 +2457,8 @@ def TFL_PadOp : TFL_Op<"pad", [
   let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_PadV2Op : TFL_Op<"padv2", [
@@ -2510,6 +2512,8 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let results = (outs TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_PowOp : TFL_Op<"pow", [

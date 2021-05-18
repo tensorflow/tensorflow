@@ -1902,6 +1902,10 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
 
 DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op,
                                           llvm::StringRef attr_name) {
+  CHECK((op->getDialect() ==
+             op->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() ||
+         mlir::isa<mlir::ConstantOp, mlir::memref::TensorLoadOp,
+                   mlir::memref::TensorStoreOp>(op)));
   return op->getAttrOfType<mlir::DenseIntElementsAttr>(attr_name);
 }
 

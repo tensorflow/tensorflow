@@ -1968,6 +1968,32 @@ func @convert_floor_div_cst(%arg0: tensor<10x10xbf16>) -> tensor<10x10xbf16> {
   return %14 : tensor<10x10xbf16>
 }
 
+// CHECK-LABEL: func @convert_floor_div_broadcast_cst
+// CHECK: %[[BCST:.*]] = "tf.BroadcastTo"{{.*}} : (tensor<8xf32>, tensor<2xi64>) -> tensor<10x8xf32>
+// CHECK: %[[RESULT:.*]] = "tf.FloorDiv"(%arg0, %[[BCST]]) : (tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xf32>
+// CHECK: return %[[RESULT]]
+// CHECK: }
+func @convert_floor_div_broadcast_cst(%arg0: tensor<10x8xf32>) -> tensor<10x8xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<10x8xf32>
+  %1 = mhlo.constant dense<[1.000000e+00, 2.000000e+00, 4.000000e+00, 8.000000e+00, 1.600000e+01, 3.200000e+01, 6.400000e+01, 1.280000e+02]> : tensor<8xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<10x8xf32>
+  %3 = mhlo.constant dense<-1.000000e+00> : tensor<10x8xf32>
+  %5 = "mhlo.broadcast_in_dim"(%1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<8xf32>) -> tensor<10x8xf32>
+  %6 = mhlo.remainder %arg0, %5 : tensor<10x8xf32>
+  %7 = "mhlo.compare"(%6, %2) {comparison_direction = "NE"} : (tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xi1>
+  %8 = "mhlo.sign"(%6) : (tensor<10x8xf32>) -> tensor<10x8xf32>
+  %9 = "mhlo.compare"(%0, %8) {comparison_direction = "NE"} : (tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xi1>
+  %10 = mhlo.and %7, %9 : tensor<10x8xi1>
+  %11 = mhlo.subtract %arg0, %6 : tensor<10x8xf32>
+  %12 = mhlo.divide %11, %5 : tensor<10x8xf32>
+  %13 = mhlo.add %12, %3 : tensor<10x8xf32>
+  %14 = "mhlo.select"(%10, %13, %12) : (tensor<10x8xi1>, tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xf32>
+  %15 = "mhlo.round_nearest_afz"(%14) : (tensor<10x8xf32>) -> tensor<10x8xf32>
+  %16 = "mhlo.tuple"(%15) : (tensor<10x8xf32>) -> tuple<tensor<10x8xf32>>
+  return %15 : tensor<10x8xf32>
+}
+
+
 // CHECK-LABEL:   func @convert_gather(
 // CHECK-SAME:                         %[[ARG_0:.*]]: tensor<147456xf16>,
 // CHECK-SAME:                         %[[ARG_1:.*]]: tensor<192x256x1xi32>)

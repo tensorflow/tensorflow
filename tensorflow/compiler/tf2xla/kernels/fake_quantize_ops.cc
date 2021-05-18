@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -113,66 +114,7 @@ StatusOr<xla::XlaOp> BuildFakeQuantCustomCall(xla::XlaBuilder* b,
                                    output_shape, arg_shapes);
 }
 
-class FakeQuantWithMinMaxArgsOp : public XlaOpKernel {
- public:
-  explicit FakeQuantWithMinMaxArgsOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
-    OP_REQUIRES(ctx, num_bits_ >= 2 && num_bits_ <= 16,
-                errors::InvalidArgument("num_bits is out of range, expected "
-                                        "between 2 and 16, was: ",
-                                        num_bits_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
-    quant_min_ = narrow_range_ ? 1 : 0;
-    quant_max_ = (1 << num_bits_) - 1;
-
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("min", &input_min_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("max", &input_max_));
-    CpuNudge(input_min_, input_max_, quant_min_, quant_max_, &nudged_input_min_,
-             &nudged_input_max_, &input_scale_);
-  }
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp input = ctx->Input(0);
-    const DataType data_type = ctx->input_type(0);
-
-    if (ctx->compiler()->options().allow_cpu_custom_calls &&
-        ctx->compiler()->options().custom_fake_quant_op_calls) {
-      xla::XlaOp custom_call_output =
-          b->ReportErrorOrReturn(BuildFakeQuantCustomCall(
-              b, input,
-              XlaHelpers::FloatLiteral(b, DataType::DT_FLOAT, input_min_),
-              XlaHelpers::FloatLiteral(b, DataType::DT_FLOAT, input_max_),
-              num_bits_, narrow_range_));
-      ctx->SetOutput(0, custom_call_output);
-      return;
-    }
-
-    xla::XlaOp nudged_input_min =
-        XlaHelpers::FloatLiteral(b, data_type, nudged_input_min_);
-    xla::XlaOp nudged_input_max =
-        XlaHelpers::FloatLiteral(b, data_type, nudged_input_max_);
-    xla::XlaOp input_scale =
-        XlaHelpers::FloatLiteral(b, data_type, input_scale_);
-    xla::XlaOp output = Quantize(b, input, data_type, nudged_input_min,
-                                 nudged_input_max, input_scale);
-    ctx->SetOutput(0, output);
-  }
-
- private:
-  int num_bits_;
-  bool narrow_range_;
-  float input_min_;
-  float input_max_;
-  float quant_min_;
-  float quant_max_;
-  float nudged_input_min_;
-  float nudged_input_max_;
-  float input_scale_;
-};
-
-REGISTER_XLA_OP(Name("FakeQuantWithMinMaxArgs"), FakeQuantWithMinMaxArgsOp);
+REGISTER_XLA_OP(Name("FakeQuantWithMinMaxArgs"), MlirXlaOpKernel);
 
 class FakeQuantWithMinMaxArgsGradOp : public XlaOpKernel {
  public:

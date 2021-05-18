@@ -564,17 +564,18 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Tests that vectorization maintains the determinism setting.
     expect_determinism = local_determinism or (local_determinism is None and
                                                global_determinism)
-    num_elements = 1000
+    num_elements = 10
     def dataset_fn(delay_ms):
 
       def sleep(x):
-        # Inject random delay in the interval [0, delay_ms / 1000).
-        time.sleep(delay_ms * (np.random.randint(x + 1) / (x + 1)) / 1000)
+        time.sleep(delay_ms / 1000)
         return x
 
       def map_function(x):
-        return check_ops.ensure_shape(
-            script_ops.py_func(sleep, [x], x.dtype, stateful=False), ())
+        if math_ops.equal(x, 0):
+          return script_ops.py_func(sleep, [x], x.dtype)
+        else:
+          return x
 
       dataset = dataset_ops.Dataset.range(num_elements)
       dataset = dataset.map(

@@ -589,18 +589,9 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             self.assertAllClose(
                 c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
-  # TODO(rocm): fix this
-  # This test is currently failing on the ROCm platform
-  # Re-enable it once the fix is available
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm,
-      skip_message="hipSPARSE all failure on the ROCm platform")
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulTransposed(self):
-    dtypes_to_test = [np.float32]
-    if not test.is_built_with_rocm():
-      # complex types is not supported on the ROCm platform
-      dtypes_to_test += [np.complex64]
+    dtypes_to_test = [np.float32, np.complex64]
 
     sparsify = lambda m: m * (m > 0)
     for dtype in dtypes_to_test:
@@ -652,9 +643,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             self.assertAllClose(
                 c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm,
-      skip_message="complex type is not yet supported in ROCm")
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulConjugate(self):
     sparsify = lambda m: m * (m > 0)
@@ -1178,10 +1166,9 @@ class CSRSparseMatrixOpsTest(test.TestCase):
         ]  #
     ]).astype(np.complex128)
 
-    data_types = [dtypes.float32, dtypes.float64]
-    if not test.is_built_with_rocm():
-      # complex type is not supported on the ROCm platform
-      data_types += [dtypes.complex64, dtypes.complex128]
+    data_types = [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
+    ]
     for dtype in data_types:
       sparse_matrix = dense_to_csr_sparse_matrix(
           math_ops.cast(dense_mat, dtype))

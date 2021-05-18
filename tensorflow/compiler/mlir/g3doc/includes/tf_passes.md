@@ -414,6 +414,49 @@ will be transformed into this functional operation
     then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
   } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
 ```
+### `-tf-replicate-invariant-op-hoisting`: Hoists replicate invariant operations out of replicate
+This pass looks for replicate invariant ops in a `tf_device.replicate` op
+region and hoists them out. It also makes `tf.Shape` ops replicate invariant
+if possible. This currently updates or replaces `tf.Shape` ops of replicated
+arguments, either tensors or resources.
+
+For example, the following
+
+```mlir
+tf_device.replicate([%0, %1] as %ri: tensor<*xi32>) {n = 2 : i32} {
+  %2 = "tf.Shape"(%ri) : (tensor<*xi32>) -> tensor<?xi32>
+  tf_device.return
+}
+```
+
+gets converted to
+
+```mlir
+tf_device.replicate([%0, %1] as %ri: tensor<*xi32>) {n = 2 : i32} {
+  %2 = "tf.Shape"(%0) : (tensor<*xi32>) -> tensor<?xi32>
+  tf_device.return
+}
+```
+
+and for resource variables the following
+
+```mlir
+tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
+  %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
+  %3 = "tf.Shape"(%2) : (tensor<*xi32>) -> tensor<?xi32>
+  tf_device.return
+}
+```
+
+gets converted to
+
+```mlir
+tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
+  %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
+  %3 = "tf.VariableShape"(%0) : (tensor<*x!tf.resource>) -> tensor<?xi32>
+  tf_device.return
+}
+```
 ### `-tf-shape-inference`: Simple Shape Inference on TensorFlow Dialect
 
 #### Options
@@ -554,6 +597,32 @@ func @outside_compilation() -> tensor<f32> {
   return %0 : tensor<f32>
 }
 ```
+### `-tf-tpu-merge-variables-with-execute`: Merges device variable reads and updates into TPU execute ops
+This pass finds on-device resource variable reads and updates surrounding a
+`tf.TPUExecute` op and merges them into a `tf.TPUExecuteAndUpdateVariables`
+op. This allows the TPU execution to perform more efficient in-place
+variable updates.
+
+For example,
+
+```mlir
+  %0 = "tf.ReadVariableOp"(%arg0)
+  %1 = "tf.ReadVariableOp"(%arg1)
+  %2 = "tf.TPUExecute"(%0, %1, %compile)
+  %3 = "tf.AssignVariableOp"(%arg0, %2)
+```
+
+will be transformed into
+
+```mlir
+  %2 = "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %compile)
+    { device_var_reads_indices = [0, 1],
+      device_var_updates_indices = [0, -1] }
+````
+
+The transformation happens only for on-device variables. The above
+transformation requires `%arg0`, `%arg1` to have the same device assignment
+as the `TPUExecute` op.
 ### `-tf-tpu-reorder-replicate-partitioned-inputs`: Reorder replicated and partitioned input ops.
 This pass rewrites how data parallelism and model parallelism is expressed for
 inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and

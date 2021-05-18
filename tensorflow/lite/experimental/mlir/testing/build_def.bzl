@@ -68,20 +68,7 @@ def mlir_only_generated_test_models():
 # Test cases which only work internally now.
 def no_oss_generated_test_models():
     return [
-        "cond",
-        "equal",
-        "fill",
-        "gather",
-        "gather_nd",
-        "not_equal",
-        "parse_example",
-        "slice",
         "sparse_to_dense",
-        "squeeze",
-        "static_hashtable",
-        "strided_slice",
-        "tile",
-        "while",
     ]
 
 # List of models that fail generated tests for the conversion mode.
