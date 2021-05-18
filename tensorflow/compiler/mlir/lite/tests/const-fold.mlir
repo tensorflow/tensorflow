@@ -860,3 +860,18 @@ func @NotFoldStridedSlice(%arg0 : tensor<10x10x10xf32>) -> tensor<9x9x9xf32> {
   // CHECK: %[[STRIDED_SLICE:.*]] = "tfl.strided_slice"
   // CHECK:  return %[[STRIDED_SLICE]]
 }
+
+func @ConstFoldPad(%arg0: tensor<15600xf32>) -> tensor<15600xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %1 = "tfl.pad"(%arg0, %0) : (tensor<15600xf32>, tensor<1x2xi32>) -> tensor<15600xf32>
+  return %1 : tensor<15600xf32>
+  // CHECK:  return %arg0
+}
+
+func @ConstFoldPadV2(%arg0: tensor<15600xf32>) -> tensor<15600xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %1 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+  %2 = "tfl.padv2"(%arg0, %0, %1) : (tensor<15600xf32>, tensor<1x2xi32>, tensor<f32>) -> tensor<15600xf32>
+  return %2 : tensor<15600xf32>
+  // CHECK:  return %arg0
+}
