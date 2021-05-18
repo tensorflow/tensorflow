@@ -1111,9 +1111,8 @@ void ReportOpError(struct TfLiteContext* context, const char* format, ...) {
 
 // Create a TfLiteIntArray from an array of ints.  The first element in the
 // supplied array must be the size of the array expressed as an int.
-TfLiteIntArray* IntArrayFromInts(const int* int_array) {
-  return const_cast<TfLiteIntArray*>(
-      reinterpret_cast<const TfLiteIntArray*>(int_array));
+TfLiteIntArray* IntArrayFromInts(int* int_array) {
+  return reinterpret_cast<TfLiteIntArray*>(int_array);
 }
 
 // Create a TfLiteFloatArray from an array of floats.  The first element in the

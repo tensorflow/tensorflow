@@ -25,10 +25,10 @@ namespace testing {
 namespace {
 
 template <typename T>
-void TestExpandDims(const int* input_dims, const T* input_data,
-                    const int* axis_dims, const int32_t* axis_data,
-                    const int* expected_output_dims, const int* output_dims,
-                    const T* expected_output_data, T* output_data) {
+void TestExpandDims(int* input_dims, const T* input_data, int* axis_dims,
+                    const int32_t* axis_data, int* expected_output_dims,
+                    int* output_dims, const T* expected_output_data,
+                    T* output_data) {
   TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
   TfLiteIntArray* ax_dims = IntArrayFromInts(axis_dims);
   TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
@@ -76,12 +76,12 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest0) {
   int8_t output_data[4];
-  const int input_dims[] = {2, 2, 2};
+  int input_dims[] = {2, 2, 2};
   const int8_t input_data[] = {-1, 1, -2, 2};
   const int8_t golden_data[] = {-1, 1, -2, 2};
-  const int axis_dims[] = {1, 1};
+  int axis_dims[] = {1, 1};
   const int32_t axis_data[] = {0};
-  const int golden_dims[] = {1, 2, 2};
+  int golden_dims[] = {1, 2, 2};
   int output_dims[] = {3, 0, 0, 0};
   tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, axis_dims,
                                           axis_data, golden_dims, output_dims,
@@ -90,12 +90,12 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest0) {
 
 TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest1) {
   float output_data[4];
-  const int input_dims[] = {2, 2, 2};
+  int input_dims[] = {2, 2, 2};
   const float input_data[] = {-1.1, 1.2, -2.1, 2.2};
   const float golden_data[] = {-1.1, 1.2, -2.1, 2.2};
-  const int axis_dims[] = {1, 1};
+  int axis_dims[] = {1, 1};
   const int32_t axis_data[] = {1};
-  const int golden_dims[] = {2, 1, 2};
+  int golden_dims[] = {2, 1, 2};
   int output_dims[] = {3, 0, 0, 0};
   tflite::testing::TestExpandDims<float>(input_dims, input_data, axis_dims,
                                          axis_data, golden_dims, output_dims,
@@ -104,12 +104,12 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest1) {
 
 TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest2) {
   int8_t output_data[4];
-  const int input_dims[] = {2, 2, 2};
+  int input_dims[] = {2, 2, 2};
   const int8_t input_data[] = {-1, 1, -2, 2};
   const int8_t golden_data[] = {-1, 1, -2, 2};
-  const int axis_dims[] = {1, 1};
+  int axis_dims[] = {1, 1};
   const int32_t axis_data[] = {2};
-  const int golden_dims[] = {2, 2, 1};
+  int golden_dims[] = {2, 2, 1};
   int output_dims[] = {3, 0, 0, 0};
   tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, axis_dims,
                                           axis_data, golden_dims, output_dims,
@@ -118,12 +118,12 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest2) {
 
 TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest4) {
   int8_t output_data[6];
-  const int input_dims[] = {3, 3, 1, 2};
+  int input_dims[] = {3, 3, 1, 2};
   const int8_t input_data[] = {-1, 1, 2, -2, 0, 3};
   const int8_t golden_data[] = {-1, 1, 2, -2, 0, 3};
-  const int axis_dims[] = {1, 1};
+  int axis_dims[] = {1, 1};
   const int32_t axis_data[] = {-4};
-  const int golden_dims[] = {1, 3, 1, 2};
+  int golden_dims[] = {1, 3, 1, 2};
   int output_dims[] = {4, 0, 0, 0, 0};
   tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, axis_dims,
                                           axis_data, golden_dims, output_dims,
@@ -132,12 +132,12 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest4) {
 
 TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest3) {
   float output_data[6];
-  const int input_dims[] = {3, 3, 1, 2};
+  int input_dims[] = {3, 3, 1, 2};
   const float input_data[] = {0.1, -0.8, -1.2, -0.5, 0.9, 1.3};
   const float golden_data[] = {0.1, -0.8, -1.2, -0.5, 0.9, 1.3};
-  const int axis_dims[] = {1, 1};
+  int axis_dims[] = {1, 1};
   const int32_t axis_data[] = {-3};
-  const int golden_dims[] = {3, 1, 1, 2};
+  int golden_dims[] = {3, 1, 1, 2};
   int output_dims[] = {4, 0, 0, 0, 0};
   tflite::testing::TestExpandDims<float>(input_dims, input_data, axis_dims,
                                          axis_data, golden_dims, output_dims,
@@ -146,12 +146,12 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest3) {
 
 TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest2) {
   int8_t output_data[6];
-  const int input_dims[] = {3, 1, 2, 3};
+  int input_dims[] = {3, 1, 2, 3};
   const int8_t input_data[] = {-1, 1, 2, -2, 0, 3};
   const int8_t golden_data[] = {-1, 1, 2, -2, 0, 3};
-  const int axis_dims[] = {1, 1};
+  int axis_dims[] = {1, 1};
   const int32_t axis_data[] = {-2};
-  const int golden_dims[] = {1, 2, 1, 3};
+  int golden_dims[] = {1, 2, 1, 3};
   int output_dims[] = {4, 0, 0, 0, 0};
   tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, axis_dims,
                                           axis_data, golden_dims, output_dims,
@@ -160,12 +160,12 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest2) {
 
 TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest1) {
   float output_data[6];
-  const int input_dims[] = {3, 1, 3, 2};
+  int input_dims[] = {3, 1, 3, 2};
   const float input_data[] = {0.1, -0.8, -1.2, -0.5, 0.9, 1.3};
   const float golden_data[] = {0.1, -0.8, -1.2, -0.5, 0.9, 1.3};
-  const int axis_dims[] = {1, 1};
+  int axis_dims[] = {1, 1};
   const int32_t axis_data[] = {-1};
-  const int golden_dims[] = {1, 3, 2, 1};
+  int golden_dims[] = {1, 3, 2, 1};
   int output_dims[] = {4, 0, 0, 0, 0};
   tflite::testing::TestExpandDims<float>(input_dims, input_data, axis_dims,
                                          axis_data, golden_dims, output_dims,

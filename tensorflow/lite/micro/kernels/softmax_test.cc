@@ -37,7 +37,7 @@ const float tolerance_int16 = 7.0;
 
 // 1-dimensional test data.
 const int flat_size_1d = 5;
-const int shape_1d[] = {1, 5};
+int shape_1d[] = {1, 5};
 const float input_data_1d[] = {1.0, 2.0, 3.0, 4.0, 5.0};
 const float golden_1d[] = {0.011656231, 0.031684921, 0.086128544, 0.234121657,
                            0.636408647};
@@ -45,7 +45,7 @@ const float golden_1d[] = {0.011656231, 0.031684921, 0.086128544, 0.234121657,
 #endif
 // 2-dimensional test data.
 const int flat_size_2d = 10;
-const int shape_2d[] = {2, 2, 5};
+int shape_2d[] = {2, 2, 5};
 const float input_data_2d[] = {1.0,  2.0,  3.0,  4.0,  5.0,
                                -1.0, -2.0, -3.0, -4.0, -5.0};
 const float golden_2d[] = {0.011656231, 0.031684921, 0.086128544, 0.234121657,
@@ -55,7 +55,7 @@ const float golden_2d[] = {0.011656231, 0.031684921, 0.086128544, 0.234121657,
 #if !defined(XTENSA)
 // 3-dimensional test data.
 const int flat_size_3d = 60;
-const int shape_3d[] = {3, 3, 4, 5};
+int shape_3d[] = {3, 3, 4, 5};
 const float input_data_3d[] = {
     // c = 0
     // h = 0
@@ -120,7 +120,7 @@ float golden_3d[] = {
 
 // 4-dimensional test data.
 const int flat_size_4d = 120;
-const int shape_4d[] = {4, 2, 3, 4, 5};
+int shape_4d[] = {4, 2, 3, 4, 5};
 const float input_data_4d[] = {
     // n = 0
     // c = 0
@@ -272,9 +272,9 @@ void ValidateSoftmaxGoldens(TfLiteTensor* tensors, const int tensor_count,
 }
 
 #if !defined(XTENSA)
-void TestSoftmaxFloat(const int* input_dims_data, const float* input_data,
-                      const int* output_dims_data,
-                      const float* expected_output_data, float* output_data) {
+void TestSoftmaxFloat(int* input_dims_data, const float* input_data,
+                      int* output_dims_data, const float* expected_output_data,
+                      float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
@@ -293,9 +293,9 @@ void TestSoftmaxFloat(const int* input_dims_data, const float* input_data,
 #endif
 
 template <typename inputT, typename outputT>
-void TestSoftmaxQuantized(const int* input_dims_data, const float* input_data,
+void TestSoftmaxQuantized(int* input_dims_data, const float* input_data,
                           inputT* input_quantized, float input_scale,
-                          int input_zero_point, const int* output_dims_data,
+                          int input_zero_point, int* output_dims_data,
                           const float* golden, outputT* golden_quantized,
                           float output_scale, int output_zero_point,
                           outputT* output_data, float tolerance = 1.0) {

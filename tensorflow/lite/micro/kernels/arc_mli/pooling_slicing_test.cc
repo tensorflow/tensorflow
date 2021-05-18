@@ -35,12 +35,12 @@ namespace {
 
 template <typename T>
 void TestAveragePoolingQuantized(
-    const int* input_dims_data, const T* input_data, const float input_min,
+    int* input_dims_data, const T* input_data, const float input_min,
     const float input_max, const int filter_height, const int filter_width,
     const int stride_height, const int stride_width,
-    const T* expected_output_data, const int* output_dims_data,
-    float output_min, float output_max, TfLitePadding padding,
-    TfLiteFusedActivation activation, T* output_data) {
+    const T* expected_output_data, int* output_dims_data, float output_min,
+    float output_max, TfLitePadding padding, TfLiteFusedActivation activation,
+    T* output_data) {
   static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
 
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -105,12 +105,12 @@ void TestAveragePoolingQuantized(
 }
 
 template <typename T>
-void TestMaxPoolQuantized(const int* input_dims_data, const T* input_data,
+void TestMaxPoolQuantized(int* input_dims_data, const T* input_data,
                           float input_min, float input_max, int filter_width,
                           int filter_height, int stride_width,
                           int stride_height, const T* expected_output_data,
                           float output_min, float output_max,
-                          const int* output_dims_data, TfLitePadding padding,
+                          int* output_dims_data, TfLitePadding padding,
                           TfLiteFusedActivation activation, T* output_data) {
   static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
 
