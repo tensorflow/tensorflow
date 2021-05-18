@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for locally-connected layers."""
 
+import os
 from absl.testing import parameterized
 import numpy as np
 
@@ -354,6 +355,13 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
       out_1 = model_1(inputs)
       out_2 = model_2(inputs)
       out_3 = model_3(inputs)
+
+      path_1 = os.path.join(self.get_temp_dir(), 'model_1_path')
+      model_1.save(path_1)
+      path_2 = os.path.join(self.get_temp_dir(), 'model_2_path')
+      model_2.save(path_2)
+      path_3 = os.path.join(self.get_temp_dir(), 'model_3_path')
+      model_3.save(path_3)
 
       self.assertAllCloseAccordingToType(
           out_2, out_1, atol=2e-4)
