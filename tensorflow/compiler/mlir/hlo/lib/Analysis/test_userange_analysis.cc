@@ -25,7 +25,7 @@ namespace mlir {
 
 namespace {
 
-struct TestUserangePass : public PassWrapper<TestUserangePass, FunctionPass> {
+struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<mlir::lmhlo::LmhloDialect>();
   }
