@@ -210,7 +210,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       continue;
     }
 
-    if (!hoist_size_inflating_ops_) {
+    if (hoist_size_inflation_ratio_) {
       // Check that hoisting the instruction doesn't cause a significant memory
       // blow-up. LICM extends the live-range of the output of the hoisted
       // instruction to be the entire while loop, which may be problematic on
@@ -237,7 +237,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
             }
           });
 
-      if (output_size > input_size) {
+      if (output_size > input_size * *hoist_size_inflation_ratio_) {
         continue;
       }
     }
