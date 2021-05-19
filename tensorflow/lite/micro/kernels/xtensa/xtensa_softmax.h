@@ -12,34 +12,35 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_MICRO_KERNELS_SOFTMAX_H_
-#define TENSORFLOW_LITE_MICRO_KERNELS_SOFTMAX_H_
+#ifndef TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_XTENSA_SOFTMAX_H_
+#define TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_XTENSA_SOFTMAX_H_
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/micro/kernels/softmax.h"
 
 namespace tflite {
 
-void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length);
-
-TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node);
-
-// This is the most generic TfLiteRegistration. The actual supported types may
-// still be target dependent. The only requirement is that every implementation
-// (reference or optimized) must define this function.
-TfLiteRegistration Register_SOFTMAX();
-
-#if defined(XTENSA)
-// Returns a TfLiteRegistration struct for kernel variant that only supports
-// int8 input and int16 output.
-TfLiteRegistration Register_SOFTMAX_INT8_INT16();
-#else
-inline TfLiteRegistration Register_SOFTMAX_INT8_INT16() {
-  return Register_SOFTMAX();
-}
+#if defined(HIFIMINI)
+struct XtensaSoftmaxOpData {
+  uint16_t* exp_lut;
+};
+#elif defined(FUSION_F1) || defined(HIFI5)
+struct XtensaSoftmaxOpData {
+  SoftmaxParams params;
+  int scratch_tensor_index;
+};
 #endif
+
+void* XtensaInitSoftmax(TfLiteContext* context, const char* buffer,
+                        size_t length);
+
+TfLiteStatus XtensaPrepareSoftmax(TfLiteContext* context, TfLiteNode* node);
+
+TfLiteStatus XtensaEvalSoftmaxInt8Int16(TfLiteContext* context,
+                                        TfLiteNode* node);
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_MICRO_KERNELS_SOFTMAX_H_
+#endif  // TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_XTENSA_SOFTMAX_H_
