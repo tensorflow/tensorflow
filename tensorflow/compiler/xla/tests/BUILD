@@ -2033,6 +2033,9 @@ xla_test(
             "no_oss",
             "notap",
         ],
+        "cpu": [
+            "notsan",
+        ],
     },
     backends = [
         "gpu",
