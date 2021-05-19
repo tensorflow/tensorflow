@@ -20,7 +20,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "rocm/include/rocblas.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -36,80 +35,29 @@
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/default/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
 
 namespace tensorflow {
 namespace {
 
 using stream_executor::gpu::GpuExecutor;
 using stream_executor::gpu::ScopedActivateExecutorContext;
-using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
-
-namespace wrap {
-#ifdef PLATFORM_GOOGLE
-#define ROCBLAS_WRAP(__name)                                       \
-  struct WrapperShim__##__name {                                   \
-    static const char* kName;                                      \
-    template <typename... Args>                                    \
-    rocblas_status operator()(GpuExecutor* parent, Args... args) { \
-      ScopedActivateExecutorContext sac{parent};                   \
-      return ::__name(args...);                                    \
-    }                                                              \
-  } __name;                                                        \
-  const char* WrapperShim__##__name::kName = #__name;
-
-#else
-
-#define ROCBLAS_WRAP(__name)                                                \
-  struct DynLoadShim__##__name {                                            \
-    static const char* kName;                                               \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;            \
-    static void* GetDsoHandle() {                                           \
-      auto s = GetRocblasDsoHandle();                                       \
-      return s.ValueOrDie();                                                \
-    }                                                                       \
-    static FuncPtrT LoadOrDie() {                                           \
-      void* f;                                                              \
-      auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary( \
-          GetDsoHandle(), kName, &f);                                       \
-      CHECK(s.ok()) << "could not find " << kName                           \
-                    << " in rocblas DSO; dlerror: " << s.error_message();   \
-      return reinterpret_cast<FuncPtrT>(f);                                 \
-    }                                                                       \
-    static FuncPtrT DynLoad() {                                             \
-      static FuncPtrT f = LoadOrDie();                                      \
-      return f;                                                             \
-    }                                                                       \
-    template <typename... Args>                                             \
-    rocblas_status operator()(GpuExecutor* parent, Args... args) {          \
-      ScopedActivateExecutorContext sac{parent};                            \
-      return DynLoad()(args...);                                            \
-    }                                                                       \
-  } __name;                                                                 \
-  const char* DynLoadShim__##__name::kName = #__name;
-
-#endif
-
-ROCBLAS_WRAP(rocblas_create_handle)
-ROCBLAS_WRAP(rocblas_destroy_handle)
-ROCBLAS_WRAP(rocblas_set_stream)
-ROCBLAS_WRAP(rocblas_dtrsm)
-ROCBLAS_WRAP(rocblas_strsm)
-
-}  // namespace wrap
 
 struct ROCmSolverHandles {
   explicit ROCmSolverHandles(GpuExecutor* parent, hipStream_t stream) {
     parent_ = parent;
-    CHECK(wrap::rocblas_create_handle(parent_, &rocm_blas_handle) ==
+    ScopedActivateExecutorContext sac{parent_};
+    CHECK(wrap::rocblas_create_handle(&rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to create rocBlas instance.";
-    CHECK(wrap::rocblas_set_stream(parent_, rocm_blas_handle, stream) ==
+    CHECK(wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
           rocblas_status_success)
         << "Failed to set rocBlas stream.";
   }
 
   ~ROCmSolverHandles() {
-    CHECK(wrap::rocblas_destroy_handle(parent_, rocm_blas_handle) ==
+    ScopedActivateExecutorContext sac{parent_};
+    CHECK(wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to destroy cuBlas instance.";
   }
@@ -215,8 +163,9 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   mutex_lock lock(handle_map_mutex);
   using ROCmScalar = typename ROCmComplexT<Scalar>::type;
 
-  TF_RETURN_IF_ROCBLAS_ERROR(solver(gpu_executor, rocm_blas_handle, side, uplo,
-                                    trans, diag, m, n,
+  ScopedActivateExecutorContext sac{gpu_executor};
+  TF_RETURN_IF_ROCBLAS_ERROR(solver(rocm_blas_handle, side, uplo, trans, diag,
+                                    m, n,
                                     reinterpret_cast<const ROCmScalar*>(alpha),
                                     reinterpret_cast<const ROCmScalar*>(A), lda,
                                     reinterpret_cast<ROCmScalar*>(B), ldb));
