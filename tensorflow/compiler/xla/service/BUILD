@@ -4561,6 +4561,7 @@ cc_library(
     deps = [
         ":computation_layout",
         ":computation_placer",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
