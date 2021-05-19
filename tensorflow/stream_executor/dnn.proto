@@ -26,8 +26,10 @@ enum DataLayout {
   // TODO(timshen): turn them into cuDNN names, e.g. kNCHW.
   kYXDepthBatch = 0;
   kYXBatchDepth = 1;
-  kBatchYXDepth = 2;   // cuDNN's NHWC layout
-  kBatchDepthYX = 3;   // cuDNN's NCHW layout
+  kBatchYXDepth = 2;  // cuDNN's NHWC layout
+  kBatchDepthYX = 3;  // cuDNN's NCHW layout
+  // TODO(b/188571332): Rename this one, as VECT_C now supports int8x4 and
+  // int8x32.
   kBatchDepthYX4 = 4;  // cuDNN's NCHW_VECT_C layout
 }
 
@@ -39,8 +41,10 @@ enum FilterLayout {
   // Output <-> output feature, or N
   // Input <-> input feature, or N
   // TODO(timshen): turn them into cuDNN names, e.g. kNCHW.
-  kOutputInputYX = 0;   // cuDNN's NCHW layout
-  kOutputYXInput = 1;   // cuDNN's NHWC layout
+  kOutputInputYX = 0;  // cuDNN's NCHW layout
+  kOutputYXInput = 1;  // cuDNN's NHWC layout
+  // TODO(b/188571332): Rename this one, as VECT_C now supports int8x4 and
+  // int8x32.
   kOutputInputYX4 = 2;  // cuDNN's NCHW_VECT_C layout
   kInputYXOutput = 3;
   kYXInputOutput = 4;
