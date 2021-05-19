@@ -547,6 +547,21 @@ def : Pat<(TF_SoftsignOp AnyRankedTensor:$input),
           )
          >;
 
+/// Converts a TF::SoftsignGradOp to HLO.
+/// SoftsignGrad(gradient, features) = gradient / ((1 + abs(features)) ^ 2)
+def : Pattern<
+        (TF_SoftsignGradOp AnyRankedTensor:$gradients, AnyRankedTensor:$features),
+        [(HLOClient_BroadcastAddOp:$add
+          (HLO_ConstOp:$one (GetScalarOfType<1> $features)), (HLO_AbsOp $features),
+          (BinBroadcastDimensions $one, $features)
+         ),
+         (HLOClient_BroadcastDivOp
+           $gradients,
+           (HLO_MulOp $add, $add),
+           (BinBroadcastDimensions $gradients, $add)
+         )
+        ]>;
+
 //===----------------------------------------------------------------------===//
 // Slice op patterns.
 //===----------------------------------------------------------------------===//
