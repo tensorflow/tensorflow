@@ -870,6 +870,30 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   def __init__(self, name='sparse_categorical_accuracy', dtype=None):
     super(SparseCategoricalAccuracy, self).__init__(
         sparse_categorical_accuracy, name, dtype=dtype)
+  
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates metric statistics.
+
+    The shapes of `y_true` and `y_pred` are different.
+
+    Args:
+      y_true: Ground truth label values. shape = `[batch_size, 1]`.
+      y_pred: The predicted probability values. shape = `[batch_size, d0, .. dN]`.
+      sample_weight: Optional `sample_weight` acts as a
+        coefficient for the metric. If a scalar is provided, then the metric is
+        simply scaled by the given value. If `sample_weight` is a tensor of size
+        `[batch_size]`, then the metric for each sample of the batch is rescaled
+        by the corresponding element in the `sample_weight` vector. If the shape
+        of `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be broadcasted
+        to this shape), then each metric element of `y_pred` is scaled by the
+        corresponding value of `sample_weight`. (Note on `dN-1`: all metric
+        functions reduce by 1 dimension, usually the last axis (-1)).
+
+    Returns:
+      Update op.
+    """
+    super(SparseCategoricalAccuracy, self).update_state(
+      y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
 
 
 @keras_export('keras.metrics.TopKCategoricalAccuracy')
