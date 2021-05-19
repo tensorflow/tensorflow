@@ -102,7 +102,7 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   VLOG(3) << "Running GEMM thunk";
   return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream,
                  implements_whole_instruction_, profile_index(),
-                 &scratch_allocator, params.profiler);
+                 &scratch_allocator, nullptr, params.profiler);
 }
 
 template <typename Element, typename AlphaType>
@@ -196,13 +196,12 @@ static bool DoGemmWithAlgorithm(
 }
 
 template <typename ElemType>
-static bool DoGemmLt(
-    int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-    MatrixDescriptor output_matrix, se::Stream *stream,
-    se::ScratchAllocator *scratch_allocator,
-    std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm> &profiled_algorithm,
-    se::blas::ProfileResult *output_profile_result) {
-  LOG(INFO) << "CublasLT called";
+static bool DoGemmLt(int64 batch_size, MatrixDescriptor lhs_matrix,
+                     MatrixDescriptor rhs_matrix,
+                     MatrixDescriptor output_matrix, se::Stream *stream,
+                     se::ScratchAllocator *scratch_allocator,
+                     se::blas::IBlasLtMatmulAlgorithm *profiled_algorithm,
+                     se::blas::ProfileResult *output_profile_result) {
   DCHECK(!output_matrix.transpose);
   tensorflow::DataType dtype = tensorflow::DataTypeToEnum<ElemType>::value;
   bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
@@ -213,11 +212,10 @@ static bool DoGemmLt(
   int64 m = output_matrix.num_rows;
   int64 n = output_matrix.num_cols;
   auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
-
+  bool broadcast = batch_size == 1;
   tensorflow::BatchMatmulParameters matmul_parameters(
       trans_x, trans_y, /*adj_x*/ false, /*adj_y*/ false, m, n, k, batch_size,
-      /*broadcast_a*/ false, /*broadcast_b*/ false, dtype, dtype, allow_tf32,
-      device_id);
+      broadcast, broadcast, dtype, dtype, allow_tf32, device_id);
 
   const auto *plan_and_algorithms =
       tensorflow::BatchMatmulPlanMapSingleton::GetInstance()->Find(
@@ -226,16 +224,19 @@ static bool DoGemmLt(
   const auto &plan = plan_and_algorithms->plan;
   const auto &algorithms = plan_and_algorithms->algorithms;
 
-  std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm> algorithm(nullptr);
-  if (!profiled_algorithm.get()) {
+  se::blas::IBlasLtMatmulAlgorithm *algorithm_ptr = profiled_algorithm;
+  if (!profiled_algorithm) {
     se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
-    tensorflow::AutoTuneBatchMatmul::GetInstance()->Find(matmul_parameters,
-                                                         &algorithm_config);
-
+    bool found = tensorflow::AutoTuneBatchMatmul::GetInstance()->Find(
+        matmul_parameters, &algorithm_config);
+    CHECK_EQ(found, true) << "Unable to find algorithm corresponding to "
+                          << "Batchmatmul params " << trans_x << " " << trans_y
+                          << " " << m << " " << n << " " << k << " "
+                          << batch_size << " " << broadcast << " " << broadcast
+                          << " " << dtype << " " << allow_tf32 << " "
+                          << device_id << " in AutotuneBatchMatMul cache";
     se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
-    algorithm.reset(algorithms[algorithm_idx].get());
-  } else {
-    algorithm.reset(profiled_algorithm.get());
+    algorithm_ptr = algorithms[algorithm_idx].get();
   }
   // The BlasLtMatmul routines (unlike BlasGemm, BlasGemmBatched etc.) take
   // alpha and beta with the same type as the matrices.
@@ -247,7 +248,8 @@ static bool DoGemmLt(
 
   return stream
       ->ThenBlasLtMatmul(plan.get(), alpha, rhs_data, lhs_data, beta,
-                         &output_data, scratch_allocator, algorithm.get(), {},
+                         &output_data, scratch_allocator,
+                         algorithm_ptr /* algorithm.get() */, {},
                          output_profile_result)
       .ok();
 }
@@ -259,7 +261,7 @@ Status PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
                                    MatrixDescriptor &lhs_matrix,
                                    MatrixDescriptor &rhs_matrix,
                                    MatrixDescriptor &output_matrix) {
-  VLOG(2) << "Populate I/O matrices";
+  // VLOG(2) << "Populate I/O matrices";
   const Shape &output_shape = gemm_config.output_shape;
   const Shape &lhs_shape = gemm_config.lhs_shape;
   const Shape &rhs_shape = gemm_config.rhs_shape;
@@ -345,12 +347,11 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
                bool implements_whole_instruction,
                absl::optional<int64> profile_index,
                BlasScratchAllocator *scratch_allocator,
+               se::blas::IBlasLtMatmulAlgorithm *profiled_algorithm,
                HloExecutionProfiler *profiler,
                se::blas::ProfileResult *profile_result,
-               absl::optional<se::blas::AlgorithmType> algorithm,
-               const std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>
-                   &profiled_algorithm) {
-  VLOG(2) << "Executing a GemmThunk";
+               absl::optional<se::blas::AlgorithmType> algorithm) {
+  // VLOG(2) << "Executing a GemmThunk";
   MatrixDescriptor lhs_matrix;
   MatrixDescriptor rhs_matrix;
   MatrixDescriptor output_matrix;
@@ -362,12 +363,11 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
             .ok());
   bool launch_ok = false;
   // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
-  if (batch_size != 1) {
-    //#if GOOGLE_CUDA && CUDA_VERSION >= 11000
+  if (tensorflow::EnableCublasLtGemm()) {
     launch_ok = [&]() {
-      std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm> best_algo(nullptr);
-      if (!profiled_algorithm.get()) {
-        best_algo.reset(profiled_algorithm.get());
+      se::blas::IBlasLtMatmulAlgorithm *best_algo = nullptr;
+      if (profiled_algorithm) {
+        best_algo = profiled_algorithm;
       }
       switch (output_shape.element_type()) {
         case F16:
@@ -402,8 +402,7 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
           return false;
       }
     }();
-  } else {
-    //#else   // if not GOOGLE_CUDA or CUDA_VERSION < 11000
+  } else {  // if not GOOGLE_CUDA or CUDA_VERSION < 11000
     const GemmBackendConfig &backend_config = gemm_config.backend_config;
     auto best_algorithm = [&]() -> absl::optional<se::blas::AlgorithmType> {
       if (algorithm) {

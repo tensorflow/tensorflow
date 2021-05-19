@@ -331,10 +331,16 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
     // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
 #if GOOGLE_CUDA && CUDA_VERSION >= 11000
+    // LOG(INFO) << "x_batch_size() " << bcast.x_batch_size();
+    // LOG(INFO) << "y_batch_size() " << bcast.y_batch_size();
+    // LOG(INFO) << "out_batch_size() " << bcast.output_batch_size();
     bool is_full_broadcast =
         std::min(bcast.x_batch_size(), bcast.y_batch_size()) == 1;
     bool requires_mixed_broadcasting =
         bcast.IsBroadcastingRequired() && !is_full_broadcast;
+    // LOG(INFO) << "is_full_broadcast? " << is_full_broadcast;
+    // LOG(INFO) << "IsBroadcastingRequired()? " <<
+    // bcast.IsBroadcastingRequired();
     if (!requires_mixed_broadcasting) {
       bool broadcast_a = bcast.x_batch_size() == 1;
       bool broadcast_b = bcast.y_batch_size() == 1;
@@ -355,7 +361,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           trans_x, trans_y, adj_x, adj_y, m, n, k, batch_size, broadcast_a,
           broadcast_b, dtype, dtype, allow_tf32, device_id);
 
-      static const bool max_autotune_algorithm_count =
+      static const int64 max_autotune_algorithm_count =
           MatmulMaxAutotuneAlgorithmCount();
       int max_algorithm_count = use_autotune ? max_autotune_algorithm_count : 1;
 
@@ -387,6 +393,21 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         plan_params.stride_a = b_stride;
         plan_params.stride_b = a_stride;
         plan_params.stride_c = c_stride;
+
+        // VLOG(4) << "plan_params.ab_type " << plan_params.ab_type
+        //         << "plan_params.c_type " << plan_params.c_type
+        //         << "plan_params.computation_type "
+        //         << plan_params.computation_type
+        VLOG(4) << "plan_params.transa " << (adj_y || trans_y)
+                << "plan_params.transb " << (adj_x || trans_x)
+                << "plan_params.m " << plan_params.m << "plan_params.n "
+                << plan_params.n << "plan_params.k " << plan_params.k
+                << "plan_params.lda " << plan_params.lda << "plan_params.ldb "
+                << plan_params.ldb << "plan_params.ldc " << plan_params.ldc
+                << "plan_params.batch_count " << plan_params.batch_count
+                << "plan_params.stride_a " << plan_params.stride_a
+                << "plan_params.stride_b " << plan_params.stride_b
+                << "plan_params.stride_c " << plan_params.stride_c;
         auto status_or_plan =
             stream->parent()->CreateBlasLtMatmulPlan(plan_params);
         OP_REQUIRES(context, status_or_plan.ok(),
@@ -418,8 +439,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
       se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
       if (max_algorithm_count == 1) {
         algorithm_config.set_algorithm(0);
-      } else if (!AutoTuneBatchMatmul::GetInstance()->Find(matmul_parameters,
-                                                           &algorithm_config)) {
+      } else if (!AutoTuneBatchMatmul::GetInstance()->FindBasedOnScore(
+                     matmul_parameters, &algorithm_config)) {
         VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
                 << " algorithms.";
         se::blas::ProfileResult best_result;
@@ -431,7 +452,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           // Create a new scratch allocator with every autotuning run so that
           // scratch space is deallocated between runs.
           BlasScratchAllocator scratch_allocator(max_scratch_size, context);
-
+          // LOG(INFO) << "Calling BlasLtMatMul autorune->alg " << i;
           bool cublas_launch_status =
               stream
                   ->ThenBlasLtMatmul(plan.get(), alpha, *b_ptrs[0], *a_ptrs[0],
@@ -458,8 +479,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         // We make sure that each matmul parameter set only gets one pass of
         // autotune. If no algorithms works, we add kNoAlgorithm to the autotune
         // map.
-        AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
-                                                   algorithm_config);
+        AutoTuneBatchMatmul::GetInstance()->InsertBasedOnScore(
+            matmul_parameters, algorithm_config);
       }
       se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
       OP_REQUIRES(context,
@@ -467,6 +488,14 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                   errors::Internal("Missing/invalid BatchMatmul algorithm"));
       const auto& algorithm = algorithms[algorithm_idx];
       BlasScratchAllocator scratch_allocator(max_scratch_size, context);
+      // LOG(INFO) << "Calling BlasLtMatMul";
+      VLOG(4) << "Calling BlasLtMatMul : a.shape=(" << bcast.x_batch_size()
+              << ", " << in_x.dim_size(1) << ", " << in_x.dim_size(2)
+              << "), b.shape=(" << bcast.y_batch_size() << ", "
+              << in_y.dim_size(1) << ", " << in_y.dim_size(2) << "), m=" << m
+              << ", n=" << n << ", k=" << k << ", batch_size=" << batch_size
+              << "trans_x = " << trans_x << "trans_y = " << trans_y
+              << "adj_x = " << adj_x << "adj_y = " << adj_y;
       bool cublas_launch_status =
           stream
               ->ThenBlasLtMatmul(plan.get(), alpha, *b_ptrs[0], *a_ptrs[0],
@@ -743,6 +772,11 @@ class BaseBatchMatMulOp : public OpKernel {
                 out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
                 errors::Internal("Failed to reshape output from ",
                                  out->shape().DebugString()));
+    // LOG(INFO) << "in0 " << in0.shape().DebugString();
+    // LOG(INFO) << "in1 " << in1.shape().DebugString();
+    // LOG(INFO) << "in0_reshaped " << in0_reshaped.shape().DebugString();
+    // LOG(INFO) << "in1_reshaped " << in1_reshaped.shape().DebugString();
+    // LOG(INFO) << "out_reshaped " << out_reshaped.shape().DebugString();
     if (std::is_same<Scalar, bfloat16>::value) {
       bool is_cpu = std::is_same<Device, CPUDevice>::value;
       OP_REQUIRES(ctx, is_cpu,

@@ -1697,7 +1697,8 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
         /*has_dropout=*/std::abs(dropout()) > 1e-8, is_training(),
         modeltypes.rnn_mode, modeltypes.rnn_input_mode, input->dtype());
 
-    if (AutoTuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
+    if (AutoTuneRnnConfigMap::GetInstance()->FindBasedOnScore(rnn_params,
+                                                              algo_config)) {
       VLOG(1) << "Using existing best Cudnn RNN algorithm "
               << "(algo, tensor_op_enabled) = ("
               << algo_config->algorithm()->algo_id() << ", "
@@ -1804,7 +1805,8 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     VLOG(1) << "Best Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
             << best_result.algorithm().algo_id() << ", "
             << best_result.algorithm().tensor_ops_enabled() << ").";
-    AutoTuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
+    AutoTuneRnnConfigMap::GetInstance()->InsertBasedOnScore(rnn_params,
+                                                            *algo_config);
     return Status::OK();
   }
 };

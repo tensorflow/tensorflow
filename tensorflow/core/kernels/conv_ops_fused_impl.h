@@ -368,7 +368,8 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
                                  const LogFunc& log,
                                  se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
-  if (AutoTuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
+  if (AutoTuneFusedConv::GetInstance()->FindBasedOnScore(params,
+                                                         algorithm_config)) {
     return Status::OK();
   }
 
@@ -426,7 +427,8 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
   log(results);
   TF_RETURN_IF_ERROR(
       BestCudnnConvAlgorithm(results, nullptr, algorithm_config));
-  AutoTuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
+  AutoTuneFusedConv::GetInstance()->InsertBasedOnScore(params,
+                                                       *algorithm_config);
   return Status::OK();
 }
 

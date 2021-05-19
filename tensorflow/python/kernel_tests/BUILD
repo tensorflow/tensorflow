@@ -1708,7 +1708,7 @@ cuda_py_test(
     name = "batch_matmul_op_test",
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
-    shard_count = 20,
+    shard_count = 1,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

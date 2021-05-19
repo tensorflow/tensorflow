@@ -394,8 +394,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 #endif
   AlgorithmConfig algorithm_config;
 
-  if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
-                                conv_parameters, &algorithm_config)) {
+  if (cudnn_use_autotune &&
+      !AutoTuneConvBwdData::GetInstance()->FindBasedOnScore(
+          conv_parameters, &algorithm_config)) {
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;
@@ -565,8 +566,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       OP_REQUIRES_OK(
           ctx, BestCudnnConvAlgorithm(results, nullptr, &algorithm_config));
     }
-    AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
-                                               algorithm_config);
+    AutoTuneConvBwdData::GetInstance()->InsertBasedOnScore(conv_parameters,
+                                                           algorithm_config);
   }
 
   Status cudnn_launch_status;

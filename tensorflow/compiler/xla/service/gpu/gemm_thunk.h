@@ -117,12 +117,10 @@ Status RunGemm(
     se::Stream* stream, bool implements_whole_instruction,
     absl::optional<int64> profile_index,
     BlasScratchAllocator* scratch_allocator,
+    se::blas::IBlasLtMatmulAlgorithm* profiled_algorithm,
     HloExecutionProfiler* profiler = nullptr,
     se::blas::ProfileResult* profile_result = nullptr,
-    absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt,
-    const std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>&
-        profiled_algorithm =
-            std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>(nullptr));
+    absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt);
 
 Status PopulateInputOutputMatrices(const GpuGemmConfig& gemm_config,
                                    se::DeviceMemoryBase lhs_buffer,

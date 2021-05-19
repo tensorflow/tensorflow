@@ -505,7 +505,7 @@ struct LaunchConvOp<GPUDevice, T> {
 #endif
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
+    if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->FindBasedOnScore(
                                   conv_parameters, &algorithm_config)) {
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
@@ -672,7 +672,8 @@ struct LaunchConvOp<GPUDevice, T> {
         OP_REQUIRES_OK(
             ctx, BestCudnnConvAlgorithm(results, nullptr, &algorithm_config));
       }
-      AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
+      AutoTuneConv3d::GetInstance()->InsertBasedOnScore(conv_parameters,
+                                                        algorithm_config);
     }
 
     Status cudnn_launch_status;

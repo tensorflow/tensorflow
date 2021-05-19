@@ -530,7 +530,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
 
     // Autotune two algorithm: customized
     BiasAddGradGPUConfig algo_config;
-    if (!AutotuneBiasGrad::GetInstance()->Find(bias_parameters, &algo_config)) {
+    if (!AutotuneBiasGrad::GetInstance()->FindBasedOnScore(bias_parameters,
+                                                           &algo_config)) {
       BiasGradGPUProfileResult best_result;
       // Initialize the timer.
       perftools::gputools::Timer timer(stream->parent());
@@ -562,7 +563,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       }
 
       algo_config.set_mode(best_result.algorithm());
-      AutotuneBiasGrad::GetInstance()->Insert(bias_parameters, algo_config);
+      AutotuneBiasGrad::GetInstance()->InsertBasedOnScore(bias_parameters,
+                                                          algo_config);
 
       // Results are already available during autotune, so no need to continue.
       return;

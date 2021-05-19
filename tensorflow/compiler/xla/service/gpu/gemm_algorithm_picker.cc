@@ -84,8 +84,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   const bool reinit_cublas_data = cublas_autotune_level > 2;
   const bool check_cublas = cublas_autotune_level > 3;
 
-  VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
-
   std::vector<se::blas::AlgorithmType> algorithms;
   CHECK(stream->parent()->GetBlasGemmAlgorithms(&algorithms));
 
@@ -111,6 +109,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     CHECK(RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
                   /*implements_whole_instruction=*/true,
                   /*profile_index=*/-1, /*scratch allocator*/ nullptr,
+                  nullptr /* profile_algorithm */,
                   /*profiler=*/nullptr,
                   /*profile_result=*/&profile_result,
                   algorithm /*, absl::nullopt*/)
@@ -209,37 +208,20 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     const HloInstruction* instr, const GemmBackendConfig& gemm_config,
     se::DeviceMemoryAllocator* allocator, se::Stream* stream) {
+  VLOG(3) << "Starting autotune of GemmThunk " << instr->ToString();
   const HloInstruction* lhs = instr->operand(0);
   const HloInstruction* rhs = instr->operand(1);
 
   // Don't run autotuning concurrently on the same GPU.
   tensorflow::mutex_lock gpu_lock = LockGpu(stream->parent());
-
-  GemmCacheKey key =
-      std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
-                      instr->shape(), gemm_config.SerializeAsString());
-
-  tensorflow::mutex_lock cache_lock(autotune_cache_mu);
-  auto it = autotune_cache.find(key);
-  int64 autotuning_requests = cache_hits + cache_misses;
-  if (autotuning_requests && autotuning_requests % 10 == 0) {
-    VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
-            << autotuning_requests;
-  }
-
-  if (it != autotune_cache.end()) {
-    cache_hits++;
-    VLOG(4) << "Autotuning cache hit, using algorithm: "
-            << (it->second.has_value() ? absl::StrCat(*(it->second))
-                                       : "<generic>");
-    return it->second;
-  }
-  cache_misses++;
-  VLOG(4) << "Autotuning cache miss";
-
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
-  const bool init_cublas_data =
-      hlo_module_config.debug_options().xla_gpu_autotune_level() > 1;
+  const bool crash_on_checking_failure =
+      hlo_module_config.debug_options()
+          .xla_gpu_crash_on_verification_failures();
+  const int32 cublas_autotune_level =
+      hlo_module_config.debug_options().xla_gpu_autotune_level();
+  const bool init_cublas_data = cublas_autotune_level > 1;
+
   se::RedzoneAllocator input_output_allocator(
       stream, allocator, PtxOptsFromConfig(hlo_module_config),
       /*memory_limit=*/std::numeric_limits<int64>::max());
@@ -265,18 +247,8 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                       get_initialized_buffer(instr));
 
   int64 batch_size = gemm_config.batch_size();
-  //#if GOOGLE_CUDA && CUDA_VERSION >= 11000
-  //#else   // if not GOOGLE_CUDA or CUDA_VERSION < 11000
-  absl::optional<se::blas::AlgorithmType> result;
-  if (batch_size == 1) {
-    TF_ASSIGN_OR_RETURN(
-        result, DoUncachedGemmAutotune(instr, stream, &input_output_allocator,
-                                       lhs_buffer, rhs_buffer, output_buffer,
-                                       reference_result_buffer));
-  } else {
-    // // TODO(b/112111608): Implement auto tune for batched gemm.
-    // VLOG(2) << "Batch size is non-singular, using generic algorithm";
-    // result = absl::nullopt;
+
+  if (tensorflow::EnableCublasLtGemm()) {
     MatrixDescriptor lhs_matrix;
     MatrixDescriptor rhs_matrix;
     MatrixDescriptor output_matrix;
@@ -292,26 +264,26 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     se::blas::DataType blas_dtype;
     const Shape& output_shape = config.output_shape;
     switch (output_shape.element_type()) {
-      case F16:
-
+      case xla::F16:
         dtype = tensorflow::DataTypeToEnum<Eigen::half>::value;
         blas_dtype = se::blas::ToDataType<Eigen::half>::value;
-      case F32:
-
+        break;
+      case xla::F32:
         dtype = tensorflow::DataTypeToEnum<float>::value;
         blas_dtype = se::blas::ToDataType<float>::value;
-      case F64:
-
+        break;
+      case xla::F64:
         dtype = tensorflow::DataTypeToEnum<double>::value;
         blas_dtype = se::blas::ToDataType<double>::value;
-      case C64:
-
+        break;
+      case xla::C64:
         dtype = tensorflow::DataTypeToEnum<complex64>::value;
         blas_dtype = se::blas::ToDataType<complex64>::value;
-      case C128:
-
+        break;
+      case xla::C128:
         dtype = tensorflow::DataTypeToEnum<complex128>::value;
         blas_dtype = se::blas::ToDataType<complex128>::value;
+        break;
       default:
         return InternalError("Unsupported dtype for batched matmul");
     }
@@ -324,29 +296,34 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     int64 m = output_matrix.num_rows;
     int64 n = output_matrix.num_cols;
     auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
-
+    bool broadcast = batch_size == 1;
+    // int64 lhs_stride = broadcast ? 0 : lhs_matrix.num_rows *
+    // lhs_matrix.num_cols; int64 rhs_stride = broadcast ? 0 :
+    // rhs_matrix.num_rows
+    // * rhs_matrix.num_cols;
+    int64 lhs_stride = broadcast ? 0 : m * k;
+    int64 rhs_stride = broadcast ? 0 : k * n;
+    int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
     tensorflow::BatchMatmulParameters matmul_parameters(
         trans_x, trans_y, /*adj_x*/ false, /*adj_y*/ false, m, n, k, batch_size,
-        /*broadcast_a*/ false, /*broadcast_b*/ false, dtype, dtype, allow_tf32,
-        device_id);
-    static const bool max_autotune_algorithm_count =
+        /*broadcast_a*/ broadcast, /*broadcast_b*/ broadcast, dtype, dtype,
+        allow_tf32, device_id);
+    static const int64 max_autotune_algorithm_count =
         tensorflow::MatmulMaxAutotuneAlgorithmCount();
     int max_algorithm_count =
-        hlo_module_config.debug_options().xla_gpu_autotune_level() == 0
+        hlo_module_config.debug_options().xla_gpu_autotune_level() != 0
             ? max_autotune_algorithm_count
             : 1;
     const auto* plan_and_algorithms =
         tensorflow::BatchMatmulPlanMapSingleton::GetInstance()->Find(
             matmul_parameters);
     if (!plan_and_algorithms) {
-      // se::blas::DataType blas_dtype = se::blas::ToDataType<ElemType>::value;
+      // se::blas::DataType blas_dtype =
+      // se::blas::ToDataType<ElemType>::value;
       se::blas::ComputationType computation_type;
       if (!GetBlasComputationType(dtype, allow_tf32, &computation_type)) {
-        return InternalError("Unsupported dtype for batched matmul");
+        return InternalError("Unsupported dtype for batched matmul 2");
       }
-      int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
-      int64 rhs_stride = rhs_matrix.num_rows * rhs_matrix.num_cols;
-      int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
 
       auto lhs_transpose = lhs_matrix.transpose
                                ? se::blas::Transpose::kTranspose
@@ -373,6 +350,17 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
       plan_params.stride_a = lhs_stride;
       plan_params.stride_b = rhs_stride;
       plan_params.stride_c = output_stride;
+
+      VLOG(4) << "plan_params.transa " << lhs_matrix.transpose
+              << " plan_params.transb " << rhs_matrix.transpose
+              << " plan_params.m " << plan_params.m << " plan_params.n "
+              << plan_params.n << " plan_params.k " << plan_params.k
+              << " plan_params.lda " << plan_params.lda << " plan_params.ldb "
+              << plan_params.ldb << " plan_params.ldc " << plan_params.ldc
+              << " plan_params.batch_count " << plan_params.batch_count
+              << " plan_params.stride_a " << plan_params.stride_a
+              << " plan_params.stride_b " << plan_params.stride_b
+              << " plan_params.stride_c " << plan_params.stride_c;
       auto status_or_plan =
           stream->parent()->CreateBlasLtMatmulPlan(plan_params);
       TF_RETURN_IF_ERROR(tensorflow::FromExecutorStatus(status_or_plan));
@@ -390,6 +378,9 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     }
     const auto& plan = plan_and_algorithms->plan;
     const auto& algorithms = plan_and_algorithms->algorithms;
+
+    const bool reinit_cublas_data = cublas_autotune_level > 2;
+    const bool check_cublas = cublas_autotune_level > 3;
     // Note that algorithm_config.algorithm() here is used to refer
     // to the index within the algorithms vector, not the algorithm
     // itself.
@@ -408,12 +399,21 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
         // scratch space is deallocated between runs.
         BlasScratchAllocator scratch_allocator(device_id, allocator);
 
+        // Make sure the output buffer always has the same value if we use
+        // the bias parameter.
+        if (reinit_cublas_data && gemm_config.beta() != 0) {
+          int64 rng_state = 0;
+          InitializeBuffer(stream, instr->shape().element_type(), &rng_state,
+                           output_buffer);
+        }
+
         CHECK(RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
                       /*implements_whole_instruction=*/true,
-                      /*profile_index=*/-1, /*scratch allocator*/ nullptr,
+                      /*profile_index=*/-1,
+                      /*scratch allocator*/ &scratch_allocator,
+                      /*profile_algorithm*/ algorithms[i].get(),
                       /*profiler=*/nullptr,
-                      /*profile_result=*/&profile_result, absl::nullopt,
-                      /*profile_algorithm*/ algorithms[i])
+                      /*profile_result=*/&profile_result, absl::nullopt)
                   .ok());
         VLOG(4) << "  Autotune algorithm " << i
                 << " result: " << profile_result.elapsed_time_in_ms()
@@ -423,23 +423,77 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                                              best_result.elapsed_time_in_ms()) {
           best_result = profile_result;
         }
+
+        if (!check_cublas) {
+          continue;
+        }
+
+        TF_ASSIGN_OR_RETURN(
+            se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
+            input_output_allocator.CheckRedzones());
+        if (!rz_check_status.ok()) {
+          LOG(ERROR) << "Detected cuBLASLT out-of-bounds write in gemm buffer";
+          CHECK(!crash_on_checking_failure);
+          continue;
+        }
       }
 
       if (best_result.is_valid()) {
         algorithm_config.set_algorithm(best_result.algorithm());
       }
+      se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
+      CHECK(algorithm_idx >= 0 && algorithm_idx < algorithms.size())
+          << "Missing/invalid BatchMatmul algorithm";
       // We make sure that each matmul parameter set only gets one pass of
       // autotune. If no algorithms works, we add kNoAlgorithm to the autotune
       // map.
+      VLOG(4) << "Inserting algorithm id " << algorithm_config.algorithm()
+              << " for " << trans_x << " " << trans_y << " " << m << " " << n
+              << " " << k << " " << batch_size << " " << broadcast << " "
+              << broadcast << " " << dtype << " " << allow_tf32 << " "
+              << device_id;
       tensorflow::AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
                                                              algorithm_config);
     }
     return {absl::nullopt};
-  }
+  } else {
+    GemmCacheKey key =
+        std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
+                        instr->shape(), gemm_config.SerializeAsString());
 
-  CHECK(autotune_cache.emplace(key, result).second);
-  return result;
-  //#endif  // not GOOGLE_CUDA or CUDA_VERSION < 11000
+    tensorflow::mutex_lock cache_lock(autotune_cache_mu);
+    auto it = autotune_cache.find(key);
+    int64 autotuning_requests = cache_hits + cache_misses;
+    if (autotuning_requests && autotuning_requests % 10 == 0) {
+      VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
+              << autotuning_requests;
+    }
+
+    if (it != autotune_cache.end()) {
+      cache_hits++;
+      VLOG(4) << "Autotuning cache hit, using algorithm: "
+              << (it->second.has_value() ? absl::StrCat(*(it->second))
+                                         : "<generic>");
+      return it->second;
+    }
+    cache_misses++;
+    VLOG(4) << "Autotuning cache miss";
+
+    absl::optional<se::blas::AlgorithmType> result;
+    if (batch_size == 1) {
+      TF_ASSIGN_OR_RETURN(
+          result, DoUncachedGemmAutotune(instr, stream, &input_output_allocator,
+                                         lhs_buffer, rhs_buffer, output_buffer,
+                                         reference_result_buffer));
+    } else {
+      // TODO(b/112111608): Implement auto tune for batched gemm.
+      VLOG(2) << "Batch size is non-singular, using generic algorithm";
+      result = absl::nullopt;
+    }
+
+    CHECK(autotune_cache.emplace(key, result).second);
+    return result;
+  }
 }
 
 static StatusOr<bool> RunOnInstruction(HloInstruction* instr,

@@ -22,8 +22,7 @@ limitations under the License.
 namespace tensorflow {
 bool MatmulAutotuneEnable() {
   bool value;
-  Status status =
-      ReadBoolFromEnvVar("TF_MATMUL_AUTOTUNE_ENABLE", false, &value);
+  Status status = ReadBoolFromEnvVar("TF_MATMUL_AUTOTUNE_ENABLE", true, &value);
   if (!status.ok()) {
     LOG(ERROR) << status.error_message();
   }

@@ -1102,8 +1102,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   cudnn_use_autotune = true;
 #endif
 
-  if (cudnn_use_autotune &&
-      !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
+  if (cudnn_use_autotune && !AutoTuneConv::GetInstance()->FindBasedOnScore(
+                                conv_parameters, &algorithm_config)) {
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;
@@ -1274,7 +1274,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
           ctx, BestCudnnConvAlgorithm(results, nullptr, &algorithm_config));
     }
 
-    AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
+    AutoTuneConv::GetInstance()->InsertBasedOnScore(conv_parameters,
+                                                    algorithm_config);
   }
 
   Status cudnn_launch_status;

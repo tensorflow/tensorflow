@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace stream_executor {
 class RedzoneAllocator;
@@ -66,6 +67,17 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
   return typed;
 }
 
+bool EnableCublasLtGemm() {
+  static bool enable_cublaslt_gemm = [] {
+    bool cublaslt_gemm = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_USE_CUBLASLT",
+                                               /*default_val=*/true,
+                                               &cublaslt_gemm));
+    return cublaslt_gemm;
+  }();
+  return enable_cublaslt_gemm;
+}
+
 // A helper class that looks up the best autotuned config from parameters.
 // Due to the noisy nature of autotune, especially with multiple devices, it
 // only accepts a config if its margin exceeds a threshold.
@@ -79,7 +91,18 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 template <typename Parameters, typename Config>
 class AutoTuneMap {
  public:
-  bool Find(const Parameters& params, Config* config) const {
+  bool Find(const Parameters& params, Config* config) {
+    mutex_lock lock(mu_);
+    auto iter = params_config_map_.find(params);
+
+    if (iter == params_config_map_.end()) {
+      return false;
+    }
+    *config = iter->second.config;
+    return true;
+  }
+
+  bool FindBasedOnScore(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
     if (iter == params_config_map_.end() ||
@@ -90,7 +113,19 @@ class AutoTuneMap {
     *config = iter->second.config;
     return true;
   }
+
   void Insert(const Parameters& params, const Config& config) {
+    mutex_lock lock(mu_);
+    auto iter = params_config_map_.find(params);
+    if (iter == params_config_map_.end()) {
+      // Create a new entry if params is new.
+      VLOG(1) << GetActionSummary("creates", params, config);
+      params_config_map_.insert(
+          std::make_pair(params, ValueType{config, 1, 1}));
+    }
+  }
+  
+  void InsertBasedOnScore(const Parameters& params, const Config& config) {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
     int new_score = 0;

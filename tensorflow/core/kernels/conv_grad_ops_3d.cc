@@ -1424,8 +1424,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 #endif
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
-                                   conv_parameters, &algorithm_config)) {
+    if (cudnn_use_autotune_ &&
+        !AutoTuneConv3dBwdData::GetInstance()->FindBasedOnScore(
+            conv_parameters, &algorithm_config)) {
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;
@@ -1576,8 +1577,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(results, nullptr,
                                                        &algorithm_config));
       }
-      AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
-                                                   algorithm_config);
+      AutoTuneConv3dBwdData::GetInstance()->InsertBasedOnScore(
+          conv_parameters, algorithm_config);
     }
 
     Status cudnn_launch_status;
@@ -1998,8 +1999,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
     AlgorithmConfig algorithm_config;
 
-    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
-                                   conv_parameters, &algorithm_config)) {
+    if (cudnn_use_autotune_ &&
+        !AutoTuneConv3dBwdFilter::GetInstance()->FindBasedOnScore(
+            conv_parameters, &algorithm_config)) {
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;
@@ -2146,8 +2148,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 #endif
         OP_REQUIRES_OK(context, s);
       }
-      AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
-                                                     algorithm_config);
+      AutoTuneConv3dBwdFilter::GetInstance()->InsertBasedOnScore(
+          conv_parameters, algorithm_config);
     }
 
     Status cudnn_launch_status;

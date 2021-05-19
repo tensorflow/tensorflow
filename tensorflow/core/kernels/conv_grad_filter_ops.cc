@@ -983,8 +983,9 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 #endif
   AlgorithmConfig algorithm_config;
 
-  if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
-                                conv_parameters, &algorithm_config)) {
+  if (cudnn_use_autotune &&
+      !AutoTuneConvBwdFilter::GetInstance()->FindBasedOnScore(
+          conv_parameters, &algorithm_config)) {
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;
@@ -1157,8 +1158,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       OP_REQUIRES_OK(
           ctx, BestCudnnConvAlgorithm(results, nullptr, &algorithm_config));
     }
-    AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
-                                                 algorithm_config);
+    AutoTuneConvBwdFilter::GetInstance()->InsertBasedOnScore(conv_parameters,
+                                                             algorithm_config);
   }
 
   Status cudnn_launch_status;
