@@ -70,6 +70,12 @@ void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
   new_registration.version = version;
   auto op_key = std::make_pair(op, version);
   builtins_[op_key] = new_registration;
+  // The builtin op that is being added may be one that is not supported by
+  // tflite::ops::builtin::BuiltinOpResolver. Or the TfLiteRegistration for this
+  // builtin may be different than the one that BuiltinOpResolver would use,
+  // which could lead to different semantics. Both of those cases are considered
+  // "user defined ops".
+  may_directly_contain_user_defined_ops_ = true;
 }
 
 void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
@@ -89,6 +95,7 @@ void MutableOpResolver::AddCustom(const char* name,
   new_registration.version = version;
   auto op_key = std::make_pair(name, version);
   custom_ops_[op_key] = new_registration;
+  may_directly_contain_user_defined_ops_ = true;
 }
 
 void MutableOpResolver::AddCustom(const char* name,
@@ -118,14 +125,7 @@ void MutableOpResolver::ChainOpResolver(const OpResolver* other) {
 }
 
 bool MutableOpResolver::MayContainUserDefinedOps() const {
-  // Note that `AddBuiltin(op, nullptr, version)` is a no-op.
-  // So `builtins_` can be empty even when there are calls to
-  // AddBuiltin, if the calls to AddBuiltin have null values for
-  // the `registration` argument.
-  if (!builtins_.empty()) {
-    return true;
-  }
-  if (!custom_ops_.empty()) {
+  if (may_directly_contain_user_defined_ops_) {
     return true;
   }
   for (const OpResolver* other : other_op_resolvers_) {
