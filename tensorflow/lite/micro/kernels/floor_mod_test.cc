@@ -26,9 +26,9 @@ namespace testing {
 namespace {
 
 void ExecuteFloorModTest(TfLiteTensor* tensors, int tensors_count) {
-  int kInputArrayData[] = {2, 0, 1};
+  constexpr int kInputArrayData[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
-  int kOutputArrayData[] = {1, 2};
+  constexpr int kOutputArrayData[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
   const TfLiteRegistration registration = tflite::Register_FLOOR_MOD();
@@ -40,9 +40,10 @@ void ExecuteFloorModTest(TfLiteTensor* tensors, int tensors_count) {
 }
 
 template <typename T>
-void TestFloorMod(int* input1_dims_data, const T* input1_data,
-                  int* input2_dims_data, const T* input2_data,
-                  int* expected_dims, const T* expected_data, T* output_data) {
+void TestFloorMod(const int* input1_dims_data, const T* input1_data,
+                  const int* input2_dims_data, const T* input2_data,
+                  const int* expected_dims, const T* expected_data,
+                  T* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
@@ -69,7 +70,7 @@ void TestFloorMod(int* input1_dims_data, const T* input1_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(FloorModFloatSimple) {
-  int kDims[] = {4, 1, 2, 2, 1};
+  constexpr int kDims[] = {4, 1, 2, 2, 1};
   constexpr float kInput1[] = {10, 9, 11, 3};
   constexpr float kInput2[] = {2, 2, 3, 4};
   constexpr float kExpect[] = {0, 1, 2, 3};
@@ -81,7 +82,7 @@ TF_LITE_MICRO_TEST(FloorModFloatSimple) {
 }
 
 TF_LITE_MICRO_TEST(FloorModFloatNegativeValue) {
-  int kDims[] = {4, 1, 2, 2, 1};
+  constexpr int kDims[] = {4, 1, 2, 2, 1};
   constexpr float kInput1[] = {10, -9, -11, 7};
   constexpr float kInput2[] = {2, 2, -3, -4};
   constexpr float kExpect[] = {0, 1, -2, -1};
@@ -93,8 +94,8 @@ TF_LITE_MICRO_TEST(FloorModFloatNegativeValue) {
 }
 
 TF_LITE_MICRO_TEST(FloorModFloatBroadcast) {
-  int kDims1[] = {4, 1, 2, 2, 1};
-  int kDims2[] = {1, 1};
+  constexpr int kDims1[] = {4, 1, 2, 2, 1};
+  constexpr int kDims2[] = {1, 1};
   constexpr float kInput1[] = {10, -9, -11, 7};
   constexpr float kInput2[] = {-3};
   constexpr float kExpect[] = {-2, 0, -2, -2};

@@ -24,10 +24,10 @@ namespace tflite {
 namespace testing {
 
 void TestUnpackThreeOutputsFloat(
-    int* input_dims_data, const float* input_data, int axis,
-    int* output1_dims_data, const float* expected_output1_data,
-    int* output2_dims_data, const float* expected_output2_data,
-    int* output3_dims_data, const float* expected_output3_data,
+    const int* input_dims_data, const float* input_data, int axis,
+    const int* output1_dims_data, const float* expected_output1_data,
+    const int* output2_dims_data, const float* expected_output2_data,
+    const int* output3_dims_data, const float* expected_output3_data,
     float* output1_data, float* output2_data, float* output3_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
@@ -90,8 +90,9 @@ void TestUnpackThreeOutputsFloat(
   }
 }
 
-void TestUnpackOneOutputFloat(int* input_dims_data, const float* input_data,
-                              int axis, int* output_dims_data,
+void TestUnpackOneOutputFloat(const int* input_dims_data,
+                              const float* input_data, int axis,
+                              const int* output_dims_data,
                               const float* expected_output_data,
                               float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -133,10 +134,10 @@ void TestUnpackOneOutputFloat(int* input_dims_data, const float* input_data,
 }
 
 void TestUnpackThreeOutputsQuantized(
-    int* input_dims_data, const uint8_t* input_data, int axis,
-    int* output1_dims_data, const uint8_t* expected_output1_data,
-    int* output2_dims_data, const uint8_t* expected_output2_data,
-    int* output3_dims_data, const uint8_t* expected_output3_data,
+    const int* input_dims_data, const uint8_t* input_data, int axis,
+    const int* output1_dims_data, const uint8_t* expected_output1_data,
+    const int* output2_dims_data, const uint8_t* expected_output2_data,
+    const int* output3_dims_data, const uint8_t* expected_output3_data,
     uint8_t* output1_data, uint8_t* output2_data, uint8_t* output3_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
@@ -203,10 +204,10 @@ void TestUnpackThreeOutputsQuantized(
 }
 
 void TestUnpackThreeOutputsQuantized32(
-    int* input_dims_data, const int32_t* input_data, int axis,
-    int* output1_dims_data, const int32_t* expected_output1_data,
-    int* output2_dims_data, const int32_t* expected_output2_data,
-    int* output3_dims_data, const int32_t* expected_output3_data,
+    const int* input_dims_data, const int32_t* input_data, int axis,
+    const int* output1_dims_data, const int32_t* expected_output1_data,
+    const int* output2_dims_data, const int32_t* expected_output2_data,
+    const int* output3_dims_data, const int32_t* expected_output3_data,
     int32_t* output1_data, int32_t* output2_data, int32_t* output3_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
@@ -275,13 +276,13 @@ void TestUnpackThreeOutputsQuantized32(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(UnpackFloatThreeOutputs) {
-  int input_shape[] = {2, 3, 2};
+  const int input_shape[] = {2, 3, 2};
   const float input_values[] = {1, 2, 3, 4, 5, 6};
-  int output1_shape[] = {1, 2};
+  const int output1_shape[] = {1, 2};
   const float output1_golden[] = {1, 2};
-  int output2_shape[] = {1, 2};
+  const int output2_shape[] = {1, 2};
   const float output2_golden[] = {3, 4};
-  int output3_shape[] = {1, 2};
+  const int output3_shape[] = {1, 2};
   const float output3_golden[] = {5, 6};
   constexpr int output1_dims_count = 2;
   constexpr int output2_dims_count = 2;
@@ -296,13 +297,13 @@ TF_LITE_MICRO_TEST(UnpackFloatThreeOutputs) {
 }
 
 TF_LITE_MICRO_TEST(UnpackFloatThreeOutputsNegativeAxisTwo) {
-  int input_shape[] = {2, 3, 2};
+  const int input_shape[] = {2, 3, 2};
   const float input_values[] = {1, 2, 3, 4, 5, 6};
-  int output1_shape[] = {1, 2};
+  const int output1_shape[] = {1, 2};
   const float output1_golden[] = {1, 2};
-  int output2_shape[] = {1, 2};
+  const int output2_shape[] = {1, 2};
   const float output2_golden[] = {3, 4};
-  int output3_shape[] = {1, 2};
+  const int output3_shape[] = {1, 2};
   const float output3_golden[] = {5, 6};
   constexpr int output1_dims_count = 2;
   constexpr int output2_dims_count = 2;
@@ -317,9 +318,9 @@ TF_LITE_MICRO_TEST(UnpackFloatThreeOutputsNegativeAxisTwo) {
 }
 
 TF_LITE_MICRO_TEST(UnpackFloatOneOutput) {
-  int input_shape[] = {2, 1, 6};
+  const int input_shape[] = {2, 1, 6};
   const float input_values[] = {1, 2, 3, 4, 5, 6};
-  int output_shape[] = {1, 6};
+  const int output_shape[] = {1, 6};
   const float golden[] = {1, 2, 3, 4, 5, 6};
   constexpr int output_dims_count = 6;
   float output_data[output_dims_count];
@@ -328,13 +329,13 @@ TF_LITE_MICRO_TEST(UnpackFloatOneOutput) {
 }
 
 TF_LITE_MICRO_TEST(UnpackQuantizedThreeOutputs) {
-  int input_shape[] = {2, 3, 2};
+  const int input_shape[] = {2, 3, 2};
   const uint8_t input_values[] = {1, 2, 3, 4, 5, 6};
-  int output1_shape[] = {1, 2};
+  const int output1_shape[] = {1, 2};
   const uint8_t output1_golden[] = {1, 2};
-  int output2_shape[] = {1, 2};
+  const int output2_shape[] = {1, 2};
   const uint8_t output2_golden[] = {3, 4};
-  int output3_shape[] = {1, 2};
+  const int output3_shape[] = {1, 2};
   const uint8_t output3_golden[] = {5, 6};
   constexpr int output1_dims_count = 2;
   constexpr int output2_dims_count = 2;
@@ -349,13 +350,13 @@ TF_LITE_MICRO_TEST(UnpackQuantizedThreeOutputs) {
 }
 
 TF_LITE_MICRO_TEST(UnpackQuantized32ThreeOutputs) {
-  int input_shape[] = {2, 3, 2};
+  const int input_shape[] = {2, 3, 2};
   const int32_t input_values[] = {1, 2, 3, 4, 5, 6};
-  int output1_shape[] = {1, 2};
+  const int output1_shape[] = {1, 2};
   const int32_t output1_golden[] = {1, 2};
-  int output2_shape[] = {1, 2};
+  const int output2_shape[] = {1, 2};
   const int32_t output2_golden[] = {3, 4};
-  int output3_shape[] = {1, 2};
+  const int output3_shape[] = {1, 2};
   const int32_t output3_golden[] = {5, 6};
   constexpr int output1_dims_count = 2;
   constexpr int output2_dims_count = 2;

@@ -27,9 +27,9 @@ namespace testing {
 namespace {
 
 void ExecuteLogSoftmaxTest(int tensors_count, TfLiteTensor* tensors) {
-  int kInputArrayData[] = {1, 0};
+  constexpr int kInputArrayData[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
-  int kOutputArrayData[] = {1, 1};
+  constexpr int kOutputArrayData[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
   const TfLiteRegistration registration = tflite::Register_LOG_SOFTMAX();
@@ -41,8 +41,8 @@ void ExecuteLogSoftmaxTest(int tensors_count, TfLiteTensor* tensors) {
 }
 
 template <typename T>
-void TestLogSoftmax(const float tolerance, int* input_dims_data,
-                    const T* input_data, int* expected_dims,
+void TestLogSoftmax(const float tolerance, const int* input_dims_data,
+                    const T* input_data, const int* expected_dims,
                     const T* expected_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
@@ -73,8 +73,9 @@ struct TestLogSoftmaxParams {
 
 template <typename T>
 void TestLogSoftmaxQuantized(const TestLogSoftmaxParams<T>& params,
-                             int* input_dims_data, const float* input_data,
-                             int* expected_dims, const float* expected_data,
+                             const int* input_dims_data,
+                             const float* input_data, const int* expected_dims,
+                             const float* expected_data,
                              const T* expected_data_quantized,
                              float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -124,7 +125,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 //     print('lsm1', sess.run(lsm1))
 //     print('lsm2', sess.run(lsm2))
 TF_LITE_MICRO_TEST(FloatActivationsOpTestLogSoftmax) {
-  int kDims1[] = {2, 2, 4};
+  constexpr int kDims1[] = {2, 2, 4};
   constexpr float kInput[] = {
       0, -6, 2, 4, 3, -2, 10, 1,
   };
@@ -141,7 +142,7 @@ TF_LITE_MICRO_TEST(FloatActivationsOpTestLogSoftmax) {
                                   output_data);
 
   // Same input, but a different shape.
-  int kDims2[] = {2, 4, 2};
+  constexpr int kDims2[] = {2, 4, 2};
   constexpr float kExpect2[] = {
       -.00247565, -6.00247, -2.12692,    -.126928,
       -.00671534, -5.00671, -.000123374, -9.00012,
@@ -152,7 +153,7 @@ TF_LITE_MICRO_TEST(FloatActivationsOpTestLogSoftmax) {
 }
 
 TF_LITE_MICRO_TEST(LogSoftmaxOpTestSimpleTest) {
-  int kDims[] = {2, 2, 5};
+  constexpr int kDims[] = {2, 2, 5};
   constexpr float kInput[] = {
       1.0,  2.0,  3.0,  4.0,  5.0,   //
       -1.0, -2.0, -3.0, -4.0, -5.0,  //
@@ -171,7 +172,7 @@ TF_LITE_MICRO_TEST(LogSoftmaxOpTestSimpleTest) {
 }
 
 TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLogSoftmaxInt8) {
-  int kDims[] = {2, 2, 4};
+  constexpr int kDims[] = {2, 2, 4};
   constexpr float kInput[] = {
       0, -6, 2, 4, 3, -2, 10, 1,
   };
@@ -203,7 +204,7 @@ TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLogSoftmaxInt8) {
 }
 
 TF_LITE_MICRO_TEST(ExtraTestLogSoftmaxInt8) {
-  int kDims[] = {2, 3, 1};
+  constexpr int kDims[] = {2, 3, 1};
   constexpr float kInput[] = {0, -1, 1};
   constexpr float kExpect[] = {0, 0, 0};
   constexpr int8_t kExpectQuantized[] = {127, 127, 127};

@@ -26,40 +26,40 @@ namespace {
 
 // Common 2D inputs, outputs and axis.
 static const int kInputElements2D = 8;
-static int kInputShape2D[] = {2, 2, 4};
+static const int kInputShape2D[] = {2, 2, 4};
 static const float kInputData2D[] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
 
-static int kAxisShape2D[] = {1, 1};
+static const int kAxisShape2D[] = {1, 1};
 static const int32_t kAxisData2D[] = {1};
 
 static const int kOutputElements2D = 2;
-static int kOutputShape2D[] = {2, 1, 2};
+static const int kOutputShape2D[] = {2, 1, 2};
 static const float kGoldenData2D[] = {2.5, 6.5};
 
 // Common 3D inputs, outputs and axis.
 static const int kInputElements3D = 8;
-static int kInputShape3D[] = {3, 2, 2, 2};
+static const int kInputShape3D[] = {3, 2, 2, 2};
 static const float kInputData3D[] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
 
-static int kAxisShape3D[] = {1, 2};
+static const int kAxisShape3D[] = {1, 2};
 static const int32_t kAxisData3D[] = {1, 2};
 
 static const int kOutputElements3D = 2;
-static int kOutputShape3D[] = {2, 1, 2};
+static const int kOutputShape3D[] = {2, 1, 2};
 static const float kGoldenData3D[] = {2.5, 6.5};
 
 // Common 4D inputs, outputs and axis.
 static const int kInputElements4D = 24;
-static int kInputShape4D[] = {4, 2, 2, 3, 2};
+static const int kInputShape4D[] = {4, 2, 2, 3, 2};
 static const float kInputData4D[] = {
     1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
     13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
 
-static int kAxisShape4D[] = {1, 2};
+static const int kAxisShape4D[] = {1, 2};
 static const int32_t kAxisData4D[] = {1, 2};
 
 static const int kOutputElements4D = 4;
-static int kOutputShape4D[] = {4, 2, 1, 1, 2};
+static const int kOutputShape4D[] = {4, 2, 1, 1, 2};
 static const float kGoldenData4D[] = {6, 7, 18, 19};
 
 // Axis shape and contents are independent of input / output dimensions.
@@ -89,9 +89,9 @@ TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
   return kTfLiteOk;
 }
 
-void TestMeanFloatInput4D(int* input_dims_data, const float* input_data,
-                          int* axis_dims_data, const int32_t* axis_data,
-                          int* output_dims_data,
+void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
+                          const int* axis_dims_data, const int32_t* axis_data,
+                          const int* output_dims_data,
                           const float* expected_output_data, float* output_data,
                           TfLiteReducerParams* params, float tolerance = 1e-5) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -117,9 +117,9 @@ void TestMeanFloatInput4D(int* input_dims_data, const float* input_data,
                      output_dims_count, registration, params, tolerance));
 }
 
-void TestReduceOpFloat(int* input_dims_data, const float* input_data,
-                       int* axis_dims_data, const int32_t* axis_data,
-                       int* output_dims_data, float* output_data,
+void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
+                       const int* axis_dims_data, const int32_t* axis_data,
+                       const int* output_dims_data, float* output_data,
                        const float* expected_output_data,
                        const TfLiteRegistration& registration,
                        TfLiteReducerParams* params, float tolerance = 1e-5) {
@@ -145,15 +145,13 @@ void TestReduceOpFloat(int* input_dims_data, const float* input_data,
 }
 
 template <typename T>
-void TestReduceOpQuantized(int* input_dims_data, const float* input_data,
-                           T* input_data_quant, float input_scale,
-                           int input_zero_point, int* axis_dims_data,
-                           const int32_t* axis_data, int* output_dims_data,
-                           const float* expected_output_data,
-                           T* output_data_quant, T* expected_output_data_quant,
-                           float output_scale, int output_zero_point,
-                           const TfLiteRegistration& registration,
-                           TfLiteReducerParams* params) {
+void TestReduceOpQuantized(
+    const int* input_dims_data, const float* input_data, T* input_data_quant,
+    float input_scale, int input_zero_point, const int* axis_dims_data,
+    const int32_t* axis_data, const int* output_dims_data,
+    const float* expected_output_data, T* output_data_quant,
+    T* expected_output_data_quant, float output_scale, int output_zero_point,
+    const TfLiteRegistration& registration, TfLiteReducerParams* params) {
   // Convert dimesion arguments to TfLiteArrays
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
@@ -184,10 +182,10 @@ void TestReduceOpQuantized(int* input_dims_data, const float* input_data,
 }
 
 template <typename T>
-void TestMeanOpQuantized(int* input_dims_data, const float* input_data,
+void TestMeanOpQuantized(const int* input_dims_data, const float* input_data,
                          T* input_data_quant, float input_scale,
-                         int input_zero_point, int* axis_dims_data,
-                         const int32_t* axis_data, int* output_dims_data,
+                         int input_zero_point, const int* axis_dims_data,
+                         const int32_t* axis_data, const int* output_dims_data,
                          const float* expected_output_data,
                          T* output_data_quant, T* expected_output_data_quant,
                          float output_scale, int output_zero_point,
@@ -404,7 +402,7 @@ TF_LITE_MICRO_TEST(MeanUInt84DKeepDims) {
 }
 
 TF_LITE_MICRO_TEST(MeanFloat4DWithoutKeepDims) {
-  int kOutputShape4D[] = {2, 2, 2};
+  const int kOutputShape4D[] = {2, 2, 2};
   float output_data[tflite::testing::kOutputElements4D];
   TfLiteReducerParams params = {
       false  // keep_dims
@@ -421,7 +419,7 @@ TF_LITE_MICRO_TEST(MeanInt84DWithoutKeepDims) {
   int8_t output_data_quant[tflite::testing::kOutputElements4D];
   int8_t input_data_quant[tflite::testing::kInputElements4D];
 
-  int kOutputShape4D[] = {2, 2, 2};
+  const int kOutputShape4D[] = {2, 2, 2};
   TfLiteReducerParams params = {
       false  // keep_dims
   };
@@ -443,7 +441,7 @@ TF_LITE_MICRO_TEST(MeanUInt84DWithoutKeepDims) {
   uint8_t output_data_quant[tflite::testing::kOutputElements4D];
   uint8_t input_data_quant[tflite::testing::kInputElements4D];
 
-  int kOutputShape4D[] = {2, 2, 2};
+  const int kOutputShape4D[] = {2, 2, 2};
   TfLiteReducerParams params = {
       false  // keep_dims
   };
@@ -461,11 +459,11 @@ TF_LITE_MICRO_TEST(MeanUInt84DWithoutKeepDims) {
 }
 
 TF_LITE_MICRO_TEST(MeanFloat4DWithoutKeepDimsWithPrecision) {
-  int kInputShape4D[] = {4, 2, 2, 3, 1};
+  const int kInputShape4D[] = {4, 2, 2, 3, 1};
   const float kInputData4D[] = {1.0,  24.0, 13.0, 3.0,  9.0,  17.0,
                                 11.0, 36.0, 14.0, 19.0, 17.0, 22.0};
   const int kOutputElements4D = 2;
-  int kOutputShape4D[] = {2, 2, 1};
+  const int kOutputShape4D[] = {2, 2, 1};
   const float kGoldenData4D[] = {11.166667, 19.833334};
   float output_data[kOutputElements4D];
   TfLiteReducerParams params = {
@@ -479,13 +477,13 @@ TF_LITE_MICRO_TEST(MeanFloat4DWithoutKeepDimsWithPrecision) {
 }
 
 TF_LITE_MICRO_TEST(FloatMaxOpTestNotKeepDims) {
-  int input_shape[] = {3, 4, 3, 2};
+  const int input_shape[] = {3, 4, 3, 2};
   const float input_data[] = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                               9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
                               17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
-  int axis_shape[] = {1, 4};
+  const int axis_shape[] = {1, 4};
   const int32_t axis_data[] = {1, 0, -3, -3};
-  int output_shape[] = {1, 2};
+  const int output_shape[] = {1, 2};
   const float expected_output_data[] = {23, 24};
   float output_data[2];
 
@@ -497,13 +495,13 @@ TF_LITE_MICRO_TEST(FloatMaxOpTestNotKeepDims) {
 }
 
 TF_LITE_MICRO_TEST(FloatMaxOpTestKeepDims) {
-  int input_shape[] = {3, 4, 3, 2};
+  const int input_shape[] = {3, 4, 3, 2};
   const float input_data[] = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                               9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
                               17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
-  int axis_shape[] = {1, 2};
+  const int axis_shape[] = {1, 2};
   const int32_t axis_data[] = {0, 2};
-  int output_shape[] = {1, 3};
+  const int output_shape[] = {1, 3};
   const float expected_output_data[] = {20, 22, 24};
   float output_data[3];
 
@@ -515,11 +513,11 @@ TF_LITE_MICRO_TEST(FloatMaxOpTestKeepDims) {
 }
 
 TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDims) {
-  int input_shape[] = {3, 1, 3, 2};
+  const int input_shape[] = {3, 1, 3, 2};
   const float input_data[] = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  int axis_shape[] = {1, 1};
+  const int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {1, 1};
-  int output_shape[] = {1, 2};
+  const int output_shape[] = {1, 2};
   const float expected_output_data[] = {0.5, 0.6};
 
   float input_scale = 2 / 255.0;
@@ -539,11 +537,11 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDims) {
 }
 
 TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDims) {
-  int input_shape[] = {3, 1, 3, 2};
+  const int input_shape[] = {3, 1, 3, 2};
   const float input_data[] = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  int axis_shape[] = {1, 1};
+  const int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {1, 1};
-  int output_shape[] = {1, 2};
+  const int output_shape[] = {1, 2};
   const float expected_output_data[] = {0.5, 0.6};
 
   float input_scale = 2 / 255.0;
@@ -565,10 +563,10 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDims) {
 }
 
 TF_LITE_MICRO_TEST(MeanInt84DWithoutKeepDimsWithPrecision) {
-  int kInputShape4D[] = {4, 2, 2, 3, 1};
+  const int kInputShape4D[] = {4, 2, 2, 3, 1};
   const float kInputData4D[] = {1.0,  24.0, 13.0, 3.0,  9.0,  17.0,
                                 11.0, 36.0, 14.0, 19.0, 17.0, 22.0};
-  int kOutputShape4D[] = {2, 2, 1};
+  const int kOutputShape4D[] = {2, 2, 1};
   const float kGoldenData4D[] = {11.166667, 19.833334};
   TfLiteReducerParams params = {
       false  // keep_dims
@@ -591,10 +589,10 @@ TF_LITE_MICRO_TEST(MeanInt84DWithoutKeepDimsWithPrecision) {
 }
 
 TF_LITE_MICRO_TEST(MeanUInt84DWithoutKeepDimsWithPrecision) {
-  int kInputShape4D[] = {4, 2, 2, 3, 1};
+  const int kInputShape4D[] = {4, 2, 2, 3, 1};
   const float kInputData4D[] = {1.0,  24.0, 13.0, 3.0,  9.0,  17.0,
                                 11.0, 36.0, 14.0, 19.0, 17.0, 22.0};
-  int kOutputShape4D[] = {2, 2, 1};
+  const int kOutputShape4D[] = {2, 2, 1};
   const float kGoldenData4D[] = {11.166667, 19.833334};
   TfLiteReducerParams params = {
       false  // keep_dims

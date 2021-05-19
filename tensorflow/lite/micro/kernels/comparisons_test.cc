@@ -34,9 +34,9 @@ void TestComparison(const TfLiteRegistration& registration,
                     bool* output_data) {
   const int output_dims_count = ElementCount(*tensors[inputs_size].dims);
 
-  int inputs_array_data[] = {2, 0, 1};
+  const int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  int outputs_array_data[] = {1, 2};
+  const int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,

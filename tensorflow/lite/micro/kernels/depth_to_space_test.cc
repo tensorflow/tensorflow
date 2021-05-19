@@ -34,9 +34,9 @@ struct DepthToSpaceTestParams {
 
 void ExecuteDepthToSpaceTest(const DepthToSpaceTestParams& params,
                              TfLiteTensor* tensors, int tensors_count) {
-  int kInputArrayData[] = {1, 0};
+  constexpr int kInputArrayData[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
-  int kOutputArrayData[] = {1, 1};
+  constexpr int kOutputArrayData[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
   TfLiteDepthToSpaceParams op_params = {};
@@ -51,9 +51,10 @@ void ExecuteDepthToSpaceTest(const DepthToSpaceTestParams& params,
 }
 
 template <typename T>
-void TestDepthToSpace(DepthToSpaceTestParams& params, int* input_dims_data,
-                      const T* input_data, int* expected_dims_data,
-                      const T* expected_data, T* output_data) {
+void TestDepthToSpace(const DepthToSpaceTestParams& params,
+                      const int* input_dims_data, const T* input_data,
+                      const int* expected_dims_data, const T* expected_data,
+                      T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* expected_dims = IntArrayFromInts(expected_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(params.output_dims_data);
@@ -96,10 +97,11 @@ float GetTolerance(float min, float max) {
 }
 
 template <typename T, int kOutputSize>
-void TestDepthToSpaceQuantized(DepthToSpaceTestParams& params,
+void TestDepthToSpaceQuantized(const DepthToSpaceTestParams& params,
                                TestQuantParams<T, kOutputSize>* quant_params,
-                               int* input_dims_data, const float* input_data,
-                               int* expected_dims_data,
+                               const int* input_dims_data,
+                               const float* input_data,
+                               const int* expected_dims_data,
                                const float* expected_data, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* expected_dims = IntArrayFromInts(expected_dims_data);
@@ -141,9 +143,9 @@ void TestDepthToSpaceQuantized(DepthToSpaceTestParams& params,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1114_2) {
-  int kInputDims[] = {4, 1, 1, 1, 4};
+  constexpr int kInputDims[] = {4, 1, 1, 1, 4};
   constexpr float kInput[] = {1.4, 2.3, 3.2, 4.1};
-  int kExpectDims[] = {4, 1, 2, 2, 1};
+  constexpr int kExpectDims[] = {4, 1, 2, 2, 1};
   constexpr float kExpect[] = {1.4, 2.3, 3.2, 4.1};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -155,9 +157,9 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1114_2) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1124_2) {
-  int kInputDims[] = {4, 1, 1, 2, 4};
+  constexpr int kInputDims[] = {4, 1, 1, 2, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  int kExpectDims[] = {4, 1, 2, 4, 1};
+  constexpr int kExpectDims[] = {4, 1, 2, 4, 1};
   constexpr float kExpect[] = {1, 2, 5, 6, 3, 4, 7, 8};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -169,9 +171,9 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1124_2) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1214_2) {
-  int kInputDims[] = {4, 1, 2, 1, 4};
+  constexpr int kInputDims[] = {4, 1, 2, 1, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  int kExpectDims[] = {4, 1, 4, 2, 1};
+  constexpr int kExpectDims[] = {4, 1, 4, 2, 1};
   constexpr float kExpect[] = {1, 2, 3, 4, 5, 6, 7, 8};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -183,10 +185,10 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1214_2) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1224_2) {
-  int kInputDims[] = {4, 1, 2, 2, 4};
+  constexpr int kInputDims[] = {4, 1, 2, 2, 4};
   constexpr float kInput[] = {1, 2,  3,  4,  5,  6,  7,  8,
                               9, 10, 11, 12, 13, 14, 15, 16};
-  int kExpectDims[] = {4, 1, 4, 4, 1};
+  constexpr int kExpectDims[] = {4, 1, 4, 4, 1};
   constexpr float kExpect[] = {1, 2,  5,  6,  3,  4,  7,  8,
                                9, 10, 13, 14, 11, 12, 15, 16};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
@@ -199,9 +201,9 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1224_2) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1111_1) {
-  int kInputDims[] = {4, 1, 1, 1, 1};
+  constexpr int kInputDims[] = {4, 1, 1, 1, 1};
   constexpr float kInput[] = {4};
-  int kExpectDims[] = {4, 1, 1, 1, 1};
+  constexpr int kExpectDims[] = {4, 1, 1, 1, 1};
   constexpr float kExpect[] = {4};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -213,9 +215,9 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelFloat32_1111_1) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1114_2) {
-  int kInputDims[] = {4, 1, 1, 1, 4};
+  constexpr int kInputDims[] = {4, 1, 1, 1, 4};
   constexpr float kInput[] = {1.4, 2.3, 3.2, 4.1};
-  int kExpectDims[] = {4, 1, 2, 2, 1};
+  constexpr int kExpectDims[] = {4, 1, 2, 2, 1};
   constexpr float kExpect[] = {1.4, 2.3, 3.2, 4.1};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -231,9 +233,9 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1114_2) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1124_2) {
-  int kInputDims[] = {4, 1, 1, 2, 4};
+  constexpr int kInputDims[] = {4, 1, 1, 2, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  int kExpectDims[] = {4, 1, 2, 4, 1};
+  constexpr int kExpectDims[] = {4, 1, 2, 4, 1};
   constexpr float kExpect[] = {1, 2, 5, 6, 3, 4, 7, 8};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -249,9 +251,9 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1124_2) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1214_2) {
-  int kInputDims[] = {4, 1, 2, 1, 4};
+  constexpr int kInputDims[] = {4, 1, 2, 1, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  int kExpectDims[] = {4, 1, 4, 2, 1};
+  constexpr int kExpectDims[] = {4, 1, 4, 2, 1};
   constexpr float kExpect[] = {1, 2, 3, 4, 5, 6, 7, 8};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -267,10 +269,10 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1214_2) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1224_2) {
-  int kInputDims[] = {4, 1, 2, 2, 4};
+  constexpr int kInputDims[] = {4, 1, 2, 2, 4};
   constexpr float kInput[] = {1, 2,  3,  4,  5,  6,  7,  8,
                               9, 10, 11, 12, 13, 14, 15, 16};
-  int kExpectDims[] = {4, 1, 4, 4, 1};
+  constexpr int kExpectDims[] = {4, 1, 4, 4, 1};
   constexpr float kExpect[] = {1, 2,  5,  6,  3,  4,  7,  8,
                                9, 10, 13, 14, 11, 12, 15, 16};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
@@ -287,9 +289,9 @@ TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1224_2) {
 }
 
 TF_LITE_MICRO_TEST(DepthToSpaceOpModelInt8_1111_1) {
-  int kInputDims[] = {4, 1, 1, 1, 1};
+  constexpr int kInputDims[] = {4, 1, 1, 1, 1};
   constexpr float kInput[] = {4};
-  int kExpectDims[] = {4, 1, 1, 1, 1};
+  constexpr int kExpectDims[] = {4, 1, 1, 1, 1};
   constexpr float kExpect[] = {4};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];

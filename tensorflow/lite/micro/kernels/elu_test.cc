@@ -54,9 +54,9 @@ struct TestEluParams {
 constexpr float kQuantizedTolerance = 2 * (1. / 256);
 
 void ExecuteEluTest(TfLiteTensor* tensors, int tensors_count) {
-  int kInputArrayData[] = {1, 0};
+  constexpr int kInputArrayData[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
-  int kOutputArrayData[] = {1, 1};
+  constexpr int kOutputArrayData[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
   const TfLiteRegistration registration = tflite::Register_ELU();
@@ -68,8 +68,8 @@ void ExecuteEluTest(TfLiteTensor* tensors, int tensors_count) {
 }
 
 template <typename T>
-void TestElu(int* input_dims_data, const T* input_data, int* expected_dims,
-             const T* expected_data, T* output_data) {
+void TestElu(const int* input_dims_data, const T* input_data,
+             const int* expected_dims, const T* expected_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
   const int output_count = ElementCount(*output_dims);
@@ -88,9 +88,10 @@ void TestElu(int* input_dims_data, const T* input_data, int* expected_dims,
 }
 
 template <typename T>
-void TestEluQuantized(const TestEluParams<T>& params, int* input_dims_data,
-                      const float* input_data, int* expected_dims,
-                      const float* expected_data, float* output_data) {
+void TestEluQuantized(const TestEluParams<T>& params,
+                      const int* input_dims_data, const float* input_data,
+                      const int* expected_dims, const float* expected_data,
+                      float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
   const int output_count = ElementCount(*output_dims);
@@ -122,7 +123,7 @@ void TestEluQuantized(const TestEluParams<T>& params, int* input_dims_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(FloatActivationsOpTestElu) {
-  int kDims[] = {4, 1, 2, 4, 1};
+  constexpr int kDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       0, -6, 2,  -4,    //
       3, -2, 10, -0.1,  //
@@ -138,7 +139,7 @@ TF_LITE_MICRO_TEST(FloatActivationsOpTestElu) {
 }
 
 TF_LITE_MICRO_TEST(QuantizedActivationsOpTestEluInt8) {
-  int kDims[] = {4, 1, 2, 4, 1};
+  constexpr int kDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       0, -6, 2, -4,    //
       3, -2, 6, -0.1,  //

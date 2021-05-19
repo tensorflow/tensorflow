@@ -89,9 +89,9 @@ TfLiteStatus ValidatePadV2Goldens(TfLiteTensor* tensors, int tensors_size,
 }
 
 // output data and golden must be shaped correctly
-void TestPadFloat(int* input_dims_data, const float* input_data,
-                  int* pad_dims_data, const int32_t* pad_data,
-                  int* output_dims_data, const float* golden,
+void TestPadFloat(const int* input_dims_data, const float* input_data,
+                  const int* pad_dims_data, const int32_t* pad_data,
+                  const int* output_dims_data, const float* golden,
                   float* output_data,
                   TfLiteStatus expected_status = kTfLiteOk) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -114,14 +114,14 @@ void TestPadFloat(int* input_dims_data, const float* input_data,
 }
 
 // output data and golden must be shaped correctly
-void TestPadV2Float(int* input_dims_data, const float* input_data,
-                    int* pad_dims_data, const int32_t* pad_data,
-                    const float pad_value, int* output_dims_data,
+void TestPadV2Float(const int* input_dims_data, const float* input_data,
+                    const int* pad_dims_data, const int32_t* pad_data,
+                    const float pad_value, const int* output_dims_data,
                     const float* golden, float* output_data,
                     TfLiteStatus expected_status = kTfLiteOk) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* pad_dims = IntArrayFromInts(pad_dims_data);
-  int pad_value_dims_data[] = {1, 1};  // Only one padding value allowed.
+  const int pad_value_dims_data[] = {1, 1};  // Only one padding value allowed.
   TfLiteIntArray* pad_value_dims = IntArrayFromInts(pad_value_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
@@ -142,10 +142,10 @@ void TestPadV2Float(int* input_dims_data, const float* input_data,
 }
 
 template <typename T>
-void TestPadQuantized(int* input_dims_data, const float* input_data,
+void TestPadQuantized(const int* input_dims_data, const float* input_data,
                       T* input_quantized, float input_scale,
-                      int input_zero_point, int* pad_dims_data,
-                      const int32_t* pad_data, int* output_dims_data,
+                      int input_zero_point, const int* pad_dims_data,
+                      const int32_t* pad_data, const int* output_dims_data,
                       const float* golden, T* golden_quantized,
                       float output_scale, int output_zero_point, T* output_data,
                       TfLiteStatus expected_status = kTfLiteOk) {
@@ -175,16 +175,19 @@ void TestPadQuantized(int* input_dims_data, const float* input_data,
 }
 
 template <typename T>
-void TestPadV2Quantized(
-    int* input_dims_data, const float* input_data, T* input_quantized,
-    float input_scale, int input_zero_point, int* pad_dims_data,
-    const int32_t* pad_data, const float pad_value, const float pad_value_scale,
-    const int pad_value_zero_point, int* output_dims_data, const float* golden,
-    T* golden_quantized, float output_scale, int output_zero_point,
-    T* output_data, TfLiteStatus expected_status = kTfLiteOk) {
+void TestPadV2Quantized(const int* input_dims_data, const float* input_data,
+                        T* input_quantized, float input_scale,
+                        int input_zero_point, const int* pad_dims_data,
+                        const int32_t* pad_data, const float pad_value,
+                        const float pad_value_scale,
+                        const int pad_value_zero_point,
+                        const int* output_dims_data, const float* golden,
+                        T* golden_quantized, float output_scale,
+                        int output_zero_point, T* output_data,
+                        TfLiteStatus expected_status = kTfLiteOk) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* pad_dims = IntArrayFromInts(pad_dims_data);
-  int pad_value_dims_data[] = {1, 1};  // Only one padding value allowed.
+  const int pad_value_dims_data[] = {1, 1};  // Only one padding value allowed.
   TfLiteIntArray* pad_value_dims = IntArrayFromInts(pad_value_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   T pad_value_quantized;
@@ -221,11 +224,11 @@ void TestPadV2Quantized(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(Test2DFloat) {
-  int input_dims[] = {4, 1, 2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
-  int output_dims[] = {4, 3, 2, 4, 1};
+  const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0,
                           0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   float output_data[24];
@@ -235,11 +238,11 @@ TF_LITE_MICRO_TEST(Test2DFloat) {
 }
 
 TF_LITE_MICRO_TEST(Test4DFloat) {
-  int input_dims[] = {4, 1, 1, 1, 1};
+  const int input_dims[] = {4, 1, 1, 1, 1};
   const float input_values[] = {42};
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 1, 1, 1, 1, 1, 1};
-  int output_dims[] = {4, 3, 3, 3, 3};
+  const int output_dims[] = {4, 3, 3, 3, 3};
   const int kOutputLen = 81;  // 3 * 3 * 3 * 3
   float golden[kOutputLen];
   for (int i = 0; i < kOutputLen; i++) {
@@ -254,12 +257,12 @@ TF_LITE_MICRO_TEST(Test4DFloat) {
 }
 
 TF_LITE_MICRO_TEST(Test2DFloatV2) {
-  int input_dims[] = {4, 1, 2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const float pad_value = 42;
-  int output_dims[] = {4, 3, 2, 4, 1};
+  const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 1,  2,  42,
                           42, 3,  4,  42, 42, 42, 42, 42, 42, 42, 42, 42};
   float output_data[24];
@@ -270,13 +273,13 @@ TF_LITE_MICRO_TEST(Test2DFloatV2) {
 }
 
 TF_LITE_MICRO_TEST(Test2DUInt8) {
-  int input_dims[] = {4, 1, 2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
   const float input_scale = 1.0f;
   const int input_zero_point = 127;
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
-  int output_dims[] = {4, 3, 2, 4, 1};
+  const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0,
                           0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   const float output_scale = 1.0f;
@@ -292,16 +295,16 @@ TF_LITE_MICRO_TEST(Test2DUInt8) {
 }
 
 TF_LITE_MICRO_TEST(Test2DUInt8V2) {
-  int input_dims[] = {4, 1, 2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
   const float input_scale = 1.0f;
   const int input_zero_point = 127;
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const float pad_value = 42;
   const float pad_value_scale = 1.0;
   const float pad_value_zero_point = 127;
-  int output_dims[] = {4, 3, 2, 4, 1};
+  const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 1,  2,  42,
                           42, 3,  4,  42, 42, 42, 42, 42, 42, 42, 42, 42};
   const float output_scale = 1.0f;
@@ -318,13 +321,13 @@ TF_LITE_MICRO_TEST(Test2DUInt8V2) {
 }
 
 TF_LITE_MICRO_TEST(Test2DInt8) {
-  int input_dims[] = {4, 1, 2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
   const float input_scale = 1.0f;
   const int input_zero_point = 0;
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
-  int output_dims[] = {4, 3, 2, 4, 1};
+  const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0,
                           0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   const float output_scale = 1.0f;
@@ -340,16 +343,16 @@ TF_LITE_MICRO_TEST(Test2DInt8) {
 }
 
 TF_LITE_MICRO_TEST(Test2DInt8V2) {
-  int input_dims[] = {4, 1, 2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
   const float input_scale = 1.0f;
   const int input_zero_point = 0;
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const float pad_value = 42;
   const float pad_value_scale = 1.0;
   const float pad_value_zero_point = 0;
-  int output_dims[] = {4, 3, 2, 4, 1};
+  const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 1,  2,  42,
                           42, 3,  4,  42, 42, 42, 42, 42, 42, 42, 42, 42};
   const float output_scale = 1.0f;
@@ -366,17 +369,17 @@ TF_LITE_MICRO_TEST(Test2DInt8V2) {
 }
 
 TF_LITE_MICRO_TEST(Test2DInt8V2ExpectFailurePadValueQuantizationMismatch) {
-  int input_dims[] = {4, 1, 2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
   const float input_scale = 1.0f;
   const int input_zero_point = 0;
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
   const float pad_value = 42;
   // Causes failure since this is in a different quantization space than input.
   const float pad_value_scale = .5;
   const float pad_value_zero_point = 0;
-  int output_dims[] = {4, 3, 2, 4, 1};
+  const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   const float output_scale = 1.0f;
@@ -394,13 +397,13 @@ TF_LITE_MICRO_TEST(Test2DInt8V2ExpectFailurePadValueQuantizationMismatch) {
 }
 
 TF_LITE_MICRO_TEST(Test2DInt8ExpectFailureQuantizationRangeExcludesZero) {
-  int input_dims[] = {4, 1, 2, 2, 1};
+  const int input_dims[] = {4, 1, 2, 2, 1};
   const float input_values[] = {1, 2, 3, 4};
   const float input_scale = 1.0f;
   const int input_zero_point = 0;
-  int pad_dims[] = {2, 4, 2};
+  const int pad_dims[] = {2, 4, 2};
   const int32_t pad_values[] = {1, 1, 0, 0, 1, 1, 0, 0};
-  int output_dims[] = {4, 3, 2, 4, 1};
+  const int output_dims[] = {4, 3, 2, 4, 1};
   const float golden[] = {42, 42, 42, 42, 42, 42, 42, 42, 42, 1,  2,  42,
                           42, 3,  4,  42, 42, 42, 42, 42, 42, 42, 42, 42};
   // Causes failure since this quantization zero point excludes zero.
