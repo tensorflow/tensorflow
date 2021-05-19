@@ -225,6 +225,16 @@ class SparseCount : public OpKernel {
 
     T max_value = 0;
 
+    OP_REQUIRES(context, num_values <= indices.shape().dim_size(0),
+                errors::InvalidArgument(
+                    "The first dimension of indices must be equal to or "
+                    "greather than number of values. ( ",
+                    indices.shape().dim_size(0), " vs. ", num_values, " )"));
+    OP_REQUIRES(context, indices.shape().dim_size(1) > 0,
+                errors::InvalidArgument("The second dimension of indices must "
+                                        "be greater than 0. Received: ",
+                                        indices.shape().dim_size(1)));
+
     for (int idx = 0; idx < num_values; ++idx) {
       int batch = is_1d ? 0 : indices_values(idx, 0);
       if (batch >= num_batches) {
