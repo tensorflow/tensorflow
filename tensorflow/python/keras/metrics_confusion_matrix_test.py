@@ -1903,6 +1903,7 @@ class AUCMemoryTest(test.TestCase, parameterized.TestCase):
   # metrics_utils._update_confusion_matrix_variables_optimized().
 
   def test_memory_usage(self):
+    self.skipTest('b/188587681: skipping flaky test')
     if memory_profiler is None:
       self.skipTest('Skip test since memory_profiler is not available.')
 
