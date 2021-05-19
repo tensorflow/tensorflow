@@ -47,13 +47,13 @@ class SoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(test.TestCase):
   exception throwing in those cases.
   """
 
-  @test_util.run_cuda_only
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testExceptionThrowing(self):
     with self.session(), test_util.force_gpu():
       for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-        labels = constant_op.constant([[0.2, 0.4], [0.1, 0.2]], dtype=dtype)
         features = constant_op.constant([[0.3, 0.5], [0.5, 0.6]], dtype=dtype)
+        labels = constant_op.constant([[0.2, 0.4], [0.1, 0.2]], dtype=dtype)
         with self.assertRaisesRegex(
             errors_impl.UnimplementedError,
             "The GPU implementation of SoftmaxCrossEntropyWithLogits that " +
