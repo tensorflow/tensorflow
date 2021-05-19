@@ -609,15 +609,32 @@ class MeanRelativeError(Mean):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.metrics.MeanMetricWrapper')
 class MeanMetricWrapper(Mean):
   """Wraps a stateless metric function with the Mean metric.
+
+  You could use this class to quickly build a mean metric from a function. The
+  function needs to have the signature `fn(y_true, y_pred)` and return a
+  per-sample loss array. `MeanMetricWrapper.result()` will return
+  the average metric value across all samples seen so far.
+
+  For example:
+
+  ```python
+  def accuracy(y_true, y_pred):
+    return tf.cast(tf.math.equal(y_true, y_pred), tf.float32)
+
+  accuracy_metric = tf.keras.metrics.MeanMetricWrapper(fn=accuracy)
+
+  keras_model.compile(..., metrics=accuracy_metric)
+  ```
 
   Args:
     fn: The metric function to wrap, with signature `fn(y_true, y_pred,
       **kwargs)`.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
-    **kwargs: The keyword arguments that are passed on to `fn`.
+    **kwargs: Keyword arguments to pass on to `fn`.
   """
 
   def __init__(self, fn, name=None, dtype=None, **kwargs):
@@ -648,9 +665,9 @@ class MeanMetricWrapper(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    [y_true, y_pred], sample_weight = \
+    [y_true, y_pred], sample_weight = (
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
-            [y_true, y_pred], sample_weight)
+            [y_true, y_pred], sample_weight))
     y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
