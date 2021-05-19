@@ -6231,6 +6231,7 @@ filegroup(
         "pad_op.cc",
         "padding_fifo_queue.cc",
         "padding_fifo_queue_op.cc",
+        "parse_tensor_op.cc",
         "pooling_ops_3d.cc",
         "queue_base.cc",
         "queue_op.cc",

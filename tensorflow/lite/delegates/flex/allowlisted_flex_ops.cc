@@ -541,6 +541,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "Selu",
           "SeluGrad",
           "Send",
+          "SerializeTensor",
           "Shape",
           "ShapeN",
           "ShardedFilename",

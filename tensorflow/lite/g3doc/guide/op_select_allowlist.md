@@ -523,6 +523,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Selu`
 *   `raw_ops.SeluGrad`
 *   `raw_ops.Send`
+*   `raw_ops.SerializeTensor`
 *   `raw_ops.Shape`
 *   `raw_ops.ShapeN`
 *   `raw_ops.ShardedFilename`
