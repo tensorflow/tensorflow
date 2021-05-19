@@ -37,6 +37,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   pkg-config \
   g++-multilib \
   git \
+  kmod \
   libunwind-dev \
   libfftw3-dev \
   libelf-dev \
