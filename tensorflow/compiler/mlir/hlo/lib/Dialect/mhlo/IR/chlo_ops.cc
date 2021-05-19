@@ -155,11 +155,11 @@ LogicalResult InferBroadcastBinaryOpReturnTypeComponents(
 }
 
 LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
-    OpBuilder& builder, Operation* op,
+    OpBuilder& builder, Operation* op, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   auto loc = op->getLoc();
-  auto lhs = op->getOperand(0);
-  auto rhs = op->getOperand(1);
+  auto lhs = operands[0];
+  auto rhs = operands[1];
 
   // Check for "numpy"-style rank broadcast.
   auto broadcast_dimensions = op->getAttr("broadcast_dimensions")
@@ -204,10 +204,10 @@ LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
                                                     inferedReturnShapes);
 }
 LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
-    OpBuilder& builder, ValueRange,
+    OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),
-                                                reifiedReturnShapes);
+                                                operands, reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -236,10 +236,10 @@ LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
 }
 
 LogicalResult BroadcastCompareOp::reifyReturnTypeShapes(
-    OpBuilder& builder, ValueRange,
+    OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),
-                                                reifiedReturnShapes);
+                                                operands, reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -295,10 +295,10 @@ LogicalResult IsPosInfOp::inferReturnTypes(
         inferedReturnShapes);                                                 \
   }                                                                           \
   LogicalResult Op::reifyReturnTypeShapes(                                    \
-      OpBuilder& builder, ValueRange,                                         \
+      OpBuilder& builder, ValueRange operands,                                \
       SmallVectorImpl<Value>& reifiedReturnShapes) {                          \
-    return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),    \
-                                                  reifiedReturnShapes);       \
+    return ReifyBroadcastBinaryOpReturnTypeShapes(                            \
+        builder, getOperation(), operands, reifiedReturnShapes);              \
   }
 
 #define BROADCAST_BINARY_OP_DEFS(Op)                                           \
