@@ -138,9 +138,10 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
       return failure();
     }
-    LogicalResult reifyReturnTypeShapes(
-        OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+    LogicalResult reifyReturnTypeShapes(OpBuilder& builder,
+        ValueRange operands, SmallVectorImpl<Value>& reifiedReturnShapes) {
       return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+                                                       operands,
                                                        &reifiedReturnShapes);
     }
     bool inferInputOutputShapeEquality(int input, int output) {
@@ -451,9 +452,10 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
       return failure();
     }
-    LogicalResult reifyReturnTypeShapes(
-        OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+    LogicalResult reifyReturnTypeShapes(OpBuilder& builder,
+        ValueRange operands, SmallVectorImpl<Value>& reifiedReturnShapes) {
       return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+                                                       operands,
                                                        &reifiedReturnShapes);
     }
     bool inferInputsShapeEquality(int lhs, int rhs) {

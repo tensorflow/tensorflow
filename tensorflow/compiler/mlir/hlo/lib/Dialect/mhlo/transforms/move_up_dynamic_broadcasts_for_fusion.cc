@@ -55,7 +55,9 @@ struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
     if (!shape_origin) return failure();
 
     llvm::SmallVector<Value, 1> reifications;
-    if (failed(shape_origin.reifyReturnTypeShapes(rewriter, reifications)))
+    auto operands = op.arg().getDefiningOp()->getOperands();
+    if (failed(shape_origin.reifyReturnTypeShapes(rewriter, operands,
+                                                  reifications)))
       return failure();
     assert(reifications.size() == 1);
     Value reified_shape = reifications.front();

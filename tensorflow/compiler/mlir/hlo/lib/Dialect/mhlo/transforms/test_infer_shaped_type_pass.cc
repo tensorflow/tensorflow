@@ -74,7 +74,9 @@ struct ReifyReturnTypeShapesPattern : public RewritePattern {
         op->getOperand(0).getDefiningOp());
     if (!defining_op) return failure();
     SmallVector<Value, 4> return_shapes;
-    if (failed(defining_op.reifyReturnTypeShapes(rewriter, return_shapes))) {
+    auto operands = op->getOperand(0).getDefiningOp()->getOperands();
+    if (failed(defining_op.reifyReturnTypeShapes(rewriter, operands,
+                                                 return_shapes))) {
       return failure();
     }
     rewriter.replaceOp(op, return_shapes);

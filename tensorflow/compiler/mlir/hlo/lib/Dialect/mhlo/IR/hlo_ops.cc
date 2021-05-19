@@ -1002,8 +1002,10 @@ LogicalResult DynamicBroadcastInDimOp::inferReturnTypeComponents(
 }
 
 LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
-    OpBuilder&, SmallVectorImpl<Value>& reifiedReturnShapes) {
-  reifiedReturnShapes.push_back(output_dimensions());
+    OpBuilder&, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  DynamicBroadcastInDimOp::Adaptor adaptor(operands);
+  reifiedReturnShapes.push_back(adaptor.output_dimensions());
   return success();
 }
 
@@ -2100,8 +2102,9 @@ LogicalResult SelectOp::inferReturnTypeComponents(
 }
 
 LogicalResult SelectOp::reifyReturnTypeShapes(
-    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return deriveShapeFromFirstOperand(&builder, getOperation(),
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromFirstOperand(&builder, getOperation(), operands,
                                      &reifiedReturnShapes);
 }
 
@@ -3183,8 +3186,9 @@ LogicalResult CompareOp::inferReturnTypeComponents(
 }
 
 LogicalResult CompareOp::reifyReturnTypeShapes(
-    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return deriveShapeFromFirstOperand(&builder, getOperation(),
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromFirstOperand(&builder, getOperation(), operands,
                                      &reifiedReturnShapes);
 }
 
@@ -3532,9 +3536,9 @@ void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
 //===----------------------------------------------------------------------===//
 
 LogicalResult deriveShapeFromFirstOperand(
-    OpBuilder* builder, Operation* op,
+    OpBuilder* builder, Operation* op, ValueRange operands,
     SmallVectorImpl<Value>* reifiedReturnShapes) {
-  Value operand = op->getOperand(0);
+  Value operand = operands.front();
   ShapedType operand_type = operand.getType().dyn_cast<ShapedType>();
   if (!operand_type) {
     op->emitOpError() << "first operand is not a shaped type";
