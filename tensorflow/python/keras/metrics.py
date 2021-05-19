@@ -973,8 +973,8 @@ class _ConfusionMatrixConditionCount(Metric):
     self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
-    self._evenly_distribute_thresholds = (
-        metrics_utils.evenly_distributed_thresholds(self.thresholds))
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.accumulator = self.add_weight(
         'accumulator',
         shape=(len(self.thresholds),),
@@ -998,7 +998,7 @@ class _ConfusionMatrixConditionCount(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
-        evenly_distribute_thresholds=self._evenly_distribute_thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         sample_weight=sample_weight)
 
   def result(self):
@@ -1298,8 +1298,8 @@ class Precision(Metric):
     default_threshold = 0.5 if top_k is None else metrics_utils.NEG_INF
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=default_threshold)
-    self._evenly_distribute_thresholds = (
-        metrics_utils.evenly_distributed_thresholds(self.thresholds))
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(len(self.thresholds),),
@@ -1331,7 +1331,7 @@ class Precision(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
-        evenly_distribute_thresholds=self._evenly_distribute_thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         top_k=self.top_k,
         class_id=self.class_id,
         sample_weight=sample_weight)
@@ -1427,8 +1427,8 @@ class Recall(Metric):
     default_threshold = 0.5 if top_k is None else metrics_utils.NEG_INF
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=default_threshold)
-    self._evenly_distribute_thresholds = (
-        metrics_utils.evenly_distributed_thresholds(self.thresholds))
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(len(self.thresholds),),
@@ -1460,7 +1460,7 @@ class Recall(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
-        evenly_distribute_thresholds=self._evenly_distribute_thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         top_k=self.top_k,
         class_id=self.class_id,
         sample_weight=sample_weight)
@@ -1524,12 +1524,12 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
     # Compute `num_thresholds` thresholds in [0, 1]
     if num_thresholds == 1:
       self.thresholds = [0.5]
-      self._evenly_distribute_thresholds = False
+      self._thresholds_distributed_evenly = False
     else:
       thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                     for i in range(num_thresholds - 2)]
       self.thresholds = [0.0] + thresholds + [1.0]
-      self._evenly_distribute_thresholds = True
+      self._thresholds_distributed_evenly = True
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates confusion matrix statistics.
@@ -1554,7 +1554,7 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
         y_true,
         y_pred,
         thresholds=self.thresholds,
-        evenly_distribute_thresholds=self._evenly_distribute_thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         class_id=self.class_id,
         sample_weight=sample_weight)
 
@@ -2091,8 +2091,8 @@ class AUC(Metric):
       # If specified, use the supplied thresholds.
       self.num_thresholds = len(thresholds) + 2
       thresholds = sorted(thresholds)
-      self._evenly_distribute_thresholds = (
-          metrics_utils.evenly_distributed_thresholds(
+      self._thresholds_distributed_evenly = (
+          metrics_utils.is_evenly_distributed_thresholds(
               np.array([0.0] + thresholds + [1.0])))
     else:
       if num_thresholds <= 1:
@@ -2103,7 +2103,7 @@ class AUC(Metric):
       self.num_thresholds = num_thresholds
       thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                     for i in range(num_thresholds - 2)]
-      self._evenly_distribute_thresholds = True
+      self._thresholds_distributed_evenly = True
 
     # Add an endpoint "threshold" below zero and above one for either
     # threshold method to account for floating point imprecisions.
@@ -2256,7 +2256,7 @@ class AUC(Metric):
           y_true,
           y_pred,
           self._thresholds,
-          evenly_distribute_thresholds=self._evenly_distribute_thresholds,
+          thresholds_distributed_evenly=self._thresholds_distributed_evenly,
           sample_weight=sample_weight,
           multi_label=self.multi_label,
           label_weights=label_weights)

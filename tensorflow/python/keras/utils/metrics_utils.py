@@ -450,7 +450,7 @@ def _update_confusion_matrix_variables_optimized(
   return control_flow_ops.group(update_ops)
 
 
-def evenly_distributed_thresholds(thresholds):
+def is_evenly_distributed_thresholds(thresholds):
   """Check if the thresholds list is evenly distributed.
 
   We could leverage evenly distributed thresholds to use less memory when
@@ -482,7 +482,7 @@ def update_confusion_matrix_variables(variables_to_update,
                                       sample_weight=None,
                                       multi_label=False,
                                       label_weights=None,
-                                      evenly_distribute_thresholds=False):
+                                      thresholds_distributed_evenly=False):
   """Returns op to update the given confusion matrix variables.
 
   For every pair of values in y_true and y_pred:
@@ -524,7 +524,7 @@ def update_confusion_matrix_variables(variables_to_update,
     label_weights: (optional) tensor of non-negative weights for multilabel
       data. The weights are applied when calculating TP, FP, FN, and TN without
       explicit multilabel handling (i.e. when the data is to be flattened).
-    evenly_distribute_thresholds: Boolean, whether the thresholds are evenly
+    thresholds_distributed_evenly: Boolean, whether the thresholds are evenly
       distributed within the list. An optimized method will be used if this is
       the case. See _update_confusion_matrix_variables_optimized() for more
       details.
@@ -556,12 +556,12 @@ def update_confusion_matrix_variables(variables_to_update,
   y_true = math_ops.cast(y_true, dtype=variable_dtype)
   y_pred = math_ops.cast(y_pred, dtype=variable_dtype)
 
-  if evenly_distribute_thresholds:
+  if thresholds_distributed_evenly:
     # Check whether the thresholds has any leading or tailing epsilon added
     # for floating point imprecision. The leading and tailing threshold will be
     # handled bit differently as the corner case.
     # At this point, thresholds should be a list/array with more than 2 items,
-    # and ranged between [0, 1]. See evenly_distributed_thresholds() for more
+    # and ranged between [0, 1]. See is_evenly_distributed_thresholds() for more
     # details.
     thresholds_with_epsilon = thresholds[0] < 0.0 or thresholds[-1] > 1.0
 
@@ -614,7 +614,7 @@ def update_confusion_matrix_variables(variables_to_update,
     y_true = y_true[..., class_id]
     y_pred = y_pred[..., class_id]
 
-  if evenly_distribute_thresholds and compat.forward_compatible(2021, 6, 8):
+  if thresholds_distributed_evenly and compat.forward_compatible(2021, 6, 8):
     # The new approach will take effect after 2021/6/8, to give enough time
     # for Brella release to pick up the new op tf.math.cumsum with float32.
     return _update_confusion_matrix_variables_optimized(
