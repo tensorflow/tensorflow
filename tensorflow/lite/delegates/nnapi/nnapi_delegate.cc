@@ -552,38 +552,38 @@ enum {
   NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION = 1U << 4,
 };
 
-// Returns the SDK level to target when delegating to the given devices.
-// The SDK level is the max of the ones supported by the devices or
-// the current Android SDK level if no device is present.
-TfLiteStatus GetTargetSdkVersion(
+// Returns the feature level to target when delegating to the given devices.
+// The feature level is the max of the ones supported by the devices or
+// the current NNAPI runtime feature level if no device is present.
+TfLiteStatus GetTargetFeatureLevel(
     TfLiteContext* context, const NnApi* nnapi,
     const std::vector<ANeuralNetworksDevice*>& device_handles,
-    int* target_sdk_version, int* nnapi_errno) {
-  *target_sdk_version = nnapi->android_sdk_version;
-  int64_t devices_sdk_version = -1;
+    int* target_feature_level, int* nnapi_errno) {
+  *target_feature_level = nnapi->nnapi_runtime_feature_level;
+  int64_t devices_feature_level = -1;
   for (const auto* device_handle : device_handles) {
-    int64_t curr_device_sdk_version;
+    int64_t curr_device_feature_level;
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context,
-        nnapi->ANeuralNetworksDevice_getFeatureLevel(device_handle,
-                                                     &curr_device_sdk_version),
+        nnapi->ANeuralNetworksDevice_getFeatureLevel(
+            device_handle, &curr_device_feature_level),
         "Searching for target device", nnapi_errno);
 
-    devices_sdk_version =
-        std::max(curr_device_sdk_version, devices_sdk_version);
+    devices_feature_level =
+        std::max(curr_device_feature_level, devices_feature_level);
   }
 
-  if ((devices_sdk_version > 0) &&
+  if ((devices_feature_level > 0) &&
       // This second check is necessary since if the nnapi-reference device is
-      // in the list of target devices the devices_sdk_version value will be
+      // in the list of target devices the devices_feature_level value will be
       // 1000.
-      (devices_sdk_version < nnapi->android_sdk_version)) {
+      (devices_feature_level < nnapi->nnapi_runtime_feature_level)) {
     TFLITE_LOG(TFLITE_LOG_INFO,
-               "Changing Android NN SDK version %d to version "
+               "Changing NNAPI Feature Level %lld to "
                "supported by target devices: %lld",
-               nnapi->android_sdk_version, devices_sdk_version);
+               nnapi->android_sdk_version, devices_feature_level);
 
-    *target_sdk_version = devices_sdk_version;
+    *target_feature_level = devices_feature_level;
   }
 
   return kTfLiteOk;
@@ -3850,7 +3850,7 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
   // Override should_use_burst_mode to true if the selected NNAPI devices are of
   // NNAPI feature level 5 or higher.
   if (!nnapi_devices_.empty() &&
-      target_sdk_version_ >= kNNAPIRuntimeFeatureLevel5) {
+      target_feature_level_ >= kNNAPIRuntimeFeatureLevel5) {
     should_use_burst_mode = true;
   }
   // Create burst object to be reused across a sequence of executions
@@ -4040,7 +4040,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
   int relative_input_index = 0;
 
   const bool use_int8_asymm_signed =
-      target_sdk_version_ >= kMinSdkVersionForNNAPI13;
+      target_feature_level_ >= kMinSdkVersionForNNAPI13;
 
   size_t input_offset = 0;
   for (auto absolute_input_index : TfLiteIntArrayView(node->inputs)) {
@@ -4373,10 +4373,10 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
                          nnapi_errno, allow_dynamic_dimensions);
   // If we have target accelerators the target SDK version might be
   // different than the current android version.
-  target_sdk_version_ = nnapi_->android_sdk_version;
+  target_feature_level_ = nnapi_->nnapi_runtime_feature_level;
   if (!nnapi_devices_.empty()) {
-    TF_LITE_ENSURE_STATUS(GetTargetSdkVersion(
-        context, nnapi_, nnapi_devices_, &target_sdk_version_, nnapi_errno));
+    TF_LITE_ENSURE_STATUS(GetTargetFeatureLevel(
+        context, nnapi_, nnapi_devices_, &target_feature_level_, nnapi_errno));
   }
   // First path, handle fp16->fp32 dequantize if needed.
   for (auto node_index : nodes_) {
@@ -4401,7 +4401,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
         context->GetNodeAndRegistration(context, node_index, &node, &reg));
 
     // Fully quantized full LSTM.
-    if (target_sdk_version_ >= kMinSdkVersionForNNAPI13 &&
+    if (target_feature_level_ >= kMinSdkVersionForNNAPI13 &&
         reg->builtin_code == kTfLiteBuiltinLstm && isLstmFullKernel(node) &&
         context->tensors[node->inputs->data[0]].type == kTfLiteInt8) {
       const auto quant8_full_lstm_op_code = ANEURALNETWORKS_QUANTIZED_LSTM;
@@ -4498,10 +4498,10 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     const bool hybrid_op = IsHybridOperator(context, reg->builtin_code, node);
     const bool scalar_as_tensor = IsScalarInputSupported(reg->builtin_code);
     const bool need_int8_conversion =
-        target_sdk_version_ < kMinSdkVersionForNNAPI13 &&
+        target_feature_level_ < kMinSdkVersionForNNAPI13 &&
         NeedInt8Conversion(context, reg->builtin_code, node);
     const bool use_int8_asymm_signed =
-        target_sdk_version_ >= kMinSdkVersionForNNAPI13 && !hybrid_op;
+        target_feature_level_ >= kMinSdkVersionForNNAPI13 && !hybrid_op;
 
     // skip DEQUANTIZE (fp16 -> fp32) as it is handled elsewhere
     if (IsDequantizeConstFloat16(context, node, reg)) {
@@ -4840,7 +4840,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     // Fails if the Validate function failed
     int nn_op_type;
     TF_LITE_ENSURE_STATUS(
-        Map(context, reg->builtin_code, reg->version, target_sdk_version_,
+        Map(context, reg->builtin_code, reg->version, target_feature_level_,
             {context, &builder, node, node_index, &model_state_outputs_,
              &model_state_tfl_inputs_, &feedback_loops_, nnapi_errno},
             &nn_op_type));
@@ -5246,7 +5246,7 @@ TfLiteStatus StatefulNnApiDelegate::LimitDelegatedPartitions(
 }
 
 static std::vector<int> GetSupportedOpsWithFp16WeightRemapping(
-    TfLiteContext* context, int target_sdk_version,
+    TfLiteContext* context, int target_feature_level,
     bool is_accelerator_specified, int max_number_delegated_partitions) {
   std::vector<int> supported_nodes;
   delegates::IsNodeSupportedFn node_supported_fn =
@@ -5256,7 +5256,7 @@ static std::vector<int> GetSupportedOpsWithFp16WeightRemapping(
     std::vector<delegate::nnapi::NNAPIValidationFailure> map_failures;
     const auto is_supported = NNAPIDelegateKernel::Validate(
         context, registration->builtin_code, registration->version,
-        target_sdk_version, node, is_accelerator_specified, &map_failures);
+        target_feature_level, node, is_accelerator_specified, &map_failures);
     if (!is_supported) {
       if (unsupported_details) {
         for (auto& failure : map_failures) {
@@ -5298,7 +5298,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     return kTfLiteOk;
   }
 
-  int target_sdk_version = nnapi->android_sdk_version;
+  int target_feature_level = nnapi->android_sdk_version;
   const StatefulNnApiDelegate::Options delegate_options =
       StatefulNnApiDelegate::GetOptions(delegate);
   // For NNAPI 1.2+, check if there is any accelerator available.
@@ -5321,8 +5321,8 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         }
       }
 
-      TF_LITE_ENSURE_STATUS(GetTargetSdkVersion(
-          context, nnapi, devices, &target_sdk_version, nnapi_errno));
+      TF_LITE_ENSURE_STATUS(GetTargetFeatureLevel(
+          context, nnapi, devices, &target_feature_level, nnapi_errno));
     } else {
       // If no accelerator is specified, only use NNAPI if an accelerator is
       // available. Any available accelerator will make the device_count larger
@@ -5362,7 +5362,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   }
   if (should_prune_fp16_dequantize) {
     supported_nodes = GetSupportedOpsWithFp16WeightRemapping(
-        context, target_sdk_version, is_accelerator_specified,
+        context, target_feature_level, is_accelerator_specified,
         delegate_options.max_number_delegated_partitions);
   } else {
     for (int node_index : TfLiteIntArrayView(plan)) {
@@ -5372,7 +5372,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
           context, node_index, &node, &registration));
       if (NNAPIDelegateKernel::Validate(
               context, registration->builtin_code, registration->version,
-              target_sdk_version, node, is_accelerator_specified,
+              target_feature_level, node, is_accelerator_specified,
               &map_failures)) {
         supported_nodes.push_back(node_index);
       }
