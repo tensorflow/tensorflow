@@ -1054,6 +1054,19 @@ func @dynamic_broadcast_in_dim(%vector: tensor<42xf32>, %shape: tensor<3xindex>)
 
 // -----
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim(
+// Note: this test requires no checks. The linalg init_tensor verifier will
+// fail if the %shape i32 -> index cast is not performed properly.
+func @dynamic_broadcast_in_dim(%scalar: tensor<f32>, %shape: tensor<2xi32>)
+    -> tensor<?x32xf32> {
+  %result = "mhlo.dynamic_broadcast_in_dim"(%scalar, %shape) {
+     broadcast_dimensions = dense<> : tensor<0xi64>
+  } : (tensor<f32>, tensor<2xi32>) -> tensor<?x32xf32>
+  return %result : tensor<?x32xf32>
+}
+
+// -----
+
 func @dot_matmul(%arg0: tensor<2x3xf32>,
                  %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>,
