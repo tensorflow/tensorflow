@@ -170,7 +170,7 @@ tf_py_test(
 
 tf_py_test(
     name = "directed_interleave_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["directed_interleave_dataset_test.py"],
     shard_count = 24,
     deps = [
