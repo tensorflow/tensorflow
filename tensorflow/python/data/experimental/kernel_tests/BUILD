@@ -519,9 +519,9 @@ tf_py_test(
 
 tf_py_test(
     name = "rejection_resample_test",
-    size = "small",
+    size = "medium",
     srcs = ["rejection_resample_test.py"],
-    shard_count = 5,
+    shard_count = 10,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
