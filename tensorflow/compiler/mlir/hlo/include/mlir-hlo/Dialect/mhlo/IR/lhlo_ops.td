@@ -1386,43 +1386,8 @@ def TerminatorOp :
     [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
 }
 
-
-def LHLO_D2HOp: LHLO_Op<"d2h", []> {
-  let summary = "LHLO D2H operator";
-  let description = [{
-    Copy operand to output. operand is in device memory. output is in 
-    host memory
-  }];
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output
-  );
-}
-
-def LHLO_H2DOp: LHLO_Op<"h2d", []> {
-  let summary = "LHLO H2D operator";
-  let description = [{
-    Copy operand to output. operand is in host memory. output is in 
-    device memory
-  }];
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output
-  );
-}
-
-def LHLO_DebugPrintOp:  LHLO_Op<"debug_print", [NoSideEffect]> {
-  let summary = "LHLO debug print operation";
-  let description = [{
-    This LHLO operation is used to debug tensor.
-  }];
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$input
-  );
-}
-
 def LHLO_RealDynamicSliceOp: LHLO_Op<
-      "dynamic_slice",
+      "real_dynamic_slice",
       [AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let summary = "LHLO Real Dynamic Slice operator";
   let description = [{
@@ -1431,9 +1396,9 @@ def LHLO_RealDynamicSliceOp: LHLO_Op<
   }];
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemRead]>:$start_indices,
-    Arg<LHLO_Buffer, "", [MemRead]>:$limit_indices,
-    Arg<LHLO_Buffer, "", [MemRead]>:$strides,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$start_indices,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$limit_indices,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$strides,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
@@ -1450,7 +1415,7 @@ def LHLO_DynamicBroadcastInDimOp : LHLO_Op<"dynamic_broadcast_in_dim",
   }];
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemRead]>:$out_dim_size,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$output_dimensions,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     BroadcastDimAttr:$broadcast_dimensions
   );
@@ -1481,14 +1446,16 @@ def LHLO_DynamicGatherOp: LHLO_Op<"dynamic_gather", []> {
   }];
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemRead]>:$start_indices,
-    Arg<LHLO_Buffer, "", [MemRead]>:$slice_sizes,
+    Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
+    Arg<LHLO_IntBuffer, "", [MemRead]>:$slice_sizes,
     GatherDimensionNumbers:$dimension_numbers,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
 
-def LHLO_DynamicPadOp: LHLO_Op<"dynamic_pad", []> {
+def LHLO_DynamicPadOp: LHLO_Op<
+      "dynamic_pad", 
+      [AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
   let summary = "LHLO Dynamic Pad operator";
   let description = [{
     The dynamic shape version of PadOp. Pads the edges of `operand` with the `padding_value` and according to
@@ -1499,9 +1466,9 @@ def LHLO_DynamicPadOp: LHLO_Op<"dynamic_pad", []> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemRead]>:$padding_value,
-    Arg<LHLO_Buffer, "", [MemRead]>:$edge_padding_low,
-    Arg<LHLO_Buffer, "", [MemRead]>:$edge_padding_high,
-    Arg<LHLO_Buffer, "", [MemRead]>:$interior_padding,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$edge_padding_low,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$edge_padding_high,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$interior_padding,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }

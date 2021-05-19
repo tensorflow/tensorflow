@@ -2162,28 +2162,8 @@ def HLO_ReducePrecisionOp :
   let results = (outs HLO_FpTensor:$output);
 }
 
-def HLO_H2DOp: HLO_Op<"h2d", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "H2D operator";
-  let description = [{
-    Copy `operand` from host to device.
-  }];
-  let arguments = (ins HLO_Tensor);
-  let results = (outs HLO_Tensor);
-  let hasCustomHLOConverter = 1;
-}
-
-def HLO_D2HOp: HLO_Op<"d2h", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "D2H operator";
-  let description = [{
-    Copy `operand` from device to host.
-  }];
-  let arguments = (ins HLO_Tensor);
-  let results = (outs HLO_Tensor);
-  let hasCustomHLOConverter = 1;
-}
-
 def HLO_RealDynamicSliceOp: HLO_Op<
-      "dynamic_slice",
+      "real_dynamic_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
        AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let summary = "Real Dynamic Slice operator";
@@ -2195,9 +2175,9 @@ def HLO_RealDynamicSliceOp: HLO_Op<
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
-    HLO_Tensor:$start_indices,
-    HLO_Tensor:$limit_indices,
-    HLO_Tensor:$strides
+    HLO_DimensionTensor:$start_indices,
+    HLO_DimensionTensor:$limit_indices,
+    HLO_DimensionTensor:$strides
   );
   let results = (outs HLO_Tensor:$result);
   let hasCustomHLOConverter = 1;
@@ -2218,9 +2198,9 @@ def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$padding_value,
-    HLO_Tensor:$edge_padding_low,
-    HLO_Tensor:$edge_padding_high,
-    HLO_Tensor:$interior_padding
+    HLO_DimensionTensor:$edge_padding_low,
+    HLO_DimensionTensor:$edge_padding_high,
+    HLO_DimensionTensor:$interior_padding
   );
   let results = (outs HLO_Tensor:$result);
   let description = [{
@@ -2264,22 +2244,6 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp 
     ConvolutionAttributes.attributes);
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
-}
-
-// For test use
-def HLO_DebugPrintOp : HLO_Op<"debug_print", [NoSideEffect]> {
-  let summary = "debug print operation";
-  let description = [{
-    This operation is used to debug tensor.
-  }];
-
-  // The operation takes an input tensor to print.
-  let arguments = (ins
-      AnyTypeOf<[HLO_Tensor]>:$operand
-  );
-
-  let hasCustomHLOConverter = 1;
-
 }
 
 #endif // HLO_OPS
