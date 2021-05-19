@@ -51,6 +51,11 @@ class SubstrOp : public OpKernel {
     const Tensor& len_tensor = context->input(2);
     const TensorShape& input_shape = input_tensor.shape();
     const TensorShape& pos_shape = pos_tensor.shape();
+    const TensorShape& len_shape = len_tensor.shape();
+    OP_REQUIRES(context, (pos_shape == len_shape),
+                errors::InvalidArgument(
+                    "pos and len should have the same shape, got: ",
+                    pos_shape.DebugString(), " vs. ", len_shape.DebugString()));
 
     bool is_scalar = TensorShapeUtils::IsScalar(pos_shape);
 
