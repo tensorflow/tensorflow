@@ -136,7 +136,8 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
     const Literal* literal, absl::optional<Window> window,
-    absl::optional<ConvolutionDimensionNumbers> dnums) {
+    absl::optional<ConvolutionDimensionNumbers> dnums,
+    CustomCallSchedule schedule) {
   if (operand_shapes_with_layout.has_value())
     return Unimplemented(
         "CustomCall doesn't support operands shapes with layout");
@@ -150,6 +151,8 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
   TF_RET_CHECK(!dnums.has_value())
       << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
+  TF_RET_CHECK(schedule == CustomCallSchedule::SCHEDULE_NONE)
+      << "MLIR CustomCallOp does not support custom-call-schedule yet";
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
       /*has_side_effect=*/builder_.getBoolAttr(has_side_effect),
