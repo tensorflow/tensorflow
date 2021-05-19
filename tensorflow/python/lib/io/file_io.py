@@ -783,8 +783,9 @@ def list_directory_v2(path):
 def join(path, *paths):
   """Join one or more path components intelligently.
 
-  This is the same as os.path.join except that it handles
-  TensorFlow specific filesystems like `ram://` and `gcs://`.
+  This is the same as os.path.join except that it guarantees correct
+  handling of tensorflow specific filesystems like `gcs://` and `ram://`
+  on all platforms.
 
   Examples:
 
