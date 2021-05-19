@@ -458,7 +458,12 @@ Status SingleMachine::ClearAllocatorStats() const {
       return Status(error::INVALID_ARGUMENT,
                     "Tracking allocation is not enabled.");
     }
-    allocator->ClearStats();
+    if (!allocator->ClearStats()) {
+      return Status(
+          error::INVALID_ARGUMENT,
+          absl::StrCat("Clearing allocation stats is not supported for ",
+                       device->name()));
+    }
   }
   return Status::OK();
 }
