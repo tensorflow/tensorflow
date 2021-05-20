@@ -3460,6 +3460,9 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   return DenseElementsAttr::get(base_type, results);
 }
 
+using mlir::hlo::parseWindowAttributes;
+using mlir::hlo::printWindowAttributes;
+
 }  // namespace mhlo
 }  // namespace mlir
 
