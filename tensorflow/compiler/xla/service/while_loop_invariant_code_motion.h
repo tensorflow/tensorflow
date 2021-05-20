@@ -35,15 +35,17 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   // Setting `hoist_constants` to false can be help if LICM is run in the mid
   // level HLO pipeline because hoisting constants out of while loop bodies can
   // break optimizations like constant folding.
+  // Setting `hoist_non_constants` to false can be used to hoist only constants.
   // If provided, `hoist_size_inflation_ratio` will forbid hoisting instructions
   // where the ratio of the size of the output(s) to the input(s) is larger than
   // hoist_size_inflation_ratio. This is useful on platforms on which it's
   // important to prevent blow-ups in memory size.
   explicit WhileLoopInvariantCodeMotion(
-      bool hoist_constants = false,
+      bool hoist_constants = false, bool hoist_non_constants = true,
       absl::optional<float> hoist_size_inflation_ratio = absl::nullopt,
       ShapeSizeFunction shape_size_function = ShapeUtil::ByteSizeOfElements)
       : hoist_constants_(hoist_constants),
+        hoist_non_constants_(hoist_non_constants),
         hoist_size_inflation_ratio_(hoist_size_inflation_ratio),
         shape_size_function_(shape_size_function) {}
   ~WhileLoopInvariantCodeMotion() override = default;
@@ -59,6 +61,7 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
       HloInstruction* while_instr);
 
   bool hoist_constants_;
+  bool hoist_non_constants_;
   absl::optional<float> hoist_size_inflation_ratio_;
   ShapeSizeFunction shape_size_function_;
 };
