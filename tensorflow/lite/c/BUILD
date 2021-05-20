@@ -195,7 +195,7 @@ cc_test(
     srcs = ["common_test.cc"],
     deps = [
         ":common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -206,7 +206,7 @@ cc_test(
     copts = ["-Wno-unused-variable"],
     deps = [
         ":common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
