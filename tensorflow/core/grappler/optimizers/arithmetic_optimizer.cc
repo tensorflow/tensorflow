@@ -4174,10 +4174,20 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
       read_var_node->add_input(gather_node->input(0));
       read_var_node->set_device(variable_node->device());
 
+      // The Variable and the Gather node should have the same
+      // dtype, but it might not be set on both nodes.
       auto attr = read_var_node->mutable_attr();
       if (variable_node->attr().count("dtype")) {
         SetAttrValue(variable_node->attr().at("dtype").type(),
                      &(*attr)["dtype"]);
+      }
+      if (gather_node->attr().count("dtype")) {
+        SetAttrValue(gather_node->attr().at("dtype").type(), &(*attr)["dtype"]);
+      }
+      // Copy the _class attr from the Gather node should it exist in case
+      // of location constraints with the variable.
+      if (gather_node->attr().count("_class")) {
+        (*attr)["_class"] = gather_node->attr().at("_class");
       }
       if (variable_node->attr().count("shape")) {
         SetAttrValue(variable_node->attr().at("shape").shape(),

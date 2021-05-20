@@ -370,7 +370,7 @@ class NNAPIDelegateKernel {
   std::vector<int> nnapi_to_tflite_op_mapping_;
 
   // Fully initialized in NNAPIDelegateKernel::AddOpsAndTensors
-  int target_sdk_version_ = 27;  // kMinSdkVersionForNNAPI13
+  int target_feature_level_ = 27;  // kMinSdkVersionForNNAPI10
 
   void AddDequantizeOperatorsWhereNeeded(
       const TfLiteContext* context, int builtin_code, const TfLiteNode* node,

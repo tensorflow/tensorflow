@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/lib/util.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -113,54 +114,7 @@ class DiagOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("Diag"), DiagOp);
 
-class DiagPartOp : public XlaOpKernel {
- public:
-  explicit DiagPartOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx),
-        is_gpu_(ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT) {}
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
-    auto dims = input_shape.dim_sizes();
-
-    int num_dims = dims.size();
-    const int out_dims = num_dims / 2;
-
-    OP_REQUIRES(ctx, 2 <= num_dims,
-                errors::InvalidArgument("Expected 2 <= dims, got shape ",
-                                        input_shape.DebugString()));
-    OP_REQUIRES(ctx, num_dims % 2 == 0,
-                errors::InvalidArgument("The input tensor must have even rank; "
-                                        "got shape ",
-                                        input_shape.DebugString()));
-    int64 new_size = 1;
-    std::vector<int64> new_dims;
-    for (int i = 0; i < out_dims; i++) {
-      OP_REQUIRES(
-          ctx, dims[i] == dims[i + out_dims],
-          errors::InvalidArgument("Invalid shape ", input_shape.DebugString(),
-                                  ": dimensions ", i, " and ", i + out_dims,
-                                  " do not match."));
-      new_size *= dims[i];
-      new_dims.push_back(dims[i]);
-    }
-
-    xla::XlaOp input = ctx->Input(0);
-
-    xla::XlaOp reshape_input = xla::Reshape(input, {new_size, new_size});
-    xla::XlaOp output =
-        xla::Reshape(is_gpu_ ? xla::GetMatrixDiagonalViaGather(reshape_input)
-                             : xla::GetMatrixDiagonal(reshape_input),
-                     new_dims);
-
-    ctx->SetOutput(0, output);
-  }
-
- private:
-  const bool is_gpu_;
-};
-
-REGISTER_XLA_OP(Name("DiagPart"), DiagPartOp);
+REGISTER_XLA_OP(Name("DiagPart"), MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

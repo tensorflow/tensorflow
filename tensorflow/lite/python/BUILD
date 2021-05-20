@@ -45,6 +45,8 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
+    # TODO(b/187847053): Enable test in pip.
+    tags = ["no_pip"],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
@@ -173,6 +175,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":convert",
+        ":convert_phase",
         ":convert_saved_model",
         ":interpreter",
         ":lite_constants",
@@ -477,12 +480,21 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "convert_phase",
+    srcs = ["convert_phase.py"],
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//visibility:public"],
+)
+
+pytype_strict_library(
     name = "metrics_nonportable",
     srcs = ["metrics_nonportable.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_interface",
+        "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
         "//tensorflow/python/eager:monitoring",
     ],
 )
@@ -491,6 +503,7 @@ py_test(
     name = "metrics_nonportable_test",
     srcs = ["metrics_nonportable_test.py"],
     python_version = "PY3",
+    tags = ["no_oss"],
     visibility = ["//visibility:public"],
     deps = [
         ":lite",
@@ -533,4 +546,17 @@ pytype_strict_library(
         if_false = [":metrics_nonportable"],
         if_true = [":metrics_portable"],
     ),
+)
+
+py_library(
+    name = "analyzer",
+    srcs = [
+        "analyzer.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
+        "//tensorflow/lite/tools:visualize",
+    ],
 )

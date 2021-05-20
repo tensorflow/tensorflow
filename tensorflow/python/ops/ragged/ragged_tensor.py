@@ -157,12 +157,19 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   nested list `[[3, 1, 4, 1], [], [5, 9, 2], [6], []]`.
 
   >>> values = [3, 1, 4, 1, 5, 9, 2, 6]
-  >>> rt1 = RaggedTensor.from_row_splits(values, row_splits=[0, 4, 4, 7, 8, 8])
-  >>> rt2 = RaggedTensor.from_row_lengths(values, row_lengths=[4, 0, 3, 1, 0])
-  >>> rt3 = RaggedTensor.from_value_rowids(
+  >>> RaggedTensor.from_row_splits(values, row_splits=[0, 4, 4, 7, 8, 8])
+  <tf.RaggedTensor [[3, 1, 4, 1], [], [5, 9, 2], [6], []]>
+  >>> RaggedTensor.from_row_lengths(values, row_lengths=[4, 0, 3, 1, 0])
+  <tf.RaggedTensor [[3, 1, 4, 1], [], [5, 9, 2], [6], []]>
+  >>> RaggedTensor.from_value_rowids(
   ...     values, value_rowids=[0, 0, 0, 0, 2, 2, 2, 3], nrows=5)
-  >>> rt4 = RaggedTensor.from_row_starts(values, row_starts=[0, 4, 4, 7, 8])
-  >>> rt5 = RaggedTensor.from_row_limits(values, row_limits=[4, 4, 7, 8, 8])
+  <tf.RaggedTensor [[3, 1, 4, 1], [], [5, 9, 2], [6], []]>
+  >>> RaggedTensor.from_row_starts(values, row_starts=[0, 4, 4, 7, 8])
+  <tf.RaggedTensor [[3, 1, 4, 1], [], [5, 9, 2], [6], []]>
+  >>> RaggedTensor.from_row_limits(values, row_limits=[4, 4, 7, 8, 8])
+  <tf.RaggedTensor [[3, 1, 4, 1], [], [5, 9, 2], [6], []]>
+  >>> RaggedTensor.from_uniform_row_length(values, uniform_row_length=2)
+  <tf.RaggedTensor [[3, 1], [4, 1], [5, 9], [2, 6]]>
 
   ### Multiple Ragged Dimensions
 
@@ -1319,7 +1326,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
         if axis == 0:
           return array_ops.shape(nested_splits[0], out_type=out_type)[0] - 1
         elif axis == 1:
-          return math_ops.maximum(math_ops.reduce_max(self.row_lengths()), 0)
+          result = math_ops.maximum(math_ops.reduce_max(self.row_lengths()), 0)
+          if out_type != self._row_partition.dtype:
+            result = math_ops.cast(result, out_type)
+          return result
 
       splits_shape = array_ops.shape(self.row_splits, out_type=out_type)
       flat_values_shape = array_ops.shape(rt_flat_values, out_type=out_type)

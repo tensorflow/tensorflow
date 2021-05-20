@@ -889,6 +889,7 @@ py_library(
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":one_device_strategy",
+        ":parameter_server_strategy_v2",
         ":test_util",
         ":tpu_strategy",
         "//tensorflow/python:platform",
@@ -913,6 +914,7 @@ distribute_py_test(
         ":combinations",
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":parameter_server_strategy_v2",
         ":reduce_util",
         ":strategy_combinations",
         ":test_util",
@@ -1726,21 +1728,24 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
     shard_count = 12,
     tags = [
+        "multi_gpu",
         "noasan",
         "nomsan",
     ],  # b/175904958
     deps = [
+        ":combinations",
         ":multi_process_runner",
         ":multi_worker_test_base",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/logging",
-        "@six_archive//:six",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

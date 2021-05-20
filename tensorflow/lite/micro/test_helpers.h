@@ -22,9 +22,9 @@ limitations under the License.
 #include <limits>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite//kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
@@ -129,6 +129,9 @@ const Model* GetModelWithOfflinePlanning(int num_tensors,
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
 
+// Returns a flatbuffer model with "if" and two subgraphs.
+const Model* GetSimpleModelWithSubgraphsAndIf();
+
 // Builds a one-dimensional flatbuffer tensor of the given size.
 const Tensor* Create1dFlatbufferTensor(int size, bool is_variable = false);
 
@@ -154,7 +157,16 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
 
 // Create a TfLiteIntArray from an array of ints.  The first element in the
 // supplied array must be the size of the array expressed as an int.
+TfLiteIntArray* IntArrayFromInts(int* int_array);
+
+#if !defined(TF_LITE_STATIC_MEMORY)
+// This is a deprecated API that is using a const_cast for the implementation.
+// It is only enabled for the non-TF_LITE_STATIC_MEMORY builds to give more time
+// to change those over to the overloaded function.
+// TODO(b/188459715): Remove this function once all internal dependencies are
+// switched over to the overloaded function.
 TfLiteIntArray* IntArrayFromInts(const int* int_array);
+#endif
 
 // Create a TfLiteFloatArray from an array of floats.  The first element in the
 // supplied array must be the size of the array expressed as a float.

@@ -3658,9 +3658,19 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
     const HloComputation* entry = module->entry_computation();
     TF_RET_CHECK(entry->root_instruction()->has_sharding());
     const HloSharding& root_sharding = entry->root_instruction()->sharding();
-    TF_RET_CHECK(root_sharding.IsReplicated() ||
-                 root_sharding.UniqueDevice().has_value())
-        << "Unsupported entry root sharding: " << root_sharding.ToString();
+    if (!root_sharding.UniqueDevice().has_value()) {
+      if (root_sharding.IsTuple()) {
+        TF_RET_CHECK(absl::c_all_of(root_sharding.tuple_elements(),
+                                    [](const HloSharding& s) {
+                                      return s.IsReplicated() || s.IsManual();
+                                    }))
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+
+      } else {
+        TF_RET_CHECK(root_sharding.IsReplicated() || root_sharding.IsManual())
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+      }
+    }
 
     for (const HloInstruction* param : entry->parameter_instructions()) {
       TF_RET_CHECK(param->has_sharding());
@@ -3816,6 +3826,24 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
           rotate_lhs->set_metadata(hlo->metadata());
           rotate_lhs->set_sharding(hlo->sharding());
 
+          auto apply_modifiers =
+              [&](HloInstruction* inst,
+                  const std::vector<const HloInstruction*>& modifiers) {
+                // Apply the modifiers in the reverse order.
+                for (auto it = modifiers.crbegin(), end = modifiers.crend();
+                     it != end; ++it) {
+                  const HloInstruction* modifier = *it;
+                  // New shape has same element type as the modifier, but dims
+                  // as inst.
+                  Shape new_shape = ShapeUtil::ChangeElementType(
+                      inst->shape(), modifier->shape().element_type());
+                  inst = computation->AddInstruction(
+                      modifier->CloneWithNewOperands(new_shape, {inst}));
+                }
+                return inst;
+              };
+          rotate_lhs = apply_modifiers(rotate_lhs, pad_pattern->lhs_modifiers);
+
           // Step 3: rotate the padded value so that the rhs slice aligns to
           // high of the padded size.
           //  padded_operand = low_pad | mid | high_pad.
@@ -3830,6 +3858,7 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
                                                        rotate_rhs_amount));
           rotate_rhs->set_metadata(hlo->metadata());
           rotate_rhs->set_sharding(hlo->sharding());
+          rotate_rhs = apply_modifiers(rotate_rhs, pad_pattern->rhs_modifiers);
 
           // Now merge the 3 results using appropriate selects.
           const Shape iota_shape =

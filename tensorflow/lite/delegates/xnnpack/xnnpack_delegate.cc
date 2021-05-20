@@ -184,12 +184,16 @@ class Subgraph {
           // All other operators: process all inputs
           for (int k = 0; k < node->inputs->size; k++) {
             const int t = node->inputs->data[k];
-            tensors[t] = t;
+            if (t >= 0) {
+              tensors[t] = t;
+            }
           }
       }
       for (int k = 0; k < node->outputs->size; k++) {
         const int t = node->outputs->data[k];
-        tensors[t] = t;
+        if (t >= 0) {
+          tensors[t] = t;
+        }
       }
     }
     // Filter out and remove -1 (unused) indexes.

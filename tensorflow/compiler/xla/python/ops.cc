@@ -183,13 +183,14 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("operand"), py::arg("update"), py::arg("start_indices"));
   ops.def(
       "Eigh",
-      [](XlaOp a, bool lower, int64 max_iter,
-         float epsilon) -> std::pair<XlaOp, XlaOp> {
-        auto eigh = SelfAdjointEig(a, lower, max_iter, epsilon);
+      [](XlaOp a, bool lower, int64 max_iter, float epsilon,
+         bool sort_eigenvalues) -> std::pair<XlaOp, XlaOp> {
+        auto eigh =
+            SelfAdjointEig(a, lower, max_iter, epsilon, sort_eigenvalues);
         return std::make_pair(eigh.v, eigh.w);
       },
-      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 100,
-      py::arg("epsilon") = 1e-6);
+      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 15,
+      py::arg("epsilon") = 1e-5, py::arg("sort_eigenvalues") = true);
   ops.def("Fft", &Fft, py::arg("operand"), py::arg("fft_type"),
           py::arg("fft_length"));
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),

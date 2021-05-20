@@ -3260,8 +3260,7 @@ absl::Status BuildFinalModel(
       BuildModel(context, delegate_params, graph, quant_conversion_map));
 
   // Apply general transformations on the graph.
-  NullTransformationReporter reporter;
-  ModelTransformer transformer(graph, &reporter);
+  ModelTransformer transformer(graph);
   if (!ApplyModelTransformations(&transformer)) {
     return absl::InternalError("Graph transformations failed");
   }

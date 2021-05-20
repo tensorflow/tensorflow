@@ -141,7 +141,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           // Add the no_alias attribute to the corresponding pointer.
           kernel.setArgAttr(kernel_p + 1,
                             LLVM::LLVMDialect::getNoAliasAttrName(),
-                            b.getBoolAttr(true));
+                            b.getUnitAttr());
         }
         // Advance base, aligned, offset, strides and sizes many arguments.
         kernel_p += memref.getRank() * 2 + 3;

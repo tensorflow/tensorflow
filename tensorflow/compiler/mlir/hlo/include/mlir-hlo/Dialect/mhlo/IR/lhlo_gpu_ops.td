@@ -44,8 +44,13 @@ def I32Buffer : MemRefOf<[I32]>;
 // calls generate or consume standard deviation, whereas LHLO ops generate or
 // consume variance (= std-dev ^ 2).
 
-def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad">,
-    BASE_HLO_BatchNormGradOp {
+def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad"> {
+  let summary = "Batch Normalization Gradient";
+  let description = [{
+    Calculates gradients of batch norm.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormgrad
+  }];
   let arguments = (ins
     Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
     Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
@@ -60,8 +65,13 @@ def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad">,
   );
 }
 
-def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference">,
-    BASE_HLO_BatchNormInferenceOp {
+def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference"> {
+  let summary = "Batch Normalization for Inference";
+  let description = [{
+    Normalizes an array across batch and spatial dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnorminference
+  }];
   let arguments = (ins
     Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
     Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
@@ -73,8 +83,13 @@ def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference">,
     I64Attr:$feature_index);
 }
 
-def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training">,
-    BASE_HLO_BatchNormTrainingOp {
+def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training"> {
+  let summary = "Batch Normalization for Training";
+  let description = [{
+    Normalizes an array across batch and spatial dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormtraining
+  }];
 
   let arguments = (ins
     Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,

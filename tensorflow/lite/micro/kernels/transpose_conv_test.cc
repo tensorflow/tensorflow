@@ -27,22 +27,22 @@ namespace {
 
 // Common inputs and outputs.
 constexpr int kInputElements = 32;
-static const int kInputShape[] = {4, 1, 4, 4, 2};
+static int kInputShape[] = {4, 1, 4, 4, 2};
 static const float kInputData[kInputElements] = {
     1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16,
     17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
 
 constexpr int kFilterElements = 18;
-static const int kFilterShape[] = {4, 1, 3, 3, 2};
+static int kFilterShape[] = {4, 1, 3, 3, 2};
 static const float kFilterData[kFilterElements] = {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18};
 
 constexpr int kBiasElements = 1;
-static const int kBiasShape[] = {4, 1, 1, 1, 1};
+static int kBiasShape[] = {4, 1, 1, 1, 1};
 static const float kBiasData[kBiasElements] = {0};
 
 constexpr int kOutputElements = 16;
-static const int kOutputShape[] = {4, 1, 4, 4, 1};
+static int kOutputShape[] = {4, 1, 4, 4, 1};
 static const float kGoldenData[kOutputElements] = {
     184,  412,  568,  528,  678,  1347, 1689, 1434,
     1494, 2715, 3057, 2442, 1968, 3352, 3652, 2760};
@@ -97,10 +97,9 @@ TfLiteStatus ValidateTransposeConvGoldens(TfLiteTensor* tensors,
 }
 
 TfLiteStatus TestTransposeConvFloat(
-    const int* input_dims_data, const float* input_data,
-    const int* filter_dims_data, const float* filter_data,
-    const int* bias_dims_data, const float* bias_data,
-    const int* output_dims_data, const float* expected_output_data,
+    int* input_dims_data, const float* input_data, int* filter_dims_data,
+    const float* filter_data, int* bias_dims_data, const float* bias_data,
+    int* output_dims_data, const float* expected_output_data,
     TfLiteConvParams* conv_params, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* filter_dims = IntArrayFromInts(filter_dims_data);
@@ -108,7 +107,7 @@ TfLiteStatus TestTransposeConvFloat(
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
-  const int output_shape_dims_data[] = {1, 0};
+  int output_shape_dims_data[] = {1, 0};
   int32_t* output_shape = nullptr;
   TfLiteIntArray* output_shape_dims = IntArrayFromInts(output_shape_dims_data);
 
@@ -129,12 +128,11 @@ TfLiteStatus TestTransposeConvFloat(
 }
 
 TfLiteStatus TestTransposeConvQuantized(
-    const int* input_dims_data, const float* input_data,
-    int8_t* input_quantized, float input_scale, int input_zero_point,
-    const int* filter_dims_data, const float* filter_data,
-    int8_t* filter_quantized, float filter_scale, const int* bias_dims_data,
-    const float* bias_data, int32_t* bias_quantized, float* bias_scales,
-    int* bias_zero_points, const int* output_dims_data,
+    int* input_dims_data, const float* input_data, int8_t* input_quantized,
+    float input_scale, int input_zero_point, int* filter_dims_data,
+    const float* filter_data, int8_t* filter_quantized, float filter_scale,
+    int* bias_dims_data, const float* bias_data, int32_t* bias_quantized,
+    float* bias_scales, int* bias_zero_points, int* output_dims_data,
     const float* expected_output_data, int8_t* expected_output_quantized,
     float output_scale, int output_zero_point, TfLiteConvParams* conv_params,
     int8_t* output_data) {
@@ -153,7 +151,7 @@ TfLiteStatus TestTransposeConvQuantized(
   tflite::Quantize(expected_output_data, expected_output_quantized,
                    output_dims_count, output_scale, 0);
 
-  const int output_shape_dims_data[] = {1, 0};
+  int output_shape_dims_data[] = {1, 0};
   int32_t* output_shape = nullptr;
   TfLiteIntArray* output_shape_dims = IntArrayFromInts(output_shape_dims_data);
 
@@ -237,7 +235,7 @@ TF_LITE_MICRO_TEST(InputOutputDifferentTypeIsError) {
 
   int8_t output_data[tflite::testing::kOutputElements];
 
-  const int output_shape_dims_data[] = {1, 0};
+  int output_shape_dims_data[] = {1, 0};
   int32_t* output_shape = nullptr;
   TfLiteIntArray* output_shape_dims = IntArrayFromInts(output_shape_dims_data);
 
@@ -273,7 +271,7 @@ TF_LITE_MICRO_TEST(HybridModeIsError) {
   int8_t filter_data[tflite::testing::kFilterElements] = {};
   float output_data[tflite::testing::kOutputElements];
 
-  const int output_shape_dims_data[] = {1, 0};
+  int output_shape_dims_data[] = {1, 0};
   int32_t* output_shape = nullptr;
   TfLiteIntArray* output_shape_dims = IntArrayFromInts(output_shape_dims_data);
 

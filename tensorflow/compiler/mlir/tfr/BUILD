@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "//third_party/mlir:tblgen.bzl",
-    "gentbl",
+    "gentbl_cc_library",
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -27,6 +27,8 @@ package_group(
         "//learning/brain/experimental/mlir/quantization/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
     ],
 )
 
@@ -47,16 +49,16 @@ filegroup(
     compatible_with = get_compatible_with_cloud(),
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tfr_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-op-decls",
+            ["-gen-op-decls"],
             "ir/tfr_ops.h.inc",
         ),
         (
-            "-gen-op-defs",
+            ["-gen-op-defs"],
             "ir/tfr_ops.cc.inc",
         ),
     ],

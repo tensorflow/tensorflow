@@ -89,14 +89,14 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPUClusterFormationPass());
   pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
+  // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
+  // because DecomposeResourceOpsPass uses pattern rewriter which hoists
+  // changed constants out of tf_device.Launch.
+  pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
     OpPassManager &func_pm = pm.nest<FuncOp>();
-    // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
-    // because DecomposeResourceOpsPass uses pattern rewriter which hoists
-    // changed constants out of tf_device.Launch.
-    func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
     func_pm.addPass(CreateTPUHostComputationExpansionPass());
     func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
@@ -158,6 +158,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  pm.addNestedPass<FuncOp>(
+      TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());

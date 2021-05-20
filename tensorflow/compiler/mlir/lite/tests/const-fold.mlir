@@ -815,3 +815,63 @@ func @ConstantFoldFullyConnectedCheckPrecision() -> tensor<1xf32> {
   // CHECK: %[[CST:.*]] = constant dense<2.000000e+00> : tensor<1xf32>
   // CHECK:  return %[[CST]]
 }
+
+// CHECK-LABEL: @ShapeOpI32
+func @ShapeOpI32(%arg0 : tensor<576x72xf32>) -> tensor<2xi32> {
+  %0 = "tfl.shape"(%arg0) : (tensor<576x72xf32>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+  // CHECK: %[[CST:.*]] = constant dense<[576, 72]> : tensor<2xi32>
+  // CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @ShapeOpI64
+func @ShapeOpI64(%arg0 : tensor<576x72xf32>) -> tensor<2xi64> {
+  %0 = "tfl.shape"(%arg0) : (tensor<576x72xf32>) -> tensor<2xi64>
+  return %0 : tensor<2xi64>
+  // CHECK: %[[CST:.*]] = constant dense<[576, 72]> : tensor<2xi64>
+  // CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldStridedSlice
+func @ConstFoldStridedSlice(%arg0 : tensor<15600xf32>) -> tensor<15600xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<15600> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tfl.pseudo_const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  %2 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<15600xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<15600xf32>
+  return %3 : tensor<15600xf32>
+  // CHECK:  return %arg0
+}
+
+func @ConstFoldStridedSliceMultiDims(%arg0 : tensor<10x10x10xf32>) -> tensor<10x10x10xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[10, 10, 10]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tfl.pseudo_const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<10x10x10xf32>
+  return %3 : tensor<10x10x10xf32>
+  // CHECK:  return %arg0
+}
+
+func @NotFoldStridedSlice(%arg0 : tensor<10x10x10xf32>) -> tensor<9x9x9xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[9, 9, 9]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tfl.pseudo_const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<9x9x9xf32>
+  return %3 : tensor<9x9x9xf32>
+  // CHECK: %[[STRIDED_SLICE:.*]] = "tfl.strided_slice"
+  // CHECK:  return %[[STRIDED_SLICE]]
+}
+
+func @ConstFoldPad(%arg0: tensor<15600xf32>) -> tensor<15600xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %1 = "tfl.pad"(%arg0, %0) : (tensor<15600xf32>, tensor<1x2xi32>) -> tensor<15600xf32>
+  return %1 : tensor<15600xf32>
+  // CHECK:  return %arg0
+}
+
+func @ConstFoldPadV2(%arg0: tensor<15600xf32>) -> tensor<15600xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %1 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+  %2 = "tfl.padv2"(%arg0, %0, %1) : (tensor<15600xf32>, tensor<1x2xi32>, tensor<f32>) -> tensor<15600xf32>
+  return %2 : tensor<15600xf32>
+  // CHECK:  return %arg0
+}

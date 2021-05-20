@@ -763,14 +763,19 @@ class PerChannelQuantizedTransposeConvBiasOpModel
 
 TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannelSingleChannel) {
   const std::initializer_list<float> filter_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  const std::initializer_list<int8_t> const_filter_data = {14, 28, 42,  56, 71,
+                                                           85, 99, 113, 127};
   PerChannelQuantizedTransposeConvBiasOpModel model(
       GetRegistration(), {1, 4, 4, 1},
       {TensorType_INT8, {1, 3, 3, 1}, 0, 0, 0, 0, true, {9.0 / 127}, {0}, 0},
-      {}, {TensorType_INT8, {1, 4, 4, 1}, 0, 0, 16.0 / 255, -128},
+      const_filter_data,
+      {TensorType_INT8, {1, 4, 4, 1}, 0, 0, 16.0 / 255, -128},
       {TensorType_INT8, {}, 0, 0, 2, -128}, Padding_SAME, 1, 1, GetTestType(),
       /* version */ 3);
   model.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  model.SetFilter(filter_data);
+  if (GetTestType() == TestType::kDynamic) {
+    model.SetFilter(filter_data);
+  }
   model.SetBias({1});
   model.Invoke();
 

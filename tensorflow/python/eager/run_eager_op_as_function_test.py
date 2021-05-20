@@ -18,6 +18,7 @@ import time
 from tensorflow.python.eager import benchmarks_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util import tf_inspect
@@ -98,6 +99,20 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def benchmark_tf_matmul_1000_by_1000_GPU(self):
     self._benchmark_matmul(self._m_1000_by_1000, GPU)
+
+
+class RunEagerOpAsFunctionTest(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self._m_2_by_2 = random_ops.random_uniform((2, 2))
+
+  def testMatmul(self):
+    math_ops.matmul(self._m_2_by_2, self._m_2_by_2)
+
+  def testListInputOutput(self):
+    self.skipTest("b/185403393")
+    array_ops.identity_n([self._m_2_by_2, self._m_2_by_2])
 
 
 if __name__ == "__main__":

@@ -19,8 +19,10 @@ def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
   let summary = "Legalize CHLO to HLO.";
   let constructor = "createChloLegalizeToHloPass()";
   let options = [
-    Option<"broadcast_only_", "broadcast-only", "bool",
-           /*default=*/"false", "Only lower broadcasting chlo to non-broadcasting equivalents">,
+    Option<"legalize_broadcasts_", "legalize-broadcasts", "bool",
+           /*default=*/"true", "Legalize implicit broadcasts to explicit HLO broadcasting forms">,
+    Option<"expand_compositions_", "expand-compositions", "bool",
+           /*default=*/"true", "Expands client-centric compositions to HLO primitives">,
   ];
 }
 
@@ -120,4 +122,16 @@ def MoveUpDynamicBroadcastsForFusionPass :
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";
+}
+
+/// Rank specialization passes.
+
+def RankSpecializationClusterPass
+    : Pass<"mhlo-rank-specialization-cluster", "FuncOp"> {
+  let constructor = "createRankSpecializationClusterPass()";
+}
+
+def RankSpecializationToSCFPass
+    : Pass<"mhlo-rank-specialization-to-scf", "FuncOp"> {
+  let constructor = "createRankSpecializationToSCFPass()";
 }

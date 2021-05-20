@@ -135,19 +135,17 @@ class HloRunnerInterface {
                                     ExecutionProfile* profile) = 0;
 
   // Same as above, but with Executable as input.
-  StatusOr<Literal> ExecuteWithExecutable(
-      std::unique_ptr<Executable> executable,
-      absl::Span<const Literal> arguments, ExecutionProfile* profile = nullptr);
+  StatusOr<Literal> ExecuteWithExecutable(Executable* executable,
+                                          absl::Span<const Literal> arguments,
+                                          ExecutionProfile* profile = nullptr);
 
   StatusOr<Literal> ExecuteWithExecutable(
-      std::unique_ptr<Executable> executable,
-      absl::Span<const Literal* const> arguments) {
-    return ExecuteWithExecutable(std::move(executable), arguments, nullptr);
+      Executable* executable, absl::Span<const Literal* const> arguments) {
+    return ExecuteWithExecutable(executable, arguments, nullptr);
   }
 
   virtual StatusOr<Literal> ExecuteWithExecutable(
-      std::unique_ptr<Executable> executable,
-      absl::Span<const Literal* const> arguments,
+      Executable* executable, absl::Span<const Literal* const> arguments,
       ExecutionProfile* profile) = 0;
 
   // Executes a given HLO module into a set of replicas, and returns a map

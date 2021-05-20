@@ -105,6 +105,36 @@ class IndexLookupDistributionTest(
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
 
+  # Disabled due to http://b/180614455
+  def DISABLED_test_tpu_with_multiple_oov(self, distribution):
+    vocab_data = [[
+        "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
+        "and", "fire"
+    ]]
+    vocab_dataset = dataset_ops.Dataset.from_tensors(vocab_data)
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    input_dataset = dataset_ops.Dataset.from_tensor_slices(input_array).batch(
+        2, drop_remainder=True)
+    expected_output = [[3, 4, 5, 6], [6, 5, 3, 1]]
+
+    config.set_soft_device_placement(True)
+
+    with distribution.scope():
+      input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+      layer = index_lookup.IndexLookup(
+          max_tokens=None,
+          num_oov_indices=2,
+          mask_token="",
+          oov_token="[OOV]",
+          dtype=dtypes.string)
+      layer.adapt(vocab_dataset)
+      int_data = layer(input_data)
+      model = keras.Model(inputs=input_data, outputs=int_data)
+    model.compile(loss="mse")
+    output_dataset = model.predict(input_dataset)
+    self.assertAllEqual(expected_output, output_dataset)
+
 
 if __name__ == "__main__":
   test.main()

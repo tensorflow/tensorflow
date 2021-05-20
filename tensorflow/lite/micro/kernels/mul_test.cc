@@ -25,7 +25,7 @@ namespace {
 
 const int flat_size_simple = 4;
 const float scale_simple = 0.01;
-const int dims_simple[] = {4, 1, 2, 2, 1};
+int dims_simple[] = {4, 1, 2, 2, 1};
 const float input1_simple[] = {-0.8, 0.2, 0.9, 0.7};
 const float input2_simple[] = {0.6, 0.4, 0.9, 0.8};
 const float golden_simple[] = {-0.48, 0.08, 0.81, 0.56};
@@ -34,8 +34,8 @@ const float golden_simple_relu[] = {0.0, 0.08, 0.81, 0.56};
 const int flat_size_broadcast = 6;
 const float input_scale_broadcast = 0.05f;
 const float output_scale_broadcast = 0.01f;
-const int dims_broadcast[] = {4, 1, 3, 1, 2};
-const int dims_scalar_broadcast[] = {1, 1};
+int dims_broadcast[] = {4, 1, 3, 1, 2};
+int dims_scalar_broadcast[] = {1, 1};
 const float input1_broadcast[] = {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0};
 const float input2_broadcast[] = {0.1};
 const float golden_broadcast[] = {-0.2, 0.02, 0.07, 0.08, 0.11, 0.2};
@@ -67,9 +67,9 @@ void ValidateMulGoldens(TfLiteTensor* tensors, int tensors_size,
   }
 }
 
-void TestMulFloat(const int* input1_dims_data, const float* input1_data,
-                  const int* input2_dims_data, const float* input2_data,
-                  const int* output_dims_data, const float* golden,
+void TestMulFloat(int* input1_dims_data, const float* input1_data,
+                  int* input2_dims_data, const float* input2_data,
+                  int* output_dims_data, const float* golden,
                   float* output_data, TfLiteFusedActivation activation) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
@@ -90,11 +90,11 @@ void TestMulFloat(const int* input1_dims_data, const float* input1_data,
 }
 
 template <typename T>
-void TestMulQuantized(const int* input1_dims_data, const float* input1_data,
-                      T* input1_quantized, const int* input2_dims_data,
+void TestMulQuantized(int* input1_dims_data, const float* input1_data,
+                      T* input1_quantized, int* input2_dims_data,
                       const float* input2_data, T* input2_quantized,
                       const float input_scale, const int input_zero_point,
-                      const int* output_dims_data, const float* golden,
+                      int* output_dims_data, const float* golden,
                       T* golden_quantized, const float output_scale,
                       const int output_zero_point, T* output_data,
                       TfLiteFusedActivation activation) {

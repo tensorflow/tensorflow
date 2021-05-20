@@ -21,6 +21,7 @@ import os
 import shutil
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.data.experimental.ops import io
 from tensorflow.python.data.kernel_tests import test_base
@@ -110,6 +111,20 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     io.save(dataset, self._test_dir)
     dataset_loaded = io.load(self._test_dir)
     self.assertDatasetsEqual(dataset, dataset_loaded)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRepeatAndPrefetch(self):
+    """This test reproduces github.com/tensorflow/tensorflow/issues/49165."""
+    dataset1 = dataset_ops.Dataset.from_tensor_slices(np.random.rand(16, 32))
+    io.save(dataset1, self._test_dir)
+    dataset = io.load(self._test_dir)
+    dataset = dataset.shuffle(buffer_size=16)
+    dataset = dataset.batch(16)
+    dataset = dataset.repeat()
+    dataset = dataset.prefetch(1)
+    next_element = self.getNext(dataset)
+    for _ in range(30):
+      self.evaluate(next_element())
 
 
 if __name__ == "__main__":

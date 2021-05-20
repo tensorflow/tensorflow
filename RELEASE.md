@@ -26,6 +26,14 @@
 *<ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 *<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
+* TF Core:
+    * A longstanding bug in `tf.while_loop`, which caused it to execute
+      sequentially, even when `parallel_iterations>1`, has now been fixed.
+      However, the increased parallelism may result in increased memory use.
+      Users who experience unwanted regressions should reset their
+      `while_loop`'s `parallel_iterations` value to 1, which is consistent with
+      prior behavior.
+
 ## Major Features and Improvements
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
@@ -35,10 +43,23 @@
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
+    *   Updates to Preprocessing layers API for consistency and clarity:
+        *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
+            to `None`. This matches the default masking behavior of `Hashing`
+            and `Embedding` layers. To keep existing behavior, pass
+            `mask_token=""` during layer creation.
 
 * `tf.lite`:
     *   The recommended Android NDK version for building TensorFlow Lite has
         been changed from r18b to r19c.
+* `tf.saved_model`:
+    *   SavedModels can now save custom gradients. Use the option
+        `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
+        enable this feature.
+
+*   TF Core:
+    *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
+        peak memory returned by `tf.config.experimental.get_memory_info`.
 
 ## Bug Fixes and Other Changes
 
@@ -52,10 +73,12 @@
         lower overall memory usage, and a cleaner API. It does not require
         specifying a `delete_key` and `empty_key` that cannot be inserted into
         the table.
-   *    Added support for specifying number of subdivisions in all reduce host
+    *   Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
-   *   SavedModel
+    *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
+        Hermitian tridiagonal matrix.
+    *   SavedModel
         *   Added `tf.saved_model.experimental.TrackableResource`, which allows
             the creation of custom wrapper objects for resource tensors.
         *   Added a SavedModel load option to allow restoring partial
@@ -167,9 +190,8 @@ This release contains contributions from many people at Google, as well as:
     *   `tf.distribute.experimental.ParameterServerStrategy` now supports
         training with Keras `Model.fit` when used with `DatasetCreator`.
 * PluggableDevice
-    * Third-party devices can now connect to TensorFlow
-      [modularly](https://github.com/tensorflow/community/blob/master/rfcs/20190305-modular-tensorflow.md)
-      through [StreamExecutor C API](https://github.com/tensorflow/community/blob/master/rfcs/20200612-stream-executor-c-api.md).
+    * Third-party devices can now connect to TensorFlow as plug-ins through
+      [StreamExecutor C API](https://github.com/tensorflow/community/blob/master/rfcs/20200612-stream-executor-c-api.md)
       and [PluggableDevice](https://github.com/tensorflow/community/blob/master/rfcs/20200624-pluggable-device-for-tensorflow.md) interface.
       * Add custom ops and kernels through
         [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).

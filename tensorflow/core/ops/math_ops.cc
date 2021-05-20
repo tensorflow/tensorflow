@@ -351,8 +351,8 @@ REGISTER_OP("Sign")
     .Input("x: T")
     .Output("y: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "complex64, complex128}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Floor")
@@ -560,8 +560,8 @@ REGISTER_OP("Maximum")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int8, int16, int32, int64, "
-        "uint8, uint16, uint32, uint64}")
+        "T: {bfloat16, half, float, double, int8, uint8, int16, uint16, "
+        "int32, uint32, int64, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -585,7 +585,9 @@ REGISTER_OP("Minimum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, uint8, int16, int32, int64}")
+    .Attr(
+        "T: {bfloat16, half, float, double, int8, uint8, int16, uint16, "
+        "int32, uint32, int64, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Mod")

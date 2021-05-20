@@ -196,12 +196,39 @@ TEST(DelegateDataTest, CheckFunctionDef) {
   eager_context->Unref();
 }
 
+TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
+  tensorflow::StaticDeviceMgr device_mgr(tensorflow::DeviceFactory::NewDevice(
+      "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  tensorflow::EagerContext* eager_context = new tensorflow::EagerContext(
+      tensorflow::SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /*async=*/false, &device_mgr, /*device_mgr_owned*/ false, nullptr,
+      nullptr);
+
+  auto select_subgraphs_to_register =
+      [](const std::vector<std::unique_ptr<Subgraph>>& subgraphs,
+         std::set<std::string>* result) {
+        result->insert("add_subgraph");
+        result->insert("mul_subgraph");
+        return tensorflow::Status::OK();
+      };
+
+  // Builds a TF Lite primary graph with two subgraphs.
+  subgraph_test_util::SubgraphBuilder builder;
+  std::unique_ptr<ErrorReporter> error_reporter =
+      absl::make_unique<TestErrorReporter>();
+  Subgraph main_subgraph(error_reporter.get(), /*external_contexts=*/nullptr,
+                         /*subgraphs=*/nullptr, /*resources=*/nullptr);
+  main_subgraph.SetName("main");
+  TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
+      main_subgraph, select_subgraphs_to_register,
+      eager_context->HostCPU()->resource_manager(), eager_context));
+
+  EXPECT_EQ(eager_context->GetFunctionDef("main"), nullptr);
+
+  eager_context->Unref();
+}
+
 }  // namespace
 }  // namespace flex
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -155,7 +155,9 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
   std::vector<std::unique_ptr<Subgraph>>* subgraphs =
       main_subgraph.GetSubgraphs();
   if (!subgraphs) {
-    return tensorflow::Status(tensorflow::error::INTERNAL, "subgraphs is null");
+    // If there are no subgraphs associated with the main subgraph, we will
+    // return ok status because no FunctionDef needs to be registered.
+    return tensorflow::Status::OK();
   }
   std::set<std::string> function_subgraphs;
   TF_RETURN_IF_ERROR(

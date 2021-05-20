@@ -74,7 +74,7 @@ py_library(
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/aot/tests:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/lite/toco/python:__pkg__",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python/debug/cli:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
@@ -430,6 +430,7 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_tf_session",
     deps = [
+        "//third_party/eigen3",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
@@ -655,7 +656,7 @@ py_test(
 tf_gen_op_wrapper_private_py(
     name = "debug_ops_gen",
     out = "ops/gen_debug_ops.py",
-    visibility = ["//tensorflow/python/debug:__pkg__"],
+    visibility = ["//tensorflow/python/debug/lib:__pkg__"],
     deps = ["//tensorflow/core:debug_ops_op_lib"],
 )
 
@@ -2925,6 +2926,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":client_testlib",
+        ":errors",
         ":gradients",
         ":image_ops",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -3006,7 +3008,6 @@ cuda_py_test(
         ":array_ops",
         ":client_testlib",
         ":math_ops",
-        "//tensorflow/python/debug:check_numerics_callback",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -4736,6 +4737,26 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
+        "@pybind11",
+    ],
+)
+
+py_library(
+    name = "pywrap_sanitizers",
+    srcs = ["pywrap_sanitizers.py"],
+    srcs_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_pywrap_sanitizers",
+        ":pywrap_tensorflow",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_sanitizers",
+    srcs = ["sanitizers_wrapper.cc"],
+    module_name = "_pywrap_sanitizers",
+    deps = [
         "@pybind11",
     ],
 )

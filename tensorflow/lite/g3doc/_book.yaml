@@ -32,6 +32,8 @@ upper_tabs:
       - title: "Image classification on Raspberry Pi"
         path: https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/raspberry_pi/
         status: external
+      - title: "Transfer learning for object detection"
+        path: /lite/tutorials/model_maker_object_detection
       - title: "Object Detection on Raspberry Pi"
         path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
         status: external
@@ -44,6 +46,10 @@ upper_tabs:
         path: /lite/tutorials/model_maker_text_classification
       - title: "BERT Question Answer with Model Maker"
         path: /lite/tutorials/model_maker_question_answer
+
+      - heading: "Audio"
+      - title: "Audio classification with Model Maker"
+        path: /lite/tutorials/model_maker_audio_classification
 
       - heading: "Microcontrollers"
       - title: "Gesture recognition"
@@ -127,6 +133,8 @@ upper_tabs:
           path: /lite/inference_with_metadata/task_library/bert_nl_classifier
         - title: "BertQuestionAnswerer"
           path: /lite/inference_with_metadata/task_library/bert_question_answerer
+        - title: "AudioClassifier"
+          path: /lite/inference_with_metadata/task_library/audio_classifier
         - title: "Customized API"
           path: /lite/inference_with_metadata/task_library/customized_task_api
       - title: "Customize input and output data processing"
@@ -223,6 +231,9 @@ upper_tabs:
         path: /lite/examples/smart_reply/overview
       - title: "Text classification"
         path: /lite/examples/text_classification/overview
+      - heading: "Audio"
+      - title: "Audio classification"
+        path: /lite/examples/audio_classification/overview
       - heading: "Others"
       - title: "Recommendation"
         path: /lite/examples/recommendation/overview
@@ -234,6 +245,7 @@ upper_tabs:
         path: /lite/api_docs/
       - heading: "Python"
       - include: /lite/api_docs/python/tf/lite/_toc.yaml
+      - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
       - heading: "Android (Java)"
       - include: /lite/api_docs/java/_toc.yaml
       - heading: "Swift"

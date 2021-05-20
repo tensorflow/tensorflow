@@ -518,9 +518,7 @@ func @test_addn(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: t
 // -----
 
 // CHECK-LABEL: test_concatv2
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.concat"(%arg0, %arg1) {axis = 0 : i64}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.concat"(%[[VAR0]], %arg2) {axis = 0 : i64}
-// CHECK: %[[VAR2:.*]] = "tosa.concat"(%[[VAR1]], %arg3) {axis = 0 : i64}
+// CHECK: %[[VAR0:.*]] = "tosa.concat"(%arg0, %arg1, %arg2, %arg3) {axis = 0 : i64}
 func @test_concatv2(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>, %arg3: tensor<13x21x3xf32>) -> tensor<52x21x3xf32> {
   %2 = "tf.Const"()  {value = dense<0> : tensor<i32>}  : () -> tensor<i32>
   %3 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %arg3, %2)   : (tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<i32>) -> tensor<52x21x3xf32>
@@ -530,10 +528,8 @@ func @test_concatv2(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg
 // -----
 
 // CHECK-LABEL: test_stack
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.concat"(%arg0, %arg1) {axis = 0 : i64}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.concat"(%[[VAR0]], %arg2) {axis = 0 : i64}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.concat"(%[[VAR1]], %arg3) {axis = 0 : i64}
-// CHECK: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [4, 13, 21, 3]}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.concat"(%arg0, %arg1, %arg2, %arg3) {axis = 0 : i64}
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [4, 13, 21, 3]}
 func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>, %arg3: tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32> {
   %2 = "tf.Pack"(%arg0, %arg1, %arg2, %arg3)  {axis = 0 : i64}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32>
   return %2 : tensor<4x13x21x3xf32>
@@ -543,8 +539,7 @@ func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: 
 
 // CHECK-LABEL: test_unstack
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [1, 32, 32, 8], start = [0, 0, 0, 0]}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [32, 32, 8]}
-// CHECK: %[[VAR2:.*]] = "tosa.identityn"(%[[VAR1]])
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [32, 32, 8]}
 func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
   %2 = "tf.Unpack"(%arg0)  {axis = 0 : i64}  : (tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32>
   %3 = "tf.Identity"(%2)   : (tensor<32x32x8xf32>) -> tensor<32x32x8xf32>
@@ -672,8 +667,7 @@ func @test_add_1d(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> ten
 // CHECK-LABEL: test_split
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 0, 0]}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 7, 0]}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 14, 0]}
-// CHECK: %[[VAR3:.*]] = "tosa.identityn"(%[[VAR0]], %[[VAR1]], %[[VAR2]])
+// CHECK: %[[VAR2:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 14, 0]}
 func @test_split(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>) {
   %6 = "tf.Const"()  {value = dense<1> : tensor<i32>}  : () -> tensor<i32>
   %7:3 = "tf.Split"(%6, %arg0)   : (tensor<i32>, tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>)

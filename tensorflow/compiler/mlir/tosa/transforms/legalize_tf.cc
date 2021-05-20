@@ -1232,8 +1232,9 @@ LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_softmax_op = cast<TF::SoftmaxOp>(op);
 
-  llvm::Optional<Value> result = convertSoftmaxOp(
-      rewriter, op, tf_softmax_op.getResult(), tf_softmax_op.logits());
+  llvm::Optional<Value> result =
+      convertSoftmaxOp(rewriter, op, tf_softmax_op.getResult(),
+                       tf_softmax_op.logits(), /*beta=*/1.0);
 
   if (!result) return failure();
 
@@ -1500,12 +1501,9 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
 
   assert(inputs.size() >= 2);
 
-  IntegerAttr axis_attr;
-  {
-    auto tmpAttr = tf_pack_op.axisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
-    axis_attr = tmpAttr;
-  }
+  IntegerAttr axis_attr = tf_pack_op.axisAttr();
+  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+
   int32_t axis_i32 = axis_attr.getInt();
 
   llvm::Optional<Value> result =
@@ -1530,7 +1528,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertUnpackOp(rewriter, op, tf_unpack_op.value(), axis_i32);
 
   if (!results) return failure();
@@ -1558,7 +1556,7 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
     axis = axisAttrElems.getValue<IntegerAttr>({}).getInt();
   }
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertSplitOp(rewriter, op, tf_split_op.getResult(0),
                      tf_split_op.value(), num_split, axis);
 
@@ -1594,7 +1592,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
 
   int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertSplitVOp(rewriter, op, tf_splitv_op.getResult(0),
                       tf_splitv_op.value(), size_split, axis);
 

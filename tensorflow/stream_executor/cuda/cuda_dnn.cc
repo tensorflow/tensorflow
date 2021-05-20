@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
@@ -571,14 +572,17 @@ class CudnnTensorDescriptor {
         CHECK_CUDNN_OK(cudnnSetTensorNdDescriptor(handle_.get(), elem_type, nd,
                                                   dims.data(), strides.data()))
             << "batch_descriptor: " << batch_descriptor.ToString();
-      } break;
-      case dnn::DataLayout::kBatchDepthYX4: {
+        break;
+      }
+      case dnn::DataLayout::kBatchDepthYX4:
+        // TODO(b/188571332): Support int8x32.
+        CHECK_EQ(elem_type, CUDNN_DATA_INT8x4);
         CHECK_CUDNN_OK(cudnnSetTensor4dDescriptor(
             handle_.get(), CUDNN_TENSOR_NCHW_VECT_C, elem_type,
             batch_descriptor.count(), batch_descriptor.feature_map_count(),
             batch_descriptor.height(), batch_descriptor.width()))
             << "batch_descriptor: " << batch_descriptor.ToString();
-      } break;
+        break;
       default:
         LOG(FATAL) << "Unsupported tensor format "
                    << DataLayoutString(batch_descriptor.layout());
@@ -945,6 +949,7 @@ cudnnDataType_t ToCudnnDataType(
     case dnn::DataType::kHalf:
       return CUDNN_DATA_HALF;
     case dnn::DataType::kInt8:
+      // TODO(jlebar): Support CUDNN_DATA_INT8x32.
       return data_layout == dnn::DataLayout::kBatchDepthYX4 ? CUDNN_DATA_INT8x4
                                                             : CUDNN_DATA_INT8;
     case dnn::DataType::kInt32:
@@ -958,6 +963,7 @@ cudnnDataType_t ToCudnnDataType(dnn::DataType data_type,
                                 dnn::FilterLayout filter_layout) {
   if (data_type == dnn::DataType::kInt8 &&
       filter_layout == dnn::FilterLayout::kOutputInputYX4) {
+    // TODO(jlebar): Support CUDNN_DATA_INT8x32.
     return CUDNN_DATA_INT8x4;
   }
   return ToCudnnDataType(data_type);
@@ -1775,7 +1781,6 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
 port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
-    const cudnnActivationDescriptor_t& activation_desc,
     const CudnnTensorDescriptor& x_descriptor,
     const CudnnTensorDescriptor& scale_offset_descriptor,
     ScratchAllocator* workspace_allocator) {
@@ -1786,11 +1791,10 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
       /*xDesc=*/x_descriptor.handle(),
       /*yDesc=*/x_descriptor.handle(),
       /*dyDesc=*/x_descriptor.handle(),
-      /*dzDesc=*/x_descriptor.handle(),
+      /*dzDesc=*/nullptr,
       /*dxDesc=*/x_descriptor.handle(),
       /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
-      /*activationDesc=*/activation_desc,
-      /*sizeInBytes=*/&workspace_size_in_bytes));
+      /*activationDesc=*/nullptr, /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
@@ -4810,57 +4814,48 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
 bool CudnnSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<float>& y_backprop,
     const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-    const DeviceMemory<float>& inv_var, const DeviceMemory<float>& y,
+    const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
-    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-    DeviceMemory<float>* side_input_backprop,
+    DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
+    DeviceMemory<float>* offset_backprop,
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
-  return IsStatusOk(
-      DoBatchNormalizationBackwardImpl(
-          stream, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, y_backprop, x, scale,
-          offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
-          activation_mode, x_backprop, scale_backprop, offset_backprop,
-          side_input_backprop, reserve_space_data, workspace_allocator),
-      /*report_error=*/true);
+  return IsStatusOk(DoBatchNormalizationBackwardImpl(
+                        stream, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, y_backprop,
+                        x, scale, mean, inv_var, x_desc, scale_offset_desc,
+                        epsilon, x_backprop, scale_backprop, offset_backprop,
+                        reserve_space_data, workspace_allocator),
+                    /*report_error=*/true);
 }
 
 bool CudnnSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
     const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::half>& y,
+    const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* x_backprop,
-    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-    DeviceMemory<Eigen::half>* side_input_backprop,
+    DeviceMemory<Eigen::half>* x_backprop, DeviceMemory<float>* scale_backprop,
+    DeviceMemory<float>* offset_backprop,
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
-  return IsStatusOk(
-      DoBatchNormalizationBackwardImpl(
-          stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop, x, scale,
-          offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
-          activation_mode, x_backprop, scale_backprop, offset_backprop,
-          side_input_backprop, reserve_space_data, workspace_allocator),
-      /*report_error=*/true);
+  return IsStatusOk(DoBatchNormalizationBackwardImpl(
+                        stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop,
+                        x, scale, mean, inv_var, x_desc, scale_offset_desc,
+                        epsilon, x_backprop, scale_backprop, offset_backprop,
+                        reserve_space_data, workspace_allocator),
+                    /*report_error=*/true);
 }
 
 template <class T, class U>
 port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
     Stream* stream, int cudnn_input_type, int cudnn_scale_type,
     const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
-    const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
-    const DeviceMemory<U>& mean, const DeviceMemory<U>& inv_var,
-    const DeviceMemory<T>& y, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
+    const DeviceMemory<U>& inv_var, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<T>* x_backprop,
-    DeviceMemory<U>* scale_backprop, DeviceMemory<U>* offset_backprop,
-    DeviceMemory<T>* side_input_backprop,
-    DeviceMemory<uint8>* reserve_space_data,
+    DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
+    DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   CudnnTensorDescriptor x_descriptor(
       x_desc, static_cast<cudnnDataType_t>(cudnn_input_type));
@@ -4879,27 +4874,11 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 #if CUDNN_VERSION >= 7402
   if (reserve_space_data != nullptr && workspace_allocator != nullptr) {
     called = true;
-    const auto get_bn_ops = [&]() -> cudnnBatchNormOps_t {
-      if (side_input_backprop->is_null()) {
-        return activation_mode == dnn::ActivationMode::kNone
-                   ? CUDNN_BATCHNORM_OPS_BN
-                   : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
-      } else {
-        return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
-      }
-    };
-    const cudnnBatchNormOps_t bn_ops = get_bn_ops();
-
-    // We use Nan propagation to be consistent with
-    // CudnnSupport::DoActivate(...).
-    CudnnActivationDescriptor activation_desc(
-        activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
-
-    SE_ASSIGN_OR_RETURN(
-        DeviceMemory<uint8> workspace,
-        CreateBatchNormBackwardWorkspace(
-            stream, cudnn, mode, bn_ops, activation_desc.handle(), x_descriptor,
-            scale_offset_descriptor, workspace_allocator))
+    const cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
+    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
+                        CreateBatchNormBackwardWorkspace(
+                            stream, cudnn, mode, bn_ops, x_descriptor,
+                            scale_offset_descriptor, workspace_allocator))
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackwardEx(
         /*handle=*/cudnn.handle(),
         /*mode=*/mode,
@@ -4910,44 +4889,30 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
         /*betaParamDiff=*/&zero,
         /*xDesc=*/x_descriptor.handle(),
         /*xData=*/x.opaque(),
-        /*yDesc=*/x_descriptor.handle(),
-        /*yData=*/y.opaque(),
+        /*yDesc=*/nullptr,
+        /*yData=*/nullptr,
         /*dyDesc=*/x_descriptor.handle(),
         /*dyData=*/y_backprop.opaque(),
-        /*dzDesc=*/x_descriptor.handle(),
-        /*dzData=*/side_input_backprop->opaque(),
+        /*dzDesc=*/nullptr,
+        /*dzData=*/nullptr,
         /*dxDesc=*/x_descriptor.handle(),
         /*dxData=*/x_backprop->opaque(),
         /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
         /*bnScaleData=*/scale.opaque(),
-        /*bnBiasData=*/offset.opaque(),
+        /*bnBiasData=*/nullptr,
         /*dBnScaleData=*/scale_backprop->opaque(),
         /*dBnBiasData=*/offset_backprop->opaque(),
         /*epsilon=*/epsilon,
         /*savedMean=*/mean.opaque(),
         /*savedInvVariance=*/inv_var.opaque(),
-        /*activationDesc=*/activation_desc.handle(),
+        /*activationDesc=*/nullptr,
         /*workspace=*/workspace.opaque(),
         /*workSpaceSizeInBytes=*/workspace.size(),
         /*reserveSpace=*/reserve_space_data->opaque(),
         /*reserveSpaceSizeInBytes=*/reserve_space_data->size()));
   }
 #endif
-  auto check_no_side_input_or_activation = [&]() -> port::Status {
-    if (activation_mode != dnn::ActivationMode::kNone ||
-        !side_input_backprop->is_null()) {
-      return port::Status(
-          port::error::INTERNAL,
-          absl::StrCat(
-              "Side input and activation are not supported by cuDNN version: ",
-              CUDNN_VERSION));
-    } else {
-      return port::Status::OK();
-    }
-  };
-
   if (!called) {
-    SE_RETURN_IF_ERROR(check_no_side_input_or_activation());
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackward(
         cudnn.handle(), mode, &one, &zero, &one, &zero, x_descriptor.handle(),
         x.opaque(), x_descriptor.handle(), y_backprop.opaque(),
@@ -5354,14 +5319,16 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     // output=weights*input. So we only need to swap the order of
     // weights and input in the matrix product to correct for the
     // row-major versus column-major difference.
-    const float alpha = 1.0f;  // Take the matrix product without scaling it.
-    const float beta = 0.0f;   // Ignore the original values in output_data.
     const int64 m = output_dimensions.NodesAcrossFeatureMaps();
     const int64 n = input_dimensions.count();
     const int64 k = input_dimensions.NodesAcrossFeatureMaps();
-    stream->ThenBlasGemm(blas::Transpose::kNoTranspose,
-                         blas::Transpose::kNoTranspose, m, n, k, alpha, weights,
-                         m, input_data, k, beta, output_data, m);
+    if (!stream
+             ->ThenBlasGemm(blas::Transpose::kNoTranspose,
+                            blas::Transpose::kNoTranspose, m, n, k, weights, m,
+                            input_data, k, output_data, m)
+             .ok()) {
+      return false;
+    }
   } else {
     // This is a slower and more complex path that supports output
     // width() * height() > 1, though it only supports the

@@ -536,6 +536,9 @@ class HloDynamicBroadcastInDimConverter
     Value shape = adaptor.output_dimensions();
     auto shape_type = shape.getType().cast<RankedTensorType>();
     int64_t result_rank = shape_type.getDimSize(0);
+    // HLO dimension types can be any integer, as well as index.
+    bool convert_to_index =
+        shape_type.getElementType() != rewriter.getIndexType();
 
     auto result_type = op.getType().dyn_cast<RankedTensorType>();
     if (!result_type) return failure();
@@ -545,7 +548,11 @@ class HloDynamicBroadcastInDimConverter
     for (int i = 0; i < result_rank; ++i) {
       if (!result_type.isDynamicDim(i)) continue;
       Value index = rewriter.create<ConstantIndexOp>(loc, i);
-      dyn_dims.push_back(rewriter.create<tensor::ExtractOp>(loc, shape, index));
+      Value dim = rewriter.create<tensor::ExtractOp>(loc, shape, index);
+      if (convert_to_index) {
+        dim = rewriter.create<IndexCastOp>(loc, rewriter.getIndexType(), dim);
+      }
+      dyn_dims.push_back(dim);
     }
 
     int64_t nloops = result_type.getRank();
@@ -781,6 +788,9 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
 
     if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
       return failure();
+
+    result_type = this->typeConverter->convertType(result_type)
+                      .template cast<ShapedType>();
 
     // Compute the reassociation maps for the linalg operation.
     ArrayRef<int64_t> src_shape =
@@ -2351,7 +2361,8 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    ReduceRegionXLAOpConversion<mhlo::OrOp>,
                    ReduceRegionXLAOpConversion<mhlo::SelectOp>,
                    ReduceRegionXLAOpConversion<mhlo::CompareOp>,
-                   ReduceRegionReturnOpConversion>(context);
+                   ReduceRegionReturnOpConversion>(context,
+                                                   PatternBenefit(1000));
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {

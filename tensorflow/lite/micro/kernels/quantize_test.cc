@@ -51,8 +51,8 @@ void ValidateQuantizeGoldens(TfLiteTensor* tensors, int tensors_size,
 
 #if !defined(XTENSA)
 template <typename T>
-void TestQuantizeFloat(const int* input_dims_data, const float* input_data,
-                       const int* output_dims_data, const float* golden,
+void TestQuantizeFloat(int* input_dims_data, const float* input_data,
+                       int* output_dims_data, const float* golden,
                        T* golden_quantized, const float scale,
                        const int zero_point, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -82,9 +82,9 @@ void TestQuantizeFloat(const int* input_dims_data, const float* input_data,
 #endif  // defined(XTENSA)
 
 template <typename InputType, typename OutputType>
-void TestRequantize(const int* input_dims_data, const float* input_data,
+void TestRequantize(int* input_dims_data, const float* input_data,
                     InputType* input_quantized, const float input_scale,
-                    const int input_zero_point, const int* output_dims_data,
+                    const int input_zero_point, int* output_dims_data,
                     const float* golden, OutputType* golden_quantized,
                     const float output_scale, const int output_zero_point,
                     OutputType* output_data) {
@@ -124,7 +124,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 #if !defined(XTENSA)
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-63.5, -63,  -62.5, -62,  -61.5,
                           62,    62.5, 63,    63.5, 64};
   const float scale = 0.5;
@@ -137,7 +137,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16) {
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16NoScale) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-128, -127, -126, -125, -124,
                           123,  124,  125,  126,  127};
   const float scale = 1.0;
@@ -150,7 +150,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16NoScale) {
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt16) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-64, -62, -60, -58, -56, 54, 56, 58, 60, 62};
   const float input_scale = 2.f;
   const int input_zero_point = 0;
@@ -167,7 +167,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt16) {
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt16NoZeroPoint) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
   const float input_scale = 1.f;
   const int input_zero_point = 0;
@@ -184,7 +184,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt16NoZeroPoint) {
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-64, -62, -60, -58, -56, 54, 56, 58, 60, 62};
   const float input_scale = 2.f;
   const int input_zero_point = 0;
@@ -201,7 +201,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8) {
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8NoZeroPoint) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
   const float input_scale = 1.f;
   const int input_zero_point = 0;
@@ -222,7 +222,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8NoZeroPoint) {
 // smaller then output scale.
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-64, -62, -60, -58, -56, 54, 56, 58, 60, 62};
   const float input_scale = 2.f;
   const int input_zero_point = 0;
@@ -240,7 +240,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt32) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
   const float input_scale = 1.f;
   const int input_zero_point = 0;
@@ -257,7 +257,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt32) {
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt32) {
   const int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
   const float input_scale = 1.f;
   const int input_zero_point = 0;
@@ -274,7 +274,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt32) {
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
   constexpr int length = 10;
-  const int dims[] = {2, 2, 5};
+  int dims[] = {2, 2, 5};
   const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
   // TODO(b/155682734): Input scale must be smaller than output scale for
   // xtensa.

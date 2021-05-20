@@ -22,6 +22,7 @@ import itertools
 
 from absl.testing import parameterized
 import numpy as np
+import scipy.linalg
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -33,13 +34,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
-
-
-def _AddTest(test_class, op_name, testcase_name, fn):
-  test_name = "_".join(["test", op_name, testcase_name])
-  if hasattr(test_class, test_name):
-    raise RuntimeError("Test %s defined more than once" % test_name)
-  setattr(test_class, test_name, fn)
 
 
 def _RandomPDMatrix(n, rng, dtype=np.float64):
@@ -560,6 +554,102 @@ class LUSolveStatic(test.TestCase, _LUSolve):
 @test_util.run_all_in_graph_and_eager_modes
 class LUSolveDynamic(test.TestCase, _LUSolve):
   use_static_shape = False
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class EighTridiagonalTest(test.TestCase):
+
+  def run_test(self, alpha, beta):
+    n = alpha.shape[0]
+    # scipy.linalg.eigh_tridiagonal doesn't support complex inputs, so for
+    # this we call the slower numpy.linalg.eigh.
+    if np.issubdtype(alpha.dtype, np.complexfloating):
+      tridiagonal = np.diag(alpha) + np.diag(beta, 1) + np.diag(
+          np.conj(beta), -1)
+      eigvals_expected, _ = np.linalg.eigh(tridiagonal)
+    else:
+      eigvals_expected = scipy.linalg.eigh_tridiagonal(
+          alpha, beta, eigvals_only=True)
+    eigvals = linalg.eigh_tridiagonal(alpha, beta)
+    eps = np.finfo(alpha.dtype).eps
+    atol = 2 * n * eps * np.amax(np.abs(eigvals_expected))
+    self.assertAllClose(eigvals_expected, eigvals, atol=atol)
+
+  def run_small_tests(self, dtype):
+    for n in [1, 2, 3]:
+      alpha = np.ones([n], dtype=dtype)
+      beta = np.ones([n - 1], dtype=dtype)
+      if np.issubdtype(alpha.dtype, np.complexfloating):
+        beta += 1j * beta
+      self.run_test(alpha, beta)
+
+  def run_toeplitz_tests(self, dtype):
+    n = 8
+    for a, b in [[2, -1], [1, 0], [0, 1], [-1e10, 1e10], [-1e-10, 1e-10]]:
+      alpha = a * np.ones([n], dtype=dtype)
+      beta = b * np.ones([n - 1], dtype=dtype)
+      if np.issubdtype(alpha.dtype, np.complexfloating):
+        beta += 1j * beta
+      self.run_test(alpha, beta)
+
+  def run_random_uniform_tests(self, dtype):
+    for n in [8, 50]:
+      alpha = np.random.uniform(size=(n,)).astype(dtype)
+      beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+      if np.issubdtype(alpha.dtype, np.complexfloating):
+        beta += 1j * beta
+      self.run_test(alpha, beta)
+
+  def test_select(self):
+    dtype = np.float32
+    n = 4
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    eigvals_all = linalg.eigh_tridiagonal(alpha, beta, select="a")
+    eps = np.finfo(alpha.dtype).eps
+    atol = 2 * n * eps
+    for first in range(n - 1):
+      for last in range(first + 1, n - 1):
+        # Check that we get the expected eigenvalues by selecting by
+        # index range.
+        eigvals_index = linalg.eigh_tridiagonal(
+            alpha, beta, select="i", select_range=(first, last))
+        self.assertAllClose(
+            eigvals_all[first:(last + 1)], eigvals_index, atol=atol)
+
+        # Check that we get the expected eigenvalues by selecting by
+        # value range.
+        eigvals_value = linalg.eigh_tridiagonal(
+            alpha,
+            beta,
+            select="v",
+            select_range=(eigvals_all[first], eigvals_all[last]))
+        self.assertAllClose(
+            eigvals_all[first:(last + 1)], eigvals_value, atol=atol)
+
+  def test_float32(self):
+    dtype = np.float32
+    self.run_small_tests(dtype)
+    self.run_toeplitz_tests(dtype)
+    self.run_random_uniform_tests(dtype)
+
+  def test_float64(self):
+    dtype = np.float64
+    self.run_small_tests(dtype)
+    self.run_toeplitz_tests(dtype)
+    self.run_random_uniform_tests(dtype)
+
+  def test_complex64(self):
+    dtype = np.complex64
+    self.run_small_tests(dtype)
+    self.run_toeplitz_tests(dtype)
+    self.run_random_uniform_tests(dtype)
+
+  def test_complex128(self):
+    dtype = np.complex128
+    self.run_small_tests(dtype)
+    self.run_toeplitz_tests(dtype)
+    self.run_random_uniform_tests(dtype)
 
 
 if __name__ == "__main__":

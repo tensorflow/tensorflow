@@ -532,6 +532,62 @@ struct FuseAddAndFullyConnected
   }
 };
 
+// Replace ..
+// FC(Mul(lhs, rhs), filter, bias)
+// .. with ..
+// FC(lhs, Mul(filter, rhs), bias)
+// .. if rhs, filter, and bias are all constants.
+// The generated Mul will be constant folded to a single matrix.
+struct FuseMulAndFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc_op,
+                                PatternRewriter &rewriter) const override {
+    // This only works with default format.
+    if (fc_op.weights_format() != "DEFAULT") return failure();
+
+    // Match Mul.
+    auto mul_op = dyn_cast_or_null<TFL::MulOp>(fc_op.input().getDefiningOp());
+    if (!mul_op) return failure();
+    if (mul_op.fused_activation_function() != "NONE") return failure();
+
+    // Don't match muls where the multiplier constant is not 1D.
+    {
+      auto multiplier_shape = mul_op.rhs().getType().cast<ShapedType>();
+      if (!multiplier_shape.hasStaticShape()) return failure();
+      if (multiplier_shape.getShape().size() != 1) return failure();
+    }
+
+    // We rely on constant folding, implemented only for F32. Check types.
+    if (!IsF32Value(mul_op.rhs()) || !IsF32Value(fc_op.filter())) {
+      return failure();
+    }
+
+    auto location =
+        FusedLoc::get(mul_op.getContext(), {mul_op.getLoc(), fc_op.getLoc()});
+
+    auto new_filter = rewriter.create<TFL::MulOp>(
+        location,
+        /*lhs=*/fc_op.filter(),
+        /*rhs=*/mul_op.rhs(),
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+    // Create the updated FC.
+    auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
+        location, fc_op.output().getTypes(),
+        /*input=*/mul_op.lhs(),
+        /*filter=*/new_filter,
+        /*bias=*/fc_op.bias(),
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(fc_op.fused_activation_function()),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+    rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
+
+    return success();
+  }
+};
+
 // TODO(b/136285429): Move to tablegen when variadic is supported.
 template <typename ReluXOp, char const *Act>
 struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
@@ -808,7 +864,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // dimension of the weight.
       SmallVector<APFloat, 4> new_bias_values;
       if (bias.getType().isa<NoneType>()) {  // none bias, a list of zeros
-        new_bias_values.resize(bias_size, APFloat(0.0));
+        new_bias_values.resize(bias_size,
+                               APFloat::getZero(cst_value.getSemantics()));
       } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
         new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
       } else if (bias_cst.getNumElements() == bias_size) {  // 1-d bias, copy it
@@ -1276,10 +1333,10 @@ void OptimizePass::runOnFunction() {
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+                  FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
-                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-                  FuseFullyConnectedAndMul>(ctx);
+                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
   if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
@@ -1290,11 +1347,11 @@ void OptimizePass::runOnFunction() {
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
       ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
       FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
       FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-      FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
-      FuseBinaryOpToFollowingDepthwiseConv2D,
+      FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,

@@ -115,18 +115,18 @@ class XlaExpression {
   // constant, returns the value as a host-memory Tensor. Returns an empty
   // optional if it cannot be resolved. Returns an error if passed a resource
   // expression.
-  xla::StatusOr<absl::optional<Tensor>> ResolveConstant(
+  StatusOr<absl::optional<Tensor>> ResolveConstant(
       xla::Client* client, bool dynamic_dimension_is_minus_one = false,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue) const;
 
   // ResolveDynamism computes where a value inside this op is dynamic or can be
   // inferred at compile time.
-  xla::StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
+  StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
 
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),
   // not the shape of the resource's value.
-  xla::StatusOr<TensorShape> GetShape() const;
+  StatusOr<TensorShape> GetShape() const;
 
   // Retrieves an XlaExpression that was allocated by a previous Op.
   static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);

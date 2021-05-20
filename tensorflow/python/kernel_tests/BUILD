@@ -2051,7 +2051,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    # TODO(b/153089059): TFRT: Add support for complex128.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2188,6 +2187,7 @@ cuda_py_test(
     name = "linalg_ops_test",
     size = "medium",
     srcs = ["linalg_ops_test.py"],
+    shard_count = 8,
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python:array_ops",

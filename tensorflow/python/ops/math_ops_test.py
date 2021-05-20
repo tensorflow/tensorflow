@@ -229,6 +229,84 @@ class RoundTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class MatMulTest(test_util.TensorFlowTestCase):
+  """Test for matmul."""
+
+  SUPPORTED_DTYPES = [
+      dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+      dtypes.int64, dtypes.bfloat16, dtypes.complex64, dtypes.complex128
+  ]
+
+  def testMatMul2D(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      a = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+      b = constant_op.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=dtype)
+      c = math_ops.matmul(a, b)
+      c_np = constant_op.constant([[58, 64], [139, 154]],
+                                  shape=(2, 2),
+                                  dtype=dtype)
+      self.assertAllClose(c, c_np, atol=1e-2)
+
+  def testBatchMatMul(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      a = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=dtype)
+      b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=dtype)
+      c = math_ops.matmul(a, b)
+      c_np = constant_op.constant(
+          [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
+          shape=[2, 2, 2],
+          dtype=dtype)
+      self.assertAllClose(c, c_np, atol=1e-2)
+
+  def testUnsupportedtypeMatmul(self):
+    a = constant_op.constant(
+        np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.int8)
+    b = constant_op.constant(
+        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+    with self.assertRaisesRegex((TypeError, errors.InvalidArgumentError),
+                                "list of allowed values:"):
+      math_ops.matmul(a, b)
+
+  def testInt8Matmul(self):
+    a = constant_op.constant(
+        np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.int8)
+    b = constant_op.constant(
+        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+    c_np = constant_op.constant(
+        [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
+        shape=[2, 2, 2],
+        dtype=dtypes.int32)
+    c = math_ops.matmul(a, b, output_type=dtypes.int32)
+    self.assertAllEqual(c, c_np)
+
+  def testMixPrecMatmul(self):
+    a = constant_op.constant(
+        np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.bfloat16)
+    b = constant_op.constant(
+        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+    c_np = constant_op.constant(
+        [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
+        shape=[2, 2, 2],
+        dtype=dtypes.bfloat16)
+    c = math_ops.matmul(a, b, output_type=dtypes.bfloat16)
+    self.assertAllClose(c, c_np, atol=1e-2)
+
+  def testInvalidOutputTypeMatmul(self):
+    for dtype in [dtypes.int8, dtypes.bfloat16]:
+      a = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=dtype)
+      b = constant_op.constant(
+          np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+      if context.executing_eagerly():
+        with self.assertRaisesRegex(errors.NotFoundError,
+                                    "Could not find device for node:"):
+          math_ops.matmul(a, b, output_type=dtypes.float32)
+      else:
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "No OpKernel was registered to support Op"):
+          self.evaluate(math_ops.matmul(a, b, output_type=dtypes.float32))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class ModTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -461,13 +539,36 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     divs = np.arange(-3, 0, .25).reshape(1, 12)
     return nums, divs
 
+  def numpySafeFloorDivInt(self, x, y):
+    z = x // y
+    # Numpy produces 0 for INT_MIN/-1, but we expect an overflow to INT_MIN
+    # so that (INT_MIN/-1) + (INT_MIN % -1) = INT_MIN + 0 = INT_MIN.
+    z[(x == np.iinfo(x.dtype).min) & (y == -1)] = np.iinfo(x.dtype).min
+    return z
+
+  def numpySafeFloorModInt(self, x, y):
+    # Numpy crashes with a FPE for INT_MIN % -1.
+    z = self.numpySafeFloorDivInt(x, y)
+    return x - z * y
+
+  def numpySafeTruncateDivInt(self, x, y):
+    z = self.numpySafeFloorDivInt(x, y)
+    # Round up if non-zero remainder and inputs have opposite signs.
+    z[(x != z * y) & ((x < 0) != (y < 0))] += 1
+    return z
+
+  def numpySafeTruncateModInt(self, x, y):
+    # Numpy crashes with a FPE for INT_MIN % -1.
+    z = self.numpySafeTruncateDivInt(x, y)
+    return x - z * y
+
   def testFloorModInt(self):
     nums, divs = self.intTestData()
     for dtype in [np.int32, np.int64]:
       x = nums.astype(dtype)
       y = divs.astype(dtype)
       tf_result = math_ops.floormod(x, y)
-      np_result = x % y
+      np_result = self.numpySafeFloorModInt(x, y)
       self.assertAllEqual(tf_result, np_result)
       tf2_result = (array_ops.constant(x) % array_ops.constant(y))
       self.assertAllEqual(tf2_result, tf_result)
@@ -503,13 +604,19 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     np_result = np.fmod(nums, divs)
     self.assertAllEqual(tf_result, np_result)
 
-  def testDivideInt(self):
+  def testFloorDivideInt(self):
     nums, divs = self.intTestData()
     tf_result = math_ops.floor_div(nums, divs)
-    np_result = nums // divs
+    np_result = self.numpySafeFloorDivInt(nums, divs)
     self.assertAllEqual(tf_result, np_result)
     tf2_result = (array_ops.constant(nums) // array_ops.constant(divs))
     self.assertAllEqual(tf2_result, tf_result)
+
+  def testTruncateDivideInt(self):
+    nums, divs = self.intTestData()
+    tf_result = math_ops.truncatediv(nums, divs)
+    np_result = self.numpySafeTruncateDivInt(nums, divs)
+    self.assertAllEqual(tf_result, np_result)
 
   @test_util.deprecated_graph_mode_only
   def testDivideName(self):
@@ -594,6 +701,46 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(x, ops.Tensor)
     x = math_ops.divide(5, array_ops.constant(2.0))
     self.assertIsInstance(x, ops.Tensor)
+
+  def intEdgeTestData(self, dtype):
+    """Edge-case test data for integer types."""
+    # INT_MIN/-1 expected to produce signed-integer overflow,
+    # INT_MIN/INT_MAX expected to work.
+    nums = np.array([np.iinfo(dtype).min, -1, 1,
+                     np.iinfo(dtype).max],
+                    dtype=dtype).reshape([4, 1])
+    divs = nums.reshape([1, 4])
+    return nums, divs
+
+  @test_util.disable_asan("Expected signed integer overflow.")
+  @test_util.disable_ubsan("Expected signed integer overflow.")
+  def testFloorDivModIntEdges(self):
+    for dtype in [np.int32, np.int64]:
+      x, y = self.intEdgeTestData(dtype)
+      tf_floor_div = math_ops.floor_div(x, y)
+      np_floor_div = self.numpySafeFloorDivInt(x, y)
+      self.assertAllEqual(tf_floor_div, np_floor_div)
+      tf_floor_mod = math_ops.floormod(x, y)
+      np_floor_mod = self.numpySafeFloorModInt(x, y)
+      self.assertAllEqual(tf_floor_mod, np_floor_mod)
+      z = math_ops.add(math_ops.multiply(tf_floor_div, y), tf_floor_mod)
+      # x = floor_div(x, y) * y + floor_mod(x, y)
+      self.assertAllEqual(z, np.broadcast_to(x, z.shape))
+
+  @test_util.disable_asan("Expected signed integer overflow.")
+  @test_util.disable_ubsan("Expected signed integer overflow.")
+  def testTruncateDivModIntEdges(self):
+    for dtype in [np.int32, np.int64]:
+      x, y = self.intEdgeTestData(dtype)
+      tf_truncate_div = math_ops.truncatediv(x, y)
+      np_truncate_div = self.numpySafeTruncateDivInt(x, y)
+      self.assertAllEqual(tf_truncate_div, np_truncate_div)
+      tf_truncate_mod = math_ops.truncatemod(x, y)
+      np_truncate_mod = self.numpySafeTruncateModInt(x, y)
+      self.assertAllEqual(tf_truncate_mod, np_truncate_mod)
+      z = math_ops.add(math_ops.multiply(tf_truncate_div, y), tf_truncate_mod)
+      # x = truncatediv(x, y) * y + truncatemod(x, y)
+      self.assertAllEqual(z, np.broadcast_to(x, z.shape))
 
 
 @test_util.run_all_in_graph_and_eager_modes

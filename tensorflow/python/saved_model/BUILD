@@ -79,6 +79,7 @@ py_strict_library(
         "//tensorflow/python:saver",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -101,6 +102,7 @@ py_strict_library(
         "//tensorflow/python:saver",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -345,6 +347,7 @@ py_strict_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
@@ -418,6 +421,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking",
@@ -451,6 +455,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager:wrap_function",
+        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training/tracking",
     ],
@@ -557,6 +562,7 @@ py_strict_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:function_def_to_graph",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:op_def_registry",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
@@ -650,5 +656,14 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+tf_py_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.py"],
+    deps = [
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
     ],
 )

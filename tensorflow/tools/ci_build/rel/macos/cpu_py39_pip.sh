@@ -24,7 +24,7 @@ export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up py39 via pyenv and check it worked
-export PYENV_VERSION=3.9.1
+export PYENV_VERSION=3.9.4
 setup_python_from_pyenv_macos "${PYENV_VERSION}"
 
 # Set up and install MacOS pip dependencies.

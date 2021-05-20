@@ -695,8 +695,8 @@ gpu_kernel_library(
     tile_size = "256",
     types = [
         # TODO(b/162572921): Enable when it works for complex types.
-        # "c64",
-        # "c128",
+        "c64",
+        "c128",
         "f16",
         "f32",
         "f64",
@@ -1044,7 +1044,8 @@ gpu_kernel_library(
         "floor",
         "log",
         "log1p",
-        "relu_grad",
+        # TODO(akuegel): Re-enable once relu_grad codegen supports unranked.
+        #"relu_grad",
         "rsqrt",
         "sqrt",
         "tanh",

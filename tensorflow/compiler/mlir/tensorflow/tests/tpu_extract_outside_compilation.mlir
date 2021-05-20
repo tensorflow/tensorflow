@@ -288,8 +288,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            _xla_has_host_transfer = true
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT]])
     // CHECK:            "tf._XlaSendFromHostV2"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            _xla_has_host_transfer = true
     // CHECK-SAME:       key = "host_compute_channel_0_retvals"
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"

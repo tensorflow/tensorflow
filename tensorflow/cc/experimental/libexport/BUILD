@@ -6,7 +6,10 @@ load(
 
 package(
     default_visibility =
-        ["//tensorflow/python/saved_model:__subpackages__"],
+        [
+            "//tensorflow/cc/saved_model:__subpackages__",
+            "//tensorflow/python/saved_model:__subpackages__",
+        ],
     licenses = ["notice"],
 )
 

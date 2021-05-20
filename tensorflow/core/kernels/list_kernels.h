@@ -992,15 +992,14 @@ class TensorListPushBackBatch : public OpKernel {
       }
       TensorList* output = result_t(b).get<TensorList>();
       DCHECK(output != nullptr);
-      Tensor* frame;
-      PersistentTensor tmp;
-      OP_REQUIRES_OK(c, c->allocate_persistent(
-                            element_dtype_, input_element_shape, &tmp, &frame));
+      Tensor frame;
+      OP_REQUIRES_OK(
+          c, c->allocate_temp(element_dtype_, input_element_shape, &frame));
       if (input_element_shape.num_elements() > 0) {
-        auto frame_t = frame->flat<T>();
+        auto frame_t = frame.flat<T>();
         frame_t.device(c->eigen_device<Device>()) = input_t.template chip<0>(b);
       }
-      output->tensors().push_back(std::move(*frame));
+      output->tensors().push_back(std::move(frame));
     }
   }
 

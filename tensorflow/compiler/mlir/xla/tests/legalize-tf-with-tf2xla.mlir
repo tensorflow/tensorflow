@@ -296,11 +296,11 @@ func @multinomial(%arg0: tensor<2x4xf32>, %seed: tensor<i32>, %seed2: tensor<i32
 }
 
 // CHECK-LABEL: @set_dynamic_dimension_size
-func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<4xf32> {
+func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
   %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
   // CHECK: mhlo.set_dimension_size
-  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: @erfinv

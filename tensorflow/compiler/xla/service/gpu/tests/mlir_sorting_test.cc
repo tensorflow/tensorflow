@@ -25,12 +25,12 @@ class SortingTest : public MlirGpuTestBase {};
 
 TEST_F(SortingTest, SimpleCase1) {
   const char* mlir_text = R"(
-      func @main(%arg0: memref<4xf32> {lmhlo.alloc = 0 : index, lmhlo.params = 0 : index},
-                 %arg1: memref<4xf32> {lmhlo.alloc = 1 : index, lmhlo.params = 1 : index},
-                 %arg2: memref<4xf32> {lmhlo.alloc = 2 : index, lmhlo.output_index = dense<[0]> : tensor<1xindex>},
-                 %arg3: memref<4xf32> {lmhlo.alloc = 3 : index, lmhlo.output_index = dense<[1]> : tensor<1xindex>},
-                 %arg4: memref<4xf32> {lmhlo.alloc = 4 : index, lmhlo.output_index = dense<[2]> : tensor<1xindex>},
-                 %arg5: memref<4xf32> {lmhlo.alloc = 5 : index, lmhlo.output_index = dense<[3]> : tensor<1xindex>}) attributes {
+      func @main(%arg0: memref<4xf32> {lmhlo.params = 0 : index},
+                 %arg1: memref<4xf32> {lmhlo.params = 1 : index},
+                 %arg2: memref<4xf32> {lmhlo.output_index = dense<[0]> : tensor<1xindex>},
+                 %arg3: memref<4xf32> {lmhlo.output_index = dense<[1]> : tensor<1xindex>},
+                 %arg4: memref<4xf32> {lmhlo.output_index = dense<[2]> : tensor<1xindex>},
+                 %arg5: memref<4xf32> {lmhlo.output_index = dense<[3]> : tensor<1xindex>}) attributes {
                      result_xla_shape = "(f32[4], f32[4], f32[4], f32[4]) "
                  } {
           "lmhlo.sort"(%arg0, %arg1, %arg2, %arg3) ( {

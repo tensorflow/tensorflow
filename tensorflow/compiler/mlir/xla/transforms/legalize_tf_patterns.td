@@ -126,13 +126,8 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 // additional correction for a negative numerator / denominator. Equivalent
 // pseudocode is shown below:
 //
-// if ((x < 0) != (y < 0)) {
-//   T abs_x = std::abs(x);
-//   T abs_y = std::abs(y);
-//   return -(abs_x + abs_y - 1) / abs_y;
-// } else {
-//   return x / y;
-// }
+// T z = x / y
+// return (z * y != x && (x < 0) != (y < 0)) ? z - 1 : z
 //
 // BroadcastToDimensions is used to compute the broadcast attr to higher
 // dimensions. This computes the broadcast of 'l' to broadcast('l', 'r')
@@ -142,31 +137,39 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 // Requires static shaped inputs to create constant splats and computation of
 // broadcast attributes.
 def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
-        (HLO_SelectOp
-         (HLOClient_BroadcastCompareOp
-          (HLOClient_BroadcastCompareOp $l, (HLO_ConstOp (GetScalarOfType<0> $l)),
-           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
-           (HLO_DEFAULT_COMPARISON_TYPE)),
-          (HLOClient_BroadcastCompareOp $r, (HLO_ConstOp (GetScalarOfType<0> $r)),
-           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
-           (HLO_DEFAULT_COMPARISON_TYPE)),
-          (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ,
+      (HLO_SelectOp
+       (HLOClient_BroadcastAndOp
+        (HLOClient_BroadcastCompareOp
+         (HLOClient_BroadcastMulOp:$mul
+          (HLOClient_BroadcastDivOp:$div $l, $r,
+           (BinBroadcastDimensions $l, $r)),
+          $r, (BinBroadcastDimensions $div, $r)),
+         $l, (BinBroadcastDimensions $mul, $l), HLO_COMPARISON_DIRECTION_NE,
+         (HLO_DEFAULT_COMPARISON_TYPE)),
+        (HLOClient_BroadcastCompareOp
+         (HLOClient_BroadcastCompareOp:$l_cmp $l,
+          (HLO_ConstOp:$l_zeros (GetScalarOfType<0> $l)),
+          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
           (HLO_DEFAULT_COMPARISON_TYPE)),
-         (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
-         (HLOClient_BroadcastDivOp
-          (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
-                       (HLOClient_BroadcastSubOp (HLO_AbsOp $r),
-                        (HLO_ConstOp (GetScalarOfType<1> $r)),
-                        (NullDenseIntElementsAttr)),
-                     (BinBroadcastDimensions $l, $r))),
-          (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs))),
-        [(SignedIntTensor $l)]>;
+         (HLOClient_BroadcastCompareOp:$r_cmp $r,
+          (HLO_ConstOp:$r_zeros (GetScalarOfType<0> $r)),
+          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
+          (HLO_DEFAULT_COMPARISON_TYPE)),
+         (BinBroadcastDimensions $l_cmp, $r_cmp), HLO_COMPARISON_DIRECTION_NE,
+         (HLO_DEFAULT_COMPARISON_TYPE)),
+        (NullDenseIntElementsAttr)),
+       (HLOClient_BroadcastSubOp $div,
+        (HLO_ConstOp:$ones (GetScalarOfType<1> $div)),
+        (NullDenseIntElementsAttr)), $div),
+      [(SignedIntTensor $l)]>;
 
 // Performs a substitution of FloorMod designed to correct for possibly negative
 // values. Pseudocode shown below:
 //
 //   T trunc_mod = std::fmod(x, y);
 //   return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
+//                                                     : trunc_mod
+//
 // Requires static shaped inputs to create constant splats and computation of
 // broadcast attributes.
 def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
@@ -511,13 +514,22 @@ def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
           [(TF_SintOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
-def : Pat<(TF_ReluGradOp AnyTensor:$gradients, AnyTensor:$features),
-          (HLOClient_BroadcastSelectOp
+//
+// $gradients needs to be of static shape so that on_true and on_false operands
+// of SelectOp have same shape.
+//
+// $features needs to be ranked for computation of the broadcast dimensions for
+// CompareOp.
+//
+// TODO(hinsu): Relax $gradients static shape requirement when there is a way
+// to create splat tensor of dynamic shape in HLO.
+def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
+          (HLO_SelectOp
             (HLOClient_BroadcastCompareOp $features,
-              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
+              (HLO_ConstOp (GetScalarOfType<0> $features)),
               (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT,
               (HLO_DEFAULT_COMPARISON_TYPE)),
-            $gradients, $zero)>;
+            $gradients, (HLO_ConstOp (ConstantSplat<"0"> $gradients)))>;
 
 //===----------------------------------------------------------------------===//
 // Slice op patterns.

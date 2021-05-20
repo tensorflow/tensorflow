@@ -834,11 +834,7 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
       *constant_name = constant_name_attr.getValue().str();
     }
   }
-  return func_op
-      .getArgAttrOfType<mlir::IntegerAttr>(func_arg.getArgNumber(),
-                                           "lmhlo.alloc")
-      .getValue()
-      .getSExtValue();
+  return func_arg.getArgNumber();
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
@@ -850,52 +846,49 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
 
   int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
 
+  // We match the following patterns here:
+  //  base := ViewOp(arg) | get_global_memref (global_memref) | arg
+  //  root := base | MemRefReinterpretCastOp(base)
+
+  if (auto cast = mlir::dyn_cast_or_null<mlir::memref::ReinterpretCastOp>(
+          v.getDefiningOp())) {
+    v = cast.getViewSource();
+  }
+  if (auto view =
+          mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
+    TF_RET_CHECK(view.source().isa<mlir::BlockArgument>());
+
+    return BufferAllocation::Slice(
+        &allocations[GetAllocationIndex(
+            view.source().cast<mlir::BlockArgument>(), constant_name)],
+        mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
+            .value()
+            .cast<mlir::IntegerAttr>()
+            .getValue()
+            .getSExtValue(),
+        size);
+  }
+  if (auto get_global = mlir::dyn_cast_or_null<mlir::memref::GetGlobalOp>(
+          v.getDefiningOp())) {
+    auto module = get_global->getParentOfType<mlir::ModuleOp>();
+    if (constant_name) {
+      *constant_name = get_global.name().str();
+    }
+    auto global = mlir::cast<mlir::memref::GlobalOp>(
+        module.lookupSymbol(get_global.name()));
+    int64_t index =
+        global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+    return BufferAllocation::Slice(&allocations[index], 0,
+                                   allocations[index].size());
+  }
   if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
     return BufferAllocation::Slice(
         &allocations[GetAllocationIndex(arg, constant_name)], 0, size);
   }
 
-  // We match the following patterns here:
-  //  base := ViewOp(arg) | get_global_memref (global_memref)
-  //  root := base | MemRefReinterpretCastOp(base)
-
-  if (mlir::Operation* op = v.getDefiningOp()) {
-    if (auto cast = mlir::dyn_cast<mlir::memref::ReinterpretCastOp>(op)) {
-      mlir::Value source = cast.getViewSource();
-      op = source.getDefiningOp();
-      if (!op) {
-        return Unimplemented("MemRefReinterpretCastOp has to wrap an op");
-      }
-    }
-    if (auto view = mlir::dyn_cast<mlir::memref::ViewOp>(op)) {
-      return BufferAllocation::Slice(
-          &allocations[GetAllocationIndex(
-              view.source().cast<mlir::BlockArgument>(), constant_name)],
-          mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
-              .value()
-              .cast<mlir::IntegerAttr>()
-              .getValue()
-              .getSExtValue(),
-          size);
-    } else if (auto get_global =
-                   mlir::dyn_cast<mlir::memref::GetGlobalOp>(op)) {
-      auto module = get_global->getParentOfType<mlir::ModuleOp>();
-      if (constant_name) {
-        *constant_name = get_global.name().str();
-      }
-      auto global = mlir::cast<mlir::memref::GlobalOp>(
-          module.lookupSymbol(get_global.name()));
-      int64_t index =
-          global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-      return BufferAllocation::Slice(&allocations[index], 0,
-                                     allocations[index].size());
-    }
-    return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
-  }
-
   return Unimplemented(
       "Operand has to be in the form of ViewOp(arg) or "
-      "StaticMemRefCastOp(ViewOp(arg))");
+      "StaticMemRefCastOp(ViewOp(arg)) or arg");
 }
 
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(

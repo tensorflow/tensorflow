@@ -232,14 +232,17 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
       }
 
       // Shape
-      TfLiteIntArrayView shape_view(tensor->dims);
-      std::vector<int> shape =
-          std::vector<int>(shape_view.begin(), shape_view.end());
+      // TODO(b/188460235) Avoid generating the weird null dimension tensors.
+      if (tensor->dims) {
+        TfLiteIntArrayView shape_view(tensor->dims);
+        std::vector<int> shape =
+            std::vector<int>(shape_view.begin(), shape_view.end());
 
-      tensors.push_back(CreateTensor(*fbb, ExportVector<int32_t>(fbb, shape),
-                                     type, buffer_index,
-                                     fbb->CreateString(tensor->name),
-                                     quantization_params, tensor->is_variable));
+        tensors.push_back(
+            CreateTensor(*fbb, ExportVector<int32_t>(fbb, shape), type,
+                         buffer_index, fbb->CreateString(tensor->name),
+                         quantization_params, tensor->is_variable));
+      }
     }
   }
   return fbb->template CreateVector<flatbuffers::Offset<Tensor>>(tensors);

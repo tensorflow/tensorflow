@@ -27,6 +27,10 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load(
+    "//tensorflow/compiler/xla/service/gpu:thunk_config.bzl",
+    "if_using_bef_thunks",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -36,7 +40,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
-load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -540,6 +544,7 @@ alias(
 cc_library(
     name = "gpu_executable",
     srcs = [
+        "bef_thunk.cc",
         "collective_permute_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
@@ -562,6 +567,7 @@ cc_library(
         "cholesky_thunk.cc",
     ]),
     hdrs = [
+        "bef_thunk.h",
         "collective_permute_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
@@ -584,7 +590,7 @@ cc_library(
     ] + if_cuda_is_configured([
         "cholesky_thunk.h",
     ]),
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_using_bef_thunks(["-DBEF_THUNKS=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -603,6 +609,8 @@ cc_library(
         ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
+        "@llvm-project//mlir:IR",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:refcounting_hash_map",
@@ -655,7 +663,25 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ]) + if_using_bef_thunks(
+        [
+            "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+            "//tensorflow/stream_executor/cuda:cublas_plugin",
+            "//tensorflow/stream_executor/cuda:cuda_driver",
+            "//tensorflow/stream_executor/gpu:gpu_executor_header",
+            "@tf_runtime//:basic_kernels_alwayslink",
+            "@tf_runtime//:befexecutor",
+            "@tf_runtime//:core_runtime",
+            "@tf_runtime//:hostcontext",
+            "@tf_runtime//:mlirtobef_translate",
+            "@tf_runtime//:support",
+        ] + if_cuda_is_configured([
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_system",
+            "@tf_runtime//backends/gpu:gpu_types",
+        ]),
+    ),
 )
 
 cc_library(
@@ -2101,14 +2127,26 @@ cc_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "xla_thunks_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-op-decls", "ir/xla_thunks_ops.h.inc"),
-        ("-gen-op-defs", "ir/xla_thunks_ops.cc.inc"),
-        ("-gen-struct-attr-decls", "ir/xla_thunks_structs.h.inc"),
-        ("-gen-struct-attr-defs", "ir/xla_thunks_structs.cc.inc"),
+        (
+            ["-gen-op-decls"],
+            "ir/xla_thunks_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "ir/xla_thunks_ops.cc.inc",
+        ),
+        (
+            ["-gen-struct-attr-decls"],
+            "ir/xla_thunks_structs.h.inc",
+        ),
+        (
+            ["-gen-struct-attr-defs"],
+            "ir/xla_thunks_structs.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/xla_thunks_ops.td",

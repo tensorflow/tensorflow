@@ -50,13 +50,13 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 // Run this test with '--copt=-DTF_LITE_STATIC_MEMORY' to get optimized memory
 // runtime values:
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kKeywordModelTotalSize = 14384;
-constexpr int kKeywordModelTailSize = 13712;
+constexpr int kKeywordModelTotalSize = 14416;
+constexpr int kKeywordModelTailSize = 13744;
 constexpr int kKeywordModelPersistentTfLiteTensorDataSize = 128;
-constexpr int kKeywordModelPersistentBufferDataSize = 572;
+constexpr int kKeywordModelPersistentBufferDataSize = 564;
 #else
-constexpr int kKeywordModelTotalSize = 14832;
-constexpr int kKeywordModelTailSize = 14160;
+constexpr int kKeywordModelTotalSize = 14992;
+constexpr int kKeywordModelTailSize = 14320;
 constexpr int kKeywordModelPersistentTfLiteTensorDataSize = 224;
 constexpr int kKeywordModelPersistentBufferDataSize = 564;
 #endif
@@ -74,13 +74,13 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kTestConvModelTotalSize = 9744;
-constexpr int kTestConvModelTailSize = 2000;
+constexpr int kTestConvModelTotalSize = 9792;
+constexpr int kTestConvModelTailSize = 2048;
 constexpr int kTestConvModelPersistentTfLiteTensorDataSize = 128;
-constexpr int kTestConvModelPersistentBufferDataSize = 672;
+constexpr int kTestConvModelPersistentBufferDataSize = 680;
 #else
-constexpr int kTestConvModelTotalSize = 10016;
-constexpr int kTestConvModelTailSize = 2272;
+constexpr int kTestConvModelTotalSize = 10112;
+constexpr int kTestConvModelTailSize = 2368;
 constexpr int kTestConvModelPersistentTfLiteTensorDataSize = 224;
 constexpr int kTestConvModelPersistentBufferDataSize = 680;
 #endif
@@ -177,11 +177,6 @@ void ValidateModelAllocationThresholds(
           .used_bytes,
       sizeof(tflite::NodeAndRegistration) *
           thresholds.node_and_registration_count);
-  EnsureAllocatedSizeThreshold(
-      "OpData",
-      allocator.GetRecordedAllocation(tflite::RecordedAllocationType::kOpData)
-          .used_bytes,
-      thresholds.op_runtime_data_size);
 
   // Ensure tail allocation recording is not missing any large chunks:
   size_t tail_est_length = sizeof(TfLiteEvalTensor) * thresholds.tensor_count +

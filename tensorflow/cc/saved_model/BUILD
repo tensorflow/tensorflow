@@ -53,13 +53,13 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/util/tensor_bundle",
     ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util/tensor_bundle",
     ]),
 )
 
@@ -126,6 +126,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
+        "//tensorflow/cc/experimental/libexport:metrics",
     ]),
     alwayslink = 1,
 )
@@ -136,6 +137,7 @@ cc_library(
     hdrs = ["bundle_v2.h"],
     deps = [
         ":constants",
+        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:strcat",
@@ -164,6 +166,7 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         ":bundle_v2",
+        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -185,6 +188,7 @@ tf_cc_test(
         ":reader",
         ":signature_constants",
         ":tag_constants",
+        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",

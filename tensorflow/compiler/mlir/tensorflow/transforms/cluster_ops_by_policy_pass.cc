@@ -152,18 +152,14 @@ static tf_device::ClusterOp ClusterMatchedOps(
 //    %2 = "tf.Neg" %a
 //    %3 = "tf.Sub" %c, %1 // the only use of %1
 // matches "tf.Add, tf.Sub".
-static bool IsOplistMatch(Operation *op, ArrayRef<std::string> oplist,
+static bool IsOplistMatch(Operation *op, ArrayRef<Identifier> oplist,
                           llvm::DenseSet<Operation *> &is_matched,
                           llvm::SmallVectorImpl<Operation *> &matched_ops) {
-  MLIRContext *ctx = op->getContext();
-
   // Skip 'op' if it's already part of another matched sequence of ops.
   if (is_matched.contains(op)) return false;
 
   // Does this operation match first element in the oplist?
-  StringRef op_name = *oplist.begin();
-  if (op->getName().getIdentifier() != Identifier::get(op_name, ctx))
-    return false;
+  if (op->getName().getIdentifier() != *oplist.begin()) return false;
 
   matched_ops.push_back(op);
 
@@ -183,9 +179,7 @@ static bool IsOplistMatch(Operation *op, ArrayRef<std::string> oplist,
     if (is_matched.contains(curr_op)) return false;
 
     // Check that the op matches the next op in the oplist.
-    op_name = *oplist_iter;
-    if (curr_op->getName().getIdentifier() != Identifier::get(op_name, ctx))
-      return false;
+    if (curr_op->getName().getIdentifier() != *oplist_iter) return false;
 
     // Don't cluster operations assigned to different devices.
     if (curr_op->getAttr(kDeviceAttr) != device) return false;
@@ -210,8 +204,15 @@ static bool IsOplistMatch(Operation *op, ArrayRef<std::string> oplist,
 // `clusters` list.
 static void FormUseDefClusters(mlir::FuncOp func, ArrayRef<std::string> oplist,
                                llvm::SmallVectorImpl<OpList> *clusters) {
+  MLIRContext *context = func.getContext();
+
   // Do not place the same operation into multiple cluster.
   llvm::DenseSet<Operation *> is_matched;
+
+  // Convert 'oplist' of strings into a list of identifiers.
+  std::vector<Identifier> op_id_list;
+  for (const auto &op : oplist)
+    op_id_list.push_back(Identifier::get(op, context));
 
   // Find matching op sequences within this function.
   func.walk([&](Operation *op) {
@@ -220,8 +221,8 @@ static void FormUseDefClusters(mlir::FuncOp func, ArrayRef<std::string> oplist,
     // Skip 'op' if it's already part of another matched sequence of ops.
     if (is_matched.contains(op)) return;
 
-    // Try to match 'op' to the sequence of ops in 'oplist'.
-    if (!IsOplistMatch(op, oplist, is_matched, matched_ops)) return;
+    // Try to match 'op' to the sequence of ops in 'op_id_list'.
+    if (!IsOplistMatch(op, op_id_list, is_matched, matched_ops)) return;
 
     // We found a matching sequence of ops. Record it.
     clusters->push_back(matched_ops);
@@ -298,16 +299,16 @@ static void Union(Members &members, unsigned a, unsigned b) {
 //
 // Although %0, %1, %2 do not form a single use-def chain, they are still
 // clustered together based on the union-find algorigthm.
-static void ClusterOpsInTheBlock(
-    Block *block, const llvm::DenseSet<llvm::StringRef> &cluster_ops,
-    llvm::SmallVectorImpl<OpList> *clusters) {
+static void ClusterOpsInTheBlock(Block *block,
+                                 const llvm::DenseSet<Identifier> &cluster_ops,
+                                 llvm::SmallVectorImpl<OpList> *clusters) {
   // Returns true if op can be clustered.
   auto can_be_clustered = [&](Operation &op) -> bool {
     // Check that op has no side effects. This guarantees that we will not
     // reorder side-effecting ops during cluster formation.
     if (!MemoryEffectOpInterface::hasNoEffect(&op)) return false;
 
-    return cluster_ops.contains(op.getName().getStringRef());
+    return cluster_ops.contains(op.getName().getIdentifier());
   };
 
   // Use an array based union-find algorithm to cluster operations together
@@ -409,8 +410,10 @@ static void ClusterOpsInTheBlock(
 static void FormUnionFindClusters(mlir::FuncOp func,
                                   ArrayRef<std::string> oplist,
                                   llvm::SmallVectorImpl<OpList> *clusters) {
-  llvm::DenseSet<llvm::StringRef> opset;
-  for (const auto &op : oplist) opset.insert(op);
+  MLIRContext *context = func->getContext();
+
+  llvm::DenseSet<Identifier> opset;
+  for (const auto &op : oplist) opset.insert(Identifier::get(op, context));
   func->walk(
       [&](Block *block) { ClusterOpsInTheBlock(block, opset, clusters); });
 }

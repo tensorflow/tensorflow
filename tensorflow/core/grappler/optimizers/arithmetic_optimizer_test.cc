@@ -4692,6 +4692,7 @@ TEST_F(ArithmeticOptimizerTest, SimplifyResourceEmbeddingLookup) {
         s.WithOpName("gathered_rows")
             .WithControlDependencies(std::vector<Operation>{assign_op}),
         var, ids, DT_FLOAT);
+    gathered_rows.node()->AddAttr("_class", {"test_class"});
     Output result =
         ops::SparseSegmentSum(s.WithOpName("result").WithControlDependencies(
                                   std::vector<Operation>{assign_op}),
@@ -4709,6 +4710,7 @@ TEST_F(ArithmeticOptimizerTest, SimplifyResourceEmbeddingLookup) {
     ArithmeticOptimizer optimizer;
     EnableOnlySimplifyEmbeddingLookup(&optimizer);
     OptimizeAndPrune(&optimizer, &item, &output);
+    bool read_var_node_found = false;
     for (const auto& node : output.node()) {
       if (node.name() == "result") {
         EXPECT_EQ(
@@ -4716,9 +4718,14 @@ TEST_F(ArithmeticOptimizerTest, SimplifyResourceEmbeddingLookup) {
             "ArithmeticOptimizer/SimplifyEmbeddingLookupStage_ReadVar_result");
         EXPECT_EQ(node.input(1), "indices");
       }
+      if (node.op() == "ReadVariableOp") {
+        read_var_node_found = true;
+        EXPECT_EQ(node.attr().at("_class").list().s(0), "test_class");
+      }
       EXPECT_NE(node.op(), "Unique");
       EXPECT_NE(node.op(), "Gather");
     }
+    EXPECT_TRUE(read_var_node_found);
     // Add a control dependency to the ReadVar to do the AssignVar first. This
     // shouldn't be an issue in actual use as variables are assumed initialized
     // during setup.

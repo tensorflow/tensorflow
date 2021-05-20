@@ -68,22 +68,27 @@ StatusOr<bool> TopkRewriter::Run(HloModule* module) {
   for (HloComputation* comp : module->computations()) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
       HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
-      if (sort == nullptr || sort->operand_count() != 2) {
+      if (sort == nullptr) {
+        continue;
+      }
+      if (sort->operand_count() != 1 && sort->operand_count() != 2) {
         continue;
       }
       HloInstruction* data = sort->mutable_operand(0);
-      HloIotaInstruction* iota =
-          DynCast<HloIotaInstruction>(sort->mutable_operand(1));
       const PrimitiveType element_type = data->shape().element_type();
       if ((data->shape().rank() != 1 && data->shape().rank() != 2) ||
           (element_type != F32 && element_type != BF16)) {
         continue;
       }
-      if (iota == nullptr || iota->shape().rank() != data->shape().rank() ||
-          iota->shape().element_type() != S32 ||
-          iota->opcode() != HloOpcode::kIota ||
-          iota->iota_dimension() != sort->sort_dimension()) {
-        continue;
+      if (sort->operand_count() == 2) {
+        HloIotaInstruction* iota =
+            DynCast<HloIotaInstruction>(sort->mutable_operand(1));
+        if (iota == nullptr || iota->shape().rank() != data->shape().rank() ||
+            iota->shape().element_type() != S32 ||
+            iota->opcode() != HloOpcode::kIota ||
+            iota->iota_dimension() != sort->sort_dimension()) {
+          continue;
+        }
       }
       if (!IsNanSafeGt(sort->to_apply())) {
         continue;
@@ -94,13 +99,16 @@ StatusOr<bool> TopkRewriter::Run(HloModule* module) {
 
       bool supported = true;
       absl::optional<int64> k;
-      for (HloInstruction* gte : sort->users()) {
-        if (gte->opcode() != HloOpcode::kGetTupleElement ||
-            gte->user_count() != 1) {
-          supported = false;
-          break;
+      for (HloInstruction* user : sort->users()) {
+        const HloInstruction* slice = user;
+        if (sort->operand_count() == 2) {
+          if (user->opcode() != HloOpcode::kGetTupleElement ||
+              user->user_count() != 1) {
+            supported = false;
+            break;
+          }
+          slice = user->users()[0];
         }
-        const HloInstruction* slice = gte->users()[0];
         if (slice->opcode() != HloOpcode::kSlice) {
           // Non-slice user means we are not doing a TopK
           supported = false;
@@ -173,16 +181,21 @@ StatusOr<bool> TopkRewriter::Run(HloModule* module) {
             {1, 0}));
       }
 
-      for (HloInstruction* gte : sort->users()) {
-        for (HloInstruction* slice : gte->users()) {
-          if (gte->tuple_index() == 0) {
-            TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(value_gte));
-          } else if (gte->tuple_index() == 1) {
-            TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(index_gte));
-          } else {
-            LOG(FATAL) << "Sort with more than 2 output isn't supported in "
-                          "topk rewriter";
+      for (HloInstruction* user : sort->users()) {
+        if (sort->operand_count() == 2) {
+          HloInstruction* gte = user;
+          for (HloInstruction* slice : gte->users()) {
+            if (gte->tuple_index() == 0) {
+              TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(value_gte));
+            } else if (gte->tuple_index() == 1) {
+              TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(index_gte));
+            } else {
+              LOG(FATAL) << "Sort with more than 2 output isn't supported in "
+                            "topk rewriter";
+            }
           }
+        } else {
+          TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(value_gte));
         }
       }
       changed = true;

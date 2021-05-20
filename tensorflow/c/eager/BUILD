@@ -471,6 +471,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:intrusive_ptr",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
     ],
 )
@@ -842,6 +844,22 @@ tf_cuda_cc_test(
     ],
 )
 
+cc_library(
+    name = "graph_function",
+    srcs = ["graph_function.cc"],
+    hdrs = [
+        "graph_function.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_function",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
@@ -864,6 +882,7 @@ tf_cuda_library(
         "//conditions:default": [
             ":c_api",
             ":c_api_internal",
+            ":graph_function",
             ":tfe_context_internal",
             ":tfe_op_internal",
             ":tfe_tensorhandle_internal",
@@ -1066,6 +1085,8 @@ filegroup(
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
             "c_api_unified_experimental_internal.h",
+            "graph_function.h",
+            "graph_function.cc",
             "gradient_checker.cc",
             "gradient_checker.h",
             "gradients.cc",  # Uses RTTI.

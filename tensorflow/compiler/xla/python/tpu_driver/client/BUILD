@@ -66,6 +66,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/python:bfloat16_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",

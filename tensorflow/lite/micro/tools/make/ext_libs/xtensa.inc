@@ -1,3 +1,8 @@
+# Explicitly add kernel sources specific to the Xtensa optimized
+# implementations.
+MICROLITE_CC_KERNEL_SRCS += \
+  tensorflow/lite/micro/kernels/xtensa/softmax_int8_int16.cc
+
 ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "hifi5"))
 
   DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/xtensa_download.sh ${MAKEFILE_DIR}/downloads hifi5)

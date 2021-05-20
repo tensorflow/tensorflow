@@ -1131,6 +1131,30 @@ ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
   return rewriter.create<ConstantOp>(value.getLoc(), attr_type, attr);
 }
 
+bool IsSign(APFloat a, APFloat sign) {
+  if (a.isNaN() || a.isZero()) return a == sign;
+  if (a.isNegative()) return sign.isExactlyValue(-1.0);
+  return sign.isExactlyValue(1.0);
+}
+
+// Returns whether the splat constant is the sign of the FloatTensor
+bool FloatTensorIsSign(PatternRewriter &rewriter, ElementsAttr floatv,
+                       ElementsAttr sgn_cst) {
+  if (!sgn_cst.isa<SplatElementsAttr>()) return false;
+  auto sgn_cst_spl = sgn_cst.cast<SplatElementsAttr>().getSplatValue<APFloat>();
+  if (floatv.isa<SplatElementsAttr>()) {
+    auto floatv_spl = floatv.cast<SplatElementsAttr>().getSplatValue<APFloat>();
+    return IsSign(floatv_spl, sgn_cst_spl);
+  } else if (floatv.isa<DenseElementsAttr>()) {
+    auto floatv_dns = floatv.cast<DenseFPElementsAttr>();
+    return llvm::all_of(floatv_dns.getAttributeValues(), [&](Attribute value) {
+      FloatAttr value_f = value.cast<FloatAttr>();
+      return IsSign(value_f.getValue(), sgn_cst_spl);
+    });
+  }
+  return false;
+}
+
 // If index_vector_dim == indices.rank() then insert the implicit extra
 // dimension into indices to normalize everything to index_vector_dim ==
 // indices.rank() - 1.
