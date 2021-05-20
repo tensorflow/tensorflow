@@ -101,13 +101,6 @@ class PluginGraphOptimizerRegistry {
   // Prints plugin's configs if there are some conflicts.
   static void PrintPluginConfigsIfConflict(
       const std::set<string>& device_types);
-
-  // Returns true when `plugin_config` conflicts with `user_config`:
-  // - Plugin's `disable_model_pruning` is not equal to `user_config`'s, or
-  // - At least one of plugin's `toggle_config`s is on when it is set to off in
-  //   `user_config`'s.
-  static bool IsConfigsConflict(ConfigList& user_config,
-                                ConfigList& plugin_config);
 };
 
 }  // end namespace grappler
