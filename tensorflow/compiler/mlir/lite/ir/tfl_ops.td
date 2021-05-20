@@ -4469,7 +4469,7 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
-def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
+def TFL_YieldOp : Op<TFL_Dialect, "yield", [NoSideEffect, Terminator]> {
   let summary = "Yield operation";
   let description = [{
     The "yield" operation represents a return operation within the conditional
