@@ -390,6 +390,8 @@ tensorflow/lite/micro/kernels/transpose_conv.cc \
 tensorflow/lite/micro/kernels/unpack.cc \
 tensorflow/lite/micro/kernels/zeros_like.cc
 
+include $(MAKEFILE_DIR)/additional_kernels.inc
+
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
@@ -828,6 +830,7 @@ ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
   $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
 endif
 
+include $(MAKEFILE_DIR)/additional_tests.inc
 
 # For all the tests that do not have any additional dependencies, we can
 # add a make target in a common way.
