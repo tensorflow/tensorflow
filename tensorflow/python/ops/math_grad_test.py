@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -635,12 +636,16 @@ class PowGradTest(test.TestCase):
     self.assertAllClose([-2., 0., 2.], g)
 
   def test_zero_grad_tape(self):
-    x = constant_op.constant([-1, 0., 1.])
-    with backprop.GradientTape() as tape:
-      tape.watch(x)
-      g = tape.gradient(math_ops.pow(x, 2), x)
-    g = self.evaluate(g)
-    self.assertAllClose([-2., 0., 2.], g)
+    try:
+      check_numerics_callback.enable_check_numerics()
+      x = constant_op.constant([-1, 0., 1.])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        g = tape.gradient(math_ops.pow(x, 2), x)
+      g = self.evaluate(g)
+      self.assertAllClose([-2., 0., 2.], g)
+    finally:
+      check_numerics_callback.disable_check_numerics()
 
 
 @test_util.run_all_in_graph_and_eager_modes

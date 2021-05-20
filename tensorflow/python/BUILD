@@ -74,7 +74,7 @@ py_library(
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/aot/tests:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/lite/toco/python:__pkg__",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python/debug/cli:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
@@ -656,7 +656,7 @@ py_test(
 tf_gen_op_wrapper_private_py(
     name = "debug_ops_gen",
     out = "ops/gen_debug_ops.py",
-    visibility = ["//tensorflow/python/debug/lib:__pkg__"],
+    visibility = ["//tensorflow/python/debug:__pkg__"],
     deps = ["//tensorflow/core:debug_ops_op_lib"],
 )
 
@@ -3008,6 +3008,7 @@ cuda_py_test(
         ":array_ops",
         ":client_testlib",
         ":math_ops",
+        "//tensorflow/python/debug:check_numerics_callback",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:for_generated_wrappers",
