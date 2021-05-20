@@ -333,9 +333,8 @@ class NonSquareLinearOperatorBlockDiagTest(
   def operator_shapes_infos():
     shape_info = linear_operator_test_util.OperatorShapesInfo
     return [
-        shape_info((0, 0)),
-        shape_info((1, 1)),
-        shape_info((1, 3, 3)),
+        shape_info((1, 0)),
+        shape_info((1, 2, 3)),
         shape_info((5, 3), blocks=[(2, 1), (3, 2)]),
         shape_info((3, 6, 5), blocks=[(1, 2, 1), (3, 1, 2), (1, 3, 2)]),
         shape_info((2, 1, 5, 2), blocks=[(2, 1, 2, 1), (1, 3, 1)]),

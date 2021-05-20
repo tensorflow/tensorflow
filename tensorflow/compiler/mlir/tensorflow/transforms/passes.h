@@ -228,6 +228,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 // TensorFlow.
 std::unique_ptr<OperationPass<FuncOp>>
 CreatePrepareTpuComputationForTfExportPass();
+
+// Rewrites ops that require quantized inputs or outputs to ops that allow
+// non-quantized inputs and outputs.
+std::unique_ptr<OperationPass<FuncOp>> CreateLowerQuantizedPass();
 }  // namespace TF
 
 namespace tf_executor {

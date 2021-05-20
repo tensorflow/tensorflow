@@ -188,6 +188,9 @@ class NNMemory {
   size_t byte_size_ = 0;
   uint8_t* data_ptr_ = nullptr;
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
+#ifndef __ANDROID__
+  std::string shm_region_name_;
+#endif
 };
 
 // LINT.IfChange

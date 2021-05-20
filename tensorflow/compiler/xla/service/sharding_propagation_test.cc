@@ -4876,12 +4876,12 @@ ENTRY %module {
   %iota.11 = s32[1,4,8]{2,1,0} iota(), iota_dimension=1
   %concatenate = s32[2,4,8]{2,1,0} concatenate(s32[1,4,8]{2,1,0} %iota.11,
     s32[1,4,8]{2,1,0} %seq_b), dimensions={0}
-  %gather = s32[4,8,2,2]{3,2,1,0} gather(s32[4,8,2,2]{3,2,1,0} %input,
-    s32[2,4,8]{2,1,0} %concatenate), offset_dims={2,3},
+  %gather = s32[2,2,4,8]{3,2,1,0} gather(s32[4,8,2,2]{3,2,1,0} %input,
+    s32[2,4,8]{2,1,0} %concatenate), offset_dims={0,1},
     collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
     slice_sizes={1,1,2,2},
-    sharding={devices=[2,1,2,1]0,1,4,5 metadata={op_name="a"}}
-  ROOT %copy = s32[4,8,2,2]{3,2,1,0} copy(%gather)
+    sharding={devices=[2,1,2,1]0,4,1,5 metadata={op_name="a"}}
+  ROOT %copy = s32[2,2,4,8]{3,2,1,0} copy(%gather)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -4904,7 +4904,7 @@ ENTRY %module {
       op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* gather = FindInstruction(module.get(), "gather");
   ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(gather, op::Sharding("{devices=[2,1,2,1]0,1,4,5}"));
+  EXPECT_THAT(gather, op::Sharding("{devices=[2,1,2,1]0,4,1,5}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
     EXPECT_THAT(gather->sharding(), ShardingMetadata({CreateMetadata("a")}));
   } else {

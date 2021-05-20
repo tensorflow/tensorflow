@@ -365,11 +365,6 @@ class _SaveableView(object):
         object_map.update(node_object_map)
         resource_map.update(node_resource_map)
 
-    # Note: some concrete functions can have been realized when tracing other
-    # functions, and might closure-capture tensors from their parent functions.
-    # This is normal, but it means those concrete functions can't be serialized
-    # as their own independent endpoints, so we filter them out here.
-    bad_functions = []
     for concrete_function in self.concrete_functions:
       if not concrete_function.graph.saveable:
         raise ValueError(
@@ -390,8 +385,12 @@ class _SaveableView(object):
             continue
           capture_constant_value = tensor_util.constant_value(capture)
           if capture_constant_value is None:
-            bad_functions.append(concrete_function)
-            continue
+            raise ValueError(
+                "Unable to save function {name} because it captures graph "
+                "tensor {capture} from a parent function which cannot be "
+                "converted to a constant with `tf.get_static_value`.".format(
+                    name=concrete_function.name, capture=capture))
+
           if numpy.prod(capture.shape.as_list()) > 1 and numpy.all(
               capture_constant_value == capture_constant_value.flat[0]):
             # For the common case of a constant array filled with the same
@@ -413,7 +412,6 @@ class _SaveableView(object):
 
     self.concrete_functions = [
         self._wrapped_functions.get(x, x) for x in self.concrete_functions
-        if x not in bad_functions
     ]
     return object_map, resource_map, asset_info
 

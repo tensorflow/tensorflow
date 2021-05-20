@@ -194,6 +194,11 @@ std::vector<int64> DevicesForSharding(
 HloSharding PartiallyReplicateTiledShardingOnDims(
     const HloSharding& sharding, absl::Span<const int64> dims_to_replicate);
 
+// Returns a sharding that replicates data across devices along all dimensions
+// but the given ones to keep in the original sharding.
+HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
+    const HloSharding& sharding, absl::Span<const int64> dims_to_keep);
+
 // Returns a sharding the removes given tile dimensions.
 //
 // Precondition: if not tile maximal, the size of each tile dimension must be 1.

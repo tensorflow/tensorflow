@@ -115,9 +115,7 @@ using se::rocm::ScopedActivateExecutorContext;
 class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
   EigenGpuStreamDevice()
-      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
-    Eigen::initializeDeviceProp();
-  }
+      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {}
   ~EigenGpuStreamDevice() override {}
   void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
                     TfDeviceId tf_device_id, ::tensorflow::Allocator* alloc,
@@ -135,7 +133,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     PlatformDeviceId platform_device_id;
     TF_CHECK_OK(
         GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
-    device_prop_ = &Eigen::m_deviceProperties[platform_device_id.value()];
+    device_prop_ = &Eigen::GetGpuDeviceProperties(platform_device_id.value());
   }
 
   const gpuStream_t& stream() const override { return *stream_; }

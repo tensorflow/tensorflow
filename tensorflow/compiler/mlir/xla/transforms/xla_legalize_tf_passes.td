@@ -18,7 +18,7 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
-  let summary = "Legalize from TF dialect's oo HLO dialect's control flow.";
+  let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{
     Legalizes from TF dialect to HLO dialect. When allow_partial_conversion is
