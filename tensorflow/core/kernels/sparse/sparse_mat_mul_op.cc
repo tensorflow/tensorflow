@@ -535,8 +535,10 @@ REGISTER_CPU(complex128)
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
+#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
+#endif  // GOOGLE_CUDA
 
 #undef REGISTER_GPU
 
