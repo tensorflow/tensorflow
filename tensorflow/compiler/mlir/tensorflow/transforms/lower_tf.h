@@ -35,6 +35,13 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
 void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
                                          OwningRewritePatternList *patterns);
 
+// Populates TensorFlow lowering patterns to lower some of the TensorFlow
+// operations that can be represented using other TensorFlow operations.
+// Patterns are from ops with some inputs or outputs that are quantized types
+// only to ops that allow non-quantized types on all inputs and outputs.
+void PopulateLoweringQuantizedPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns);
+
 }  // namespace TF
 }  // namespace mlir
 
