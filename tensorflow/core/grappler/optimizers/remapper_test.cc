@@ -390,6 +390,74 @@ TEST_F(RemapperTest, FuseConv2DWithBias) {
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
 
+class RemapperTensorToHashBucketTest : public RemapperTest {
+ public:
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape = ops::Placeholder::Shape({8, 32, 32, 3});
+    auto input = Placeholder(s.WithOpName("input"), DTYPE, input_shape);
+
+    int num_buckets = 100;
+    auto to_string = ops::AsString(s.WithOpName("to_string"), input);
+    auto to_bucket = ops::StringToHashBucketFast(s.WithOpName("to_bucket"),
+                                                 to_string, num_buckets);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), to_bucket);
+
+    auto input_t = GenerateRandomTensor<DTYPE>({8, 32, 32, 3});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // For CPU tests, we place all nodes on CPU. For GPU tests, we place the
+    // "input" node on GPU to determine the fused op to be on GPU.
+    const string input_device =
+        GetNumAvailableGPUs() > 0 ? "/device:GPU:0" : "/device:CPU:0";
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      if (item.graph.node(i).name() == "input") {
+        item.graph.mutable_node(i)->set_device(input_device);
+      } else {
+        item.graph.mutable_node(i)->set_device("/device:CPU:0");
+      }
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "to_bucket") {
+        EXPECT_EQ(node.op(), "_TensorToHashBucketFast");
+        ASSERT_GE(node.input_size(), 1);
+        EXPECT_EQ(node.input(0), "input");
+        EXPECT_EQ(node.attr().at("num_buckets").i(), num_buckets);
+        found++;
+      }
+    }
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+  }
+};
+
+TEST_F(RemapperTensorToHashBucketTest, I8) { RunTest<DT_INT8>(); }
+
+TEST_F(RemapperTensorToHashBucketTest, I16) { RunTest<DT_INT16>(); }
+
+TEST_F(RemapperTensorToHashBucketTest, I32) { RunTest<DT_INT32>(); }
+
+TEST_F(RemapperTensorToHashBucketTest, I64) { RunTest<DT_INT64>(); }
+
 class RemapperFuseMatMulWithBiasTest : public RemapperTest {
  public:
   template <DataType DTYPE>
