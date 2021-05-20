@@ -245,7 +245,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
-          is_square=True,
+          is_square=is_square,
           parameters=parameters,
           name=name)
 
