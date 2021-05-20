@@ -692,17 +692,4 @@ tf_py_test(
 #         "//tensorflow/python:client_testlib",
 #     ],
 # )
-#
-# tf_py_test(
-#     name = "gfile_utils_test",
-#     size = "small",
-#     srcs = ["google_utils/gfile_utils_test.py"],
-#     python_version = "PY3",
-#     deps = [
-#         ":keras",
-#         "//testing/pymocks:matchers",
-#         "//tensorflow/python:client_testlib",
-#         "//tensorflow/python:util",
-#     ],
-# )
 # copybara:uncomment_end
