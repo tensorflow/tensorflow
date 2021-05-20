@@ -225,9 +225,9 @@ TfLiteStatus EvalHifi(const XtensaSoftmaxOpData* op_data,
   }
   return kTfLiteOk;
 }
-}  // namespace
-
 #endif  // defined(FUSION_F1) || defined(HIFI5)
+
+}  // namespace
 
 void* XtensaInitSoftmax(TfLiteContext* context, const char* buffer,
                         size_t length) {
