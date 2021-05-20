@@ -500,7 +500,7 @@ class Concatenate(_Merge):
     if len(shape_set) != 1:
       err_msg = ('A `Concatenate` layer requires inputs with matching shapes '
                  'except for the concat axis. Got inputs shapes: %s' %
-                 (input_shape,))
+                 input_shape)
       # Make sure all the shapes have same ranks.
       ranks = set(len(shape) for shape in shape_set)
       if len(ranks) != 1:
