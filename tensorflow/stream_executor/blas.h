@@ -1113,6 +1113,15 @@ class BlasSupport {
       ComputationType computation_type, AlgorithmType algorithm,
       ProfileResult *output_profile_result) = 0;
 
+  virtual port::Status DoBlasGemmStridedBatchedWithAlgorithm(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+      uint64 n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
+      DataType type_a, int lda, int64 stride_a, const DeviceMemoryBase &b,
+      DataType type_b, int ldb, int64 stride_b, const void *beta,
+      DeviceMemoryBase *c, DataType type_c, int ldc, int64 stride_c,
+      int batch_count, ComputationType computation_type,
+      AlgorithmType algorithm, ProfileResult *output_profile_result) = 0;
+
   // Computes a batch of matrix-matrix product with general matrices.
   // This is a batched version of DoBlasGemm.
   // The batched GEMM computes matrix product for each input/output in a, b,
@@ -2035,6 +2044,15 @@ class BlasSupport {
       const DeviceMemoryBase &a, int lda, int64 stride_a,                      \
       const DeviceMemoryBase &b, int ldb, int64 stride_b, const void *beta,    \
       DeviceMemoryBase *c, int ldc, int64 stride_c, int batch_count);          \
+  port::Status DoBlasGemmStridedBatchedWithAlgorithm(                          \
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
+      uint64 m, uint64 n, uint64 k, const void *alpha,                         \
+      const DeviceMemoryBase &a, blas::DataType type_a, int lda,               \
+      int64 stride_a, const DeviceMemoryBase &b, blas::DataType type_b,        \
+      int ldb, int64 stride_b, const void *beta, DeviceMemoryBase *c,          \
+      blas::DataType type_c, int ldc, int64 stride_c, int batch_count,         \
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,   \
+      blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasHemm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
                   uint64 m, uint64 n, std::complex<float> alpha,               \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
