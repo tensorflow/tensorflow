@@ -26,7 +26,7 @@ namespace mlir {
 namespace {
 
 struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
+  void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::lmhlo::LmhloDialect>();
   }
 
@@ -38,10 +38,10 @@ struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
   }
 };
 
-}  // end anonymous namespace
+} // end anonymous namespace
 
 std::unique_ptr<FunctionPass> createTestUserangePass() {
   return std::make_unique<TestUserangePass>();
 }
 
-}  // namespace mlir
+} // namespace mlir
