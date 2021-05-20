@@ -19296,6 +19296,13 @@ The current static dimension size will become the bound and the second
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_XlaSortOp : TF_Op<"XlaSort", [NoSideEffect]> {
