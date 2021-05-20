@@ -1566,6 +1566,8 @@ Status Node::FromProto(ModelProto::Node node_proto,
   return Status::OK();
 }
 
+bool Model::publish_ = false;
+
 void Model::AddNode(Node::Factory factory, const string& name,
                     std::shared_ptr<Node> parent,
                     std::shared_ptr<Node>* out_node) {
@@ -1613,7 +1615,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
                      CancellationManager* cancellation_manager) {
   std::shared_ptr<Node> snapshot;
   {
-    tf_shared_lock lock(mu_);
+    tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
   OptimizationParams optimization_params;
@@ -1634,15 +1636,20 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
                  "optimization.";
       return;
   }
-  if (!save_dir_.empty()) {
-    mutex_lock lock(mu_);
-    Status status = EnsureSaveLoopThreadStarted();
-    if (status.ok() && save_buffer_.size() < kMaxNumBufferedOptimizeArgs) {
-      save_buffer_.push_back(std::make_pair(snapshot, optimization_params));
+  if (publish() || !save_dir_.empty()) {
+    mutex_lock l(*snapshot_buffer_mu_);
+    if (snapshot_buffer_->size() >= kMaxNumBufferedSnapshots) {
+      snapshot_buffer_->pop_back();
+    }
+    snapshot_buffer_->push_front(
+        OptimizationSnapshot{snapshot, optimization_params, /*saved=*/false});
+    if (!save_dir_.empty()) {
+      Status status = EnsureSaveLoopThreadStarted();
       save_cond_var_.notify_all();
-    } else if (save_buffer_.size() >= kMaxNumBufferedOptimizeArgs) {
-      VLOG(3) << "Saved snapshots buffer is full. Current snapshot and "
-                 "optimization parameters will not be saved.";
+      if (!status.ok()) {
+        LOG(WARNING) << "Model saving thread failed to start: "
+                     << status.error_message();
+      }
     }
   }
 }
@@ -1907,7 +1914,7 @@ double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
 
 Status Model::ToProto(ModelProto* model_proto) {
   ModelProto::Node* output_proto = model_proto->mutable_output();
-  tf_shared_lock lock(mu_);
+  tf_shared_lock l(mu_);
   TF_RETURN_IF_ERROR(output_->ToProto(output_proto));
   model_proto->set_id_counter(id_counter_);
   model_proto->set_collect_resource_usage(collect_resource_usage_);
@@ -1919,7 +1926,7 @@ Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
   std::shared_ptr<Node> output;
   TF_RETURN_IF_ERROR(
       Node::FromProto(model_proto.output(), /*output=*/nullptr, &output));
-  mutex_lock lock(restored_model->mu_);
+  mutex_lock l(restored_model->mu_);
   restored_model->output_ = output;
   restored_model->id_counter_ = model_proto.id_counter();
   restored_model->collect_resource_usage_.store(
@@ -1933,7 +1940,7 @@ Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
   ModelProto model_proto;
   std::unique_ptr<Model> model_snapshot = std::make_unique<Model>();
   {
-    mutex_lock lock(model_snapshot->mu_);
+    mutex_lock l(model_snapshot->mu_);
     model_snapshot->output_ = std::move(snapshot);
     model_snapshot->id_counter_ = id_counter_;
     model_snapshot->collect_resource_usage_.store(collect_resource_usage_);
@@ -1956,7 +1963,8 @@ Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
   return Status::OK();
 }
 
-Status Model::EnsureSaveLoopThreadStarted() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+Status Model::EnsureSaveLoopThreadStarted()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(snapshot_buffer_mu_) {
   if (!save_thread_) {
     save_thread_ = absl::WrapUnique(
         Env::Default()->StartThread({}, "tf_data_model_save", [this]() {
@@ -1972,26 +1980,62 @@ Status Model::EnsureSaveLoopThreadStarted() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
 Status Model::SaveLoop() {
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(save_dir_));
   while (true) {
-    std::pair<std::shared_ptr<Node>, OptimizationParams> to_save;
+    OptimizationSnapshot to_save;
     {
-      mutex_lock l(mu_);
-      while (!save_thread_cancelled_ && save_buffer_.empty()) {
+      mutex_lock l(*snapshot_buffer_mu_);
+      while (!save_thread_cancelled_ &&
+             (snapshot_buffer_->empty() || snapshot_buffer_->front().saved)) {
         save_cond_var_.wait(l);
       }
       if (save_thread_cancelled_) {
         return Status::OK();
       }
-      to_save = save_buffer_.front();
-      save_buffer_.pop_front();
+      // Find and save the oldest snapshot that hasn't been saved.
+      for (auto snapshot = snapshot_buffer_->rbegin();
+           snapshot != snapshot_buffer_->rend(); ++snapshot) {
+        if (!snapshot->saved) {
+          snapshot->saved = true;
+          to_save = *snapshot;
+          break;
+        }
+      }
     }
     string model_name =
         absl::StrCat("autotune_model_",
                      Hash64Combine(static_cast<uint64>(EnvTime::NowMicros()),
                                    reinterpret_cast<uint64>(this)));
     string fname = io::JoinPath(save_dir_, model_name);
-    TF_RETURN_IF_ERROR(Save(fname, to_save.first, to_save.second));
+    TF_RETURN_IF_ERROR(Save(fname, to_save.output, to_save.params));
     VLOG(2) << "Model was saved as " << fname;
   }
+}
+
+Status Model::PublishLatest(absl::Cord* model) {
+  tf_shared_lock l(*publish_mu());
+  for (auto& pair : *snapshot_buffers()) {
+    model->Append(
+        absl::StrCat("Model #", reinterpret_cast<uint64>(pair.first), ":\n"));
+    OptimizationSnapshot to_publish;
+    {
+      auto& snapshot_buffer = pair.second;
+      tf_shared_lock l(*(snapshot_buffer.mu));
+      if (snapshot_buffer.snapshots->empty()) {
+        return Status::OK();
+      }
+      to_publish = snapshot_buffer.snapshots->front();
+    }
+    // Note that we only publish the output node snapshot and the optimization
+    // parameters, `id_counter_` and `collect_resource_usage_` will have default
+    // values but can be recovered from `output_` if needed.
+    ModelProto model_proto;
+    ModelProto::Node* node_proto = model_proto.mutable_output();
+    TF_RETURN_IF_ERROR(to_publish.output->ToProto(node_proto));
+    OptimizationParams* saved_optimization_params =
+        model_proto.mutable_optimization_params();
+    *saved_optimization_params = to_publish.params;
+    model->Append(absl::StrCat(model_proto.DebugString(), "\n"));
+  }
+  return Status::OK();
 }
 
 }  // namespace model
