@@ -438,7 +438,7 @@ class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
       return failure();
     }
-    LogicalResult reifyReturnTypeShapes(OpBuilder& builder,
+    LogicalResult reifyReturnTypeShapes(OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
       return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
           &reifiedReturnShapes);
