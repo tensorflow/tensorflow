@@ -45,6 +45,9 @@ from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unuse
 from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
 from tensorflow.lite.python.convert import toco_convert_impl as _toco_convert_impl
 from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
+from tensorflow.lite.python.convert_phase import Component
+from tensorflow.lite.python.convert_phase import convert_phase
+from tensorflow.lite.python.convert_phase import SubComponent
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
@@ -696,31 +699,54 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       raise ValueError("The inference_input_type and inference_output_type "
                        "must be tf.float32.")
 
-  def convert(self, graph_def, input_tensors, output_tensors):
-    """Converts a TensorFlow GraphDef based on instance variables.
+  @convert_phase(Component.PREPARE_TF_MODEL, SubComponent.LOAD_SAVED_MODEL)
+  def _load_saved_model(self, saved_model_dir, saved_model_tags):
+    """Load graph_def from saved model with the default serving signature key.
 
     Args:
-      graph_def: Frozen TensorFlow GraphDef.
-      input_tensors: List of input tensors. Type and shape are computed using
-        `foo.shape` and `foo.dtype`.
-      output_tensors: List of output tensors (only .name is used from this).
+      saved_model_dir: Directory of the SavedModel.
+      saved_model_tags: Set of tags identifying the MetaGraphDef within the
+        SavedModel to analyze.
 
     Returns:
-      The converted data in serialized format.
+      graph_def: The loaded GraphDef.
+      input_tensors: List of input tensors.
+      output_tensors: List of output tensors.
+    """
+    graph = _ops.Graph()
+    saved_model = _loader_impl.SavedModelLoader(saved_model_dir)
+    saved_model.load_graph(graph, tags=saved_model_tags)
+    meta_graph = saved_model.get_meta_graph_def_from_tags(saved_model_tags)
+    graph_def = meta_graph.graph_def
+    signature_def = meta_graph.signature_def[
+        _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+    input_tensors = [
+        graph.get_tensor_by_name(signature_def.inputs[key].name)
+        for key in signature_def.inputs
+    ]
+    output_tensors = [
+        graph.get_tensor_by_name(signature_def.outputs[key].name)
+        for key in signature_def.outputs
+    ]
+    return graph_def, input_tensors, output_tensors
 
-    Raises:
+  @convert_phase(Component.PREPARE_TF_MODEL, SubComponent.VALIDATE_INPUTS)
+  def _validate_inputs(self, graph_def, input_tensors):
+    """Validate the input parameters.
+
+    Args:
+      graph_def: The TensorFlow GraphDef.
+      input_tensors: List of input tensors.
+    Raise:
       ValueError:
-        No concrete functions is specified.
-        Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
     """
     # Update conversion params with graph_def.
     self._save_conversion_params_metric(graph_def)
-    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def)
-
-    self._validate_inference_input_output_types(quant_mode)
+    self._quant_mode = QuantizationMode(self.optimizations, self.target_spec,
+                                        self.representative_dataset, graph_def)
+    self._validate_inference_input_output_types(self._quant_mode)
     self._validate_experimental_new_quantizer_flag()
 
     if not self._is_unknown_shapes_allowed():
@@ -747,8 +773,27 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
           _convert_debug_info_func(self._trackable_obj.graph_debug_info),
           graph_def)
 
+  def convert(self, graph_def, input_tensors, output_tensors):
+    """Converts a TensorFlow GraphDef based on instance variables.
+
+    Args:
+      graph_def: Frozen TensorFlow GraphDef.
+      input_tensors: List of input tensors.
+      output_tensors: List of output tensors.
+
+    Returns:
+      The converted data in serialized format.
+
+    Raises:
+      ValueError:
+        No concrete functions is specified.
+        Multiple concrete functions are specified.
+        Input shape is not specified.
+        Invalid quantization parameters.
+    """
+    self._validate_inputs(graph_def, input_tensors)
     converter_kwargs = self._get_base_converter_args()
-    converter_kwargs.update(quant_mode.converter_flags())
+    converter_kwargs.update(self._quant_mode.converter_flags())
     if not self.experimental_new_converter:
       logging.warning(
           "Please consider switching to the new converter by setting "
@@ -767,7 +812,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         **converter_kwargs)
 
     result = self._apply_optimizations(
-        result, quant_mode, quant_io=self.experimental_new_quantizer)
+        result, self._quant_mode, quant_io=self.experimental_new_quantizer)
 
     return result
 
@@ -822,28 +867,14 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     """
     self._increase_conversion_attempt_metric()
     self._save_conversion_params_metric()
-    graph = _ops.Graph()
-    saved_model = _loader_impl.SavedModelLoader(self.saved_model_dir)
-    saved_model.load_graph(graph, tags=self._saved_model_tags)
-    meta_graph = saved_model.get_meta_graph_def_from_tags(
-        self._saved_model_tags)
+    graph_def, input_tensors, output_tensors = self._load_saved_model(
+        self.saved_model_dir, self._saved_model_tags)
     # If we can't use saved model importer, then fallback
     # to frozen graph conversion path.
     if self.saved_model_dir is None or not self.experimental_new_converter:
-      signature_def = meta_graph.signature_def[
-          _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-      input_tensors = [
-          graph.get_tensor_by_name(signature_def.inputs[key].name)
-          for key in signature_def.inputs
-      ]
-      output_tensors = [
-          graph.get_tensor_by_name(signature_def.outputs[key].name)
-          for key in signature_def.outputs
-      ]
-      result = _freeze_saved_model(
+      graph_def, _, _, _ = _freeze_saved_model(
           self.saved_model_dir, None, None, None, self._saved_model_tags,
           _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
-      graph_def = result[0]
       # We make sure to clear the saved_model_dir as there is some
       # legacy code down in the caller that checks this.
       # TODO(b/162537905): Clean these indirect dependencies.
@@ -856,18 +887,17 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     if self._trackable_obj is None:
       self._debug_info = _get_debug_info(
-          _build_debug_info_func(self._funcs[0].graph), meta_graph.graph_def)
+          _build_debug_info_func(self._funcs[0].graph), graph_def)
     else:
       self._debug_info = _get_debug_info(
           _convert_debug_info_func(self._trackable_obj.graph_debug_info),
-          meta_graph.graph_def)
+          graph_def)
 
     # Update conversion params with graph_def.
-    self._save_conversion_params_metric(meta_graph.graph_def)
+    self._save_conversion_params_metric(graph_def)
     # Get quantization options and do some sanity checks.
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset,
-                                  meta_graph.graph_def)
+                                  self.representative_dataset, graph_def)
     self._validate_inference_input_output_types(quant_mode)
 
     converter_kwargs = {
@@ -904,69 +934,48 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     self._keras_model = keras_model
     self._trackable_obj = trackable_obj
 
-  def _convert_as_saved_model(self):
-    """Converts a Keras model as a saved model.
+  @convert_phase(Component.PREPARE_TF_MODEL,
+                 SubComponent.CONVERT_KERAS_TO_SAVED_MODEL)
+  def _convert_keras_to_saved_model(self, output_dir):
+    """Save Keras model to the SavedModel format.
+
+    Args:
+      output_dir: The output directory to save the SavedModel.
 
     Returns:
-      The converted data in serialized format.
+      graph_def: The frozen GraphDef.
+      input_tensors: List of input tensors.
+      output_tensors: List of output tensors.
     """
-    temp_dir = tempfile.mkdtemp()
     try:
-      try:
-        self._keras_model.save(temp_dir, save_format="tf")
-      except Exception:  # pylint: disable=broad-except
-        # When storing the given keras model to a saved model is failed, let's
-        # use original keras model conversion pipeline.
-        return None
-      self.saved_model_dir = temp_dir
-      self._saved_model_tags = set([_tag_constants.SERVING])
-      self._saved_model_exported_names = [
-          _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-      ]
-      self._parse_saved_model_args()
-      if self.saved_model_dir:
-        graph = _ops.Graph()
-        saved_model = _loader_impl.SavedModelLoader(self.saved_model_dir)
-        saved_model.load_graph(graph, tags=self._saved_model_tags)
-        meta_graph = saved_model.get_meta_graph_def_from_tags(
-            self._saved_model_tags)
-        signature_def = meta_graph.signature_def[
-            _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-        input_tensors = [
-            graph.get_tensor_by_name(signature_def.inputs[key].name)
-            for key in signature_def.inputs
-        ]
-        output_tensors = [
-            graph.get_tensor_by_name(signature_def.outputs[key].name)
-            for key in signature_def.outputs
-        ]
-        self._trackable_obj = _load(self.saved_model_dir,
-                                    self._saved_model_tags)
-        return super(TFLiteKerasModelConverterV2,
-                     self).convert(meta_graph.graph_def, input_tensors,
-                                   output_tensors)
-    finally:
-      shutil.rmtree(temp_dir, True)
+      self._keras_model.save(output_dir, save_format="tf")
+    except Exception:  # pylint: disable=broad-except
+      # When storing the given keras model to a saved model is failed, let's
+      # use original keras model conversion pipeline.
+      return None, None, None
+    self.saved_model_dir = output_dir
+    self._saved_model_tags = set([_tag_constants.SERVING])
+    self._saved_model_exported_names = [
+        _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    ]
+    self._parse_saved_model_args()
+    if self.saved_model_dir:
+      graph_def, input_tensors, output_tensors = self._load_saved_model(
+          self.saved_model_dir, self._saved_model_tags)
+      self._trackable_obj = _load(self.saved_model_dir, self._saved_model_tags)
+      return graph_def, input_tensors, output_tensors
+    return None, None, None
 
-  def convert(self):
-    """Converts a keras model based on instance variables.
+  @convert_phase(Component.PREPARE_TF_MODEL, SubComponent.FREEZE_KERAS_MODEL)
+  def _freeze_keras_model(self):
+    """Freeze Keras model to frozen graph.
 
     Returns:
-      The converted data in serialized format.
-
-    Raises:
-      ValueError:
-        Multiple concrete functions are specified.
-        Input shape is not specified.
-        Invalid quantization parameters.
+      graph_def: The frozen GraphDef.
+      input_tensors: List of input tensors.
+      output_tensors: List of output tensors.
+      frozen_func: The frozen ConcreteFunction.
     """
-    self._increase_conversion_attempt_metric()
-    self._save_conversion_params_metric()
-    saved_model_convert_result = self._convert_as_saved_model()
-    if saved_model_convert_result:
-      self._increase_conversion_success_metric(saved_model_convert_result)
-      return saved_model_convert_result
-
     input_signature = None
     # If the model's call is not a `tf.function`, then we need to first get its
     # input signature from `model_input_signature` method. We can't directly
@@ -994,6 +1003,45 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
         if tensor.dtype != _dtypes.resource
     ]
     output_tensors = frozen_func.outputs
+    return graph_def, input_tensors, output_tensors, frozen_func
+
+  def _convert_as_saved_model(self):
+    """Converts a Keras model as a saved model.
+
+    Returns:
+      The converted data in serialized format.
+    """
+    temp_dir = tempfile.mkdtemp()
+    try:
+      graph_def, input_tensors, output_tensors = (
+          self._convert_keras_to_saved_model(temp_dir))
+      if self.saved_model_dir:
+        return super(TFLiteKerasModelConverterV2,
+                     self).convert(graph_def, input_tensors, output_tensors)
+    finally:
+      shutil.rmtree(temp_dir, True)
+
+  def convert(self):
+    """Converts a keras model based on instance variables.
+
+    Returns:
+      The converted data in serialized format.
+
+    Raises:
+      ValueError:
+        Multiple concrete functions are specified.
+        Input shape is not specified.
+        Invalid quantization parameters.
+    """
+    self._increase_conversion_attempt_metric()
+    self._save_conversion_params_metric()
+    saved_model_convert_result = self._convert_as_saved_model()
+    if saved_model_convert_result:
+      self._increase_conversion_success_metric(saved_model_convert_result)
+      return saved_model_convert_result
+
+    graph_def, input_tensors, output_tensors, frozen_func = (
+        self._freeze_keras_model())
 
     # Run a Grappler pass.
     grappler_config = self._grappler_config()
@@ -1033,6 +1081,41 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     self._funcs = funcs
     self._trackable_obj = trackable_obj
 
+  @convert_phase(Component.PREPARE_TF_MODEL,
+                 SubComponent.FREEZE_CONCRETE_FUNCTION)
+  def _freeze_concrete_function(self):
+    """Convert the given ConcreteFunction to frozen graph.
+
+    Returns:
+      graph_def: The frozen GraphDef.
+      input_tensors: List of input tensors.
+      output_tensors: List of output tensors.
+      frozen_func: The frozen ConcreteFunction.
+
+    Raises:
+      ValueError: none or multiple ConcreteFunctions provided.
+    """
+    # TODO(b/130297984): Add support for converting multiple function.
+
+    if len(self._funcs) == 0:  # pylint: disable=g-explicit-length-test
+      raise ValueError("No ConcreteFunction is specified.")
+
+    if len(self._funcs) > 1:
+      raise ValueError("This converter can only convert a single "
+                       "ConcreteFunction. Converting multiple functions is "
+                       "under development.")
+
+    frozen_func, graph_def = (
+        _convert_to_constants.convert_variables_to_constants_v2_as_graph(
+            self._funcs[0], lower_control_flow=False))
+
+    input_tensors = [
+        tensor for tensor in frozen_func.inputs
+        if tensor.dtype != _dtypes.resource
+    ]
+    output_tensors = frozen_func.outputs
+    return graph_def, input_tensors, output_tensors, frozen_func
+
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -1046,27 +1129,10 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
         Input shape is not specified.
         Invalid quantization parameters.
     """
-    # TODO(b/130297984): Add support for converting multiple function.
-
-    if len(self._funcs) == 0:  # pylint: disable=g-explicit-length-test
-      raise ValueError("No ConcreteFunction is specified.")
-
-    if len(self._funcs) > 1:
-      raise ValueError("This converter can only convert a single "
-                       "ConcreteFunction. Converting multiple functions is "
-                       "under development.")
-
     self._increase_conversion_attempt_metric()
     self._save_conversion_params_metric()
-    frozen_func, graph_def = (
-        _convert_to_constants.convert_variables_to_constants_v2_as_graph(
-            self._funcs[0], lower_control_flow=False))
-
-    input_tensors = [
-        tensor for tensor in frozen_func.inputs
-        if tensor.dtype != _dtypes.resource
-    ]
-    output_tensors = frozen_func.outputs
+    graph_def, input_tensors, output_tensors, frozen_func = (
+        self._freeze_concrete_function())
 
     # Run a Grappler pass.
     grappler_config = self._grappler_config()
@@ -1346,24 +1412,24 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
               _get_tf_type_name(converter_kwargs["inference_type"]),
               _get_tf_type_name(converter_kwargs["inference_input_type"])))
 
-  def convert(self):
-    """Converts a TensorFlow GraphDef based on instance variables.
+  @convert_phase(Component.PREPARE_TF_MODEL, SubComponent.VALIDATE_INPUTS)
+  def _validate_inputs(self, input_tensors, quantized_input_stats):
+    """Validate input parameters.
 
-    Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
+    Args:
+      input_tensors: List of input tensors.
+      quantized_input_stats: Map of input tensor names to a tuple of floats
+        representing the mean and standard deviation of the training data.
 
     Raises:
       ValueError:
         Input shape is not specified.
-        None value for dimension in input_tensor.
+        Quantization input stats is required but not provided.
     """
-    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, self._graph_def)
 
     if (not self._is_unknown_shapes_allowed() and self._has_valid_tensors()):
       # Checks dimensions in input tensor.
-      for tensor in self._input_tensors:
+      for tensor in input_tensors:
         shape = tensor.shape
         if not shape:
           raise ValueError("Provide an input shape for input array "
@@ -1380,12 +1446,12 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
 
     # Get quantization stats. Ensures there is one stat per name if the stats
     # are specified.
-    if self.quantized_input_stats:
-      quantized_stats = []
+    if quantized_input_stats:
+      self._quantized_stats = []
       invalid_stats = []
       for name in self.get_input_arrays():
-        if name in self.quantized_input_stats:
-          quantized_stats.append(self.quantized_input_stats[name])
+        if name in quantized_input_stats:
+          self._quantized_stats.append(quantized_input_stats[name])
         else:
           invalid_stats.append(name)
 
@@ -1393,7 +1459,24 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         raise ValueError("Quantization input stats are not available for input "
                          "tensors '{0}'.".format(",".join(invalid_stats)))
     else:
-      quantized_stats = None
+      self._quantized_stats = None
+
+  def convert(self):
+    """Converts a TensorFlow GraphDef based on instance variables.
+
+    Returns:
+      The converted data in serialized format. Either a TFLite Flatbuffer or a
+      Graphviz graph depending on value in `output_format`.
+
+    Raises:
+      ValueError:
+        Input shape is not specified.
+        None value for dimension in input_tensor.
+    """
+    self._validate_inputs(self._input_tensors, self.quantized_input_stats)
+
+    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
+                                  self.representative_dataset, self._graph_def)
 
     optimized_graph = self._graph_def
     if not self.saved_model_dir:
@@ -1424,7 +1507,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
                                    self.inference_input_type))
     converter_kwargs.update({
         "output_format": self.output_format,
-        "quantized_input_stats": quantized_stats,
+        "quantized_input_stats": self._quantized_stats,
         "default_ranges_stats": self.default_ranges_stats,
         "drop_control_dependency": self.drop_control_dependency,
         "reorder_across_fake_quant": self.reorder_across_fake_quant,
@@ -1682,6 +1765,34 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
     self._output_tensors = output_tensors
     self._debug_info_func = _build_debug_info_func(sess.graph)
 
+  @convert_phase(Component.PREPARE_TF_MODEL, SubComponent.FREEZE_KERAS_MODEL)
+  def _freeze_keras_model(self, output_dir):
+    """Save Keras model to Saved Model format.
+
+    Args:
+      output_dir: The output directory to save the SavedModel.
+    """
+    try:
+      self._keras_model.save(output_dir, save_format="tf")
+    except Exception:  # pylint: disable=broad-except
+      # When storing the given keras model to a saved model is failed, let's
+      # use original keras model conversion pipeline.
+      return None
+    tag_set = set([_tag_constants.SERVING])
+    signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    graph_def, input_tensors, output_tensors, sess_graph = _freeze_saved_model(
+        output_dir, None, None, None, tag_set, signature_key)
+
+    self.saved_model_dir = output_dir
+    self._saved_model_tags = tag_set
+    self._saved_model_exported_names = [signature_key]
+    self._parse_saved_model_args()
+    if self.saved_model_dir:
+      self._graph_def = graph_def
+      self._input_tensors = input_tensors
+      self._output_tensors = output_tensors
+      self._debug_info_func = _build_debug_info_func(sess_graph)
+
   def _convert_as_saved_model(self):
     """Converts a Keras model as a saved model.
 
@@ -1690,28 +1801,8 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
     """
     temp_dir = tempfile.mkdtemp()
     try:
-      try:
-        self._keras_model.save(temp_dir, save_format="tf")
-      except Exception:  # pylint: disable=broad-except
-        # When storing the given keras model to a saved model is failed, let's
-        # use original keras model conversion pipeline.
-        return None
-      tag_set = set([_tag_constants.SERVING])
-      signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-      result = _freeze_saved_model(temp_dir, None, None, None, tag_set,
-                                   signature_key)
-
-      self.saved_model_dir = temp_dir
-      self._saved_model_tags = tag_set
-      self._saved_model_exported_names = [signature_key]
-      self._parse_saved_model_args()
+      self._freeze_keras_model(temp_dir)
       if self.saved_model_dir:
-        self._graph_def = result[0]
-        self._input_tensors = result[1]
-        self._output_tensors = result[2]
-        self._debug_info_func = _build_debug_info_func(result[3])
-        # Update conversion params with graph_def.
-        self._save_conversion_params_metric()
         return super(TFLiteKerasModelConverter, self).convert()
     finally:
       shutil.rmtree(temp_dir, True)

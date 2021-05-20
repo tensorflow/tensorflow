@@ -175,6 +175,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":convert",
+        ":convert_phase",
         ":convert_saved_model",
         ":interpreter",
         ":lite_constants",
