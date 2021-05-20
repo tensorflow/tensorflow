@@ -1554,14 +1554,12 @@ static LogicalResult Verify(DynamicSliceOp op) {
 static LogicalResult Verify(RealDynamicSliceOp op) {
   auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
   // If operand is unranked, there is very little to verify statically.
-  if (!input_type) {
-    return success();
-  }
+  if (!input_type) return success();
   int input_rank = input_type.getRank();
 
-  auto start_type = op.start_indices().getType().dyn_cast<RankedTensorType>();
-  auto limit_type = op.limit_indices().getType().dyn_cast<RankedTensorType>();
-  auto strides_type = op.strides().getType().dyn_cast<RankedTensorType>();
+  auto start_type = op.start_indices().getType().cast<RankedTensorType>();
+  auto limit_type = op.limit_indices().getType().cast<RankedTensorType>();
+  auto strides_type = op.strides().getType().cast<RankedTensorType>();
 
   if (input_rank != start_type.getNumElements()) {
     return op.emitOpError() << "has mismatched number of operand rank ("
@@ -2302,18 +2300,16 @@ void DynamicPadOp::getCanonicalizationPatterns(
 static LogicalResult Verify(DynamicPadOp op) {
   auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
   // If operand is unranked, there is very little to verify statically.
-  if (!input_type) {
-    return success();
-  }
+  if (!input_type) return success();
   int input_rank = input_type.getRank();
 
-  auto pad_type = op.padding_value().getType().dyn_cast<RankedTensorType>();
-  if (!pad_type || pad_type.getRank() != 0) {
+  auto pad_type = op.padding_value().getType().cast<RankedTensorType>();
+  if (pad_type.getRank() != 0) {
     return op.emitOpError() << "padding value type should be a rank-0";
   }
 
   auto padding_low_type =
-      op.edge_padding_low().getType().dyn_cast<RankedTensorType>();
+      op.edge_padding_low().getType().cast<RankedTensorType>();
   if (padding_low_type.getNumElements() != input_rank) {
     return op.emitOpError()
            << "edge_padding_low length(" << padding_low_type.getNumElements()
@@ -2321,7 +2317,7 @@ static LogicalResult Verify(DynamicPadOp op) {
   }
 
   auto padding_high_type =
-      op.edge_padding_high().getType().dyn_cast<RankedTensorType>();
+      op.edge_padding_high().getType().cast<RankedTensorType>();
   if (padding_high_type.getNumElements() != input_rank) {
     return op.emitOpError()
            << "edge_padding_high length(" << padding_high_type.getNumElements()
@@ -2329,7 +2325,7 @@ static LogicalResult Verify(DynamicPadOp op) {
   }
 
   auto interior_padding_type =
-      op.interior_padding().getType().dyn_cast<RankedTensorType>();
+      op.interior_padding().getType().cast<RankedTensorType>();
   if (interior_padding_type.getNumElements() != input_rank) {
     return op.emitOpError()
            << "edge_padding_interior length("
@@ -2339,9 +2335,7 @@ static LogicalResult Verify(DynamicPadOp op) {
 
   auto output_type = op.getResult().getType().dyn_cast<RankedTensorType>();
   // If result is unranked, there is very little to verify statically.
-  if (!output_type) {
-    return success();
-  }
+  if (!output_type) return success();
   int output_rank = output_type.getRank();
   if (input_rank != output_rank) {
     return op.emitOpError() << "operand rank(" << input_rank
