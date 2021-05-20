@@ -922,7 +922,6 @@ distribute_py_test(
 
 distribute_py_test(
     name = "dataset_creator_model_fit_test",
-    size = "small",
     srcs = ["dataset_creator_model_fit_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
