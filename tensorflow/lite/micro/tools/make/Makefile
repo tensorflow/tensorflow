@@ -128,7 +128,6 @@ CC_WARNINGS := \
   -Wall \
   -Wextra \
   -Wstrict-aliasing \
-	-Wno-nonnull \
   -Wno-unused-parameter
 
 COMMON_FLAGS := \
@@ -391,8 +390,6 @@ tensorflow/lite/micro/kernels/transpose_conv.cc \
 tensorflow/lite/micro/kernels/unpack.cc \
 tensorflow/lite/micro/kernels/zeros_like.cc
 
-include $(MAKEFILE_DIR)/additional_kernels.inc
-
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
@@ -587,7 +584,6 @@ ifneq ($(DISABLE_DOWNLOADS), true)
   $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
   $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
   $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
-  $(eval $(call add_third_party_download,$(KISSFFT_URL),$(KISSFFT_MD5),kissfft,patch_kissfft))
   RESULT := $(shell $(MAKEFILE_DIR)/person_detection_int8_download.sh ${MAKEFILE_DIR}/downloads $(CO_PROCESSOR))
   ifneq ($(RESULT), SUCCESS)
     $(error Something went wrong with the person detection int8 model download: $(RESULT))
@@ -832,7 +828,6 @@ ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
   $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
 endif
 
-include $(MAKEFILE_DIR)/additional_tests.inc
 
 # For all the tests that do not have any additional dependencies, we can
 # add a make target in a common way.
