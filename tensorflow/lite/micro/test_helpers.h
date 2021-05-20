@@ -126,6 +126,10 @@ const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          int num_conns,
                                          int num_subgraph_inputs = 0);
 
+// Returns a flatbuffer with a single operator, two inputs (one unused) and one
+// output.
+const Model* GetModelWithUnusedInputs();
+
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
 
