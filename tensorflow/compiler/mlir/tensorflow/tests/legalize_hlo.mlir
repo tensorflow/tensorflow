@@ -2186,14 +2186,16 @@ func @convert_argmax(%arg0: tensor<4x32x256xf32>) -> tuple<tensor<4x32xf32>, ten
   %4 = "mhlo.reduce"(%arg0, %3, %0, %1) ( {
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<i32>):  // no predecessors
     %7 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %8 = "mhlo.select"(%7, %arg1, %arg3) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-    %9 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %10 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %11 = mhlo.and %9, %10 : tensor<i1>
-    %12 = mhlo.or %7, %11 : tensor<i1>
-    %13 = "mhlo.select"(%12, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    %14 = "mhlo.tuple"(%8, %13) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%14) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    %8 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "NE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %9 = mhlo.or %7, %8 : tensor<i1>
+    %10 = "mhlo.select"(%9, %arg1, %arg3) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+    %11 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %12 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %13 = mhlo.and %11, %12 : tensor<i1>
+    %14 = mhlo.or %9, %13 : tensor<i1>
+    %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+    %16 = "mhlo.tuple"(%10, %15) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+    "mhlo.return"(%16) : (tuple<tensor<f32>, tensor<i32>>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<4x32x256xf32>, tensor<4x32x256xi32>, tensor<f32>, tensor<i32>) -> tuple<tensor<4x32xf32>, tensor<4x32xi32>>
   return %4 : tuple<tensor<4x32xf32>, tensor<4x32xi32>>
 }
@@ -2214,14 +2216,16 @@ func @convert_argmin(%arg0: tensor<4x32x256xf32>) -> tuple<tensor<4x32xf32>, ten
   %4 = "mhlo.reduce"(%arg0, %3, %0, %1) ( {
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<i32>):  // no predecessors
     %7 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %8 = "mhlo.select"(%7, %arg1, %arg3) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-    %9 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %10 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %11 = mhlo.and %9, %10 : tensor<i1>
-    %12 = mhlo.or %7, %11 : tensor<i1>
-    %13 = "mhlo.select"(%12, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    %14 = "mhlo.tuple"(%8, %13) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%14) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    %8 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "NE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %9 = mhlo.or %7, %8 : tensor<i1>
+    %10 = "mhlo.select"(%9, %arg1, %arg3) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+    %11 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %12 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %13 = mhlo.and %11, %12 : tensor<i1>
+    %14 = mhlo.or %9, %13 : tensor<i1>
+    %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+    %16 = "mhlo.tuple"(%10, %15) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+    "mhlo.return"(%16) : (tuple<tensor<f32>, tensor<i32>>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<4x32x256xf32>, tensor<4x32x256xi32>, tensor<f32>, tensor<i32>) -> tuple<tensor<4x32xf32>, tensor<4x32xi32>>
   return %4 : tuple<tensor<4x32xf32>, tensor<4x32xi32>>
 }

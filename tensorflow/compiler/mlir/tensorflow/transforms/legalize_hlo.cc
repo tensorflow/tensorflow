@@ -768,14 +768,16 @@ class ConvertReduceOpToTfArgMinMax
 
   // Pattern matches the following reduction function for ArgMax/ArgMin:
   // %0 = compare{GT}(%lhs_value, %rhs_value)
-  // %1 = select(%0, %lhs_value, %rhs_value)
-  // %2 = compare{EQ}(%lhs_value, %rhs_value)
-  // %3 = compare{LT}(%lhs_index, %rhs_index)
-  // %4 = and(%2, %3)
-  // %5 = or(%0, %4)
-  // %6 = select(%5, %lhs_index, %rhs_index)
-  // %7 = tuple(%1, %6)
-  // return %7
+  // %1 = compare{NE}(%lhs_value, %lhs_value)
+  // %2 = or(%0, %1)
+  // %3 = select(%2, %lhs_value, %rhs_value)
+  // %4 = compare{EQ}(%lhs_value, %rhs_value)
+  // %5 = compare{LT}(%lhs_index, %rhs_index)
+  // %6 = and(%4, %5)
+  // %7 = or(%2, %6)
+  // %8 = select(%7, %lhs_index, %rhs_index)
+  // %9 = tuple(%3, %8)
+  // return %9
   LogicalResult matchReduceComputation(Region &computation) const {
     Block &body = computation.front();
     if (body.getNumArguments() != 4) return failure();
@@ -796,22 +798,34 @@ class ConvertReduceOpToTfArgMinMax
         value_select.on_false() != body.getArgument(2))
       return failure();
 
+    mhlo::OrOp value_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
+        value_select.getOperand(0).getDefiningOp());
+    if (!value_or) return failure();
+
     mhlo::SelectOp index_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
         return_tuple.getOperand(1).getDefiningOp());
     if (!index_select || index_select.on_true() != body.getArgument(1) ||
         index_select.on_false() != body.getArgument(3))
       return failure();
 
-    mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        value_select.pred().getDefiningOp());
+    mhlo::CompareOp value_gt =
+        llvm::dyn_cast_or_null<mhlo::CompareOp>(value_or.lhs().getDefiningOp());
     if (!value_gt || value_gt.comparison_direction() != CompareDirection() ||
         value_gt.lhs() != body.getArgument(0) ||
         value_gt.rhs() != body.getArgument(2))
       return failure();
 
+    mhlo::CompareOp value_ne =
+        llvm::dyn_cast_or_null<mhlo::CompareOp>(value_or.rhs().getDefiningOp());
+    if (!value_ne || value_ne.comparison_direction() != "NE" ||
+        value_ne.lhs() != body.getArgument(0) ||
+        value_ne.rhs() != body.getArgument(0))
+      return failure();
+
     mhlo::OrOp index_or =
         llvm::dyn_cast_or_null<mhlo::OrOp>(index_select.pred().getDefiningOp());
-    if (!index_or || index_or.lhs() != value_gt) return failure();
+
+    if (!index_or || index_or.lhs() != value_or) return failure();
 
     mhlo::AndOp index_and =
         llvm::dyn_cast_or_null<mhlo::AndOp>(index_or.rhs().getDefiningOp());
