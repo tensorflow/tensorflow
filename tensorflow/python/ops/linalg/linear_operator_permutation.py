@@ -36,7 +36,6 @@ __all__ = ["LinearOperatorPermutation",]
 
 
 @tf_export("linalg.LinearOperatorPermutation")
-@linear_operator.make_composite_tensor
 class LinearOperatorPermutation(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] of permutation matrices.
 
@@ -261,7 +260,3 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
   @property
   def perm(self):
     return self._perm
-
-  @property
-  def _composite_tensor_fields(self):
-    return ("perm", "dtype")

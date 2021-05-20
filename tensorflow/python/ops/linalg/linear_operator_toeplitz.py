@@ -34,7 +34,6 @@ __all__ = ["LinearOperatorToeplitz",]
 
 
 @tf_export("linalg.LinearOperatorToeplitz")
-@linear_operator.make_composite_tensor
 class LinearOperatorToeplitz(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] of toeplitz matrices.
 
@@ -280,10 +279,6 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
   @property
   def row(self):
     return self._row
-
-  @property
-  def _composite_tensor_fields(self):
-    return ("col", "row")
 
 
 def _to_complex(x):

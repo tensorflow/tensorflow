@@ -39,7 +39,6 @@ _DIAGONAL_FORMATS = frozenset({_COMPACT, _MATRIX, _SEQUENCE})
 
 
 @tf_export('linalg.LinearOperatorTridiag')
-@linear_operator.make_composite_tensor
 class LinearOperatorTridiag(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] square tridiagonal matrix.
 
@@ -384,7 +383,3 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
   @property
   def diagonals_format(self):
     return self._diagonals_format
-
-  @property
-  def _composite_tensor_fields(self):
-    return ('diagonals', 'diagonals_format')

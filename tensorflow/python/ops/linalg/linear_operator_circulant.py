@@ -514,13 +514,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     return math_ops.cast(math_ops.complex(re_d_value, im_d_value), self.dtype)
 
-  @property
-  def _composite_tensor_fields(self):
-    return ("spectrum", "input_output_dtype")
-
 
 @tf_export("linalg.LinearOperatorCirculant")
-@linear_operator.make_composite_tensor
 class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a circulant matrix.
 
@@ -777,7 +772,6 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")
-@linear_operator.make_composite_tensor
 class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a block circulant matrix.
 
@@ -965,7 +959,6 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
 
 
 @tf_export("linalg.LinearOperatorCirculant3D")
-@linear_operator.make_composite_tensor
 class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a nested block circulant matrix.
 
