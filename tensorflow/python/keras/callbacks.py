@@ -1380,7 +1380,7 @@ class ModelCheckpoint(Callback):
 
   def on_train_batch_end(self, batch, logs=None):
     if self._should_save_on_batch(batch):
-      self._save_model(epoch=self._current_epoch, logs=logs)
+      self._save_model(epoch=self._current_epoch, batch=batch, logs=logs)
 
   def on_epoch_begin(self, epoch, logs=None):
     self._current_epoch = epoch
@@ -1389,7 +1389,7 @@ class ModelCheckpoint(Callback):
     self.epochs_since_last_save += 1
     # pylint: disable=protected-access
     if self.save_freq == 'epoch':
-      self._save_model(epoch=epoch, logs=logs)
+      self._save_model(epoch=epoch, batch=None, logs=logs)
 
   def _should_save_on_batch(self, batch):
     """Handles batch-level saving logic, supports steps_per_execution."""
@@ -1408,11 +1408,13 @@ class ModelCheckpoint(Callback):
       return True
     return False
 
-  def _save_model(self, epoch, logs):
+  def _save_model(self, epoch, batch, logs):
     """Saves the model.
 
     Args:
         epoch: the epoch this iteration is in.
+        batch: the batch this iteration is in. `None` if the `save_freq`
+          is set to `epoch`.
         logs: the `logs` dict passed in to `on_batch_end` or `on_epoch_end`.
     """
     logs = logs or {}
@@ -1422,7 +1424,7 @@ class ModelCheckpoint(Callback):
       # Block only when saving interval is reached.
       logs = tf_utils.sync_to_numpy_or_python_type(logs)
       self.epochs_since_last_save = 0
-      filepath = self._get_file_path(epoch, logs)
+      filepath = self._get_file_path(epoch, batch, logs)
 
       try:
         if self.save_best_only:
@@ -1469,14 +1471,19 @@ class ModelCheckpoint(Callback):
         # Re-throw the error for any other causes.
         raise e
 
-  def _get_file_path(self, epoch, logs):
+  def _get_file_path(self, epoch, batch, logs):
     """Returns the file path for checkpoint."""
     # pylint: disable=protected-access
     try:
-      # `filepath` may contain placeholders such as `{epoch:02d}` and
-      # `{mape:.2f}`. A mismatch between logged metrics and the path's
+      # `filepath` may contain placeholders such as `{epoch:02d}`,`{batch:02d}`
+      # and `{mape:.2f}`. A mismatch between logged metrics and the path's
       # placeholders can cause formatting to fail.
-      file_path = self.filepath.format(epoch=epoch + 1, **logs)
+      if batch is None:
+        file_path = self.filepath.format(epoch=epoch + 1, **logs)
+      else:
+        file_path = self.filepath.format(epoch=epoch + 1,
+                                         batch=batch + 1,
+                                         **logs)
     except KeyError as e:
       raise KeyError('Failed to format this callback filepath: "{}". '
                      'Reason: {}'.format(self.filepath, e))

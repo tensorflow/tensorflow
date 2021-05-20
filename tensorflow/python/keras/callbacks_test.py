@@ -785,6 +785,57 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         mode=mode,
         options=save_options_lib.SaveOptions())
 
+    # Case 11: `ModelCheckpoint` save model with batch number in filename.
+    filepath = os.path.join(temp_dir,
+      'checkpoint.epoch{epoch:02d}batch{batch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_freq=1
+        )
+    ]
+    assert not os.path.exists(filepath.format(epoch=1, batch=1))
+    assert not os.path.exists(filepath.format(epoch=1, batch=2))
+    assert not os.path.exists(filepath.format(epoch=2, batch=1))
+    assert not os.path.exists(filepath.format(epoch=2, batch=2))
+    assert not os.path.exists(filepath.format(epoch=3, batch=1))
+    assert not os.path.exists(filepath.format(epoch=3, batch=2))
+    assert not os.path.exists(filepath.format(epoch=4, batch=1))
+    assert not os.path.exists(filepath.format(epoch=4, batch=2))
+    assert not os.path.exists(filepath.format(epoch=5, batch=1))
+    assert not os.path.exists(filepath.format(epoch=5, batch=2))
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=5,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=5,
+        verbose=1)
+
+    assert os.path.exists(filepath.format(epoch=1, batch=1))
+    assert os.path.exists(filepath.format(epoch=1, batch=2))
+    assert os.path.exists(filepath.format(epoch=2, batch=1))
+    assert os.path.exists(filepath.format(epoch=2, batch=2))
+    assert os.path.exists(filepath.format(epoch=3, batch=1))
+    assert os.path.exists(filepath.format(epoch=3, batch=2))
+    assert os.path.exists(filepath.format(epoch=4, batch=1))
+    assert os.path.exists(filepath.format(epoch=4, batch=2))
+    assert os.path.exists(filepath.format(epoch=5, batch=1))
+    assert os.path.exists(filepath.format(epoch=5, batch=2))
+
+    os.remove(filepath.format(epoch=1, batch=1))
+    os.remove(filepath.format(epoch=1, batch=2))
+    os.remove(filepath.format(epoch=2, batch=1))
+    os.remove(filepath.format(epoch=2, batch=2))
+    os.remove(filepath.format(epoch=3, batch=1))
+    os.remove(filepath.format(epoch=3, batch=2))
+    os.remove(filepath.format(epoch=4, batch=1))
+    os.remove(filepath.format(epoch=4, batch=2))
+    os.remove(filepath.format(epoch=5, batch=1))
+    os.remove(filepath.format(epoch=5, batch=2))
+
   @testing_utils.run_v2_only
   def test_ModelCheckpoint_subclass_save_weights_false(self):
     model = testing_utils.get_small_subclass_mlp(NUM_HIDDEN, NUM_CLASSES)
