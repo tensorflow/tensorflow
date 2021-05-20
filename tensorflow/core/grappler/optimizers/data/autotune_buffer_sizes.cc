@@ -30,7 +30,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kLegacyAutotune[] = "legacy_autotune";
 constexpr char kBufferSizeMin[] = "buffer_size_min";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 

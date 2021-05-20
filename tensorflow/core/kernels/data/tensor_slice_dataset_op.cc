@@ -33,8 +33,6 @@ namespace data {
 /* static */ constexpr const char* const TensorSliceDatasetOp::kToutputTypes;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kOutputShapes;
 
-constexpr char kCurIndex[] = "i";
-
 class TensorSliceDatasetOp::Dataset : public DatasetBase {
  public:
   explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
