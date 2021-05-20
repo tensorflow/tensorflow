@@ -114,6 +114,8 @@
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
     *   Add `keepdims` argument to all `GlobalPooling` layers.
+*   `tf.linalg`:
+    *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
 *   `Grappler`:
