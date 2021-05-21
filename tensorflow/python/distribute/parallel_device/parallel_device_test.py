@@ -60,13 +60,12 @@ def _collective_reduce(inputs, operation, num_replicas):
       global _COUNTER
       keys = _COUNTER
       _COUNTER += 1
-    return collective_ops.all_reduce(
+    return collective_ops.all_reduce_v2(
         t=tensor,
         group_size=num_replicas,
         merge_op=operation,
         group_key=keys,
-        instance_key=keys,
-        final_op="Id")
+        instance_key=keys)
 
   return nest.map_structure(_reduce_tensor, inputs)
 
@@ -192,6 +191,22 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
+  def test_collective_reduce_in_function(self):
+    with self.device:
+      x = self.device.pack(
+          [constant_op.constant(-1.5),
+           constant_op.constant(3.5)])
+
+      @def_function.function
+      def reduce(t):
+        return _collective_sum(t, num_replicas=2)
+
+      reduced = reduce(x)
+      outputs = self.device.unpack(reduced)
+    self.assertAllClose([2., 2.], outputs)
+    self.assertIn(self.device.components[0], outputs[0].backing_device)
+    self.assertIn(self.device.components[1], outputs[1].backing_device)
+
   def test_collective_reduce_async_scope(self):
     if self.device_type == "TPU":
       self.skipTest("ParallelDevice collectives on TPUs need work")
@@ -271,7 +286,7 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     self.assertAllClose(
         [3., 2.], self.device.unpack(v))
 
-  def test_collective_in_function(self):
+  def test_collective_broadcast_in_function(self):
     if self.device_type == "TPU":
       self.skipTest("ParallelDevice collectives on TPUs need work")
     c = constant_op.constant([2])
