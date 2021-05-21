@@ -211,31 +211,6 @@ py_library(
 )
 
 py_library(
-    name = "initializers",
-    srcs = [
-        "initializers/__init__.py",
-        "initializers/initializers_v1.py",
-        "initializers/initializers_v2.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":backend",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:stateless_random_ops",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python/keras/utils:generic_utils",
-        "//tensorflow/python/keras/utils:tf_inspect",
-        "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_library(
     name = "losses",
     srcs = [
         "losses.py",
@@ -410,26 +385,6 @@ tf_py_test(
         ":combinations",
         ":constraints",
         "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "initializers_test",
-    size = "small",
-    srcs = ["initializers_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":backend",
-        ":combinations",
-        ":initializers",
-        ":models",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python/keras/engine",
         "//third_party/py/numpy",
     ],
 )
