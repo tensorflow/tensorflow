@@ -85,6 +85,9 @@
             checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
   (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
             for details.
+    *   Added a new op `SparseSegmentSumGrad` to match the other sparse segment
+        gradient ops and avoid an extra gather operation that was in the
+        previous gradient implementation.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the

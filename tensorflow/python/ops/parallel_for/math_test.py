@@ -561,7 +561,8 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
-  @parameterized.parameters(math_ops.sparse_segment_mean_grad,
+  @parameterized.parameters(math_ops.sparse_segment_sum_grad,
+                            math_ops.sparse_segment_mean_grad,
                             math_ops.sparse_segment_sqrt_n_grad)
   def test_sparse_segment_grad(self, op_func):
     grad = random_ops.random_uniform([3, 3, 2])
