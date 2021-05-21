@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
+#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
@@ -159,8 +160,16 @@ RewriterConfig CreateRewriterConfig(
   custom_optimizer->set_name(kOptimizerName);
   auto* custom_optimizations_list =
       (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
-  for (const auto& opt : optimizations) {
-    custom_optimizations_list->add_s(opt.data(), opt.size());
+  const auto& registered_optimizers =
+      grappler::CustomGraphOptimizerRegistry::GetRegisteredOptimizers();
+  for (const auto& optimization : optimizations) {
+    if (std::find(registered_optimizers.begin(), registered_optimizers.end(),
+                  optimization) != registered_optimizers.end()) {
+      custom_optimizations_list->add_s(optimization.data(),
+                                       optimization.size());
+    } else {
+      VLOG(1) << "Optimization " << optimization << " is not registered.";
+    }
   }
   auto* config_list =
       (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]
