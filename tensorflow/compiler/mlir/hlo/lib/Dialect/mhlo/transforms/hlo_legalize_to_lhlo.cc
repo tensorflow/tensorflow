@@ -110,7 +110,7 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
 
     if (tensor_operands.empty()) {
       for (auto operand : ArrayRef<Value>(results).take_front(num_operands)) {
-        auto tp = operand.getType().dyn_cast<ShapedType>();
+        auto tp = operand.getType().cast<ShapedType>();
         tensor_operands.push_back(rewriter.create<memref::TensorLoadOp>(
             op->getLoc(),
             RankedTensorType::get(tp.getShape(), tp.getElementType()),
