@@ -115,7 +115,19 @@ class GpuConvolutionAttributes<dag extraAttribs> {
     (ins ConvolutionBackendConfigAttr:$backend_config));
 }
 
-def LHLOGPU_ConvForwardOp : LHLOGPU_Op<"conv_forward"> {
+// Provide a custom assembly format for all LHLO_GPU convolution operations.
+class LHLOGPU_ConvBaseOp<string mnemonic> : LHLOGPU_Op<mnemonic> {
+ let assemblyFormat = [{
+    `(`operands`)`
+       `dim_numbers` `=` custom<ConvolutionDimensions>($dimension_numbers) `,`
+       `window` `=` `{` custom<WindowAttributes>($window_strides, $padding,
+                                                 $lhs_dilation, $rhs_dilation,
+                                                 $window_reversal) `}`
+       attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def LHLOGPU_ConvForwardOp : LHLOGPU_ConvBaseOp<"conv_forward"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -125,7 +137,7 @@ def LHLOGPU_ConvForwardOp : LHLOGPU_Op<"conv_forward"> {
      GpuConvolutionAttributes<(ins)>.attributes);
 }
 
-def LHLOGPU_ConvBackwardInputOp : LHLOGPU_Op<"conv_backwardinput"> {
+def LHLOGPU_ConvBackwardInputOp : LHLOGPU_ConvBaseOp<"conv_backwardinput"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
@@ -135,7 +147,7 @@ def LHLOGPU_ConvBackwardInputOp : LHLOGPU_Op<"conv_backwardinput"> {
      GpuConvolutionAttributes<(ins)>.attributes);
 }
 
-def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_Op<"conv_backwardfilter"> {
+def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_ConvBaseOp<"conv_backwardfilter"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -146,7 +158,7 @@ def LHLOGPU_ConvBackwardFilterOp : LHLOGPU_Op<"conv_backwardfilter"> {
 }
 
 // output = activation(result_scale * conv(input, filter) + bias)
-def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
+def LHLOGPU_ConvForwardFusedOp : LHLOGPU_ConvBaseOp<"conv_forward_fused"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,
@@ -161,7 +173,8 @@ def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
 // output = activation(result_scale * conv(input, filter) +
 //                     side_input * side_input_scale +
 //                     bias)
-def LHLOGPU_ConvForwardFusedSideInputOp : LHLOGPU_Op<"conv_forward_fused_with_side_input"> {
+def LHLOGPU_ConvForwardFusedSideInputOp :
+      LHLOGPU_ConvBaseOp<"conv_forward_fused_with_side_input"> {
   let arguments = !con(
     (ins
        Arg<LHLO_Buffer, "", [MemRead]>:$input,

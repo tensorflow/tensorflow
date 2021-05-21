@@ -52,6 +52,17 @@ constexpr char kCode[] = "code";
 constexpr char kMessage[] = "msg";
 constexpr char kOutput[] = "output";
 
+static mutex* get_dataset_experiment_registry_lock() {
+  static mutex dataset_experiment_registry_lock(LINKER_INITIALIZED);
+  return &dataset_experiment_registry_lock;
+}
+
+static absl::flat_hash_map<string, int64>* get_dataset_experiments() {
+  static absl::flat_hash_map<string, int64>* experiments =
+      new absl::flat_hash_map<string, int64>;
+  return experiments;
+}
+
 // We assume that all keys are of the form <iterator_prefix>:<name>. We extract
 // the iterator name by getting rid of everything post the final colon.
 Status GetIteratorName(StringPiece key, string* name) {
@@ -96,9 +107,9 @@ constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 
-void MapVectorizationGraphRewrites(const Options& options,
-                                   std::set<tstring>* optimization_enabled,
-                                   std::set<tstring>* optimization_disabled) {
+void MapVectorizationGraphRewrites(
+    const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
+    absl::flat_hash_set<tstring>* optimization_disabled) {
   if (options.optimization_options()
           .map_vectorization()
           .optional_enabled_case() != MapVectorization::kEnabled) {
@@ -111,10 +122,10 @@ void MapVectorizationGraphRewrites(const Options& options,
   }
 }
 
-void DefaultOptimizationGraphRewrites(const Options& options,
-                                      std::set<tstring>* optimization_enabled,
-                                      std::set<tstring>* optimization_disabled,
-                                      std::set<tstring>* optimization_default) {
+void DefaultOptimizationGraphRewrites(
+    const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
+    absl::flat_hash_set<tstring>* optimization_disabled,
+    absl::flat_hash_set<tstring>* optimization_default) {
   MapVectorizationGraphRewrites(options, optimization_enabled,
                                 optimization_disabled);
   const auto& optimization_options = options.optimization_options();
@@ -243,9 +254,9 @@ void DefaultOptimizationGraphRewrites(const Options& options,
 }
 
 void GraphRewritesOptions(const Options& options,
-                          std::set<tstring>* optimization_enabled,
-                          std::set<tstring>* optimization_disabled,
-                          std::set<tstring>* optimization_default) {
+                          absl::flat_hash_set<tstring>* optimization_enabled,
+                          absl::flat_hash_set<tstring>* optimization_disabled,
+                          absl::flat_hash_set<tstring>* optimization_default) {
   DefaultOptimizationGraphRewrites(options, optimization_enabled,
                                    optimization_disabled, optimization_default);
   if (options.optional_deterministic_case() == Options::kDeterministic) {
@@ -725,46 +736,20 @@ bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
   return (op_to_match[index] == 'V') && (op_prefix.length() == index);
 }
 
-std::vector<tstring> ConfigureExperimentsAndSelectOptimizations(
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default) {
-  string job_name = port::JobName();
-  // The map that stores the live experiment names and for how much percentage
-  // of the Borg jobs, the experiments will be randomly turned on.
-  // clang-format off
-  absl::flat_hash_map<string, uint64> live_experiments = {
-    {"enable_gradient_descent", 0}
-  };
-  // clang-format on
-  auto hash_func = [](const string& str) { return Hash64(str); };
-  return SelectOptimizations(job_name, live_experiments, optimizations_enabled,
-                             optimizations_disabled, optimizations_default,
-                             hash_func);
+std::vector<string> GetExperiments() {
+  return GetExperiments(port::JobName(),
+                        [](const tstring& str) { return Hash64(str); });
 }
 
-std::vector<tstring> SelectOptimizations(
-    const string& job_name,
-    const absl::flat_hash_map<string, uint64>& live_experiments,
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default,
-    std::function<uint64(const string&)> hash_func) {
-  std::vector<tstring> optimizations;
+std::vector<string> GetExperiments(
+    const string& job_name, std::function<uint64(const string&)> hash_func) {
+  std::vector<string> experiments;
+
   if (job_name.empty()) {
-    // If `job_name` is empty, apply the enabled and default optimizations
-    // directly.
-    optimizations.insert(optimizations.end(), optimizations_enabled.begin(),
-                         optimizations_enabled.end());
-    optimizations.insert(optimizations.end(), optimizations_default.begin(),
-                         optimizations_default.end());
-    return optimizations;
+    return experiments;
   }
 
-  // If `job_name` is non-empty, we determine which optimizations to apply to
-  // this job based on the enable/disable settings from tf.data.Options, the
-  // opt in/out settings from environment variables, and rollout condition from
-  // `live_experiments`.
+  // Parse the opt-in and opt-out settings.
   const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
   const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
   string opt_ins_raw;
@@ -776,128 +761,105 @@ std::vector<tstring> SelectOptimizations(
     opt_outs_raw = string(opt_outs_raw_cs);
   }
 
-  // Creates a set of optimizations.
-  absl::flat_hash_set<tstring> optimizations_set;
-
-  // Creates the opt in and opt out settings.
-  std::vector<string> opt_ins, opt_outs;
-  if (opt_ins_raw == "all") {
-    for (auto& pair : live_experiments) {
-      opt_ins.push_back(pair.first);
-    }
-  } else {
-    opt_ins = str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty());
-  }
+  // Identify opted out experiments.
+  absl::flat_hash_map<string, int64> live_experiments =
+      DatasetExperimentRegistry::Experiments();
+  absl::flat_hash_set<string> opt_outs;
   if (opt_outs_raw == "all") {
-    for (auto& pair : live_experiments) {
-      opt_outs.push_back(pair.first);
+    for (const auto& pair : live_experiments) {
+      opt_outs.insert(pair.first);
     }
   } else {
-    opt_outs = str_util::Split(opt_outs_raw, ',', str_util::SkipEmpty());
-  }
-
-  // Checks if the opt in and opt out experiments are live experiments.
-  for (auto& optimization : opt_ins) {
-    if (live_experiments.find(optimization) == live_experiments.end()) {
-      LOG(WARNING) << "The experiment \"" << optimization
-                   << "\" is opted in but it is not a live experiment.";
-    }
-  }
-  for (auto& optimization : opt_outs) {
-    if (live_experiments.find(optimization) == live_experiments.end()) {
-      LOG(WARNING) << "The experiment \"" << optimization
-                   << "\" is opted out but it is not a live experiment.";
+    for (const auto& experiment :
+         str_util::Split(opt_outs_raw, ',', str_util::SkipEmpty())) {
+      opt_outs.insert(experiment);
     }
   }
 
-  // Checks if the opt in settings conflict with opt out settings.
-  for (auto& optimization : opt_ins) {
-    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) !=
-        opt_outs.end()) {
-      LOG(WARNING) << "The experiment \"" << optimization
-                   << "\" is set in both \"TF_DATA_EXPERIMENT_OPT_IN\" and "
-                      "\"TF_DATA_EXPERIMENT_OPT_OUT\". Unless the experiment "
-                      "corresponds to an explicitly enabled optimization, it "
-                      "is not applied.";
+  // Include opted in experiments unless they are opted out.
+  absl::flat_hash_set<string> experiments_set;
+  if (opt_ins_raw == "all") {
+    for (const auto& pair : live_experiments) {
+      auto experiment = pair.first;
+      if (std::find(opt_outs.begin(), opt_outs.end(), experiment) ==
+          opt_outs.end()) {
+        experiments_set.insert(experiment);
+      }
     }
-  }
-
-  // Checks if the enable/disable settings from tf.data.Options conflict with
-  // user opt in/out settings. In which case we assume tf.data.Options settings
-  // have higher priority to overwrite.
-  for (auto& optimization : optimizations_enabled) {
-    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) !=
-        opt_outs.end()) {
-      LOG(WARNING) << "The optimization \"" << optimization
-                   << "\" is opt out, but is still applied since"
-                      " it is enabled through tf.data.Options.";
-    }
-  }
-  for (auto& optimization : optimizations_disabled) {
-    if (std::find(opt_ins.begin(), opt_ins.end(), optimization) !=
-        opt_ins.end()) {
-      LOG(WARNING) << "The optimization \"" << optimization
-                   << "\" is opt in, but is not applied since"
-                      " it is disabled through tf.data.Options.";
-    }
-  }
-
-  // Add the enabled optimizations.
-  optimizations_set.insert(optimizations_enabled.begin(),
-                           optimizations_enabled.end());
-
-  // Add the default optimizations that are not explicitly opted out.
-  for (auto& optimization : optimizations_default) {
-    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) ==
-        opt_outs.end()) {
-      optimizations_set.insert(optimization);
-    }
-  }
-
-  // Add the live experiments stochastically if they are neither opted in nor
-  // opted out.
-  for (auto& pair : live_experiments) {
-    string experiment = pair.first;
-    // Skip experiments that are explicitly opted out.
-    if (std::find(opt_outs.begin(), opt_outs.end(), experiment) !=
-        opt_outs.end()) {
-      continue;
-    }
-    // Skip experiments whose transformations are explicitly disabled.
-    if (std::find(optimizations_disabled.begin(), optimizations_disabled.end(),
-                  experiment) != optimizations_disabled.end()) {
-      continue;
-    }
-    // Apply experiments that are explicitly opted in.
-    if (std::find(opt_ins.begin(), opt_ins.end(), experiment) !=
-        opt_ins.end()) {
-      optimizations_set.insert(experiment);
-      continue;
-    }
-    // Otherwise, apply experiment stochastically based on job name and
-    // experiment roll out percentage.
-    if (hash_func(strings::StrCat(job_name, experiment)) % 100 < pair.second) {
-      optimizations_set.insert(experiment);
-    }
-  }
-
-  optimizations.insert(optimizations.end(), optimizations_set.begin(),
-                       optimizations_set.end());
-
-  // Log and record the live experiments that will be applied.
-  if (!job_name.empty() && !live_experiments.empty()) {
-    VLOG(1) << "The input pipeline is subject to tf.data experiment. "
-               "Please see `go/tf-data-experiments` for more details.";
-
-    for (auto& pair : live_experiments) {
-      string experiment = pair.first;
-      if (std::find(optimizations.begin(), optimizations.end(), experiment) !=
-          optimizations.end()) {
-        VLOG(1) << "The live experiment \"" << experiment << "\" is applied.";
-        metrics::RecordTFDataExperiment(experiment);
+  } else {
+    for (const auto& experiment :
+         str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty())) {
+      if (std::find(opt_outs.begin(), opt_outs.end(), experiment) ==
+          opt_outs.end()) {
+        experiments_set.insert(experiment);
       }
     }
   }
+
+  // Stochastically include live experiments unless they are opted out.
+  for (const auto& pair : live_experiments) {
+    auto& experiment = pair.first;
+    if ((hash_func(strings::StrCat(job_name, experiment)) % 100 <
+         pair.second) &&
+        (std::find(opt_outs.begin(), opt_outs.end(), experiment) ==
+         opt_outs.end())) {
+      experiments_set.insert(experiment);
+    }
+  }
+
+  experiments.insert(experiments.end(), experiments_set.begin(),
+                     experiments_set.end());
+  return experiments;
+}
+
+void LogAndRecordExperiments(const std::vector<string>& experiments) {
+  if (!experiments.empty()) {
+    VLOG(1) << "The input pipeline is subject to tf.data experiments. "
+               "Please see `go/tf-data-experiments` for more details.";
+  }
+  for (auto& experiment : experiments) {
+    VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
+    metrics::RecordTFDataExperiment(experiment);
+  }
+}
+
+void GetOptimizations(const Options& options,
+                      std::vector<tstring>* optimizations_enabled,
+                      std::vector<tstring>* optimizations_disabled,
+                      std::vector<tstring>* optimizations_default) {
+  absl::flat_hash_set<tstring> enabled_set;
+  absl::flat_hash_set<tstring> disabled_set;
+  absl::flat_hash_set<tstring> default_set;
+  GraphRewritesOptions(options, &enabled_set, &disabled_set, &default_set);
+  *optimizations_enabled = {enabled_set.begin(), enabled_set.end()};
+  *optimizations_disabled = {disabled_set.begin(), disabled_set.end()};
+  *optimizations_default = {default_set.begin(), default_set.end()};
+}
+
+std::vector<tstring> SelectOptimizations(
+    const std::vector<string>& experiments,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default) {
+  absl::flat_hash_set<tstring> optimizations_set;
+
+  // Add the enabled and default optimizations.
+  optimizations_set.insert(optimizations_enabled.begin(),
+                           optimizations_enabled.end());
+  optimizations_set.insert(optimizations_default.begin(),
+                           optimizations_default.end());
+
+  // Add experiments unless they correspond to a disabled optimization.
+  for (auto& experiment : experiments) {
+    if (std::find(optimizations_disabled.begin(), optimizations_disabled.end(),
+                  experiment) == optimizations_disabled.end()) {
+      optimizations_set.insert(experiment);
+    }
+  }
+
+  std::vector<tstring> optimizations;
+  optimizations.insert(optimizations.end(), optimizations_set.begin(),
+                       optimizations_set.end());
   return optimizations;
 }
 
@@ -1139,19 +1101,6 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
   return Status::OK();
 }
 
-void GetOptimizations(const Options& options,
-                      std::vector<tstring>* optimizations_enabled,
-                      std::vector<tstring>* optimizations_disabled,
-                      std::vector<tstring>* optimizations_default) {
-  std::set<tstring> enabled_set;
-  std::set<tstring> disabled_set;
-  std::set<tstring> default_set;
-  GraphRewritesOptions(options, &enabled_set, &disabled_set, &default_set);
-  *optimizations_enabled = {enabled_set.begin(), enabled_set.end()};
-  *optimizations_disabled = {disabled_set.begin(), disabled_set.end()};
-  *optimizations_default = {default_set.begin(), default_set.end()};
-}
-
 void CreateGraphRewriteConfigs(const Options& options,
                                std::vector<std::string>* configs) {
   const auto& optimization_options = options.optimization_options();
@@ -1223,5 +1172,23 @@ bool ShouldApplyOptimizations(
           !optimizations_enabled.empty() || !optimizations_default.empty());
 }
 
+// static
+void DatasetExperimentRegistry::Register(const string& experiment,
+                                         int64 rollout_pct) {
+  mutex_lock l(*get_dataset_experiment_registry_lock());
+  get_dataset_experiments()->insert(std::make_pair(experiment, rollout_pct));
+}
+
+// static
+absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
+  mutex_lock l(*get_dataset_experiment_registry_lock());
+  return *get_dataset_experiments();
+}
+
+namespace {
+
+REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
+
+}
 }  // namespace data
 }  // namespace tensorflow

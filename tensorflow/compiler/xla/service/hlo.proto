@@ -34,8 +34,14 @@ import "tensorflow/compiler/xla/xla_data.proto";
 
 option cc_enable_arenas = true;
 
+enum CustomCallSchedule {
+  SCHEDULE_NONE = 0;
+  SCHEDULE_LATEST = 1;
+  SCHEDULE_EARLIEST = 2;
+}
+
 // Serialization of HloInstruction.
-// Next ID: 76
+// Next ID: 77
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -236,6 +242,10 @@ message HloInstructionProto {
   // buffers between output and operands for kCustomCall.
   repeated xla.CustomCallOutputOperandAliasing
       custom_call_output_operand_aliasing = 74;
+
+  // Specifies the desired schedule for the custom-call. The field is only
+  // present for custom-call.
+  CustomCallSchedule custom_call_schedule = 76;
 
   // The delta value for kRngGetAndUpdateState.
   int64 delta = 66;

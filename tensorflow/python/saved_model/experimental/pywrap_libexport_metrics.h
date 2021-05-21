@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,12 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "tensorflow/lite/testing/util.h"
 
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
+// Defines the 'metrics' submodule.
+
+#ifndef TENSORFLOW_PYTHON_SAVED_MODEL_EXPERIMENTAL_PYWRAP_LIBEXPORT_METRICS_H_
+#define TENSORFLOW_PYTHON_SAVED_MODEL_EXPERIMENTAL_PYWRAP_LIBEXPORT_METRICS_H_
+
+#include "pybind11/pybind11.h"
+
+namespace tensorflow {
+
+// Wraps the SM Metrics API methods for exporting to Python.
+void DefineMetricsModule(pybind11::module main_module);
+
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_PYTHON_SAVED_MODEL_EXPERIMENTAL_PYWRAP_LIBEXPORT_METRICS_H_

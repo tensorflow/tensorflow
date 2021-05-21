@@ -139,7 +139,8 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
       return failure();
     }
     LogicalResult reifyReturnTypeShapes(
-        OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+        OpBuilder& builder, ValueRange operands,
+        SmallVectorImpl<Value>& reifiedReturnShapes) {
       return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
                                                        &reifiedReturnShapes);
     }
@@ -452,7 +453,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
       return failure();
     }
     LogicalResult reifyReturnTypeShapes(
-        OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+        OpBuilder& builder, ValueRange operands,
+        SmallVectorImpl<Value>& reifiedReturnShapes) {
       return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
                                                        &reifiedReturnShapes);
     }
@@ -1406,6 +1408,15 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
       return reversal && llvm::any_of(reversal.getBoolValues(),
                                       [](bool v) { return v; });
     }
+  }];
+
+ let assemblyFormat = [{
+    `(`operands`)`
+       `dim_numbers` `=` custom<ConvolutionDimensions>($dimension_numbers) `,`
+       `window` `=` `{` custom<WindowAttributes>($window_strides, $padding,
+                                                 $lhs_dilation, $rhs_dilation,
+                                                 $window_reversal) `}`
+       attr-dict `:` functional-type(operands, results)
   }];
 }
 

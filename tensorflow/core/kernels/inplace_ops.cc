@@ -15,6 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -423,6 +424,7 @@ REGISTER_KERNEL_BUILDER(Name("DeepCopy").Device(DEVICE_CPU), CopyOp<CPUDevice>);
                           EmptyOp<dev##Device, type>)
 
 REGISTER_EMPTY(float, CPU)
+REGISTER_EMPTY(bfloat16, CPU)
 REGISTER_EMPTY(double, CPU)
 REGISTER_EMPTY(Eigen::half, CPU)
 REGISTER_EMPTY(tstring, CPU)

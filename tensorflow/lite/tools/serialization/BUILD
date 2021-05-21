@@ -72,7 +72,7 @@ cc_test(
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -1002,7 +1002,7 @@ LogicalResult DynamicBroadcastInDimOp::inferReturnTypeComponents(
 }
 
 LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
-    OpBuilder&, SmallVectorImpl<Value>& reifiedReturnShapes) {
+    OpBuilder&, ValueRange, SmallVectorImpl<Value>& reifiedReturnShapes) {
   reifiedReturnShapes.push_back(output_dimensions());
   return success();
 }
@@ -2100,7 +2100,8 @@ LogicalResult SelectOp::inferReturnTypeComponents(
 }
 
 LogicalResult SelectOp::reifyReturnTypeShapes(
-    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
   return deriveShapeFromFirstOperand(&builder, getOperation(),
                                      &reifiedReturnShapes);
 }
@@ -3183,7 +3184,8 @@ LogicalResult CompareOp::inferReturnTypeComponents(
 }
 
 LogicalResult CompareOp::reifyReturnTypeShapes(
-    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
   return deriveShapeFromFirstOperand(&builder, getOperation(),
                                      &reifiedReturnShapes);
 }
@@ -3457,6 +3459,9 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
 
   return DenseElementsAttr::get(base_type, results);
 }
+
+using mlir::hlo::parseWindowAttributes;
+using mlir::hlo::printWindowAttributes;
 
 }  // namespace mhlo
 }  // namespace mlir

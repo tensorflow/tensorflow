@@ -13,10 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Defines the pywrap_libexport module. In order to have only one dynamically-
+// linked shared object, all SavedModel C++ APIs must be added here.
+
 #include "pybind11/pybind11.h"
 #include "tensorflow/cc/experimental/libexport/constants.h"
 #include "tensorflow/cc/experimental/libexport/save.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
+#include "tensorflow/python/saved_model/experimental/pywrap_libexport_metrics.h"
 
 namespace py = pybind11;
 
@@ -66,4 +70,6 @@ PYBIND11_MODULE(pywrap_libexport, m) {
   m.def("Save", [](const char* export_dir) {
     tensorflow::MaybeRaiseFromStatus(tensorflow::libexport::Save(export_dir));
   });
+
+  tensorflow::DefineMetricsModule(m);
 }

@@ -24,7 +24,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestCeil(const int* input_dims_data, const float* input_data,
+void TestCeil(int* input_dims_data, const float* input_data,
               const float* expected_output_data, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
@@ -63,7 +63,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SingleDim) {
   float output_data[2];
-  const int input_dims[] = {1, 2};
+  int input_dims[] = {1, 2};
   const float input_values[] = {8.5, 0.0};
   const float golden[] = {9, 0};
   tflite::testing::TestCeil(input_dims, input_values, golden, output_data);
@@ -71,7 +71,7 @@ TF_LITE_MICRO_TEST(SingleDim) {
 
 TF_LITE_MICRO_TEST(MultiDims) {
   float output_data[10];
-  const int input_dims[] = {4, 2, 1, 1, 5};
+  int input_dims[] = {4, 2, 1, 1, 5};
   const float input_values[] = {
       0.0001,  8.0001,  0.9999,  9.9999,  0.5,
       -0.0001, -8.0001, -0.9999, -9.9999, -0.5,

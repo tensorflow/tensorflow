@@ -843,6 +843,7 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -856,35 +857,23 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "parameter_server_training_test",
-    srcs = ["parameter_server_training_test.py"],
+    name = "sharded_variable_test",
+    srcs = ["sharded_variable_test.py"],
     python_version = "PY3",
-    shard_count = 4,  # TODO(b/184290570): Investigate why only 1 shard times out.
+    shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":multi_worker_testing_utils",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:init_ops_v2",
-        "//tensorflow/python:training_server_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras/utils:dataset_creator",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/keras/engine:base_layer",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -922,7 +911,6 @@ distribute_py_test(
 
 distribute_py_test(
     name = "dataset_creator_model_fit_test",
-    size = "small",
     srcs = ["dataset_creator_model_fit_test.py"],
     disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,

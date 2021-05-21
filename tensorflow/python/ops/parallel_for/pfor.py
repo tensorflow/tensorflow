@@ -2756,6 +2756,7 @@ def _convert_sparse_segment(pfor_input, _, op_func):
   return wrap(output, True)
 
 
+@RegisterPForWithArgs("SparseSegmentSumGrad", math_ops.sparse_segment_sum_grad)
 @RegisterPForWithArgs("SparseSegmentMeanGrad",
                       math_ops.sparse_segment_mean_grad)
 @RegisterPForWithArgs("SparseSegmentSqrtNGrad",

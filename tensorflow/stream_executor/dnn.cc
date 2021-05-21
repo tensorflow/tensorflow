@@ -378,7 +378,7 @@ std::vector<int64> BatchDescriptor::full_strides(
         << "Cannot compute full strides for batch descriptor " << ToString()
         << ", because its layout is kBatchDepthYX4. In fact, "
            "cudnnSetTensorNdDescriptor doesn't work for kBatchDepthYX4 at all. "
-           "Use cudnnSetTensor4DDescriptor to set cudnnTensorDescriptor_t "
+           "Use cudnnSetTensor4dDescriptor to set cudnnTensorDescriptor_t "
            "instead.";
   }
   std::vector<int64> phys_dims = full_dims(this->layout());

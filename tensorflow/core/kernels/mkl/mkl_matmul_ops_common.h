@@ -423,7 +423,7 @@ class MklDnnMatMulOpBase : public OpKernel {
     return (weight_oi_.NumElements() == 0);
   }
 
-  // Cache the converted weight in a persistent tensor.
+  // Cache the converted weight in a tensor.
   // Only one thread can execute this method at any given time.
   void CacheWeight(
       OpKernelContext* context,
@@ -433,7 +433,7 @@ class MklDnnMatMulOpBase : public OpKernel {
       MklDnnData<Tweight>& weight, const memory::desc& weight_md)
       TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
+    const Tensor& weight_t = weight_oi_;
 
     // If the weights are already cached, there's nothing to do
     if (weight_t.NumElements() > 0) {
@@ -446,39 +446,35 @@ class MklDnnMatMulOpBase : public OpKernel {
                                context);
     weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
 
-    Tensor* weight_tensor_ptr = nullptr;
-
     size_t weight_size = matmul_fwd_pd.get()->weights_desc().get_size();
     TensorShape weight_tf_shape;
     weight_tf_shape.AddDim(weight_size / sizeof(Tweight));
 
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DataTypeToEnum<Tweight>::value, weight_tf_shape,
-                                &weight_oi_, &weight_tensor_ptr));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<Tweight>::value,
+                                          weight_tf_shape, &weight_oi_));
 
-    void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
+    void* weight_oi_t_data = weight.GetTensorBuffer(&weight_oi_);
     memcpy(weight_oi_t_data, weight_data, weight_size);
 
     // cache the memory descriptor
     auto expected_md = matmul_fwd_pd->weights_desc();
-    Tensor* weight_md_tensor_ptr = nullptr;
     TensorShape weight_mkl_format;
     weight_mkl_format.AddDim(sizeof(expected_md) / sizeof(Tweight));
 
-    OP_REQUIRES_OK(
-        context, context->allocate_persistent(DataTypeToEnum<Tweight>::value,
-                                              weight_mkl_format, &weight_oi_md_,
-                                              &weight_md_tensor_ptr));
-    *reinterpret_cast<memory::desc*>(
-        weight_md_tensor_ptr->flat<Tweight>().data()) = expected_md;
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<Tweight>::value,
+                                          weight_mkl_format, &weight_oi_md_));
+    *reinterpret_cast<memory::desc*>(weight_oi_md_.flat<Tweight>().data()) =
+        expected_md;
   }
 
   Tweight* GetCachedWeight(OpKernelContext* context,
                            const memory::desc& expected_md)
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
-    const Tensor& weight_md_t = *weight_oi_md_.AccessTensor(context);
+    const Tensor& weight_t = weight_oi_;
+    const Tensor& weight_md_t = weight_oi_md_;
 
     // Check if the memory descriptor of the cached weight is same as
     // expected_md. if so use the cached memory, else return NULL
@@ -498,8 +494,8 @@ class MklDnnMatMulOpBase : public OpKernel {
  protected:
   // Tensor to save reordered weight
   mutex mu_;
-  PersistentTensor weight_oi_ TF_GUARDED_BY(mu_);
-  PersistentTensor weight_oi_md_ TF_GUARDED_BY(mu_);
+  Tensor weight_oi_ TF_GUARDED_BY(mu_);
+  Tensor weight_oi_md_ TF_GUARDED_BY(mu_);
 
   bool is_weight_const_;
 

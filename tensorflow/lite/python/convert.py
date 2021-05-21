@@ -32,6 +32,9 @@ from six.moves import map
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
 from tensorflow.lite.python import wrap_toco
+from tensorflow.lite.python.convert_phase import Component
+from tensorflow.lite.python.convert_phase import convert_phase
+from tensorflow.lite.python.convert_phase import SubComponent
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -196,6 +199,7 @@ class ConverterError(Exception):
   pass
 
 
+@convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.QUANTIZE)
 def mlir_quantize(input_data_str,
                   disable_per_channel=False,
                   fully_quantize=False,
@@ -229,6 +233,7 @@ def mlir_quantize(input_data_str,
       enable_numeric_verify)
 
 
+@convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.SPARSIFY)
 def mlir_sparsify(input_data_str):
   """Sparsify `input_data_str` to encode sparse tensor with proper format.
 
@@ -296,6 +301,34 @@ def toco_convert_protos(model_flags_str,
     except Exception as e:
       raise ConverterError(str(e))
 
+  return _run_toco_binary(model_flags_str, toco_flags_str, input_data_str,
+                          debug_info_str)
+
+
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_GRAPHDEF_USING_DEPRECATED_CONVERTER)
+def _run_toco_binary(model_flags_str,
+                     toco_flags_str,
+                     input_data_str,
+                     debug_info_str=None):
+  """Convert `input_data_str` using TOCO converter binary.
+
+  Args:
+    model_flags_str: Serialized proto describing model properties, see
+      `toco/model_flags.proto`.
+    toco_flags_str: Serialized proto describing conversion properties, see
+      `toco/toco_flags.proto`.
+    input_data_str: Input data in serialized form (e.g. a graphdef is common)
+    debug_info_str: Serialized `GraphDebugInfo` proto describing logging
+      information. (default None)
+
+  Returns:
+    Converted model in serialized form (e.g. a TFLITE model is common).
+  Raises:
+    ConverterError: When cannot find the toco binary.
+    RuntimeError: When conversion fails, an exception is raised with the error
+      message embedded.
+  """
   if distutils.spawn.find_executable(_toco_from_proto_bin) is None:
     raise ConverterError("""Could not find toco_from_protos binary, make sure
 your virtualenv bin directory or pip local bin directory is in your path.
@@ -353,8 +386,6 @@ Alternative, use virtualenv.""")
         output_filename,
         "--debug_proto_file={}".format(debug_filename),
     ]
-    if enable_mlir_converter:
-      cmd.append("--enable_mlir_converter")
     cmdline = " ".join(cmd)
     is_windows = _platform.system() == "Windows"
     proc = _subprocess.Popen(
@@ -630,6 +661,8 @@ def build_toco_convert_protos(input_tensors,
   return model, toco, debug_info
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_GRAPHDEF)
 def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
                            enable_mlir_converter, *args, **kwargs):
   """"Convert a model using TOCO.
@@ -688,6 +721,8 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
   return data
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_GRAPHDEF)
 def toco_convert_impl(input_data, input_tensors, output_tensors,
                       enable_mlir_converter, *args, **kwargs):
   """"Convert a model using TOCO.
@@ -725,6 +760,8 @@ def toco_convert_impl(input_data, input_tensors, output_tensors,
   return data
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_SAVED_MODEL)
 def convert_saved_model(saved_model_dir=None,
                         saved_model_version=0,
                         saved_model_tags=None,

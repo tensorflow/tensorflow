@@ -597,7 +597,10 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
 }
 
 Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
-  if (!hlo->shape().IsTuple() || hlo->shape().tuple_shapes_size() != 2) {
+  if (!hlo->shape().IsTuple()) {
+    return Status::OK();
+  }
+  if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() != 2) {
     return InternalError(
         "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
         hlo->shape().ToString());

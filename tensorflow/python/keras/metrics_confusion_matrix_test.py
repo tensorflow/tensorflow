@@ -1800,9 +1800,9 @@ class ThresholdsTest(test.TestCase, parameterized.TestCase):
   def test_with_default_thresholds(self, metric_obj):
     # By default, the thresholds will be evenly distributed if there are more
     # than 1. In case there is only 1 thresholds, then we expect
-    # _evenly_distribute_thresholds to be false.
+    # _thresholds_distributed_evenly to be false.
     expected = len(metric_obj.thresholds) > 1
-    self.assertEqual(metric_obj._evenly_distribute_thresholds, expected)
+    self.assertEqual(metric_obj._thresholds_distributed_evenly, expected)
 
   @parameterized.parameters([
       metrics.TruePositives,
@@ -1814,29 +1814,29 @@ class ThresholdsTest(test.TestCase, parameterized.TestCase):
   def test_with_manual_thresholds(self, metric_cls):
     even_thresholds = [0.0, 0.25, 0.5, 0.75, 1.0]
     metric_obj = metric_cls(thresholds=even_thresholds)
-    self.assertTrue(metric_obj._evenly_distribute_thresholds)
+    self.assertTrue(metric_obj._thresholds_distributed_evenly)
 
     uneven_thresholds = [0.0, 0.45, 1.0]
     metric_obj = metric_cls(thresholds=uneven_thresholds)
-    self.assertFalse(metric_obj._evenly_distribute_thresholds)
+    self.assertFalse(metric_obj._thresholds_distributed_evenly)
 
   def test_manual_thresholds_auc(self):
     # The AUC metric handles manual thresholds input differently (it will add
     # 0.0 and 1.0 for user).
     even_thresholds = [0.25, 0.5, 0.75]
     auc = metrics.AUC(thresholds=even_thresholds)
-    self.assertTrue(auc._evenly_distribute_thresholds)
+    self.assertTrue(auc._thresholds_distributed_evenly)
 
     # Test for save model
     cloned = metrics.AUC.from_config(auc.get_config())
-    self.assertTrue(cloned._evenly_distribute_thresholds)
+    self.assertTrue(cloned._thresholds_distributed_evenly)
 
     uneven_thresholds = [0.45,]
     auc = metrics.AUC(thresholds=uneven_thresholds)
-    self.assertFalse(auc._evenly_distribute_thresholds)
+    self.assertFalse(auc._thresholds_distributed_evenly)
 
     cloned = metrics.AUC.from_config(auc.get_config())
-    self.assertFalse(cloned._evenly_distribute_thresholds)
+    self.assertFalse(cloned._thresholds_distributed_evenly)
 
   @parameterized.parameters([
       metrics.TruePositives,
@@ -1862,7 +1862,7 @@ class ThresholdsTest(test.TestCase, parameterized.TestCase):
 
       metric_obj2 = metric_cls(thresholds=even_thresholds)
       # Force to use the old approach
-      metric_obj2._evenly_distribute_thresholds = False
+      metric_obj2._thresholds_distributed_evenly = False
       metric_obj2.update_state(y_true, y_pred)
       result2 = metric_obj2.result()
 
@@ -1887,7 +1887,7 @@ class ThresholdsTest(test.TestCase, parameterized.TestCase):
 
       metric_obj2 = metric_cls(0.5)
       # Force to use the old approach
-      metric_obj2._evenly_distribute_thresholds = False
+      metric_obj2._thresholds_distributed_evenly = False
       metric_obj2.update_state(y_true, y_pred)
       result2 = metric_obj2.result()
 
@@ -1903,6 +1903,7 @@ class AUCMemoryTest(test.TestCase, parameterized.TestCase):
   # metrics_utils._update_confusion_matrix_variables_optimized().
 
   def test_memory_usage(self):
+    self.skipTest('b/188587681: skipping flaky test')
     if memory_profiler is None:
       self.skipTest('Skip test since memory_profiler is not available.')
 
@@ -1925,7 +1926,7 @@ class AUCMemoryTest(test.TestCase, parameterized.TestCase):
 
   def even_thresholds_auc(self):
     auc = metrics.AUC(num_thresholds=200)
-    self.assertTrue(auc._evenly_distribute_thresholds)
+    self.assertTrue(auc._thresholds_distributed_evenly)
 
     auc(self.y_true, self.y_pred)
 
@@ -1936,7 +1937,7 @@ class AUCMemoryTest(test.TestCase, parameterized.TestCase):
     thresholds = thresholds[1:-1]
 
     auc = metrics.AUC(thresholds=thresholds)
-    self.assertFalse(auc._evenly_distribute_thresholds)
+    self.assertFalse(auc._thresholds_distributed_evenly)
     self.assertEqual(auc.num_thresholds, num_thresholds)
 
     auc(self.y_true, self.y_pred)

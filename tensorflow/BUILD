@@ -787,6 +787,7 @@ package_group(
     packages = [
         "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
+        "//learning/brain/tfrt/...",
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",

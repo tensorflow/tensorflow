@@ -4469,7 +4469,7 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
-def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
+def TFL_YieldOp : Op<TFL_Dialect, "yield", [NoSideEffect, Terminator]> {
   let summary = "Yield operation";
   let description = [{
     The "yield" operation represents a return operation within the conditional
@@ -4628,9 +4628,7 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
 }
 
 def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
-  // Currently the custom ops have no side effect
-  // TODO(karimnosseir): Revisit if this needs updating.
-  NoSideEffect,
+  RecursiveSideEffects,
   NoQuantizableResult,
   IsolatedFromAbove,
   SingleBlockImplicitTerminator<"YieldOp">,

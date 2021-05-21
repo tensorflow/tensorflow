@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -35,6 +37,18 @@ namespace TFDevice {
 
 ValueConstraint Merge(ValueConstraint a, ValueConstraint b) {
   return a > b ? a : b;
+}
+
+LogicalResult IsStaticallyResolved(Value value, ValueConstraint constraint) {
+  // Resolve constraints inferred from the tensor type.
+  if (auto tensor = value.getType().dyn_cast<TensorType>()) {
+    if (constraint == ValueConstraint::kRank && tensor.hasRank())
+      return success();
+    if (constraint == ValueConstraint::kShape && tensor.hasStaticShape())
+      return success();
+  }
+
+  return failure();
 }
 
 raw_ostream &operator<<(raw_ostream &os, const ValueConstraint &constraint) {
@@ -97,6 +111,16 @@ void ValuesConstraintSet::MergeAll(const ValuesConstraintSet &other) {
   other.Walk([this](Value value, ValueConstraint constraint) {
     Insert(value, constraint);
   });
+}
+
+ValuesConstraintSet &ValuesConstraintSet::Resolve() {
+  llvm::SmallDenseSet<Value, 4> resolved;
+  Walk([&](Value value, ValueConstraint constraint) {
+    if (succeeded(IsStaticallyResolved(value, constraint)))
+      resolved.insert(value);
+  });
+  for (Value value : resolved) constraints_.erase(value);
+  return *this;
 }
 
 ValuesConstraintSet &ValuesConstraintSet::Reset() {
@@ -283,7 +307,7 @@ LogicalResult ClusteringState::VerifyValueConstraints(
 
   // Update `src_root` constraints only if we can propagate them.
   if (succeeded(PropagateValuesConstraints(worklist, filter, policies,
-                                           constraints))) {
+                                           constraints, /*resolve=*/true))) {
     members[src_root].constraints = constraints;
     return success();
   }
@@ -353,7 +377,7 @@ LogicalResult ClusteringState::Union(unsigned a, unsigned b,
   return success();
 }
 
-// Returns constrains on the operands specified by the clustering policy if the
+// Returns constraints on the operands specified by the clustering policy if the
 // operation can be clustered (constraints could be empty). Otherwise return
 // empty optional.
 static Optional<ValuesConstraintSet> CanBeClustered(
@@ -373,7 +397,7 @@ static Optional<ValuesConstraintSet> CanBeClustered(
     ValuesConstraintSet operands_constraints;
     if (succeeded(policy->MatchAndUpdateConstraints(op, result_constraints,
                                                     operands_constraints)))
-      return operands_constraints;
+      return operands_constraints.Resolve();
   }
 
   return llvm::None;
@@ -578,7 +602,8 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 
 mlir::LogicalResult PropagateValuesConstraints(
     llvm::ArrayRef<Operation *> root, std::function<bool(Operation *)> filter,
-    const ClusteringPolicySet &policies, ValuesConstraintSet &constraints) {
+    const ClusteringPolicySet &policies, ValuesConstraintSet &constraints,
+    bool resolve) {
   // A set of constraints for operation results.
   llvm::DenseMap<Operation *, ValuesConstraintSet> op_results_constraints;
   assert(filter && "filter predicate must be defined");
@@ -626,6 +651,9 @@ mlir::LogicalResult PropagateValuesConstraints(
 
     // Update results constraints based on inferred operands constraints.
     operands.Walk([&](Value value, ValueConstraint constraint) {
+      // Resolve constraint based on the static type information.
+      if (resolve && succeeded(IsStaticallyResolved(value, constraint))) return;
+
       // Update constraint for a value.
       auto updated = constraints.Insert(value, constraint);
       if (!updated.second) return;
@@ -646,7 +674,7 @@ mlir::LogicalResult PropagateValuesConstraints(
 
 mlir::LogicalResult PropagateValuesConstraints(
     mlir::Region &region, const ClusteringPolicySet &policies,
-    ValuesConstraintSet &constraints) {
+    ValuesConstraintSet &constraints, bool resolve) {
   // Propagate constraints for all operations in the region.
   llvm::SmallVector<Operation *> worklist;
   region.walk([&](Operation *op) { worklist.emplace_back(op); });
@@ -656,7 +684,8 @@ mlir::LogicalResult PropagateValuesConstraints(
     return region.findAncestorBlockInRegion(*op->getBlock());
   };
 
-  return PropagateValuesConstraints(worklist, filter, policies, constraints);
+  return PropagateValuesConstraints(worklist, filter, policies, constraints,
+                                    resolve);
 }
 
 void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {

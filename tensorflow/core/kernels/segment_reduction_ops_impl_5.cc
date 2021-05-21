@@ -91,6 +91,19 @@ REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
   REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentSumGrad")                                      \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentSumGradOp<type, index_type, segment_ids_type>);
+REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(float);
+REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
+REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
+#undef REGISTER_CPU_SPARSE_KERNELS
+
+#define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
+  REGISTER_KERNEL_BUILDER(                                              \
       Name("SparseSegmentMeanGrad")                                     \
           .Device(DEVICE_CPU)                                           \
           .TypeConstraint<type>("T")                                    \

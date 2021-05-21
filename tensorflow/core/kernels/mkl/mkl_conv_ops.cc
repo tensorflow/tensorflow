@@ -1125,8 +1125,8 @@ class MklConvOp : public OpKernel {
   mutex mu_;
   Padding padding_;
   TensorFormat data_format_;
-  PersistentTensor cached_filter_data_ptensor_ TF_GUARDED_BY(mu_);
-  PersistentTensor cached_filter_md_ptensor_ TF_GUARDED_BY(mu_);
+  Tensor cached_filter_data_ TF_GUARDED_BY(mu_);
+  Tensor cached_filter_md_ TF_GUARDED_BY(mu_);
 
   // Initialize to values the template is instantiated with
   bool fuse_biasadd_ = bias_enabled;
@@ -1158,21 +1158,20 @@ class MklConvOp : public OpKernel {
     return filter_mkl_shape->GetTfDataFormat();
   }
 
-  // Allocate persistent tensors for cached filter data and
-  // cached filter memory descriptor (data format)
-  void AllocatePersistentTensor(OpKernelContext* context,
-                                const ConvFwdPd& conv_prim_desc,
-                                Tensor** filter_tensor,
-                                const MklDnnShape* filter_mkl_shape) {
+  // Allocate tensors for cached filter data and cached filter memory
+  // descriptor (data format)
+  void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
+                      Tensor** filter_tensor,
+                      const MklDnnShape* filter_mkl_shape) {
     DCHECK(filter_tensor);
     TensorShape filter_tf_shape;
     filter_tf_shape.AddDim(
         (conv_prim_desc.weights_desc().get_size() / sizeof(Tfilter)));
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DataTypeToEnum<Tfilter>::value, filter_tf_shape,
-                                &cached_filter_data_ptensor_, filter_tensor));
+    OP_REQUIRES_OK(
+        context, context->allocate_temp(DataTypeToEnum<Tfilter>::value,
+                                        filter_tf_shape, &cached_filter_data_));
 
-    Tensor* second_tensor = nullptr;
+    *filter_tensor = &cached_filter_data_;
 
     // There is no tensor format in DNNL 1.x. So we cache the complete filter
     // descriptor as flat byte array.
@@ -1182,17 +1181,16 @@ class MklConvOp : public OpKernel {
     // required to store primitive's input memory. It is much more than size of
     // memory::desc itself.
     cached_filter_md_shape.AddDim(sizeof(weights_desc) / sizeof(uint8));
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DT_UINT8, cached_filter_md_shape,
-                                &cached_filter_md_ptensor_, &second_tensor));
-    *reinterpret_cast<memory::desc*>(second_tensor->flat<uint8>().data()) =
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DT_UINT8, cached_filter_md_shape,
+                                          &cached_filter_md_));
+    *reinterpret_cast<memory::desc*>(cached_filter_md_.flat<uint8>().data()) =
         weights_desc;
   }
 
-  void AllocatePersistentTensor(OpKernelContext* context,
-                                const ConvFwdPd& conv_prim_desc,
-                                Tensor** filter_tensor) {
-    AllocatePersistentTensor(context, conv_prim_desc, filter_tensor, nullptr);
+  void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
+                      Tensor** filter_tensor) {
+    AllocateTensor(context, conv_prim_desc, filter_tensor, nullptr);
   }
 
   void AllocateFilterOutputTensor(OpKernelContext* context,
@@ -1269,12 +1267,11 @@ class MklConvOp : public OpKernel {
   inline bool IsFilterCacheEmpty(OpKernelContext* context)
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
-    const Tensor& cached_filter_data_tensor =
-        *cached_filter_data_ptensor_.AccessTensor(context);
+    const Tensor& cached_filter_data_tensor = cached_filter_data_;
     return (cached_filter_data_tensor.NumElements() == 0);
   }
 
-  // Cache the converted filter in a persistent tensor.
+  // Cache the converted filter in a tensor.
   // Only one thread can execute this method at any given time.
   void CacheFilter(OpKernelContext* context,
                    const std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
@@ -1282,8 +1279,7 @@ class MklConvOp : public OpKernel {
                    MklDnnData<Tfilter>& filter, const memory::desc& filter_md,
                    const MklDnnShape& filter_mkl_shape) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
-    const Tensor& cached_filter_data_tensor =
-        *cached_filter_data_ptensor_.AccessTensor(context);
+    const Tensor& cached_filter_data_tensor = cached_filter_data_;
 
     // If filter is already cached, there's nothing to do.
     if (cached_filter_data_tensor.NumElements() > 0) {
@@ -1297,8 +1293,8 @@ class MklConvOp : public OpKernel {
     filter_data = static_cast<Tfilter*>(filter.GetOpMem().get_data_handle());
 
     Tensor* filter_tensor_ptr = nullptr;
-    AllocatePersistentTensor(context, *conv_fwd_pd, &filter_tensor_ptr,
-                             &filter_mkl_shape);
+    AllocateTensor(context, *conv_fwd_pd, &filter_tensor_ptr,
+                   &filter_mkl_shape);
     void* cached_filter_data = filter.GetTensorBuffer(filter_tensor_ptr);
     size_t cached_filter_data_size = filter.GetOpMem().get_desc().get_size();
     memcpy(cached_filter_data, filter_data, cached_filter_data_size);
@@ -1325,10 +1321,8 @@ class MklConvOp : public OpKernel {
                            const memory::desc& filter_md)
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
-    const Tensor& cached_filter_data =
-        *cached_filter_data_ptensor_.AccessTensor(context);
-    const Tensor& cached_filter_md =
-        *cached_filter_md_ptensor_.AccessTensor(context);
+    const Tensor& cached_filter_data = cached_filter_data_;
+    const Tensor& cached_filter_md = cached_filter_md_;
 
     // Check if the memory descriptor of the cached weights is the same as
     // filter_md. If so, we can use the cached weights; otherwise
@@ -1835,7 +1829,7 @@ class MklQuantizedConv2DOp
   }
 
   bool is_bias_const_;
-  PersistentTensor cached_bias_data_ptensor_ TF_GUARDED_BY(bias_cache_mu_);
+  Tensor cached_bias_data_ TF_GUARDED_BY(bias_cache_mu_);
 
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
@@ -1846,18 +1840,18 @@ class MklQuantizedConv2DOp
  private:
   std::vector<float> scales_;
   mutex bias_cache_mu_;
-  // Allocate persistent tensors for cached bias data and
+  // Allocate tensors for cached bias data and
   // cached bias memory descriptor (data format)
-  void AllocatePersistentTensor(OpKernelContext* context,
-                                const ConvFwdPd& conv_prim_desc,
-                                Tensor** bias_tensor) {
+  void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
+                      Tensor** bias_tensor) {
     DCHECK(bias_tensor);
     TensorShape bias_tf_shape;
     bias_tf_shape.AddDim(
         (conv_prim_desc.bias_desc().get_size() / sizeof(Tbias)));
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DataTypeToEnum<Tbias>::value, bias_tf_shape,
-                                &cached_bias_data_ptensor_, bias_tensor));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<Tbias>::value,
+                                          bias_tf_shape, &cached_bias_data_));
+    *bias_tensor = &cached_bias_data_;
   }
 
   // TF_LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
@@ -1866,10 +1860,10 @@ class MklQuantizedConv2DOp
   inline bool IsBiasCacheEmpty(OpKernelContext* context)
       TF_LOCKS_EXCLUDED(bias_cache_mu_) {
     tf_shared_lock lock(bias_cache_mu_);
-    return (cached_bias_data_ptensor_.NumElements() == 0);
+    return (cached_bias_data_.NumElements() == 0);
   }
 
-  // Cache the converted bias in a persistent tensor.
+  // Cache the converted bias in a tensor.
   // Only one thread can execute this method at any given time.
   void CacheBias(OpKernelContext* context,
                  const std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
@@ -1878,13 +1872,13 @@ class MklQuantizedConv2DOp
     mutex_lock lock(bias_cache_mu_);
 
     // If bias is already cached, there's nothing to do.
-    if (cached_bias_data_ptensor_.NumElements() > 0) {
+    if (cached_bias_data_.NumElements() > 0) {
       return;
     }
 
     // Otherwise, cache bias
     Tensor* bias_tensor_ptr = nullptr;
-    AllocatePersistentTensor(context, *conv_fwd_pd, &bias_tensor_ptr);
+    AllocateTensor(context, *conv_fwd_pd, &bias_tensor_ptr);
     void* cached_bias_data = const_cast<void*>(
         static_cast<const void*>(bias_tensor_ptr->flat<Tbias>().data()));
     size_t cached_bias_data_size = scaled_bias->get_desc().get_size();
@@ -1894,8 +1888,7 @@ class MklQuantizedConv2DOp
   Tbias* GetCachedBias(OpKernelContext* context)
       TF_LOCKS_EXCLUDED(bias_cache_mu_) {
     tf_shared_lock lock(bias_cache_mu_);
-    const Tensor& cached_bias_data =
-        *cached_bias_data_ptensor_.AccessTensor(context);
+    const Tensor& cached_bias_data = cached_bias_data_;
 
     return static_cast<Tbias*>(
         const_cast<Tbias*>(cached_bias_data.flat<Tbias>().data()));

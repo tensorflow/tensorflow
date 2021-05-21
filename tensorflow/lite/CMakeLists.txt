@@ -412,6 +412,7 @@ target_link_libraries(tensorflow-lite
     flatbuffers
     gemmlowp
     ruy
+    ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )
 

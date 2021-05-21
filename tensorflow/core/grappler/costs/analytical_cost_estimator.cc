@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -36,11 +37,11 @@ namespace grappler {
 namespace {
 
 // Helper function in PredictCosts() to add cost node to cost_graph.
-void AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
-                 int node_id, const Costs& node_costs,
-                 gtl::FlatMap<string, CostGraphDef::Node*>* name_to_cost_node,
-                 gtl::FlatMap<string, int>* name_to_id,
-                 CostGraphDef* cost_graph) {
+Status AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
+                   int node_id, const Costs& node_costs,
+                   gtl::FlatMap<string, CostGraphDef::Node*>* name_to_cost_node,
+                   gtl::FlatMap<string, int>* name_to_id,
+                   CostGraphDef* cost_graph) {
   const string& op_name = op_context.name;
   auto it = name_to_cost_node->find(op_name);
   CostGraphDef::Node* node;
@@ -99,10 +100,15 @@ void AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
 
     int64 size = DataTypeSize(output.dtype());
     for (const auto& dim : output.shape().dim()) {
-      size *= std::max<int64>(1, dim.size());
+      size = MultiplyWithoutOverflow(size, std::max<int64>(1, dim.size()));
+      if (size < 0) {
+        return errors::InvalidArgument(
+            "Integer overflow encountered in dimension size.");
+      }
     }
     output_info->set_size(size);
   }
+  return Status::OK();
 }
 
 }  // namespace
@@ -203,8 +209,12 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
 
     // TODO(pcma): Add unit tests for generating CostGraphDef.
     if (cost_graph) {
-      AddCostNode(node_manager_.get(), op_context, node_id++, node_costs,
-                  &name_to_cost_node, &name_to_id, cost_graph);
+      Status s =
+          AddCostNode(node_manager_.get(), op_context, node_id++, node_costs,
+                      &name_to_cost_node, &name_to_id, cost_graph);
+      if (!s.ok()) {
+        return s;
+      }
     }
   } while (scheduler_->MarkCurrNodeExecuted(node_costs));
 

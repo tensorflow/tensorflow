@@ -296,6 +296,13 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     return false;
   }
 
+  // Don't touch convolutions with 5d inputs.  These are e.g. NCHW_VECT_C convs,
+  // and there's no need to pad them because the VECT_C dimension already is all
+  // the padding we need.
+  if (input_shape.dimensions_size() > 4) {
+    return false;
+  }
+
   const auto& dnums = conv->convolution_dimension_numbers();
   std::vector<Shape>& new_input_shapes = *new_input_shapes_ptr;
   for (auto operand : conv->operands()) {
