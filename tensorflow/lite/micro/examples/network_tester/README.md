@@ -5,8 +5,8 @@ It contains one testcase and a default network model (network_model.h), default
 input data (input_data.h) and default expected output data
 (expected_output_data.h). The header files were created using the `xxd` command.
 
-The default model is a single MaxPool2D operator, with an input shape of {1, 4,
-4, 1} and an output shape of {1, 2, 2, 1}.
+The default model is a single int8 DepthwiseConv2D operator, with an input shape
+of {1, 8, 8, 16}, {1, 2, 2, 16} and {16} and an output shape of {1, 4, 4, 16}.
 
 When building the FVP target for Ethos-U (CO_PROCESSOR=ethos_u) the person
 detect int8 model is used instead. The downloaded model is optimized for Ethos-U
@@ -24,7 +24,7 @@ vela --accelerator-config=ethos-u55-256
 In order to use another model, input data, or expected output data, simply
 specify the path to the new header files when running make as seen below.
 
-The variables in the specified header files (array and array length) needs to
+The variables in the specified header files (array and array length) need to
 have the same name and type as the ones in the default header files. The include
 guards also needs to be the same. When swapping out the network model, it is
 likely that the memory allocated by the interpreter needs to be increased to fit

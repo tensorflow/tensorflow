@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
-#include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -86,17 +85,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                          filter->dims->data[kDepthwiseConvQuantizedDimension]);
     TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                       affine_quantization->zero_point->size);
+
+    // Allocate memory for per-channel quantization parameters
+    const int num_channels =
+        filter->dims->data[kDepthwiseConvQuantizedDimension];
+
+    data->reference_op_data.per_channel_output_multiplier =
+        reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
+            context, num_channels * sizeof(int32_t)));
+    data->reference_op_data.per_channel_output_shift =
+        reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
+            context, num_channels * sizeof(int32_t)));
   }
-
-  // Allocate memory for per-channel quantization parameters
-  const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
-
-  data->reference_op_data.per_channel_output_multiplier =
-      reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
-          context, num_channels * sizeof(int32_t)));
-  data->reference_op_data.per_channel_output_shift =
-      reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
-          context, num_channels * sizeof(int32_t)));
 
   TF_LITE_ENSURE_STATUS(CalculateOpDataDepthwiseConv(
       context, node, params, input_width, input_height, filter_width,

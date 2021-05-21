@@ -83,18 +83,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   output_dims.w = output->dims->data[2];
   output_dims.c = output_shape.Dims(3);
 
-  // Dynamically allocate per-channel quantization parameters.
-  // TODO(#42883): This allocation is done even for non-int8 cases to get around
-  // a bug in kernel_util.cc which incorrectly uses per_channel_output_shift in
-  // non-int8 cases. Protect this section with a if (input->type == kTfLiteInt8)
-  // when the issue is fixed.
-  const int num_channels = filter->dims->data[kConvQuantizedDimension];
-  data->reference_op_data.per_channel_output_multiplier =
-      static_cast<int32_t*>(context->AllocatePersistentBuffer(
-          context, num_channels * sizeof(int32_t)));
-  data->reference_op_data.per_channel_output_shift =
-      static_cast<int32_t*>(context->AllocatePersistentBuffer(
-          context, num_channels * sizeof(int32_t)));
+  if (input->type == kTfLiteInt8) {
+    const int num_channels = filter->dims->data[kConvQuantizedDimension];
+    data->reference_op_data.per_channel_output_multiplier =
+        static_cast<int32_t*>(context->AllocatePersistentBuffer(
+            context, num_channels * sizeof(int32_t)));
+    data->reference_op_data.per_channel_output_shift =
+        static_cast<int32_t*>(context->AllocatePersistentBuffer(
+            context, num_channels * sizeof(int32_t)));
+  }
 
   TF_LITE_ENSURE_STATUS(CalculateOpDataConv(
       context, node, params, input_dims.w, input_dims.h, filter_dims.w,
@@ -117,14 +114,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     buf_size = arm_convolve_wrapper_s8_get_buffer_size(
         &conv_params, &input_dims, &filter_dims, &output_dims);
+    if (buf_size > 0) {
+      TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+          context, buf_size, &data->buffer_idx));
+    } else {
+      data->buffer_idx = -1;
+    }
   }
 
-  if (buf_size > 0) {
-    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-        context, buf_size, &data->buffer_idx));
-  } else {
-    data->buffer_idx = -1;
-  }
   return kTfLiteOk;
 }
 
