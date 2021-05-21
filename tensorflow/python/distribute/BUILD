@@ -1704,8 +1704,8 @@ py_library(
     srcs = ["multi_process_lib.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl:app",
         "@absl_py//absl/logging",
     ],
 )
