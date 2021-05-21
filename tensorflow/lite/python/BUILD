@@ -562,3 +562,17 @@ py_library(
         "//tensorflow/lite/tools:visualize",
     ],
 )
+
+py_test(
+    name = "analyzer_test",
+    srcs = ["analyzer_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata:interpreter_test_data",
+    ],
+    python_version = "PY3",
+    deps = [
+        ":analyzer",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
