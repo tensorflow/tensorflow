@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import enum
+import functools
 import pprint
 import shutil
 import tempfile
@@ -593,10 +594,8 @@ class TFLiteConverterBase(object):
   def _increase_conversion_attempt_metric(self):
     self._tflite_metrics.increase_counter_converter_attempt()
 
-  def _increase_conversion_success_metric(self, result):
-    if result:
-      self._tflite_metrics.increase_counter_converter_success()
-    self._tflite_metrics.export_metrics()
+  def _increase_conversion_success_metric(self):
+    self._tflite_metrics.increase_counter_converter_success()
 
   def _save_conversion_params_metric(self,
                                      graph_def=None,
@@ -669,6 +668,36 @@ class TFLiteConverterBase(object):
       model = _mlir_sparsify(model)
 
     return model
+
+  def _convert_and_export_metrics(self, convert_func, *args, **kwargs):
+    """Wraps around convert function to export metrics.
+
+    Args:
+      convert_func: The convert function to wrap.
+      *args: Positional arguments of the convert function.
+      **kwargs: The keyword arguments of the convert function.
+
+    Returns:
+      The decorator to wrap the convert function.
+    """
+    self._increase_conversion_attempt_metric()
+    self._save_conversion_params_metric()
+    result = convert_func(self, *args, **kwargs)
+    if result:
+      self._increase_conversion_success_metric()
+    self._tflite_metrics.export_metrics()
+    return result
+
+
+def _export_metrics(convert_func):
+  """The decorator around convert function to export metrics."""
+  @functools.wraps(convert_func)
+  def wrapper(self, *args, **kwargs):
+    # pylint: disable=protected-access
+    return self._convert_and_export_metrics(convert_func, *args, **kwargs)
+    # pylint: enable=protected-access
+
+  return wrapper
 
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
@@ -839,10 +868,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         output_tensors=output_tensors,
         **converter_kwargs)
 
-    result = self._optimize_tflite_model(
+    return self._optimize_tflite_model(
         result, self._quant_mode, quant_io=self.experimental_new_quantizer)
-
-    return result
 
 
 class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
@@ -880,6 +907,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._parse_saved_model_args(always_enable_saved_model_import=True)
     self._enable_tflite_resource_variables = False
 
+  @_export_metrics
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -893,8 +921,6 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
         Input shape is not specified.
         Invalid quantization parameters.
     """
-    self._increase_conversion_attempt_metric()
-    self._save_conversion_params_metric()
     graph_def, input_tensors, output_tensors = self._load_saved_model(
         self.saved_model_dir, self._saved_model_tags)
     # If we can't use saved model importer, then fallback
@@ -907,11 +933,8 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
       # legacy code down in the caller that checks this.
       # TODO(b/162537905): Clean these indirect dependencies.
       self.saved_model_dir = None
-      conversion_result = super(TFLiteSavedModelConverterV2,
-                                self).convert(graph_def, input_tensors,
-                                              output_tensors)
-      self._increase_conversion_success_metric(conversion_result)
-      return conversion_result
+      return super(TFLiteSavedModelConverterV2,
+                   self).convert(graph_def, input_tensors, output_tensors)
 
     if self._trackable_obj is None:
       self._debug_info = _get_debug_info(
@@ -937,11 +960,8 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     result = _convert_saved_model(**converter_kwargs)
 
-    result = self._optimize_tflite_model(
+    return self._optimize_tflite_model(
         result, quant_mode, quant_io=self.experimental_new_quantizer)
-
-    self._increase_conversion_success_metric(result)
-    return result
 
 
 class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
@@ -1049,6 +1069,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     finally:
       shutil.rmtree(temp_dir, True)
 
+  @_export_metrics
   def convert(self):
     """Converts a keras model based on instance variables.
 
@@ -1061,11 +1082,8 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
         Input shape is not specified.
         Invalid quantization parameters.
     """
-    self._increase_conversion_attempt_metric()
-    self._save_conversion_params_metric()
     saved_model_convert_result = self._convert_as_saved_model()
     if saved_model_convert_result:
-      self._increase_conversion_success_metric(saved_model_convert_result)
       return saved_model_convert_result
 
     graph_def, input_tensors, output_tensors, frozen_func = (
@@ -1074,10 +1092,8 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     graph_def = self._optimize_tf_model(graph_def, input_tensors,
                                         output_tensors, frozen_func)
 
-    result = super(TFLiteKerasModelConverterV2,
-                   self).convert(graph_def, input_tensors, output_tensors)
-    self._increase_conversion_success_metric(result)
-    return result
+    return super(TFLiteKerasModelConverterV2,
+                 self).convert(graph_def, input_tensors, output_tensors)
 
 
 class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
@@ -1134,6 +1150,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     output_tensors = frozen_func.outputs
     return graph_def, input_tensors, output_tensors, frozen_func
 
+  @_export_metrics
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -1147,18 +1164,14 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
         Input shape is not specified.
         Invalid quantization parameters.
     """
-    self._increase_conversion_attempt_metric()
-    self._save_conversion_params_metric()
     graph_def, input_tensors, output_tensors, frozen_func = (
         self._freeze_concrete_function())
 
     graph_def = self._optimize_tf_model(graph_def, input_tensors,
                                         output_tensors, frozen_func)
 
-    result = super(TFLiteFrozenGraphConverterV2,
-                   self).convert(graph_def, input_tensors, output_tensors)
-    self._increase_conversion_success_metric(result)
-    return result
+    return super(TFLiteFrozenGraphConverterV2,
+                 self).convert(graph_def, input_tensors, output_tensors)
 
 
 @_tf_export("lite.TFLiteConverter", v1=[])
@@ -1569,10 +1582,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
           output_arrays=self._output_arrays,
           **converter_kwargs)
 
-    result = self._optimize_tflite_model(
+    return self._optimize_tflite_model(
         result, quant_mode, quant_io=not self.experimental_new_converter)
-
-    return result
 
   def get_input_arrays(self):
     """Returns a list of the names of the input tensors.
@@ -1696,6 +1707,7 @@ class TFLiteSavedModelConverter(TFLiteConverterBaseV1):
     self._output_tensors = result[2]
     self._parse_saved_model_args()
 
+  @_export_metrics
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -1708,11 +1720,7 @@ class TFLiteSavedModelConverter(TFLiteConverterBaseV1):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    self._increase_conversion_attempt_metric()
-    self._save_conversion_params_metric()
-    result = super(TFLiteSavedModelConverter, self).convert()
-    self._increase_conversion_success_metric(result)
-    return result
+    return super(TFLiteSavedModelConverter, self).convert()
 
 
 class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
@@ -1833,6 +1841,7 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
     finally:
       shutil.rmtree(temp_dir, True)
 
+  @_export_metrics
   def convert(self):
     """Converts a Keras model based on instance variables.
 
@@ -1845,16 +1854,11 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    self._increase_conversion_attempt_metric()
-    self._save_conversion_params_metric()
     saved_model_convert_result = self._convert_as_saved_model()
     if saved_model_convert_result:
-      self._increase_conversion_success_metric(saved_model_convert_result)
       return saved_model_convert_result
 
-    result = super(TFLiteKerasModelConverter, self).convert()
-    self._increase_conversion_success_metric(result)
-    return result
+    return super(TFLiteKerasModelConverter, self).convert()
 
 
 class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
@@ -1912,6 +1916,7 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
       logging.warning("output_arrays will be ignored when both the given "
                       "output_tensors and output_arrays are not None.")
 
+  @_export_metrics
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -1924,11 +1929,7 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    self._increase_conversion_attempt_metric()
-    self._save_conversion_params_metric()
-    result = super(TFLiteFrozenGraphConverter, self).convert()
-    self._increase_conversion_success_metric(result)
-    return result
+    return super(TFLiteFrozenGraphConverter, self).convert()
 
 
 @_tf_export(v1=["lite.TFLiteConverter"])
