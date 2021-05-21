@@ -1192,7 +1192,7 @@ class SparseApplyAdadeltaOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -1270,9 +1270,9 @@ class SparseApplyAdadeltaOp : public OpKernel {
       auto indices_vec = indices.vec<Tindex>();
       for (Tindex i = 0; i < N; i++) {
         const Tindex index = indices_vec(i);
-        OP_REQUIRES(ctx, 
+        OP_REQUIRES(ctx,
                     (!std::is_same<Device, CPUDevice>::value ||
-                    (index >= 0 && index < first_dim_size)),
+                     (index >= 0 && index < first_dim_size)),
                     errors::InvalidArgument(
                         strings::StrCat("Index ", index, " at offset ", i,
                                         " in indices is out of range")));
@@ -1317,7 +1317,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 namespace functor {
 #define DECLARE_GPU_SPEC(T, Tindex)                                            \
   template <>                                                                  \
-  void SparseApplyAdadelta<GPUDevice, T, Tindex>::operator()(        \
+  void SparseApplyAdadelta<GPUDevice, T, Tindex>::operator()(                  \
       const GPUDevice& d, typename TTypes<T>::Matrix var,                      \
       typename TTypes<T>::Matrix accum,                                        \
       typename TTypes<T>::Matrix accum_update,                                 \
@@ -1332,14 +1332,10 @@ DECLARE_GPU_SPEC(float, int32);
 DECLARE_GPU_SPEC(float, int64);
 DECLARE_GPU_SPEC(double, int32);
 DECLARE_GPU_SPEC(double, int64);
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 DECLARE_GPU_SPEC(complex64, int32);
 DECLARE_GPU_SPEC(complex64, int64);
 DECLARE_GPU_SPEC(complex128, int32);
 DECLARE_GPU_SPEC(complex128, int64);
-#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -1350,12 +1346,8 @@ DECLARE_GPU_SPEC(complex128, int64);
 REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 REGISTER_GPU_KERNELS(complex64);
 REGISTER_GPU_KERNELS(complex128);
-#endif
 #undef REGISTER_GPU_KERNELS
 #endif
 #undef REGISTER_KERNELS

@@ -826,9 +826,9 @@ __global__ __launch_bounds__(1024) void SparseApplyAdadeltaKernel(
 
     // Variable update computation.
     accum_i = accum_i * rho_t + grad_i * grad_i * (T(1.0) - rho_t);
-    T update =
-        sqrt(accum_update_i + epsilon_t) * grad_i / sqrt(accum_i + epsilon_t);
-    var_i -= update * lr_t;
+    T update = Eigen::numext::sqrt(accum_update_i + epsilon_t) * grad_i /
+               Eigen::numext::sqrt(accum_i + epsilon_t);
+    var_i = var_i - update * lr_t;
     accum_update_i =
         accum_update_i * rho_t + update * update * (T(1.0) - rho_t);
 
@@ -842,13 +842,13 @@ __global__ __launch_bounds__(1024) void SparseApplyAdadeltaKernel(
 template <typename T, typename Tindex>
 struct SparseApplyAdadelta<GPUDevice, T, Tindex> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
-                    typename TTypes<T>::Matrix accum,
-                    typename TTypes<T>::Matrix accum_update,
-                    typename TTypes<T>::ConstScalar lr,
-                    typename TTypes<T>::ConstScalar rho,
-                    typename TTypes<T>::ConstScalar epsilon,
-                    typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstFlat indices) {
+                  typename TTypes<T>::Matrix accum,
+                  typename TTypes<T>::Matrix accum_update,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstMatrix grad,
+                  typename TTypes<Tindex>::ConstFlat indices) {
     const Tindex first_dim_size = var.dimension(0);
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
@@ -1179,26 +1179,16 @@ template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int64>;
 
-template struct functor::SparseApplyAdadelta<GPUDevice, Eigen::half,
-                                                     int32>;
-template struct functor::SparseApplyAdadelta<GPUDevice, Eigen::half,
-                                                     int64>;
+template struct functor::SparseApplyAdadelta<GPUDevice, Eigen::half, int32>;
+template struct functor::SparseApplyAdadelta<GPUDevice, Eigen::half, int64>;
 template struct functor::SparseApplyAdadelta<GPUDevice, float, int32>;
 template struct functor::SparseApplyAdadelta<GPUDevice, float, int64>;
 template struct functor::SparseApplyAdadelta<GPUDevice, double, int32>;
 template struct functor::SparseApplyAdadelta<GPUDevice, double, int64>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
-template struct functor::SparseApplyAdadelta<GPUDevice, complex64,
-                                                     int32>;
-template struct functor::SparseApplyAdadelta<GPUDevice, complex64,
-                                                     int64>;
-template struct functor::SparseApplyAdadelta<GPUDevice, complex128,
-                                                     int32>;
-template struct functor::SparseApplyAdadelta<GPUDevice, complex128,
-                                                     int64>;
-#endif
+template struct functor::SparseApplyAdadelta<GPUDevice, complex64, int32>;
+template struct functor::SparseApplyAdadelta<GPUDevice, complex64, int64>;
+template struct functor::SparseApplyAdadelta<GPUDevice, complex128, int32>;
+template struct functor::SparseApplyAdadelta<GPUDevice, complex128, int64>;
 
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;
