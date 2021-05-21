@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
@@ -265,13 +266,13 @@ struct GreaterThanCubOp {
   }
 };
 
-// Use DeviceSelect::If to count number of elements.
+// Uses DeviceSelect::If to count number of elements.
+//
+// (It might be better to use DeviceReduce::Sum with a custom iterator to do the
+// count.  But in practice SelectIf is quite fast.)
 template <typename Op>
-Status CountIf(OpKernelContext* context, const float* dev_array, const Op& op,
-               int num_elements, int* result) {
-  Tensor scratch_output;
-  Tensor workspace;
-  Tensor element_count;
+StatusOr<int> CountIf(OpKernelContext* context, const float* dev_array,
+                      const Op& op, int num_elements) {
   size_t workspace_size = 0;
   auto cuda_stream = tensorflow::GetGpuStream(context);
   auto device = context->eigen_gpu_device();
@@ -280,24 +281,35 @@ Status CountIf(OpKernelContext* context, const float* dev_array, const Op& op,
                             static_cast<float*>(nullptr),
                             static_cast<int*>(nullptr), num_elements, op);
 
+  Tensor scratch_output;
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_FLOAT, TensorShape({num_elements}), &scratch_output));
+
+  Tensor workspace;
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT8, TensorShape({(int64)workspace_size}), &workspace));
-  TF_RETURN_IF_ERROR(context->allocate_temp(DataType::DT_INT32,
-                                            TensorShape({1}), &element_count));
+
+  // num_selected is a host pinned tensor.  The GPU kernel can write to it
+  // directly, instead of writing to GPU memory and then copying down to
+  // num_selected, saving us a small D2H memcpy.  We've observed that even small
+  // D2H copies on the compute stream can have an outsized effect on latency.
+  Tensor num_selected;
+  AllocatorAttributes pinned_alloc_attrs;
+  pinned_alloc_attrs.set_on_host(true);
+  pinned_alloc_attrs.set_gpu_compatible(true);
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DataType::DT_INT32, TensorShape({1}), &num_selected, pinned_alloc_attrs));
+
   gpuEvent_t copy_done;
   TF_RETURN_IF_CUDA_ERROR(
       gpuEventCreateWithFlags(&copy_done, gpuEventDisableTiming));
   TF_RETURN_IF_CUDA_ERROR(gpuprim::DeviceSelect::If(
       workspace.flat<int8>().data(), workspace_size, dev_array,
-      scratch_output.flat<float>().data(), element_count.flat<int32>().data(),
+      scratch_output.flat<float>().data(), num_selected.flat<int32>().data(),
       num_elements, op, cuda_stream));
-  device.memcpyDeviceToHost(result, element_count.flat<int32>().data(),
-                            sizeof(int));
   TF_RETURN_IF_CUDA_ERROR(gpuEventRecord(copy_done, device.stream()));
   TF_RETURN_IF_CUDA_ERROR(gpuEventSynchronize(copy_done));
-  return Status::OK();
+  return *num_selected.flat<int32>().data();
 }
 
 Status DoNMS(OpKernelContext* context, const Tensor& boxes,
@@ -383,8 +395,9 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
   // filter boxes by scores if nms v3
   if (score_threshold > std::numeric_limits<float>::lowest()) {
     GreaterThanCubOp score_limit(score_threshold);
-    TF_RETURN_IF_ERROR(CountIf(context, d_sorted_scores.flat<float>().data(),
-                               score_limit, num_boxes, &limited_num_boxes));
+    TF_ASSIGN_OR_RETURN(limited_num_boxes,
+                        CountIf(context, d_sorted_scores.flat<float>().data(),
+                                score_limit, num_boxes));
     if (limited_num_boxes == 0) {
       Tensor* output_indices = nullptr;
       VLOG(1) << "Number of boxes above score threshold " << score_threshold
@@ -655,13 +668,16 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
                               config.virtual_thread_count,
                               d_nms_mask.flat<int32>().data()));
 
-  AllocatorAttributes alloc_attr;
-  alloc_attr.set_on_host(true);
-  alloc_attr.set_gpu_compatible(true);
-  // Size of this buffer can be reduced to kNmsChunkSize*bit_mask_len*2 and
-  // using it as a ring buffer. However savings should be a few MB .
-  TF_RETURN_IF_ERROR(context->allocate_temp(
-      DataType::DT_INT32, TensorShape({1}), &h_num_selected, alloc_attr));
+  // h_num_selected is a host pinned tensor.  The GPU kernel can write to it
+  // directly, instead of writing to GPU memory and then copying down to
+  // num_selected, saving us a small D2H memcpy.  We've observed that even small
+  // D2H copies on the compute stream can have an outsized effect on latency.
+  AllocatorAttributes pinned_alloc_attrs;
+  pinned_alloc_attrs.set_on_host(true);
+  pinned_alloc_attrs.set_gpu_compatible(true);
+  TF_RETURN_IF_ERROR(context->allocate_temp(DataType::DT_INT32,
+                                            TensorShape({1}), &h_num_selected,
+                                            pinned_alloc_attrs));
 
   int* d_delete_mask = d_nms_mask.flat<int>().data();
   int* h_selected_count = h_num_selected.flat<int>().data();
@@ -729,16 +745,15 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
       d_indices.flat<int>().data(),  // input
       selected,                      // selection flag
       d_selected_indices,            // selected items
-      d_num_selected.flat<int>().data(), num_boxes, device.stream());
+      h_selected_count, num_boxes, device.stream());
   gpuEvent_t copy_done;
   TF_RETURN_IF_CUDA_ERROR(
       gpuEventCreateWithFlags(&copy_done, gpuEventDisableTiming));
-  device.memcpyDeviceToHost(h_selected_count, d_num_selected.flat<int>().data(),
-                            sizeof(int));
   TF_RETURN_IF_CUDA_ERROR(gpuEventRecord(copy_done, device.stream()));
   TF_RETURN_IF_CUDA_ERROR(gpuEventSynchronize(copy_done));
-  *h_nkeep = *h_selected_count;
   gpuEventDestroy(copy_done);
+
+  *h_nkeep = *h_selected_count;
   return Status::OK();
 }
 
