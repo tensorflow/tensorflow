@@ -41,3 +41,17 @@ def RemoveRedundantDynamicBroadcast : Pat<
     (HLO_DynamicReshapeOp $operand, $shape),
      $shape, IdentityBroadcastDims:$dims),
   (HLO_DynamicReshapeOp $operand, $shape)>;
+
+
+// Convert DPad to Pad if edge_padding_low, edge_padding_high and
+// interior_paddin are HLO_ConstOp
+def DPadToPad: Pat<
+          (HLO_DynamicPadOp HLO_Tensor:$input,
+            HLO_Tensor:$padding_value,
+            (HLO_ConstOp I64ElementsAttr:$edge_padding_low),
+            (HLO_ConstOp I64ElementsAttr:$edge_padding_high),
+            (HLO_ConstOp I64ElementsAttr:$interior_paddin)),
+          (HLO_PadOp $input, $padding_value,
+            (CastIntElementsAttr $edge_padding_low),
+            (CastIntElementsAttr $edge_padding_high),
+            (CastIntElementsAttr $interior_paddin))>;

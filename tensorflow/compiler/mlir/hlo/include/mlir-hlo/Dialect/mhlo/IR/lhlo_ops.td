@@ -1386,4 +1386,158 @@ def TerminatorOp :
     [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
 }
 
+def LHLO_RealDynamicSliceOp: LHLO_Op<
+      "real_dynamic_slice",
+      [AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
+  let summary = "LHLO Real Dynamic Slice operator";
+  let description = [{
+    The dynamic shape version of DynamicSliceOp. Extracts a sub-array from the 
+    input array according to dynamic start_indices, limit_indices and strides.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$start_indices,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$limit_indices,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$strides,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicBroadcastInDimOp : LHLO_Op<"dynamic_broadcast_in_dim",
+      []> {
+  let summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
+  let description = [{
+    The dynamic shape version of BroadcastInDimOp. This is a generalization of the 
+    BroadcastInDimOp which accepts its output dimensions as an argument. It should 
+    eventually supercede the statically shaped original, but is being phased as a 
+    separate op in order to support compatibility with lowerings and translations that 
+    precede dynamic shapes.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$output_dimensions,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+}
+
+def LHLO_DotGeneralOp: LHLO_Op<"dot_general", []> {
+  let summary = "LHLO General Dot operator";
+  let description = [{
+    Performs general dot products between vectors, vector/matrix and
+    matrix/matrix multiplication.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dotgeneral.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+    DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicGatherOp: LHLO_Op<"dynamic_gather", []> {
+  string summary = "LHLO Dynamic Gather operator";
+  string description = [{
+    The dynamic shape version of GatherOp. Stitches together several slices of an input 
+    array. slice_sizes is not a const.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
+    Arg<LHLO_IntBuffer, "", [MemRead]>:$slice_sizes,
+    GatherDimensionNumbers:$dimension_numbers,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicPadOp: LHLO_Op<
+      "dynamic_pad", 
+      [AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
+  let summary = "LHLO Dynamic Pad operator";
+  let description = [{
+    The dynamic shape version of PadOp. Pads the edges of `operand` with the `padding_value` and according to
+    the passed configuration. Passed configuration are dynamic shape.
+    See
+    https://www.tensorflow.org/xla/operation_semantics#pad
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$padding_value,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$edge_padding_low,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$edge_padding_high,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$interior_padding,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_BitcastOp: LHLO_Op<"bitcast", []> {
+  let summary = "LHLO Bitcast operator";
+  let description = [{
+    This op changes the shape of the input in the way that the physical
+    arrangement of elements are unchanged.
+
+    However, the op needs layout information to make sense of "physical
+    arrangement of elements". Layout support in MHLO is currently under
+    exploration.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicBitcastOp: LHLO_Op<"dynamic_bitcast", []> {
+  let summary = "LHLO Dynamic Bitcast operator";
+  let description = [{
+    The dynamic shape version of BitcastOp. This op changes the shape of the 
+    input in the way that the physical arrangement of elements are unchanged.
+
+    However, the op needs layout information to make sense of "physical
+    arrangement of elements". Layout support in MHLO is currently under
+    exploration.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
+def LHLO_DynamicIotaOp : LHLO_Op<"dynamic_iota", []> {
+  let summary = "Create linear increasing values from 0 to length -1.";
+  let description = [{
+    The dynamic shape version of IotaOp. Produces an output of the specified shape, 
+    with an incremental set of values along the specified dimension starting at 0.
+    See
+    https://www.tensorflow.org/xla/operation_semantics#iota
+  }];
+  let arguments = (ins Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+                   I64Attr:$iota_dimension,
+                   Arg<LHLO_Buffer, "", [MemWrite]>:$output);
+}
+
+def LHLO_DynamicConvOp : LHLO_Op<"dynamic_conv", []> {
+  let arguments = !con(
+    (ins Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+    Arg<LHLO_Buffer, "", [MemRead]>:$d_padding,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output),
+    ConvolutionAttributes.attributes);
+}
+
+def LHLO_DynamicReshapeOp: LHLO_Op<"dynamic_reshape", []> {
+  let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
+  let description = [{
+    The dynamic shape version of ReshapeOp. Reshapes `operand` to `output`.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+}
+
 #endif // LHLO_OPS

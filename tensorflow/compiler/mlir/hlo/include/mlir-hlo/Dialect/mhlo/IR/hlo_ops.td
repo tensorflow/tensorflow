@@ -2173,4 +2173,88 @@ def HLO_ReducePrecisionOp :
   let results = (outs HLO_FpTensor:$output);
 }
 
+def HLO_RealDynamicSliceOp: HLO_Op<
+      "real_dynamic_slice",
+      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
+       AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
+  let summary = "Real Dynamic Slice operator";
+  let description = [{
+    The dynamic shape version of SliceOp. Extracts a sub-array from the input 
+    array according to start_indices, limit_indices and strides. Expect 
+    start_indices/limit_indices/strides to be statically shaped and matching 
+    the rank of the input.
+  }];
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_DimensionTensor:$start_indices,
+    HLO_DimensionTensor:$limit_indices,
+    HLO_DimensionTensor:$strides
+  );
+  let results = (outs HLO_Tensor:$result);
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
+      [NoSideEffect, AllElementTypesMatch<["operand", "padding_value", "result"]>,
+      AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
+  let summary = "Dynamic Pad operator";
+  let description = [{
+    The dynamic shape version of PadOp. Pads the edges of `operand` with the 
+    `padding_value` and according to the passed configuration. Expect 
+    edge_padding_low/edge_padding_high/interior_padding to be statically shaped 
+    and matching the rank of the input. 
+    See 
+    https://www.tensorflow.org/xla/operation_semantics#pad
+  }];
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$padding_value,
+    HLO_DimensionTensor:$edge_padding_low,
+    HLO_DimensionTensor:$edge_padding_high,
+    HLO_DimensionTensor:$interior_padding
+  );
+  let results = (outs HLO_Tensor:$result);
+  let description = [{
+    Dynamically Pads the `operand`, with amount of padding added at
+    low-end/high-end/interior is passed through input tensors.
+  }];
+  let hasCanonicalizer = 1;
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather", [NoSideEffect]> {
+  string summary = "Dynamic Gather operator";
+  string description = [{
+    The dynamic shape version of GatherOp. Stitches together several slices of an input 
+    array. slice_sizes is a compile-time variable.
+  }];
+  
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_IntTensor:$start_indices,
+    HLO_IntTensor:$slice_sizes,
+    GatherDimensionNumbers:$dimension_numbers,
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted
+  );
+  let results = (outs HLO_Tensor);
+  
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp {
+  let summary = "Dynamic Convolution operator";
+  let description = [{
+    The dynamic shape version of ConvOp. Computes a convolution with dynamic padding.
+  }];
+
+  let arguments = !con(
+    (ins
+       HLO_Tensor:$lhs,
+       HLO_Tensor:$rhs,
+       HLO_Tensor:$d_padding),
+    ConvolutionAttributes.attributes);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 #endif // HLO_OPS
