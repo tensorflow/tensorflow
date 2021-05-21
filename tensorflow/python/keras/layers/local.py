@@ -29,7 +29,6 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -154,9 +153,12 @@ class LocallyConnected1D(Layer):
     self.implementation = implementation
     self.input_spec = InputSpec(ndim=3)
 
+  @property
+  def _use_input_spec_as_call_signature(self):
+    return False
+
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
-    self.stored_input_shape = input_shape
     if self.data_format == 'channels_first':
       input_dim, input_length = input_shape[1], input_shape[2]
     else:
@@ -262,17 +264,6 @@ class LocallyConnected1D(Layer):
       return (input_shape[0], length, self.filters)
 
   def call(self, inputs):
-    check_for_more_none = any(map(lambda ele: ele is None, inputs.shape[1:]))
-    if check_for_more_none:
-      if self.stored_input_shape is not None:
-        input_shape = self.stored_input_shape
-      else:
-        raise ValueError('The inputs to call() has unexpected shape.',
-                         'Shape of inputs is:', inputs.shape)
-      tf_logging.warn("The inputs to call() has unexpected shape.")
-    else:
-      input_shape = inputs.shape
-    pre_computed_output_shape = self.compute_output_shape(input_shape)
     if self.implementation == 1:
       output = backend.local_conv(
           inputs, self.kernel, self.kernel_size, self.strides,
@@ -280,12 +271,12 @@ class LocallyConnected1D(Layer):
 
     elif self.implementation == 2:
       output = local_conv_matmul(inputs, self.kernel, self.kernel_mask,
-                                 pre_computed_output_shape)
+                                 self.compute_output_shape(inputs.shape))
 
     elif self.implementation == 3:
       output = local_conv_sparse_matmul(inputs, self.kernel, self.kernel_idxs,
                                         self.kernel_shape,
-                                        pre_computed_output_shape)
+                                        self.compute_output_shape(inputs.shape))
 
     else:
       raise ValueError('Unrecognized implementation mode: %d.' %
@@ -469,9 +460,12 @@ class LocallyConnected2D(Layer):
     self.implementation = implementation
     self.input_spec = InputSpec(ndim=4)
 
+  @property
+  def _use_input_spec_as_call_signature(self):
+    return False
+
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
-    self.stored_input_shape = input_shape
     if self.data_format == 'channels_last':
       input_row, input_col = input_shape[1:-1]
       input_filter = input_shape[3]
@@ -584,17 +578,6 @@ class LocallyConnected2D(Layer):
       return (input_shape[0], rows, cols, self.filters)
 
   def call(self, inputs):
-    check_for_more_none = any(map(lambda ele: ele is None, inputs.shape[1:]))
-    if check_for_more_none:
-      if self.stored_input_shape is not None:
-        input_shape = self.stored_input_shape
-      else:
-        raise ValueError('The inputs to call() has unexpected shape.',
-                         'Shape of inputs is:', inputs.shape)
-      tf_logging.warn("The inputs to call() has unexpected shape.")
-    else:
-      input_shape = inputs.shape
-    pre_computed_output_shape = self.compute_output_shape(input_shape)
     if self.implementation == 1:
       output = backend.local_conv(
           inputs, self.kernel, self.kernel_size, self.strides,
@@ -603,12 +586,12 @@ class LocallyConnected2D(Layer):
 
     elif self.implementation == 2:
       output = local_conv_matmul(inputs, self.kernel, self.kernel_mask,
-                                 pre_computed_output_shape)
+                                 self.compute_output_shape(inputs.shape))
 
     elif self.implementation == 3:
       output = local_conv_sparse_matmul(inputs, self.kernel, self.kernel_idxs,
                                         self.kernel_shape,
-                                        pre_computed_output_shape)
+                                        self.compute_output_shape(inputs.shape))
 
     else:
       raise ValueError('Unrecognized implementation mode: %d.' %
