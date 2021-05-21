@@ -2379,3 +2379,83 @@ func @unsigned_compare(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor
   %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "GT"} : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xi1>
   return %0 : tensor<2x2xi1>
 }
+
+// -----
+
+func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
+                            %arg2: tensor<1xi32>) -> tensor<3xi32> {
+  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):  // no predecessors
+    "mhlo.return"(%arg4) : (tensor<i32>) -> ()
+  }) {
+    indices_are_sorted = false,
+    scatter_dimension_numbers = {
+      index_vector_dim = 1 : i64,
+      inserted_window_dims = dense<0> : tensor<1xi64>,
+      scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
+      update_window_dims = dense<> : tensor<0xi64>
+    },
+    unique_indices = false
+  } : (tensor<3xi32>, tensor<1x1xi32>, tensor<1xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+// CHECK-DAG:   #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-DAG:   #[[MAP1:.*]] = affine_map<(d0, d1) -> (d1, 0)>
+// CHECK-DAG:   #[[MAP2:.*]] = affine_map<(d0, d1) -> (d1)>
+// CHECK:       func @scatter_update_scalar
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
+// CHECK:         %[[RES:.*]] = linalg.generic
+// CHECK-SAME:      indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]], #[[MAP0]]]
+// CHECK-SAME:      iterator_types = ["parallel", "parallel"]
+// CHECK-SAME:      ins(%[[ARG0]], %[[ARG1]], %[[ARG2]] : tensor<3xi32>, tensor<1x1xi32>, tensor<1xi32>)
+// CHECK-SAME:     outs(%[[ARG0]] : tensor<3xi32>) {
+// CHECK:         ^bb0(%{{.*}}: i32, %[[IDX_I32:.*]]: i32, %[[UPDATE:.*]]: i32, %[[OUT:.*]]: i32):  // no predecessors
+// CHECK:           %[[CMP_IDX:.*]] = linalg.index 0 : index
+// CHECK:           %[[IDX:.*]] = index_cast %[[IDX_I32]] : i32 to index
+// CHECK:           %[[PRED:.*]] = cmpi eq, %[[CMP_IDX]], %[[IDX]] : index
+// CHECK:           %[[SELECT:.*]] = select %[[PRED]], %[[UPDATE]], %[[OUT]] : i32
+// CHECK:           linalg.yield %[[SELECT]] : i32
+// CHECK:         } -> tensor<3xi32>
+// CHECK:         return %[[RES]] : tensor<3xi32>
+
+// -----
+
+func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
+                           %arg2: tensor<2x3xi32>) -> tensor<6x3xi32> {
+  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):  // no predecessors
+    "mhlo.return"(%arg4) : (tensor<i32>) -> ()
+  }) {
+    indices_are_sorted = false,
+    scatter_dimension_numbers = {
+      index_vector_dim = 1 : i64,
+      inserted_window_dims = dense<0> : tensor<1xi64>,
+      scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
+      update_window_dims = dense<1> : tensor<1xi64>
+    },
+    unique_indices = false
+  } : (tensor<6x3xi32>, tensor<2x1xi32>, tensor<2x3xi32>) -> tensor<6x3xi32>
+  return %0 : tensor<6x3xi32>
+}
+// CHECK-DAG:   #[[MAP0:.*]] = affine_map<(d0, d1, d2) -> (d0, d1)>
+// CHECK-DAG:   #[[MAP1:.*]] = affine_map<(d0, d1, d2) -> (d2, 0)>
+// CHECK-DAG:   #[[MAP2:.*]] = affine_map<(d0, d1, d2) -> (d2, d1)>
+// CHECK:       func @scatter_update_slice
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
+// CHECK:         %[[RES:.*]] = linalg.generic
+// CHECK-SAME:      indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]], #[[MAP0]]]
+// CHECK-SAME:      iterator_types = ["parallel", "parallel", "parallel"]
+// CHECK-SAME:      ins(%[[ARG0]], %[[ARG1]], %[[ARG2]] : tensor<6x3xi32>, tensor<2x1xi32>, tensor<2x3xi32>)
+// CHECK-SAME:     outs(%[[ARG0]] : tensor<6x3xi32>) {
+// CHECK:         ^bb0(%{{.*}}: i32, %[[IDX_I32:.*]]: i32, %[[UPDATE:.*]]: i32, %[[OUT:.*]]: i32):  // no predecessors
+// CHECK:           %[[CMP_IDX:.*]] = linalg.index 0 : index
+// CHECK:           %[[IDX:.*]] = index_cast %[[IDX_I32]] : i32 to index
+// CHECK:           %[[PRED:.*]] = cmpi eq, %[[CMP_IDX]], %[[IDX]] : index
+// CHECK:           %[[SELECT:.*]] = select %[[PRED]], %[[UPDATE]], %[[OUT]] : i32
+// CHECK:           linalg.yield %[[SELECT]] : i32
+// CHECK:         } -> tensor<6x3xi32>
+// CHECK:         return %[[RES]] : tensor<6x3xi32>
