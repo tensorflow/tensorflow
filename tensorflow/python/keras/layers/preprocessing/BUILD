@@ -432,6 +432,7 @@ distribute_py_test(
     srcs = ["image_preprocessing_distribution_test.py"],
     main = "image_preprocessing_distribution_test.py",
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
     ],
