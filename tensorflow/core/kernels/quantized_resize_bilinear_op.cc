@@ -64,6 +64,8 @@ inline void ComputeInterpolationWeights(
         std::max(static_cast<int64>(in_f), static_cast<int64>(0));
     interpolation->upper[i] =
         std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+    interpolation->lower[i] =
+        std::min(interpolation->lower[i], interpolation->upper[i]);
     interpolation->lerp[i] = in - in_f;
     interpolation->ilerp[i] =
         static_cast<T_SCALE>((in - in_f) * (1 << resolution));
