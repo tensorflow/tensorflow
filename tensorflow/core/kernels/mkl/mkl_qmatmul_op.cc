@@ -111,7 +111,7 @@ enum {
 namespace tensorflow {
 
 template <typename Device, typename Tinput, typename Tweight, typename Tbias,
-          typename Toutput>
+          typename Toutput, bool native_format = false>
 class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
  public:
   virtual ~MklDnnQuantizedMatMulOp() {
@@ -165,8 +165,9 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       const Tensor& bias_tensor = MklGetInput(context, this->kInputIndexBias);
 
       MklDnnShape src_mkl_shape, weight_mkl_shape;
-      GetMklShape(context, this->kInputIndexSrc, &src_mkl_shape);
-      GetMklShape(context, this->kInputIndexWeight, &weight_mkl_shape);
+      GetMklShape(context, this->kInputIndexSrc, &src_mkl_shape, native_format);
+      GetMklShape(context, this->kInputIndexWeight, &weight_mkl_shape,
+                  native_format);
       OP_REQUIRES(context, !weight_mkl_shape.IsMklTensor(),
                   errors::InvalidArgument("Weight should not be in "
                                           "MKL Layout"));
@@ -239,14 +240,15 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>
           matmul_fwd_pd = matmul_fwd->GetPrimitiveDesc();
       this->AllocateOutputTensor(context, *matmul_fwd_pd, dst_dims_mkl_order,
-                                 input_output_fmt_mkldnn, &dst_tensor);
+                                 input_output_fmt_mkldnn, &dst_tensor,
+                                 native_format);
 
       Toutput* dst_data =
           reinterpret_cast<Toutput*>(dst_tensor->flat<Toutput>().data());
 
       // Check if src and weight data need to be reordered.
       Tinput* src_data = nullptr;
-      if (src_md != matmul_fwd_pd->src_desc()) {
+      if (!native_format && src_md != matmul_fwd_pd->src_desc()) {
         src.SetUsrMem(src_md, &src_tensor);
         src.CheckReorderToOpMem(matmul_fwd_pd.get()->src_desc(),
                                 this->cpu_engine_, context);
@@ -326,9 +328,9 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       output_min_mkl_shape.SetMklTensor(false);
       output_max_mkl_shape.SetMklTensor(false);
       AllocateOutputSetMklShape(context, 1, &output_min, {},
-                                output_min_mkl_shape);
+                                output_min_mkl_shape, native_format);
       AllocateOutputSetMklShape(context, 2, &output_max, {},
-                                output_max_mkl_shape);
+                                output_max_mkl_shape, native_format);
       output_min->flat<float>()(0) = min_output_value;
       output_max->flat<float>()(0) = max_output_value;
     }
@@ -509,168 +511,84 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
 };
 
 template <typename Device, typename Tinput, typename Tweight, typename Tbias,
-          typename Toutput>
+          typename Toutput, bool native_format = false>
 class MklDnnQuantizedMatMulReluOp
-    : public MklDnnQuantizedMatMulOp<Device, Tinput, Tweight, Tbias, Toutput> {
+    : public MklDnnQuantizedMatMulOp<Device, Tinput, Tweight, Tbias, Toutput,
+                                     native_format> {
  public:
   virtual ~MklDnnQuantizedMatMulReluOp() {}
 
   explicit MklDnnQuantizedMatMulReluOp(OpKernelConstruction* context)
-      : MklDnnQuantizedMatMulOp<Device, Tinput, Tweight, Tbias, Toutput>(
-            context) {}
+      : MklDnnQuantizedMatMulOp<Device, Tinput, Tweight, Tbias, Toutput,
+                                native_format>(context) {}
 
  protected:
   void ExtendMklDnnMatMulFwdParams(OpKernelContext* context,
                                    MklDnnMatMulFwdParams& params) override {
-    MklDnnQuantizedMatMulOp<Device, quint8, qint8, Tbias,
-                            Toutput>::ExtendMklDnnMatMulFwdParams(context,
-                                                                  params);
+    MklDnnQuantizedMatMulOp<Device, quint8, qint8, Tbias, Toutput,
+                            native_format>::ExtendMklDnnMatMulFwdParams(context,
+                                                                        params);
     params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
   }
 };
 
-// Register NoOp kernel for QuantizedMatMulWithBias to get a python interface.
-// This kernel will be replaced by an MKL kernel during graph
-// optimization pass.
-REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBias")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T1")
-                            .TypeConstraint<qint8>("T2")
-                            .TypeConstraint<qint32>("Toutput"),
-                        NoOp);
+#define REGISTER_MKL_KERNEL(op, kernel, bias_type, output_type, is_native)   \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name(op)                                                               \
+          .Device(DEVICE_CPU)                                                \
+          .TypeConstraint<quint8>("T1")                                      \
+          .TypeConstraint<qint8>("T2") BIAS_TYPE_CONSTRAINT(bias_type)       \
+          .TypeConstraint<output_type>("Toutput") LABEL,                     \
+      kernel TEMPLATE_ARGS(CPUDevice, quint8, qint8, bias_type, output_type, \
+                           is_native));
 
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBias")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<float>("Tbias")
-        .TypeConstraint<qint32>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, float, qint32>);
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBias")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<qint32>("Tbias")
-        .TypeConstraint<qint32>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, qint32, qint32>);
+#define REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(op, kernel, output_type, is_native) \
+  REGISTER_MKL_KERNEL(op, kernel, float, output_type, is_native)               \
+  REGISTER_MKL_KERNEL(op, kernel, qint32, output_type, is_native);
 
-// Register NoOp kernel for QuantizedMatMulWithBiasAndRelu to get a python
-// interface. This kernel will be replaced by an MKL kernel during
-// graph-optimization pass.
-REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRelu")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T1")
-                            .TypeConstraint<qint8>("T2")
-                            .TypeConstraint<qint32>("Toutput"),
-                        NoOp);
-// Register NoOp kernel for QuantizedIPWithBiasAndReluAndRequantize
-// to get a python interface. This kernel will be replaced by an MKL kernel
-// during graph-optimization pass.
-REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndReluAndRequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T1")
-                            .TypeConstraint<qint8>("T2")
-                            .TypeConstraint("Tbias", {DT_QINT32, DT_FLOAT})
-                            .TypeConstraint<quint8>("Toutput"),
-                        NoOp);
+#define LABEL
+#define TEMPLATE_ARGS(CPUDevice, quint8, qint8, bias_type, output_type, \
+                      is_native)
+#define BIAS_TYPE_CONSTRAINT(bias_type)
+REGISTER_MKL_KERNEL("QuantizedMatMulWithBiasAndRelu", NoOp, float, qint32,
+                    false);
+#undef BIAS_TYPE_CONSTRAINT
 
-// Register NoOp kernel for QuantizedMatMulWithBiasAndRequantize
-// to get a python interface. This kernel will be replaced by an MKL kernel
-// during graph-optimization pass.
-REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T1")
-                            .TypeConstraint<qint8>("T2")
-                            .TypeConstraint("Tbias", {DT_QINT32, DT_FLOAT})
-                            .TypeConstraint<quint8>("Toutput"),
-                        NoOp);
+#define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBias", NoOp, qint32,
+                                   false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
+    "QuantizedMatMulWithBiasAndReluAndRequantize", NoOp, quint8, false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBiasAndRequantize", NoOp,
+                                   quint8, false);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("QuantizedMatMulWithBiasAndDequantize", NoOp,
+                                   float, false);
+#undef BIAS_TYPE_CONSTRAINT
+#undef TEMPLATE_ARGS
+#undef LABEL
 
-// Register NoOp kernel for QuantizedMatMulWithBiasAndDequantize
-// to get a python interface. This kernel will be replaced by an MKL kernel
-// during graph-optimization pass.
-REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndDequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T1")
-                            .TypeConstraint<qint8>("T2")
-                            .TypeConstraint("Tbias", {DT_QINT32, DT_FLOAT})
-                            .TypeConstraint<float>("Toutput"),
-                        NoOp);
+#define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
+#define TEMPLATE_ARGS(CPUDevice, quint8, qint8, bias_type, output_type, \
+                      is_native)                                        \
+<CPUDevice, quint8, qint8, bias_type, output_type, is_native>
+#define BIAS_TYPE_CONSTRAINT(bias_type)
+REGISTER_MKL_KERNEL("_MklQuantizedMatMulWithBiasAndRelu",
+                    MklDnnQuantizedMatMulReluOp, float, qint32, true);
+#undef BIAS_TYPE_CONSTRAINT
 
-// Register a templatized implementation of _MklQuantizedMatMulWithBiasAndRelu.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBiasAndRelu")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<qint32>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulReluOp<CPUDevice, quint8, qint8, float, qint32>);
-// Register a templatized implementation of
-// _MklQuantizedMatMulWithBiasAndReluAndRequantize.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<qint32>("Tbias")
-        .TypeConstraint<quint8>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulReluOp<CPUDevice, quint8, qint8, qint32, quint8>);
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<float>("Tbias")
-        .TypeConstraint<quint8>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulReluOp<CPUDevice, quint8, qint8, float, quint8>);
-
-// Register a templatized implementation of
-// _MklQuantizedMatMulWithBiasAndRequantize.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBiasAndRequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<qint32>("Tbias")
-        .TypeConstraint<quint8>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, qint32, quint8>);
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBiasAndRequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<float>("Tbias")
-        .TypeConstraint<quint8>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, float, quint8>);
-
-// Register a templatized implementation of
-// _MklQuantizedMatMulWithBiasAndDequantize.
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBiasAndDequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<qint32>("Tbias")
-        .TypeConstraint<float>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, qint32, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("_MklQuantizedMatMulWithBiasAndDequantize")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<quint8>("T1")
-        .TypeConstraint<qint8>("T2")
-        .TypeConstraint<float>("Tbias")
-        .TypeConstraint<float>("Toutput")
-        .Label(mkl_op_registry::kMklQuantizedOpLabel),
-    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, float, float>);
+#define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBias",
+                                   MklDnnQuantizedMatMulOp, qint32, true);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
+    "_MklQuantizedMatMulWithBiasAndReluAndRequantize",
+    MklDnnQuantizedMatMulReluOp, quint8, true);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBiasAndRequantize",
+                                   MklDnnQuantizedMatMulOp, quint8, true);
+REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBiasAndDequantize",
+                                   MklDnnQuantizedMatMulOp, float, true);
+#undef BIAS_TYPE_CONSTRAINT
+#undef TEMPLATE_ARGS
+#undef LABEL
 
 }  // namespace tensorflow
 
