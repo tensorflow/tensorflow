@@ -293,9 +293,9 @@ Value MaterializeScalarRankSpecializationCase(
             llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
               if (v == non_scalar_operand) return flat_non_scalar_operand;
               return b
-                  .create<tensor::CastOp>(
+                  .create<mhlo::ReshapeOp>(
                       loc, DeriveRankedTensorTypes(v.getType(), /*rank=*/0), v)
-                  .dest();
+                  .getResult();
             }));
 
         // Materialize ranked variants for the element-wise operations.
@@ -585,6 +585,8 @@ struct LowerRankSpecializationClusterPattern
 
   LogicalResult matchAndRewrite(chlo::RankSpecializationClusterOp op,
                                 PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
     // Restoring the result shape currently relies on all operands being used
     // for a single result. The result shape is then the broadcasted shape of
     // all operands.
@@ -595,7 +597,6 @@ struct LowerRankSpecializationClusterPattern
 
     // If there is only one unranked operand and all others are known scalars,
     // we can flatten the operands to rank 1.
-    Location loc = op.getLoc();
     if (Optional<Value> non_scalar_operand =
             FindUniqueNonScalar(op.operands())) {
       rewriter.replaceOp(op,
