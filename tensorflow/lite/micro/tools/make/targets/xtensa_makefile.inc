@@ -96,4 +96,3 @@ ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "visionp6_ao"))
   CXXFLAGS:=$(filter-out -Wshadow, $(CXXFLAGS))
   CCFLAGS:=$(filter-out -Wshadow, $(CCFLAGS))
 endif
-
