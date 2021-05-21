@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 
+#include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -413,6 +414,12 @@ Graph::~Graph() {
   }
   // Edges have no destructor, and we arena-allocated them, so no need to
   // destroy them.
+}
+
+std::unique_ptr<Graph> Graph::Clone() {
+  std::unique_ptr<Graph> new_graph(new Graph(flib_def()));
+  new_graph->Copy(*this);
+  return new_graph;
 }
 
 const VersionDef& Graph::versions() const { return *versions_; }
