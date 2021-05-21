@@ -301,7 +301,7 @@ bool SubProcess::Start() {
   ret = posix_spawnp(&pid_, exec_path_, &file_actions, nullptr, exec_argv_,
                      environ);
   if (ret != 0) {
-    LOG(ERROR) << "Start cannot spawn child process: " << strerror(ret);
+    LOG(INFO) << "Start cannot spawn child process: " << strerror(ret);
     ClosePipes();
     return false;
   }
