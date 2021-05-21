@@ -16,7 +16,7 @@ filegroup(
         "topological_sort.h",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
