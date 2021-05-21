@@ -392,6 +392,7 @@ tensorflow/lite/micro/kernels/transpose_conv.cc \
 tensorflow/lite/micro/kernels/unpack.cc \
 tensorflow/lite/micro/kernels/zeros_like.cc
 
+# Load custom kernels.
 include $(MAKEFILE_DIR)/additional_kernels.inc
 
 MICROLITE_TEST_HDRS := \
@@ -686,6 +687,9 @@ include $(MICRO_LITE_EXAMPLE_TESTS)
 # Load the benchmarks.
 include $(MICRO_LITE_BENCHMARKS)
 
+# Load custom kernel tests.
+include $(MAKEFILE_DIR)/additional_tests.inc
+
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=
 $(foreach DOWNLOAD,$(THIRD_PARTY_DOWNLOADS),$(eval $(call create_download_rule,$(DOWNLOAD))))
@@ -832,8 +836,6 @@ ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
   $(eval $(call microlite_test,kernel_transpose_conv_test,\
   $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
 endif
-
-include $(MAKEFILE_DIR)/additional_tests.inc
 
 # For all the tests that do not have any additional dependencies, we can
 # add a make target in a common way.
