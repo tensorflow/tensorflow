@@ -143,7 +143,7 @@ distribute_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
