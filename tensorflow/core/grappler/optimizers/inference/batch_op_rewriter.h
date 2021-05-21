@@ -23,6 +23,17 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+constexpr char kEnableAdaptiveSchedulerAttr[] = "_enable_adaptive_scheduler";
+constexpr char kMinInflightBatchesAttr[] = "_min_inflight_batches";
+constexpr char kInitialInflightBatchesAttr[] = "_initial_inflight_batches";
+constexpr char kMaxInflightBatchesAttr[] = "_max_inflight_batches";
+constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
+
+constexpr int64 kMinInflightBatches = 16;
+constexpr int64 kInitialInflightBatches = 16;
+constexpr int64 kBatchesToAverageOver = 10;
+constexpr int64 kMaxInflightBatches = 64;
+
 using ::tensorflow::serving::BatchOpRewriteConfig;
 
 // This optimization does the following:
