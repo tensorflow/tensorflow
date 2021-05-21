@@ -52,8 +52,6 @@ namespace {
 
 constexpr auto kUnknownResourceId =
     ResourceAliasAnalysis::Info::kUnknownResourceId;
-// Use a single generator resource id.
-int64_t kGeneratorResourceId = -2;
 
 //===----------------------------------------------------------------------===//
 // SideEffectAnalysisInfo helper functions.
@@ -470,30 +468,17 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
       }
 
       // If not indirectly tracked, add edges from the resource.
-      bool found_generator = false;
-
       if (!indirectly_tracked_unknown_access) {
         VLOG(1) << "Not indirectly tracked with unknown access: "
                 << debugString(op);
         if (auto interface = dyn_cast<MemoryEffectOpInterface>(op)) {
           llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
           interface.getEffects(effects);
-
-          found_generator =
-              llvm::any_of(effects, [&](MemoryEffects::EffectInstance& effect) {
-                return isa<ResourceEffects::GeneratorOp>(effect.getResource());
-              });
         }
-        AddPredecessorsForAccess(
-            found_generator ? kGeneratorResourceId : kUnknownResourceId, &op,
-            read_only);
+        AddPredecessorsForAccess(kUnknownResourceId, &op, read_only);
       }
       if (!resource_ids_by_value.hasValue()) {
         VLOG(1) << "Indirectly tracked with no value: " << debugString(op);
-        if (found_generator) {
-          TrackAccess(kGeneratorResourceId, &op, read_only);
-          continue;
-        }
 
         // Update access info for unknown resource.
         TrackAccess(kUnknownResourceId, &op, read_only);

@@ -1337,3 +1337,39 @@ func @dataset_op_sequence(
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Predecessors: {7}}}
 }
+
+// -----
+
+// Tests `tf.GeneratorDataset` with surrounding ops with unknown side-effects.
+func @generator_dataset_with_unknown_side_effect_ops(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Successors: {7}}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {5}}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf.shape<>], output_types = [!tf.string]} : (tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>) -> tensor<!tf.variant>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+        // expected-remark@above {{Successors: {3}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Predecessors: {6}}}
+}
