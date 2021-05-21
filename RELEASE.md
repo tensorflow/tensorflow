@@ -121,6 +121,8 @@
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
+    *   Added `framework_stable` BUILD target, which links in only the
+        non-experimental TF Lite APIs.
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,
