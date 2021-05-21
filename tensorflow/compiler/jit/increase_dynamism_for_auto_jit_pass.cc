@@ -48,7 +48,7 @@ namespace {
 //
 //  - A T to indicate a successful operation.
 template <class T>
-using StatusOrOptional = xla::StatusOr<absl::optional<T>>;
+using StatusOrOptional = StatusOr<absl::optional<T>>;
 
 StatusOrOptional<Tensor> TryToGetTensorFromConstOp(Node* n) {
   if (n->type_string() != "Const") {
@@ -315,7 +315,7 @@ Status RewriteSlice(Graph* g, Node* slice, const SliceInputs& slice_inputs,
 
 // Return true if `n` is a slice we should rewrite to have a static shape
 // (i.e. have the output shape only depend on the "size" input).
-xla::StatusOr<bool> ShouldRewriteSlice(Node* n) {
+StatusOr<bool> ShouldRewriteSlice(Node* n) {
   if (n->type_string() != "Slice") {
     return false;
   }

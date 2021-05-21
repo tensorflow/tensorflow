@@ -24,7 +24,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestCastFloatToInt8(const int* input_dims_data, const float* input_data,
+void TestCastFloatToInt8(int* input_dims_data, const float* input_data,
                          const int8_t* expected_output_data,
                          int8_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -56,7 +56,7 @@ void TestCastFloatToInt8(const int* input_dims_data, const float* input_data,
   }
 }
 
-void TestCastInt8ToFloat(const int* input_dims_data, const int8_t* input_data,
+void TestCastInt8ToFloat(int* input_dims_data, const int8_t* input_data,
                          const float* expected_output_data,
                          float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -96,7 +96,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(CastFloatToInt8) {
   int8_t output_data[6];
-  const int input_dims[] = {2, 3, 2};
+  int input_dims[] = {2, 3, 2};
 
   // TODO(b/178391195): Test negative and out-of-range numbers.
   const float input_values[] = {100.f, 1.0f, 0.f, 0.4f, 1.999f, 1.1f};
@@ -107,7 +107,7 @@ TF_LITE_MICRO_TEST(CastFloatToInt8) {
 
 TF_LITE_MICRO_TEST(CastInt8ToFloat) {
   float output_data[6];
-  const int input_dims[] = {2, 3, 2};
+  int input_dims[] = {2, 3, 2};
   const int8_t input_values[] = {123, 0, 1, 2, 3, 4};
   const float golden[] = {123.f, 0.f, 1.f, 2.f, 3.f, 4.f};
   tflite::testing::TestCastInt8ToFloat(input_dims, input_values, golden,

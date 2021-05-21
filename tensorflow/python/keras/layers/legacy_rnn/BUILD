@@ -6,7 +6,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -39,8 +39,8 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:tf_utils",

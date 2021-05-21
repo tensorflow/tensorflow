@@ -32,8 +32,7 @@ namespace gpu {
 class ForThunk : public Thunk {
  public:
   ForThunk(ThunkInfo thunk_info, const int64 loop_limit,
-           std::unique_ptr<ThunkSequence> body_thunk_sequence,
-           absl::optional<size_t> body_profile_index_);
+           std::unique_ptr<ThunkSequence> body_thunk_sequence);
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
@@ -44,7 +43,6 @@ class ForThunk : public Thunk {
  private:
   const int64 loop_limit_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
-  const absl::optional<size_t> body_profile_index_;
 };
 
 }  // namespace gpu

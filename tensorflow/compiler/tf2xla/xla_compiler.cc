@@ -86,11 +86,11 @@ Status CheckSignature(const DataTypeVector& types,
 
 // Uses the _Arg and _Retval nodes in the graph to determine an OpSharding for
 // each argument and return value.
-xla::StatusOr<
+StatusOr<
     std::pair<std::map<int, xla::OpSharding>, std::map<int, xla::OpSharding>>>
 ComputeArgAndRetvalShardings(const Graph& graph) {
   auto get_sharding_for_node =
-      [](const Node* n) -> xla::StatusOr<absl::optional<xla::OpSharding>> {
+      [](const Node* n) -> StatusOr<absl::optional<xla::OpSharding>> {
     TF_ASSIGN_OR_RETURN(
         auto sharding,
         ParseShardingFromDevice(*n, std::numeric_limits<int32>::max(),
@@ -143,7 +143,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   TF_RETURN_IF_ERROR(graph_compiler.Compile());
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
-  return Status::OK();
+  return status;
 }
 
 // Builds the XLA computation.
@@ -416,7 +416,7 @@ Status BuildComputation(
                         alias.param_index);
   }
 
-  xla::StatusOr<xla::XlaComputation> computation_status = builder->Build();
+  StatusOr<xla::XlaComputation> computation_status = builder->Build();
   if (!computation_status.ok()) {
     return computation_status.status();
   }
@@ -1114,18 +1114,6 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  for (int i = 0, end = input_to_args->size(); i < end; ++i) {
-    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-    for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-      int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-      VLOG(1) << "Setting dynamic size " << i << " -> "
-              << dynamic_size_param_index;
-      arg_handles[i] = xla::SetDimensionSize(
-          arg_handles[i], arg_handles[dynamic_size_param_index],
-          dim_and_arg_num.first);
-    }
-  }
-
   builder->ClearOpMetadata();
 
   // Fill in the handles in non-constant arguments, and reshape parameters
@@ -1323,7 +1311,6 @@ Status XlaCompiler::CompileGraph(
   // FunctionalizeControlFlow may remove some nodes from the graph.
   TF_RETURN_IF_ERROR(ValidateGraph(graph.get(), *options_.flib_def,
                                    options_.device_type, name));
-
   xla::XlaBuilder builder(name);
   XlaContext* context = new XlaContext(this, &builder, graph.get());
   core::ScopedUnref context_unref(context);
@@ -1377,8 +1364,12 @@ Status XlaCompiler::CompileGraph(
     }
   }
 
-  TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
-                                  flib_runtime_, NextStepId()));
+  Status execute_status = ExecuteGraph(context, std::move(graph), device_,
+                                       flib_runtime_, NextStepId());
+  if (!execute_status.ok()) {
+    VLOG(1) << "Failed executing graph " << name;
+    return execute_status;
+  }
   if (token_input_index != -1) {
     // Add extra token output.
     std::vector<xla::XlaOp> token_inputs;
@@ -1414,6 +1405,7 @@ Status XlaCompiler::CompileGraph(
           << " nonconstant: " << num_nonconst_outputs;
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
+  result->collective_reduce_info = context->GetCollectiveReduceV2OpInfo();
   return Status::OK();
 }
 
@@ -1575,7 +1567,7 @@ Status XlaCompiler::SetNodeToken(const string& node_name,
   return Status::OK();
 }
 
-xla::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
+StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
   if (node_token_mapping_stack_.empty()) {
     return errors::FailedPrecondition(
         "Calling GetNodeToken() when node_token_mapping_stack_ is "

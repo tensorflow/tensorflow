@@ -13,7 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -69,7 +69,7 @@ cc_test(
         ":audio_microfrontend",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )

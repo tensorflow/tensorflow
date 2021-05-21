@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 6
+_version = 22
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -62,8 +62,13 @@ def _interpreter_backend_factory():
   return _xla.get_interpreter_client()
 
 
+# Deprecated.
 def _cpu_backend_factory():
   return _xla.get_cpu_client(asynchronous=True)
+
+
+def _tfrt_cpu_backend_factory():
+  return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
 def _gpu_backend_factory(distributed_client=None, node_id=0):
@@ -71,10 +76,10 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
   preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE')
-  if allocator not in ('default', 'platform', 'bfc'):
+  if allocator not in ('default', 'platform', 'bfc', 'cuda_async'):
     raise ValueError(
-        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
-        '"bfc", got "%s"' % allocator)
+        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", '
+        '"bfc", or "cuda_async", got "%s"' % allocator)
   config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
     config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
@@ -82,6 +87,8 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
     config.kind = _xla.GpuAllocatorConfig.Kind.PLATFORM
   if allocator == 'bfc':
     config.kind = _xla.GpuAllocatorConfig.Kind.BFC
+  if allocator == 'cuda_async':
+    config.kind = _xla.GpuAllocatorConfig.Kind.CUDA_ASYNC
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
@@ -94,7 +101,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
 
 
 def _tpu_backend_factory():
-  return _xla.get_tpu_client(asynchronous=True)
+  return _xla.get_tpu_client(max_inflight_computations=32)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
@@ -279,6 +286,28 @@ class ProgramShape(object):
 """
 
 
+ShapeIndex = _xla.ShapeIndex
+ShapeIndex.__doc__ = """
+A Shape is an object defined in C++ that duck types like the following class:
+
+class ShapeIndex(object):
+  '''Represents an XLA ShapeIndex.
+
+  An index for specifying a particular nested subshape within a shape. Used in
+  ShapeUtil::GetSubshape and other interfaces. ShapeIndex defines a path through
+  the Shape tree where each element of ShapeIndex indexes into a tuple (or
+  nested tuple) within the shape. For a non-nested tuple, an index has a single
+  element.
+  '''
+
+  def __init__(self, List[int]) -> ShapeIndex:
+  def __eq__(self, other: Shape) -> bool:
+  def __ne__(self, other: Shape) -> bool:
+  def __hash__(self):
+  def __repr__(self):
+"""
+
+
 def shape_from_pyval(pyval):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
@@ -325,17 +354,18 @@ HostBufferSemantics = _xla.HostBufferSemantics
 #   def size_of_generated_code_in_bytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def execute_on_local_devices(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def execute_sharded_on_local_devices(self, arguments: [[Buffer]])
+#       -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
-#       arguments: A sequence of sequences of Buffers. The i'th inner sequence
-#         comprises the arguments for execution on the i'th local device.
+#       arguments: A sequence of sequences of Buffers. The i'th element of each
+#         sequence comprises the arguments for execution on the i'th local
+#         device.
 #
 #     Returns:
-#       A list of the computation's outputs for each local device, as a Buffer.
-#       If a shallow sequence of arguments was passed in for `arguments`, then
-#       the sole, zero'th device's output is returned instead, as a Buffer.
+#       A list of the computation's outputs as a list of Buffers for each
+#       device.
 #     """
 #
 # There are different implementations of Executable for different backends.
@@ -366,19 +396,12 @@ def execute_with_python_values_replicated(executable, arguments, backend):
   """
   devices = executable.local_devices()
   # pylint: disable=g-complex-comprehension
-  flat_args = [(arg, devices[replica])
-               for replica, replica_args in enumerate(arguments)
-               for arg in replica_args]
-  flat_arg_buffers = [
-      backend.buffer_from_pyval(pyval, device) for pyval, device in flat_args
-  ]
-  arg_buffers = []
-  for replica_args in arguments:
-    arg_buffers.append(flat_arg_buffers[:len(replica_args)])
-    flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-  return [[x.to_py()
-           for x in xs]
-          for xs in executable.execute_on_local_devices(arg_buffers)]
+  def copy_to_devices(pyvals):
+    return [backend.buffer_from_pyval(v, d) for v, d in zip(pyvals, devices)]
+
+  inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
+  outputs = executable.execute_sharded_on_local_devices(inputs)
+  return [[x.to_py() for x in xs] for xs in zip(*outputs)]
 
 
 class PaddingType(enum.Enum):
@@ -419,6 +442,7 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
+XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
@@ -686,6 +710,7 @@ def make_replica_groups(replica_groups):
 
 
 Traceback = _xla.Traceback
+Frame = _xla.Frame
 
 
 @contextlib.contextmanager

@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/signature_def_function.h"
 #include "tensorflow/core/platform/status.h"
@@ -35,10 +36,17 @@ class SavedModelAPI {
  public:
   // Retrieve a function from the TF2 SavedModel, using the "path" to a function
   // in a TF2 savedmodel.
+  //
   // Note: `function` is a double pointer, so that implementations are
   // able to return a pointer to an internal member.
   virtual Status GetFunction(const std::string& function_path,
                              ConcreteFunction** function) = 0;
+
+  // Retrieve a list of child functions from a SavedModel given a starting node.
+  // 0 is the root node.
+  virtual Status GetFunctions(
+      int node_id,
+      absl::flat_hash_map<std::string, ConcreteFunction*>* functions) = 0;
 
   // Retrieve a SignatureDefFunction from a SavedModel, using the key of the
   // SignatureDef map:

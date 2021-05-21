@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ fi
 #   $1 - full path to the downloaded flexbuffers.h that will be patched in-place.
 function patch_to_avoid_strtod() {
   local input_flexbuffers_path="$1"
-  local temp_flexbuffers_path="/tmp/flexbuffers_patched.h"
+  local temp_flexbuffers_path="$(mktemp)"
   local string_to_num_line=`awk '/StringToNumber/{ print NR; }' ${input_flexbuffers_path}`
   local case_string_line=$((${string_to_num_line} - 2))
 
@@ -91,14 +91,17 @@ if [ -d ${DOWNLOADED_FLATBUFFERS_PATH} ]; then
   echo >&2 "${DOWNLOADED_FLATBUFFERS_PATH} already exists, skipping the download."
 else
   ZIP_PREFIX="dca12522a9f9e37f126ab925fd385c807ab4f84e"
-  FLATBUFFERS_URL="http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/${ZIP_PREFIX}.zip"
+  FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/${ZIP_PREFIX}.zip"
   FLATBUFFERS_MD5="aa9adc93eb9b33fa1a2a90969e48baee"
 
-  wget ${FLATBUFFERS_URL} -O /tmp/${ZIP_PREFIX}.zip >&2
-  check_md5 /tmp/${ZIP_PREFIX}.zip ${FLATBUFFERS_MD5}
+  TEMPDIR="$(mktemp -d)"
+  TEMPFILE="${TEMPDIR}/${ZIP_PREFIX}.zip"
+  wget ${FLATBUFFERS_URL} -O "$TEMPFILE" >&2
+  check_md5 "${TEMPFILE}" ${FLATBUFFERS_MD5}
 
-  unzip -qo /tmp/${ZIP_PREFIX}.zip -d /tmp >&2
-  mv /tmp/flatbuffers-${ZIP_PREFIX} ${DOWNLOADED_FLATBUFFERS_PATH}
+  unzip -qo "$TEMPFILE" -d "${TEMPDIR}" >&2
+  mv "${TEMPDIR}/flatbuffers-${ZIP_PREFIX}" ${DOWNLOADED_FLATBUFFERS_PATH}
+  rm -rf "${TEMPDIR}"
 
   patch_to_avoid_strtod ${DOWNLOADED_FLATBUFFERS_PATH}/include/flatbuffers/flexbuffers.h
   delete_build_files ${DOWNLOADED_FLATBUFFERS_PATH}

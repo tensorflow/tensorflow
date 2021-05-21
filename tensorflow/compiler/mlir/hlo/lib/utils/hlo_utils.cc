@@ -100,10 +100,11 @@ static APFloat GetScalarLimitOfFloatType(FloatType float_ty,
 static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
                                          ScalarLimit limit) {
   unsigned width = integer_ty.getWidth();
+  bool is_bool = (width == 1);
   switch (limit) {
     case kLowest:
     case kInfinityLowest:
-      if (integer_ty.isUnsigned()) {
+      if (integer_ty.isUnsigned() || is_bool) {
         return APInt::getMinValue(width);
       } else {
         return APInt::getSignedMinValue(width);
@@ -111,7 +112,7 @@ static APInt GetScalarLimitOfIntegerType(IntegerType integer_ty,
 
     case kMax:
     case kInfinityMax:
-      if (integer_ty.isUnsigned()) {
+      if (integer_ty.isUnsigned() || is_bool) {
         return APInt::getMaxValue(width);
       } else {
         return APInt::getSignedMaxValue(width);

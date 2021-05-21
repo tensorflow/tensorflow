@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras text vectorization preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import os
 
@@ -40,20 +36,12 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
-from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-
-
-def get_layer_class():
-  if context.executing_eagerly():
-    return text_vectorization.TextVectorization
-  else:
-    return text_vectorization_v1.TextVectorization
 
 
 def _get_end_to_end_test_cases():
@@ -166,7 +154,7 @@ def _get_end_to_end_test_cases():
               "max_tokens": 5,
               "standardize": None,
               "split": None,
-              "output_mode": text_vectorization.BINARY
+              "output_mode": text_vectorization.MULTI_HOT
           },
           "expected_output": [[0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0],
                               [0, 0, 0, 0, 1], [0, 0, 0, 0, 1], [0, 0, 0, 1, 0],
@@ -185,7 +173,7 @@ def _get_end_to_end_test_cases():
               "max_tokens": 5,
               "standardize": None,
               "split": text_vectorization.SPLIT_ON_WHITESPACE,
-              "output_mode": text_vectorization.BINARY
+              "output_mode": text_vectorization.MULTI_HOT
           },
           "expected_output": [[0, 1, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1],
                               [1, 1, 0, 0, 0]],
@@ -240,7 +228,7 @@ def _get_end_to_end_test_cases():
               "max_tokens": 5,
               "standardize": None,
               "split": None,
-              "output_mode": text_vectorization.TFIDF
+              "output_mode": text_vectorization.TF_IDF
           },
           "expected_output": [[0, 1.098612, 0, 0, 0], [0, 0, 1.252763, 0, 0],
                               [0, 0, 0, 1.466337, 0], [0, 0, 0, 0, 1.7917595],
@@ -260,7 +248,7 @@ def _get_end_to_end_test_cases():
               "max_tokens": 5,
               "standardize": None,
               "split": text_vectorization.SPLIT_ON_WHITESPACE,
-              "output_mode": text_vectorization.TFIDF
+              "output_mode": text_vectorization.TF_IDF
           },
           "expected_output": [[0., 0.847298, 0.847298, 0., 0.],
                               [0., 0., 0., 1.098612, 0.],
@@ -282,7 +270,7 @@ def _get_end_to_end_test_cases():
   return crossed_test_cases
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationLayerTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):
@@ -290,7 +278,7 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
   @parameterized.named_parameters(*_get_end_to_end_test_cases())
   def test_layer_end_to_end_with_adapt(self, vocab_data, input_data, kwargs,
                                        use_dataset, expected_output):
-    cls = get_layer_class()
+    cls = text_vectorization.TextVectorization
     if kwargs.get("output_mode") == text_vectorization.INT:
       expected_output_dtype = dtypes.int64
     else:
@@ -329,7 +317,7 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
   def test_list_inputs_1d(self):
     vocab_data = ["two two two", "two three three", "three four four five"]
     input_data = ["two three", "four five"]
-    layer = get_layer_class()()
+    layer = text_vectorization.TextVectorization()
     layer.adapt(vocab_data)
     out = layer(input_data)
     if context.executing_eagerly():
@@ -343,7 +331,7 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
     vocab_data = constant_op.constant(
         ["two two two", "two three three", "three four four five"])
     input_data = constant_op.constant(["two three", "four five"])
-    layer = get_layer_class()()
+    layer = text_vectorization.TextVectorization()
     layer.adapt(vocab_data)
     out = layer(input_data)
     if context.executing_eagerly():
@@ -357,7 +345,7 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
     vocab_data = [
         ["two two two"], ["two three three"], ["three four four five"]]
     input_data = [["two three"], ["four five"]]
-    layer = get_layer_class()()
+    layer = text_vectorization.TextVectorization()
     layer.adapt(vocab_data)
     out = layer(input_data)
     if context.executing_eagerly():
@@ -371,7 +359,7 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
     vocab_data = ["two two two", "two three three", "three four four five"]
     input_data = ["two three", "four five"]
     vocab_ds = dataset_ops.Dataset.from_tensor_slices(vocab_data)  # unbatched
-    layer = get_layer_class()()
+    layer = text_vectorization.TextVectorization()
     layer.adapt(vocab_ds)
     out = layer(input_data)
     if context.executing_eagerly():
@@ -399,7 +387,7 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
   )
   def test_layer_dimensionality_handling(self, data, expected):
     vocab = ["a", "b", "c", "d"]
-    vectorization = get_layer_class()(
+    vectorization = text_vectorization.TextVectorization(
         max_tokens=None, standardize=None, split=None, pad_to_max_tokens=False)
     vectorization.set_vocabulary(vocab)
     output = vectorization(ragged_factory_ops.constant(data))
@@ -421,7 +409,7 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
   )
   def test_layer_dimensionality_handling_with_split(self, data, expected):
     vocab = ["a", "b", "c", "d"]
-    vectorization = get_layer_class()(
+    vectorization = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -431,7 +419,7 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected, output)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationPreprocessingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -447,12 +435,12 @@ class TextVectorizationPreprocessingTest(
 
   def test_summary_before_adapt(self):
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=10,
         standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
         split=None,
         ngrams=None,
-        output_mode=text_vectorization.TFIDF)
+        output_mode=text_vectorization.TF_IDF)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     # We are testing that model.summary() can be called without erroring out.
@@ -466,7 +454,7 @@ class TextVectorizationPreprocessingTest(
                                 [b"fire", b"and", b"earth", b"michigan"]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
         split=None,
@@ -484,7 +472,7 @@ class TextVectorizationPreprocessingTest(
                        [b"fire", b"and", b"earth"]]
 
     input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
         split=None,
@@ -504,7 +492,7 @@ class TextVectorizationPreprocessingTest(
 
     custom_standardization = gen_string_ops.string_lower
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=custom_standardization,
         split=None,
@@ -522,7 +510,7 @@ class TextVectorizationPreprocessingTest(
                        [b"fire", b"and", b"earth", b"michigan"]]
 
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -541,7 +529,7 @@ class TextVectorizationPreprocessingTest(
 
     custom_split = lambda x: ragged_string_ops.string_split_v2(x, sep=">")
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=custom_split,
@@ -565,7 +553,7 @@ class TextVectorizationPreprocessingTest(
     # pyformat: enable
 
     input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -589,7 +577,7 @@ class TextVectorizationPreprocessingTest(
     # pyformat: enable
 
     input_data = keras.Input(shape=(4,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -611,7 +599,7 @@ class TextVectorizationPreprocessingTest(
     # pyformat: enable
 
     input_data = keras.Input(shape=(4,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -645,7 +633,7 @@ class TextVectorizationPreprocessingTest(
                        ]]
 
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -658,7 +646,7 @@ class TextVectorizationPreprocessingTest(
 
   def test_string_splitting_with_non_1d_array_fails(self):
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -669,7 +657,7 @@ class TextVectorizationPreprocessingTest(
 
   def test_string_splitting_with_non_1d_raggedarray_fails(self):
     input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         vocabulary=["a"],
         max_tokens=None,
         standardize=None,
@@ -681,7 +669,7 @@ class TextVectorizationPreprocessingTest(
 
   def test_standardization_with_invalid_standardize_arg(self):
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(vocabulary=["a"])
+    layer = text_vectorization.TextVectorization(vocabulary=["a"])
     layer._standardize = "unsupported"
     with self.assertRaisesRegex(ValueError,
                                 ".*is not a supported standardization.*"):
@@ -689,7 +677,7 @@ class TextVectorizationPreprocessingTest(
 
   def test_splitting_with_invalid_split_arg(self):
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(vocabulary=["a"])
+    layer = text_vectorization.TextVectorization(vocabulary=["a"])
     layer._split = "unsupported"
     with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
@@ -701,7 +689,7 @@ class TextVectorizationPreprocessingTest(
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -721,7 +709,7 @@ class TextVectorizationPreprocessingTest(
 
     vocab_path = self._write_to_temp_file("vocab_file", vocab_data)
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -741,7 +729,7 @@ class TextVectorizationPreprocessingTest(
 
     vocab_path = self._write_to_temp_file("vocab_file", vocab_data)
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -761,7 +749,7 @@ class TextVectorizationPreprocessingTest(
 
     vocab_path = self._write_to_temp_file("vocab_file", vocab_data)
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -774,7 +762,7 @@ class TextVectorizationPreprocessingTest(
     self.assertAllEqual(expected_output, output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationDistributionTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -788,7 +776,7 @@ class TextVectorizationDistributionTest(
     strategy = one_device_strategy.OneDeviceStrategy("/cpu:0")
     with strategy.scope():
       input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-      layer = get_layer_class()(
+      layer = text_vectorization.TextVectorization(
           max_tokens=None,
           standardize=None,
           split=None,
@@ -801,7 +789,7 @@ class TextVectorizationDistributionTest(
     self.assertAllEqual(expected_output, output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationOutputTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -813,7 +801,7 @@ class TextVectorizationOutputTest(
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -839,7 +827,7 @@ class TextVectorizationOutputTest(
 
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -866,7 +854,7 @@ class TextVectorizationOutputTest(
 
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -893,7 +881,7 @@ class TextVectorizationOutputTest(
 
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -920,7 +908,7 @@ class TextVectorizationOutputTest(
 
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -955,11 +943,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=max_tokens,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
@@ -982,11 +970,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=10,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
@@ -1009,11 +997,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=max_tokens,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     int_data = layer(input_data)
     layer.set_vocabulary(vocab_data)
@@ -1039,11 +1027,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=max_tokens,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     int_data = layer(input_data)
     layer.adapt(vocab_data)
@@ -1068,11 +1056,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=max_tokens,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     int_data = layer(input_data)
     layer._set_state_variables(state_variables)
@@ -1100,11 +1088,11 @@ class TextVectorizationOutputTest(
     ]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=True)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -1131,11 +1119,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=10,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=False)
     layer.build(input_data.shape)
     layer.set_vocabulary(vocab_data)
@@ -1150,11 +1138,11 @@ class TextVectorizationOutputTest(
     vocab_data = ["earth", "wind", "and", "fire"]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=False)
     layer.adapt(vocab_data)
     _ = layer(input_data)
@@ -1167,11 +1155,11 @@ class TextVectorizationOutputTest(
     }
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY,
+        output_mode=text_vectorization.MULTI_HOT,
         pad_to_max_tokens=False)
     layer.adapt(["earth", "wind"])
     _ = layer(input_data)
@@ -1191,7 +1179,7 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=6,
         standardize=None,
         split=None,
@@ -1218,7 +1206,7 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=10,
         standardize=None,
         split=None,
@@ -1249,11 +1237,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=6,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF,
+        output_mode=text_vectorization.TF_IDF,
         pad_to_max_tokens=True)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     int_data = layer(input_data)
@@ -1280,11 +1268,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=10,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF,
+        output_mode=text_vectorization.TF_IDF,
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     int_data = layer(input_data)
@@ -1310,11 +1298,11 @@ class TextVectorizationOutputTest(
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=10,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF,
+        output_mode=text_vectorization.TF_IDF,
         pad_to_max_tokens=False)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     int_data = layer(input_data)
@@ -1327,15 +1315,13 @@ class TextVectorizationOutputTest(
   def test_accept_1D_input(self):
     input_array = np.array(["earth wind and fire",
                             "fire and earth michigan"])
-    layer = get_layer_class()(
-        standardize=None,
-        split=None,
-        output_mode="int")
+    layer = text_vectorization.TextVectorization(
+        standardize=None, split=None, output_mode="int")
     layer.adapt(input_array)
     _ = layer(input_array)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationModelBuildingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -1352,19 +1338,19 @@ class TextVectorizationModelBuildingTest(
       }, {
           "testcase_name": "binary_hard_max",
           "pad_to_max_tokens": True,
-          "output_mode": text_vectorization.BINARY
+          "output_mode": text_vectorization.MULTI_HOT
       }, {
           "testcase_name": "binary_soft_max",
           "pad_to_max_tokens": False,
-          "output_mode": text_vectorization.BINARY
+          "output_mode": text_vectorization.MULTI_HOT
       }, {
           "testcase_name": "tfidf_hard_max",
           "pad_to_max_tokens": True,
-          "output_mode": text_vectorization.TFIDF
+          "output_mode": text_vectorization.TF_IDF
       }, {
           "testcase_name": "tfidf_soft_max",
           "pad_to_max_tokens": False,
-          "output_mode": text_vectorization.TFIDF
+          "output_mode": text_vectorization.TF_IDF
       })
   def test_end_to_end_bagged_modeling(self, output_mode, pad_to_max_tokens):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -1373,13 +1359,13 @@ class TextVectorizationModelBuildingTest(
                             ["ohio", "and", "earth", "michigan"]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=10,
         standardize=None,
         split=None,
         output_mode=output_mode,
         pad_to_max_tokens=pad_to_max_tokens)
-    if output_mode == text_vectorization.TFIDF:
+    if output_mode == text_vectorization.TF_IDF:
       layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     else:
       layer.set_vocabulary(vocab_data)
@@ -1399,7 +1385,7 @@ class TextVectorizationModelBuildingTest(
 
     # The input shape here is explicitly 1 because we're tokenizing.
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=text_vectorization.SPLIT_ON_WHITESPACE,
@@ -1418,32 +1404,7 @@ class TextVectorizationModelBuildingTest(
     _ = model.predict(input_array)
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_eager=True)
-class TextVectorizationSaveableTest(
-    keras_parameterized.TestCase,
-    preprocessing_test_utils.PreprocessingLayerTest):
-
-  def test_ops_are_not_added_with_multiple_saves(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=10,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.COUNT,
-        pad_to_max_tokens=False)
-    layer.set_vocabulary(vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    weights = model.get_weights()
-    model.set_weights(weights)
-    keras.backend.get_session().graph.finalize()
-    weights = model.get_weights()
-    model.set_weights(weights)
-
-
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationErrorTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):
@@ -1451,7 +1412,7 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
   def test_too_long_vocab_fails_in_single_setting(self):
     vocab_data = ["earth", "wind", "and", "fire"]
 
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=4,
         standardize=None,
         split=None,
@@ -1463,23 +1424,23 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
   def test_setting_vocab_without_idf_weights_fails_in_tfidf_mode(self):
     vocab_data = ["earth", "wind", "and", "fire"]
 
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF)
+        output_mode=text_vectorization.TF_IDF)
     with self.assertRaisesRegex(
-        ValueError, "`idf_weights` must be set if output_mode is TFIDF"):
+        ValueError, "`idf_weights` must be set if output_mode is TF_IDF"):
       layer.set_vocabulary(vocab_data)
 
   def test_idf_weights_length_mismatch_fails(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     idf_weights = [1, 2, 3]
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF)
+        output_mode=text_vectorization.TF_IDF)
     with self.assertRaisesRegex(
         ValueError, "`idf_weights` must be the same length as vocab"):
       layer.set_vocabulary(vocab_data, idf_weights)
@@ -1487,57 +1448,59 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
   def test_set_tfidf_in_non_tfidf_fails(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     idf_weights = [1, 2, 3, 4]
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.BINARY)
+        output_mode=text_vectorization.MULTI_HOT)
     with self.assertRaisesRegex(ValueError,
                                 "`idf_weights` should only be set if"):
       layer.set_vocabulary(vocab_data, idf_weights)
 
   def test_zero_max_tokens_fails(self):
     with self.assertRaisesRegex(ValueError, "max_tokens.*"):
-      _ = get_layer_class()(max_tokens=0)
+      _ = text_vectorization.TextVectorization(max_tokens=0)
 
   def test_non_string_dtype_fails(self):
     with self.assertRaisesRegex(ValueError, "dtype of string.*"):
-      _ = get_layer_class()(dtype=dtypes.int64)
+      _ = text_vectorization.TextVectorization(dtype=dtypes.int64)
 
   def test_unknown_standardize_arg_fails(self):
     with self.assertRaisesRegex(ValueError,
                                 "standardize arg.*unsupported_value"):
-      _ = get_layer_class()(standardize="unsupported_value")
+      _ = text_vectorization.TextVectorization(standardize="unsupported_value")
 
   def test_unknown_split_arg_fails(self):
     with self.assertRaisesRegex(ValueError, "split arg.*unsupported_value"):
-      _ = get_layer_class()(split="unsupported_value")
+      _ = text_vectorization.TextVectorization(split="unsupported_value")
 
   def test_unknown_output_mode_arg_fails(self):
     with self.assertRaisesRegex(ValueError,
                                 "output_mode arg.*unsupported_value"):
-      _ = get_layer_class()(output_mode="unsupported_value")
+      _ = text_vectorization.TextVectorization(output_mode="unsupported_value")
 
   def test_unknown_ngrams_arg_fails(self):
     with self.assertRaisesRegex(ValueError, "ngrams.*unsupported_value"):
-      _ = get_layer_class()(ngrams="unsupported_value")
+      _ = text_vectorization.TextVectorization(ngrams="unsupported_value")
 
   def test_float_ngrams_arg_fails(self):
     with self.assertRaisesRegex(ValueError, "ngrams.*2.9"):
-      _ = get_layer_class()(ngrams=2.9)
+      _ = text_vectorization.TextVectorization(ngrams=2.9)
 
   def test_float_tuple_ngrams_arg_fails(self):
     with self.assertRaisesRegex(ValueError, "ngrams.*(1.3, 2.9)"):
-      _ = get_layer_class()(ngrams=(1.3, 2.9))
+      _ = text_vectorization.TextVectorization(ngrams=(1.3, 2.9))
 
   def test_non_int_output_sequence_length_dtype_fails(self):
     with self.assertRaisesRegex(ValueError, "output_sequence_length.*2.0"):
-      _ = get_layer_class()(output_mode="int", output_sequence_length=2.0)
+      _ = text_vectorization.TextVectorization(
+          output_mode="int", output_sequence_length=2.0)
 
   def test_non_none_output_sequence_length_fails_if_output_type_not_int(self):
     with self.assertRaisesRegex(ValueError,
                                 "`output_sequence_length` must not be set"):
-      _ = get_layer_class()(output_mode="count", output_sequence_length=2)
+      _ = text_vectorization.TextVectorization(
+          output_mode="count", output_sequence_length=2)
 
 
 # Custom functions for the custom callable serialization test. Declared here
@@ -1552,7 +1515,7 @@ def custom_split_fn(x):
   return ragged_string_ops.string_split_v2(x, sep=">")
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationSavingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -1570,7 +1533,7 @@ class TextVectorizationSavingTest(
 
     # Build and validate a golden model.
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -1601,7 +1564,7 @@ class TextVectorizationSavingTest(
 
     # Build and validate a golden model.
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=None,
         split=None,
@@ -1644,11 +1607,11 @@ class TextVectorizationSavingTest(
 
     # Build and validate a golden model.
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=5,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.TFIDF)
+        output_mode=text_vectorization.TF_IDF)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
 
     int_data = layer(input_data)
@@ -1675,7 +1638,7 @@ class TextVectorizationSavingTest(
                        [b"\tfire", b"and\nearth", b"michigan"]]
 
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=None,
         standardize=custom_standardize_fn,
         split=custom_split_fn,
@@ -1692,7 +1655,7 @@ class TextVectorizationSavingTest(
     self.assertAllEqual(expected_output, new_output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationE2ETest(keras_parameterized.TestCase,
                                preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -1712,7 +1675,7 @@ class TextVectorizationE2ETest(keras_parameterized.TestCase,
     expected_output_shape = [None, max_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
+    layer = text_vectorization.TextVectorization(
         max_tokens=max_tokens,
         standardize=None,
         split=None,

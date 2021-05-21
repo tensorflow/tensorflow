@@ -50,8 +50,8 @@ if [ -d ${DOWNLOADED_CORSTONE_PATH} ]; then
 else
   UNAME_S=`uname -s`
   if [ ${UNAME_S} == Linux ]; then
-    CORSTONE_URL=https://developer.arm.com/-/media/Arm%20Developer%20Community/Downloads/OSS/FVP/Corstone-300/FVP_Corstone_SSE-300_Ethos-U55_11.12_57.tgz
-    EXPECTED_MD5=08cc89b02a41917c2224f390f3ac0b47
+    CORSTONE_URL=https://developer.arm.com/-/media/Arm%20Developer%20Community/Downloads/OSS/FVP/Corstone-300/MPS3/FVP_Corstone_SSE-300_Ethos-U55_11.14_24.tgz
+    EXPECTED_MD5=89ca3355452072f879c134d04b6f94e2
   else
     echo "OS type ${UNAME_S} not supported."
     exit 1

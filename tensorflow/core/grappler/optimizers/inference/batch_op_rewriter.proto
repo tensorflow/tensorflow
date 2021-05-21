@@ -2,8 +2,33 @@ syntax = "proto3";
 
 package tensorflow.serving;
 
+import "google/protobuf/wrappers.proto";
+
 // Config for the batch op rewriter. This should be serialized
 // and set a param in RewriterConfig with key kBatchOpRewriteParamKey.
 message BatchOpRewriteConfig {
   bool enable_adaptive_shared_batching_thread_pool = 4;
+
+  // The options for tensorflow::serving::AdaptiveSharedBatchScheduler.
+  // See AdaptiveSharedBatchScheduler::Options for meaning of each field.
+  //
+  // NOTE:
+  // Leave this unset to pick up default settings which should work for most
+  // scenarios.
+  //
+  // Example scenarios when tuning helps:
+  // * Latency sensitive
+  message AdaptiveBatchSchedulerOption {
+    google.protobuf.UInt32Value min_inflight_batches_limit = 1;
+    google.protobuf.UInt32Value initial_inflight_batches_limit = 2;
+    google.protobuf.UInt32Value max_inflight_batches_limit = 3;
+
+    // You can use QPS as a reference to decide how quickly to react to workload
+    // changes.
+    google.protobuf.UInt32Value batches_to_average_over = 4;
+  }
+  // Keyed by model name, meaning all batch-ops in one saved model would use the
+  // same adaptive-batch-scheduler option.
+  map<string /* model name */, AdaptiveBatchSchedulerOption>
+      model_scheduler_options = 1;
 }

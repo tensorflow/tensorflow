@@ -24,8 +24,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-class OwningRewritePatternList;
-
 namespace mhlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
@@ -59,7 +57,11 @@ void populateHLOToLHLOConversionPattern(MLIRContext *context,
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
+                                          TypeConverter &typeConverter,
                                           OwningRewritePatternList *patterns);
+
+// Converter to signless intergers to be used with linalg conversion patterns.
+std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter();
 
 // Sets up legality definitions for materializing broadcasts.
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,
@@ -98,6 +100,12 @@ void PopulateMoveUpDynamicBroadcastsForFusionLegality(ConversionTarget *target);
 void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
+/// Populate rank specialization clustering and lowering patterns.
+void PopulateRankSpecializationClusterPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+void PopulateRankSpecializationToSCFPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+
 }  // namespace mhlo
 
 namespace chlo {
@@ -108,10 +116,11 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
                                       OwningRewritePatternList *patterns);
 
 // Populates a collection of conversion patterns for legalizing client-HLO to
-// HLO. Includes decomposition of operations and inserting of explicit
-// broadcasts.
-void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
-                                       OwningRewritePatternList *patterns);
+// HLO by decomposing client-operations to corresponding sequences of more
+// primitive operations. This does not include the
+// PopulateChloBroadcastingPatterns above.
+void PopulateDecomposeChloPatterns(MLIRContext *context,
+                                   OwningRewritePatternList *patterns);
 
 }  // namespace chlo
 

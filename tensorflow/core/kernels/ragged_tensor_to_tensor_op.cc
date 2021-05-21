@@ -207,7 +207,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     DCHECK_EQ(result->size(), first_dimension);
   }
 
-  void CalculateOutputIndexRowSplit(
+  Status CalculateOutputIndexRowSplit(
       const RowPartitionTensor& row_split,
       const vector<INDEX_TYPE>& parent_output_index,
       INDEX_TYPE output_index_multiplier, INDEX_TYPE output_size,
@@ -232,9 +232,11 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         result->push_back(-1);
       }
     }
-    if (row_split_size > 0) {
-      DCHECK_EQ(result->size(), row_split(row_split_size - 1));
+    if (row_split_size > 0 && result->size() != row_split(row_split_size - 1)) {
+      return errors::InvalidArgument("Invalid row split size.");
     }
+
+    return Status::OK();
   }
 
   // Calculate the output index of the first element of a list.
@@ -258,7 +260,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
   // result[6] = -1 because parent_output_index[value_rowids[6]] == -1
   // result[7] = -1 because parent_output_index[value_rowids[6]] == -1
   // result[8] = parent_output_index[value_rowids[7]]
-  void CalculateOutputIndexValueRowID(
+  Status CalculateOutputIndexValueRowID(
       const RowPartitionTensor& value_rowids,
       const vector<INDEX_TYPE>& parent_output_index,
       INDEX_TYPE output_index_multiplier, INDEX_TYPE output_size,
@@ -266,12 +268,18 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     const INDEX_TYPE index_size = value_rowids.size();
     result->reserve(index_size);
     if (index_size == 0) {
-      return;
+      return Status::OK();
     }
 
     INDEX_TYPE current_output_column = 0;
     INDEX_TYPE current_value_rowid = value_rowids(0);
-    DCHECK_LT(current_value_rowid, parent_output_index.size());
+
+    if (current_value_rowid >= parent_output_index.size()) {
+      return errors::InvalidArgument(
+          "Got current_value_rowid=", current_value_rowid,
+          " which is not less than ", parent_output_index.size());
+    }
+
     INDEX_TYPE current_output_index = parent_output_index[current_value_rowid];
     result->push_back(current_output_index);
     for (INDEX_TYPE i = 1; i < index_size; ++i) {
@@ -288,12 +296,23 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
       } else {
         current_output_column = 0;
         current_value_rowid = next_value_rowid;
-        DCHECK_LT(next_value_rowid, parent_output_index.size());
+
+        if (next_value_rowid >= parent_output_index.size()) {
+          return errors::InvalidArgument(
+              "Got next_value_rowid=", next_value_rowid,
+              " which is not less than ", parent_output_index.size());
+        }
+
         current_output_index = parent_output_index[next_value_rowid];
       }
       result->push_back(current_output_index);
     }
-    DCHECK_EQ(result->size(), value_rowids.size());
+
+    if (result->size() != value_rowids.size()) {
+      return errors::InvalidArgument("Invalid row ids.");
+    }
+
+    return Status::OK();
   }
 
   Status CalculateOutputIndex(OpKernelContext* context, int dimension,
@@ -306,15 +325,19 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     auto partition_type = GetRowPartitionTypeByDimension(dimension);
     switch (partition_type) {
       case RowPartitionType::VALUE_ROWIDS:
-        CalculateOutputIndexValueRowID(
+        return CalculateOutputIndexValueRowID(
             row_partition_tensor, parent_output_index, output_index_multiplier,
             output_size, result);
-        return tensorflow::Status::OK();
       case RowPartitionType::ROW_SPLITS:
-        CalculateOutputIndexRowSplit(row_partition_tensor, parent_output_index,
-                                     output_index_multiplier, output_size,
-                                     result);
-        return tensorflow::Status::OK();
+        if (row_partition_tensor.size() - 1 > parent_output_index.size()) {
+          return errors::InvalidArgument(
+              "Row partition size is greater than output size: ",
+              row_partition_tensor.size() - 1, " > ",
+              parent_output_index.size());
+        }
+        return CalculateOutputIndexRowSplit(
+            row_partition_tensor, parent_output_index, output_index_multiplier,
+            output_size, result);
       default:
         return errors::InvalidArgument(
             "Unsupported partition type:",
@@ -345,6 +368,11 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     INDEX_TYPE first_dimension;
+    const Tensor first_partition_tensor =
+        context->input(kFirstPartitionInputIndex);
+    OP_REQUIRES(context, first_partition_tensor.NumElements() > 0,
+                errors::InvalidArgument("Invalid first partition input. Tensor "
+                                        "requires at least one element."));
     OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
     vector<INDEX_TYPE> output_size;
     OP_REQUIRES_OK(context,

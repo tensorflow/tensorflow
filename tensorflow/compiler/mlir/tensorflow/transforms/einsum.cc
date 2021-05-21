@@ -369,7 +369,7 @@ struct TransformEinsumPass
 };
 
 void TransformEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
 
   patterns.insert<ConvertTFEinsumOp>(&getContext());

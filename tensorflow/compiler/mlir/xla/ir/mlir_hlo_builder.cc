@@ -135,7 +135,9 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal) {
+    const Literal* literal, absl::optional<Window> window,
+    absl::optional<ConvolutionDimensionNumbers> dnums,
+    CustomCallSchedule schedule) {
   if (operand_shapes_with_layout.has_value())
     return Unimplemented(
         "CustomCall doesn't support operands shapes with layout");
@@ -145,6 +147,12 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       << "MLIR CustomCallOp does not support output_operand_aliasing yet";
   TF_RET_CHECK(literal == nullptr)
       << "MLIR CustomCallOp does not support literal yet";
+  TF_RET_CHECK(!window.has_value())
+      << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
+  TF_RET_CHECK(!dnums.has_value())
+      << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
+  TF_RET_CHECK(schedule == CustomCallSchedule::SCHEDULE_NONE)
+      << "MLIR CustomCallOp does not support custom-call-schedule yet";
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
       /*has_side_effect=*/builder_.getBoolAttr(has_side_effect),
@@ -195,7 +203,7 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceWindowInternal(
       GetI64ElementsAttr(win_dilations, &builder_),
       mlir::DenseIntElementsAttr::get(padding_ty, padding));
   TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body()));
-  return MakeXlaOp(op);
+  return MakeXlaOp(op.getResult(0));
 }
 
 XlaOp MlirHloBuilder::Iota(const Shape& shape, int64 iota_dimension) {

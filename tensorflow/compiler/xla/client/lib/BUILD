@@ -6,7 +6,7 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites"
 
 package(
     default_visibility = ["//tensorflow/compiler/xla/client:friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -405,6 +405,7 @@ xla_test(
     srcs = ["quantize_test.cc"],
     # TODO(b/122119490): re-enable TAP after fixing.
     tags = [
+        "manual",
         "notap",
     ],
     deps = [
@@ -468,6 +469,7 @@ xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
     real_hardware_only = True,
+    shard_count = 5,
     tags = ["optonly"],
     deps = [
         ":arithmetic",

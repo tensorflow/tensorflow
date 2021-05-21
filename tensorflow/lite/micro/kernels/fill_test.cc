@@ -36,8 +36,8 @@ void TestFill(int* dims_shape, DimsType* dims_data, int* value_shape,
   constexpr int dims_index = 0;
   constexpr int value_index = 1;
   constexpr int output_index = 2;
-  constexpr int inputs[] = {2, dims_index, value_index};
-  constexpr int outputs[] = {1, output_index};
+  int inputs[] = {2, dims_index, value_index};
+  int outputs[] = {1, output_index};
   const auto registration = tflite::Register_FILL();
   tflite::micro::KernelRunner runner{registration,
                                      tensors,

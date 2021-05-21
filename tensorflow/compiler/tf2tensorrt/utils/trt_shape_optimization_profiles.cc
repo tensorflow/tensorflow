@@ -78,6 +78,50 @@ void TrtShapeOptimizationProfile::ImplicitBatchModeCompatibleStrategy(
   }
 }
 
+// Applies a binary operation for each dimension of the input shapes.
+// x[i].d[k] = op(x[i].d[k], y[i].d[k]), where i enumerates the input tensors,
+// and k enumerates the dimensions of the tensors. The BinaryOperation may be
+// std::min, std::max etc.
+template <typename BinaryOperation>
+Status ShapeProfileBinaryOp(std::vector<nvinfer1::Dims>* x,
+                            const std::vector<nvinfer1::Dims>& y,
+                            BinaryOperation op) {
+  if (x->size() != y.size())
+    return errors::InvalidArgument(
+        "Number of input tensors differ during profile creation");
+  for (int i = 0; i < x->size(); i++) {
+    if (x->at(i).nbDims != y[i].nbDims)
+      return errors::InvalidArgument(
+          "Number of input dimensions differ during profile creation");
+    for (int j = 0; j < x->at(i).nbDims; j++) {
+      x->at(i).d[j] = op(x->at(i).d[j], y[i].d[j]);
+    }
+  }
+  return Status::OK();
+}
+
+Status TrtShapeOptimizationProfile::RangeStrategy(
+    const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes) {
+  if (collected_shapes.empty()) return Status::OK();
+
+  std::vector<nvinfer1::Dims> min = collected_shapes[0];
+  std::vector<nvinfer1::Dims> max = min;
+
+  for (int i = 1; i < collected_shapes.size(); i++) {
+    TF_RETURN_IF_ERROR(
+        ShapeProfileBinaryOp(&min, collected_shapes[i],
+                             [](int a, int b) { return std::min(a, b); }));
+    TF_RETURN_IF_ERROR(
+        ShapeProfileBinaryOp(&max, collected_shapes[i],
+                             [](int a, int b) { return std::max(a, b); }));
+  }
+  VLOG(2) << "Initializing optimization profile config with min="
+          << DebugString(min) << ", opt=max=" << DebugString(max);
+  OptimizationProfileConfig profConfig{min, max, max};
+  profiles_.push_back(std::move(profConfig));
+  return Status::OK();
+}
+
 void TrtShapeOptimizationProfile::OptimalStrategy(
     const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes) {
   for (auto& shape_vec : collected_shapes) {
@@ -198,7 +242,9 @@ bool AlreadyCollected(const std::vector<std::vector<nvinfer1::Dims>>& values,
 }
 
 void TrtShapeOptimizationProfile::InitProfiles(
-    const std::vector<PartialTensorShape>& input_partial_shapes) {
+    const std::vector<PartialTensorShape>& input_partial_shapes,
+    ProfileStrategy strategy) {
+  strategy_ = strategy;
   if (input_shapes_.size() == 0) {
     VLOG(1) << "Not creating profiles without input_shapes. "
                "You have to enable profile generation mode first (build).";
@@ -234,7 +280,14 @@ void TrtShapeOptimizationProfile::InitProfiles(
     // Treat all other strategies the same as kOptimal for now. Implementing
     // those is outlined in the dynamic shape support implementation plan.
     case ProfileStrategy::kRange:
+      VLOG(1) << "Creating profiles with Range strategy";
+      TF_CHECK_OK(RangeStrategy(collected_shapes));
+      break;
     case ProfileStrategy::kRangeOptimal:
+      VLOG(1) << "Creating profiles with RangeOptimal strategy";
+      OptimalStrategy(collected_shapes);
+      TF_CHECK_OK(RangeStrategy(collected_shapes));
+      break;
     case ProfileStrategy::kOptimal:
       VLOG(1) << "Creating profiles with Optimal strategy";
       OptimalStrategy(collected_shapes);
@@ -375,19 +428,15 @@ int TrtShapeOptimizationProfile::GetProfileNumber(
 }
 
 Status TrtShapeOptimizationProfile::CreateExecutionContexts(
-    nvinfer1::ICudaEngine* engine, std::vector<ExecutionContext>& exec_context,
-    TRTBaseAllocator* memory_allocator) {
+    nvinfer1::ICudaEngine* engine,
+    std::vector<ExecutionContext>* exec_contexts) {
   int i = 0;
   // The following loop runs once if we have static shapes, to create a single
   // execution context without profiles. In dynamic mode we create one context
   // for each profile and set the corresponding optimization profile.
   do {
     VLOG(1) << "Creating execution context " << i;
-    auto exec_context_status =
-        ExecutionContext::Create(engine, memory_allocator);
-    if (!exec_context_status.ok()) {
-      return errors::Internal("Failed to create execution context");
-    }
+    ExecutionContext context = ExecutionContext::Create(engine);
     if (i > 0) {
       // This condition is needed for two reasons:
       // - using static shapes we do not have any profiles so we cannot call
@@ -395,15 +444,12 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
       // - The 0th profile is set implicitly for the first execution context
       //   therefore we do not need to set.
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-      bool stat = exec_context_status.ValueOrDie()
-                      .GetIExecutionContext()
-                      ->setOptimizationProfile(i);
-      if (!stat) {
+      if (!context->setOptimizationProfile(i)) {
         return errors::Internal("Could not set TRT optimization profile.");
       }
 #endif
     }
-    exec_context.push_back(std::move(exec_context_status.ValueOrDie()));
+    exec_contexts->push_back(std::move(context));
     i++;
   } while (i < profiles_.size());
 

@@ -99,6 +99,9 @@ struct XlaOpsCommonFlags {
   // If true, _XlaCompile always refuses to compile the cluster, which means the
   // XLA clusters always run in the TF executor.  Defaults to false.
   bool tf_xla_always_defer_compilation;
+  // If true, _XlaCompile compiles the cluster asynchronously with respect to
+  // the main execution. The fallback path is taken while compilation happens.
+  bool tf_xla_async_compilation;
 };
 
 // Flags for the build_xla_ops pass.
@@ -138,6 +141,8 @@ struct IntroduceFloatingPointJitterPassFlags {
 // Flags for common MLIR configurations.
 struct MlirCommonFlags {
   ConfigProto::Experimental::MlirBridgeRollout tf_mlir_enable_mlir_bridge;
+
+  bool tf_mlir_enable_merge_control_flow_pass;
 };
 
 // Return a pointer to the DumpGraphFlags struct;

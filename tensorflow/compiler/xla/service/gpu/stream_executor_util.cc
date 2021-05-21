@@ -27,16 +27,41 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 namespace xla {
 namespace gpu {
 
+namespace {
+
 using se::dnn::DataLayout;
 using se::dnn::DataLayoutString;
 using se::dnn::FilterLayout;
 using se::dnn::FilterLayoutString;
+using tensorflow::AutotuneResult;
+
+// Returns the smallest integer >= 0 that's not in the given set of numbers.
+//
+// For example, FindMissingDnum({1, 0, 3, 4}) returns 2.
+//
+// This is useful for handling DataLayout::kBatchDepthYX4, which repesents a
+// layout [N, C/k, H, W, k] for some constant k, usually 4 or 32.
+// ConvolutionDimensionNumbers doesn't explicitly say which dimension is `k`,
+// but we can infer it by finding the first dnum that isn't otherwise mentioned
+// in the dnums.
+int64 FindMissingDnum(absl::Span<const int64> vals) {
+  for (int i = 0; i < vals.size(); i++) {
+    if (!absl::c_linear_search(vals, i)) {
+      return i;
+    }
+  }
+  return vals.size();
+}
+
+}  // anonymous namespace
 
 bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
   int major, minor;
@@ -51,14 +76,22 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout output) {
   std::vector<int64> input_layout;
   switch (input) {
-    case DataLayout::kBatchDepthYX:
+    case DataLayout::kBatchDepthYX:  // NCHW
       input_layout.push_back(dnums.input_batch_dimension());
       input_layout.push_back(dnums.input_feature_dimension());
       input_layout.insert(input_layout.end(),
                           dnums.input_spatial_dimensions().begin(),
                           dnums.input_spatial_dimensions().end());
       break;
-    case DataLayout::kBatchYXDepth:
+    case DataLayout::kBatchDepthYX4:  // NCHW_VECT_C
+      input_layout.push_back(dnums.input_batch_dimension());
+      input_layout.push_back(dnums.input_feature_dimension());
+      input_layout.insert(input_layout.end(),
+                          dnums.input_spatial_dimensions().begin(),
+                          dnums.input_spatial_dimensions().end());
+      input_layout.push_back(FindMissingDnum(input_layout));
+      break;
+    case DataLayout::kBatchYXDepth:  // NHWC
       input_layout.push_back(dnums.input_batch_dimension());
       input_layout.insert(input_layout.end(),
                           dnums.input_spatial_dimensions().begin(),
@@ -73,14 +106,22 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
 
   std::vector<int64> filter_layout;
   switch (filter) {
-    case FilterLayout::kOutputInputYX:
+    case FilterLayout::kOutputInputYX:  // OIHW
       filter_layout.push_back(dnums.kernel_output_feature_dimension());
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       filter_layout.insert(filter_layout.end(),
                            dnums.kernel_spatial_dimensions().begin(),
                            dnums.kernel_spatial_dimensions().end());
       break;
-    case FilterLayout::kOutputYXInput:
+    case FilterLayout::kOutputInputYX4:  // OIHW_VECT_C
+      filter_layout.push_back(dnums.kernel_output_feature_dimension());
+      filter_layout.push_back(dnums.kernel_input_feature_dimension());
+      filter_layout.insert(filter_layout.end(),
+                           dnums.kernel_spatial_dimensions().begin(),
+                           dnums.kernel_spatial_dimensions().end());
+      filter_layout.push_back(FindMissingDnum(filter_layout));
+      break;
+    case FilterLayout::kOutputYXInput:  // OHWI
       filter_layout.push_back(dnums.kernel_output_feature_dimension());
       filter_layout.insert(filter_layout.end(),
                            dnums.kernel_spatial_dimensions().begin(),
@@ -95,14 +136,22 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
 
   std::vector<int64> output_layout;
   switch (output) {
-    case DataLayout::kBatchDepthYX:
+    case DataLayout::kBatchDepthYX:  // NCHW
       output_layout.push_back(dnums.output_batch_dimension());
       output_layout.push_back(dnums.output_feature_dimension());
       output_layout.insert(output_layout.end(),
                            dnums.output_spatial_dimensions().begin(),
                            dnums.output_spatial_dimensions().end());
       break;
-    case DataLayout::kBatchYXDepth:
+    case DataLayout::kBatchDepthYX4:  // NCHW_VECT_C
+      output_layout.push_back(dnums.output_batch_dimension());
+      output_layout.push_back(dnums.output_feature_dimension());
+      output_layout.insert(output_layout.end(),
+                           dnums.output_spatial_dimensions().begin(),
+                           dnums.output_spatial_dimensions().end());
+      output_layout.push_back(FindMissingDnum(output_layout));
+      break;
+    case DataLayout::kBatchYXDepth:  // NHWC
       output_layout.push_back(dnums.output_batch_dimension());
       output_layout.insert(output_layout.end(),
                            dnums.output_spatial_dimensions().begin(),
@@ -131,6 +180,13 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
                                             DataLayout::kBatchDepthYX)
           .ConsumeValueOrDie();
 
+  Layout nchw4_input, nchw4_filter, nchw4_output;
+  std::tie(nchw4_input, nchw4_filter, nchw4_output) =
+      StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX4,
+                                            FilterLayout::kOutputInputYX4,
+                                            DataLayout::kBatchDepthYX4)
+          .ConsumeValueOrDie();
+
   Layout nhwc_input, nhwc_filter, nhwc_output;
   std::tie(nhwc_input, nhwc_filter, nhwc_output) =
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchYXDepth,
@@ -141,6 +197,8 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   DataLayout input_layout;
   if (LayoutUtil::Equal(input, nchw_input)) {
     input_layout = DataLayout::kBatchDepthYX;
+  } else if (LayoutUtil::Equal(input, nchw4_input)) {
+    input_layout = DataLayout::kBatchDepthYX4;
   } else if (LayoutUtil::Equal(input, nhwc_input)) {
     input_layout = DataLayout::kBatchYXDepth;
   } else {
@@ -152,6 +210,8 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   FilterLayout filter_layout;
   if (LayoutUtil::Equal(filter, nchw_filter)) {
     filter_layout = FilterLayout::kOutputInputYX;
+  } else if (LayoutUtil::Equal(filter, nchw4_filter)) {
+    filter_layout = FilterLayout::kOutputInputYX4;
   } else if (LayoutUtil::Equal(filter, nhwc_filter)) {
     filter_layout = FilterLayout::kOutputYXInput;
   } else {
@@ -163,6 +223,8 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   DataLayout output_layout;
   if (LayoutUtil::Equal(output, nchw_output)) {
     output_layout = DataLayout::kBatchDepthYX;
+  } else if (LayoutUtil::Equal(output, nchw4_output)) {
+    output_layout = DataLayout::kBatchDepthYX4;
   } else if (LayoutUtil::Equal(output, nhwc_output)) {
     output_layout = DataLayout::kBatchYXDepth;
   } else {
@@ -227,7 +289,7 @@ se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config) {
   string extra_string =
       hlo_module_config.debug_options().xla_gpu_asm_extra_flags();
   std::vector<std::string> extra_flags;
-  extra_flags = absl::StrSplit(extra_string, ",", absl::SkipEmpty());
+  extra_flags = absl::StrSplit(extra_string, ',', absl::SkipEmpty());
   return se::GpuAsmOpts(
       hlo_module_config.debug_options().xla_gpu_disable_gpuasm_optimizations(),
       hlo_module_config.debug_options().xla_gpu_cuda_data_dir(), extra_flags);
@@ -347,6 +409,57 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       break;
   }
   return InternalError("Unsupported convolution datatype");
+}
+
+bool RequireDeterminism(const HloModuleConfig& config) {
+  static bool require_cudnn_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    bool cudnn_deterministic = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
+                                               /*default_val=*/false,
+                                               &cudnn_deterministic));
+    return deterministic_ops || cudnn_deterministic;
+  }();
+  return require_cudnn_determinism ||
+         config.debug_options().xla_gpu_deterministic_ops();
+}
+
+StatusOr<AutotuneResult> PickBestResult(
+    absl::Span<AutotuneResult const> profile_results,
+    const HloInstruction& instr) {
+  std::vector<AutotuneResult> filtered_results;
+
+  // For now, we ignore WRONG_RESULT failures because false-positives are
+  // possible (e.g. perhaps the reference algorithm is the one that's
+  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
+  // quite severe and can be detected with high accuracy.
+  absl::c_copy_if(
+      profile_results, std::back_inserter(filtered_results),
+      [](const AutotuneResult& r) {
+        return !(r.has_failure() &&
+                 r.failure().kind() != AutotuneResult::WRONG_RESULT);
+      });
+
+  if (filtered_results.empty()) {
+    return InternalError(
+        "All algorithms tried for %s failed. Falling back to "
+        "default algorithm. ",
+        instr.ToString());
+  }
+
+  auto selected_result = filtered_results.begin();
+  if (!RequireDeterminism(instr.parent()->parent()->config())) {
+    selected_result = absl::c_min_element(
+        filtered_results,
+        [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
+                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
+        });
+  }
+  return *selected_result;
 }
 
 }  // namespace gpu

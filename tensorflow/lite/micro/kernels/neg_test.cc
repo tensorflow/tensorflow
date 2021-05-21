@@ -24,9 +24,9 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestNegFloat(const int* input_dims_data, const float* input_data,
-                  const float* expected_output_data,
-                  const int* output_dims_data, float* output_data) {
+void TestNegFloat(int* input_dims_data, const float* input_data,
+                  const float* expected_output_data, int* output_dims_data,
+                  float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
@@ -64,7 +64,7 @@ void TestNegFloat(const int* input_dims_data, const float* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(NegOpSingleFloat) {
-  const int dims[] = {1, 2};
+  int dims[] = {1, 2};
   const float input_data[] = {8.5, 0.0};
   const float golden[] = {-8.5, 0.0};
   float output_data[2];
@@ -73,7 +73,7 @@ TF_LITE_MICRO_TEST(NegOpSingleFloat) {
 }
 
 TF_LITE_MICRO_TEST(NegOpFloat) {
-  const int dims[] = {2, 2, 3};
+  int dims[] = {2, 2, 3};
   const float input_data[] = {-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f};
   const float golden[] = {2.0f, 1.0f, -0.f, -1.0f, -2.0f, -3.0f};
   float output_data[6];

@@ -11,10 +11,8 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "base",
@@ -251,4 +249,13 @@ tf_py_test(
 tf_py_logged_benchmark(
     name = "benchmarks",
     target = "//tensorflow/python/training/tracking:benchmarks_test",
+)
+
+tf_py_test(
+    name = "checkpoint_metrics_test",
+    srcs = ["checkpoint_metrics_test.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:platform_test",
+    ],
 )

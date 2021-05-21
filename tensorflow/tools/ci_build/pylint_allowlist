@@ -34,6 +34,7 @@
 ^tensorflow/python/distribute/parallel_device/saving.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/distribute/parameter_server_strategy_test.py.*\[E1111.*assignment-from-no-return
 ^tensorflow/python/distribute/strategy_test_lib.py.*\[E1111.*assignment-from-no-return
+^tensorflow/python/distribute/values_test.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/python/eager/function_test.py.*\[C0326.*bad-whitespace
 ^tensorflow/python/eager/pywrap_tfe_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/python/eager/tensor_test.py.*\[E1120.*no-value-for-parameter
@@ -41,6 +42,8 @@
 ^tensorflow/python/framework/dtypes.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/framework/dtypes_test.py.*\[W0611.*unused-import
 ^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline
+^tensorflow/python/framework/immutable_dict_test\.py.*\[E1137.*unsupported-assignment-operation
+^tensorflow/python/framework/immutable_dict_test\.py.*\[E1138.*unsupported-delete-operation
 ^tensorflow/python/framework/op_callbacks_test.py.*\[E1102.*not-callable
 ^tensorflow/python/framework/ops.py.*\[E1102.*not-callable
 ^tensorflow/python/framework/ops_test.py.*\[E1130.*invalid-unary-operand-type
@@ -104,6 +107,7 @@
 ^tensorflow/python/kernel_tests/sparse_xent_op_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/kernel_tests/unicode_encode_op_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/kernel_tests/unicode_encode_op_test.py.*\[E1123.*unexpected-keyword-arg
+^tensorflow/python/kernel_tests/variables_test.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/python/lib/core/bfloat16_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/python/lib/io/file_io_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/modules_with_exports.py.*\[W0622.*redefined-builtin
@@ -175,6 +179,7 @@
 ^tensorflow/python/training/tracking/util_with_v1_optimizers_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/training/tracking/util_with_v1_optimizers_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/util/function_utils_test.py.*\[E1120.*no-value-for-parameter
+^tensorflow/python/util/nest.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/util/tf_stack_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/security/fuzzing/raggedCountSparseOutput_fuzz.py.*\[C0330.*bad-continuation
 ^tensorflow/tools/pip_package/setup.py.*\[E1111.*assignment-from-no-return

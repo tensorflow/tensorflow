@@ -165,12 +165,23 @@ TEST(TfOpUtilsTest, OtherXlaOpNameTest) {
 }
 
 TEST(TfOpUtilsTest, OpWithoutTypeTest) {
-  const absl::string_view kName = "OpName:";  // with trailing ':'
+  const absl::string_view kName = "namescope/OpName_1:";  // with trailing ':'
   TfOp tf_op = ParseTfOpFullname(kName);
-  EXPECT_EQ(tf_op.category, Category::kUnknown);
-  EXPECT_EQ(tf_op.name, "OpName");
-  EXPECT_EQ(tf_op.type, kUnknownOp);
-  EXPECT_EQ(TfOpEventName(kName), "OpName");  // without trailing ':'
+  EXPECT_EQ(tf_op.category, Category::kTensorFlow);
+  EXPECT_EQ(tf_op.name, "namescope/OpName_1");
+  EXPECT_EQ(tf_op.type, "OpName");
+  EXPECT_EQ(TfOpEventName(kName),
+            "OpName");  // without trailing ':', name scopes and suffix
+}
+
+TEST(TfOpUtilsTest, OpTypeWithUnderscoreTest) {
+  const absl::string_view kName = "namescope/OpName_a:";  // with trailing ':'
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTensorFlow);
+  EXPECT_EQ(tf_op.name, "namescope/OpName_a");
+  EXPECT_EQ(tf_op.type, "OpName_a");
+  EXPECT_EQ(TfOpEventName(kName),
+            "OpName_a");  // without trailing ':', name scopes
 }
 
 TEST(TfOpUtilsTest, NameScopeTest) {

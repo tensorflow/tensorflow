@@ -35,12 +35,13 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
     // If the input tensor is a compile time constant build a kConstant type
     // argument.
     if (should_resolve_constant(i)) {
+      VLOG(1) << "Trying to resolve constant " << i;
       // NOTE: We can not simply check that this is Kind::kConstant because
       // this could be the output of a MetadataOnly op e.g. Size.
-      xla::StatusOr<absl::optional<Tensor>> maybe_constant =
+      StatusOr<absl::optional<Tensor>> maybe_constant =
           expression.ResolveConstant(ctx->compiler()->client());
       if (maybe_constant.ok() && maybe_constant.ValueOrDie().has_value()) {
-        xla::StatusOr<Tensor> values_are_dynamic =
+        StatusOr<Tensor> values_are_dynamic =
             expression.ResolveDynamism(ctx->compiler()->client());
         bool all_values_are_static = false;
         if (!values_are_dynamic.ok()) {

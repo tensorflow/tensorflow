@@ -69,9 +69,11 @@ string PrintName(const string& name, bool print_ids);
 class HloPrintOptions {
  public:
   enum class PrintSubcomputationMode {
-    kOff,         // Do not print anything about subcomputations.
-    kNameOnly,    // Only print the name of subcomputations.
-    kFullBodies,  // Print the full bodies of subcomputations.
+    kOff,                  // Do not print anything about subcomputations.
+    kNameOnly,             // Only print the name of subcomputations.
+    kFullBodies,           // Print the full bodies of subcomputations.
+    kNonSequentialBodies,  // Print the full bodies of subcomputations that are
+                           // not in a sequential context.
   };
 
   // Constructs the default print options: don't print large constants, don't
@@ -88,6 +90,7 @@ class HloPrintOptions {
         print_result_shape_(true),
         print_operand_shape_(true),
         print_operand_names_(true),
+        print_operand_index_annotation_interval_(5),
         print_program_shape_(true),
         print_percent_(true),
         print_control_dependencies_(true),
@@ -105,6 +108,7 @@ class HloPrintOptions {
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_operand_shape(false)
+        .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
         .set_print_control_dependencies(false);
@@ -120,6 +124,7 @@ class HloPrintOptions {
         .set_compact_operands(false)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
+        .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
         .set_print_control_dependencies(false)
@@ -129,7 +134,8 @@ class HloPrintOptions {
   // Options to produce a fingerprint of an HLO.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
-        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
+        .set_print_subcomputation_mode(
+            PrintSubcomputationMode::kNonSequentialBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_infeed_outfeed_config(false)
@@ -137,6 +143,7 @@ class HloPrintOptions {
         .set_compact_operands(true)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
+        .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
         .set_print_control_dependencies(false)
@@ -190,6 +197,12 @@ class HloPrintOptions {
   // If true, operands' shapes will be printed.
   HloPrintOptions& set_print_operand_shape(bool value) {
     print_operand_shape_ = value;
+    return *this;
+  }
+
+  // If true, operands' shapes will be printed.
+  HloPrintOptions& set_print_operand_index_annotation_interval(int64 value) {
+    print_operand_index_annotation_interval_ = value;
     return *this;
   }
 
@@ -325,6 +338,9 @@ class HloPrintOptions {
   bool print_result_shape() const { return print_result_shape_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
+  int64 print_operand_index_annotation_interval() const {
+    return print_operand_index_annotation_interval_;
+  }
   bool print_ids() const { return print_ids_; }
   bool print_program_shape() const { return print_program_shape_; }
   bool print_percent() const { return print_percent_; }
@@ -365,6 +381,9 @@ class HloPrintOptions {
   bool print_result_shape_;
   bool print_operand_shape_;
   bool print_operand_names_;
+  // The interval between the /*index=*/ annotated operands. 0 means never print
+  // the annotation, 1 means print annotation for every operand.
+  int64 print_operand_index_annotation_interval_;
   bool print_program_shape_;
   bool print_percent_;
   bool print_control_dependencies_;
@@ -655,7 +674,8 @@ class HloInstruction {
   // except that the order of the group members determines the concatenation
   // order of inputs from different participants.
   static std::unique_ptr<HloInstruction> CreateAllGather(
-      const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      int64 all_gather_dimension,
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
@@ -719,15 +739,29 @@ class HloInstruction {
   // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64, int64>>& source_target_pairs,
-      const absl::optional<int64>& channel_id);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const absl::optional<int64_t>& channel_id);
+
+  static std::unique_ptr<HloInstruction> CreateCollectivePermute(
+      const Shape& shape, HloInstruction* input, HloInstruction* output,
+      HloInstruction* input_start_indices, HloInstruction* output_start_indices,
+      absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+      absl::Span<const std::vector<int64_t>> slice_sizes,
+      const absl::optional<int64_t>& channel_id);
 
   // Creates a communication instruction that initiates the start of
   // CollectivePermute.
   static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64, int64>>& source_target_pairs,
-      const absl::optional<int64>& channel_id);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const absl::optional<int64_t>& channel_id);
+
+  static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
+      const Shape& shape, HloInstruction* input, HloInstruction* output,
+      HloInstruction* input_start_indices, HloInstruction* output_start_indices,
+      absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+      absl::Span<const std::vector<int64_t>> slice_sizes,
+      const absl::optional<int64_t>& channel_id);
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId(
@@ -1495,7 +1529,7 @@ class HloInstruction {
   // clearing out the computations, we reflect the fact that all side-effecting
   // properties have been reflected in the caller, and make the call HLO
   // removable.
-  void ClearCalledComputations() { called_computations_.clear(); }
+  virtual void ClearCalledComputations() { called_computations_.clear(); }
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
@@ -1904,6 +1938,9 @@ class HloInstruction {
   // Delegates to HloDynamicSliceInstruction::dynamic_slice_sizes.
   const std::vector<int64>& dynamic_slice_sizes() const;
 
+  // Delegates to HloCollectivePermuteInstruction::dynamic_slice_sizes.
+  const std::vector<std::vector<int64_t>>& dynamic_slice_sizes_list() const;
+
   // Delegates to HloGatherInstruction::gather_dimension_numbers.
   const GatherDimensionNumbers& gather_dimension_numbers() const;
   // Delegates to HloGatherInstruction::gather_slice_sizes.
@@ -2197,6 +2234,7 @@ string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
+StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

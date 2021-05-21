@@ -148,6 +148,7 @@ Status GetOutputInfo(
 
   outputs->clear();
   outputs->reserve(func_type.getNumResults());
+  resource_updates->clear();
   resource_updates->reserve(func_type.getNumResults());
 
   std::vector<xla::Shape> shapes;
@@ -276,7 +277,7 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
 }
 
 void CreateConvertMlirToXlaHloPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef device_type,
+    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   // Note that the region-based control-flow produced here still contains
@@ -320,10 +321,11 @@ void CreateConvertMlirToXlaHloPipeline(
   // inside PromoteResourcesToArgs.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
+  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
-      /*tf2xla_fallback_device_type=*/device_type));
+      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
   for (auto& target_pass : custom_legalization_passes) {
     pm.addNestedPass<mlir::FuncOp>(std::move(target_pass));
   }
@@ -340,7 +342,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // invocation.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/false, /*legalize_chlo=*/true,
-      /*tf2xla_fallback_device_type=*/device_type));
+      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
 
   if (CanInlineFunctionsPostLegalization(device_type))
     pm.addPass(mlir::createInlinerPass());
@@ -352,11 +354,12 @@ void CreateConvertMlirToXlaHloPipeline(
 }
 
 Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
+                     bool prefer_tf2xla,
                      llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
                          custom_legalization_passes) {
   mlir::PassManager tf2xla(module_op.getContext());
   applyTensorflowAndCLOptions(tf2xla);
-  CreateConvertMlirToXlaHloPipeline(tf2xla, device_type,
+  CreateConvertMlirToXlaHloPipeline(tf2xla, device_type, prefer_tf2xla,
                                     custom_legalization_passes);
 
   if (VLOG_IS_ON(1))
@@ -391,8 +394,9 @@ Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
                            llvm::StringRef device_type,
                            llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
                                custom_legalization_passes) {
-  TF_RETURN_IF_ERROR(
-      LegalizeToHlo(module_op, device_type, custom_legalization_passes));
+  TF_RETURN_IF_ERROR(LegalizeToHlo(module_op, device_type,
+                                   /*prefer_tf2xla=*/false,
+                                   custom_legalization_passes));
 
   mlir::Block& block = module_op.lookupSymbol<mlir::FuncOp>("main").front();
   return mlir::BuildHloFromMlirHlo(block, builder, xla_params, returns);
@@ -401,12 +405,12 @@ Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
 Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
-    bool return_tuple,
+    bool prefer_tf2xla, bool return_tuple,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
-  TF_RETURN_IF_ERROR(
-      LegalizeToHlo(module_op, device_type, custom_legalization_passes));
+  TF_RETURN_IF_ERROR(LegalizeToHlo(module_op, device_type, prefer_tf2xla,
+                                   custom_legalization_passes));
 
   xla::HloProto hlo_proto;
   TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module_op, &hlo_proto,
@@ -479,8 +483,8 @@ Status PopulateResultIOInfo(
 
 Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
-    bool use_resource_updates_for_aliases,
+    llvm::StringRef device_type, bool use_tuple_args, bool prefer_tf2xla,
+    bool use_return_tuple, bool use_resource_updates_for_aliases,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -492,7 +496,7 @@ Status CompileMlirToXlaHlo(
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(ConvertMLIRToXlaComputation(
       module_op, device_type, compilation_result->computation.get(),
-      use_tuple_args, use_return_tuple, shape_representation_fn,
+      use_tuple_args, prefer_tf2xla, use_return_tuple, shape_representation_fn,
       custom_legalization_passes));
 
   return PopulateResultIOInfo(module_op, arg_shapes, use_tuple_args,
@@ -502,7 +506,7 @@ Status CompileMlirToXlaHlo(
 
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args,
+    llvm::StringRef device_type, bool use_tuple_args, bool prefer_tf2xla,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -520,6 +524,7 @@ Status CompileSerializedMlirToXlaHlo(
     tensor_or_resource_shapes.push_back({arg_shape});
   return CompileMlirToXlaHlo(
       mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
+      prefer_tf2xla,
       /*use_return_tuple=*/true, /*use_resource_updates_for_aliases=*/false,
       shape_representation_fn, compilation_result, custom_legalization_passes);
 }
@@ -654,19 +659,18 @@ Status CompileGraphToXlaHlo(
       CompileGraphSetup(module_op, args, &remaining_params, arg_shapes));
 
   auto status = CompileMlirToXlaHlo(
-      module_op, arg_shapes, device_type, use_tuple_args, use_return_tuple,
+      module_op, arg_shapes, device_type, use_tuple_args,
+      /*prefer_tf2xla=*/false, use_return_tuple,
       /*use_resource_updates_for_aliases=*/true, shape_representation_fn,
       compilation_result, custom_legalization_passes);
   compilation_result->input_mapping = remaining_params;
   return status;
 }
 
-Status GraphToModule(const Graph& graph,
-                     llvm::ArrayRef<std::string> control_rets,
-                     const FunctionLibraryDefinition& flib_def,
-                     const GraphDebugInfo& debug_info,
-                     mlir::MLIRContext* context,
-                     mlir::OwningModuleRef* module) {
+xla::StatusOr<mlir::OwningModuleRef> GraphToModule(
+    const Graph& graph, llvm::ArrayRef<std::string> control_rets,
+    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
   RegisterDialects(registry);
   context->appendDialectRegistry(registry);
@@ -679,13 +683,7 @@ Status GraphToModule(const Graph& graph,
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   config.enable_shape_inference = false;
-  auto module_or =
-      ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
-  if (!module_or.ok()) return module_or.status();
-
-  *module = std::move(module_or.ValueOrDie());
-
-  return Status::OK();
+  return ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
 }
 
 Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
@@ -699,9 +697,9 @@ Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
                          llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
                              custom_legalization_passes) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module;
-  TF_RETURN_IF_ERROR(GraphToModule(graph, control_rets, flib_def, debug_info,
-                                   &context, &module));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningModuleRef module,
+      GraphToModule(graph, control_rets, flib_def, debug_info, &context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
                             device_type, custom_legalization_passes);
 }
@@ -716,9 +714,9 @@ Status CompileGraphToXlaHlo(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module;
-  TF_RETURN_IF_ERROR(GraphToModule(graph, control_rets, flib_def, debug_info,
-                                   &context, &module));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningModuleRef module,
+      GraphToModule(graph, control_rets, flib_def, debug_info, &context));
   return CompileGraphToXlaHlo(module.get(), args, device_type, use_tuple_args,
                               /*use_return_tuple=*/true,
                               shape_representation_fn, compilation_result,

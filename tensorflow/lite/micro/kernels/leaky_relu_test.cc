@@ -45,9 +45,9 @@ void ExecuteLeakyReluTest(const float alpha, const int tensors_count,
   TfLiteLeakyReluParams builtin_data = {};
   builtin_data.alpha = alpha;
 
-  constexpr int kInputArrayData[] = {1, 0};
+  int kInputArrayData[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
-  constexpr int kOutputArrayData[] = {1, 1};
+  int kOutputArrayData[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
   const TfLiteRegistration registration = tflite::Register_LEAKY_RELU();
@@ -59,10 +59,9 @@ void ExecuteLeakyReluTest(const float alpha, const int tensors_count,
 }
 
 template <typename T>
-void TestLeakyRelu(const TestLeakyReluParams<T>& params,
-                   const int* input_dims_data, const T* input_data,
-                   const int* expected_dims, const T* expected_data,
-                   T* output_data) {
+void TestLeakyRelu(const TestLeakyReluParams<T>& params, int* input_dims_data,
+                   const T* input_data, int* expected_dims,
+                   const T* expected_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
   const int output_count = ElementCount(*output_dims);
@@ -81,9 +80,9 @@ void TestLeakyRelu(const TestLeakyReluParams<T>& params,
 
 template <typename T>
 void TestLeakyReluQuantized(const TestLeakyReluParams<T>& params,
-                            const int* input_dims_data, const float* input_data,
-                            const int* expected_dims,
-                            const float* expected_data, float* output_data) {
+                            int* input_dims_data, const float* input_data,
+                            int* expected_dims, const float* expected_data,
+                            float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
   const int output_count = ElementCount(*output_dims);
@@ -128,7 +127,7 @@ const float kQuantizedTolerance = 2 * (1. / 256);
 
 template <typename integer_dtype>
 void QuantizedActivationsOpTestLeakyRelu() {
-  constexpr int kDims[] = {2, 5, 5};
+  int kDims[] = {2, 5, 5};
   constexpr float kInput[] = {
       -5.0f, -4.6f, -4.2f, -3.8f, -3.4f,  // Row 1
       -3.0f, -2.6f, -2.2f, -1.8f, -1.4f,  // Row 2
@@ -171,7 +170,7 @@ void QuantizedActivationsOpTestLeakyRelu() {
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8_1) {
-  constexpr int kDims[] = {2, 2, 3};
+  int kDims[] = {2, 2, 3};
   constexpr float kInput[] = {0.0f, 1.0f, 3.0f, 1.0f, -1.0f, -2.0f};
   constexpr float kExpect[] = {0.0f, 1.0f, 3.0f, 1.0f, -0.5f, -1.0f};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
@@ -199,7 +198,7 @@ TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8_2) {
 }
 
 TF_LITE_MICRO_TEST(FloatActivationsOpTestLeakyRelu) {
-  constexpr int kDims[] = {2, 2, 3};
+  int kDims[] = {2, 2, 3};
   constexpr float kInput[] = {0.0f, 1.0f, 3.0f, 1.0f, -1.0f, -2.0f};
   constexpr float kExpect[] = {0.0f, 1.0f, 3.0f, 1.0f, -0.5f, -1.0f};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;

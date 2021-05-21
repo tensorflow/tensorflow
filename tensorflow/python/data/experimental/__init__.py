@@ -23,9 +23,10 @@ removing existing functionality.
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AutoShardPolicy
-@@Counter
 @@CheckpointInputPipelineHook
+@@Counter
 @@CsvDataset
+@@DatasetInitializer
 @@DatasetStructure
 @@DistributeOptions
 @@ExternalStatePolicy
@@ -38,8 +39,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@Reducer
 @@SparseTensorStructure
 @@SqlDataset
-@@StatsAggregator
-@@StatsOptions
 @@Structure
 @@TFRecordWriter
 @@TensorArrayStructure
@@ -48,13 +47,13 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@assert_cardinality
 @@bucket_by_sequence_length
-@@bytes_produced_stats
 @@cardinality
 @@choose_from_datasets
 @@copy_to_device
 @@dense_to_ragged_batch
 @@dense_to_sparse_batch
 @@distribute
+@@enable_debug_mode
 @@enumerate_dataset
 @@from_variant
 @@get_next_as_optional
@@ -63,7 +62,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@group_by_reducer
 @@group_by_window
 @@ignore_errors
-@@latency_stats
+@@index_table_from_dataset
 @@load
 @@make_batched_features_dataset
 @@make_csv_dataset
@@ -79,6 +78,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@scan
 @@shuffle_and_repeat
 @@snapshot
+@@table_from_dataset
 @@take_while
 @@to_variant
 @@unbatch
@@ -124,6 +124,9 @@ from tensorflow.python.data.experimental.ops.io import load
 from tensorflow.python.data.experimental.ops.io import save
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
+from tensorflow.python.data.experimental.ops.lookup_ops import DatasetInitializer
+from tensorflow.python.data.experimental.ops.lookup_ops import index_table_from_dataset
+from tensorflow.python.data.experimental.ops.lookup_ops import table_from_dataset
 from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
 from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
@@ -138,16 +141,13 @@ from tensorflow.python.data.experimental.ops.resampling import rejection_resampl
 from tensorflow.python.data.experimental.ops.scan_ops import scan
 from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.python.data.experimental.ops.snapshot import snapshot
-from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
-from tensorflow.python.data.experimental.ops.stats_ops import bytes_produced_stats
-from tensorflow.python.data.experimental.ops.stats_ops import latency_stats
-from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
 from tensorflow.python.data.experimental.ops.take_while_ops import take_while
 from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.dataset_ops import DatasetSpec as DatasetStructure
+from tensorflow.python.data.ops.dataset_ops import enable_debug_mode
 from tensorflow.python.data.ops.dataset_ops import from_variant
 from tensorflow.python.data.ops.dataset_ops import get_structure
 from tensorflow.python.data.ops.dataset_ops import to_variant

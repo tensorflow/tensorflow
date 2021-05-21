@@ -23,6 +23,7 @@ namespace tensorflow {
 namespace {
 const char kDeviceSuffixReplicatedCore[] = "REPLICATED_CORE";
 const char kShardingAttribute[] = "_XlaSharding";
+const char kShardingOpAttribute[] = "sharding";
 }  // namespace
 
 namespace {
@@ -53,7 +54,7 @@ Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
 }
 }  // namespace
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
     absl::optional<xla::OpSharding> explicit_sharding,
     absl::optional<xla::OpMetadata> metadata) {
@@ -85,7 +86,7 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
   }
 }
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const NodeDef& node_def, int num_cores_per_replica, bool add_metadata) {
   const string& device_name = node_def.device();
   TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
@@ -97,7 +98,7 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
                    : absl::nullopt);
 }
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const Node& node, int num_cores_per_replica, bool add_metadata) {
   string device_name = node.assigned_device_name();
   if (device_name.empty()) {
@@ -112,7 +113,7 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
                    : absl::nullopt);
 }
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
     const Edge& edge, int num_cores_per_replica, bool add_metadata) {
   if (edge.src() == nullptr) {
     return tensorflow::errors::InvalidArgument(
@@ -147,22 +148,42 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
   }
 }
 
-xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
-    const NodeDef& node_def, bool add_metadata) {
-  if (!HasNodeAttr(node_def, kShardingAttribute)) {
+namespace {
+
+StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
+    const NodeDef& node_def, bool add_metadata, const char* attribute) {
+  if (!HasNodeAttr(node_def, attribute)) {
     return absl::optional<xla::OpSharding>();
   }
   string value;
   xla::OpSharding sharding;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, kShardingAttribute, &value));
+  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attribute, &value));
   if (!sharding.ParseFromString(value)) {
     return xla::InvalidArgument(
-        "Experimental _XlaSharding attribute was not a valid encoded "
-        "xla::OpSharding proto.");
+        "Experimental %s attribute was not a valid encoded xla::OpSharding "
+        "proto.",
+        attribute);
   }
   if (add_metadata) {
     AssignOpMetadataToSharding(sharding, node_def.op(), node_def.name());
   }
   return absl::optional<xla::OpSharding>(sharding);
 }
+
+}  // namespace
+
+xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
+    const NodeDef& node_def, bool add_metadata) {
+  if (node_def.op() == "XlaSharding") {
+    TF_ASSIGN_OR_RETURN(auto sharding,
+                        GetShardingFromNodeDefInternal(node_def, add_metadata,
+                                                       kShardingOpAttribute));
+    if (sharding.has_value()) {
+      return sharding;
+    }
+  }
+  return GetShardingFromNodeDefInternal(node_def, add_metadata,
+                                        kShardingAttribute);
+}
+
 }  // namespace tensorflow

@@ -44,8 +44,8 @@ void ValidateShape(TfLiteTensor* tensors, const int tensor_count,
   }
 }
 
-void TestShape(const int* input_dims_data, const float* input_data,
-               const int* output_dims_data, const int32_t* expected_output_data,
+void TestShape(int* input_dims_data, const float* input_data,
+               int* output_dims_data, const int32_t* expected_output_data,
                int32_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);

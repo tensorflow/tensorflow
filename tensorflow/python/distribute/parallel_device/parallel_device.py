@@ -25,10 +25,13 @@ from tensorflow.python import _pywrap_parallel_device
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.parallel_device import saving
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.tpu.ops import tpu_ops
+from tensorflow.python.util import nest
 
 _next_device_number = 0
 _next_device_number_lock = threading.Lock()
@@ -65,6 +68,8 @@ class ParallelDevice(object):
     """
     global _next_device_number, _next_device_number_lock
     self.components = tuple(device_util.canonicalize(d) for d in components)
+    if not self.components:
+      raise ValueError("ParallelDevice requires at least one component.")
     ctx = context.context()
     with _next_device_number_lock:
       # TODO(allenl): Better names for parallel devices (right now "CUSTOM" is
@@ -84,28 +89,63 @@ class ParallelDevice(object):
     """Create a tensor on the parallel device from a sequence of tensors.
 
     Args:
-      tensors: A flat list of tensors, one per device in `self.components`.
+      tensors: A list of tensors, one per device in `self.components`. Composite
+        tensors with the same structure on each device are accepted.
 
     Returns:
       A single tensor placed on the ParallelDevice.
     """
     self._assert_eager()
+    if len(tensors) != len(self.components):
+      raise ValueError(
+          ("Creating a parallel tensor requires one tensor per component. "
+           "Got {} but was expecting {}.")
+          .format(len(tensors), len(self.components)))
+    for tensor in tensors:
+      if not isinstance(tensor, (ops.Tensor, composite_tensor.CompositeTensor,
+                                 variables.Variable)):
+        raise ValueError(
+            ("Every component must already be a tensor, got {}. Consider "
+             "running `tf.constant` or `tf.convert_to_tensor` first on literal "
+             "values.")
+            .format(tensors))
+    first_structure = tensors[0]
+    flat_tensors = []
+    for tensor in tensors:
+      nest.assert_same_structure(first_structure, tensor,
+                                 expand_composites=True)
+      flat_tensors.append(nest.flatten(tensor, expand_composites=True))
+    parallel_tensors = []
     with ops.device(self._name):
-      return tpu_ops.tpu_replicated_input(inputs=tensors)
+      for tensors in zip(*flat_tensors):
+        parallel_tensors.append(tpu_ops.tpu_replicated_input(inputs=tensors))
+    return nest.pack_sequence_as(first_structure, parallel_tensors,
+                                 expand_composites=True)
 
   def unpack(self, parallel_tensor):
     """Unpack a parallel tensor into its components.
 
     Args:
-      parallel_tensor: A tensor placed on the ParallelDevice.
+      parallel_tensor: A tensor or composite tensor placed on the
+        ParallelDevice.
 
     Returns:
       A flat list of tensors, one per `self.components`.
     """
     self._assert_eager()
+    if not isinstance(parallel_tensor, (
+        ops.Tensor, composite_tensor.CompositeTensor, variables.Variable)):
+      raise ValueError(
+          "Expected a tensor, got {}.".format(parallel_tensor))
     with ops.device(self._name):
-      return tpu_ops.tpu_replicated_output(
-          parallel_tensor, num_replicas=len(self.components))
+      flattened = nest.flatten(parallel_tensor, expand_composites=True)
+      unpacked = []
+      for packed in flattened:
+        unpacked.append(tpu_ops.tpu_replicated_output(
+            packed, num_replicas=len(self.components)))
+    return [nest.pack_sequence_as(parallel_tensor, component_value,
+                                  expand_composites=True)
+            for component_value in zip(*unpacked)]
 
   @property
   def device_ids(self):

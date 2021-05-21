@@ -13,15 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Contains the base ProcessingLayer and a subclass that uses Combiners."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import abc
 import collections
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -29,10 +25,11 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
@@ -47,21 +44,29 @@ keras_kpl_gauge = monitoring.BoolGauge(
 
 
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
-@six.add_metaclass(abc.ABCMeta)
-class PreprocessingLayer(Layer):
-  """Base class for PreprocessingLayers.
+class PreprocessingLayer(Layer, metaclass=abc.ABCMeta):
+  """Base class for Preprocessing Layers.
+
+  **Don't use this class directly: it's an abstract base class!** You may
+  be looking for one of the many built-in
+  [preprocessing layers](https://keras.io/guides/preprocessing_layers/)
+  instead.
+
+  Preprocessing layers are layers whose state gets computed before model
+  training starts. They do not get updated during training.
+  Most preprocessing layers implement an `adapt()` method for state computation.
+
+  The `PreprocessingLayer` class is the base class you would subclass to
+  implement your own preprocessing layers.
 
   Attributes:
-    stateful: Whether the layer contains state that needs to be adapted via
-      `PreprocessingLayer.adapt`.
     streaming: Whether a layer can be adapted multiple times without resetting
       the state of the layer.
   """
   _must_restore_from_config = True
 
-  def __init__(self, stateful=False, streaming=True, **kwargs):
+  def __init__(self, streaming=True, **kwargs):
     super(PreprocessingLayer, self).__init__(**kwargs)
-    self._stateful = stateful
     self._streaming = streaming
     self._is_compiled = False
     self._is_adapted = False
@@ -88,13 +93,11 @@ class PreprocessingLayer(Layer):
     Arguments:
       data: A mini-batch of inputs to the layer.
     """
-    if self.stateful:
-      raise NotImplementedError
+    raise NotImplementedError
 
   def reset_state(self):
     """Resets the statistics of the preprocessing layer."""
-    if self.stateful:
-      raise NotImplementedError
+    raise NotImplementedError
 
   def merge_state(self, layers):
     """Merge the statistics of multiple preprocessing layers.
@@ -105,15 +108,14 @@ class PreprocessingLayer(Layer):
       layers: Layers whose statistics should be merge with the statistics of
         this layer.
     """
-    if self.stateful:
-      raise NotImplementedError
+    raise NotImplementedError
 
   def finalize_state(self):
     """Finalize the statistics for the preprocessing layer.
 
-    This method is called at the end of `adapt`. This method
-    handles any one-time operations that should occur after all
-    data has been seen.
+    This method is called at the end of `adapt` or after restoring a serialized
+    preprocessing layer's state. This method handles any one-time operations
+    that should occur on the layer's state before `Layer.__call__`.
     """
     pass
 
@@ -183,6 +185,55 @@ class PreprocessingLayer(Layer):
   def adapt(self, data, batch_size=None, steps=None, reset_state=True):
     """Fits the state of the preprocessing layer to the data being passed.
 
+    After calling `adapt` on a layer, a preprocessing layer's state will not
+    update during training. In order to make preprocessing layers efficient in
+    any distribution context, they are kept constant with respect to any
+    compiled `tf.Graph`s that call the layer. This does not affect the layer use
+    when adapting each layer only once, but if you adapt a layer multiple times
+    you will need to take care to re-compile any compiled functions as follows:
+
+     * If you are adding a preprocessing layer to a `keras.Model`, you need to
+       call `model.compile` after each subsequent call to `adapt`.
+     * If you are calling a preprocessing layer inside `tf.data.Dataset.map`,
+       you should call `map` again on the input `tf.data.Dataset` after each
+       `adapt`.
+     * If you are using a `tf.function` directly which calls a preprocessing
+       layer, you need to call `tf.function` again on your callable after
+       each subsequent call to `adapt`.
+
+    `tf.keras.Model` example with multiple adapts:
+
+    >>> layer = tf.keras.layers.experimental.preprocessing.Normalization()
+    >>> layer.adapt([0, 2])
+    >>> model = tf.keras.Sequential(layer)
+    >>> model.predict([0, 1, 2])
+    array([[-1.],
+           [ 0.],
+           [ 1.]], dtype=float32)
+    >>> layer.adapt([-1, 1])
+    >>> model.compile() # This is needed to re-compile model.predict!
+    >>> model.predict([0, 1, 2])
+    array([[0.],
+           [1.],
+           [2.]], dtype=float32)
+
+    `tf.data.Dataset` example with multiple adapts:
+
+    >>> layer = tf.keras.layers.experimental.preprocessing.Normalization()
+    >>> layer.adapt([0, 2])
+    >>> input_ds = tf.data.Dataset.range(3)
+    >>> normalized_ds = input_ds.map(layer)
+    >>> list(normalized_ds.as_numpy_iterator())
+    [array([[-1.]], dtype=float32),
+     array([[0.]], dtype=float32),
+     array([[1.]], dtype=float32)]
+    >>> layer.adapt([-1, 1])
+    >>> normalized_ds = input_ds.map(layer) # Re-map over the input dataset.
+    >>> list(normalized_ds.as_numpy_iterator())
+    [array([[0.]], dtype=float32),
+     array([[1.]], dtype=float32),
+     array([[2.]], dtype=float32)]
+
     Arguments:
         data: The data to train on. It can be passed either as a tf.data
           Dataset, or as a numpy array.
@@ -209,8 +260,8 @@ class PreprocessingLayer(Layer):
           throw if 'reset_state' is set to False.
     """
     _disallow_inside_tf_function('adapt')
-    if not self.stateful:
-      return
+    if not version_utils.should_use_v2():
+      raise RuntimeError('`adapt` is only supported in tensorflow v2.')  # pylint: disable=g-doc-exception
     if not self.streaming and self._is_adapted and not reset_state:
       raise ValueError('{} does not supporting calling `adapt` twice without '
                        'resetting the state.'.format(self.__class__.__name__))
@@ -283,7 +334,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
   """
 
   def __init__(self, combiner, **kwargs):
-    super(CombinerPreprocessingLayer, self).__init__(stateful=True, **kwargs)
+    super(CombinerPreprocessingLayer, self).__init__(**kwargs)
     self.state_variables = collections.OrderedDict()
     self._combiner = combiner
     self._adapt_accumulator = None
@@ -291,6 +342,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
   def reset_state(self):
     self._adapt_accumulator = None
 
+  @trackable.no_automatic_dependency_tracking
   def update_state(self, data):
     if self._adapt_accumulator is None:
       self._adapt_accumulator = self._get_accumulator()
@@ -304,7 +356,8 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
     self._set_accumulator(merged_accumulator)
 
   def finalize_state(self):
-    self._set_accumulator(self._adapt_accumulator)
+    if self._adapt_accumulator is not None:
+      self._set_accumulator(self._adapt_accumulator)
 
   def compile(self, run_eagerly=None, steps_per_execution=None):
     # TODO(omalleyt): Remove this once sublayers are switched to new APIs.
@@ -404,12 +457,12 @@ def convert_to_list(values, sparse_default_value=None):
     # actual RaggedTensor (not a RaggedTensorValue) passed in non-eager mode,
     # you can't call to_list() on it without evaluating it first. However,
     # because we don't yet fully support composite tensors across Keras,
-    # K.get_value() won't evaluate the tensor.
+    # backend.get_value() won't evaluate the tensor.
     # TODO(momernick): Get Keras to recognize composite tensors as Tensors
-    # and then replace this with a call to K.get_value.
+    # and then replace this with a call to backend.get_value.
     if (isinstance(values, ragged_tensor.RaggedTensor) and
         not context.executing_eagerly()):
-      values = K.get_session(values).run(values)
+      values = backend.get_session(values).run(values)
     values = values.to_list()
 
   if isinstance(values,
@@ -421,10 +474,10 @@ def convert_to_list(values, sparse_default_value=None):
         sparse_default_value = -1
     dense_tensor = sparse_ops.sparse_tensor_to_dense(
         values, default_value=sparse_default_value)
-    values = K.get_value(dense_tensor)
+    values = backend.get_value(dense_tensor)
 
   if isinstance(values, ops.Tensor):
-    values = K.get_value(values)
+    values = backend.get_value(values)
 
   # We may get passed a ndarray or the code above may give us a ndarray.
   # In either case, we want to force it into a standard python list.

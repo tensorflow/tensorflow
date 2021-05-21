@@ -39,8 +39,8 @@ class DispatcherConfig(
   Fields:
     port: Specifies the port to bind to. A value of 0 indicates that the server
       may bind to any available port.
-    protocol: The protocol to use for communicating with the tf.data service.
-      Defaults to `"grpc"`.
+    protocol: The protocol to use for communicating with the tf.data service,
+      e.g. "grpc".
     work_dir: A directory to store dispatcher state in. This
       argument is required for the dispatcher to be able to recover from
       restarts.
@@ -55,9 +55,10 @@ class DispatcherConfig(
       dispatcher, while a lower value will reduce the time it takes for the
       dispatcher to garbage collect expired jobs.
     job_gc_timeout_ms: How long a job needs to be unused before it becomes a
-      candidate for garbage collection, in milliseconds. If not set, the runtime
-      will select a reasonable default. A higher value will cause jobs to stay
-      around longer with no consumers. This is useful if there is a large gap in
+      candidate for garbage collection, in milliseconds. A value of -1 indicates
+      that jobs should never be garbage collected. If not set, the runtime will
+      select a reasonable default. A higher value will cause jobs to stay around
+      longer with no consumers. This is useful if there is a large gap in
       time between when consumers read from the job. A lower value will reduce
       the time it takes to reclaim the resources from expired jobs.
   """
@@ -232,8 +233,8 @@ class WorkerConfig(
       connect to this worker.
     port: Specifies the port to bind to. A value of 0 indicates that the worker
       can bind to any available port.
-    protocol: (Optional.) Specifies the protocol to be used by the server.
-      Defaults to `"grpc"`.
+    protocol: (Optional.) Specifies the protocol to be used by the server, e.g.
+      "grpc".
     heartbeat_interval_ms: How often the worker should heartbeat to the
       dispatcher, in milliseconds. If not set, the runtime will select a
       reasonable default. A higher value will reduce the load on the dispatcher,
@@ -290,7 +291,7 @@ class WorkerServer(object):
 
   ```
   worker = tf.data.experimental.service.WorkerServer(
-      port=5051, dispatcher_address="grpc://localhost:5050")
+      port=5051, dispatcher_address="localhost:5050")
   worker.join()
   ```
   """
@@ -337,7 +338,7 @@ class WorkerServer(object):
 
     ```
     worker_server = tf.data.experimental.service.WorkerServer(
-        port=5051, dispatcher_address="grpc://localhost:5050")
+        port=5051, dispatcher_address="localhost:5050")
     worker_server.join()
     ```
 

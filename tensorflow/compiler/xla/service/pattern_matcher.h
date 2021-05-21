@@ -304,8 +304,8 @@ class AllOfPattern {
   void DescribeToImpl(std::ostream* os, std::integral_constant<size_t, index>,
                       int64 indent) const {
     constexpr bool first_is_trivial =
-        IsTrivialMatcher<typename std::remove_reference<decltype(
-            std::get<0>(patterns_))>::type>::value;
+        IsTrivialMatcher<typename std::remove_reference<decltype(std::get<0>(
+            patterns_))>::type>::value;
     constexpr bool is_last = index == sizeof...(Patterns) - 1;
     const auto& submatcher = std::get<index>(patterns_);
 
@@ -1208,29 +1208,41 @@ class HloInstructionPatternOpcodeImpl {
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
-// has a given custom call target.
+// has one of a given list of custom call targets.
 class HloInstructionCustomCallTargetImpl {
  public:
   explicit HloInstructionCustomCallTargetImpl(
-      absl::string_view custom_call_target)
-      : custom_call_target_(custom_call_target) {}
+      absl::Span<const absl::string_view> custom_call_targets)
+      : custom_call_targets_(custom_call_targets.begin(),
+                             custom_call_targets.end()) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (inst->opcode() != HloOpcode::kCustomCall ||
-        inst->custom_call_target() != custom_call_target_) {
-      EXPLAIN << "HloInstruction is not a custom call with a target '"
-              << custom_call_target_ << "'";
+        !absl::c_linear_search(custom_call_targets_,
+                               inst->custom_call_target())) {
+      if (custom_call_targets_.size() == 1) {
+        EXPLAIN << "HloInstruction is not a custom call with a target '"
+                << custom_call_targets_.front() << "'";
+      } else {
+        EXPLAIN << "HloInstruction is not a custom call with a target in {"
+                << absl::StrJoin(custom_call_targets_, ", ") << "}";
+      }
       return false;
     }
     return true;
   }
 
   void DescribeTo(std::ostream* os, int64 indent = 0) const {
-    *os << "custom call with target '" << custom_call_target_ << "'";
+    if (custom_call_targets_.size() == 1) {
+      *os << "custom call with target '" << custom_call_targets_.front() << "'";
+    } else {
+      *os << "custom call with target in {"
+          << absl::StrJoin(custom_call_targets_, ", ") << "}";
+    }
   }
 
  private:
-  std::string custom_call_target_;
+  absl::InlinedVector<std::string, 1> custom_call_targets_;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -1812,7 +1824,13 @@ class HloInstructionPattern {
 
   // Modifies the pattern to match only the custom call with a given target.
   auto WithCustomCallTarget(absl::string_view custom_call_target) const {
-    return AppendImpl(HloInstructionCustomCallTargetImpl(custom_call_target));
+    return AppendImpl(HloInstructionCustomCallTargetImpl({custom_call_target}));
+  }
+
+  // Modifies the pattern to match a custom call with one of the given targets.
+  auto WithCustomCallTarget(
+      absl::Span<const absl::string_view> custom_call_targets) const {
+    return AppendImpl(HloInstructionCustomCallTargetImpl(custom_call_targets));
   }
 
   auto WithNumOperands(int64 num_operands) const {
@@ -1982,6 +2000,8 @@ XLA_NULLOP_PATTERN(Constant)
 XLA_NULLOP_PATTERN(Parameter)
 XLA_NULLOP_PATTERN(Iota)
 XLA_NULLOP_PATTERN(Rng)
+XLA_NULLOP_PATTERN(PartitionId)
+XLA_NULLOP_PATTERN(ReplicaId)
 #undef XLA_NULLOP_PATTERN
 
 // Helpers for unary instructions.
@@ -2087,7 +2107,6 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Multiply)
 XLA_BINOP_PATTERN(Outfeed)
 XLA_BINOP_PATTERN(Pad)
 XLA_BINOP_PATTERN(Power)
-XLA_BINOP_PATTERN(ReduceWindow)
 XLA_BINOP_PATTERN(Remainder)
 XLA_BINOP_PATTERN(Send)
 XLA_BINOP_PATTERN(Subtract)
@@ -2172,6 +2191,7 @@ XLA_VARIADIC_OP_PATTERN(DynamicSlice)
 XLA_VARIADIC_OP_PATTERN(Fusion);
 XLA_VARIADIC_OP_PATTERN(Map)
 XLA_VARIADIC_OP_PATTERN(Reduce);
+XLA_VARIADIC_OP_PATTERN(ReduceWindow)
 XLA_VARIADIC_OP_PATTERN(Sort);
 XLA_VARIADIC_OP_PATTERN(Tuple);
 

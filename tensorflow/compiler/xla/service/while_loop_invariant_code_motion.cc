@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
@@ -208,7 +210,15 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       continue;
     }
 
-    if (!hoist_size_inflating_ops_) {
+    if (!hoist_non_constants_ &&
+        instruction->opcode() != HloOpcode::kConstant) {
+      continue;
+    }
+
+    // Constants don't inflate, so size inflation check doesn't make sense for
+    // constants.
+    if (hoist_size_inflation_ratio_ &&
+        instruction->opcode() != HloOpcode::kConstant) {
       // Check that hoisting the instruction doesn't cause a significant memory
       // blow-up. LICM extends the live-range of the output of the hoisted
       // instruction to be the entire while loop, which may be problematic on
@@ -235,7 +245,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
             }
           });
 
-      if (output_size > input_size) {
+      if (output_size > input_size * *hoist_size_inflation_ratio_) {
         continue;
       }
     }
@@ -305,7 +315,7 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->MakeComputationPostOrder()) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
                     [](const HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kWhile;
@@ -329,6 +339,15 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
         bool result,
         TryHoistingInvariantInstructionsFromWhileBody(while_instr));
     changed |= result;
+  }
+
+  if (changed) {
+    // Run DCE if changed. This pass may create new while loops with new
+    // computations and if we don't delete the old ones, we can have spurious
+    // verification failures (e.g., the verifier may see multiple channel
+    // instructions that have the same channel ids).
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
   }
 
   if (changed) {

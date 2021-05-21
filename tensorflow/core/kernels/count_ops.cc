@@ -122,6 +122,9 @@ class DenseCount : public OpKernel {
 
     int num_batch_elements = 1;
     for (int i = 0; i < num_batch_dimensions; ++i) {
+      OP_REQUIRES(context, data.shape().dim_size(i) != 0,
+                  errors::InvalidArgument(
+                      "Invalid input: Shapes dimension cannot be 0."));
       num_batch_elements *= data.shape().dim_size(i);
     }
     int num_value_elements = data.shape().num_elements() / num_batch_elements;
@@ -197,8 +200,16 @@ class SparseCount : public OpKernel {
                     "The shape argument requires at least one element."));
 
     bool is_1d = shape.NumElements() == 1;
-    int num_batches = is_1d ? 1 : shape.flat<int64>()(0);
+    auto shape_vector = shape.flat<int64>();
+    int num_batches = is_1d ? 1 : shape_vector(0);
     int num_values = values.NumElements();
+
+    for (int b = 0; b < shape_vector.size(); b++) {
+      OP_REQUIRES(context, shape_vector(b) >= 0,
+                  errors::InvalidArgument(
+                      "Elements in dense_shape must be >= 0. Instead got:",
+                      shape.DebugString()));
+    }
 
     OP_REQUIRES(context, num_values == indices.shape().dim_size(0),
                 errors::InvalidArgument(
@@ -213,6 +224,16 @@ class SparseCount : public OpKernel {
     auto per_batch_counts = BatchedMap<W>(num_batches);
 
     T max_value = 0;
+
+    OP_REQUIRES(context, num_values <= indices.shape().dim_size(0),
+                errors::InvalidArgument(
+                    "The first dimension of indices must be equal to or "
+                    "greather than number of values. ( ",
+                    indices.shape().dim_size(0), " vs. ", num_values, " )"));
+    OP_REQUIRES(context, indices.shape().dim_size(1) > 0,
+                errors::InvalidArgument("The second dimension of indices must "
+                                        "be greater than 0. Received: ",
+                                        indices.shape().dim_size(1)));
 
     for (int idx = 0; idx < num_values; ++idx) {
       int batch = is_1d ? 0 : indices_values(idx, 0);

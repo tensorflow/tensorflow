@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 
 using mlir::PassRegistration;
 
@@ -44,7 +45,7 @@ namespace mlir {
 namespace mhlo {
 namespace {
 class LegalizeTFControlFlow
-    : public PassWrapper<LegalizeTFControlFlow, OperationPass<ModuleOp>> {
+    : public LegalizeTFControlFlowBase<LegalizeTFControlFlow> {
  public:
   void runOnOperation() override;
 };
@@ -397,6 +398,3 @@ void LegalizeTFControlFlow::runOnOperation() {
 }  // namespace mhlo
 }  // namespace mlir
 
-static PassRegistration<mlir::mhlo::LegalizeTFControlFlow> cfpass(
-    "xla-legalize-tf-control-flow",
-    "Legalize TensorFlow control flow to the XLA dialect");

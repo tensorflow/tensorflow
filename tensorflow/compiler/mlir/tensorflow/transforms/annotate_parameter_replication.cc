@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -38,9 +39,9 @@ constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
 // Analyzes the inputs to ClusterFuncOps in the module, and annotates their
 // invoked functions whether each input has the same data across replicas.
-struct AnnotateParameterReplication
-    : public PassWrapper<AnnotateParameterReplication,
-                         OperationPass<ModuleOp>> {
+struct AnnotateParameterReplicationPass
+    : public AnnotateParameterReplicationPassBase<
+          AnnotateParameterReplicationPass> {
   void runOnOperation() override;
 };
 
@@ -54,7 +55,7 @@ Value SkipIdentityAndReadVariable(Value v) {
   return v;
 }
 
-void AnnotateParameterReplication::runOnOperation() {
+void AnnotateParameterReplicationPass::runOnOperation() {
   ModuleOp m = getOperation();
   OpBuilder builder(m.getContext());
   m.walk([&](tf_device::ClusterFuncOp cluster_func) {
@@ -92,13 +93,8 @@ void AnnotateParameterReplication::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateAnnotateParameterReplicationPass() {
-  return std::make_unique<AnnotateParameterReplication>();
+  return std::make_unique<AnnotateParameterReplicationPass>();
 }
-
-static PassRegistration<AnnotateParameterReplication> pass(
-    "tf-annotate-parameter-replication",
-    "Annotate whether a ClusterFuncOp's parameters have the same data across "
-    "replicas.");
 
 }  // namespace TFDevice
 }  // namespace mlir

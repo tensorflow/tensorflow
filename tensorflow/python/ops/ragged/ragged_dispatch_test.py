@@ -139,11 +139,6 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
-    if test_util.IsBuiltWithROCm():
-      # TODO(rocm):
-      # This fails on ROCm...see JIRA ticket 236756
-      self.skipTest('Fails on ROCM')
-
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
@@ -319,7 +314,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                ragged_factory_ops.constant_value([['foo', 'bar'], ['baz']]),
                ragged_factory_ops.constant_value([['2', '9'], ['12']]))},
       ])  # pyformat: disable
-  def testListValuedElementwiseOp(self, inputs, op=math_ops.add_n,
+  def testListValuedElementwiseOp(self,
+                                  inputs,
+                                  op=math_ops.add_n,
                                   **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', False)
     if use_kwargs:
@@ -590,6 +587,15 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           },
           expected=[2, 4]),
       dict(
+          op=math_ops.reduce_variance,
+          kwargs={
+              'input_tensor':
+                  ragged_factory_ops.constant_value([[1, 3], [3, 6, 9]]),
+              'axis':
+                  1
+          },
+          expected=[1., 6.]),
+      dict(
           op=math_ops.reduce_any,
           kwargs={
               'input_tensor':
@@ -676,13 +682,20 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]])),
       dict(
           op=string_ops.string_format,
-          kwargs={'template': 'Hi {}',
-                  'inputs': [ragged_factory_ops.constant_value([[1, 2], [3]])]},
+          kwargs={
+              'template': 'Hi {}',
+              'inputs': [ragged_factory_ops.constant_value([[1, 2], [3]])]
+          },
           expected='Hi [[1, 2], [3]]'),
   ])
-  def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
+  def testRaggedDispatch(self,
+                         op,
+                         expected,
+                         args=(),
+                         result_is_list=False,
                          kwargs=None):
-    if kwargs is None: kwargs = {}
+    if kwargs is None:
+      kwargs = {}
     result = op(*args, **kwargs)
     if result_is_list:
       self.assertLen(result, len(expected))
@@ -694,15 +707,13 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testUnaryElementwiseOpsPreserveUniformRowLength(self):
     # Unary elementwise op
     rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
-        ragged_factory_ops.constant([[1, 2], [3]]),
-        uniform_row_length=2)
+        ragged_factory_ops.constant([[1, 2], [3]]), uniform_row_length=2)
     self.assertAllEqual(rt.uniform_row_length,
                         array_ops.zeros_like(rt).uniform_row_length)
 
     # Unary-list elementwise op
     rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
-        ragged_factory_ops.constant([[1, 2], [3]]),
-        uniform_row_length=2)
+        ragged_factory_ops.constant([[1, 2], [3]]), uniform_row_length=2)
     self.assertAllEqual(rt.uniform_row_length,
                         math_ops.add_n([rt, rt]).uniform_row_length)
 
@@ -727,21 +738,21 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'math.maximum', 'math.minimum', 'math.multiply', 'math.negative',
         'math.not_equal', 'math.pow', 'math.real', 'math.reciprocal',
         'math.reduce_any', 'math.reduce_max', 'math.reduce_mean',
-        'math.reduce_min', 'math.reduce_prod', 'math.reduce_sum', 'math.rint',
-        'math.round', 'math.rsqrt', 'math.sign', 'math.sin', 'math.sinh',
-        'math.sqrt', 'math.square', 'math.squared_difference', 'math.subtract',
-        'math.tan', 'math.truediv', 'math.unsorted_segment_max',
-        'math.unsorted_segment_mean', 'math.unsorted_segment_min',
-        'math.unsorted_segment_prod', 'math.unsorted_segment_sqrt_n',
-        'math.unsorted_segment_sum', 'one_hot', 'ones_like', 'rank', 'realdiv',
-        'math.reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
-        'strings.join', 'strings.length', 'strings.reduce_join',
-        'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',
-        'strings.substr', 'strings.to_hash_bucket_fast',
-        'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
-        'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse',
-        'nn.dropout', 'strings.format', 'print'
+        'math.reduce_variance', 'math.reduce_min', 'math.reduce_prod',
+        'math.reduce_sum', 'math.rint', 'math.round', 'math.rsqrt', 'math.sign',
+        'math.sin', 'math.sinh', 'math.sqrt', 'math.square',
+        'math.squared_difference', 'math.subtract', 'math.tan', 'math.truediv',
+        'math.unsorted_segment_max', 'math.unsorted_segment_mean',
+        'math.unsorted_segment_min', 'math.unsorted_segment_prod',
+        'math.unsorted_segment_sqrt_n', 'math.unsorted_segment_sum', 'one_hot',
+        'ones_like', 'rank', 'realdiv', 'math.reduce_all', 'size', 'squeeze',
+        'stack', 'strings.as_string', 'strings.join', 'strings.length',
+        'strings.reduce_join', 'strings.regex_full_match',
+        'strings.regex_replace', 'strings.strip', 'strings.substr',
+        'strings.to_hash_bucket_fast', 'strings.to_hash_bucket_strong',
+        'strings.to_hash_bucket', 'strings.to_number', 'strings.unicode_script',
+        'tile', 'truncatediv', 'truncatemod', 'zeros_like', 'dynamic_partition',
+        'reverse', 'nn.dropout', 'strings.format', 'print'
     ]
 
     # Ops that should be listed as supported in v1 only.

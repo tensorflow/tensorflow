@@ -19,6 +19,7 @@
 # Options:
 #           run sanity checks: python 2&3 pylint checks and bazel nobuild
 #  --pep8   run pep8 test only
+#  --pylint run pylint check only
 #  --incremental  Performs checks incrementally, by using the files changed in
 #                 the latest commit
 
@@ -111,10 +112,10 @@ do_pylint() {
     echo "Invalid syntax for invoking do_pylint"
     echo "Usage: do_pylint [--incremental]"
     return 1
+  else
+    # Get all Python files, regardless of mode.
+    PYTHON_SRC_FILES=$(get_py_files_to_check)
   fi
-
-  # Get all Python files, regardless of mode.
-  PYTHON_SRC_FILES=$(get_py_files_to_check)
 
   # Something happened. TF no longer has Python code if this branch is taken
   if [[ -z ${PYTHON_SRC_FILES} ]]; then
@@ -124,6 +125,12 @@ do_pylint() {
 
   # Now that we know we have to do work, check if `pylint` is installed
   PYLINT_BIN="python3.8 -m pylint"
+
+  echo ""
+  echo "print python version and pip freeze for debugging."
+  echo ""
+  python3.8
+  python3.8 -m pip freeze
 
   echo ""
   echo "check whether pylint is available or not."
@@ -667,6 +674,9 @@ for arg in "$@"; do
     SANITY_STEPS_DESC=("pep8 test")
   elif [[ "${arg}" == "--incremental" ]]; then
     INCREMENTAL_FLAG="--incremental"
+  elif [[ "${arg}" == "--pylint" ]]; then
+    SANITY_STEPS=("do_pylint")
+    SANITY_STEPS_DESC=("pylint test")
   else
     BAZEL_FLAGS="${BAZEL_FLAGS} ${arg}"
   fi

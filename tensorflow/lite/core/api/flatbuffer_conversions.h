@@ -110,6 +110,9 @@ TfLiteStatus ParseConv2D(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseCos(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseCumsum(const Operator* op, ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParseDepthToSpace(const Operator* op,
                                ErrorReporter* error_reporter,
                                BuiltinDataAllocator* allocator,
@@ -177,6 +180,9 @@ TfLiteStatus ParseGreaterEqual(const Operator* op,
 TfLiteStatus ParseHardSwish(const Operator* op, ErrorReporter* error_reporter,
                             BuiltinDataAllocator* allocator,
                             void** builtin_data);
+
+TfLiteStatus ParseIf(const Operator* op, ErrorReporter* error_reporter,
+                     BuiltinDataAllocator* allocator, void** builtin_data);
 
 TfLiteStatus ParseL2Normalization(const Operator* op,
                                   ErrorReporter* error_reporter,

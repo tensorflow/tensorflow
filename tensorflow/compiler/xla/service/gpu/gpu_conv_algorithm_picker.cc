@@ -611,42 +611,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     }
   }
 
-  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
-  // error.
-  //
-  // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
-  // in the output of the conv and skip those.
-  //
-  // For now, we ignore WRONG_RESULT failures because false-positives are
-  // possible (e.g. perhaps the reference algorithm is the one that's
-  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
-  // quite severe and can be detected with high accuracy.
-  std::vector<AutotuneResult> filtered_results;
-  absl::c_copy_if(
-      profile_results, std::back_inserter(filtered_results),
-      [](const AutotuneResult& r) {
-        return !(r.has_failure() &&
-                 r.failure().kind() != AutotuneResult::WRONG_RESULT);
-      });
-  if (filtered_results.empty()) {
-    return InternalError(
-        "All algorithms tried for convolution %s failed. Falling back to "
-        "default algorithm. ",
-        instr->ToString());
-  }
-
-  auto selected_result = filtered_results.begin();
-  if (!RequireCudnnDeterminism() &&
-      !hlo_module_config.debug_options().xla_gpu_deterministic_ops()) {
-    selected_result = absl::c_min_element(
-        filtered_results,
-        [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
-                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
-        });
-  }
-
-  return *selected_result;
+  TF_ASSIGN_OR_RETURN(AutotuneResult selected_algorithm,
+                      PickBestResult(profile_results, *instr));
+  return selected_algorithm;
 }
 #endif
 
@@ -747,28 +714,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     }
   }
-  auto best_result = profile_results.begin();
-  if (!RequireCudnnDeterminism() && !instr->parent()
-                                         ->parent()
-                                         ->config()
-                                         .debug_options()
-                                         .xla_gpu_deterministic_ops()) {
-    best_result = absl::c_min_element(
-        profile_results,
-        [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
-                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
-        });
-  }
 
-  if (best_result != profile_results.end()) {
-    return *best_result;
-  }
-
-  return InternalError(
-      "All algorithms tried for convolution %s failed.  Falling back to "
-      "default algorithm.",
-      instr->ToString());
+  TF_ASSIGN_OR_RETURN(AutotuneResult selected_algorithm,
+                      PickBestResult(profile_results, *instr));
+  return selected_algorithm;
 }
 
 StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {

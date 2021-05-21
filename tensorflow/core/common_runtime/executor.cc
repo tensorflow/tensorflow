@@ -988,7 +988,8 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
                 s.error_message(),
                 "\nHint: If you want to see a list of allocated tensors when "
                 "OOM happens, add report_tensor_allocations_upon_oom "
-                "to RunOptions for current allocation info.\n"));
+                "to RunOptions for current allocation info. This isn't "
+                "available when running in Eager mode.\n"));
       }
     }
     return s;

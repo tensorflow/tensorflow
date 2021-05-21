@@ -45,7 +45,8 @@ BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
       sub_allocator_(sub_allocator),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
-      next_allocation_id_(1) {
+      next_allocation_id_(1),
+      action_counter_(0) {
   if (allow_growth) {
     // 2MiB smallest initial allocation, unless total memory available
     // is less.
@@ -1157,11 +1158,12 @@ absl::optional<AllocatorStats> BFCAllocator::GetStats() {
   return stats_;
 }
 
-void BFCAllocator::ClearStats() {
+bool BFCAllocator::ClearStats() {
   mutex_lock l(lock_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
   stats_.largest_alloc_size = 0;
+  return true;
 }
 
 std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins>

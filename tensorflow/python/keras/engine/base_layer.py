@@ -14,9 +14,6 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Contains the base Layer class, from which all layers inherit."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import copy
@@ -27,8 +24,6 @@ import warnings
 import weakref
 
 import numpy as np
-import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from google.protobuf import json_format
 from tensorflow.core.framework import node_def_pb2
@@ -36,9 +31,9 @@ from tensorflow.python import tf2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import execute
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -490,12 +485,38 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     method to support masking.
 
     Args:
-        inputs: Input tensor, or list/tuple of input tensors.
-        *args: Additional positional arguments. Currently unused.
-        **kwargs: Additional keyword arguments. Currently unused.
+      inputs: Input tensor, or dict/list/tuple of input tensors.
+        The first positional `inputs` argument is subject to special rules:
+        - `inputs` must be explicitly passed. A layer cannot have zero
+          arguments, and `inputs` cannot be provided via the default value
+          of a keyword argument.
+        - NumPy array or Python scalar values in `inputs` get cast as tensors.
+        - Keras mask metadata is only collected from `inputs`.
+        - Layers are built (`build(input_shape)` method)
+          using shape info from `inputs` only.
+        - `input_spec` compatibility is only checked against `inputs`.
+        - Mixed precision input casting is only applied to `inputs`.
+          If a layer has tensor arguments in `*args` or `**kwargs`, their
+          casting behavior in mixed precision should be handled manually.
+        - The SavedModel input specification is generated using `inputs` only.
+        - Integration with various ecosystem packages like TFMOT, TFLite,
+          TF.js, etc is only supported for `inputs` and not for tensors in
+          positional and keyword arguments.
+      *args: Additional positional arguments. May contain tensors, although
+        this is not recommended, for the reasons above.
+      **kwargs: Additional keyword arguments. May contain tensors, although
+        this is not recommended, for the reasons above.
+        The following optional keyword arguments are reserved:
+        - `training`: Boolean scalar tensor of Python boolean indicating
+          whether the `call` is meant for training or inference.
+        - `mask`: Boolean input mask. If the layer's `call()` method takes a
+          `mask` argument, its default value will be set to the mask generated
+          for `inputs` by the previous layer (if `input` did come from a layer
+          that generated a corresponding mask, i.e. if it came from a Keras
+          layer with masking support).
 
     Returns:
-        A tensor or list/tuple of tensors.
+      A tensor or list/tuple of tensors.
     """
     return inputs
 
@@ -512,7 +533,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       The TrackableWeightHandler used to track this object.
     """
-    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
+    if isinstance(trackable_object, base_layer_utils.TrackableWeightHandler):
+      handler = trackable_object
+    else:
+      handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
       self._trainable_weights.append(handler)
     else:
@@ -614,7 +638,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
         initializer = initializers.get('zeros')
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
-      else:
+      elif 'getter' not in kwargs:
+        # When `getter` is specified, it's possibly fine for `initializer` to be
+        # None since it's up to the custom `getter` to raise error in case it
+        # indeed needs `initializer`.
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
@@ -631,8 +658,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # disable it if it is specified.
       # TODO(b/142020079): Reenable it once the bug is fixed.
       if caching_device is not None:
-        tf_logging.warn('`caching_device` does not work with mixed precision '
-                        'API. Ignoring user specified `caching_device`.')
+        tf_logging.warning(
+            '`caching_device` does not work with mixed precision API. Ignoring '
+            'user specified `caching_device`.')
         caching_device = None
 
     variable = self._add_variable_with_custom_getter(
@@ -773,12 +801,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         try:
           outputs = self(inputs, training=False)
         except TypeError as e:
-          six.raise_from(
-              NotImplementedError(
-                  'We could not automatically infer the static shape of the '
-                  'layer\'s output. Please implement the '
-                  '`compute_output_shape` method on your layer (%s).' %
-                  self.__class__.__name__), e)
+          raise NotImplementedError(
+              'We could not automatically infer the static shape of the '
+              'layer\'s output. Please implement the '
+              '`compute_output_shape` method on your layer (%s).' %
+              self.__class__.__name__) from e
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError(
         'Please run in eager mode or implement the `compute_output_shape` '
@@ -1707,48 +1734,48 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           update()  # pylint: disable=not-callable
 
   def set_weights(self, weights):
-    """Sets the weights of the layer, from Numpy arrays.
+    """Sets the weights of the layer, from NumPy arrays.
 
     The weights of a layer represent the state of the layer. This function
     sets the weight values from numpy arrays. The weight values should be
     passed in the order they are created by the layer. Note that the layer's
-    weights must be instantiated before calling this function by calling
+    weights must be instantiated before calling this function, by calling
     the layer.
 
-    For example, a Dense layer returns a list of two values-- per-output
-    weights and the bias value. These can be used to set the weights of another
-    Dense layer:
+    For example, a `Dense` layer returns a list of two values: the kernel matrix
+    and the bias vector. These can be used to set the weights of another
+    `Dense` layer:
 
-    >>> a = tf.keras.layers.Dense(1,
+    >>> layer_a = tf.keras.layers.Dense(1,
     ...   kernel_initializer=tf.constant_initializer(1.))
-    >>> a_out = a(tf.convert_to_tensor([[1., 2., 3.]]))
-    >>> a.get_weights()
+    >>> a_out = layer_a(tf.convert_to_tensor([[1., 2., 3.]]))
+    >>> layer_a.get_weights()
     [array([[1.],
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
-    >>> b = tf.keras.layers.Dense(1,
+    >>> layer_b = tf.keras.layers.Dense(1,
     ...   kernel_initializer=tf.constant_initializer(2.))
-    >>> b_out = b(tf.convert_to_tensor([[10., 20., 30.]]))
-    >>> b.get_weights()
+    >>> b_out = layer_b(tf.convert_to_tensor([[10., 20., 30.]]))
+    >>> layer_b.get_weights()
     [array([[2.],
            [2.],
            [2.]], dtype=float32), array([0.], dtype=float32)]
-    >>> b.set_weights(a.get_weights())
-    >>> b.get_weights()
+    >>> layer_b.set_weights(layer_a.get_weights())
+    >>> layer_b.get_weights()
     [array([[1.],
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
 
     Args:
-        weights: a list of Numpy arrays. The number
-            of arrays and their shape must match
-            number of the dimensions of the weights
-            of the layer (i.e. it should match the
-            output of `get_weights`).
+      weights: a list of NumPy arrays. The number
+        of arrays and their shape must match
+        number of the dimensions of the weights
+        of the layer (i.e. it should match the
+        output of `get_weights`).
 
     Raises:
-        ValueError: If the provided weights list does not match the
-            layer's specifications.
+      ValueError: If the provided weights list does not match the
+        layer's specifications.
     """
     params = self.weights
 
@@ -1776,50 +1803,55 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         weight_index += num_tensors
       else:
         weight = weights[weight_index]
+        weight_shape = weight.shape if hasattr(weight, 'shape') else ()
         ref_shape = param.shape
-        if not ref_shape.is_compatible_with(weight.shape):
+        if not ref_shape.is_compatible_with(weight_shape):
           raise ValueError(
               'Layer weight shape %s not compatible with provided weight '
-              'shape %s' % (ref_shape, weight.shape))
+              'shape %s' % (ref_shape, weight_shape))
         weight_value_tuples.append((param, weight))
         weight_index += 1
 
     backend.batch_set_value(weight_value_tuples)
 
+    # Perform any layer defined finalization of the layer state.
+    for layer in self._flatten_layers():
+      layer.finalize_state()
+
   def get_weights(self):
-    """Returns the current weights of the layer.
+    """Returns the current weights of the layer, as NumPy arrays.
 
     The weights of a layer represent the state of the layer. This function
     returns both trainable and non-trainable weight values associated with this
-    layer as a list of Numpy arrays, which can in turn be used to load state
+    layer as a list of NumPy arrays, which can in turn be used to load state
     into similarly parameterized layers.
 
-    For example, a Dense layer returns a list of two values-- per-output
-    weights and the bias value. These can be used to set the weights of another
-    Dense layer:
+    For example, a `Dense` layer returns a list of two values: the kernel matrix
+    and the bias vector. These can be used to set the weights of another
+    `Dense` layer:
 
-    >>> a = tf.keras.layers.Dense(1,
+    >>> layer_a = tf.keras.layers.Dense(1,
     ...   kernel_initializer=tf.constant_initializer(1.))
-    >>> a_out = a(tf.convert_to_tensor([[1., 2., 3.]]))
-    >>> a.get_weights()
+    >>> a_out = layer_a(tf.convert_to_tensor([[1., 2., 3.]]))
+    >>> layer_a.get_weights()
     [array([[1.],
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
-    >>> b = tf.keras.layers.Dense(1,
+    >>> layer_b = tf.keras.layers.Dense(1,
     ...   kernel_initializer=tf.constant_initializer(2.))
-    >>> b_out = b(tf.convert_to_tensor([[10., 20., 30.]]))
-    >>> b.get_weights()
+    >>> b_out = layer_b(tf.convert_to_tensor([[10., 20., 30.]]))
+    >>> layer_b.get_weights()
     [array([[2.],
            [2.],
            [2.]], dtype=float32), array([0.], dtype=float32)]
-    >>> b.set_weights(a.get_weights())
-    >>> b.get_weights()
+    >>> layer_b.set_weights(layer_a.get_weights())
+    >>> layer_b.get_weights()
     [array([[1.],
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
 
     Returns:
-        Weights values as a list of numpy arrays.
+        Weights values as a list of NumPy arrays.
     """
     weights = self.weights
     output_weights = []
@@ -1829,6 +1861,16 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       else:
         output_weights.append(weight)
     return backend.batch_get_value(output_weights)
+
+  @doc_controls.do_not_generate_docs
+  def finalize_state(self):
+    """Finalizes the layers state after updating layer weights.
+
+    This function can be subclassed in a layer and will be called after updating
+    a layer weights. It can be overridden to finalize any additional layer state
+    after a weight update.
+    """
+    pass
 
   @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
@@ -3127,6 +3169,8 @@ class TensorFlowOpLayer(Layer):
         if value is not None:
           constant = constant_op.constant(value, name=node_def.input[index])
         inputs.insert(index, constant)
+      # TODO(b/183990973): We should drop or consolidate these private api calls
+      # for adding an op to the graph and recording its gradient.
       c_op = ops._create_c_op(graph, node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
       op._control_flow_post_processing()
@@ -3140,7 +3184,7 @@ class TensorFlowOpLayer(Layer):
         attrs.append(attr_name)
         attrs.append(op.get_attr(attr_name))
       attrs = tuple(attrs)
-      execute.record_gradient(op_type, op.inputs, attrs, op.outputs)
+      backprop.record_gradient(op_type, op.inputs, attrs, op.outputs)
 
       if len(op.outputs) == 1:
         return op.outputs[0]

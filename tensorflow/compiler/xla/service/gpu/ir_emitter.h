@@ -104,10 +104,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::IRBuilder<>* builder() { return &b_; }
 
   // Emits constants to generated LLVM IR, and also populate related
-  // inforamtion to ir_emitter_context for large-constant initializations. If
-  // `lookup_indices` is true, the allocation index associated with the constant
-  // is also populated.
-  Status EmitConstants(const HloComputation& computation, bool lookup_indices);
+  // inforamtion to ir_emitter_context for large-constant initializations.
+  Status EmitConstants(const HloComputation& computation);
 
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.

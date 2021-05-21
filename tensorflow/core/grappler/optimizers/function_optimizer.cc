@@ -1388,7 +1388,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       fake_devices.push_back(std::move(device));
     }
 
-    Placer placer(graph.get(), item.id, &device_set);
+    Placer placer(graph.get(), item.id, &flib_def, &device_set);
     TF_RETURN_IF_ERROR(placer.Run());
   }
 
@@ -1419,7 +1419,7 @@ void RestoreTensorMapping(const FunctionOptimizerContext& ctx,
 
       auto mapping = ctx.tensor_mapping().find(input_tensor);
       if (mapping != ctx.tensor_mapping().end()) {
-        node.set_input(idx, mapping->second.ToString());
+        node.set_input(idx, TensorIdToString(mapping->second));
       }
     }
   }

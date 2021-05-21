@@ -54,7 +54,7 @@ TfLiteTensor CreateL2NormTensor(const T* data, TfLiteIntArray* dims,
 }
 
 template <typename T>
-void TestL2Normalization(const int* input_dims_data, const T* input_data,
+void TestL2Normalization(int* input_dims_data, const T* input_data,
                          const T* expected_output_data, T* output_data) {
   TfLiteIntArray* dims = IntArrayFromInts(input_dims_data);
 
@@ -96,7 +96,7 @@ void TestL2Normalization(const int* input_dims_data, const T* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SimpleFloatTest) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
   const float input_data[data_length] = {-1.1, 0.6, 0.7, 1.2, -0.7, 0.1};
   const float expected_output_data[data_length] = {-0.55, 0.3,   0.35,
@@ -108,7 +108,7 @@ TF_LITE_MICRO_TEST(SimpleFloatTest) {
 }
 
 TF_LITE_MICRO_TEST(ZerosVectorFloatTest) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
   const float input_data[data_length] = {0, 0, 0, 0, 0, 0};
   const float expected_output_data[data_length] = {0, 0, 0, 0, 0, 0};
@@ -119,7 +119,7 @@ TF_LITE_MICRO_TEST(ZerosVectorFloatTest) {
 }
 
 TF_LITE_MICRO_TEST(SimpleFloatWithRankLessThanFourTest) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
   const float input_data[data_length] = {-1.1, 0.6, 0.7, 1.2, -0.7, 0.1};
   const float expected_output_data[data_length] = {-0.55, 0.3,   0.35,
@@ -131,7 +131,7 @@ TF_LITE_MICRO_TEST(SimpleFloatWithRankLessThanFourTest) {
 }
 
 TF_LITE_MICRO_TEST(MultipleBatchFloatTest) {
-  const int input_dims[] = {4, 3, 1, 1, 6};
+  int input_dims[] = {4, 3, 1, 1, 6};
   constexpr int data_length = 18;
   const float input_data[data_length] = {
       -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 1
@@ -150,7 +150,7 @@ TF_LITE_MICRO_TEST(MultipleBatchFloatTest) {
 }
 
 TF_LITE_MICRO_TEST(ZerosVectorUint8Test) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
   const uint8_t input_data[data_length] = {127, 127, 127, 127, 127, 127};
   const uint8_t expected_output[data_length] = {128, 128, 128, 128, 128, 128};
@@ -161,7 +161,7 @@ TF_LITE_MICRO_TEST(ZerosVectorUint8Test) {
 }
 
 TF_LITE_MICRO_TEST(SimpleUint8Test) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
   const uint8_t input_data[data_length] = {57, 165, 172, 204, 82, 133};
   const uint8_t expected_output[data_length] = {
@@ -174,7 +174,7 @@ TF_LITE_MICRO_TEST(SimpleUint8Test) {
 }
 
 TF_LITE_MICRO_TEST(SimpleInt8Test) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
   const int8_t input_data[data_length] = {-71, 37, 44, 76, -46, 5};
   const int8_t expected_output[data_length] = {-70, 38, 45, 77, -45, 6};
@@ -185,7 +185,7 @@ TF_LITE_MICRO_TEST(SimpleInt8Test) {
 }
 
 TF_LITE_MICRO_TEST(ZerosVectorInt8Test) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
   const int8_t input_data[data_length] = {-1, -1, -1, -1, -1, -1};
   const int8_t expected_output[data_length] = {0, 0, 0, 0, 0, 0};
@@ -196,7 +196,7 @@ TF_LITE_MICRO_TEST(ZerosVectorInt8Test) {
 }
 
 TF_LITE_MICRO_TEST(MultipleBatchUint8Test) {
-  const int input_dims[] = {2, 3, 6};
+  int input_dims[] = {2, 3, 6};
   constexpr int data_length = 18;
   const uint8_t input_data[data_length] = {
       57, 165, 172, 204, 82, 133,  // batch 1
@@ -215,7 +215,7 @@ TF_LITE_MICRO_TEST(MultipleBatchUint8Test) {
 }
 
 TF_LITE_MICRO_TEST(MultipleBatchInt8Test) {
-  const int input_dims[] = {2, 3, 6};
+  int input_dims[] = {2, 3, 6};
   constexpr int data_length = 18;
   const int8_t input_data[data_length] = {
       -71, 37, 44, 76, -46, 5,  // batch 1

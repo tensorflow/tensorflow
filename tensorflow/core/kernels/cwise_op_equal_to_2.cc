@@ -28,8 +28,6 @@ REGISTER6(BinaryOp, CPU, "Equal", functor::equal_to, int32, int64, complex64,
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Equal", functor::equal_to, int8, int16, int64,
           complex64, complex128, bool);
-#else
-REGISTER2(BinaryOp, GPU, "Equal", functor::equal_to, complex64, complex128);
 #endif
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

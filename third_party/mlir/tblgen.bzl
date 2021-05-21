@@ -1,12 +1,12 @@
 """BUILD extensions for MLIR table generation."""
 
 TdInfo = provider(
-    "Holds tablegen files and the dependencies and include paths necessary to" +
+    "Holds TableGen files and the dependencies and include paths necessary to" +
     " build them.",
     fields = {
         "transitive_sources": "td files transitively used by this rule.",
         "transitive_includes": (
-            "include arguments to add to the final tablegen invocation. These" +
+            "include arguments to add to the final TableGen invocation. These" +
             " are the absolute directory paths that will be added with '-I'."
         ),
     },
@@ -106,14 +106,14 @@ td_library = rule(
     attrs = {
         "srcs": attr.label_list(allow_files = True),
         "includes": attr.string_list(
-            doc = "Include paths to be added to the final tablegen tool" +
+            doc = "Include paths to be added to the final TableGen tool" +
                   " invocation. Relative paths are interpreted as relative to" +
                   " the current label's package. Absolute paths are" +
                   " interpreted as relative to the current label's workspace",
         ),
         # TODO(gcmn): limit to TdInfo providers.
         "deps": attr.label_list(
-            doc = "Dependencies providing tablegen source files and include" +
+            doc = "Dependencies providing TableGen source files and include" +
                   " paths.",
         ),
     },
@@ -153,6 +153,7 @@ def _gentbl_rule_impl(ctx):
         inputs = trans_srcs,
         executable = ctx.executable.tblgen,
         arguments = [args],
+        mnemonic = "TdGenerate",  # Kythe extractor hook.
     )
 
     return [DefaultInfo()]
@@ -164,36 +165,36 @@ gentbl_rule = rule(
     output_to_genfiles = True,
     attrs = {
         "tblgen": attr.label(
-            doc = "The tablegen executable with which to generate `out`.",
+            doc = "The TableGen executable with which to generate `out`.",
             executable = True,
             cfg = "exec",
         ),
         "td_file": attr.label(
-            doc = "The tablegen file to run through `tblgen`.",
+            doc = "The TableGen file to run through `tblgen`.",
             allow_single_file = True,
             mandatory = True,
         ),
         "td_srcs": attr.label_list(
-            doc = "Additional tablegen files included by `td_file`. It is not" +
+            doc = "Additional TableGen files included by `td_file`. It is not" +
                   " necessary to list td_file here (though not an error).",
             allow_files = True,
         ),
         # TODO(gcmn): limit to TdInfo providers.
         "deps": attr.label_list(
-            doc = "Dependencies providing tablegen source files and include" +
+            doc = "Dependencies providing TableGen source files and include" +
                   " paths.",
         ),
         "out": attr.output(
-            doc = "The output file for the tablegen invocation.",
+            doc = "The output file for the TableGen invocation.",
             mandatory = True,
         ),
         "opts": attr.string_list(
-            doc = "Additional command line options to add to the tablegen" +
+            doc = "Additional command line options to add to the TableGen" +
                   " invocation. For include arguments, prefer to use" +
                   " `includes`.",
         ),
         "includes": attr.string_list(
-            doc = "Include paths to be added to the final tablegen tool" +
+            doc = "Include paths to be added to the final TableGen tool" +
                   " invocation. Relative paths are interpreted as relative to" +
                   " the current label's package. Absolute paths are" +
                   " interpreted as relative to the current label's workspace." +
@@ -203,7 +204,7 @@ gentbl_rule = rule(
                   " directory of td_file are always added.",
         ),
         "td_includes": attr.string_list(
-            doc = "Include paths to add to the tablegen invocation. Paths are" +
+            doc = "Include paths to add to the TableGen invocation. Paths are" +
                   " interpreted as relative to the current label's workspace" +
                   " root and applied from all roots available in the" +
                   " execution environment (source, genfiles, and bin" +
@@ -248,25 +249,30 @@ def _gentbl_test_impl(ctx):
         is_executable = True,
     )
 
-    return [DefaultInfo(
-        runfiles = ctx.runfiles(
-            [ctx.executable.tblgen],
-            transitive_files = trans_srcs,
+    return [
+        coverage_common.instrumented_files_info(
+            ctx,
+            source_attributes = ["td_file", "td_srcs"],
+            dependency_attributes = ["tblgen", "deps"],
         ),
-    )]
+        DefaultInfo(
+            runfiles = ctx.runfiles(
+                [ctx.executable.tblgen],
+                transitive_files = trans_srcs,
+            ),
+        ),
+    ]
 
 gentbl_test = rule(
     _gentbl_test_impl,
     test = True,
-    doc = "A shell test that tests the given tablegen invocation. Note" +
+    doc = "A shell test that tests the given TablegGen invocation. Note" +
           " that unlike gentbl_rule, this builds and invokes `tblgen` in the" +
           " target configuration. Takes all the same arguments as gentbl_rule" +
           " except for `out` (as it does not generate any output)",
-    # Match genrule behavior
-    output_to_genfiles = True,
     attrs = {
         "tblgen": attr.label(
-            doc = "The tablegen executable run in the shell command. Note" +
+            doc = "The TableGen executable run in the shell command. Note" +
                   " that this is built in the target configuration.",
             executable = True,
             cfg = "target",
@@ -287,7 +293,92 @@ gentbl_test = rule(
     },
 )
 
-def gentbl(
+def gentbl_filegroup(
+        name,
+        tblgen,
+        td_file,
+        tbl_outs,
+        td_srcs = [],
+        td_includes = [],
+        includes = [],
+        deps = [],
+        test = False,
+        skip_opts = [],
+        **kwargs):
+    """Create multiple TableGen generated files using the same tool and input.
+
+    All generated outputs are bundled in a file group with the given name.
+
+    Args:
+      name: The name of the generated filegroup rule for use in dependencies.
+      tblgen: The binary used to produce the output.
+      td_file: The primary table definitions file.
+      tbl_outs: A list of tuples ([opts], out), where each 'opts' is a list of
+        options passed to tblgen, each option being a string, and 'out' is the
+        corresponding output file produced.
+      td_srcs: See gentbl_rule.td_srcs
+      includes: See gentbl_rule.includes
+      td_includes: See gentbl_rule.td_includes
+      deps: See gentbl_rule.deps
+      test: Whether to create a shell test that invokes the tool too.
+      skip_opts: Files generated using these opts in tbl_outs will be excluded
+        from the generated filegroup.
+      **kwargs: Extra keyword arguments to pass to all generated rules.
+    """
+
+    # TODO(gcmn): Update callers to td_library and explicit includes and
+    # drop this hardcoded include.
+    hardcoded_includes = [
+        "external/llvm-project/mlir/include",
+    ]
+
+    for (opts, out) in tbl_outs:
+        first_opt = opts[0] if opts else ""
+        rule_suffix = "_{}_{}".format(
+            first_opt.replace("-", "_").replace("=", "_"),
+            str(hash(" ".join(opts))),
+        )
+        gentbl_name = "%s_%s_genrule" % (name, rule_suffix)
+        gentbl_rule(
+            name = gentbl_name,
+            td_file = td_file,
+            tblgen = tblgen,
+            opts = opts,
+            td_srcs = td_srcs,
+            deps = deps,
+            includes = includes,
+            td_includes = td_includes + hardcoded_includes,
+            out = out,
+            **kwargs
+        )
+
+        if test:
+            # Also run the generator in the target configuration as a test. This
+            # means it gets run with asserts and sanitizers and such when they
+            # are enabled and is counted in coverage.
+            gentbl_test(
+                name = "%s_test" % (gentbl_name,),
+                td_file = td_file,
+                tblgen = tblgen,
+                opts = opts,
+                td_srcs = td_srcs,
+                deps = deps,
+                includes = includes,
+                td_includes = td_includes + hardcoded_includes,
+                # Shell files not executable on Windows.
+                # TODO(gcmn): Support windows.
+                tags = ["no_windows"],
+                **kwargs
+            )
+
+    included_srcs = [f for (opts, f) in tbl_outs if not any([skip_opt in opts for skip_opt in skip_opts])]
+    native.filegroup(
+        name = name,
+        srcs = included_srcs,
+        **kwargs
+    )
+
+def gentbl_cc_library(
         name,
         tblgen,
         td_file,
@@ -300,7 +391,7 @@ def gentbl(
         strip_include_prefix = None,
         test = False,
         **kwargs):
-    """Create multiple tablegen generated files using the same tool and input.
+    """Create multiple TableGen generated files using the same tool and input.
 
     All generated outputs are bundled in a cc_library rule.
 
@@ -308,9 +399,9 @@ def gentbl(
       name: The name of the generated cc_library rule for use in dependencies.
       tblgen: The binary used to produce the output.
       td_file: The primary table definitions file.
-      tbl_outs: A list of tuples (opts, out), where each opts is a string of
-        options passed to tblgen, and the out is the corresponding output file
-        produced.
+      tbl_outs: A list of tuples ([opts], out), where each 'opts' is a list of
+        options passed to tblgen, each option being a string, and 'out' is the
+        corresponding output file produced.
       td_srcs: See gentbl_rule.td_srcs
       includes: See gentbl_rule.includes
       td_includes: See gentbl_rule.td_includes
@@ -322,12 +413,49 @@ def gentbl(
       **kwargs: Extra keyword arguments to pass to all generated rules.
     """
 
-    # TODO(gcmn): Update callers to td_library and explicit includes and
-    # drop this hardcoded include.
-    hardcoded_includes = [
-        "external/llvm-project/mlir/include",
-    ]
+    filegroup_name = name + "_filegroup"
+    gentbl_filegroup(
+        name = filegroup_name,
+        tblgen = tblgen,
+        td_file = td_file,
+        tbl_outs = tbl_outs,
+        td_srcs = td_srcs,
+        td_includes = td_includes,
+        includes = includes + td_relative_includes,
+        deps = deps,
+        test = test,
+        skip_opts = ["-gen-op-doc"],
+        **kwargs
+    )
+    native.cc_library(
+        name = name,
+        # strip_include_prefix does not apply to textual_hdrs.
+        # https://github.com/bazelbuild/bazel/issues/12424
+        hdrs = [":" + filegroup_name] if strip_include_prefix else [],
+        strip_include_prefix = strip_include_prefix,
+        textual_hdrs = [":" + filegroup_name],
+        **kwargs
+    )
 
+def gentbl(
+        name,
+        tblgen,
+        td_file,
+        tbl_outs,
+        td_srcs = [],
+        td_includes = [],
+        includes = [],
+        td_relative_includes = [],
+        deps = [],
+        test = False,
+        **kwargs):
+    """Deprecated version of gentbl_cc_library.
+
+    Accepts tbl_outs as list of pairs with the first element of the pair being
+    a whitespace-separated string of options rather than a list of options.
+    """
+
+    split_opts = []
     for (opts_string, out) in tbl_outs:
         # TODO(gcmn): The API of opts as single string is preserved for backward
         # compatibility. Change to taking a sequence.
@@ -336,52 +464,19 @@ def gentbl(
         # Filter out empty options
         opts = [opt for opt in opts if opt]
 
-        first_opt = opts[0] if opts else ""
-        rule_suffix = "_{}_{}".format(
-            first_opt.replace("-", "_").replace("=", "_"),
-            str(hash(opts_string)),
-        )
-        gentbl_name = "%s_%s_genrule" % (name, rule_suffix)
-        gentbl_rule(
-            name = gentbl_name,
-            td_file = td_file,
-            tblgen = tblgen,
-            opts = opts,
-            td_srcs = td_srcs,
-            deps = deps,
-            includes = includes + td_relative_includes,
-            td_includes = td_includes + hardcoded_includes,
-            out = out,
-            **kwargs
-        )
-        if test:
-            # Also run the generator in the target configuration as a test. This
-            # means it gets run with asserts and sanitizers and such when they
-            # are enabled and is counted in coverage.
-            gentbl_test(
-                name = "%s_test" % (gentbl_name,),
-                td_file = td_file,
-                tblgen = tblgen,
-                opts = opts,
-                td_srcs = td_srcs,
-                deps = deps,
-                includes = includes + td_relative_includes,
-                td_includes = td_includes + hardcoded_includes,
-                # Shell files not executable on Windows.
-                # TODO(gcmn): Support windows.
-                tags = ["no_windows"],
-                **kwargs
-            )
+        split_opts.append((opts, out))
 
-    # List of opts that do not generate cc files.
-    skip_opts = ["-gen-op-doc"]
-    hdrs = [f for (opts, f) in tbl_outs if opts not in skip_opts]
-    native.cc_library(
+    gentbl_cc_library(
         name = name,
-        # strip_include_prefix does not apply to textual_hdrs.
-        # https://github.com/bazelbuild/bazel/issues/12424
-        hdrs = hdrs if strip_include_prefix else [],
-        strip_include_prefix = strip_include_prefix,
-        textual_hdrs = hdrs,
+        tblgen = tblgen,
+        td_file = td_file,
+        tbl_outs = split_opts,
+        td_srcs = td_srcs,
+        td_includes = td_includes,
+        includes = includes,
+        td_relative_includes = td_relative_includes,
+        deps = deps,
+        test = test,
+        deprecation = "generated by gentbl; use gentbl_cc_library or gentbl_filegroup instead",
         **kwargs
     )

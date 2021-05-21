@@ -126,7 +126,7 @@ tf_module {
   }
   member_method {
     name: "ctc_greedy_decoder"
-    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\', \'blank_index\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "ctc_loss"

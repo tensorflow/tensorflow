@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -631,6 +632,14 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
       return s;
     }
   }
+  if (t.dtype() == DT_RESOURCE && ctx->serialize_data_tensors()) {
+    Status s = AddResourceHelper(ctx, t, output);
+    if (!errors::IsUnimplemented(s)) {
+      // Fall through to AddTensor if AsGraphDef is not implemented for this
+      // resource.
+      return s;
+    }
+  }
   return AddTensor(t, output);
 }
 
@@ -654,6 +663,15 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
   node_builder.Input(std::move(nodes));
   *output = opts.FinalizeBuilder(&node_builder);
   return Status::OK();
+}
+
+Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
+    SerializationContext* ctx, const Tensor& t, Node** output) {
+  const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
+  ResourceBase* resource;
+  TF_RETURN_IF_ERROR(ctx->resource_mgr()->Lookup(handle, &resource));
+  core::ScopedUnref unref(resource);
+  return resource->AsGraphDef(builder(), output);
 }
 
 DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
@@ -816,10 +834,6 @@ string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
 
 // static
 bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
-  if (DatasetOpRegistry::IsRegistered(op_def->name())) {
-    return true;
-  }
-
   return (op_def->output_arg_size() == 1 &&
           op_def->output_arg(0).type() == DT_VARIANT &&
           (absl::EndsWith(op_def->name(), "Dataset") ||
@@ -895,19 +909,6 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
-}
-
-// static
-void DatasetOpRegistry::Register(const string& op_name) {
-  mutex_lock l(*get_dataset_op_registry_lock());
-  get_dataset_op_registry()->insert(op_name);
-}
-
-// static
-bool DatasetOpRegistry::IsRegistered(const string& op_name) {
-  mutex_lock l(*get_dataset_op_registry_lock());
-  std::unordered_set<string>* op_names = get_dataset_op_registry();
-  return op_names->find(op_name) != op_names->end();
 }
 
 namespace {

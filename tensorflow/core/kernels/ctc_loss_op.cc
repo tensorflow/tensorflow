@@ -100,11 +100,18 @@ class CTCLossOp : public OpKernel {
                 errors::InvalidArgument("sequence_length is not a vector"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(labels_indices->shape()),
                 errors::InvalidArgument("labels_indices is not a matrix"));
+    OP_REQUIRES(ctx, labels_indices->dim_size(1) > 1,
+                errors::InvalidArgument(
+                    "labels_indices second dimension must be >= 1. Received ",
+                    labels_indices->dim_size(1)));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(labels_values->shape()),
                 errors::InvalidArgument("labels_values is not a vector"));
 
     const TensorShape& inputs_shape = inputs->shape();
     const int64 max_time = inputs_shape.dim_size(0);
+    OP_REQUIRES(ctx, max_time != 0,
+                errors::InvalidArgument(
+                    "Max time or first dimension of input cannot be 0."));
     const int64 batch_size = inputs_shape.dim_size(1);
     const int64 num_classes_raw = inputs_shape.dim_size(2);
     OP_REQUIRES(

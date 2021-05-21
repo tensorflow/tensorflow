@@ -151,7 +151,7 @@ TF_LITE_MICRO_TEST(TestGreedyMedium) {
       kTfLiteOk, planner.GetOffsetForBuffer(&micro_error_reporter, 4, &offset));
   TF_LITE_MICRO_EXPECT_EQ(0, offset);
 
-  planner.PrintMemoryPlan(&micro_error_reporter);
+  planner.PrintMemoryPlan();
 
   TF_LITE_MICRO_EXPECT_EQ(false,
                           planner.DoAnyBuffersOverlap(&micro_error_reporter));
@@ -227,7 +227,7 @@ TF_LITE_MICRO_TEST(TestPersonDetectionModel) {
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, planner.AddBuffer(&micro_error_reporter, 18432, 0, 1));
 
-  planner.PrintMemoryPlan(&micro_error_reporter);
+  planner.PrintMemoryPlan();
 
   TF_LITE_MICRO_EXPECT_EQ(false,
                           planner.DoAnyBuffersOverlap(&micro_error_reporter));
@@ -249,7 +249,7 @@ TF_LITE_MICRO_TEST(TestOverlapCase) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           planner.AddBuffer(&micro_error_reporter, 20, 1, 2));
 
-  planner.PrintMemoryPlan(&micro_error_reporter);
+  planner.PrintMemoryPlan();
 
   TF_LITE_MICRO_EXPECT_EQ(false,
                           planner.DoAnyBuffersOverlap(&micro_error_reporter));

@@ -1205,3 +1205,227 @@ def _lu_solve_assertions(lower_upper, perm, rhs, validate_args):
             message=message))
 
   return assertions
+
+
+@tf_export('linalg.eigh_tridiagonal')
+@dispatch.add_dispatch_support
+def eigh_tridiagonal(alpha,
+                     beta,
+                     eigvals_only=True,
+                     select='a',
+                     select_range=None,
+                     tol=None,
+                     name=None):
+  """Computes the eigenvalues of a Hermitian tridiagonal matrix.
+
+  Args:
+    alpha: A real or complex tensor of shape (n), the diagonal elements of the
+      matrix. NOTE: If alpha is complex, the imaginary part is ignored (assumed
+        zero) to satisfy the requirement that the matrix be Hermitian.
+    beta: A real or complex tensor of shape (n-1), containing the elements of
+      the first super-diagonal of the matrix. If beta is complex, the first
+      sub-diagonal of the matrix is assumed to be the conjugate of beta to
+      satisfy the requirement that the matrix be Hermitian
+    eigvals_only: If False, both eigenvalues and corresponding eigenvectors are
+      computed. If True, only eigenvalues are computed. Default is True.
+    select: Optional string with values in {‘a’, ‘v’, ‘i’} (default is 'a') that
+      determines which eigenvalues to calculate:
+        'a': all eigenvalues.
+        ‘v’: eigenvalues in the interval (min, max] given by select range.
+        'i’: eigenvalues with indices min <= i <= max.
+    select_range: Size 2 tuple or list or tensor specifying the range of
+      eigenvalues to compute together with select. If select is 'a',
+      select_range is ignored.
+    tol: Optional scalar. The absolute tolerance to which each eigenvalue is
+      required. An eigenvalue (or cluster) is considered to have converged if it
+      lies in an interval of this width. If tol is None (default), the value
+      eps*|T|_2 is used where eps is the machine precision, and |T|_2 is the
+      2-norm of the matrix T.
+    name: Optional name of the op.
+
+  Returns:
+    eig_vals: The eigenvalues of the matrix in non-decreasing order.
+    eig_vectors: If `eigvals_only` is False the eigenvectors are returned in
+      the second output argument.
+
+  Raises:
+     ValueError: If input values are invalid.
+     NotImplemented: Computing eigenvectors for `eigvals_only` = False is
+       not implemented yet.
+
+  This op implements a subset of the functionality of
+  scipy.linalg.eigh_tridiagonal.
+
+  TODO(b/187527398):
+    a) Complete scipy.linalg.compatibility:
+      1. Add support for computing eigenvectors.
+    b) Add support for outer batch dimensions.
+
+  #### Examples
+
+  ```python
+  import numpy
+  eigvals = tf.linalg.eigh_tridiagonal([0.0, 0.0, 0.0], [1.0, 1.0])
+  eigvals_expected = [-numpy.sqrt(2.0), 0.0, numpy.sqrt(2.0)]
+  tf.assert_near(eigvals_expected, eigvals)
+  # ==> True
+  ```
+
+  """
+  with ops.name_scope(name or 'eigh_tridiagonal'):
+
+    def _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, x):
+      """Implements the Sturm sequence recurrence."""
+      n = alpha.shape[0]
+      zeros = array_ops.zeros(array_ops.shape(x), dtype=dtypes.int32)
+      ones = array_ops.ones(array_ops.shape(x), dtype=dtypes.int32)
+
+      # The first step in the Sturm sequence recurrence
+      # requires special care if x is equal to alpha[0].
+      def sturm_step0():
+        q = alpha[0] - x
+        count = array_ops.where(q < 0, ones, zeros)
+        q = array_ops.where(math_ops.equal(alpha[0], x), alpha0_perturbation, q)
+        return q, count
+
+      # Subsequent steps all take this form:
+      def sturm_step(i, q, count):
+        q = alpha[i] - beta_sq[i - 1] / q - x
+        count = array_ops.where(q <= pivmin, count + 1, count)
+        q = array_ops.where(q <= pivmin, math_ops.minimum(q, -pivmin), q)
+        return q, count
+
+      # The first step initializes q and count.
+      q, count = sturm_step0()
+
+      # Peel off ((n-1) % blocksize) steps from the main loop, so we can run
+      # the bulk of the iterations unrolled by a factor of blocksize.
+      blocksize = 16
+      i = 1
+      peel = (n - 1) % blocksize
+      unroll_cnt = peel
+
+      def unrolled_steps(start, q, count):
+        for j in range(unroll_cnt):
+          q, count = sturm_step(start + j, q, count)
+        return start + unroll_cnt, q, count
+
+      i, q, count = unrolled_steps(i, q, count)
+
+      # Run the remaining steps of the Sturm sequence using a partially
+      # unrolled while loop.
+      unroll_cnt = blocksize
+      cond = lambda i, q, count: math_ops.less(i, n)
+      _, _, count = control_flow_ops.while_loop(
+          cond, unrolled_steps, [i, q, count], back_prop=False)
+      return count
+
+    if not eigvals_only:
+      raise NotImplementedError(
+          '`eigvals_only` = False is not implemented yet.')
+    alpha = ops.convert_to_tensor(alpha, name='alpha')
+    n = alpha.shape[0]
+    if n <= 1:
+      return math_ops.real(alpha)
+    beta = ops.convert_to_tensor(beta, name='beta')
+
+    if alpha.dtype != beta.dtype:
+      raise ValueError("'alpha' and 'beta' must have the same type.")
+
+    if alpha.dtype.is_complex:
+      alpha = math_ops.real(alpha)
+      beta_sq = math_ops.real(math_ops.conj(beta) * beta)
+      beta_abs = math_ops.sqrt(beta_sq)
+    else:
+      beta_sq = math_ops.square(beta)
+      beta_abs = math_ops.abs(beta)
+
+    # Estimate the largest and smallest eigenvalues of T using the Gershgorin
+    # circle theorem.
+    off_diag_abs_row_sum = array_ops.concat(
+        [beta_abs[:1], beta_abs[:-1] + beta_abs[1:], beta_abs[-1:]], axis=0)
+    lambda_est_max = math_ops.reduce_max(alpha + off_diag_abs_row_sum)
+    lambda_est_min = math_ops.reduce_min(alpha - off_diag_abs_row_sum)
+    # Upper bound on 2-norm of T.
+    t_norm = math_ops.maximum(
+        math_ops.abs(lambda_est_min), math_ops.abs(lambda_est_max))
+
+    # Compute the smallest allowed pivot in the Sturm sequence to avoid
+    # overflow.
+    finfo = np.finfo(alpha.dtype.as_numpy_dtype)
+    one = np.ones([], dtype=alpha.dtype.as_numpy_dtype)
+    safemin = np.maximum(one / finfo.max, (one + finfo.eps) * finfo.tiny)
+    pivmin = safemin * math_ops.maximum(one, math_ops.reduce_max(beta_sq))
+    alpha0_perturbation = math_ops.square(finfo.eps * beta_abs[0])
+    abs_tol = finfo.eps * t_norm
+    if tol:
+      abs_tol = math_ops.maximum(tol, abs_tol)
+    # In the worst case, when the absolute tolerance is eps*lambda_est_max and
+    # lambda_est_max = -lambda_est_min, we have to take as many bisection steps
+    # as there are bits in the mantissa plus 1.
+    max_it = finfo.nmant + 1
+
+    # Determine the indices of the desired eigenvalues, based on select and
+    # select_range.
+    asserts = None
+    if select == 'a':
+      target_counts = math_ops.range(n)
+    elif select == 'i':
+      asserts = check_ops.assert_less_equal(
+          select_range[0],
+          select_range[1],
+          message='Got empty index range in select_range.')
+      target_counts = math_ops.range(select_range[0], select_range[1] + 1)
+    elif select == 'v':
+      asserts = check_ops.assert_less(
+          select_range[0],
+          select_range[1],
+          message='Got empty interval in select_range.')
+    else:
+      raise ValueError("'select must have a value in {'a', 'i', 'v'}.")
+
+    if asserts:
+      with ops.control_dependencies([asserts]):
+        alpha = array_ops.identity(alpha)
+
+    # Run binary search for all desired eigenvalues in parallel, starting from
+    # the interval lightly wider than the estimated
+    # [lambda_est_min, lambda_est_max].
+    fudge = 2.1  # We widen starting interval the Gershgorin interval a bit.
+    norm_slack = math_ops.cast(n, alpha.dtype) * fudge * finfo.eps * t_norm
+    if select in {'a', 'i'}:
+      lower = lambda_est_min - norm_slack - 2 * fudge * pivmin
+      upper = lambda_est_max + norm_slack + fudge * pivmin
+    else:
+      # Count the number of eigenvalues in the given range.
+      lower = select_range[0] - norm_slack - 2 * fudge * pivmin
+      upper = select_range[1] + norm_slack + fudge * pivmin
+      first = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, lower)
+      last = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, upper)
+      target_counts = math_ops.range(first, last)
+
+    # Pre-broadcast the scalars used in the Sturm sequence for improved
+    # performance.
+    target_shape = array_ops.shape(target_counts)
+    lower = array_ops.broadcast_to(lower, shape=target_shape)
+    upper = array_ops.broadcast_to(upper, shape=target_shape)
+    pivmin = array_ops.broadcast_to(pivmin, target_shape)
+    alpha0_perturbation = array_ops.broadcast_to(alpha0_perturbation,
+                                                 target_shape)
+
+    # Start parallel binary searches.
+    def cond(i, lower, upper):
+      return math_ops.logical_and(
+          math_ops.less(i, max_it),
+          math_ops.less(abs_tol, math_ops.reduce_max(upper - lower)))
+
+    def body(i, lower, upper):
+      mid = 0.5 * (lower + upper)
+      counts = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, mid)
+      lower = array_ops.where(counts <= target_counts, mid, lower)
+      upper = array_ops.where(counts > target_counts, mid, upper)
+      return i + 1, lower, upper
+
+    _, lower, upper = control_flow_ops.while_loop(cond, body, [0, lower, upper])
+    eigvals = 0.5 * (upper + lower)
+    return eigvals

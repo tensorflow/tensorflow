@@ -190,7 +190,7 @@ int main(int argc, char **argv) {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
-        output_arrays, &source_mgr, &context);
+        output_arrays, control_output_arrays, &source_mgr, &context);
   }
 
   // If errors occur, the library call in the above already logged the error
@@ -237,6 +237,7 @@ int main(int argc, char **argv) {
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
+  pass_config.unfold_batch_matmul = unfold_batchmatmul;
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,

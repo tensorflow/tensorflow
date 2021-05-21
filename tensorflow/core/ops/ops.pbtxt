@@ -3757,6 +3757,88 @@ op {
   }
 }
 op {
+  name: "BatchMatMulV3"
+  input_arg {
+    name: "x"
+    type_attr: "Ta"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "Tb"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Ta"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tb"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "adj_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "BatchMatrixBandPart"
   input_arg {
     name: "input"
@@ -6871,6 +6953,13 @@ op {
     }
   }
   attr {
+    name: "blank_index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
     name: "T"
     type: "type"
     default_value {
@@ -7944,6 +8033,13 @@ op {
     }
     has_minimum: true
   }
+  attr {
+    name: "max_subdivs_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
   is_stateful: true
 }
 op {
@@ -8000,37 +8096,6 @@ op {
     type: "bool"
     default_value {
       b: true
-    }
-  }
-}
-op {
-  name: "CompareAndBitpack"
-  input_arg {
-    name: "input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "threshold"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type: DT_UINT8
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_BOOL
-        type: DT_HALF
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
-      }
     }
   }
 }
@@ -13322,6 +13387,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "stop_on_empty_dataset"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "Div"
@@ -13756,6 +13828,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -17083,6 +17162,7 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT32
         type: DT_UINT64
         type: DT_BFLOAT16
         type: DT_HALF
@@ -25077,12 +25157,12 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
         type: DT_UINT8
+        type: DT_INT16
         type: DT_UINT16
+        type: DT_INT32
         type: DT_UINT32
+        type: DT_INT64
         type: DT_UINT64
       }
     }
@@ -25337,10 +25417,14 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT8
         type: DT_UINT8
         type: DT_INT16
+        type: DT_UINT16
         type: DT_INT32
+        type: DT_UINT32
         type: DT_INT64
+        type: DT_UINT64
       }
     }
   }
@@ -27823,6 +27907,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "output_types"
@@ -35897,6 +35988,7 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT32
       }
     }
   }
@@ -36963,31 +37055,6 @@ op {
     type: "func"
   }
   is_stateful: true
-}
-op {
-  name: "RemoteFusedGraphExecute"
-  input_arg {
-    name: "inputs"
-    type_list_attr: "Tinputs"
-  }
-  output_arg {
-    name: "outputs"
-    type_list_attr: "Toutputs"
-  }
-  attr {
-    name: "Tinputs"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "Toutputs"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "serialized_remote_fused_graph_execute_info"
-    type: "string"
-  }
 }
 op {
   name: "RepeatDataset"
@@ -46241,6 +46308,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
@@ -49666,6 +49735,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -49854,6 +49924,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -49994,6 +50065,66 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SparseSegmentSumGrad"
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tsegmentids"
+  }
+  input_arg {
+    name: "output_dim0"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -55444,6 +55575,13 @@ op {
   output_arg {
     name: "output"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55521,6 +55659,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55630,6 +55775,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55649,6 +55801,13 @@ op {
   output_arg {
     name: "output_handles"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55668,6 +55827,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55716,6 +55882,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55749,6 +55922,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55776,6 +55956,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55809,6 +55996,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55832,6 +56026,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -58448,6 +58649,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -58493,6 +58695,7 @@ op {
     allowed_values {
       list {
         type: DT_UINT8
+        type: DT_DOUBLE
         type: DT_FLOAT
         type: DT_HALF
       }
@@ -58649,6 +58852,20 @@ op {
   attr {
     name: "key"
     type: "string"
+  }
+  attr {
+    name: "send_key"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "recv_key"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "cost_estimate_ns"

@@ -131,7 +131,7 @@ struct LegalizeGatherToTorchIndexSelectPass
     : public PassWrapper<LegalizeGatherToTorchIndexSelectPass, FunctionPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     PopulateGatherToTorchIndexSelectPatterns(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }

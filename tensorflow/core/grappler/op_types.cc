@@ -126,11 +126,11 @@ bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 bool IsCastLike(const NodeDef& node) {
   static const gtl::FlatSet<string>* const kCastLikeOps =
       CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Angle", "Bucketize", "Cast", "CompareAndBitpack", "Dequantize",
-          "HistogramFixedWidth", "Imag", "IsFinite", "IsInf", "IsNan",
-          "Quantize", "QuantizeDownAndShrinkRange", "QuantizeV2",
-          "QuantizedInstanceNorm", "QuantizedRelu", "QuantizedRelu6",
-          "QuantizedReluX", "Real", "Requantize"}));
+          "Angle", "Bucketize", "Cast", "Dequantize", "HistogramFixedWidth",
+          "Imag", "IsFinite", "IsInf", "IsNan", "Quantize",
+          "QuantizeDownAndShrinkRange", "QuantizeV2", "QuantizedInstanceNorm",
+          "QuantizedRelu", "QuantizedRelu6", "QuantizedReluX", "Real",
+          "Requantize"}));
   return kCastLikeOps->count(node.op()) > 0;
 }
 
@@ -297,7 +297,7 @@ bool IsFusedBatchNormGrad(const NodeDef& node) {
 
 bool IsGather(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Gather" || op == "GatherV2";
+  return op == "Gather" || op == "GatherV2" || op == "ResourceGather";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }

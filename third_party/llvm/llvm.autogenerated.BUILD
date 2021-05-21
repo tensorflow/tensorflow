@@ -480,6 +480,7 @@ llvm_target_list = [
             ("-gen-dag-isel", "lib/Target/AArch64/AArch64GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/AArch64/AArch64GenFastISel.inc"),
             ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
+            ("-gen-global-isel-combiner -combiners=AArch64O0PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenO0PreLegalizeGICombiner.inc"),
             ("-gen-global-isel-combiner -combiners=AArch64PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenPreLegalizeGICombiner.inc"),
             ("-gen-global-isel-combiner -combiners=AArch64PostLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenPostLegalizeGICombiner.inc"),
             ("-gen-global-isel-combiner -combiners=AArch64PostLegalizerLoweringHelper", "lib/Target/AArch64/AArch64GenPostLegalizeGILowering.inc"),
@@ -743,7 +744,7 @@ gentbl(
 
 gentbl(
     name = "omp_gen_impl",
-    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp")],
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
     td_srcs = [
@@ -2188,7 +2189,7 @@ cc_library(
         "lib/Frontend/OpenMP/*.cpp",
         "lib/Frontend/OpenMP/*.inc",
         "lib/Frontend/OpenMP/*.h",
-    ]) + ["include/llvm/Frontend/OpenMP/OMP.cpp"],
+    ]),
     hdrs = glob([
         "include/llvm/Frontend/OpenMP/*.h",
         "include/llvm/Frontend/OpenMP/*.def",
@@ -2228,8 +2229,7 @@ gentbl(
     name = "acc_gen_impl",
     library = False,
     tbl_outs = [
-        ("--gen-directive-gen", "include/llvm/Frontend/OpenACC/ACC.cpp.inc"),
-        ("--gen-directive-impl", "lib/Frontend/OpenACC/ACC.cpp"),
+        ("--gen-directive-impl", "include/llvm/Frontend/OpenACC/ACC.inc"),
     ],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenACC/ACC.td",
@@ -2241,12 +2241,13 @@ cc_library(
     srcs = glob([
         "lib/Frontend/OpenACC/*.cpp",
     ]) + [
-        "include/llvm/Frontend/OpenACC/ACC.cpp.inc",
-        "lib/Frontend/OpenACC/ACC.cpp",
+        "include/llvm/Frontend/OpenACC/ACC.inc",
     ],
     hdrs = glob([
         "include/llvm/Frontend/OpenACC/*.h",
-    ]) + ["include/llvm/Frontend/OpenACC/ACC.h.inc"],
+    ]) + [
+        "include/llvm/Frontend/OpenACC/ACC.h.inc",
+    ],
     copts = llvm_copts,
     deps = [
         ":Analysis",
@@ -4289,25 +4290,13 @@ cc_library(
         "lib/TextAPI/*.c",
         "lib/TextAPI/*.cpp",
         "lib/TextAPI/*.inc",
-        "lib/TextAPI/ELF/*.cpp",
-        "lib/TextAPI/MachO/*.cpp",
-        "lib/TextAPI/MachO/*.h",
         "lib/TextAPI/*.h",
     ]),
     hdrs = glob([
         "include/llvm/TextAPI/*.h",
         "include/llvm/TextAPI/*.def",
         "include/llvm/TextAPI/*.inc",
-    ]) + [
-        "include/llvm/TextAPI/MachO/Architecture.def",
-        "include/llvm/TextAPI/MachO/PackedVersion.h",
-        "include/llvm/TextAPI/MachO/InterfaceFile.h",
-        "include/llvm/TextAPI/MachO/Symbol.h",
-        "include/llvm/TextAPI/MachO/ArchitectureSet.h",
-        "include/llvm/TextAPI/MachO/TextAPIWriter.h",
-        "include/llvm/TextAPI/MachO/TextAPIReader.h",
-        "include/llvm/TextAPI/MachO/Architecture.h",
-    ],
+    ]),
     copts = llvm_copts,
     deps = [
         ":BinaryFormat",

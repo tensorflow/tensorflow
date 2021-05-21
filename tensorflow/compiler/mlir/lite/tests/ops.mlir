@@ -82,6 +82,14 @@ func @testGatherUnsupportedRank(%arg0 : tensor<f32>, %arg1 : tensor<1xi32>) -> t
 
 // -----
 
+// CHECK-LABEL: testGatherWithBatchDims
+func @testGatherWithBatchDims(%arg0 : tensor<2xf32>, %arg1 : tensor<2xi32>) -> tensor<2xf32> {
+  %0 = "tfl.gather"(%arg0, %arg1) {axis = 1 : i32, batch_dims = 2 : i32}: (tensor<2xf32>,tensor<2xi32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: testAbs
 func @testAbs(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -299,6 +307,14 @@ func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testAddWithI64Broadcasting
+func @testAddWithI64Broadcasting(tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64> {
+^bb0(%arg0: tensor<2x3xi64>, %arg1: tensor<3xi64>):
+  // CHECK: "tfl.add"(%arg0, %arg1)
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor< 2x3xi64>, tensor<3xi64>) -> tensor<2x3xi64>
+  return %0#0 : tensor<2x3xi64>
+}
+
 // -----
 
 func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>> {
@@ -307,6 +323,7 @@ func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> ten
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>>
   return %0#0 : tensor<2x2x!quant.any<i16:f32>>
 }
+
 // -----
 
 func @sub_with_quantized_i8_five_dim_broadcasting(tensor<1x1x1x1x1xf32>, tensor<1xf32>) -> tensor<1x1x1x1x1x!quant.any<i8:f32>> {
@@ -614,7 +631,8 @@ func @testMaxPool2DWrongOperandStorageType(tensor<1x7x7x16x!quant.uniform<i9:f32
 
 func @testTFLiteDetectionPostProcess(%arg0: tensor<1x64x64x32xf32>, %arg1: tensor<1x64x64x32xf32>, %arg2: tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>) {
   %0, %1, %2, %3 = "tfl.custom_tf"(%arg0, %arg1, %arg2) ({
-    %4, %5, %6, %7 = "tf.TFLite_Detection_PostProcess"(%arg0, %arg1, %arg2) {_output_quantized = true, _output_types = [f32, f32, f32, f32], _support_output_type_float_in_quantized_op = true, detections_per_class = 100 : i64, device = "", h_scale = 5.000000e+00 : f32, max_classes_per_detection = 1 : i64, max_detections = 20 : i64, nms_iou_threshold = 6.000000e-01 : f32, nms_score_threshold = 3.000000e-01 : f32, num_classes = 90 : i64, use_regular_nms = false, w_scale = 5.000000e+00 : f32, x_scale = 1.000000e+01 : f32, y_scale = 1.000000e+01 : f32} : (tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
+  ^bb0(%a0: tensor<1x64x64x32xf32>, %a1: tensor<1x64x64x32xf32>, %a2: tensor<1x64x64x32xf32>):
+    %4, %5, %6, %7 = "tf.TFLite_Detection_PostProcess"(%a0, %a1, %a2) {_output_quantized = true, _output_types = [f32, f32, f32, f32], _support_output_type_float_in_quantized_op = true, detections_per_class = 100 : i64, device = "", h_scale = 5.000000e+00 : f32, max_classes_per_detection = 1 : i64, max_detections = 20 : i64, nms_iou_threshold = 6.000000e-01 : f32, nms_score_threshold = 3.000000e-01 : f32, num_classes = 90 : i64, use_regular_nms = false, w_scale = 5.000000e+00 : f32, x_scale = 1.000000e+01 : f32, y_scale = 1.000000e+01 : f32} : (tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
     "tfl.yield"(%4, %5, %6, %7) : (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>) -> ()
   }) : (tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
   return %0, %1 : tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>
@@ -1034,6 +1052,16 @@ func @testPad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 
 // -----
 
+// CHECK-LABEL: testPad5D
+func @testPad5D(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
+  // CHECK: "tfl.pad"(%arg0, %arg1)
+  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+}
+
+// -----
+
 // test Pad with invalid paddings size
 func @testPadWithInvalidPaddingsDim(tensor<2x1x3xf32>, tensor<2x2xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x2xi32>):
@@ -1066,10 +1094,10 @@ func @testPadUnknownPaddings(tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f32
 
 // -----
 
-func @testPadUnsupportedPaddings(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
-^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
-  // expected-error @+1 {{'tfl.pad' op failed to verify that the first dim size of the padding argument must be at most 4}}
-  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32>
+func @testPadUnsupportedPaddings(tensor<*xf32>, tensor<6x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<6x3xi32>):
+  // expected-error @+1 {{'tfl.pad' op failed to verify that the first dim size of the padding argument must be at most 5}}
+  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<*xf32>, tensor<6x3xi32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
 }
 
@@ -1096,6 +1124,17 @@ func @testPadV2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   %cst = constant dense<2.0> : tensor<f32>
   // CHECK: "tfl.padv2"(%arg0, %arg1, %cst)
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+}
+
+// -----
+
+// CHECK-LABEL: testPadV25D
+func @testPadV25D(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
+  %cst = constant dense<2.0> : tensor<f32>
+  // CHECK: "tfl.padv2"(%arg0, %arg1, %cst)
+  %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<5x3xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
 }
 
@@ -1158,11 +1197,11 @@ func @testPadV2UnknownPaddings(tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f
 
 // -----
 
-func @testPadV2UnsupportedPaddings(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
-^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
+func @testPadV2UnsupportedPaddings(tensor<*xf32>, tensor<6x3xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<*xf32>, %arg1: tensor<6x3xi32>):
   %cst = constant dense<2.0> : tensor<f32>
-  // expected-error @+1 {{'tfl.padv2' op failed to verify that the first dim size of the padding argument must be at most 4}}
-  %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<5x3xi32>, tensor<f32>) -> tensor<? x f32>
+  // expected-error @+1 {{'tfl.padv2' op failed to verify that the first dim size of the padding argument must be at most 5}}
+  %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<6x3xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
 }
 
@@ -2476,6 +2515,24 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   return %0#0 : tensor<i32>
 }
 
+func @if_then_else(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tfl.if"(%arg0) ( {
+    "tfl.yield"(%arg1) : (tensor<1xf32>) -> ()
+  },  {
+    %1 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    "tfl.yield"(%1) : (tensor<1xf32>) -> ()
+  }) : (tensor<i1>) -> (tensor<1xf32>)
+  return %0 : tensor<1xf32>
+}
+
+func @if_then(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tfl.if"(%arg0) ( {
+    %1 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    "tfl.yield"(%1) : (tensor<1xf32>) -> ()
+  }) : (tensor<i1>) -> (tensor<1xf32>)
+  return %0 : tensor<1xf32>
+}
+
 // -----
 
 // CHECK-LABEL: valid_unranked_inputs_on_reshape
@@ -2635,4 +2692,12 @@ func @testImagWrongType(%arg0: tensor<3 x complex<f64>>) -> tensor<4xi32> {
   // expected-error @+1 {{requires the same shape for all operands and results}}
   %0 = "tfl.imag"(%arg0): (tensor<3 x complex<f64>>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
+}
+
+// -----
+
+func @all(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  // CHECK: "tfl.reduce_all"(%arg0, %arg1)
+  %0 = "tfl.reduce_all"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
 }

@@ -1832,6 +1832,38 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
               GmockMatch(m::Broadcast(m::Constant())));
 }
 
+TEST_F(AlgebraicSimplifierTest, ZeroSizedVariadicReduceWindow) {
+  const char* const hlo_string = R"(
+HloModule ZeroSizedVariadicReduceWindow
+
+ZeroSizedVariadicReduceWindow.add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  p3 = f32[] parameter(3)
+  add.0 = f32[] add(p0, p1)
+  add.1 = f32[] add(p2, p3)
+  ROOT r = tuple(add.0, add.1)
+}
+
+ENTRY ZeroSizedReduceWindow {
+  op = f32[3,0] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce-window = (f32[5,2], f32[5,2]) reduce-window(op, op, constant, constant), window={size=1x1 pad=1_1x1_1}, to_apply=ZeroSizedVariadicReduceWindow.add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Parameter(0),
+                                         m::Constant(), m::Constant())));
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Broadcast(m::Constant()),
+                                  m::Broadcast(m::Constant()))));
+}
+
 TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
   auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
@@ -7225,6 +7257,40 @@ TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
               GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduceWindow) {
+  const char* kModuleStr = R"(
+    HloModule m
+    fn {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      a = f32[] add(p0, p1)
+      ROOT t = (f32[]) tuple(a)
+    }
+    test {
+      p0 = f32[32,8,6,7] parameter(0)
+      c = f32[] constant(0)
+      ROOT r = (f32[32,8,6,7]) reduce-window(p0, c), to_apply=fn, window={size=1x1x1x1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::ReduceWindow(m::Parameter(0), m::ConstantScalar(0)))));
+  ASSERT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(0)
+                ->called_computations()
+                .size(),
+            1);
+  EXPECT_THAT(m->entry_computation()
+                  ->root_instruction()
+                  ->operand(0)
+                  ->called_computations()[0]
+                  ->root_instruction(),
+              GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, BroadcastAndPadReorder) {
   const char* kModuleStr = R"(
     HloModule m
@@ -7305,6 +7371,95 @@ ENTRY f {
   ASSERT_EQ(pad->padding_config().dimensions_size(), 1);
   EXPECT_EQ(pad->padding_config().dimensions(0).edge_padding_low(), 1);
   EXPECT_EQ(pad->padding_config().dimensions(0).edge_padding_high(), 0);
+}
+
+// Test folding of dynamic_slice(iota, index) -> clamp(index, 0, size-1)
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfIota) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %cst = s32[2]{0} constant({0, 1})
+  %index = u32[] parameter(0)
+  ROOT %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %cst, u32[] %index),
+                                  dynamic_slice_sizes={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(m::Convert(
+                  m::Clamp(m::Constant(), m::Parameter(0), m::Constant())))));
+}
+
+// Test folding of clamp(pid, 0, limit) -> pid
+TEST_F(AlgebraicSimplifierTest, ClampOfPartitionId) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %pid = u32[] partition-id()
+  %low = u32[] constant(0)
+  %high = u32[] constant(5)
+  ROOT %c = u32[] clamp(%low, %pid, %high)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/1,
+                                                /*num_partitions=*/6));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::PartitionId()));
+}
+
+TEST_F(AlgebraicSimplifierTest, ConstantToIota) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %cst = s32[4] constant({0, 25, 50, 75})
+  ROOT %s = s32[4] copy(s32[4] %cst)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Iota(), m::Broadcast())));
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfStridedIota) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %cst = s32[4] constant({0, 25, 50, 75})
+  %index = u32[] parameter(0)
+  ROOT %dynamic-slice = s32[1]{0} dynamic-slice(s32[4]{0} %cst, u32[] %index),
+                                  dynamic_slice_sizes={1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(
+                  m::Multiply(m::Convert(m::Clamp()), m::Constant()))));
 }
 
 }  // namespace

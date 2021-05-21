@@ -41,7 +41,11 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    licenses = ["notice"],  # Apache 2.0
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
+    licenses = ["notice"],
 )
 
 # List of exported source files.
@@ -80,6 +84,8 @@ filegroup(
         "bcast.h",
         "command_line_flags.cc",
         "command_line_flags.h",
+        "determinism.cc",
+        "determinism.h",
         "device_name_utils.cc",
         "device_name_utils.h",
         "dump_graph.cc",
@@ -143,6 +149,7 @@ filegroup(
         "bcast.h",
         "command_line_flags.h",
         "debug_events_writer.h",
+        "determinism.h",
         "device_name_utils.h",
         "dump_graph.h",
         "einsum_op_util.h",
@@ -210,6 +217,7 @@ filegroup(
         "bcast.cc",
         "command_line_flags.cc",
         "debug_events_writer.cc",
+        "determinism.cc",
         "device_name_utils.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
@@ -237,6 +245,7 @@ filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
         "env_var.h",
+        "use_cudnn.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

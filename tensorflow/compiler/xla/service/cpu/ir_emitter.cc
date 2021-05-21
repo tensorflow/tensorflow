@@ -872,7 +872,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   auto rhs = convolution->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, F64, C64, C128}));
+      /*supported_types=*/
+      {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
 
   // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.
@@ -1441,12 +1442,13 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       };
 
     case HloOpcode::kMaximum:
-      return [root_is_floating_point, root_is_signed](
+      return [root_is_floating_point, root_is_signed, this](
                  llvm::IRBuilder<>* b, llvm::Value* lhs,
                  llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
-          return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
-                                              {lhs, rhs}, {lhs->getType()}, b);
+          return llvm_ir::EmitFloatMax(
+              lhs, rhs, b,
+              hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max());
         }
 
         return b->CreateSelect(
@@ -1457,12 +1459,13 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       };
 
     case HloOpcode::kMinimum:
-      return [root_is_floating_point, root_is_signed](
+      return [root_is_floating_point, root_is_signed, this](
                  llvm::IRBuilder<>* b, llvm::Value* lhs,
                  llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
-          return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
-                                              {lhs, rhs}, {lhs->getType()}, b);
+          return llvm_ir::EmitFloatMin(
+              lhs, rhs, b,
+              hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max());
         }
 
         return b->CreateSelect(

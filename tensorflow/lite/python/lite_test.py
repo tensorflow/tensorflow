@@ -346,7 +346,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     if is_int_only:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -357,7 +357,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     else:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -387,6 +387,39 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertLen(output_details, 2)
     self.assertEqual(output_details[0]['dtype'], expected_ceil_dtype)
     self.assertEqual(output_details[1]['dtype'], expected_dtype)
+
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True))
+  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+                                        enable_mlir_quantizer=False):
+    k_conv_name = 'Conv2D1'
+    k_num_filters = 16
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getIntegerQuantizeModel()
+      sess = session.Session()
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel:
+      quantized_converter._experimental_disable_per_channel = (
+          disable_per_channel)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    detail = next((d for d in interpreter.get_tensor_details()
+                   if d['name'] == k_conv_name))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel else k_num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
@@ -918,14 +951,14 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       ('UseTfliteBuiltinsIntDisableMLIR',
        [lite.OpsSet.TFLITE_BUILTINS_INT8], False),
       # Quantize model to Int16: with disable mlir
-      ('UseTfliteBuiltinsInt16DisableMLIR',
-       [lite.OpsSet.\
-       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       False),
-      ('UseTfliteBuiltinsInt16EnableMLIR',
-       [lite.OpsSet.\
-       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       True))
+      ('UseTfliteBuiltinsInt16DisableMLIR', [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ], False),
+      ('UseTfliteBuiltinsInt16EnableMLIR', [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ], True))
   def testQuantizeInt8And16x8(self, supported_ops, enable_mlir_converter):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getIntegerQuantizeModel()
@@ -2832,6 +2865,22 @@ class ControlFlowV1OpsTest(LiteTest):
         'Failed to functionalize Control Flow V1 ops. Consider using Control '
         'Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/'
         'tf/compat/v1/enable_control_flow_v2.', str(error.exception))
+
+
+class QuantizationModeTest(LiteTest, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('size', lite.Optimize.OPTIMIZE_FOR_SIZE),
+      ('latency', lite.Optimize.OPTIMIZE_FOR_LATENCY))
+  def testDeprecatedOptionWarning(self, optimization):
+    """Test if the warning message when using TOCO is logged."""
+    log = io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    warning_message = 'please use optimizations=[Optimize.DEFAULT] instead.'
+    lite.QuantizationMode([optimization], lite.TargetSpec(), None, None)
+    self.assertIn(warning_message, log.getvalue())
+    logging.root.removeHandler(handler)
 
 
 if __name__ == '__main__':

@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
@@ -58,10 +62,10 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 // fails comparison for equality.
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
-    std::acos, test::OpsTestConfig().ExpectStrictlyEqual())
+    std::acos, test::OpsTestConfig())
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
-    std::acos, test::OpsTestConfig().ExpectStrictlyEqual())
+    std::acos, test::OpsTestConfig())
 
 /// Test `tf.Acosh`.
 
@@ -437,6 +441,36 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX64, DT_FLOAT, baseline_imag,
 GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
                       test::OpsTestConfig().AddTout().NoBufferReuse())
 
+/// Test `tf.Inv`.
+
+template <typename T>
+T baseline_inv(T x) {
+  return T(1) / x;
+}
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Inv, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64>(), baseline_inv,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Inv, DT_FLOAT, DT_FLOAT, baseline_inv,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Inv, DT_DOUBLE, DT_DOUBLE, baseline_inv,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Inv, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, baseline_inv,
+                        test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Inv, DT_COMPLEX64, DT_COMPLEX64,
+    test::DefaultInputNonZero<std::complex<float>>(), baseline_inv,
+    test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Inv, DT_COMPLEX128, DT_COMPLEX128,
+    test::DefaultInputNonZero<std::complex<double>>(), baseline_inv,
+    test::OpsTestConfig())
+
 /// Test `tf.Invert`.
 
 /// Reference implementation.
@@ -627,6 +661,52 @@ GENERATE_DEFAULT_TEST(Real, DT_COMPLEX64, DT_FLOAT, baseline_real,
 GENERATE_DEFAULT_TEST(Real, DT_COMPLEX128, DT_DOUBLE, baseline_real,
                       test::OpsTestConfig().AddTout().NoBufferReuse())
 
+/// Test `tf.Reciprocal`.
+
+template <typename T>
+T baseline_reciprocal(T x) {
+  return T(1) / x;
+}
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Reciprocal, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64>(),
+    baseline_reciprocal, test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Reciprocal, DT_FLOAT, DT_FLOAT, baseline_reciprocal,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Reciprocal, DT_DOUBLE, DT_DOUBLE, baseline_reciprocal,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Reciprocal, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_reciprocal, test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Reciprocal, DT_COMPLEX64, DT_COMPLEX64,
+    test::DefaultInputNonZero<std::complex<float>>(), baseline_reciprocal,
+    test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Reciprocal, DT_COMPLEX128, DT_COMPLEX128,
+    test::DefaultInputNonZero<std::complex<double>>(), baseline_reciprocal,
+    test::OpsTestConfig())
+
+/// Test `tf.Relu`.
+
+template <typename T>
+T baseline_relu(T x) {
+  return std::max(x, static_cast<T>(0.0));
+}
+
+GENERATE_DEFAULT_TEST(Relu, DT_FLOAT, DT_FLOAT, baseline_relu,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Relu, DT_DOUBLE, DT_DOUBLE, baseline_relu,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Relu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_relu, test::OpsTestConfig())
+
 /// Test `tf.Rsqrt`.
 
 /// Reference implementation.
@@ -718,6 +798,28 @@ GENERATE_DEFAULT_TEST(Tanh, DT_DOUBLE, DT_DOUBLE, std::tanh,
 
 GENERATE_DEFAULT_TEST_2(Tanh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tanh,
                         test::OpsTestConfig())
+
+// Test small/large input values to be approximated as constant -1/1.
+template <typename T>
+T baseline_tanh_limits(T x) {
+  assert((x < -10 || x > 10) &&
+         "baseline_tanh_limits is only applicable to small/large values");
+  return x < 0.0 ? -1.0 : 1.0;
+}
+TEST_F(UnaryOpsTest, TanhSmallAndLarge) {
+  Test<float, float, float, float>(
+      "Tanh", test::DefaultInputShape(),
+      test::InputAsVector<float>({-100.0, -10.5, 12.0, 123.0, 10000.0}),
+      baseline_tanh_limits,
+      test::OpsTestConfig().ExpectStrictlyEqual().SuppressTolerance());
+}
+
+TEST_F(UnaryOpsTest, TanhNaN) {
+  Test<float, float, float, float>(
+      "Tanh", test::DefaultInputShape(),
+      test::InputAsVector<float>({std::numeric_limits<float>::quiet_NaN()}),
+      std::tanh, test::OpsTestConfig().ExpectStrictlyEqual());
+}
 
 /// Test `tf.Square`.
 

@@ -67,12 +67,62 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
+/// Test `tf.Ceil`.
+GENERATE_DEFAULT_TEST(Ceil, DT_HALF, DT_HALF, Eigen::numext::ceil,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Ceil, DT_FLOAT, DT_FLOAT, Eigen::numext::ceil,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Ceil, DT_DOUBLE, DT_DOUBLE, Eigen::numext::ceil,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Cos`.
+GENERATE_DEFAULT_TEST(Cos, DT_HALF, DT_HALF, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Cos, DT_FLOAT, DT_FLOAT, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Floor`.
+GENERATE_DEFAULT_TEST(Floor, DT_HALF, DT_HALF, Eigen::numext::floor,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Floor, DT_FLOAT, DT_FLOAT, Eigen::numext::floor,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Floor, DT_DOUBLE, DT_DOUBLE, Eigen::numext::floor,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Invert`.
+template <typename T>
+T baseline_invert(T x) {
+  return ~x;
+}
+GENERATE_DEFAULT_TEST(
+    Invert, DT_INT8, DT_INT8, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_INT16, DT_INT16, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_INT32, DT_INT32, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Invert, DT_INT64, DT_INT64, baseline_invert,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+
 /// Test `tf.Rsqrt`.
 GENERATE_DEFAULT_TEST(Rsqrt, DT_HALF, DT_HALF, Eigen::numext::rsqrt,
                       test::OpsTestConfig().NoBufferReuse())
 GENERATE_DEFAULT_TEST(Rsqrt, DT_FLOAT, DT_FLOAT, Eigen::numext::rsqrt,
                       test::OpsTestConfig().NoBufferReuse())
 GENERATE_DEFAULT_TEST(Rsqrt, DT_DOUBLE, DT_DOUBLE, Eigen::numext::rsqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Sin`.
+GENERATE_DEFAULT_TEST(Sin, DT_HALF, DT_HALF, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sin, DT_FLOAT, DT_FLOAT, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, Eigen::numext::sin,
                       test::OpsTestConfig().NoBufferReuse())
 
 /// Test `tf.Sqrt`.
@@ -104,6 +154,14 @@ GENERATE_DEFAULT_TEST(
 GENERATE_DEFAULT_TEST(Square, DT_COMPLEX64, DT_COMPLEX64, baseline_square,
                       test::OpsTestConfig().NoBufferReuse())
 GENERATE_DEFAULT_TEST(Square, DT_COMPLEX128, DT_COMPLEX128, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Tan`.
+GENERATE_DEFAULT_TEST(Tan, DT_HALF, DT_HALF, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Tan, DT_FLOAT, DT_FLOAT, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Tan, DT_DOUBLE, DT_DOUBLE, Eigen::numext::tan,
                       test::OpsTestConfig().NoBufferReuse())
 
 }  // namespace
