@@ -2170,21 +2170,20 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
     blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
   TF_ASSIGN_OR_RETURN(cublasMath_t math_type,
                       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b));
-
   TF_ASSIGN_OR_RETURN(auto timer, StartGpuTimerForProfile(
                                       stream, parent_, output_profile_result));
 
   cudaDataType_t cuda_in_type = GetCUDADataType(type_a);
-  port::Status st = DoBlasInternalImpl(
+  TF_RETURN_IF_ERROR(DoBlasInternalImpl(
       AS_LAMBDA(cublasGemmStridedBatchedEx), stream, /*pointer_mode_host=*/true,
       math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
       alpha, a.opaque(), cuda_in_type, lda, stride_a, b.opaque(), cuda_in_type,
       ldb, stride_b, beta, c->opaque(), GetCUDADataType(type_c), ldc, stride_c,
       batch_count, CUDAComputationType(computation_type),
-      static_cast<cublasGemmAlgo_t>(algorithm));
+      static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));
-  return st;
+  return port::Status::OK();
 }
 
 bool CUDABlas::GetBlasGemmAlgorithms(

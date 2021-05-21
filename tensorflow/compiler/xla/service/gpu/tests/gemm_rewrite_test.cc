@@ -75,6 +75,25 @@ ENTRY AddDotsFunc {
       )");
 }
 
+TEST_F(GemmRewriteTest, TestBatchedAutotuning) {
+  const char* hlo_text = R"(
+HloModule ComplexDotMultipleNonContracting
+
+ENTRY %test {
+  %lhs = f32[7,17,10,13]{3,2,1,0} parameter(0)
+  %rhs = f32[7,9,10,13,6]{4,3,2,1,0} parameter(1)
+  ROOT %dot = f32[10,7,17,9,6]{4,3,2,1,0} dot(%lhs, %rhs), lhs_batch_dims={2,0}, rhs_batch_dims={2,0}, lhs_contracting_dims={3}, rhs_contracting_dims={3}
+}
+
+)";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK: \"batch_size\":\"70\"
+; CHECK: selected_algorithm
+      )");
+}
+
 TEST_F(GemmRewriteTest, SimpleRewriteDeterministic) {
   const char* hlo_text = R"(
 HloModule SimpleGemm
