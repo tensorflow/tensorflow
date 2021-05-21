@@ -1176,6 +1176,22 @@ LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(RealDynamicSliceOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicGatherOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir
