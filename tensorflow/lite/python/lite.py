@@ -645,7 +645,8 @@ class TFLiteConverterBase(object):
       self._tflite_metrics.set_converter_param(key, format_param(value))
     self._tflite_metrics.set_export_required()
 
-  def _apply_optimizations(self, model, quant_mode, quant_io=True):
+  @convert_phase(Component.OPTIMIZE_TFLITE_MODEL)
+  def _optimize_tflite_model(self, model, quant_mode, quant_io=True):
     """Apply optimizations on a TFLite model."""
 
     if quant_mode.is_integer_quantize():
@@ -773,6 +774,33 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
           _convert_debug_info_func(self._trackable_obj.graph_debug_info),
           graph_def)
 
+  @convert_phase(Component.PREPARE_TF_MODEL, SubComponent.OPTIMIZE_TF_MODEL)
+  def _optimize_tf_model(self, graph_def, input_tensors, output_tensors,
+                         frozen_func):
+    """Run a Grappler pass to optimize the TensorFlow graph.
+
+    Args:
+      graph_def: Frozen GraphDef to be optimized.
+      input_tensors: List of input tensors.
+      output_tensors: List of output tensors.
+      frozen_func: TensorFlow Graph.
+
+    Returns:
+      The optimized TensorFlow graph.
+    """
+    grappler_config = self._grappler_config()
+    # Skip running grappler when there are no optimizers to run. If not,
+    # grappler will run with the default optimizer set and it will lead to
+    # causing an unexpected behavior.
+    if grappler_config.graph_options.rewrite_options.optimizers:
+      graph_def = _run_graph_optimizations(
+          graph_def,
+          input_tensors,
+          output_tensors,
+          config=grappler_config,
+          graph=frozen_func.graph)
+    return graph_def
+
   def convert(self, graph_def, input_tensors, output_tensors):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -811,7 +839,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         output_tensors=output_tensors,
         **converter_kwargs)
 
-    result = self._apply_optimizations(
+    result = self._optimize_tflite_model(
         result, self._quant_mode, quant_io=self.experimental_new_quantizer)
 
     return result
@@ -909,7 +937,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     result = _convert_saved_model(**converter_kwargs)
 
-    result = self._apply_optimizations(
+    result = self._optimize_tflite_model(
         result, quant_mode, quant_io=self.experimental_new_quantizer)
 
     self._increase_conversion_success_metric(result)
@@ -1043,18 +1071,8 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     graph_def, input_tensors, output_tensors, frozen_func = (
         self._freeze_keras_model())
 
-    # Run a Grappler pass.
-    grappler_config = self._grappler_config()
-    # Skip running grappler when there are no optimizers to run. If not,
-    # grappler will run with the default optimizer set and it will lead to
-    # causing an unexpected behavior.
-    if grappler_config.graph_options.rewrite_options.optimizers:
-      graph_def = _run_graph_optimizations(
-          graph_def,
-          input_tensors,
-          output_tensors,
-          config=grappler_config,
-          graph=frozen_func.graph)
+    graph_def = self._optimize_tf_model(graph_def, input_tensors,
+                                        output_tensors, frozen_func)
 
     result = super(TFLiteKerasModelConverterV2,
                    self).convert(graph_def, input_tensors, output_tensors)
@@ -1134,18 +1152,8 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     graph_def, input_tensors, output_tensors, frozen_func = (
         self._freeze_concrete_function())
 
-    # Run a Grappler pass.
-    grappler_config = self._grappler_config()
-    # Skip running grappler when there are no optimizers to run. If not,
-    # grappler will run with the default optimizer set and it will lead to
-    # causing an unexpected behavior.
-    if grappler_config.graph_options.rewrite_options.optimizers:
-      graph_def = _run_graph_optimizations(
-          graph_def,
-          input_tensors,
-          output_tensors,
-          config=grappler_config,
-          graph=frozen_func.graph)
+    graph_def = self._optimize_tf_model(graph_def, input_tensors,
+                                        output_tensors, frozen_func)
 
     result = super(TFLiteFrozenGraphConverterV2,
                    self).convert(graph_def, input_tensors, output_tensors)
@@ -1461,6 +1469,41 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     else:
       self._quantized_stats = None
 
+  @convert_phase(Component.PREPARE_TF_MODEL, SubComponent.OPTIMIZE_TF_MODEL)
+  def _optimize_tf_model(self, graph_def, input_tensors, output_tensors,
+                         quant_mode):
+    """Run a Grappler pass to optimize the TensorFlow graph.
+
+    Args:
+      graph_def: Frozen GraphDef to be optimized.
+      input_tensors: List of input tensors.
+      output_tensors: List of output tensors.
+      quant_mode: the quantization mode.
+
+    Returns:
+      The optimized TensorFlow graph.
+    """
+    # Disable grappler constant folding if there are training quant ops.
+    if self.saved_model_dir or quant_mode.contains_training_quant_op():
+      return graph_def
+
+    try:
+      # TODO(b/150163103): Merge `disabling lower using switch merge' calls.
+      # Grappler will also try to lower while loop into switch merge
+      # representation which is undesired for Ophints, so we simply remove
+      # those attributes to prevent Grappler from doing so.
+      graph = _convert_to_constants.disable_lower_using_switch_merge(graph_def)
+      # Run function inlining optimization to ensure any models generated
+      # through the from_frozen_graph path have been inlined.
+      optimized_graph = _run_graph_optimizations(
+          graph,
+          input_tensors,
+          output_tensors,
+          config=self._grappler_config(["function"]))
+      return optimized_graph
+    except Exception:  # pylint: disable=broad-except
+      return graph_def
+
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -1478,26 +1521,9 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset, self._graph_def)
 
-    optimized_graph = self._graph_def
-    if not self.saved_model_dir:
-      # Disable grappler constant folding if there are training quant ops.
-      if not quant_mode.contains_training_quant_op():
-        try:
-          # TODO(b/150163103): Merge `disabling lower using switch merge' calls.
-          # Grappler will also try to lower while loop into switch merge
-          # representation which is undesired for Ophints, so we simply remove
-          # those attributes to prevent Grappler from doing so.
-          graph_def = _convert_to_constants.disable_lower_using_switch_merge(
-              optimized_graph)
-          # Run function inlining optimization to ensure any models generated
-          # through the from_frozen_graph path have been inlined.
-          optimized_graph = _run_graph_optimizations(
-              graph_def,
-              self._input_tensors,
-              self._output_tensors,
-              config=self._grappler_config(["function"]))
-        except Exception:  # pylint: disable=broad-except
-          optimized_graph = self._graph_def
+    optimized_graph = self._optimize_tf_model(self._graph_def,
+                                              self._input_tensors,
+                                              self._output_tensors, quant_mode)
 
     self._debug_info = _get_debug_info(self._debug_info_func, optimized_graph)
 
@@ -1543,7 +1569,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
           output_arrays=self._output_arrays,
           **converter_kwargs)
 
-    result = self._apply_optimizations(
+    result = self._optimize_tflite_model(
         result, quant_mode, quant_io=not self.experimental_new_converter)
 
     return result

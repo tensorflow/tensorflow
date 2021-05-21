@@ -361,6 +361,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":convert_phase",
         ":lite_constants",
         ":util",
         ":wrap_toco",
@@ -414,6 +415,7 @@ py_library(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
+        ":convert_phase",
         ":util",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
