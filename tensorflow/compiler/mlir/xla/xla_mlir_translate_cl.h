@@ -25,5 +25,6 @@ limitations under the License.
 extern llvm::cl::opt<bool> emit_use_tuple_arg;
 extern llvm::cl::opt<bool> emit_return_tuple;
 extern llvm::cl::opt<bool> optimize_xla_hlo;
+extern llvm::cl::opt<bool> prefer_tf2xla;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_XLA_MLIR_TRANSLATE_CL_H_

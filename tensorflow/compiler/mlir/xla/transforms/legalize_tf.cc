@@ -81,9 +81,11 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
  public:
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
-                      llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+                      llvm::Optional<StringRef> tf2xla_fallback_device_type,
+                      bool prefer_tf2xla) {
     allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
+    prefer_tf2xla_ = prefer_tf2xla;
     use_tf2xla_fallback_ = tf2xla_fallback_device_type.hasValue();
     if (tf2xla_fallback_device_type.hasValue()) {
       device_type_ = tf2xla_fallback_device_type.getValue().str();
@@ -6382,7 +6384,8 @@ void LegalizeTF::runOnFunction() {
     tf2xla_fallback_device_type = device_type_;
   }
   if (failed(legalizeTF(getFunction(), allow_partial_conversion_,
-                        legalize_chlo_, tf2xla_fallback_device_type))) {
+                        legalize_chlo_, tf2xla_fallback_device_type,
+                        prefer_tf2xla_))) {
     signalPassFailure();
   }
 }
@@ -6391,9 +6394,10 @@ void LegalizeTF::runOnFunction() {
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
-LogicalResult legalizeTF(
-    Operation *op, bool allow_partial_conversion, bool legalize_chlo,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
+                         bool legalize_chlo,
+                         llvm::Optional<StringRef> tf2xla_fallback_device_type,
+                         bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
   OwningRewritePatternList patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
@@ -6545,9 +6549,10 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+    llvm::Optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
-                                      tf2xla_fallback_device_type);
+                                      tf2xla_fallback_device_type,
+                                      prefer_tf2xla);
 }
 
 }  // end namespace mhlo
