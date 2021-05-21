@@ -229,10 +229,6 @@ TfLiteStatus Interpreter::AllocateTensors() {
   return primary_subgraph().AllocateTensors();
 }
 
-void Interpreter::ReserveNodes(int count) {
-  primary_subgraph().ReserveNodes(count);
-}
-
 void Interpreter::AddSubgraphs(int subgraphs_to_add,
                                int* first_new_subgraph_index) {
   const size_t base_index = subgraphs_.size();

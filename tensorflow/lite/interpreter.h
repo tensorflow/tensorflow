@@ -125,11 +125,6 @@ class Interpreter {
   /// interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
 
-  /// Ensure the internal node storage memory allocates at least `count`
-  /// spots for node. NOTE, this doesn't actually add operators. This is an
-  /// efficiency optimization that is subject to change.
-  void ReserveNodes(int count);
-
   /// Adds a node with the given parameters and returns the index of the new
   /// node in `node_index` (optionally). Interpreter will take ownership of
   /// `builtin_data` and destroy it with `free`. Ownership of 'init_data'
@@ -241,12 +236,6 @@ class Interpreter {
   const std::vector<int>& execution_plan() const {
     return primary_subgraph().execution_plan();
   }
-
-#ifndef DOXYGEN_
-  /// WARNING: Experimental interface, subject to change
-  /// Overrides execution plan. This bounds checks indices sent in.
-  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
-#endif  // DOXYGEN_SKIP
 
   /// Get a mutable tensor data structure.
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
@@ -716,6 +705,10 @@ class Interpreter {
     }
     return -1;
   }
+
+  // Overrides execution plan. This bounds checks indices sent in.
+  // Note: Only used during initialization.
+  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Sets the profiler to all subgraphs.
   void SetSubgraphProfiler();
