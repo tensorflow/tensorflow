@@ -1022,6 +1022,17 @@ func @padv2_i32_paddings(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<6
   return %1 : tensor<6x9xf32>
 }
 
+// CHECK-LABEL: func @padv2_dynamic
+func @padv2_dynamic(%arg0: tensor<3xf32>, %arg1: tensor<f32>, %arg2: tensor<1x2xi64>) -> tensor<6xf32> {
+  // CHECK: "mhlo.transpose"({{.*}})
+  // CHECK: "mhlo.reshape"({{.*}}) : (tensor<2x1xi64>) -> tensor<2xi64>
+  // CHECK: "mhlo.slice"({{.*}}) 
+  // CHECK: "mhlo.slice"({{.*}})
+  // CHECK: "mhlo.dynamic_pad"({{.*}}) : (tensor<3xf32>, tensor<f32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<6xf32>
+  %1 = "tf.PadV2"(%arg0, %arg2, %arg1) : (tensor<3xf32>, tensor<1x2xi64>, tensor<f32>) -> tensor<6xf32>
+  return %1 : tensor<6xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // Identity op legalizations.
 //===----------------------------------------------------------------------===//
@@ -4126,6 +4137,19 @@ func @unsorted_segment_max(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x16
   // CHECK: mhlo.maximum
   %0 = "tf.UnsortedSegmentMax"(%data, %segment_ids, %num_segments) : (tensor<8x?x64xf32>, tensor<?x16xi32>, tensor<i32>) -> (tensor<4x?xf32>)
   return %0: tensor<4x?xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.GatherNd legalization
+//===----------------------------------------------------------------------===//
+// CHECK-LABEL: func @gatherNd_dynamic
+func @gatherNd_dynamic(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?x6x2xi32>) -> tensor<?x6x?xi32> {
+  // CHECK: memref.dim
+  // CHECK: index_cast
+  // CHECK: tensor.from_elements 
+  // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = false} : (tensor<?x?x?xi32>, tensor<?x6x2xi32>, tensor<3xi32>) -> tensor<?x6x?xi32>
+  %0 =  "tf.GatherNd"(%arg0, %arg1) {Tindices = i32, Tparams = i32, device = ""} : (tensor<?x?x?xi32>, tensor<?x6x2xi32>) -> tensor<?x6x?xi32>
+  return %0 : tensor<?x6x?xi32>
 }
 
 //===----------------------------------------------------------------------===//
