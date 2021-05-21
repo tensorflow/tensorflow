@@ -22,6 +22,7 @@ import threading
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -251,9 +252,11 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
   def test_cond(self, run_functions_eagerly):
     try:
       def_function.run_functions_eagerly(run_functions_eagerly)
+      pred = self.device.pack(
+          [constant_op.constant(True), constant_op.constant(False)])
+      capture = self.device.pack(
+          [constant_op.constant([1.]), constant_op.constant([2.])])
       with self.device:
-        pred = self.device.pack([True, False])
-        capture = self.device.pack([[1.], [2.]])
         result = control_flow_ops.cond(
             pred,
             def_function.function(lambda: capture * 2.),
@@ -264,9 +267,11 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
       def_function.run_functions_eagerly(False)
 
   def test_cond_with_variable(self):
+    pred = self.device.pack(
+        [constant_op.constant(True), constant_op.constant(False)])
+    capture = self.device.pack(
+        [constant_op.constant([1.]), constant_op.constant([2.])])
     with self.device:
-      pred = self.device.pack([True, False])
-      capture = self.device.pack([[1.], [2.]])
       v = None
       @def_function.function
       def true_branch():
@@ -356,6 +361,23 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
       # single-device copy.
       status.assert_consumed()
 
+  def test_pack_composite(self):
+    if self.device_type != "CPU":
+      self.skipTest("Iterator GetNext doesn't work on accelerators.")
+    datasets = [
+        dataset_ops.Dataset.from_tensor_slices(
+            [i + 1, (i + 1) * 2, (i + 1) * 3])
+        for i in range(len(self.device.components))]
+    parallel_dataset = self.device.pack(datasets)
+    with self.device:
+      iterator = iter(parallel_dataset)
+      parallel_sample = next(iterator)
+    component_iterators = self.device.unpack(iterator)
+    self.assertEqual(2, next(component_iterators[0]).numpy())
+    self.assertEqual(1, self.device.unpack(parallel_sample)[0].numpy())
+    self.assertEqual(4, next(component_iterators[1]).numpy())
+    self.assertEqual(2, self.device.unpack(parallel_sample)[1].numpy())
+
   def test_saved_model(self):
     with self.device:
       different_values = self.device.pack(
@@ -373,11 +395,13 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
 
     single_device_loaded = load.load(saved_model_path)
     self.assertAllClose(-2., single_device_loaded.f())
+    assign_value = self.device.pack(
+        [constant_op.constant(.1), constant_op.constant(.2)])
     with self.device:
       parallel_loaded = load.load(saved_model_path)
       self.assertAllClose([-2., 6.], self.device.unpack(parallel_loaded.f()))
       self.assertAllClose([-1., 3.], self.device.unpack(parallel_loaded.v))
-      parallel_loaded.v.assign(self.device.pack([.1, .2]))
+      parallel_loaded.v.assign(assign_value)
       self.assertAllClose([.2, .4], self.device.unpack(parallel_loaded.f()))
 
   def _assert_close_to_non_parallel(self, computation):
