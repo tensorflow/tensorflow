@@ -79,8 +79,11 @@ class IndexLookupDistributionTest(
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
 
-  # Disabled due to http://b/180614455
-  def DISABLED_test_strategy_with_file(self, strategy):
+  def test_strategy_with_file(self, strategy):
+    # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
+    if "TPU" in type(strategy).__name__:
+      self.skipTest("This test needs MLIR bridge on TPU.")
+
     vocab_data = ["earth", "wind", "and", "fire"]
     vocab_file = self._write_to_temp_file("temp", vocab_data)
 
@@ -107,8 +110,11 @@ class IndexLookupDistributionTest(
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
 
-  # Disabled due to http://b/180614455
-  def DISABLED_test_tpu_with_multiple_oov(self, strategy):
+  def test_tpu_with_multiple_oov(self, strategy):
+    # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
+    if "TPU" in type(strategy).__name__:
+      self.skipTest("This test needs MLIR bridge on TPU.")
+
     vocab_data = [[
         "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
         "and", "fire"
