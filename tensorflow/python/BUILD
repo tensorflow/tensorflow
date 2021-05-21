@@ -4865,6 +4865,7 @@ alias(
 alias(
     name = "tf_optimizer",
     actual = "//tensorflow/python/grappler:tf_optimizer",
+    visibility = ["//visibility:public"],
 )
 
 py_library(
