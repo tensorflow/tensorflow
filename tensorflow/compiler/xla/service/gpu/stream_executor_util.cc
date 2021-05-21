@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
@@ -39,6 +41,7 @@ using se::dnn::DataLayout;
 using se::dnn::DataLayoutString;
 using se::dnn::FilterLayout;
 using se::dnn::FilterLayoutString;
+using tensorflow::AutotuneResult;
 
 // Returns the smallest integer >= 0 that's not in the given set of numbers.
 //
@@ -406,6 +409,57 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       break;
   }
   return InternalError("Unsupported convolution datatype");
+}
+
+bool RequireDeterminism(const HloModuleConfig& config) {
+  static bool require_cudnn_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    bool cudnn_deterministic = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
+                                               /*default_val=*/false,
+                                               &cudnn_deterministic));
+    return deterministic_ops || cudnn_deterministic;
+  }();
+  return require_cudnn_determinism ||
+         config.debug_options().xla_gpu_deterministic_ops();
+}
+
+StatusOr<AutotuneResult> PickBestResult(
+    absl::Span<AutotuneResult const> profile_results,
+    const HloInstruction& instr) {
+  std::vector<AutotuneResult> filtered_results;
+
+  // For now, we ignore WRONG_RESULT failures because false-positives are
+  // possible (e.g. perhaps the reference algorithm is the one that's
+  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
+  // quite severe and can be detected with high accuracy.
+  absl::c_copy_if(
+      profile_results, std::back_inserter(filtered_results),
+      [](const AutotuneResult& r) {
+        return !(r.has_failure() &&
+                 r.failure().kind() != AutotuneResult::WRONG_RESULT);
+      });
+
+  if (filtered_results.empty()) {
+    return InternalError(
+        "All algorithms tried for %s failed. Falling back to "
+        "default algorithm. ",
+        instr.ToString());
+  }
+
+  auto selected_result = filtered_results.begin();
+  if (!RequireDeterminism(instr.parent()->parent()->config())) {
+    selected_result = absl::c_min_element(
+        filtered_results,
+        [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
+                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
+        });
+  }
+  return *selected_result;
 }
 
 }  // namespace gpu
