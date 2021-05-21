@@ -266,6 +266,7 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",
+        ":tool_params",
         "@com_google_googletest//:gtest_main",
     ],
 )
