@@ -245,10 +245,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           return fail(this->typeConverter->convertType(t)
                           .template dyn_cast<ShapedType>());
         })) {
-      return emitError(loc,
-                       "hlo to linalg conversion expects ranked args of "
-                       "signless int, float or complex element type with ")
-             << nloops << " parallel iterators: " << *(op.getOperation());
+      return rewriter.notifyMatchFailure(
+          op, "mismatched operand/result types or iterator count");
     }
 
     // Construct the indexing maps needed for linalg.generic ops.
@@ -1095,8 +1093,7 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     auto operand_shape =
         adaptor.inputs()[0].getType().template dyn_cast<ShapedType>();
     if (!operand_shape || !operand_shape.hasRank()) {
-      emitError(loc, "lhlo to linalg conversion expects known-rank args");
-      return failure();
+      return rewriter.notifyMatchFailure(reduce_op, "expects known-rank args");
     }
 
     // First fill the output buffer with the init value.
@@ -1216,8 +1213,7 @@ class SliceConverter : public OpConversionPattern<OpTy> {
     auto loc = slice_op.getLoc();
     auto arg_type = args[0].getType().template dyn_cast<ShapedType>();
     if (!arg_type || !arg_type.hasRank()) {
-      emitError(loc, "lhlo to linalg conversion expects known-rank args");
-      return failure();
+      return rewriter.notifyMatchFailure(slice_op, "expects known-rank args");
     }
 
     SmallVector<OpFoldResult, 3> offsets, sizes, strides;
