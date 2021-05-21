@@ -2014,7 +2014,9 @@ struct TorchIndexSelectOpOnTensorsConversion
     if (batch < 0) batch += num_indices;
 
     Location loc = op.getLoc();
-    auto result_type = op.getResult().getType().cast<ShapedType>();
+    auto result_type =
+        this->typeConverter->convertType(op.getResult().getType())
+            .cast<ShapedType>();
     int rank = static_cast<int>(result_type.getRank());
 
     SmallVector<AffineMap, 2> indexing_maps;
