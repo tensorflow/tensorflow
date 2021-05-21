@@ -43,6 +43,7 @@ cc_library(
 tf_cc_test(
     name = "batch_op_rewriter_test",
     srcs = ["batch_op_rewriter_test.cc"],
+    tags = ["no_mac"],  # TODO(b/188905087)
     deps = [
         ":batch_op_rewriter",
         ":batch_op_rewriter_proto_cc",
