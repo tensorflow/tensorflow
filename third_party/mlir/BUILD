@@ -1470,18 +1470,15 @@ cc_library(
         [
             "lib/Dialect/Affine/IR/*.cpp",
             "lib/Dialect/Affine/IR/*.h",
-            "lib/Dialect/Affine/EDSC/*.cpp",
         ],
     ) + ["include/mlir/Transforms/InliningUtils.h"],
     hdrs = glob([
         "include/mlir/Dialect/Affine/IR/*.h",
-        "include/mlir/Dialect/Affine/EDSC/*.h",
     ]),
     includes = ["include"],
     deps = [
         ":AffineMemoryOpInterfacesIncGen",
         ":AffineOpsIncGen",
-        ":EDSC",
         ":IR",
         ":LoopLikeInterface",
         ":MemRefDialect",
