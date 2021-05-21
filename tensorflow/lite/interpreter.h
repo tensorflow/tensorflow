@@ -645,11 +645,18 @@ class Interpreter {
 
   /// Get a pointer to a subgraph if in bounds.
   /// WARNING: This is an experimental API and subject to change.
-  Subgraph* subgraph(int subgraph_index) {
+  const Subgraph* subgraph(int subgraph_index) const {
     if (subgraph_index < 0 ||
-        static_cast<size_t>(subgraph_index) >= subgraphs_size())
+        static_cast<size_t>(subgraph_index) >= subgraphs_size()) {
       return nullptr;
-    return &*subgraphs_[subgraph_index];
+    }
+    return subgraphs_[subgraph_index].get();
+  }
+
+  /// WARNING: This is an experimental API and subject to change.
+  Subgraph* subgraph(int subgraph_index) {
+    return const_cast<Subgraph*>(
+        static_cast<const Interpreter*>(this)->subgraph(subgraph_index));
   }
 
   /// WARNING: Experimental interface, subject to change
