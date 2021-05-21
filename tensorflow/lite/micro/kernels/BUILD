@@ -338,9 +338,8 @@ cc_library(
     ],
     copts = micro_copts(),
     visibility = [
-        # Needed for micro:op_resolvers but visibility can not be finer-grained
-        # than a package.
-        ":micro_top_level",
+        # Public visibility to allow application code to select kernel variants.
+        "//visibility:public",
     ],
     deps = [
         ":activation_utils",
