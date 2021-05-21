@@ -160,10 +160,6 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
-  const int64 num_partitions = hlo_module->config().num_partitions();
-  const bool use_spmd =
-      hlo_module->config().use_spmd_partitioning() && num_partitions > 1;
-
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -294,11 +290,12 @@ Status GpuCompiler::OptimizeHloModule(
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
-  if (use_spmd) {
+  if (hlo_module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
     spmd_pipeline.AddPass<GpuSpmdPartitioner>(
-        num_partitions, hlo_module->config().replica_count());
+        hlo_module->config().num_partitions(),
+        hlo_module->config().replica_count());
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   }
 
