@@ -21,8 +21,8 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"                // from @llvm-project
+#include "mlir/Support/LLVM.h"                           // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
@@ -148,16 +148,11 @@ LogicalResult ConvertTFReluOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  if (output_type.getElementType().isa<mlir::FloatType>()) {
-    rewriter.replaceOpWithNewOp<tosa::ReluNOp>(
-        op, output_type, tf_relu_op.features(), rewriter.getI64IntegerAttr(0),
-        rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
-  } else {
-    rewriter.replaceOpWithNewOp<tosa::ReluNOp>(
-        op, output_type, tf_relu_op.features(),
-        rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-        rewriter.getF32FloatAttr(0.0f));
-  }
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      op, output_type, tf_relu_op.features(), rewriter.getI64IntegerAttr(0),
+      rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
+      rewriter.getF32FloatAttr(0.0f),
+      rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
   return success();
 }
 
@@ -170,15 +165,10 @@ LogicalResult ConvertTFRelu6Op::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  if (output_type.getElementType().isa<mlir::FloatType>()) {
-    rewriter.replaceOpWithNewOp<tosa::ReluNOp>(
-        op, output_type, tf_relu6_op.features(), rewriter.getI64IntegerAttr(0),
-        rewriter.getF32FloatAttr(6.0f));
-  } else {
-    rewriter.replaceOpWithNewOp<tosa::ReluNOp>(
-        op, output_type, tf_relu6_op.features(), rewriter.getI64IntegerAttr(6),
-        rewriter.getF32FloatAttr(0.0f));
-  }
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      op, output_type, tf_relu6_op.features(), rewriter.getI64IntegerAttr(0),
+      rewriter.getI64IntegerAttr(6), rewriter.getF32FloatAttr(0.0f),
+      rewriter.getF32FloatAttr(6.0f));
   return success();
 }
 

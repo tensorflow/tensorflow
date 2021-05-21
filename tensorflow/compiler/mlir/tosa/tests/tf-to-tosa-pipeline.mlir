@@ -87,7 +87,7 @@ func @test_rcp(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_relu
-// CHECK: %[[VAR0:.*]] = "tosa.reluN"(%arg0) {max_fp = 3.40282347E+38 : f32, max_int = 0 : i64}
+// CHECK: %[[VAR0:.*]] = "tosa.clamp"(%arg0) {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
 func @test_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.Relu"(%arg0)   : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %2 : tensor<13x21x3xf32>
@@ -96,7 +96,7 @@ func @test_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_relu6
-// CHECK: %[[VAR0:.*]] = "tosa.reluN"(%arg0) {max_fp = 6.000000e+00 : f32, max_int = 0 : i64}
+// CHECK: %[[VAR0:.*]] = "tosa.clamp"(%arg0) {max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
 func @test_relu6(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.Relu6"(%arg0)   : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %2 : tensor<13x21x3xf32>
