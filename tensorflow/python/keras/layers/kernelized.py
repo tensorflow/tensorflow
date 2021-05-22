@@ -51,7 +51,7 @@ class RandomFourierFeatures(base_layer.Layer):
   are sampled determines which shift-invariant kernel the layer approximates
   (see paper for more details). You can use the distribution of your
   choice. The layer supports out-of-the-box
-  approximation sof the following two RBF kernels:
+  approximations of the following two RBF kernels:
 
   - Gaussian: `K(x, y) == exp(- square(x - y) / (2 * square(scale)))`
   - Laplacian: `K(x, y) = exp(-abs(x - y) / scale))`
