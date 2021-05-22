@@ -34,11 +34,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
-try:
-  import memory_profiler  # pylint:disable=g-import-not-at-top
-except ImportError:
-  memory_profiler = None
-
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class FalsePositivesTest(test.TestCase, parameterized.TestCase):
@@ -1895,52 +1890,6 @@ class ThresholdsTest(test.TestCase, parameterized.TestCase):
       # Check all the variables are the same, eg tp, tn, fp, fn
       for v1, v2 in zip(metric_obj.variables, metric_obj2.variables):
         self.assertAllClose(v1, v2)
-
-
-@combinations.generate(combinations.combine(mode=['eager']))
-class AUCMemoryTest(test.TestCase, parameterized.TestCase):
-  # This test is added to measure the memory footprint for
-  # metrics_utils._update_confusion_matrix_variables_optimized().
-
-  def test_memory_usage(self):
-    self.skipTest('b/188587681: skipping flaky test')
-    if memory_profiler is None:
-      self.skipTest('Skip test since memory_profiler is not available.')
-
-    with compat.forward_compatibility_horizon(2021, 6, 9):
-      self.y_true = np.random.randint(2, size=(1024, 1024))
-      self.y_pred = np.random.rand(1024, 1024)
-
-      memeory_usage_1 = memory_profiler.memory_usage((self.even_thresholds_auc))
-      memeory_usage_2 = memory_profiler.memory_usage(
-          (self.uneven_thresholds_auc))
-      # memory usage is a list of number which sampled when running the function
-      # The pure memory consumption is approximately max(usage) - min(usage)
-      memeory_usage_1 = max(memeory_usage_1) - min(memeory_usage_1)
-      memeory_usage_2 = max(memeory_usage_2) - min(memeory_usage_2)
-
-      # Since we expect the new approach should have memory footprint as
-      # O(T + N) and old apporach has O(T * N). When N = 200 here, the ratio
-      # between 1 and 2 should be at least 50 (some room for other overhead).
-      self.assertLess(memeory_usage_1 * 50, memeory_usage_2)
-
-  def even_thresholds_auc(self):
-    auc = metrics.AUC(num_thresholds=200)
-    self.assertTrue(auc._thresholds_distributed_evenly)
-
-    auc(self.y_true, self.y_pred)
-
-  def uneven_thresholds_auc(self):
-    num_thresholds = 200
-    thresholds = [x / (num_thresholds - 1) for x in range(num_thresholds)]
-    thresholds[100] += 1 / 200
-    thresholds = thresholds[1:-1]
-
-    auc = metrics.AUC(thresholds=thresholds)
-    self.assertFalse(auc._thresholds_distributed_evenly)
-    self.assertEqual(auc.num_thresholds, num_thresholds)
-
-    auc(self.y_true, self.y_pred)
 
 
 if __name__ == '__main__':
