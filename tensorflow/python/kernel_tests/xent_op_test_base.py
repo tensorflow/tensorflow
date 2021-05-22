@@ -294,7 +294,3 @@ class XentOpTestBase(test.TestCase):
         labels=labels, logits=logits)
     tf_loss = self.evaluate(loss)
     self.assertAllEqual(np_loss, tf_loss)
-
-
-if __name__ == "__main__":
-  test.main()

@@ -35,7 +35,7 @@ from tensorflow.python.ops.nn_grad import _SoftmaxCrossEntropyWithLogitsGrad  # 
 from tensorflow.python.platform import test
 
 
-class SoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(test.TestCase):
+class XentOpDeterminismExceptionsTest(test.TestCase):
   """Test d9m-unimplemented exceptions from SoftmaxCrossEntropyWithLogits.
 
   Test that tf.errors.UnimplementedError is thrown or not thrown, as
@@ -58,14 +58,14 @@ class SoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(test.TestCase):
             errors_impl.UnimplementedError,
             "The GPU implementation of SoftmaxCrossEntropyWithLogits that " +
             "would have been executed is not deterministic. Note that the " +
-            "Python API uses an alternative, deterministic path when " +
-            "determinism is enabled."):
+            "Python API uses an alternative, deterministic, GPU-accelerated " +
+            "path when determinism is enabled."):
           result = gen_nn_ops.softmax_cross_entropy_with_logits(
               features=features, labels=labels)
           self.evaluate(result)
 
 
-class XentDeterministicTest(xent_op_test_base.XentOpTestBase):
+class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
   """Test that SoftmaxCrossEntropyWithLogits operates reproducibly.
 
   Inheriting from xent_op_test_base.XentTestBase ensures that regular op
