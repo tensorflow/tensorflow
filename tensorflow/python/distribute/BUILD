@@ -608,7 +608,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_ops",
+        "//tensorflow/python/tpu/ops",
         "//third_party/py/numpy",
     ],
 )
@@ -1704,8 +1704,8 @@ py_library(
     srcs = ["multi_process_lib.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl:app",
         "@absl_py//absl/logging",
     ],
 )

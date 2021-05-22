@@ -60,6 +60,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
+        "@llvm-project//llvm:AMDGPUCodeGen",
     ]),
 )
 

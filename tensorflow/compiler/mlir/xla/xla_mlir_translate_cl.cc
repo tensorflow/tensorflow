@@ -33,3 +33,10 @@ llvm::cl::opt<bool> optimize_xla_hlo(
     "optimize-xla-hlo",
     llvm::cl::desc("Enable optimizations when translating XLA HLO -> LHLO"),
     llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> prefer_tf2xla(
+    "prefer-tf2xla",
+    llvm::cl::desc("Prefer tf2xla fallback for legalization to HLO over MLIR "
+                   "legalizations."),
+    llvm::cl::init(false));

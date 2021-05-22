@@ -21,7 +21,6 @@ from __future__ import print_function
 import abc
 import itertools
 
-import os
 import numpy as np
 import six
 
@@ -779,14 +778,13 @@ def _test_saved_model(use_placeholder, shapes_info, dtype):
         def do_matmul(self, op):
           return op.matmul(self.x)
 
-      path = self.create_tempdir().full_path
-
+      saved_model_dir = self.get_temp_dir()
       m1 = Model(x)
       sess.run([v.initializer for v in m1.variables])
       sess.run(m1.x.assign(m1.x + 1.))
 
-      save_model.save(m1, os.path.join(path, "saved_model1"))
-      m2 = load_model.load(os.path.join(path, "saved_model1"))
+      save_model.save(m1, saved_model_dir)
+      m2 = load_model.load(saved_model_dir)
       sess.run(m2.x.initializer)
 
       sess.run(m2.x.assign(m2.x + 1.))

@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.client import pywrap_tf_session as c_api
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -341,19 +342,26 @@ def _SegmentMeanGrad(op, grad):
 @ops.RegisterGradient("SparseSegmentSum")
 def _SparseSegmentSumGrad(op, grad):
   """Gradient for SparseSegmentSum."""
-  input_rows = array_ops.shape(op.inputs[0])[0]
-  return (math_ops.unsorted_segment_sum(
-      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
-          None)
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  if compat.forward_compatible(2021, 6, 10):
+    return (math_ops.sparse_segment_sum_grad(grad, op.inputs[1], op.inputs[2],
+                                             dim0), None, None)
+  else:
+    return (math_ops.unsorted_segment_sum(
+        array_ops.gather(grad, op.inputs[2]), op.inputs[1], dim0), None, None)
 
 
 @ops.RegisterGradient("SparseSegmentSumWithNumSegments")
 def _SparseSegmentSumWithNumSegmentsGrad(op, grad):
   """Gradient for SparseSegmentSumWithNumSegments."""
-  input_rows = array_ops.shape(op.inputs[0])[0]
-  return (math_ops.unsorted_segment_sum(
-      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
-          None, None)
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  if compat.forward_compatible(2021, 6, 10):
+    return (math_ops.sparse_segment_sum_grad(grad, op.inputs[1], op.inputs[2],
+                                             dim0), None, None, None)
+  else:
+    return (math_ops.unsorted_segment_sum(
+        array_ops.gather(grad, op.inputs[2]), op.inputs[1],
+        dim0), None, None, None)
 
 
 @ops.RegisterGradient("SparseSegmentMean")

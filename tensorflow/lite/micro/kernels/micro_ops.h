@@ -56,6 +56,7 @@ TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SPACE_TO_BATCH_ND();
 TfLiteRegistration Register_SQUEEZE();
 TfLiteRegistration Register_SVDF();
+TfLiteRegistration Register_TRANSPOSE();
 TfLiteRegistration Register_TRANSPOSE_CONV();
 TfLiteRegistration Register_ZEROS_LIKE();
 

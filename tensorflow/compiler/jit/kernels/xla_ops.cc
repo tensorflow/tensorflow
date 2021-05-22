@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
@@ -235,24 +236,24 @@ static StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
     return {{absl::nullopt}};
   }
 
-  CollectiveParams params;
-  params.name = "xla-reduction-compilation";
-  params.group.device_type =
+  auto params = core::RefCountPtr<CollectiveParams>(new CollectiveParams());
+  params->name = "xla-reduction-compilation";
+  params->group.device_type =
       DeviceType{static_cast<Device*>(ctx->device())->device_type()};
-  params.group.group_size = collective_reduce_info->group_size;
-  params.group.group_key = collective_reduce_info->group_key;
-  params.instance.type = REDUCTION_COLLECTIVE;
-  params.instance.impl_details.communication_hint = "nccl";
-  params.instance.impl_details.timeout_seconds = kTimeoutSeconds;
-  params.instance.impl_details.collective_name = "NcclReduce";
+  params->group.group_size = collective_reduce_info->group_size;
+  params->group.group_key = collective_reduce_info->group_key;
+  params->instance.type = REDUCTION_COLLECTIVE;
+  params->instance.impl_details.communication_hint = "nccl";
+  params->instance.impl_details.timeout_seconds = kTimeoutSeconds;
+  params->instance.impl_details.collective_name = "NcclReduce";
   // TODO(cheshire): Avoid passing a dummy shape, TF runtime does not resolve
   // devices otherwise.
-  params.instance.shape = TensorShape({1});
+  params->instance.shape = TensorShape({1});
 
   Status st;
   absl::Notification n;
   ctx->collective_executor()->CompleteParamsAsync(
-      ctx->device()->attributes(), &params, ctx->cancellation_manager(),
+      ctx->device()->attributes(), params.get(), ctx->cancellation_manager(),
       [&](const Status& s) {
         st = s;
         n.Notify();
@@ -261,7 +262,7 @@ static StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
     return errors::InvalidArgument("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
-  const std::vector<std::string>& devices = params.group.device_names;
+  const std::vector<std::string>& devices = params->group.device_names;
 
   xla::DeviceAssignment out(devices.size(), 1);
   for (int device_idx = 0; device_idx < devices.size(); device_idx++) {

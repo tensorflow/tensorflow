@@ -91,6 +91,7 @@ AllOpsResolver::AllOpsResolver() {
   AddSvdf();
   AddTanh();
   AddTransposeConv();
+  AddTranspose();
   AddUnpack();
 }
 

@@ -114,9 +114,7 @@ REGISTER_OP("UnsortedSegmentJoin")
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr(
-        "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
-        "bool, variant}")
+    .Attr("T: {realnumbertype, complex64, complex128, bool, variant}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")

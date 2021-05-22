@@ -1508,4 +1508,16 @@ InitializeHostForDistributedTpuOp, and outputs the latter's result.
   );
 }
 
+// Internal op for testing value-based side-effects for non-resource values.
+// TODO(mgester) We should have an extension of TF dialect only for testing so
+// TF dialect is not polluted with test ops.
+def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResourceValueSideEffects_", []> {
+  let summary = "Internal op for testing only";
+
+  let arguments = (ins
+    Arg<TF_StrTensor,"", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$key
+  );
+  let results = (outs);
+}
+
 #endif // TF_OPS

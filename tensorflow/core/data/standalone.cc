@@ -68,10 +68,10 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   auto device_mgr = absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
       "CPU", params.session_options, "/job:localhost/replica:0/task:0"));
   Device* device = device_mgr->ListDevices()[0];
-  // Clone the `FunctionLibraryDefinition` to extend its lifetime extends beyond
+  // Create a copy of the `FunctionLibraryDefinition` to extend lifetime beyond
   // the lifetime of `graph`.
-  auto flib_def =
-      absl::make_unique<FunctionLibraryDefinition>(graph.flib_def());
+  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), graph_def.library());
   auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def.get(), OptimizerOptions{},

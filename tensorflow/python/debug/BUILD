@@ -3,7 +3,7 @@
 #
 # Public target(s):
 #
-# "//tensorflow/python/debug:debug_py": Public Python methods and classes of tfdbg.
+# ":debug_py": Public Python methods and classes of tfdbg.
 #   For API documentation, see https://www.tensorflow.org/api_docs/python/tfdbg
 #   For a user interface walkthrough, see https://www.tensorflow.org/guide/debugger
 # ":grpc_debug_server": Server interface for grpc:// debug URLs.

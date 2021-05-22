@@ -361,6 +361,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":convert_phase",
         ":lite_constants",
         ":util",
         ":wrap_toco",
@@ -414,6 +415,7 @@ py_library(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
+        ":convert_phase",
         ":util",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
@@ -558,5 +560,19 @@ py_library(
     deps = [
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
         "//tensorflow/lite/tools:visualize",
+    ],
+)
+
+py_test(
+    name = "analyzer_test",
+    srcs = ["analyzer_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata:interpreter_test_data",
+    ],
+    python_version = "PY3",
+    deps = [
+        ":analyzer",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )

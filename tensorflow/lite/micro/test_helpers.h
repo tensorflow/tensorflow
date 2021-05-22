@@ -126,6 +126,10 @@ const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          int num_conns,
                                          int num_subgraph_inputs = 0);
 
+// Returns a flatbuffer with a single operator, two inputs (one unused) and one
+// output.
+const Model* GetModelWithUnusedInputs();
+
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
 
@@ -158,15 +162,6 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
 // Create a TfLiteIntArray from an array of ints.  The first element in the
 // supplied array must be the size of the array expressed as an int.
 TfLiteIntArray* IntArrayFromInts(int* int_array);
-
-#if !defined(TF_LITE_STATIC_MEMORY)
-// This is a deprecated API that is using a const_cast for the implementation.
-// It is only enabled for the non-TF_LITE_STATIC_MEMORY builds to give more time
-// to change those over to the overloaded function.
-// TODO(b/188459715): Remove this function once all internal dependencies are
-// switched over to the overloaded function.
-TfLiteIntArray* IntArrayFromInts(const int* int_array);
-#endif
 
 // Create a TfLiteFloatArray from an array of floats.  The first element in the
 // supplied array must be the size of the array expressed as a float.

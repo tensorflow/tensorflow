@@ -1358,6 +1358,17 @@ REGISTER_OP("SparseSegmentSumWithNumSegments")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionWithNumSegmentsShapeFn);
 
+REGISTER_OP("SparseSegmentSumGrad")
+    .Input("grad: T")
+    .Input("indices: Tidx")
+    .Input("segment_ids: Tsegmentids")
+    .Input("output_dim0: int32")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .SetShapeFn(SparseSegmentReductionGradShapeFn);
+
 REGISTER_OP("SparseSegmentMean")
     .Input("data: T")
     .Input("indices: Tidx")

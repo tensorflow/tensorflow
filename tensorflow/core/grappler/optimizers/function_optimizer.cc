@@ -1388,7 +1388,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       fake_devices.push_back(std::move(device));
     }
 
-    Placer placer(graph.get(), item.id, &device_set);
+    Placer placer(graph.get(), item.id, &flib_def, &device_set);
     TF_RETURN_IF_ERROR(placer.Run());
   }
 

@@ -640,13 +640,37 @@ class Model {
   using NodeValues = Node::NodeValues;
   using ParameterGradients = Node::ParameterGradients;
 
+  // Represents minimum necessary information to recreate an optimization run.
+  struct OptimizationSnapshot {
+    // Output node of the model being optimized.
+    std::shared_ptr<Node> output;
+    OptimizationParams params;
+
+    // Indicates whether this snapshot has been saved by `SaveLoop`.
+    bool saved;
+  };
+
+  // Buffer of snapshots and its mutex.
+  struct SnapshotBuffer {
+    std::shared_ptr<std::deque<OptimizationSnapshot>> snapshots;
+    std::shared_ptr<mutex> mu;
+  };
+
   // Creates a new model.
   Model()
       : collect_resource_usage_(false),
-        optimization_period_ms_(kOptimizationPeriodMinMs) {
+        optimization_period_ms_(kOptimizationPeriodMinMs),
+        snapshot_buffer_mu_(std::make_shared<mutex>()),
+        snapshot_buffer_(std::make_shared<std::deque<OptimizationSnapshot>>()) {
     const char* save_dir = std::getenv("TF_DATA_AUTOTUNE_DEBUG_DIR");
     if (save_dir) {
       save_dir_ = string(save_dir);
+    }
+    {
+      mutex_lock l(*publish_mu());
+      (*snapshot_buffers())[this] = SnapshotBuffer{
+          std::shared_ptr<std::deque<OptimizationSnapshot>>(snapshot_buffer_),
+          std::shared_ptr<mutex>(snapshot_buffer_mu_)};
     }
   }
 
@@ -654,6 +678,10 @@ class Model {
     if (!save_dir_.empty()) {
       save_thread_cancelled_ = true;
       save_cond_var_.notify_all();
+    }
+    {
+      mutex_lock l(*publish_mu());
+      (*snapshot_buffers()).erase(this);
     }
   }
 
@@ -664,6 +692,12 @@ class Model {
   const std::shared_ptr<Node> output() {
     mutex_lock l(mu_);
     return output_;
+  }
+
+  // Indicates whether publishing mode is enabled.
+  static bool publish() {
+    tf_shared_lock l(*publish_mu());
+    return publish_;
   }
 
   // Adds a node with the given name and given parent.
@@ -712,13 +746,45 @@ class Model {
   static Status Load(const string& fname, std::unique_ptr<Model>* model,
                      OptimizationParams* optimization_params);
 
+  // Enables publishing mode in which each existing model keeps a number of the
+  // latest optimization snapshots in a buffer. The snapshots can be accessed
+  // using `PublishLatest`.
+  static void EnablePublishing() {
+    mutex_lock l(*publish_mu());
+    publish_ = true;
+  }
+
+  // If publishing is enabled, collects the latest optimization snapshot of each
+  // existing model and appends its proto to the given string.
+  static Status PublishLatest(absl::Cord* model);
+
  private:
   static constexpr int64 kOptimizationPeriodMinMs = 10;
   static constexpr int64 kOptimizationPeriodMaxMs =
       60 * EnvTime::kSecondsToMillis;
 
-  // Maximum number of optimization snapshots kept in a buffer for saving.
-  static constexpr int64 kMaxNumBufferedOptimizeArgs = 100;
+  // Maximum number of optimization snapshots kept in a buffer for saving or
+  // publishing.
+  static constexpr int64 kMaxNumBufferedSnapshots = 1;
+
+  // Indicates whether publishing mode is enabled.
+  static bool publish_ TF_GUARDED_BY(*publish_mu());
+
+  // Used to coordinate (de)registering of optimization snapshot buffers for
+  // publishing.
+  static mutex* publish_mu() {
+    static mutex lock(LINKER_INITIALIZED);
+    return &lock;
+  }
+
+  // Mapping from all existing model pointers to their optimization snapshot
+  // buffers and locks required to access the buffers.
+  static absl::flat_hash_map<Model*, SnapshotBuffer>* snapshot_buffers()
+      TF_SHARED_LOCKS_REQUIRED(*publish_mu()) {
+    static absl::flat_hash_map<Model*, SnapshotBuffer>* const snapshot_buffers =
+        new absl::flat_hash_map<Model*, SnapshotBuffer>();
+    return snapshot_buffers;
+  }
 
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a vector which contains pairs of node names and tunable parameters.
@@ -774,7 +840,7 @@ class Model {
   Status EnsureSaveLoopThreadStarted();
 
   // Periodically saves the state of optimization that is kept in
-  // `save_buffer_`.
+  // `snapshot_buffer_`.
   //
   // The saving loop is terminated when the model is destroyed.
   Status SaveLoop();
@@ -801,7 +867,7 @@ class Model {
   int64 optimization_period_ms_ TF_GUARDED_BY(mu_);
 
   // Thread that runs the model saving loop.
-  std::unique_ptr<Thread> save_thread_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<Thread> save_thread_ TF_GUARDED_BY(snapshot_buffer_mu_);
 
   // Used for coordinating the saving loop and model optimization.
   condition_variable save_cond_var_;
@@ -813,11 +879,16 @@ class Model {
   // otherwise.
   string save_dir_;
 
+  // Used for coordination of the optimization snapshot buffer access and
+  // updates.
+  std::shared_ptr<mutex> snapshot_buffer_mu_;
+
   // Contains pairs of model snapshots and optimization parameters to be saved
-  // if model saving is enabled, empty otherwise. Buffer elements are pushed by
-  // `OptimizeLoop` and popped by `SaveLoop`.
-  std::deque<std::pair<std::shared_ptr<Node>, OptimizationParams>> save_buffer_
-      TF_GUARDED_BY(mu_);
+  // or published if the corresponding mode is enabled, empty otherwise. Buffer
+  // elements are pushed and popped by `OptimizeLoop`, and read by `SaveLoop`
+  // and `PublishLatest`.
+  std::shared_ptr<std::deque<OptimizationSnapshot>> snapshot_buffer_
+      TF_GUARDED_BY(snapshot_buffer_mu_);
 };
 
 }  // namespace model

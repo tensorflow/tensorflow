@@ -314,6 +314,7 @@ tensorflow/lite/micro/kernels/strided_slice_test.cc \
 tensorflow/lite/micro/kernels/sub_test.cc \
 tensorflow/lite/micro/kernels/svdf_test.cc \
 tensorflow/lite/micro/kernels/tanh_test.cc \
+tensorflow/lite/micro/kernels/transpose_test.cc \
 tensorflow/lite/micro/kernels/transpose_conv_test.cc \
 tensorflow/lite/micro/kernels/unpack_test.cc \
 tensorflow/lite/micro/kernels/zeros_like_test.cc \
@@ -386,9 +387,13 @@ tensorflow/lite/micro/kernels/sub.cc \
 tensorflow/lite/micro/kernels/svdf.cc \
 tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
+tensorflow/lite/micro/kernels/transpose.cc \
 tensorflow/lite/micro/kernels/transpose_conv.cc \
 tensorflow/lite/micro/kernels/unpack.cc \
 tensorflow/lite/micro/kernels/zeros_like.cc
+
+# Load custom kernels.
+include $(MAKEFILE_DIR)/additional_kernels.inc
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -480,6 +485,7 @@ tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/tanh.h \
+tensorflow/lite/kernels/internal/reference/transpose.h \
 tensorflow/lite/kernels/internal/reference/transpose_conv.h \
 tensorflow/lite/kernels/internal/cppmath.h \
 tensorflow/lite/kernels/internal/max.h \
@@ -681,6 +687,9 @@ include $(MICRO_LITE_EXAMPLE_TESTS)
 # Load the benchmarks.
 include $(MICRO_LITE_BENCHMARKS)
 
+# Load custom kernel tests.
+include $(MAKEFILE_DIR)/additional_tests.inc
+
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=
 $(foreach DOWNLOAD,$(THIRD_PARTY_DOWNLOADS),$(eval $(call create_download_rule,$(DOWNLOAD))))
@@ -827,7 +836,6 @@ ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
   $(eval $(call microlite_test,kernel_transpose_conv_test,\
   $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
 endif
-
 
 # For all the tests that do not have any additional dependencies, we can
 # add a make target in a common way.

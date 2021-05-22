@@ -3336,9 +3336,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cast_op",
-    copts = if_mlir_generated_experimental_kernels_enabled(
-        ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
-    ) + if_mlir_generated_gpu_kernels_enabled(
+    copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     prefix = "cast_op",
@@ -7408,6 +7406,7 @@ exports_files([
     "cwise_op_add_1.cc",
     "cwise_op_add_2.cc",
     "cwise_op_atan2.cc",
+    "cwise_op_ceil.cc",
     "cwise_op_cos.cc",
     "cwise_op_div.cc",
     "cwise_op_equal_to_1.cc",
@@ -7418,6 +7417,7 @@ exports_files([
     "cwise_op_floor_mod.cc",
     "cwise_op_gpu_add.cu.cc",
     "cwise_op_gpu_atan2.cu.cc",
+    "cwise_op_gpu_ceil.cu.cc",
     "cwise_op_gpu_cos.cu.cc",
     "cwise_op_gpu_div.cu.cc",
     "cwise_op_gpu_equal_to.cu.cc",

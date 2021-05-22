@@ -85,6 +85,9 @@
             checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
   (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
             for details.
+    *   Added a new op `SparseSegmentSumGrad` to match the other sparse segment
+        gradient ops and avoid an extra gather operation that was in the
+        previous gradient implementation.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
@@ -118,6 +121,8 @@
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
+    *   Added `framework_stable` BUILD target, which links in only the
+        non-experimental TF Lite APIs.
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,

@@ -105,9 +105,11 @@ void OptimizeDatasetOp::MakeDatasetFromOptions(
     const std::vector<tstring>& optimizations_disabled,
     const std::vector<tstring>& optimizations_default,
     const std::vector<string>& optimization_configs, DatasetBase** output) {
-  std::vector<tstring> optimizations =
-      ConfigureExperimentsAndSelectOptimizations(
-          optimizations_enabled, optimizations_disabled, optimizations_default);
+  auto experiments = GetExperiments();
+  LogAndRecordExperiments(experiments);
+  auto optimizations =
+      SelectOptimizations(experiments, optimizations_enabled,
+                          optimizations_disabled, optimizations_default);
   MakeDatasetHelper(ctx, optimizations, optimization_configs, input, output);
 }
 
@@ -139,10 +141,12 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                                 &optimizations_disabled));
     OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizationsDefault,
                                                      &optimizations_default));
-    optimizations = ConfigureExperimentsAndSelectOptimizations(
-        optimizations_enabled, optimizations_disabled, optimizations_default);
+    auto experiments = GetExperiments();
+    LogAndRecordExperiments(experiments);
+    optimizations =
+        SelectOptimizations(experiments, optimizations_enabled,
+                            optimizations_disabled, optimizations_default);
   }
-
   MakeDatasetHelper(ctx, optimizations, optimization_configs_, input, output);
 }
 

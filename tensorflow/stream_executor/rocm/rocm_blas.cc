@@ -1827,7 +1827,7 @@ port::Status ROCMBlas::DoBlasGemmWithAlgorithm(
   return port::InternalError("Not implemented on ROCm");
 }
 
-port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
+port::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
     blas::DataType type_a, int lda, int64 stride_a, const DeviceMemoryBase &b,
