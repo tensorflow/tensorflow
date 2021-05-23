@@ -182,7 +182,10 @@ struct FunctionSpecializationSignature {
     for (const auto& lhs : body_parameters) {
       auto it = other.body_parameters.find(lhs.first);
       if (it == other.body_parameters.end()) return false;
-      if (!FastAreAttrValuesEqual(lhs.second, (*it).second)) return false;
+      if (!AreAttrValuesEqual(lhs.second, (*it).second,
+                              /*allow_false_negatives=*/true)) {
+        return false;
+      }
     }
 
     return true;
