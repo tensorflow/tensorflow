@@ -745,8 +745,6 @@ class Conv3DBackpropFilterOp : public OpKernel {
       filter_shape = context->input(1).shape();
     }
 
-<<<<<<< HEAD
-=======
     OP_REQUIRES(context, input_shape.dims() == 5,
                 errors::InvalidArgument("input tensor must have 5 dimensions"));
     OP_REQUIRES(
@@ -769,7 +767,6 @@ class Conv3DBackpropFilterOp : public OpKernel {
                                 " for out_backprop and ",
                                 filter_shape.dim_size(4), " for filter_sizes"));
 
->>>>>>> 311403edbc9 (Eliminate a division by 0 in 3D convolutions.)
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
                    ConvBackpropComputeDimensions(
@@ -882,8 +879,6 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
       filter_shape = context->input(1).shape();
     }
 
-<<<<<<< HEAD
-=======
     OP_REQUIRES(context, input_shape.dims() == 5,
                 errors::InvalidArgument("input tensor must have 5 dimensions"));
     OP_REQUIRES(
@@ -906,7 +901,6 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
                                 " for out_backprop and ",
                                 filter_shape.dim_size(4), " for filter_sizes"));
 
->>>>>>> 311403edbc9 (Eliminate a division by 0 in 3D convolutions.)
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
                    ConvBackpropComputeDimensions(
