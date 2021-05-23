@@ -192,9 +192,21 @@ class SparseCount : public OpKernel {
               "; values shape: ", values.shape().DebugString()));
     }
 
+    OP_REQUIRES(context, shape.NumElements() != 0,
+                errors::InvalidArgument(
+                    "The shape argument requires at least one element."));
+
     bool is_1d = shape.NumElements() == 1;
-    int num_batches = is_1d ? 1 : shape.flat<int64>()(0);
+    auto shape_vector = shape.flat<int64>();
+    int num_batches = is_1d ? 1 : shape_vector(0);
     int num_values = values.NumElements();
+
+    for (int b = 0; b < shape_vector.size(); b++) {
+      OP_REQUIRES(context, shape_vector(b) >= 0,
+                  errors::InvalidArgument(
+                      "Elements in dense_shape must be >= 0. Instead got:",
+                      shape.DebugString()));
+    }
 
     OP_REQUIRES(context, num_values == indices.shape().dim_size(0),
                 errors::InvalidArgument(
@@ -212,6 +224,14 @@ class SparseCount : public OpKernel {
 
     for (int idx = 0; idx < num_values; ++idx) {
       int batch = is_1d ? 0 : indices_values(idx, 0);
+      if (batch >= num_batches) {
+        OP_REQUIRES(context, batch < num_batches,
+                    errors::InvalidArgument(
+                        "Indices value along the first dimension must be ",
+                        "lower than the first index of the shape.", "Got ",
+                        batch, " as batch and ", num_batches,
+                        " as the first dimension of the shape."));
+      }
       const auto& value = values_values(idx);
       if (value >= 0 && (maxlength_ <= 0 || value < maxlength_)) {
         if (binary_output_) {
