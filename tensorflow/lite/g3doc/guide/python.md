@@ -46,7 +46,7 @@ echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | sud
 For all other systems, you can install with pip:
 
 <pre class="devsite-terminal devsite-click-to-copy">
-pip3 install --extra-index-url https://google-coral.github.io/py-repo/ tflite_runtime
+pip3 install --index-url https://google-coral.github.io/py-repo/ tflite_runtime
 </pre>
 
 If you'd like to manually install a Python wheel, you can select one from
