@@ -91,7 +91,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 #undef REGISTER_GPU_KERNEL
 
-
 class GetSessionTensorOp : public OpKernel {
  public:
   explicit GetSessionTensorOp(OpKernelConstruction* context)
@@ -101,7 +100,11 @@ class GetSessionTensorOp : public OpKernel {
     const Tensor& handle = ctx->input(0);
     const string& name = handle.scalar<tstring>()();
     Tensor val;
-    OP_REQUIRES_OK(ctx, ctx->session_state()->GetTensor(name, &val));
+    auto session_state = ctx->session_state();
+    OP_REQUIRES(ctx, session_state != nullptr,
+                errors::FailedPrecondition(
+                    "GetSessionTensor called on null session state"));
+    OP_REQUIRES_OK(ctx, session_state->GetTensor(name, &val));
     ctx->set_output(0, val);
   }
 
@@ -122,7 +125,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 #undef REGISTER_GPU_KERNEL
 
-
 class DeleteSessionTensorOp : public OpKernel {
  public:
   explicit DeleteSessionTensorOp(OpKernelConstruction* context)
@@ -131,7 +133,11 @@ class DeleteSessionTensorOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& handle = ctx->input(0);
     const string& name = handle.scalar<tstring>()();
-    OP_REQUIRES_OK(ctx, ctx->session_state()->DeleteTensor(name));
+    auto session_state = ctx->session_state();
+    OP_REQUIRES(ctx, session_state != nullptr,
+                errors::FailedPrecondition(
+                    "DeleteSessionTensor called on null session state"));
+    OP_REQUIRES_OK(ctx, session_state->DeleteTensor(name));
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(DeleteSessionTensorOp);

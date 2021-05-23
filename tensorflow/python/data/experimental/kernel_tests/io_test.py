@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import os
 import shutil
 
@@ -98,6 +99,20 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = io.load(
         self._test_dir, dataset.element_spec, compression=compression)
     self.assertDatasetProduces(dataset, range(42))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRepeatAndPrefetch(self):
+    """This test reproduces github.com/tensorflow/tensorflow/issues/49165"""
+    dataset1 = dataset_ops.Dataset.from_tensor_slices(np.random.rand(16, 32))
+    io.save(dataset1, self._test_dir)
+    dataset = io.load(self._test_dir)
+    dataset = dataset.shuffle(buffer_size=16)
+    dataset = dataset.batch(16)
+    dataset = dataset.repeat()
+    dataset = dataset.prefetch(1)
+    next_element = self.getNext(dataset)
+    for _ in range(30):
+      self.evaluate(next_element())
 
 
 if __name__ == "__main__":
