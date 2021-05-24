@@ -26,6 +26,9 @@ namespace xla {
 // supported by the backend. This pass should run after OperandUpcaster.
 class ResultCaster : public OpExpanderPass {
  public:
+  explicit ResultCaster(PatternExtraFilter extra_filter = nullptr)
+      : OpExpanderPass(std::move(extra_filter)) {}
+
   absl::string_view name() const override { return "result_caster"; }
 
  protected:
