@@ -183,7 +183,6 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
-        "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/saved_model:constants",
