@@ -317,10 +317,10 @@ class TrackableResource(CapturableResource):
   ...   def _create_resource(self):
   ...     return tf.raw_ops.VarHandleOp(dtype=tf.float32, shape=[2])
   ...   def _initialize(self):
-  ...     return tf.raw_ops.AssignVariableOp(
+  ...     tf.raw_ops.AssignVariableOp(
   ...         resource=self.resource_handle, value=tf.ones([2]))
   ...   def _destroy_resource(self):
-  ...     return tf.raw_ops.DestroyResourceOp(resource=self.resource_handle)
+  ...     tf.raw_ops.DestroyResourceOp(resource=self.resource_handle)
   >>> class DemoModule(tf.Module):
   ...   def __init__(self):
   ...     self.resource = DemoResource()
