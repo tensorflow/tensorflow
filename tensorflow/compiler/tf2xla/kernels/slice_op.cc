@@ -119,14 +119,20 @@ class SliceOp : public XlaOpKernel {
       }
       ctx->SetOutput(0, slice);
     } else {
+      // When a size is -1, we take rest of the dimension according to
+      // https://www.tensorflow.org/api_docs/python/tf/slice.
+      // This essentially makes size as dynamic.
+      bool constant_size_is_minus_one = false;
       // `begin` or `size` is not a compile-time constant.
       if (size_is_constant) {
         for (int i = 0; i < input_dims; ++i) {
-          OP_REQUIRES(
-              ctx, 0 <= size[i],
-              errors::InvalidArgument(
-                  "XLA compilation of Slice operator with negative sizes "
-                  "requires that 'begin' is a compile-time constant."));
+          if (size[i] < 0) {
+            OP_REQUIRES(ctx, size[i] == -1,
+                        errors::InvalidArgument(
+                            "Negative size of slice operator can only be -1"));
+            constant_size_is_minus_one = true;
+          }
+
           OP_REQUIRES(ctx, size[i] <= input_shape.dim_size(i),
                       errors::InvalidArgument("Expected size[", i, "] in [0, ",
                                               input_shape.dim_size(i),
@@ -134,16 +140,16 @@ class SliceOp : public XlaOpKernel {
         }
       }
 
-      absl::InlinedVector<xla::XlaOp, 4> scalar_indices;
-      scalar_indices.reserve(input_dims);
+      absl::InlinedVector<xla::XlaOp, 4> begin_indices;
+      begin_indices.reserve(input_dims);
       xla::XlaOp begin = ctx->Input("begin");
       for (int i = 0; i < input_dims; i++) {
-        scalar_indices.push_back(
+        begin_indices.push_back(
             xla::Reshape(xla::Slice(begin, {i}, {i + 1}, {1}), {}));
       }
-      if (size_is_constant) {
+      if (size_is_constant && !constant_size_is_minus_one) {
         ctx->SetOutput(0,
-                       xla::DynamicSlice(ctx->Input(0), scalar_indices, size));
+                       xla::DynamicSlice(ctx->Input(0), begin_indices, size));
       } else {
         // Size is not constant, use input size as upperbound and then set
         // dimension size on it.
@@ -162,11 +168,17 @@ class SliceOp : public XlaOpKernel {
             padding_config);
 
         // Slice full size out of the input starting from the offsets.
-        auto sliced = xla::DynamicSlice(padded_input, scalar_indices,
+        auto sliced = xla::DynamicSlice(padded_input, begin_indices,
                                         input_shape.dim_sizes());
         for (int i = 0; i < input_dims; i++) {
-          auto dynamic_size =
+          xla::XlaOp dynamic_size =
               xla::Reshape(xla::Slice(ctx->Input(2), {i}, {i + 1}, {1}), {});
+          if (constant_size_is_minus_one && size[i] == -1) {
+            // size = input_.dim_size(i) - begin[i]
+            dynamic_size = xla::ConstantR0<int32>(ctx->builder(),
+                                                  input_shape.dim_size(i)) -
+                           begin_indices[i];
+          }
           sliced = xla::SetDimensionSize(sliced, dynamic_size, i);
         }
         ctx->SetOutput(0, sliced);
