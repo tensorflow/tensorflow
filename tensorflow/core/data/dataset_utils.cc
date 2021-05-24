@@ -253,28 +253,6 @@ void DefaultOptimizationGraphRewrites(
   }
 }
 
-void GraphRewritesOptions(const Options& options,
-                          absl::flat_hash_set<tstring>* optimization_enabled,
-                          absl::flat_hash_set<tstring>* optimization_disabled,
-                          absl::flat_hash_set<tstring>* optimization_default) {
-  DefaultOptimizationGraphRewrites(options, optimization_enabled,
-                                   optimization_disabled, optimization_default);
-  if (options.optional_deterministic_case() == Options::kDeterministic) {
-    if (options.deterministic()) {
-      optimization_disabled->insert(kMakeSloppyOpt);
-    } else {
-      optimization_enabled->insert(kMakeSloppyOpt);
-    }
-  }
-  if (options.optional_slack_case() == Options::kSlack) {
-    if (options.slack()) {
-      optimization_enabled->insert(kSlackOpt);
-    } else {
-      optimization_disabled->insert(kSlackOpt);
-    }
-  }
-}
-
 }  // namespace
 
 Status WriteElementsToCheckpoint(
@@ -736,14 +714,14 @@ bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
   return (op_to_match[index] == 'V') && (op_prefix.length() == index);
 }
 
-std::vector<string> GetExperiments() {
+absl::flat_hash_set<string> GetExperiments() {
   return GetExperiments(port::JobName(),
                         [](const tstring& str) { return Hash64(str); });
 }
 
-std::vector<string> GetExperiments(
+absl::flat_hash_set<string> GetExperiments(
     const string& job_name, std::function<uint64(const string&)> hash_func) {
-  std::vector<string> experiments;
+  absl::flat_hash_set<string> experiments;
 
   if (job_name.empty()) {
     return experiments;
@@ -777,21 +755,18 @@ std::vector<string> GetExperiments(
   }
 
   // Include opted in experiments unless they are opted out.
-  absl::flat_hash_set<string> experiments_set;
   if (opt_ins_raw == "all") {
     for (const auto& pair : live_experiments) {
       auto experiment = pair.first;
-      if (std::find(opt_outs.begin(), opt_outs.end(), experiment) ==
-          opt_outs.end()) {
-        experiments_set.insert(experiment);
+      if (!opt_outs.contains(experiment)) {
+        experiments.insert(experiment);
       }
     }
   } else {
     for (const auto& experiment :
          str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty())) {
-      if (std::find(opt_outs.begin(), opt_outs.end(), experiment) ==
-          opt_outs.end()) {
-        experiments_set.insert(experiment);
+      if (!opt_outs.contains(experiment)) {
+        experiments.insert(experiment);
       }
     }
   }
@@ -801,18 +776,15 @@ std::vector<string> GetExperiments(
     auto& experiment = pair.first;
     if ((hash_func(strings::StrCat(job_name, experiment)) % 100 <
          pair.second) &&
-        (std::find(opt_outs.begin(), opt_outs.end(), experiment) ==
-         opt_outs.end())) {
-      experiments_set.insert(experiment);
+        !opt_outs.contains(experiment)) {
+      experiments.insert(experiment);
     }
   }
 
-  experiments.insert(experiments.end(), experiments_set.begin(),
-                     experiments_set.end());
   return experiments;
 }
 
-void LogAndRecordExperiments(const std::vector<string>& experiments) {
+void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments) {
   if (!experiments.empty()) {
     VLOG(1) << "The input pipeline is subject to tf.data experiments. "
                "Please see `go/tf-data-experiments` for more details.";
@@ -824,42 +796,48 @@ void LogAndRecordExperiments(const std::vector<string>& experiments) {
 }
 
 void GetOptimizations(const Options& options,
-                      std::vector<tstring>* optimizations_enabled,
-                      std::vector<tstring>* optimizations_disabled,
-                      std::vector<tstring>* optimizations_default) {
-  absl::flat_hash_set<tstring> enabled_set;
-  absl::flat_hash_set<tstring> disabled_set;
-  absl::flat_hash_set<tstring> default_set;
-  GraphRewritesOptions(options, &enabled_set, &disabled_set, &default_set);
-  *optimizations_enabled = {enabled_set.begin(), enabled_set.end()};
-  *optimizations_disabled = {disabled_set.begin(), disabled_set.end()};
-  *optimizations_default = {default_set.begin(), default_set.end()};
+                      absl::flat_hash_set<tstring>* optimizations_enabled,
+                      absl::flat_hash_set<tstring>* optimizations_disabled,
+                      absl::flat_hash_set<tstring>* optimizations_default) {
+  DefaultOptimizationGraphRewrites(options, optimizations_enabled,
+                                   optimizations_disabled,
+                                   optimizations_default);
+  if (options.optional_deterministic_case() == Options::kDeterministic) {
+    if (options.deterministic()) {
+      optimizations_disabled->insert(kMakeSloppyOpt);
+    } else {
+      optimizations_enabled->insert(kMakeSloppyOpt);
+    }
+  }
+  if (options.optional_slack_case() == Options::kSlack) {
+    if (options.slack()) {
+      optimizations_enabled->insert(kSlackOpt);
+    } else {
+      optimizations_disabled->insert(kSlackOpt);
+    }
+  }
 }
 
-std::vector<tstring> SelectOptimizations(
-    const std::vector<string>& experiments,
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default) {
-  absl::flat_hash_set<tstring> optimizations_set;
+absl::flat_hash_set<tstring> SelectOptimizations(
+    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default) {
+  absl::flat_hash_set<tstring> optimizations;
 
   // Add the enabled and default optimizations.
-  optimizations_set.insert(optimizations_enabled.begin(),
-                           optimizations_enabled.end());
-  optimizations_set.insert(optimizations_default.begin(),
-                           optimizations_default.end());
+  optimizations.insert(optimizations_enabled.begin(),
+                       optimizations_enabled.end());
+  optimizations.insert(optimizations_default.begin(),
+                       optimizations_default.end());
 
   // Add experiments unless they correspond to a disabled optimization.
   for (auto& experiment : experiments) {
-    if (std::find(optimizations_disabled.begin(), optimizations_disabled.end(),
-                  experiment) == optimizations_disabled.end()) {
-      optimizations_set.insert(experiment);
+    if (!optimizations_disabled.contains(experiment)) {
+      optimizations.insert(experiment);
     }
   }
 
-  std::vector<tstring> optimizations;
-  optimizations.insert(optimizations.end(), optimizations_set.begin(),
-                       optimizations_set.end());
   return optimizations;
 }
 
@@ -1101,8 +1079,8 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
   return Status::OK();
 }
 
-void CreateGraphRewriteConfigs(const Options& options,
-                               std::vector<std::string>* configs) {
+absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
+  absl::flat_hash_set<tstring> configs;
   const auto& optimization_options = options.optimization_options();
   const auto& map_vectorization = optimization_options.map_vectorization();
   if (map_vectorization.optional_enabled_case() == MapVectorization::kEnabled &&
@@ -1110,11 +1088,11 @@ void CreateGraphRewriteConfigs(const Options& options,
       map_vectorization.optional_use_choose_fastest_case() ==
           MapVectorization::kUseChooseFastest) {
     if (map_vectorization.use_choose_fastest()) {
-      configs->push_back(absl::StrCat(kMapVectorizationOpt, ":",
-                                      kUseChooseFastestOpt, ":true"));
+      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
+                                  kUseChooseFastestOpt, ":true"));
     } else {
-      configs->push_back(absl::StrCat(kMapVectorizationOpt, ":",
-                                      kUseChooseFastestOpt, ":false"));
+      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
+                                  kUseChooseFastestOpt, ":false"));
     }
   }
   std::vector<tstring> autotune_only_optimizations = {
@@ -1126,12 +1104,12 @@ void CreateGraphRewriteConfigs(const Options& options,
           OptimizationOptions::kAutotune &&
       !optimization_options.autotune()) {
     for (const auto& optimization : autotune_only_optimizations) {
-      configs->push_back(
+      configs.insert(
           absl::StrCat(optimization.data(), ":", kAutotuneOpt, ":false"));
     }
   } else {
     for (const auto& optimization : autotune_only_optimizations) {
-      configs->push_back(
+      configs.insert(
           absl::StrCat(optimization.data(), ":", kAutotuneOpt, ":true"));
     }
   }
@@ -1141,9 +1119,10 @@ void CreateGraphRewriteConfigs(const Options& options,
         DistributeOptions::kNumDevices) {
       num_devices = options.distribute_options().num_devices();
     }
-    configs->push_back(
+    configs.insert(
         absl::StrCat(kSlackOpt, ":", kSlackPeriodOpt, ":", num_devices));
   }
+  return configs;
 }
 
 bool ShouldConfigureMaxIntraOpParallelism(const Options& options) {
@@ -1163,8 +1142,9 @@ bool ShouldUseAutotuning(const Options& options) {
 }
 
 bool ShouldApplyOptimizations(
-    const Options& options, const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_default) {
+    const Options& options,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_default) {
   return (options.optimization_options()
                   .optional_apply_default_optimizations_case() !=
               OptimizationOptions::kApplyDefaultOptimizations ||

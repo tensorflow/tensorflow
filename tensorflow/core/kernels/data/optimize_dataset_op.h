@@ -15,13 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_OPTIMIZE_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_OPTIMIZE_DATASET_OP_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/platform.h"
 
 // On mobile we do not provide optimize dataset op because not all of its
 // dependencies are available there. The op is replaced with a no-op.
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/framework/dataset.h"
-
 namespace tensorflow {
 namespace data {
 
@@ -48,10 +48,11 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
   // used to create the dataset without explicitly using the OptimizeDatasetOp.
   static void MakeDatasetFromOptions(
       OpKernelContext* ctx, DatasetBase* input,
-      const std::vector<tstring>& optimizations_enabled,
-      const std::vector<tstring>& optimizations_disabled,
-      const std::vector<tstring>& optimizations_default,
-      const std::vector<string>& optimization_configs, DatasetBase** output);
+      const absl::flat_hash_set<tstring>& optimizations_enabled,
+      const absl::flat_hash_set<tstring>& optimizations_disabled,
+      const absl::flat_hash_set<tstring>& optimizations_default,
+      const absl::flat_hash_set<tstring>& optimization_configs,
+      DatasetBase** output);
 
   explicit OptimizeDatasetOp(OpKernelConstruction* ctx);
 
@@ -60,15 +61,13 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override;
 
  private:
-  std::vector<string> optimization_configs_;
+  absl::flat_hash_set<tstring> optimization_configs_;
   int op_version_ = 0;
 };
 
 }  // namespace data
 }  // namespace tensorflow
 #else  // !IS_MOBILE_PLATFORM
-#include "tensorflow/core/framework/dataset.h"
-
 namespace tensorflow {
 namespace data {
 
@@ -78,10 +77,11 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
   // executing the OptimizeDatasetOp op kernel).
   static void MakeDatasetFromOptions(
       OpKernelContext* ctx, DatasetBase* input,
-      const std::vector<tstring>& optimizations_enabled,
-      const std::vector<tstring>& optimizations_disabled,
-      const std::vector<tstring>& optimizations_default,
-      const std::vector<string>& optimization_configs, DatasetBase** output);
+      const absl::flat_hash_set<tstring>& optimizations_enabled,
+      const absl::flat_hash_set<tstring>& optimizations_disabled,
+      const absl::flat_hash_set<tstring>& optimizations_default,
+      const absl::flat_hash_set<tstring>& optimization_configs,
+      DatasetBase** output);
 
   explicit OptimizeDatasetOp(OpKernelConstruction* ctx);
 

@@ -20,6 +20,7 @@ limitations under the License.
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
 #if !defined(IS_MOBILE_PLATFORM)
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -31,8 +32,8 @@ namespace tensorflow {
 namespace data {
 
 RewriterConfig CreateRewriterConfig(
-    const std::vector<tstring>& optimizations,
-    const std::vector<string>& optimizations_configs);
+    const absl::flat_hash_set<tstring>& optimizations,
+    const absl::flat_hash_set<tstring>& optimizations_configs);
 
 // Rewrites the input dataset using the given config.
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,

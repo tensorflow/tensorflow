@@ -17,6 +17,7 @@ limitations under the License.
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
 #if !defined(IS_MOBILE_PLATFORM)
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/metrics.h"
@@ -150,8 +151,8 @@ Status ApplyRewrites(OpKernelContext* ctx,
 }  // anonymous namespace
 
 RewriterConfig CreateRewriterConfig(
-    const std::vector<tstring>& optimizations,
-    const std::vector<string>& optimizations_configs) {
+    const absl::flat_hash_set<tstring>& optimizations,
+    const absl::flat_hash_set<tstring>& optimizations_configs) {
   RewriterConfig rewriter_config;
   rewriter_config.add_optimizers(kOptimizerName);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
