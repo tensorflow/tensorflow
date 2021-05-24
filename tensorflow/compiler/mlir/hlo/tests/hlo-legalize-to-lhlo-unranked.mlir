@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -buffer-hoisting -buffer-deallocation %s -o - | FileCheck %s
+// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -buffer-hoisting -buffer-deallocation -canonicalize %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @func_op_unranked_arg_result
 func @func_op_unranked_arg_result(%arg0: tensor<*xf32>) -> tensor<*xf32> {

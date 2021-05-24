@@ -79,7 +79,7 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
 //
 // and returns %4 as the shape value.
 LogicalResult deriveShapeFromFirstOperand(
-    OpBuilder *builder, Operation *op,
+    OpBuilder *builder, Operation *op, ValueRange operands,
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
 // Type derivation function that returns a tensor type with a new element type.
