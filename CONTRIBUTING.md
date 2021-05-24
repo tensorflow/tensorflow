@@ -4,7 +4,7 @@
 
 Before sending your pull requests, make sure you do the following:
 
--   Read the [contributing guidelines](CONTRIBUTING.md).
+-   Read the [Contributing guidelines](CONTRIBUTING.md).
 -   Read the [Code of Conduct](CODE_OF_CONDUCT.md).
 -   Ensure you have signed the
     [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
@@ -43,7 +43,7 @@ automatically on GitHub.
 
 If you want to contribute, start working through the TensorFlow codebase,
 navigate to the
-[Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
+[GitHub "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
 looking through interesting issues. If you are not sure of where to start, then
 start by trying one of the smaller/easier issues here i.e.
 [issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)
