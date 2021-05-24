@@ -2687,7 +2687,7 @@
 // CHECK:         %[[VAL_2477:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2445]] to i8*
 // CHECK:         %[[VAL_2478:.*]] = getelementptr inbounds i8, i8* %[[VAL_2477]], i32 %[[VAL_2454]]
 // CHECK:         %[[VAL_2479:.*]] = load i8, i8* %[[VAL_2478]], align 1, !invariant.load !94
-// CHECK:         %[[VAL_2480:.*]] = add i8 %[[VAL_2476]], %[[VAL_2479]]
+// CHECK:         %[[VAL_2480:.*]] = or i8 %[[VAL_2476]], %[[VAL_2479]]
 // CHECK:         %[[VAL_2481:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2448]] to i8*
 // CHECK:         %[[VAL_2482:.*]] = getelementptr inbounds i8, i8* %[[VAL_2481]], i32 %[[VAL_2454]]
 // CHECK:         store i8 %[[VAL_2480]], i8* %[[VAL_2482]], align 1
@@ -2697,7 +2697,7 @@
 // CHECK:         %[[VAL_2486:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2445]] to i8*
 // CHECK:         %[[VAL_2487:.*]] = getelementptr inbounds i8, i8* %[[VAL_2486]], i32 %[[VAL_2458]]
 // CHECK:         %[[VAL_2488:.*]] = load i8, i8* %[[VAL_2487]], align 1, !invariant.load !94
-// CHECK:         %[[VAL_2489:.*]] = add i8 %[[VAL_2485]], %[[VAL_2488]]
+// CHECK:         %[[VAL_2489:.*]] = or i8 %[[VAL_2485]], %[[VAL_2488]]
 // CHECK:         %[[VAL_2490:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2448]] to i8*
 // CHECK:         %[[VAL_2491:.*]] = getelementptr inbounds i8, i8* %[[VAL_2490]], i32 %[[VAL_2458]]
 // CHECK:         store i8 %[[VAL_2489]], i8* %[[VAL_2491]], align 1
@@ -2707,7 +2707,7 @@
 // CHECK:         %[[VAL_2495:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2445]] to i8*
 // CHECK:         %[[VAL_2496:.*]] = getelementptr inbounds i8, i8* %[[VAL_2495]], i32 %[[VAL_2462]]
 // CHECK:         %[[VAL_2497:.*]] = load i8, i8* %[[VAL_2496]], align 1, !invariant.load !94
-// CHECK:         %[[VAL_2498:.*]] = add i8 %[[VAL_2494]], %[[VAL_2497]]
+// CHECK:         %[[VAL_2498:.*]] = or i8 %[[VAL_2494]], %[[VAL_2497]]
 // CHECK:         %[[VAL_2499:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2448]] to i8*
 // CHECK:         %[[VAL_2500:.*]] = getelementptr inbounds i8, i8* %[[VAL_2499]], i32 %[[VAL_2462]]
 // CHECK:         store i8 %[[VAL_2498]], i8* %[[VAL_2500]], align 1
@@ -2717,7 +2717,7 @@
 // CHECK:         %[[VAL_2504:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2445]] to i8*
 // CHECK:         %[[VAL_2505:.*]] = getelementptr inbounds i8, i8* %[[VAL_2504]], i32 %[[VAL_2466]]
 // CHECK:         %[[VAL_2506:.*]] = load i8, i8* %[[VAL_2505]], align 1, !invariant.load !94
-// CHECK:         %[[VAL_2507:.*]] = add i8 %[[VAL_2503]], %[[VAL_2506]]
+// CHECK:         %[[VAL_2507:.*]] = or i8 %[[VAL_2503]], %[[VAL_2506]]
 // CHECK:         %[[VAL_2508:.*]] = bitcast [100 x [200 x i8]]* %[[VAL_2448]] to i8*
 // CHECK:         %[[VAL_2509:.*]] = getelementptr inbounds i8, i8* %[[VAL_2508]], i32 %[[VAL_2466]]
 // CHECK:         store i8 %[[VAL_2507]], i8* %[[VAL_2509]], align 1

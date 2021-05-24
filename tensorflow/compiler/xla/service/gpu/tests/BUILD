@@ -83,6 +83,17 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "pred_arithmetic_test",
+    srcs = ["pred_arithmetic_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
     tags = tf_cuda_tests_tags(),
