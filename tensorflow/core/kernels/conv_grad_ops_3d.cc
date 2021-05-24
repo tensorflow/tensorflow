@@ -239,6 +239,14 @@ class Conv3DBackpropInputOp : public OpKernel {
       input_shape = context->input(0).shape();
     }
 
+    OP_REQUIRES(context, input_shape.dims() == 5,
+                errors::InvalidArgument("input tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, filter_shape.dims() == 5,
+        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dims() == 5,
+        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
     OP_REQUIRES(
         context, input_shape.dim_size(4) == filter_shape.dim_size(3),
         errors::InvalidArgument("input and filter_sizes must have the same "
@@ -360,6 +368,14 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
       input_shape = context->input(0).shape();
     }
 
+    OP_REQUIRES(context, input_shape.dims() == 5,
+                errors::InvalidArgument("input tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, filter_shape.dims() == 5,
+        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dims() == 5,
+        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
     OP_REQUIRES(
         context, input_shape.dim_size(4) == filter_shape.dim_size(3),
         errors::InvalidArgument("input and filter_sizes must have the same "
@@ -443,6 +459,11 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     // benchmarks I didn't find a case when it's beneficial to run parallel
     // contraction compared to sharding and matmuls.
     const bool use_parallel_contraction = dims.batch_size == 1;
+
+    OP_REQUIRES(
+        context, work_unit_size > 0,
+        errors::InvalidArgument("input, filter_sizes and out_backprop tensors "
+                                "must all have at least 1 element"));
 
     const size_t shard_size =
         use_parallel_contraction
@@ -724,6 +745,14 @@ class Conv3DBackpropFilterOp : public OpKernel {
       filter_shape = context->input(1).shape();
     }
 
+    OP_REQUIRES(context, input_shape.dims() == 5,
+                errors::InvalidArgument("input tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, filter_shape.dims() == 5,
+        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dims() == 5,
+        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
     OP_REQUIRES(
         context, input_shape.dim_size(4) == filter_shape.dim_size(3),
         errors::InvalidArgument("input and filter_sizes must have the same "
@@ -850,6 +879,14 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
       filter_shape = context->input(1).shape();
     }
 
+    OP_REQUIRES(context, input_shape.dims() == 5,
+                errors::InvalidArgument("input tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, filter_shape.dims() == 5,
+        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dims() == 5,
+        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
     OP_REQUIRES(
         context, input_shape.dim_size(4) == filter_shape.dim_size(3),
         errors::InvalidArgument("input and filter_sizes must have the same "
@@ -935,6 +972,11 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     const int64 size_C = filter_total_size * dims.out_depth;
 
     const int64 work_unit_size = size_A + size_B + size_C;
+
+    OP_REQUIRES(
+        context, work_unit_size > 0,
+        errors::InvalidArgument("input, filter_sizes and out_backprop tensors "
+                                "must all have at least 1 element"));
 
     const size_t shard_size =
         (target_working_set_size + work_unit_size - 1) / work_unit_size;
