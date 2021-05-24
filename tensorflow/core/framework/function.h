@@ -397,7 +397,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
-                            const FunctionDefLibrary& lib_def);
+                            const FunctionDefLibrary& lib_def = {});
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =

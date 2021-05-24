@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
@@ -571,14 +572,17 @@ class CudnnTensorDescriptor {
         CHECK_CUDNN_OK(cudnnSetTensorNdDescriptor(handle_.get(), elem_type, nd,
                                                   dims.data(), strides.data()))
             << "batch_descriptor: " << batch_descriptor.ToString();
-      } break;
-      case dnn::DataLayout::kBatchDepthYX4: {
+        break;
+      }
+      case dnn::DataLayout::kBatchDepthYX4:
+        // TODO(b/188571332): Support int8x32.
+        CHECK_EQ(elem_type, CUDNN_DATA_INT8x4);
         CHECK_CUDNN_OK(cudnnSetTensor4dDescriptor(
             handle_.get(), CUDNN_TENSOR_NCHW_VECT_C, elem_type,
             batch_descriptor.count(), batch_descriptor.feature_map_count(),
             batch_descriptor.height(), batch_descriptor.width()))
             << "batch_descriptor: " << batch_descriptor.ToString();
-      } break;
+        break;
       default:
         LOG(FATAL) << "Unsupported tensor format "
                    << DataLayoutString(batch_descriptor.layout());
@@ -945,6 +949,7 @@ cudnnDataType_t ToCudnnDataType(
     case dnn::DataType::kHalf:
       return CUDNN_DATA_HALF;
     case dnn::DataType::kInt8:
+      // TODO(jlebar): Support CUDNN_DATA_INT8x32.
       return data_layout == dnn::DataLayout::kBatchDepthYX4 ? CUDNN_DATA_INT8x4
                                                             : CUDNN_DATA_INT8;
     case dnn::DataType::kInt32:
@@ -958,6 +963,7 @@ cudnnDataType_t ToCudnnDataType(dnn::DataType data_type,
                                 dnn::FilterLayout filter_layout) {
   if (data_type == dnn::DataType::kInt8 &&
       filter_layout == dnn::FilterLayout::kOutputInputYX4) {
+    // TODO(jlebar): Support CUDNN_DATA_INT8x32.
     return CUDNN_DATA_INT8x4;
   }
   return ToCudnnDataType(data_type);

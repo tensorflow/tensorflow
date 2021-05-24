@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
@@ -90,6 +91,29 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
 StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind);
 StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
+
+// Returns result with the smallest time which has not failed.
+// If deterministic output is requested, returns first (not failing) result.
+StatusOr<tensorflow::AutotuneResult> PickBestResult(
+    absl::Span<tensorflow::AutotuneResult const> profile_results,
+    const HloInstruction& instr);
+
+// Returns whether determinism is required.
+//
+// The following function allows deterministic ops to be implemented relatively
+// quickly using environment variables. It is intended to be temporary. The
+// longer-term intention is to enable deterministic ops via tf.config and
+// appropriate plumbing. See the discussion on PR 34951 for more information:
+// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
+// This function and associated comment are replicated in the following three
+// places:
+//   1. tensorflow/core/kernels/gpu_utils.cc
+//   2. tensorflow/stream_executor/cuda/cuda_dnn.cc
+// When implementing the plumbing, you should also search for the use of
+// TF_DETERMINISTIC_OPS on its own.
+// TODO(duncanriach): move to an API that uses tf.config and implement the first
+//                    phase of plumbing.
+bool RequireDeterminism(const HloModuleConfig& config);
 
 }  // namespace gpu
 }  // namespace xla

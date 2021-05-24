@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
+#include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -436,7 +437,8 @@ class MklConcatFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-template <typename Device, typename T, AxisArgumentName AxisArgName>
+template <typename Device, typename T, AxisArgumentName AxisArgName,
+          bool native_format = false>
 class MklConcatOp : public OpKernel {
  private:
   TensorFormat data_format_;
@@ -459,7 +461,7 @@ class MklConcatOp : public OpKernel {
       const int N = input_tensors.size();
       // Get Tensor shapes.
       std::vector<MklDnnShape> mkl_input_shapes(N);
-      GetMklShapeList(context, "values", &mkl_input_shapes);
+      GetMklShapeList(context, "values", &mkl_input_shapes, native_format);
 
       const Tensor& concat_dim_tensor = (AxisArgName == NAME_IS_CONCAT_DIM)
                                             ? MklGetInput(context, 0)
@@ -764,7 +766,7 @@ class MklConcatOp : public OpKernel {
           dnn_shape_dst.SetMklTensor(false);
           tf_shape_dst = MklDnnDimsToTFShape(dst_dims);
           AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
-                                    dnn_shape_dst);
+                                    dnn_shape_dst, native_format);
           DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
 
           dst_md = dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout()
@@ -788,9 +790,9 @@ class MklConcatOp : public OpKernel {
           output_min_mkl_shape.SetMklTensor(false);
           output_max_mkl_shape.SetMklTensor(false);
           AllocateOutputSetMklShape(context, 1, &output_min, {},
-                                    output_min_mkl_shape);
+                                    output_min_mkl_shape, native_format);
           AllocateOutputSetMklShape(context, 2, &output_max, {},
-                                    output_max_mkl_shape);
+                                    output_max_mkl_shape, native_format);
           // All input tensors should have the same range, just use the
           // first one
           output_min->flat<float>()(0) = input_mins[0].flat<float>()(0);
@@ -804,7 +806,7 @@ class MklConcatOp : public OpKernel {
         tf_shape_dst = MklDnnDimsToTFShape(dst_dims);
 
         AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
-                                  dnn_shape_dst);
+                                  dnn_shape_dst, native_format);
         DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
       }
     } catch (mkldnn::error& e) {
@@ -844,18 +846,20 @@ class MklConcatOp : public OpKernel {
     eigen_concat_op_.Compute(context, converted_values, tf_input_shapes,
                              input_mins, input_maxes, quantized_input);
 
-    // Get the number of dims from first input since all input tensors
-    // should have same rank.
-    size_t dims = values[0].shape().dims();
-    MklDnnShape output_data_mkl_shape;
-    output_data_mkl_shape.SetMklTensor(false);
-    output_data_mkl_shape.SetDimensions(dims);
-    AllocateOutputSetMklShape(context, 0, output_data_mkl_shape);
-    if (quantized_input) {
-      MklDnnShape output_min_max_mkl_shape;
-      output_min_max_mkl_shape.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, 1, output_min_max_mkl_shape);
-      AllocateOutputSetMklShape(context, 2, output_min_max_mkl_shape);
+    if (!native_format) {
+      // Get the number of dims from first input since all input tensors
+      // should have same rank.
+      size_t dims = values[0].shape().dims();
+      MklDnnShape output_data_mkl_shape;
+      output_data_mkl_shape.SetMklTensor(false);
+      output_data_mkl_shape.SetDimensions(dims);
+      AllocateOutputSetMklShape(context, 0, output_data_mkl_shape);
+      if (quantized_input) {
+        MklDnnShape output_min_max_mkl_shape;
+        output_min_max_mkl_shape.SetMklTensor(false);
+        AllocateOutputSetMklShape(context, 1, output_min_max_mkl_shape);
+        AllocateOutputSetMklShape(context, 2, output_min_max_mkl_shape);
+      }
     }
   }
 
@@ -936,14 +940,24 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConcatV2")
                             .TypeConstraint<quint8>("T")
                             .HostMemory("axis")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklConcatOp<CPUDevice, quint8, NAME_IS_AXIS>);
+                        MklConcatOp<CPUDevice, quint8, NAME_IS_AXIS, true>);
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConcatV2")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .HostMemory("axis")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklConcatOp<CPUDevice, qint8, NAME_IS_AXIS>);
+                        MklConcatOp<CPUDevice, qint8, NAME_IS_AXIS, true>);
+
+#define REGISTER_QUANTIZED_CONCATV2(type)                \
+  REGISTER_KERNEL_BUILDER(Name("QuantizedConcatV2")      \
+                              .Device(DEVICE_CPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("axis"),       \
+                          NoOp)
+
+REGISTER_QUANTIZED_CONCATV2(quint8);
+REGISTER_QUANTIZED_CONCATV2(qint8);
 
 #undef REGISTER_CONCAT_MKL
 }  // namespace tensorflow

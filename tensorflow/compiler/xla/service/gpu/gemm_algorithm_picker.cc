@@ -201,31 +201,15 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     tensorflow::Logger::GetSingleton()->LogProto(log);
   }
 
-  // Choose fastest correct GEMM, but allow for incorrect results (since the
-  // reference result is chosen arbitrary).
-  auto has_failure = [](const AutotuneResult& r) {
-    return r.has_failure() &&
-           r.failure().kind() != AutotuneResult::WRONG_RESULT;
-  };
-
-  auto result_comparison_key = [&has_failure](const AutotuneResult& r) {
-    return std::make_tuple(
-        has_failure(r),
-        tensorflow::proto_utils::FromDurationProto(r.run_time()));
-  };
-  const auto& best_result = absl::c_min_element(
-      profile_results,
-      [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return result_comparison_key(lhs) < result_comparison_key(rhs);
-      });
-
-  if (best_result != profile_results.end() && !has_failure(*best_result)) {
-    return {best_result->gemm().algorithm()};
+  StatusOr<AutotuneResult> autotune_result =
+      PickBestResult(profile_results, *gemm);
+  if (!autotune_result.ok()) {
+    LOG(WARNING) << "Failed to find best cuBLAS algorithm, GEMM performance "
+                    "might be suboptimal: "
+                 << autotune_result.status();
+    return {absl::nullopt};
   }
-
-  VLOG(1) << "Unable to autotune cuBLAS gemm on stream " << stream
-          << " none of the " << algorithms.size() << " ran successfully";
-  return {absl::nullopt};
+  return {autotune_result->gemm().algorithm()};
 }
 
 static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
@@ -259,16 +243,8 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   cache_misses++;
   VLOG(4) << "Autotuning cache miss";
 
-  int64 batch_size = gemm_config.batch_size();
-  absl::optional<se::blas::AlgorithmType> result;
-  if (batch_size != 1) {
-    // TODO(b/112111608): Implement auto tune for batched gemm.
-    VLOG(2) << "Batch size is non-singular, using generic algorithm";
-    result = absl::nullopt;
-  } else {
-    TF_ASSIGN_OR_RETURN(result,
-                        DoUncachedGemmAutotune(instr, stream, allocator));
-  }
+  TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> result,
+                      DoUncachedGemmAutotune(instr, stream, allocator));
 
   CHECK(autotune_cache.emplace(key, result).second);
   return result;

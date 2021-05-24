@@ -122,19 +122,24 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto context =
       tfrt::gpu::wrapper::Context(se_gpu_executor->gpu_context()->context());
   auto stream = tfrt::gpu::wrapper::Stream(se_gpu_stream->gpu_stream());
-  tfrt::gpu::BorrowedGpuStream gpu_stream(host, context, stream);
+  tfrt::gpu::BorrowedGpuStream gpu_stream(context, stream);
 
   // Prepare arguments for BEF execution.
-  auto get_async_value_ref = [&](const BufferAllocation::Slice& slice) {
+  auto get_async_value_ref = [&](const BufferAllocation::Slice& slice)
+      -> tfrt::AsyncValueRef<tfrt::gpu::GpuBuffer> {
     se::DeviceMemoryBase data =
         params.buffer_allocations->GetDeviceAddress(slice);
     tfrt::gpu::wrapper::Pointer<void> pointer(
         data.opaque(), tfrt::gpu::wrapper::Platform::CUDA);
     auto allocator =
         tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
-            host, pointer);
+            pointer);
+    auto buffer =
+        tfrt::gpu::GpuBuffer::Allocate(std::move(allocator), data.size());
+    if (!buffer)
+      return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(buffer.takeError()));
     return tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuBuffer>(
-        host, std::move(allocator), pointer, data.size());
+        std::move(*buffer));
   };
 
   llvm::SmallVector<tfrt::AsyncValueRef<tfrt::gpu::GpuBuffer>, 4> inputs;

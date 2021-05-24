@@ -95,10 +95,6 @@ for more options to configure `ObjectDetector`.
 
 ## Run inference in C++
 
-Note: we are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
-
 ```c++
 // Initialization
 ObjectDetectorOptions options;

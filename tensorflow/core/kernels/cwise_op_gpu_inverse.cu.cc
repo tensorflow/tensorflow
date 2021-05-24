@@ -24,8 +24,6 @@ namespace functor {
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 DEFINE_UNARY6(inverse, Eigen::half, float, double, int64, complex64,
               complex128);
-#else
-DEFINE_UNARY2(inverse, complex64, complex128);
 #endif
 
 DEFINE_SIMPLE_BINARY3(inverse_grad, Eigen::half, float, double);

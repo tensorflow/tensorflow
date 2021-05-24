@@ -434,7 +434,7 @@ py_library(
         ":tensor_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/grappler:tf_optimizer",
     ],
 )
 
@@ -1234,6 +1234,7 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_sanitizers",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",

@@ -3658,9 +3658,19 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
     const HloComputation* entry = module->entry_computation();
     TF_RET_CHECK(entry->root_instruction()->has_sharding());
     const HloSharding& root_sharding = entry->root_instruction()->sharding();
-    TF_RET_CHECK(root_sharding.IsReplicated() ||
-                 root_sharding.UniqueDevice().has_value())
-        << "Unsupported entry root sharding: " << root_sharding.ToString();
+    if (!root_sharding.UniqueDevice().has_value()) {
+      if (root_sharding.IsTuple()) {
+        TF_RET_CHECK(absl::c_all_of(root_sharding.tuple_elements(),
+                                    [](const HloSharding& s) {
+                                      return s.IsReplicated() || s.IsManual();
+                                    }))
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+
+      } else {
+        TF_RET_CHECK(root_sharding.IsReplicated() || root_sharding.IsManual())
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+      }
+    }
 
     for (const HloInstruction* param : entry->parameter_instructions()) {
       TF_RET_CHECK(param->has_sharding());

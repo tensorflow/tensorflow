@@ -514,12 +514,12 @@ func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
 // -----
 
 // CHECK-LABEL: test_pad
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0> : tensor<3x2xi32>}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{\[\[}}1, 1], {{\[}}2, 2]]> : tensor<2x2xi32>}
 // CHECK: %[[VAR1:.*]] = "tosa.pad"(%arg0, %[[VAR0]])
-func @test_pad(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %cst = constant dense<0> : tensor<3x2xi32>
-  %0 = "tfl.pad"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<13x21x3xf32>
-  return %0 : tensor<13x21x3xf32>
+func @test_pad(%arg0: tensor<2x3xf32>) -> tensor<4x7xf32> {
+  %cst = constant dense<[[1, 1], [2, 2]]> : tensor<2x2xi32>
+  %0 = "tfl.pad"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2x2xi32>) -> tensor<4x7xf32>
+  return %0 : tensor<4x7xf32>
 }
 
 // -----

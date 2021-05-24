@@ -126,8 +126,15 @@ const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          int num_conns,
                                          int num_subgraph_inputs = 0);
 
+// Returns a flatbuffer with a single operator, two inputs (one unused) and one
+// output.
+const Model* GetModelWithUnusedInputs();
+
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
+
+// Returns a flatbuffer model with "if" and two subgraphs.
+const Model* GetSimpleModelWithSubgraphsAndIf();
 
 // Builds a one-dimensional flatbuffer tensor of the given size.
 const Tensor* Create1dFlatbufferTensor(int size, bool is_variable = false);
@@ -154,7 +161,7 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
 
 // Create a TfLiteIntArray from an array of ints.  The first element in the
 // supplied array must be the size of the array expressed as an int.
-TfLiteIntArray* IntArrayFromInts(const int* int_array);
+TfLiteIntArray* IntArrayFromInts(int* int_array);
 
 // Create a TfLiteFloatArray from an array of floats.  The first element in the
 // supplied array must be the size of the array expressed as a float.

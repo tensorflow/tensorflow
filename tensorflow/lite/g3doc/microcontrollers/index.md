@@ -6,6 +6,12 @@ core runtime just fits in 16 KB on an Arm Cortex M3 and can run many basic
 models. It doesn't require operating system support, any standard C or C++
 libraries, or dynamic memory allocation.
 
+Note: The
+[TensorFlow Lite for Microcontrollers Experiments](https://experiments.withgoogle.com/collection/tfliteformicrocontrollers)
+features work by developers combining Arduino and TensorFlow to create awesome
+experiences and tools. Check out the site for inspiration to create your own
+TinyML projects.
+
 ## Why microcontrollers are important
 
 Microcontrollers are typically small, low-powered computing devices that are

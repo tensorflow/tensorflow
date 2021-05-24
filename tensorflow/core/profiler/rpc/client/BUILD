@@ -137,6 +137,7 @@ cc_library(
     srcs = ["remote_profiler_session_manager.cc"],
     hdrs = ["remote_profiler_session_manager.h"],
     copts = tf_profiler_copts(),
+    tags = ["notap"],  # TODO(b/188564813): Flaky test.
     deps = [
         ":profiler_client_for_pybind",
         "//tensorflow/core:lib",

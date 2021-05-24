@@ -36,7 +36,7 @@ cc_test(
     srcs = ["generator_test.cc"],
     deps = [
         ":generator",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -48,6 +48,6 @@ cc_test(
     ],
     deps = [
         ":generator",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )

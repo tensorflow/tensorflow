@@ -281,7 +281,7 @@ Note: Object detection models accept input images of a specific size. This is li
 ## Performance benchmarks
 
 Performance benchmark numbers for our
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">starter
+<a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/1?lite-format=tflite">starter
 model</a> are generated with the tool
 [described here](https://www.tensorflow.org/lite/performance/benchmarks).
 

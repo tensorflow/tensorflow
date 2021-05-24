@@ -52,8 +52,6 @@ namespace {
 
 constexpr auto kUnknownResourceId =
     ResourceAliasAnalysis::Info::kUnknownResourceId;
-// Use a single generator resource id.
-int64_t kGeneratorResourceId = -2;
 
 //===----------------------------------------------------------------------===//
 // SideEffectAnalysisInfo helper functions.
@@ -103,7 +101,7 @@ struct SideEffects {
   bool IsReadOnly() const { return !alloc && !free && read && !write; }
 };
 
-using ResourceSideEffectsByValue = llvm::SmallDenseMap<Value, SideEffects>;
+using SideEffectsByValue = llvm::SmallDenseMap<Value, SideEffects>;
 
 bool MustExecute(const MemoryEffects::EffectInstance& effect) {
   VLOG(1) << "MustExecute check with: "
@@ -118,9 +116,9 @@ bool MustExecute(const MemoryEffects::EffectInstance& effect) {
 
 // Collects memory side effects for an operation by value (operands and
 // results).
-void GetResourceInfoForOp(Operation* op,
-                          ResourceSideEffectsByValue& resource_info,
-                          bool& must_execute) {
+void GetSideEffectsByValue(Operation* op,
+                           SideEffectsByValue& side_effects_by_value,
+                           bool& must_execute) {
   VLOG(1) << "Querying for " << mlir::debugString(*op);
   auto interface = dyn_cast<MemoryEffectOpInterface>(op);
   if (!interface) return;
@@ -138,11 +136,11 @@ void GetResourceInfoForOp(Operation* op,
     // TODO(lyandy): Support effects with no value defined.
     if (!effect.getValue()) {
       VLOG(1) << "\teffect with no value, skipping";
-      resource_info.clear();
+      side_effects_by_value.clear();
       must_execute = false;
       return;
     }
-    auto it = resource_info.try_emplace(effect.getValue());
+    auto it = side_effects_by_value.try_emplace(effect.getValue());
     auto& side_effect = it.first->getSecond();
     auto* resource_effect = effect.getEffect();
     if (isa<MemoryEffects::Allocate>(resource_effect)) {
@@ -159,7 +157,7 @@ void GetResourceInfoForOp(Operation* op,
       side_effect.write = true;
     } else {
       VLOG(1) << "\tunknown effect, skipping";
-      resource_info.clear();
+      side_effects_by_value.clear();
       must_execute = false;
       return;
     }
@@ -174,13 +172,13 @@ bool IsOperationResult(Operation* op, Value value) {
 // Checks if an operation's resource operands are read only. Operation results
 // are ignored.
 bool IsResourceOpReadOnly(Operation* op,
-                          const ResourceSideEffectsByValue& resource_op_info) {
-  if (resource_op_info.empty()) return false;
+                          const SideEffectsByValue& side_effects_by_value) {
+  if (side_effects_by_value.empty()) return false;
 
-  for (const auto& resource_info : resource_op_info) {
-    Value value = resource_info.getFirst();
+  for (const auto& value_side_effect : side_effects_by_value) {
+    Value value = value_side_effect.getFirst();
     if (IsOperationResult(op, value)) continue;
-    const SideEffects& side_effects = resource_info.getSecond();
+    const SideEffects& side_effects = value_side_effect.getSecond();
     if (!side_effects.IsReadOnly()) return false;
   }
 
@@ -190,14 +188,14 @@ bool IsResourceOpReadOnly(Operation* op,
 // Checks if an operation's resource results are alloc only and no side effects
 // are present for its operands.
 bool IsResourceOpAllocOnly(Operation* op,
-                           const ResourceSideEffectsByValue& resource_op_info) {
-  if (resource_op_info.empty()) return false;
+                           const SideEffectsByValue& side_effects_by_value) {
+  if (side_effects_by_value.empty()) return false;
 
-  for (const auto& resource_info : resource_op_info) {
+  for (const auto& value_side_effect : side_effects_by_value) {
     // Operand with side effect.
-    Value value = resource_info.getFirst();
+    Value value = value_side_effect.getFirst();
     if (!IsOperationResult(op, value)) return false;
-    const SideEffects& side_effects = resource_info.getSecond();
+    const SideEffects& side_effects = value_side_effect.getSecond();
     if (!side_effects.IsAllocOnly()) return false;
   }
 
@@ -219,13 +217,22 @@ using ResourceIdsByValue =
 // are unknown or a resource is unknown, an empty optional is returned.
 llvm::Optional<ResourceIdsByValue> GetResourceIdsByValue(
     Operation* op, const ResourceAliasAnalysis::Info& alias_analysis,
-    const ResourceSideEffectsByValue& resource_op_info) {
+    const SideEffectsByValue& side_effects_by_value) {
   ResourceIdsByValue resource_ids_by_value;
-  if (resource_op_info.empty()) return llvm::None;
+  if (side_effects_by_value.empty()) return llvm::None;
 
+  // Returns true iff all side-effect-related values are known to
+  // `alias_analysis`.
   auto collect_ids = [&](ValueRange values) {
-    for (auto value : filter_resources(values)) {
+    for (auto value : values) {
+      // Value is not related to any side-effect, skip.
+      if (side_effects_by_value.count(value) == 0) continue;
+      // Value is not a resource variable, thus not known to `alias_analysis`.
+      if (!getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>())
+        return false;
+      // Value is a resource variable not known to `alias_analysis`.
       if (alias_analysis.IsUnknownResource(value)) return false;
+      // Value is a resource variable known to `alias_analysis`.
       const auto& ids = alias_analysis.GetResourceUniqueIds(value);
       resource_ids_by_value.push_back({value, &ids});
     }
@@ -233,6 +240,7 @@ llvm::Optional<ResourceIdsByValue> GetResourceIdsByValue(
   };
 
   if (collect_ids(op->getOperands()) && collect_ids(op->getResults()))
+    // No unknown side-effect-related values.
     return resource_ids_by_value;
   else
     return llvm::None;
@@ -385,16 +393,16 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
       // We do not need explicit control edges for declaration ops.
       if (OpIsDeclaration(&op, alias_analysis)) continue;
 
-      ResourceSideEffectsByValue resource_op_info;
+      SideEffectsByValue side_effects_by_value;
       bool must_execute = false;
-      GetResourceInfoForOp(&op, resource_op_info, must_execute);
+      GetSideEffectsByValue(&op, side_effects_by_value, must_execute);
 
-      if (resource_op_info.empty() && OpIsKnownToHaveNoSideEffect(&op))
+      if (side_effects_by_value.empty() && OpIsKnownToHaveNoSideEffect(&op))
         continue;
 
       // TODO(jpienaar): This only currently uses unknown when not per value
       // resource is used.
-      if (resource_op_info.empty() && must_execute) {
+      if (side_effects_by_value.empty() && must_execute) {
         VLOG(1) << "No resources & must execute: " << debugString(op);
         // Add unknown resource ops as predecessors of the op that must execute,
         // to guarantee ordering between unknown resource ops.
@@ -403,14 +411,14 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
         continue;
       }
 
-      if (IsResourceOpAllocOnly(&op, resource_op_info)) {
+      if (IsResourceOpAllocOnly(&op, side_effects_by_value)) {
         VLOG(1) << "Resource alloc only: " << debugString(op);
         continue;
       }
 
       auto resource_ids_by_value =
-          GetResourceIdsByValue(&op, alias_analysis, resource_op_info);
-      const bool read_only = IsResourceOpReadOnly(&op, resource_op_info);
+          GetResourceIdsByValue(&op, alias_analysis, side_effects_by_value);
+      const bool read_only = IsResourceOpReadOnly(&op, side_effects_by_value);
       bool indirectly_tracked_unknown_access = false;
       // First add edges from known resources.
       if (!resource_ids_by_value.hasValue()) {
@@ -430,12 +438,13 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
         llvm::SmallDenseMap<int64_t, bool> read_only_by_resource_id;
         for (const auto& resource_ids : *resource_ids_by_value) {
           const bool is_result = resource_ids.first.getDefiningOp() == &op;
-          auto value_resource_info = resource_op_info.find(resource_ids.first);
+          auto value_side_effect =
+              side_effects_by_value.find(resource_ids.first);
           bool resource_read_only = false;
-          if (value_resource_info != resource_op_info.end()) {
-            if (is_result && value_resource_info->getSecond().IsAllocOnly())
+          if (value_side_effect != side_effects_by_value.end()) {
+            if (is_result && value_side_effect->getSecond().IsAllocOnly())
               continue;
-            resource_read_only = value_resource_info->getSecond().IsReadOnly();
+            resource_read_only = value_side_effect->getSecond().IsReadOnly();
           }
 
           for (const auto& id : *resource_ids.second) {
@@ -459,30 +468,17 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
       }
 
       // If not indirectly tracked, add edges from the resource.
-      bool found_generator = false;
-
       if (!indirectly_tracked_unknown_access) {
         VLOG(1) << "Not indirectly tracked with unknown access: "
                 << debugString(op);
         if (auto interface = dyn_cast<MemoryEffectOpInterface>(op)) {
           llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
           interface.getEffects(effects);
-
-          found_generator =
-              llvm::any_of(effects, [&](MemoryEffects::EffectInstance& effect) {
-                return isa<ResourceEffects::GeneratorOp>(effect.getResource());
-              });
         }
-        AddPredecessorsForAccess(
-            found_generator ? kGeneratorResourceId : kUnknownResourceId, &op,
-            read_only);
+        AddPredecessorsForAccess(kUnknownResourceId, &op, read_only);
       }
       if (!resource_ids_by_value.hasValue()) {
         VLOG(1) << "Indirectly tracked with no value: " << debugString(op);
-        if (found_generator) {
-          TrackAccess(kGeneratorResourceId, &op, read_only);
-          continue;
-        }
 
         // Update access info for unknown resource.
         TrackAccess(kUnknownResourceId, &op, read_only);

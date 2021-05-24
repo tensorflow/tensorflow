@@ -579,7 +579,7 @@ cc_test(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -593,6 +593,7 @@ pybind_extension(
     module_name = "_pywrap_string_util",
     deps = [
         ":string_util_lib",
+        "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",

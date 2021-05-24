@@ -540,18 +540,14 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
 
 CompiledFunction::~CompiledFunction() = default;
 
-// Converts flattened arguments contained in ParsedArgumentsAsBuffers in
-// place. If arguments are `DeviceArray`, they must all be on the same `Device`.
+// Compute signature for arguments.
 //
 // Returns `Status::OK()` on success. Returning an error should lead to
 // calling the Python fallback.
-xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
-                                 xla::PjRtDevice* default_device,
-                                 bool is_committed,
-                                 ParsedArgumentsAsBuffers& arguments) {
-  tensorflow::profiler::TraceMe traceme("ConvertArgsToBuffers");
-  std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
-  auto& keep_alive = arguments.keep_alive;
+xla::Status ComputeSignature(bool jax_enable_x64, xla::PyClient& pyclient,
+                             xla::PjRtDevice* default_device, bool is_committed,
+                             ParsedArgumentsAsBuffers& arguments) {
+  tensorflow::profiler::TraceMe traceme("ComputeSignature");
 
   int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   struct PythonTypes {
@@ -624,14 +620,38 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   CHECK(data_device);
   arguments.signature.device = data_device;
 
+  arguments.signature.dynamic_arg_signatures.reserve(num_flat_dynamic_args);
+  for (int i = 0; i < num_flat_dynamic_args; ++i) {
+    py::handle arg = arguments.flat_dynamic_args[i];
+    TF_ASSIGN_OR_RETURN(auto sig,
+                        xla::PyArgSignatureOfValue(arg, jax_enable_x64));
+    arguments.signature.dynamic_arg_signatures.push_back(std::move(sig));
+  }
+  return xla::Status::OK();
+}
+
+// Copy buffers to device, skipping pruned arguments.
+// Returns `Status::OK()` on success. Returning an error should lead to
+// calling the Python fallback.
+xla::Status CopyBuffersToDevice(
+    bool jax_enable_x64, const absl::optional<std::vector<bool>>& kept_args,
+    ParsedArgumentsAsBuffers& arguments) {
+  std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
+  xla::PjRtDevice* data_device = arguments.signature.device;
+
+  int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   xla::DevicePutOptions options;
   options.squash_64bit_types = !jax_enable_x64;
   // TODO(phawkins): consider allowing forces here.
   options.force_lazy_arrays = false;
   options.allow_zero_copy = true;
   arg_buffers.reserve(num_flat_dynamic_args);
-  arguments.signature.dynamic_arg_signatures.reserve(num_flat_dynamic_args);
+  bool input_pruning_enabled = kept_args.has_value();
   for (int i = 0; i < num_flat_dynamic_args; ++i) {
+    if (input_pruning_enabled && !kept_args.value()[i]) {
+      continue;
+    }
+
     py::handle arg = arguments.flat_dynamic_args[i];
     TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device,
                         DevicePut(arg, data_device, options));
@@ -639,16 +659,11 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
     xla::PjRtBuffer* buffer = on_device.buffer;
     arg_buffers.push_back(buffer);
     if (on_device.owned_buffer) {
-      keep_alive.push_back(std::move(on_device.owned_buffer));
+      arguments.keep_alive.push_back(std::move(on_device.owned_buffer));
     } else if (on_device.owning_pybuffer) {
       arguments.keep_alive_objects.push_back(
           std::move(on_device.owning_pybuffer));
     }
-
-    xla::PyArgSignature sig(buffer->on_device_shape().element_type(),
-                            buffer->on_device_shape().dimensions(),
-                            on_device.weak_type);
-    arguments.signature.dynamic_arg_signatures.push_back(std::move(sig));
   }
   return xla::Status::OK();
 }
@@ -784,8 +799,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  if (!ConvertArgsToBuffers(jax_enable_x64, *default_pyclient_, default_device_,
-                            is_committed_, arguments)
+  if (!ComputeSignature(jax_enable_x64, *default_pyclient_, default_device_,
+                        is_committed_, arguments)
            .ok()) {
     return py::object(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
@@ -842,35 +857,22 @@ xla::StatusOr<py::object> CompiledFunction::Call(
                                         **kwargs.value_or(py::kwargs())))[0]);
   }
 
+  if (!CopyBuffersToDevice(jax_enable_x64, cache_entry->kept_var_bitvec,
+                           arguments)
+           .ok()) {
+    return py::object(
+        py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
+                                        **kwargs.value_or(py::kwargs())))[0]);
+  }
+
   // Executes the computation.
   std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    // TODO(zhangqiaorjc): Refactor ConvertArgsToBuffers. Split out the part
-    // that computes parts of the signature and tests for incompatible devices,
-    // and move it either into ParseArguments or a new function. Move the part
-    // that copies buffers around to here, and we can fuse this "argument
-    // dropping" logic with that code
-    if (cache_entry->kept_var_bitvec.has_value()) {
-      // Input pruning enabled.
-      std::vector<xla::PjRtBuffer*> kept_args;
-      kept_args.reserve(arguments.arg_buffers.size());
-      for (int i = 0; i < arguments.arg_buffers.size(); ++i) {
-        if (cache_entry->kept_var_bitvec.value()[i]) {
-          kept_args.push_back(arguments.arg_buffers[i]);
-        }
-      }
-      TF_ASSIGN_OR_RETURN(
-          output_buffers,
-          cache_entry->executable->mutable_pjrt_executable()->Execute(
-              {kept_args}, cache_entry->executable->options()));
-    } else {
-      // Input pruning not enabled.
-      TF_ASSIGN_OR_RETURN(
-          output_buffers,
-          cache_entry->executable->mutable_pjrt_executable()->Execute(
-              {arguments.arg_buffers}, cache_entry->executable->options()));
-    }
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        cache_entry->executable->mutable_pjrt_executable()->Execute(
+            {arguments.arg_buffers}, cache_entry->executable->options()));
   }
   auto traceback = xla::Traceback::Get();
 

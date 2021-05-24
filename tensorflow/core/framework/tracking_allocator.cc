@@ -156,7 +156,7 @@ absl::optional<AllocatorStats> TrackingAllocator::GetStats() {
   return allocator_->GetStats();
 }
 
-void TrackingAllocator::ClearStats() { allocator_->ClearStats(); }
+bool TrackingAllocator::ClearStats() { return allocator_->ClearStats(); }
 
 std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizes() {
   size_t high_watermark;

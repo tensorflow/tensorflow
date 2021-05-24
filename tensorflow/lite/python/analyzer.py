@@ -58,7 +58,7 @@ class ModelAnalyzer:
 
     Args:
       tflite_model: TFLite flatbuffer model.
-      result_format: html|webserver.
+      result_format: txt|html|webserver.
 
     Returns:
       Analyzed report with the given result_format.

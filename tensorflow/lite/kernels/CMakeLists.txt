@@ -77,7 +77,6 @@ target_link_libraries(tensorflow-lite-test
   nsync_cpp
   re2
   tensorflow-lite
-  ${CMAKE_DL_LIBS}
 )
 add_dependencies(tensorflow-lite-test mutable_schema_file)
 target_include_directories(tensorflow-lite-test PUBLIC ${SCHEMA_GENERATED_ROOT})

@@ -930,7 +930,7 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
 
 template <typename NativeT>
 NativeT LiteralBase::Piece::Get(absl::Span<const int64> multi_index) const {
-  CHECK(LayoutUtil::IsDenseArray(subshape()));
+  CHECK(LayoutUtil::IsDenseArray(subshape())) << subshape();
   return data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)];
 }

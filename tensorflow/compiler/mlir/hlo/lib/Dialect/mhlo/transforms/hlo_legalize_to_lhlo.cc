@@ -107,7 +107,8 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
     if (!shape_type_op) return failure();
 
     SmallVector<Value, 1> results_shape;
-    auto status = shape_type_op.reifyReturnTypeShapes(rewriter, results_shape);
+    auto status = shape_type_op.reifyReturnTypeShapes(
+        rewriter, shape_type_op->getOperands(), results_shape);
     if (failed(status)) return failure();
     results.push_back(
         InsertDynamicAllocAndDealloc(op->getLoc(), result.value(),
@@ -390,7 +391,8 @@ struct HloToLhloDotGeneralOpConverter
     } else {
       SmallVector<Value, 1> results_shape;
       auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
-      if (failed(shape_type_op.reifyReturnTypeShapes(rewriter, results_shape)))
+      if (failed(shape_type_op.reifyReturnTypeShapes(
+              rewriter, shape_type_op->getOperands(), results_shape)))
         return failure();
 
       bufferArgs[2] = InsertDynamicAllocAndDealloc(

@@ -72,11 +72,6 @@ class Subgraph {
   // interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
 
-  // Ensure the internal node storage memory allocates at least `count`
-  // spots for node. NOTE, this doesn't actually add operators. This is an
-  // efficiency optimization that is subject to change.
-  void ReserveNodes(int count);
-
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
   // `builtin_data` and destroy it with `free`. Ownership of 'init_data'
@@ -136,10 +131,6 @@ class Subgraph {
       const int* dims, TfLiteQuantization quantization,
       bool is_variable = false, const size_t rank_dims_signature = 0,
       const int* dims_signature = nullptr);
-
-  // WARNING: Experimental interface, subject to change
-  // Overrides execution plan. This bounds checks indices sent in.
-  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Get a mutable tensor data structure.
   TfLiteTensor* tensor(int tensor_index) {
@@ -351,6 +342,7 @@ class Subgraph {
   const std::string& GetName() const;
 
  private:
+  friend class InterpreterBuilder;
   friend class TestDelegate;
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
   // BufferedProfiler instance, and takes care of event profiling/tracing in a
@@ -394,6 +386,16 @@ class Subgraph {
     Profiler* const profiler_;
     const int64_t subgraph_index_;
   };
+
+  // Ensure the internal node storage memory allocates at least `count`
+  // spots for node. NOTE, this doesn't actually add operators. This is an
+  // efficiency optimization that is subject to change.
+  // Note: Only used during initialization.
+  void ReserveNodes(int count);
+
+  // Overrides execution plan. This bounds checks indices sent in.
+  // Note: Only used during initialization.
+  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Prevent 'context_' from accessing functions that are only available to
   // delegated kernels.

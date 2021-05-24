@@ -609,7 +609,6 @@ ColocationGraph::ColocationGraph(const Graph* graph, const FunctionStack& stack,
                                  bool log_device_placement)
     : graph_(*graph),
       stack_(stack),
-      flib_def_(*flib_def),
       inspecting_placer_(stack, flib_def, device_set, default_local_device,
                          allow_soft_placement, log_device_placement),
       inspection_required_checker_(graph, flib_def),

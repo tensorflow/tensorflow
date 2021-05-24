@@ -532,7 +532,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     bool operands_sharded_at_contracting_dims;
   };
 
- private:
+ protected:
   Status Preprocess(HloInstruction* hlo) override;
   Status Postprocess(HloInstruction* hlo) override;
 

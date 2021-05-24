@@ -160,10 +160,7 @@ void ExecStep::AddMemoryStats(const string& dev,
   //    'NodeExecStats.memory'.
   // 3. allocate_temp is only tracked through record_xxx_temp. It appears
   //    in 'NodeExecStats.memory_stats'.
-  // 4. allocate_persistent calls allocate_tensor, which is properly tracked
-  //    in 'NodeExecStats.memory'. However, there is no way to count it as
-  //    persistent now.
-  // 5. record_xxx_persistent is called when allocate_persistent
+  // 4. record_xxx_persistent is called when allocate_persistent
   //    is not used and hence tracks some complementary bytes. It appears in
   //    'NodeExecStats.memory_stats'. It's suspicious. But we should
   //    use it now since it covers constant op.

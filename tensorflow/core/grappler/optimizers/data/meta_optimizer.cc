@@ -200,7 +200,6 @@ Status TFDataMetaOptimizer::Init(
 
       enabled_optimizers_[optimizer_name] = std::move(optimizer);
     } else {
-      // This should never happen.
       return errors::Internal(
           "Tried to register a dataset optimizer that doesn't exist: ",
           optimizer_name);

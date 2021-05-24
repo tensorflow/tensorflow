@@ -633,6 +633,7 @@ glob_lit_tests(
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
+        "element_wise_row_vectorization.hlo": ["no_rocm"],
     },
     test_file_exts = [
         "hlo",

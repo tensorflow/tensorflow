@@ -35,9 +35,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
-// Delete the definition of CopyFile as the linker gets confused.
+// Delete leaked Windows definitions.
 #ifdef PLATFORM_WINDOWS
 #undef CopyFile
+#undef DeleteFile
 #endif
 
 namespace tensorflow {

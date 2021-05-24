@@ -298,6 +298,7 @@ else()
   )
 endif()
 if(TFLITE_ENABLE_XNNPACK)
+  find_package(fp16_headers REQUIRED)
   find_package(xnnpack REQUIRED)
   populate_tflite_source_vars("delegates/xnnpack"
     TFLITE_DELEGATES_XNNPACK_SRCS
@@ -412,6 +413,7 @@ target_link_libraries(tensorflow-lite
     flatbuffers
     gemmlowp
     ruy
+    ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )
 

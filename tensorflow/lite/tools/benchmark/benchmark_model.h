@@ -160,7 +160,10 @@ template <typename T>
 Flag CreateFlag(const char* name, BenchmarkParams* params,
                 const std::string& usage) {
   return Flag(
-      name, [params, name](const T& val) { params->Set<T>(name, val); },
+      name,
+      [params, name](const T& val, int argv_position) {
+        params->Set<T>(name, val, argv_position);
+      },
       params->Get<T>(name), usage, Flag::kOptional);
 }
 

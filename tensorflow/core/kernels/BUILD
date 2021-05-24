@@ -1523,6 +1523,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "//third_party/eigen3",
     ],
 )
@@ -3336,9 +3337,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cast_op",
-    copts = if_mlir_generated_experimental_kernels_enabled(
-        ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
-    ) + if_mlir_generated_gpu_kernels_enabled(
+    copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     prefix = "cast_op",
@@ -3811,9 +3810,10 @@ tf_kernel_library(
         "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util/proto:proto_utils",
@@ -3962,6 +3962,7 @@ tf_kernel_library(
     prefix = "bias_op",
     deps = NN_DEPS + [
         ":redux_functor",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
@@ -6231,6 +6232,7 @@ filegroup(
         "pad_op.cc",
         "padding_fifo_queue.cc",
         "padding_fifo_queue_op.cc",
+        "parse_tensor_op.cc",
         "pooling_ops_3d.cc",
         "queue_base.cc",
         "queue_op.cc",
@@ -7407,6 +7409,7 @@ exports_files([
     "cwise_op_add_1.cc",
     "cwise_op_add_2.cc",
     "cwise_op_atan2.cc",
+    "cwise_op_ceil.cc",
     "cwise_op_cos.cc",
     "cwise_op_div.cc",
     "cwise_op_equal_to_1.cc",
@@ -7417,6 +7420,7 @@ exports_files([
     "cwise_op_floor_mod.cc",
     "cwise_op_gpu_add.cu.cc",
     "cwise_op_gpu_atan2.cu.cc",
+    "cwise_op_gpu_ceil.cu.cc",
     "cwise_op_gpu_cos.cu.cc",
     "cwise_op_gpu_div.cu.cc",
     "cwise_op_gpu_equal_to.cu.cc",

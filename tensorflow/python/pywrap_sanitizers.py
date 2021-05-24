@@ -12,34 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Redirect script that points to corresponding example based on tf version."""
+"""Python module for sanitizer detection functions exported by pybind11."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-import absl
-import tensorflow
-
-import tensorflow.python.debug.examples.v1.debug_mnist_v1 as debug_mnist_v1
-import tensorflow.python.debug.examples.v2.debug_mnist_v2 as debug_mnist_v2
-
-tf = tensorflow.compat.v1
-
-
-def main():
-  if tf.__version__.startswith("1."):
-    flags, unparsed = debug_mnist_v1.parse_args()
-    debug_mnist_v1.FLAGS = flags
-
-    with tf.Graph().as_default():
-      tf.app.run(main=debug_mnist_v1.main, argv=[sys.argv[0]] + unparsed)
-  else:
-    flags, unparsed = debug_mnist_v2.parse_args()
-    debug_mnist_v2.FLAGS = flags
-    absl.app.run(main=debug_mnist_v2.main, argv=[sys.argv[0]] + unparsed)
-
-
-if __name__ == "__main__":
-  main()
+# pylint: disable=invalid-import-order,g-bad-import-order, wildcard-import, unused-import
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python._pywrap_sanitizers import *

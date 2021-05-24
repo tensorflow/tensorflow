@@ -46,9 +46,9 @@ TF_LITE_MICRO_TEST(OutputTensorLength4) {
   memset(output_data, 0, sizeof(output_data));
 
   // There are four input dimensions - [1, 1, 1, depth].
-  const int input_dims[] = {4, 1, 1, 1, depth};
+  int input_dims[] = {4, 1, 1, 1, depth};
   // There are four output dimensions - [1, num_slots, 1, depth].
-  const int output_dims[] = {4, 1, num_slots, 1, depth};
+  int output_dims[] = {4, 1, num_slots, 1, depth};
 
   TfLiteIntArray* input_tensor_dims =
       tflite::testing::IntArrayFromInts(input_dims);
@@ -68,11 +68,11 @@ TF_LITE_MICRO_TEST(OutputTensorLength4) {
   };
 
   // There is one input - tensor 0.
-  const int inputs_array_data[] = {1, 0};
+  int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array =
       tflite::testing::IntArrayFromInts(inputs_array_data);
   // There is one output - tensor 1.
-  const int outputs_array_data[] = {1, 1};
+  int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array =
       tflite::testing::IntArrayFromInts(outputs_array_data);
 
@@ -118,9 +118,9 @@ TF_LITE_MICRO_TEST(OutputTensorOnEveryIterationLength4) {
   memset(output_data, 0, sizeof(output_data));
 
   // There are four input dimensions - [1, 1, 1, depth].
-  const int input_dims[] = {4, 1, 1, 1, depth};
+  int input_dims[] = {4, 1, 1, 1, depth};
   // There are four output dimensions - [1, num_slots, 1, depth].
-  const int output_dims[] = {4, 1, num_slots, 1, depth};
+  int output_dims[] = {4, 1, num_slots, 1, depth};
 
   TfLiteIntArray* input_tensor_dims =
       tflite::testing::IntArrayFromInts(input_dims);
@@ -140,11 +140,11 @@ TF_LITE_MICRO_TEST(OutputTensorOnEveryIterationLength4) {
   };
 
   // There is one input - tensor 0.
-  const int inputs_array_data[] = {1, 0};
+  int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array =
       tflite::testing::IntArrayFromInts(inputs_array_data);
   // There is one output - tensor 1.
-  const int outputs_array_data[] = {1, 1};
+  int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array =
       tflite::testing::IntArrayFromInts(outputs_array_data);
 
@@ -186,8 +186,8 @@ TF_LITE_MICRO_TEST(OutputTensorLength5) {
   int8_t output_data[depth * num_slots];
 
   memset(output_data, 0, sizeof(output_data));
-  const int input_dims[] = {4, 1, 1, 1, depth};
-  const int output_dims[] = {4, 1, num_slots, 1, depth};
+  int input_dims[] = {4, 1, 1, 1, depth};
+  int output_dims[] = {4, 1, num_slots, 1, depth};
   TfLiteIntArray* input_tensor_dims =
       tflite::testing::IntArrayFromInts(input_dims);
   TfLiteIntArray* output_tensor_dims =
@@ -206,11 +206,11 @@ TF_LITE_MICRO_TEST(OutputTensorLength5) {
   };
 
   // There is one input - tensor 0.
-  const int inputs_array_data[] = {1, 0};
+  int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array =
       tflite::testing::IntArrayFromInts(inputs_array_data);
   // There is one output - tensor 1.
-  const int outputs_array_data[] = {1, 1};
+  int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array =
       tflite::testing::IntArrayFromInts(outputs_array_data);
 

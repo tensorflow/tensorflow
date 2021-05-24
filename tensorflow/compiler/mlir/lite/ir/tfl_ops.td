@@ -2457,6 +2457,8 @@ def TFL_PadOp : TFL_Op<"pad", [
   let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_PadV2Op : TFL_Op<"padv2", [
@@ -2510,6 +2512,8 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let results = (outs TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_PowOp : TFL_Op<"pow", [
@@ -4465,7 +4469,7 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
-def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
+def TFL_YieldOp : Op<TFL_Dialect, "yield", [NoSideEffect, Terminator]> {
   let summary = "Yield operation";
   let description = [{
     The "yield" operation represents a return operation within the conditional
@@ -4624,9 +4628,7 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
 }
 
 def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
-  // Currently the custom ops have no side effect
-  // TODO(karimnosseir): Revisit if this needs updating.
-  NoSideEffect,
+  RecursiveSideEffects,
   NoQuantizableResult,
   IsolatedFromAbove,
   SingleBlockImplicitTerminator<"YieldOp">,

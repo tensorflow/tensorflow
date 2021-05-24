@@ -3194,7 +3194,10 @@ class ReplicaContextBase(object):
           reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat],
           options)
 
-    if reduce_op in [reduce_util.ReduceOp.SUM, reduce_util.ReduceOp.MEAN]:
+    # Due to the use of `capture_call_time_value` in collective ops, we have
+    # to maintain two branches: one w/ merge_call and one w/o. Details can be
+    # found in b/184009754.
+    if self._strategy.extended._use_merge_call():  # pylint: disable=protected-access
       # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):
@@ -3203,10 +3206,15 @@ class ReplicaContextBase(object):
         return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
       return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
     else:
-      # TODO(cjfj): Implement gradients for other reductions.
-      reduced = nest.pack_sequence_as(
-          value, self.merge_call(batch_all_reduce, args=nest.flatten(value)))
-      return nest.map_structure(array_ops.prevent_gradient, reduced)
+
+      @custom_gradient.custom_gradient
+      def grad_wrapper(*xs):
+        ys = self._strategy.extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
+            reduce_op, xs, options)
+        # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
+        return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
+
+      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`

@@ -26,14 +26,14 @@ namespace testing {
 namespace {
 
 constexpr int kBasicInputOutputSize = 16;
-const int basic_input_dims[] = {4, 1, 4, 4, 1};
+int basic_input_dims[] = {4, 1, 4, 4, 1};
 const float basic_input[kBasicInputOutputSize] = {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-const int basic_block_shape_dims[] = {1, 2};
+int basic_block_shape_dims[] = {1, 2};
 const int32_t basic_block_shape[] = {2, 2};
-const int basic_crops_dims[] = {1, 4};
+int basic_crops_dims[] = {1, 4};
 const int32_t basic_crops[] = {0, 0, 0, 0};
-const int basic_output_dims[] = {4, 4, 2, 2, 1};
+int basic_output_dims[] = {4, 4, 2, 2, 1};
 const float basic_golden[kBasicInputOutputSize] = {1, 3, 9,  11, 2, 4, 10, 12,
                                                    5, 7, 13, 15, 6, 8, 14, 16};
 
@@ -64,10 +64,10 @@ TfLiteStatus ValidateSpaceToBatchNdGoldens(TfLiteTensor* tensors,
 }
 
 TfLiteStatus TestSpaceToBatchNdFloat(
-    const int* input_dims_data, const float* input_data,
-    const int* block_shape_dims_data, const int32_t* block_shape_data,
-    const int* crops_dims_data, const int32_t* crops_data,
-    const int* output_dims_data, const float* golden, float* output_data) {
+    int* input_dims_data, const float* input_data, int* block_shape_dims_data,
+    const int32_t* block_shape_data, int* crops_dims_data,
+    const int32_t* crops_data, int* output_dims_data, const float* golden,
+    float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* block_shape_dims = IntArrayFromInts(block_shape_dims_data);
   TfLiteIntArray* crops_dims = IntArrayFromInts(crops_dims_data);
@@ -89,10 +89,10 @@ TfLiteStatus TestSpaceToBatchNdFloat(
 
 template <typename T>
 TfLiteStatus TestSpaceToBatchNdQuantized(
-    const int* input_dims_data, const float* input_data, T* input_quantized,
-    float input_scale, int input_zero_point, const int* block_shape_dims_data,
-    const int32_t* block_shape_data, const int* crops_dims_data,
-    const int32_t* crops_data, const int* output_dims_data, const float* golden,
+    int* input_dims_data, const float* input_data, T* input_quantized,
+    float input_scale, int input_zero_point, int* block_shape_dims_data,
+    const int32_t* block_shape_data, int* crops_dims_data,
+    const int32_t* crops_data, int* output_dims_data, const float* golden,
     T* golden_quantized, float output_scale, int output_zero_point,
     T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);

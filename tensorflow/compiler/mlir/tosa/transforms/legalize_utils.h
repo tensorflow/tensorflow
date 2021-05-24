@@ -85,7 +85,7 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
 // Create a vector from a 32-bit value tensor.  Returns vector size on success
 // or -1 on error.
-int getVectorFromValue32(Value val, SmallVector<int32_t, 4>& vec);
+int getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
 
 // Calculates the TOSA padding values based on TF operators padded with
 // SAME/VALID.
@@ -108,19 +108,13 @@ bool getTransposeConv2dPaddingValues(
     ArrayAttr strides, ArrayAttr dilations, PatternRewriter& rewriter,
     ArrayAttr& explicit_pad);
 
-// Templated function to create a constant op in a given dialect and with a
-// given type.  Specializations below.
-
-// T0: target dialect constant op
-// T1: native c++ integer type
-template <typename T0, typename T1>
-Value get1DConstTensor(PatternRewriter& rewriter, Operation* op,
-                       SmallVector<T1, 8> arr);
-
-// Same as get1DConstTensor, but int48 is not native c++ type, needs additional
-// interface
-Value get1DConstTensorInt48(PatternRewriter& rewriter, Operation* op,
-                            ArrayRef<APInt>& arr);
+// Templated function to create a constant op for given type and shape.
+// T: storage C type.
+// Default template creates a constant tensor in T.
+// To create INT48 TOSA constant, need to pass in llvm::APInt instead.
+template <typename T>
+llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
+                                     ArrayRef<T> vec, ArrayRef<int64_t> shape);
 
 // Strip off quantization information for bias tensor and return a unquantized
 // bias
