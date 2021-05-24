@@ -46,8 +46,6 @@ namespace tensorflow {
 // results.
 class PlacerInspectionRequiredOpChecker {
  public:
-  // Calls the constructor below with flib_def = graph->flib_def().
-  explicit PlacerInspectionRequiredOpChecker(const Graph* graph);
   // Constructs a PlacerInspectionRequiredOpChecker for nodes of `graph`.
   // The functions referenced by nodes in `graph` will be looked up in
   // `flib_def`

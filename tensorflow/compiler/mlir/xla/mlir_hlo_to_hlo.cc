@@ -1176,6 +1176,22 @@ LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(RealDynamicSliceOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicGatherOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir
@@ -1277,6 +1293,15 @@ LogicalResult ConvertToHloModule::Lower(
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
+  // Explicitly fail for ops that are not supported for export.
+  if (inst->getDialect() !=
+          inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
+      !mlir::isa<mlir::ConstantOp, mlir::CallOp, mlir::tensor::CastOp,
+                 mlir::ReturnOp>(inst)) {
+    inst->emitOpError("unsupported op for export to XLA");
+    return failure();
+  }
+
   *return_value = xla::XlaOp();
 
   // See MlirToHloConversionOptions for more about layouts.
@@ -1902,6 +1927,10 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
 
 DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op,
                                           llvm::StringRef attr_name) {
+  CHECK((op->getDialect() ==
+             op->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() ||
+         mlir::isa<mlir::ConstantOp, mlir::memref::TensorLoadOp,
+                   mlir::memref::TensorStoreOp>(op)));
   return op->getAttrOfType<mlir::DenseIntElementsAttr>(attr_name);
 }
 

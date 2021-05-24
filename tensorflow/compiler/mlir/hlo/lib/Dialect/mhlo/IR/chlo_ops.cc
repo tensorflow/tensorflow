@@ -204,7 +204,8 @@ LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
                                                     inferedReturnShapes);
 }
 LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
-    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+    OpBuilder& builder, ValueRange,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
   return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),
                                                 reifiedReturnShapes);
 }
@@ -235,7 +236,8 @@ LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
 }
 
 LogicalResult BroadcastCompareOp::reifyReturnTypeShapes(
-    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+    OpBuilder& builder, ValueRange,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
   return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),
                                                 reifiedReturnShapes);
 }
@@ -293,7 +295,8 @@ LogicalResult IsPosInfOp::inferReturnTypes(
         inferedReturnShapes);                                                 \
   }                                                                           \
   LogicalResult Op::reifyReturnTypeShapes(                                    \
-      OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {      \
+      OpBuilder& builder, ValueRange,                                         \
+      SmallVectorImpl<Value>& reifiedReturnShapes) {                          \
     return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),    \
                                                   reifiedReturnShapes);       \
   }

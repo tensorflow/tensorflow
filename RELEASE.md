@@ -57,6 +57,10 @@
         `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
         enable this feature.
 
+*   TF Core:
+    *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
+        peak memory returned by `tf.config.experimental.get_memory_info`.
+
 ## Bug Fixes and Other Changes
 
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -81,6 +85,9 @@
             checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
   (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
             for details.
+    *   Added a new op `SparseSegmentSumGrad` to match the other sparse segment
+        gradient ops and avoid an extra gather operation that was in the
+        previous gradient implementation.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
@@ -110,8 +117,12 @@
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
     *   Add `keepdims` argument to all `GlobalPooling` layers.
+*   `tf.linalg`:
+    *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
+    *   Added `framework_stable` BUILD target, which links in only the
+        non-experimental TF Lite APIs.
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,

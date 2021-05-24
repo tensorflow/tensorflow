@@ -189,12 +189,11 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
 }
 
 void TestConvQuantizedPerChannel(
-    const int* input_dims_data, const float* input_data,
-    int8_t* input_quantized, float input_scale, int input_zero_point,
-    const int* filter_dims_data, const float* filter_data,
-    int8_t* filter_data_quantized, const int* bias_dims_data,
-    const float* bias_data, int32_t* bias_data_quantized, float* bias_scales,
-    int* bias_zero_points, const int* output_dims_data,
+    int* input_dims_data, const float* input_data, int8_t* input_quantized,
+    float input_scale, int input_zero_point, int* filter_dims_data,
+    const float* filter_data, int8_t* filter_data_quantized,
+    int* bias_dims_data, const float* bias_data, int32_t* bias_data_quantized,
+    float* bias_scales, int* bias_zero_points, int* output_dims_data,
     const float* expected_output_data, int8_t* expected_output_data_quantized,
     int8_t* output_data, float output_scale, int output_zero_point,
     TfLiteConvParams* conv_params) {

@@ -17,25 +17,29 @@
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
-from tensorflow.python.platform import test
 
 
 @ds_combinations.generate(
-    combinations.combine(distribution=all_strategies, mode=["eager"]))
+    combinations.combine(
+        strategy=strategy_combinations.all_strategies +
+        strategy_combinations.multi_worker_mirrored_strategies,
+        mode=["eager"]))
 class TextVectorizationDistributionTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
-  def test_distribution_strategy_output(self, distribution):
+  def test_distribution_strategy_output(self, strategy):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
@@ -46,7 +50,7 @@ class TextVectorizationDistributionTest(
 
     config.set_soft_device_placement(True)
 
-    with distribution.scope():
+    with strategy.scope():
       input_data = keras.Input(shape=(None,), dtype=dtypes.string)
       layer = text_vectorization.TextVectorization(
           max_tokens=None,
@@ -60,7 +64,7 @@ class TextVectorizationDistributionTest(
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
 
-  def test_distribution_strategy_output_with_adapt(self, distribution):
+  def test_distribution_strategy_output_with_adapt(self, strategy):
     vocab_data = [[
         "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
         "and", "fire"
@@ -75,7 +79,7 @@ class TextVectorizationDistributionTest(
 
     config.set_soft_device_placement(True)
 
-    with distribution.scope():
+    with strategy.scope():
       input_data = keras.Input(shape=(None,), dtype=dtypes.string)
       layer = text_vectorization.TextVectorization(
           max_tokens=None,
@@ -88,5 +92,7 @@ class TextVectorizationDistributionTest(
 
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
+
 if __name__ == "__main__":
-  test.main()
+  v2_compat.enable_v2_behavior()
+  multi_process_runner.test_main()

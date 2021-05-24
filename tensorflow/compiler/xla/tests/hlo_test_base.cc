@@ -508,7 +508,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   absl::optional<Literal> canonical_output;
   for (int i = 0; i < n; ++i) {
     StatusOr<Literal> output = test_runner_.ExecuteWithExecutable(
-        std::move(executables[i]), fake_arguments[i],
+        executables[i].get(), fake_arguments[i],
         /*profile=*/&((*profiles)[i]));
     if (!output.ok()) {
       return ::testing::AssertionFailure() << output.status().error_message();

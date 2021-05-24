@@ -26,6 +26,14 @@ typedef struct {
   // Number of threads to use in the thread pool.
   // 0 or negative value means no thread pool used.
   int32_t num_threads;
+
+  // Whether to enable the support of INT8-weights unpacking in a similar way as
+  // FP16-weights unpacking is supported, which requires an additional
+  // Dequantize op for the quantized weights.
+  // By default, this is disabled. However, when compiling the XNNPACK delegate,
+  // defining macro ENABLE_TFLITE_XNNPACK_DEQUANTIZED_INT8_WEIGHTS will enable
+  // this feature.
+  bool enable_int8_weights_unpacking;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.

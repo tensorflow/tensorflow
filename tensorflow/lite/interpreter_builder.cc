@@ -819,10 +819,4 @@ void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
   }
 }
 
-// Enables preserving intermediates for debugging.
-InterpreterBuilder& InterpreterBuilder::PreserveAllTensorsExperimental() {
-  preserve_all_tensors_ = true;
-  return *this;
-}
-
 }  // namespace tflite

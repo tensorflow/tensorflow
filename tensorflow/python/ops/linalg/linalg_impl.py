@@ -1409,24 +1409,23 @@ def eigh_tridiagonal(alpha,
     target_shape = array_ops.shape(target_counts)
     lower = array_ops.broadcast_to(lower, shape=target_shape)
     upper = array_ops.broadcast_to(upper, shape=target_shape)
-    mid = 0.5 * (upper + lower)
     pivmin = array_ops.broadcast_to(pivmin, target_shape)
     alpha0_perturbation = array_ops.broadcast_to(alpha0_perturbation,
                                                  target_shape)
 
     # Start parallel binary searches.
-    def cond(i, lower, _, upper):
+    def cond(i, lower, upper):
       return math_ops.logical_and(
           math_ops.less(i, max_it),
           math_ops.less(abs_tol, math_ops.reduce_max(upper - lower)))
 
-    def body(i, lower, mid, upper):
+    def body(i, lower, upper):
+      mid = 0.5 * (lower + upper)
       counts = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, mid)
       lower = array_ops.where(counts <= target_counts, mid, lower)
       upper = array_ops.where(counts > target_counts, mid, upper)
-      mid = 0.5 * (lower + upper)
-      return i + 1, lower, mid, upper
+      return i + 1, lower, upper
 
-    _, _, mid, _ = control_flow_ops.while_loop(cond, body,
-                                               [0, lower, mid, upper])
-    return mid
+    _, lower, upper = control_flow_ops.while_loop(cond, body, [0, lower, upper])
+    eigvals = 0.5 * (upper + lower)
+    return eigvals

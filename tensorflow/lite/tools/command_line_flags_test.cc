@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/tools/tool_params.h"
 
 namespace tflite {
 namespace {
@@ -362,6 +363,56 @@ TEST(CommandLineFlagsTest, ArgsToString) {
   std::string args =
       Flags::ArgsToString(argc, reinterpret_cast<const char**>(argv_strings));
   EXPECT_EQ("--some_int=1 --some_int=2", args);
+}
+
+TEST(CommandLineFlagsTest, ArgvPositions) {
+  tools::ToolParams params;
+  params.AddParam("some_int", tools::ToolParam::Create<int>(13));
+  params.AddParam("some_float", tools::ToolParam::Create<float>(17.0f));
+  params.AddParam("some_bool", tools::ToolParam::Create<bool>(true));
+
+  const char* argv_strings[] = {"program_name", "--some_float=42.0",
+                                "--some_bool=false", "--some_int=5"};
+  int argc = 4;
+  tools::ToolParams* const params_ptr = &params;
+  bool parsed_ok = Flags::Parse(
+      &argc, reinterpret_cast<const char**>(argv_strings),
+      {
+          Flag(
+              "some_int",
+              // NOLINT because of needing templating both trivial and complex
+              // types for a Flag.
+              [params_ptr](const int& val, int argv_position) {  // NOLINT
+                params_ptr->Set<int>("some_int", val, argv_position);
+              },
+              13, "some int", Flag::kOptional),
+          Flag(
+              "some_float",
+              [params_ptr](const float& val, int argv_position) {  // NOLINT
+                params_ptr->Set<float>("some_float", val, argv_position);
+              },
+              17.0f, "some float", Flag::kOptional),
+          Flag(
+              "some_bool",
+              [params_ptr](const bool& val, int argv_position) {  // NOLINT
+                params_ptr->Set<bool>("some_bool", val, argv_position);
+              },
+              true, "some bool", Flag::kOptional),
+      });
+
+  EXPECT_TRUE(parsed_ok);
+  EXPECT_EQ(5, params.Get<int>("some_int"));
+  EXPECT_NEAR(42.0f, params.Get<float>("some_float"), 1e-5f);
+  EXPECT_FALSE(params.Get<bool>("some_bool"));
+
+  // The position of a parameter depends on the ordering of the associated flag
+  // specfied in the argv (i.e. 'argv_strings' above), not as the ordering of
+  // the flag in the flag list that's passed to Flags::Parse above.
+  EXPECT_EQ(3, params.GetPosition<int>("some_int"));
+  EXPECT_EQ(1, params.GetPosition<float>("some_float"));
+  EXPECT_EQ(2, params.GetPosition<bool>("some_bool"));
+
+  EXPECT_EQ(argc, 1);
 }
 
 }  // namespace

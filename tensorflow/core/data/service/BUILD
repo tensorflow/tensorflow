@@ -280,6 +280,30 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "grpc_dispatcher_impl_test",
+    srcs = ["grpc_dispatcher_impl_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":credentials_factory",
+        ":dispatcher_proto_cc",
+        ":grpc_dispatcher_impl",
+        ":server_lib",
+        ":test_util",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        tf_grpc_cc_dependency(),
+    ] + tf_protos_profiler_service(),
+)
+
 cc_library(
     name = "grpc_util",
     srcs = ["grpc_util.cc"],
@@ -316,6 +340,32 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         tf_grpc_cc_dependency(),
     ],
+)
+
+tf_cc_test(
+    name = "grpc_worker_impl_test",
+    srcs = ["grpc_worker_impl_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":credentials_factory",
+        ":dispatcher_proto_cc",
+        ":grpc_worker_impl",
+        ":server_lib",
+        ":test_util",
+        ":worker_proto_cc",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        tf_grpc_cc_dependency(),
+    ] + tf_protos_profiler_service(),
 )
 
 cc_library(

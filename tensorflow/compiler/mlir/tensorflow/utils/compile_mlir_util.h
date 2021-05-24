@@ -37,7 +37,7 @@ namespace tensorflow {
 // TF MLIR to XLA HLO MLIR conversion/legalization. Custom legalization passes
 // can be populated in `custom_legalization_passes`.
 void CreateConvertMlirToXlaHloPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef device_type,
+    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes);
 
@@ -60,6 +60,8 @@ void CreateConvertMlirToXlaHloPipeline(
 //   "XLA_GPU_JIT" or "XLA_TPU_JIT".
 // use_tuple_args: when this is true, always create a tuple argument for the
 //   entry computation.
+// prefer_tf2xla: when this is true, prefer tf2xla fallback kernels over MLIR
+//   native kernels for legalization to HLO.
 // return_tuple: when this is true, always create a tuple result for the
 //   entry computation.
 // shape_representation_fn: when this is set, this shape representation function
@@ -70,7 +72,7 @@ void CreateConvertMlirToXlaHloPipeline(
 Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
-    bool return_tuple,
+    bool prefer_tf2xla, bool return_tuple,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn = nullptr,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {});
@@ -110,8 +112,8 @@ Status PopulateResultIOInfo(
 // TODO(hinsu): Migrate options to separate struct.
 Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
-    bool use_resource_updates_for_aliases,
+    llvm::StringRef device_type, bool use_tuple_args, bool prefer_tf2xla,
+    bool use_return_tuple, bool use_resource_updates_for_aliases,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -121,7 +123,7 @@ Status CompileMlirToXlaHlo(
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args,
+    llvm::StringRef device_type, bool use_tuple_args, bool prefer_tf2xla,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>

@@ -56,6 +56,9 @@ namespace grappler {
 
 class UniqueNodes {
  public:
+  // Warning: This is conservative and may fail to find an identical node in
+  // some cases. This happens if the node has large attribute tensor values that
+  // have different proto encoding but identical tensor value.
   NodeDef* FindOrAddRepresentative(NodeDef* node) {
     uint64 sig = ComputeSignature(*node);
     std::vector<NodeDef*>& candidates = rep_[sig];
@@ -142,7 +145,10 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   for (const auto& attr1 : node1.attr()) {
     auto it = node2.attr().find(attr1.first);
     if (it == node2.attr().end()) return false;
-    if (!FastAreAttrValuesEqual(attr1.second, it->second)) return false;
+    if (!AreAttrValuesEqual(attr1.second, it->second,
+                            /*allow_false_negatives=*/true)) {
+      return false;
+    }
   }
 
   return true;

@@ -37,9 +37,6 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                       PyObject* debug_info_txt_raw = nullptr,
                       bool enable_mlir_converter = false);
 
-// Returns a list of names of all ops potentially supported by tflite.
-PyObject* TocoGetPotentiallySupportedOps();
-
 // Quantize the model with calibration data. Throw errors if `fully_quantize`
 // is specified by the calibration data are not sufficient to quantize the
 // model.

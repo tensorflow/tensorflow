@@ -843,6 +843,9 @@ class SparseSegmentReductionSumWithNumSegmentsOp
             true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
+// Type of SparseSegmentReduction operation to perform gradient of.
+enum class SparseSegmentReductionOperation { kSum, kMean, kSqrtN };
+
 // Implements the common logic for the gradients of SparseSegmentReduction
 // kernels.
 //
@@ -854,8 +857,9 @@ class SparseSegmentReductionSumWithNumSegmentsOp
 template <class T, typename Index, typename SegmentId>
 class SparseSegmentGradOpBase : public OpKernel {
  public:
-  explicit SparseSegmentGradOpBase(OpKernelConstruction* context, bool is_sqrtn)
-      : OpKernel(context), is_sqrtn_(is_sqrtn) {}
+  explicit SparseSegmentGradOpBase(OpKernelConstruction* context,
+                                   SparseSegmentReductionOperation operation)
+      : OpKernel(context), operation_(operation) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -895,20 +899,38 @@ class SparseSegmentGradOpBase : public OpKernel {
                 errors::InvalidArgument("Invalid number of segments"));
 
     // Compute scaling factors for input.
-    std::vector<double> scaling(num_segments, 0.0);
-    for (int64 i = 0; i < N; ++i) {
-      const SegmentId idx = internal::SubtleMustCopy(segment_vec(i));
-      OP_REQUIRES(
-          context, FastBoundsCheck(idx, num_segments),
-          errors::InvalidArgument("Segment id ", idx, " out of range [0, ",
-                                  num_segments, ")."));
-      scaling[idx] += 1;
-    }
-    for (size_t i = 0; i < scaling.size(); ++i) {
-      if (is_sqrtn_) {
-        scaling[i] = 1.0 / sqrt(std::max(scaling[i], 1.0));
-      } else {
-        scaling[i] = 1.0 / std::max(scaling[i], 1.0);
+    std::vector<double> scaling(
+        (operation_ == SparseSegmentReductionOperation::kSum ? 0
+                                                             : num_segments),
+        0.0);
+    if (operation_ != SparseSegmentReductionOperation::kSum) {
+      for (int64 i = 0; i < N; ++i) {
+        const SegmentId idx = internal::SubtleMustCopy(segment_vec(i));
+        OP_REQUIRES(
+            context, FastBoundsCheck(idx, num_segments),
+            errors::InvalidArgument("Segment id ", idx, " out of range [0, ",
+                                    num_segments, ")."));
+        scaling[idx] += 1;
+      }
+      for (size_t i = 0; i < scaling.size(); ++i) {
+        switch (operation_) {
+          case SparseSegmentReductionOperation::kSum: {
+            OP_REQUIRES(
+                context, false,
+                errors::Internal(
+                    "Should not happen: sum inside SparseSegmentReductionOp "
+                    "scaling generation."));
+          }
+          case SparseSegmentReductionOperation::kMean: {
+            scaling[i] = 1.0 / std::max(scaling[i], 1.0);
+            break;
+          }
+          case SparseSegmentReductionOperation::kSqrtN: {
+            scaling[i] = 1.0 / sqrt(std::max(scaling[i], 1.0));
+            break;
+          }
+            // No default to get compiler warnings for missing cases.
+        }
       }
     }
 
@@ -928,7 +950,9 @@ class SparseSegmentGradOpBase : public OpKernel {
           errors::InvalidArgument("Segment id ", idx, " out of range [0, ",
                                   num_segments, ")."));
 
-      const T scale = static_cast<T>(scaling[idx]);
+      const T scale = (operation_ == SparseSegmentReductionOperation::kSum
+                           ? static_cast<T>(1)
+                           : static_cast<T>(scaling[idx]));
       if (is_modified[output_idx]) {
         if (scale == 1.0) {
           output_flat.template chip<0>(output_idx) +=
@@ -951,7 +975,16 @@ class SparseSegmentGradOpBase : public OpKernel {
   }
 
  private:
-  const bool is_sqrtn_;
+  const SparseSegmentReductionOperation operation_;
+};
+
+template <class T, typename Index, typename SegmentId>
+class SparseSegmentSumGradOp
+    : public SparseSegmentGradOpBase<T, Index, SegmentId> {
+ public:
+  explicit SparseSegmentSumGradOp(OpKernelConstruction* context)
+      : SparseSegmentGradOpBase<T, Index, SegmentId>(
+            context, SparseSegmentReductionOperation::kSum) {}
 };
 
 template <class T, typename Index, typename SegmentId>
@@ -959,8 +992,8 @@ class SparseSegmentMeanGradOp
     : public SparseSegmentGradOpBase<T, Index, SegmentId> {
  public:
   explicit SparseSegmentMeanGradOp(OpKernelConstruction* context)
-      : SparseSegmentGradOpBase<T, Index, SegmentId>(context,
-                                                     false /*is_sqrtn*/) {}
+      : SparseSegmentGradOpBase<T, Index, SegmentId>(
+            context, SparseSegmentReductionOperation::kMean) {}
 };
 
 template <class T, typename Index, typename SegmentId>
@@ -968,8 +1001,8 @@ class SparseSegmentSqrtNGradOp
     : public SparseSegmentGradOpBase<T, Index, SegmentId> {
  public:
   explicit SparseSegmentSqrtNGradOp(OpKernelConstruction* context)
-      : SparseSegmentGradOpBase<T, Index, SegmentId>(context,
-                                                     true /*is_sqrtn*/) {}
+      : SparseSegmentGradOpBase<T, Index, SegmentId>(
+            context, SparseSegmentReductionOperation::kSqrtN) {}
 };
 
 }  // namespace tensorflow

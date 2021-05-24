@@ -1566,10 +1566,7 @@ Status Node::FromProto(ModelProto::Node node_proto,
   return Status::OK();
 }
 
-mutex Model::publish_mu_;
 bool Model::publish_ = false;
-absl::flat_hash_map<Model*, Model::SnapshotBuffer> Model::snapshot_buffers_
-    TF_GUARDED_BY(Model::publish_mu_);
 
 void Model::AddNode(Node::Factory factory, const string& name,
                     std::shared_ptr<Node> parent,
@@ -2014,8 +2011,8 @@ Status Model::SaveLoop() {
 }
 
 Status Model::PublishLatest(absl::Cord* model) {
-  tf_shared_lock l(publish_mu_);
-  for (auto& pair : snapshot_buffers_) {
+  tf_shared_lock l(*publish_mu());
+  for (auto& pair : *snapshot_buffers()) {
     model->Append(
         absl::StrCat("Model #", reinterpret_cast<uint64>(pair.first), ":\n"));
     OptimizationSnapshot to_publish;

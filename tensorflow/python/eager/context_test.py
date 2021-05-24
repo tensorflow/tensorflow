@@ -129,13 +129,13 @@ class ContextTest(test.TestCase):
   @test_util.run_gpu_only
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
   def testGetMemoryUsage(self):
-    array_ops.zeros([10]) # Allocate some memory on the GPU.
+    array_ops.zeros([10])  # Allocate some memory on the GPU.
     self.assertGreater(
         context.context().get_memory_info('GPU:0')['current'], 0)
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
   def testGetMemoryUsageCPU(self):
-    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
+    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
       context.context().get_memory_info('CPU:0')
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')

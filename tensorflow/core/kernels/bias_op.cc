@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/bias_op.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/redux_functor.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -531,6 +533,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     // Autotune two algorithm: customized
     BiasAddGradGPUConfig algo_config;
     if (!AutotuneBiasGrad::GetInstance()->Find(bias_parameters, &algo_config)) {
+      profiler::ScopedAnnotation trace("bias_grad_autotuning");
+
       BiasGradGPUProfileResult best_result;
       // Initialize the timer.
       perftools::gputools::Timer timer(stream->parent());

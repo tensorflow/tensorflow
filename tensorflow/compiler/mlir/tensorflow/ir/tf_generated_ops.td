@@ -583,7 +583,7 @@ array([b'3.14', b'2.72'], dtype=object)
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bool, TF_Complex128, TF_Complex64, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Variant]>:$input,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>:$input,
 
     DefaultValuedAttr<I64Attr, "-1">:$precision,
     DefaultValuedAttr<BoolAttr, "false">:$scientific,
@@ -9007,12 +9007,12 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape, TF
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$x,
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$y
+    TF_IntOrFpTensor:$x,
+    TF_IntOrFpTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Uint8]>:$z
+    TF_IntOrFpTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -13390,13 +13390,13 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Str, TF_Uint16, TF_Uint8]>, [{Up to 8-D.}]>:$tensor,
+    Arg<TensorOf<[TF_Float, TF_Int, TF_Complex, TF_Bool, TF_Str]>, [{Up to 8-D.}]>:$tensor,
     Arg<TF_I32OrI64Tensor, [{1-D. The indices of the dimensions to reverse. Must be in the range
 `[-rank(tensor), rank(tensor))`.}]>:$axis
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Str, TF_Uint16, TF_Uint8]>, [{The same shape as `tensor`.}]>:$output
+    Res<TensorOf<[TF_Float, TF_Int, TF_Complex, TF_Bool, TF_Str]>, [{The same shape as `tensor`.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -14496,11 +14496,11 @@ Example usage:
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$x
+    TensorOf<[TF_SInt, TF_Float, TF_Complex]>:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$y
+    TensorOf<[TF_SInt, TF_Float, TF_Complex]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -19296,6 +19296,13 @@ The current static dimension size will become the bound and the second
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_XlaSortOp : TF_Op<"XlaSort", [NoSideEffect]> {

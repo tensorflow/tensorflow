@@ -636,8 +636,6 @@ renames = {
         'tf.compat.v1.lite.constants.TFLITE',
     'tf.lite.experimental.convert_op_hints_to_stubs':
         'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
-    'tf.lite.experimental.get_potentially_supported_ops':
-        'tf.compat.v1.lite.experimental.get_potentially_supported_ops',
     'tf.lite.toco_convert':
         'tf.compat.v1.lite.toco_convert',
     'tf.local_variables':

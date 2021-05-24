@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
@@ -1512,6 +1513,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
+      profiler::ScopedAnnotation trace("cudnn_autotuning");
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;

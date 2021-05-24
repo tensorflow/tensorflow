@@ -4149,13 +4149,6 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
     const TensorId idx_tensor = ParseTensorName(reduction_node->input(1));
     if (idx_tensor != TensorId(unique_node->name(), 1)) return Status::OK();
 
-    // Input 0 (data) of the reduction node becomes input 1 (params) of the
-    // gather node.
-    reduction_node->set_input(0, gather_node->input(0));
-    ctx().node_map->UpdateInput(reduction_node->name(),
-                                reduction_node->input(0),
-                                gather_node->input(0));
-
     // Input 1 (indices) of the reduction node becomes input 0 (x) of the unique
     // node.
     reduction_node->set_input(1, unique_node->input(0));
@@ -4164,6 +4157,54 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
                                 unique_node->input(0));
     SetDataTypeToAttr(unique_element_type, "Tidx", reduction_node);
 
+    // Input 0 (data) of the reduction node becomes input 1 (params) of the
+    // gather node.
+    const OpInfo::TensorProperties* gather_input_properties;
+    TF_RETURN_IF_ERROR(
+        GetTensorProperties(gather_node->input(0), &gather_input_properties));
+    if (gather_input_properties->dtype() == DT_RESOURCE) {
+      // If the input is a ResourceGather, we need to add
+      // ReadVariableOp.
+      NodeDef* variable_node = nullptr;
+      TF_RETURN_IF_ERROR(GetInputNode(gather_node->input(0), &variable_node));
+      NodeDef* read_var_node = ctx().optimized_graph->add_node();
+      read_var_node->set_name(OptimizedNodeName(
+          ParseNodeScopeAndName(reduction_node->name()), "ReadVar"));
+      read_var_node->set_op("ReadVariableOp");
+      read_var_node->add_input(gather_node->input(0));
+      read_var_node->set_device(variable_node->device());
+
+      // The Variable and the Gather node should have the same
+      // dtype, but it might not be set on both nodes.
+      auto attr = read_var_node->mutable_attr();
+      if (variable_node->attr().count("dtype")) {
+        SetAttrValue(variable_node->attr().at("dtype").type(),
+                     &(*attr)["dtype"]);
+      }
+      if (gather_node->attr().count("dtype")) {
+        SetAttrValue(gather_node->attr().at("dtype").type(), &(*attr)["dtype"]);
+      }
+      // Copy the _class attr from the Gather node should it exist in case
+      // of location constraints with the variable.
+      if (gather_node->attr().count("_class")) {
+        (*attr)["_class"] = gather_node->attr().at("_class");
+      }
+      if (variable_node->attr().count("shape")) {
+        SetAttrValue(variable_node->attr().at("shape").shape(),
+                     &(*attr)["_output_shapes"]);
+      }
+
+      ctx().node_map->AddNode(read_var_node->name(), read_var_node);
+      reduction_node->set_input(0, read_var_node->name());
+      ctx().node_map->UpdateInput(reduction_node->name(),
+                                  reduction_node->input(0),
+                                  read_var_node->name());
+    } else {
+      reduction_node->set_input(0, gather_node->input(0));
+      ctx().node_map->UpdateInput(reduction_node->name(),
+                                  reduction_node->input(0),
+                                  gather_node->input(0));
+    }
     *simplified_node_name = reduction_node->name();
     return Status::OK();
   }

@@ -161,6 +161,42 @@ void TFLogSinks::SendToSink(TFLogSink& sink, const TFLogEntry& entry) {
   sink.WaitTillSent();
 }
 
+// A class for managing the text file to which VLOG output is written.
+// If the environment variable TF_CPP_VLOG_FILENAME is set, all VLOG
+// calls are redirected from stderr to a file with corresponding name.
+class VlogFileMgr {
+ public:
+  // Determines if the env variable is set and if necessary
+  // opens the file for write access.
+  VlogFileMgr();
+  // Closes the file.
+  ~VlogFileMgr();
+  // Returns either a pointer to the file or stderr.
+  FILE* FilePtr() const;
+
+ private:
+  FILE* vlog_file_ptr;
+  char* vlog_file_name;
+};
+
+VlogFileMgr::VlogFileMgr() {
+  vlog_file_name = getenv("TF_CPP_VLOG_FILENAME");
+  vlog_file_ptr =
+      vlog_file_name == nullptr ? nullptr : fopen(vlog_file_name, "w");
+
+  if (vlog_file_ptr == nullptr) {
+    vlog_file_ptr = stderr;
+  }
+}
+
+VlogFileMgr::~VlogFileMgr() {
+  if (vlog_file_ptr != stderr) {
+    fclose(vlog_file_ptr);
+  }
+}
+
+FILE* VlogFileMgr::FilePtr() const { return vlog_file_ptr; }
+
 int ParseInteger(const char* str, size_t size) {
   // Ideally we would use env_var / safe_strto64, but it is
   // hard to use here without pulling in a lot of dependencies,
@@ -494,6 +530,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
     abort();
   }
 #else   // PLATFORM_POSIX_ANDROID
+  static const internal::VlogFileMgr vlog_file;
   static bool log_thread_id = internal::EmitThreadIdFromEnv();
   uint64 now_micros = EnvTime::NowMicros();
   time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
@@ -533,10 +570,9 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
       break;
   }
 
-  // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s.%06d: %c%s %s:%d] %s\n", time_buffer, micros_remainder,
-          sev, tid_buffer, entry.FName().c_str(), entry.Line(),
-          entry.ToString().c_str());
+  fprintf(vlog_file.FilePtr(), "%s.%06d: %c%s %s:%d] %s\n", time_buffer,
+          micros_remainder, sev, tid_buffer, entry.FName().c_str(),
+          entry.Line(), entry.ToString().c_str());
 #endif  // PLATFORM_POSIX_ANDROID
 }
 

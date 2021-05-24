@@ -405,6 +405,7 @@ xla_test(
     srcs = ["quantize_test.cc"],
     # TODO(b/122119490): re-enable TAP after fixing.
     tags = [
+        "manual",
         "notap",
     ],
     deps = [

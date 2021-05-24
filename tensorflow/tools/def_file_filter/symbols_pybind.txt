@@ -107,7 +107,6 @@ tensorflow::swig::TryFindKernelClass
 
 [//tensorflow/lite/toco/python:toco_python_api] # toco_python_api
 toco::TocoConvert
-toco::TocoGetPotentiallySupportedOps
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
@@ -401,3 +400,5 @@ tensorflow::CopyPythonAPITensorLists
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
 
+[//tensorflow/core/framework:attr_value_proto] # tf_text
+tensorflow::AttrValue

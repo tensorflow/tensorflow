@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/fused_eigen_output_kernels.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
@@ -375,6 +376,7 @@ Status FindBestConvolveAlgorithm(
   if (AutoTuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
     return Status::OK();
   }
+  profiler::ScopedAnnotation trace("cudnn_autotuning");
 
   // Find all candidate algorithms or execution plans (for CuDNN frontend APIs).
   std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;

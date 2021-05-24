@@ -456,6 +456,38 @@ class AllReduceWithSubdivisionsTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(result, [2.], rtol=1e-5, atol=1e-5)
 
 
+@combinations.generate(
+    combinations.combine(required_physical_gpus=2, mode='eager'))
+class XlaTest(test.TestCase, parameterized.TestCase):
+
+  def testReduce(self):
+    device0 = '/device:GPU:0'
+    device1 = '/device:GPU:1'
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    results = []
+
+    def all_reduce(device):
+
+      @def_function.function(jit_compile=True)
+      def f():
+        return _collective_ops.all_reduce_v2([1.], group_size, group_key,
+                                             instance_key)
+
+      with ops.device(device):
+        results.append(f())
+
+    t0 = threading.Thread(target=all_reduce, args=(device0,))
+    t1 = threading.Thread(target=all_reduce, args=(device1,))
+    t0.start()
+    t1.start()
+    t0.join()
+    t1.join()
+
+    self.assertAllEqual(results, [[2.], [2.]])
+
+
 @combinations.generate(collective_op_combinations)
 class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 

@@ -65,5 +65,4 @@ endif()
 
 target_link_libraries(tensorflowlite_c
   tensorflow-lite
-  ${CMAKE_DL_LIBS}
 )

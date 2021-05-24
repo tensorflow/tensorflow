@@ -1470,35 +1470,10 @@ class Stream {
       DeviceMemory<OutputType> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result) {
-    static_assert(std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<InputType, float>::value ||
-                      std::is_same<InputType, double>::value ||
-                      std::is_same<InputType, int8>::value ||
-                      std::is_same<InputType, std::complex<float>>::value ||
-                      std::is_same<InputType, std::complex<double>>::value,
-                  "The only buffer types supported are: Eigen::half, float, "
-                  "double, int8, std::complex<float> and std::complex<double>");
-    static_assert(
-        std::is_same<InputType, OutputType>::value ||
-            (std::is_same<InputType, int8>::value &&
-             std::is_same<OutputType, int32>::value),
-        "Input and output buffer types should be the same unless input is "
-        "int8 and output is int32");
-    static_assert(std::is_same<ConstantType, OutputType>::value ||
-                      (std::is_same<ConstantType, float>::value &&
-                       std::is_same<OutputType, Eigen::half>::value),
-                  "Constant and output types should match");
-    blas::ComputationType expected_computation_type =
-        blas::ToComputationType<ConstantType>::value;
-    if (expected_computation_type != computation_type &&
-        !(computation_type == blas::ComputationType::kF32 &&
-          expected_computation_type == blas::ComputationType::kF16)) {
-      return port::InternalError(absl::StrCat(
-          "Alpha/beta type and computation type have to match, got ",
-          blas::ComputationTypeString(computation_type),
-          " for computation type, expected: ",
-          blas::ComputationTypeString(expected_computation_type)));
-    }
+    TF_RETURN_IF_ERROR(
+        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
+            computation_type));
+
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -1518,6 +1493,43 @@ class Stream {
         blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
         output_profile_result);
+    if (output_profile_result) {
+      // The error is recorded in the profile.
+      return port::Status::OK();
+    }
+    return st;
+  }
+
+  template <typename InputType, typename OutputType, typename ConstantType>
+  port::Status ThenBlasGemmStridedBatchedWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
+      int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
+      ConstantType beta, DeviceMemory<OutputType> *c, int ldc, int64 stride_c,
+      int batch_count, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result) {
+    TF_RETURN_IF_ERROR(
+        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
+            computation_type));
+
+    blas::BlasSupport *blas = parent()->AsBlas();
+    if (!blas) {
+      return port::InternalError(
+          "Attempting to perform BLAS operation using "
+          "StreamExecutor without BLAS support");
+    }
+    void *alpha_ptr = &alpha;
+    void *beta_ptr = &beta;
+    float alpha_storage, beta_storage;
+    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
+                                    &beta_storage);
+    port::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
+        this, transa, transb, m, n, k, alpha_ptr, a,
+        blas::ToDataType<InputType>::value, stride_a, lda, b,
+        blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
+        blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
+        computation_type, algorithm, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
       return port::Status::OK();
@@ -2161,6 +2173,42 @@ class Stream {
   template <typename... Args>
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
   friend class ocl::CLBlas;    // for parent_.
+
+  // Checks whether types match before a call to extended BLAS version.
+  template <typename InputType, typename OutputType, typename ConstantType>
+  port::Status CheckTypesForExtendedBlas(
+      blas::ComputationType computation_type) {
+    static_assert(std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<InputType, float>::value ||
+                      std::is_same<InputType, double>::value ||
+                      std::is_same<InputType, int8>::value ||
+                      std::is_same<InputType, std::complex<float>>::value ||
+                      std::is_same<InputType, std::complex<double>>::value,
+                  "The only buffer types supported are: Eigen::half, float, "
+                  "double, int8, std::complex<float> and std::complex<double>");
+    static_assert(
+        std::is_same<InputType, OutputType>::value ||
+            (std::is_same<InputType, int8>::value &&
+             std::is_same<OutputType, int32>::value),
+        "Input and output buffer types should be the same unless input is "
+        "int8 and output is int32");
+    static_assert(std::is_same<ConstantType, OutputType>::value ||
+                      (std::is_same<ConstantType, float>::value &&
+                       std::is_same<OutputType, Eigen::half>::value),
+                  "Constant and output types should match");
+    blas::ComputationType expected_computation_type =
+        blas::ToComputationType<ConstantType>::value;
+    if (expected_computation_type != computation_type &&
+        !(computation_type == blas::ComputationType::kF32 &&
+          expected_computation_type == blas::ComputationType::kF16)) {
+      return port::InternalError(absl::StrCat(
+          "Alpha/beta type and computation type have to match, got ",
+          blas::ComputationTypeString(computation_type),
+          " for computation type, expected: ",
+          blas::ComputationTypeString(expected_computation_type)));
+    }
+    return port::Status::OK();
+  }
 
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
     absl::ReaderMutexLock lock(&mu_);

@@ -337,6 +337,14 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
 
     self.assertEqual(c.shape, tensor_shape.TensorShape([6, 3]))
 
+    c = xla.pad(
+        array_ops.placeholder(np.float32, shape=(None, 2)),
+        padding_value=7,
+        padding_low=[0, 1],
+        padding_high=[0, 2],
+        padding_interior=[0, 4])
+    self.assertEqual(c.shape.as_list(), [None, 9])
+
     # 0-sized input dimension and interior padding
     c = xla.pad(
         array_ops.placeholder(np.float32, shape=(2, 0)),

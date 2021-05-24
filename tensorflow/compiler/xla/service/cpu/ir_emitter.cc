@@ -1442,12 +1442,13 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       };
 
     case HloOpcode::kMaximum:
-      return [root_is_floating_point, root_is_signed](
+      return [root_is_floating_point, root_is_signed, this](
                  llvm::IRBuilder<>* b, llvm::Value* lhs,
                  llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
-          return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
-                                              {lhs, rhs}, {lhs->getType()}, b);
+          return llvm_ir::EmitFloatMax(
+              lhs, rhs, b,
+              hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max());
         }
 
         return b->CreateSelect(
@@ -1458,12 +1459,13 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       };
 
     case HloOpcode::kMinimum:
-      return [root_is_floating_point, root_is_signed](
+      return [root_is_floating_point, root_is_signed, this](
                  llvm::IRBuilder<>* b, llvm::Value* lhs,
                  llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
-          return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
-                                              {lhs, rhs}, {lhs->getType()}, b);
+          return llvm_ir::EmitFloatMin(
+              lhs, rhs, b,
+              hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max());
         }
 
         return b->CreateSelect(

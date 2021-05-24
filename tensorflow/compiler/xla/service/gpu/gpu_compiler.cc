@@ -425,19 +425,6 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   return pipeline.Run(hlo_module).status();
 }
 
-// TODO(cheshire): Duplication with gpu_conv_algorithm picker, figure out a
-// right way to share this.
-static bool RequireDeterminism() {
-  static bool require_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return require_determinism;
-}
-
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -470,9 +457,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
-  if (RequireDeterminism() ||
-      hlo_module->config().debug_options().xla_gpu_deterministic_reductions() ||
-      hlo_module->config().debug_options().xla_gpu_deterministic_ops()) {
+  if (RequireDeterminism(hlo_module->config()) ||
+      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
   }
 

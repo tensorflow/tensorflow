@@ -3,6 +3,20 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
+def alias_with_tflite(name, actual, **kwargs):
+    """Defines an alias for a target that uses the TFLite shims.
+
+    This rule 'alias_with_tflite' should be used instead of the native
+    'alias' rule whenever the 'actual' target that is being aliased
+    is defined using one of the *_with_tflite build macros.
+
+    Args:
+      name: determines the name used for the alias target.
+      actual: the target that the alias target is aliased to.
+      **kwargs: additional alias parameters.
+    """
+    native.alias(name, actual, **kwargs)
+
 def android_library_with_tflite(
         name,
         deps = [],

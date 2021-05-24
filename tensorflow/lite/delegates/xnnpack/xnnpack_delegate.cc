@@ -27,11 +27,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <fp16.h>
 #include <xnnpack.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
@@ -55,6 +57,9 @@ class Delegate {
 #endif
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Created TensorFlow Lite XNNPACK delegate for CPU.");
+
+    options_ =
+        options != nullptr ? *options : TfLiteXNNPackDelegateOptionsDefault();
   }
 
   TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context);
@@ -96,6 +101,8 @@ class Delegate {
   std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
       nullptr, &pthreadpool_destroy};
 #endif
+
+  TfLiteXNNPackDelegateOptions options_;
 };
 
 class Subgraph {
@@ -3080,16 +3087,30 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       continue;  // Soft error (skip this node).
     }
 
-    // Prepare to unpack FP16 tensors.
+    // Prepare to unpack FP16/INT8 tensors.
     if (registration->builtin_code == kTfLiteBuiltinDequantize &&
         node->inputs->size == 1 && node->outputs->size == 1) {
       const TfLiteTensor& input_tensor =
           context->tensors[node->inputs->data[0]];
       const TfLiteTensor& output_tensor =
           context->tensors[node->outputs->data[0]];
-      if ((input_tensor.allocation_type == kTfLiteMmapRo ||
+
+      bool is_supported_int8_tensor = false;
+      if (options_.enable_int8_weights_unpacking) {
+        is_supported_int8_tensor = (input_tensor.type == kTfLiteInt8);
+        if (is_supported_int8_tensor) {
+          const auto* quant_params =
+              static_cast<const TfLiteAffineQuantization*>(
+                  input_tensor.quantization.params);
+          if (quant_params == nullptr || quant_params->scale->size != 1) {
+            is_supported_int8_tensor = false;
+          }
+        }
+      }
+      if (input_tensor.sparsity == nullptr &&
+          (input_tensor.allocation_type == kTfLiteMmapRo ||
            quasi_static_tensors.count(node->inputs->data[0]) != 0) &&
-          input_tensor.type == kTfLiteFloat16 &&
+          (input_tensor.type == kTfLiteFloat16 || is_supported_int8_tensor) &&
           output_tensor.type == kTfLiteFloat32) {
         static_unpack_nodes_.insert(node_index);
         quasi_static_tensors_producers[node->outputs->data[0]] = node_index;
@@ -3121,9 +3142,13 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           context->tensors[node->inputs->data[0]];
       const TfLiteTensor& output_tensor =
           context->tensors[node->outputs->data[0]];
+
+      bool is_supported_int8_tensor = options_.enable_int8_weights_unpacking
+                                          ? (input_tensor.type == kTfLiteInt8)
+                                          : false;
       if (input_tensor.allocation_type == kTfLiteMmapRo &&
           input_tensor.sparsity != nullptr &&
-          (input_tensor.type == kTfLiteFloat16 ||
+          (input_tensor.type == kTfLiteFloat16 || is_supported_int8_tensor ||
            input_tensor.type == kTfLiteFloat32) &&
           output_tensor.type == input_tensor.type) {
         static_unpack_nodes_.insert(node_index);
@@ -3233,6 +3258,9 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       case kTfLiteFloat16:
         tensor_elements /= sizeof(uint16_t);
         break;
+      case kTfLiteInt8:
+        tensor_elements /= sizeof(int8_t);
+        break;
       default: {
         TF_LITE_KERNEL_LOG(context,
                            "unexpected datatype (%s) in tensor %d in node %d",
@@ -3257,40 +3285,47 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
             : static_cast<const char*>(input_tensor.data.data);
     switch (registration->builtin_code) {
       case kTfLiteBuiltinDequantize: {
-        if (input_tensor.type != kTfLiteFloat16) {
-          TF_LITE_KERNEL_LOG(
-              context, "unexpected tensor %d data type (%s) in node %d",
-              node->inputs->data[0], TfLiteTypeGetName(input_tensor.type),
-              producer_index);
-          TfLiteIntArrayFree(nodes_to_delegate);
-          return nullptr;  // Hard error.
-        }
-
-        if (input_tensor.sparsity != nullptr) {
-          TF_LITE_KERNEL_LOG(context,
-                             "unexpected FP16 sparse tensor %d in node %d",
-                             node->inputs->data[0], producer_index);
-          TfLiteIntArrayFree(nodes_to_delegate);
-          return nullptr;  // Hard error.
-        }
-
+        // Such a condition has been checked when preparing to unpack FP16/INT8
+        // tensors.
+        TFLITE_DCHECK(input_tensor.sparsity == nullptr);
         // Actual data unpacking
-        float* unpacked_fp32_data = reinterpret_cast<float*>(unpacked_data);
-        const uint16_t* packed_fp16_data =
-            reinterpret_cast<const uint16_t*>(packed_data);
-        for (size_t i = 0; i < tensor_elements; i++) {
-          unpacked_fp32_data[i] = fp16_ieee_to_fp32_value(packed_fp16_data[i]);
+        switch (input_tensor.type) {
+          case kTfLiteFloat16:
+            DequantizeFloat16(reinterpret_cast<const uint16_t*>(packed_data),
+                              reinterpret_cast<float*>(unpacked_data),
+                              tensor_elements);
+            break;
+          case kTfLiteInt8: {
+            // This should only happen if we allow INT8 input_tensor unpacking
+            // when doing the preparation.
+            TFLITE_DCHECK(options_.enable_int8_weights_unpacking);
+
+            TfLiteAffineQuantization* quant_params =
+                static_cast<TfLiteAffineQuantization*>(
+                    input_tensor.quantization.params);
+            // Such conditions have been checked when preparing to unpack INT8
+            // tensors.
+            TFLITE_DCHECK(quant_params != nullptr &&
+                          quant_params->scale->size == 1);
+
+            DequantizeInt8(reinterpret_cast<const int8_t*>(packed_data),
+                           reinterpret_cast<float*>(unpacked_data),
+                           GetTensorShape(&input_tensor),
+                           input_tensor.params.zero_point,
+                           input_tensor.params.scale);
+            break;
+          }
+          default:
+            // This should not happen as we only allow FP16/INT8 input_tensor
+            // when preparing the unpacking.
+            TFLITE_DCHECK(false);
         }
         break;
       }
       case kTfLiteBuiltinDensify: {
-        if (input_tensor.sparsity == nullptr) {
-          TF_LITE_KERNEL_LOG(context, "unexpected dense tensor %d in node %d",
-                             node->inputs->data[0], producer_index);
-          TfLiteIntArrayFree(nodes_to_delegate);
-          return nullptr;  // Hard error.
-        }
-
+        // Such a condition has been checked when preparing to unpack FP16/INT8
+        // tensors.
+        TFLITE_DCHECK(input_tensor.sparsity != nullptr);
         const int dims_count = output_tensor.dims->size;
         std::vector<int> vector_shape(dims_count);
         for (int i = 0; i < dims_count; i++) {
@@ -3320,13 +3355,26 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                 dense_size, unpacked_fp16_data, context);
             break;
           }
+          case kTfLiteInt8: {
+            // This should only happen if we allow INT8 input_tensor unpacking
+            // when doing the preparation.
+            TFLITE_DCHECK(options_.enable_int8_weights_unpacking);
+
+            const size_t dense_size =
+                context->tensors[t].bytes / sizeof(int8_t);
+            int8_t* unpacked_int8_data =
+                reinterpret_cast<int8_t*>(unpacked_data);
+            tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+                vector_shape, *input_tensor.sparsity);
+            converter.SparseToDense(
+                static_cast<const int8_t*>(input_tensor.data.data), dense_size,
+                unpacked_int8_data, context);
+            break;
+          }
           default: {
-            TF_LITE_KERNEL_LOG(
-                context, "unexpected tensor %d data type (%s) in node %d",
-                node->inputs->data[0], TfLiteTypeGetName(input_tensor.type),
-                producer_index);
-            TfLiteIntArrayFree(nodes_to_delegate);
-            return nullptr;  // Hard error.
+            // This should not happen as we only allow FP16/INT8 input_tensor
+            // when preparing the unpacking.
+            TFLITE_DCHECK(false);
           }
         }
         break;
@@ -3430,6 +3478,10 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};
+#if defined(ENABLE_TFLITE_XNNPACK_DEQUANTIZED_INT8_WEIGHTS) || \
+    defined(XNNPACK_DELEGATE_TEST_MODE)
+  options.enable_int8_weights_unpacking = true;
+#endif
   return options;
 }
 

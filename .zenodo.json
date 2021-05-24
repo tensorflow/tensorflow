@@ -9,5 +9,5 @@
         }
     ],
     "access_right": "open",
-    "notes": "See full list of authors on Github: https://github.com/tensorflow/tensorflow/graphs/contributors"
+    "notes": "Specific TensorFlow versions can be found in the \"Versions\" list on the right side of this page.<br>See the full list of authors <a href=\"https://github.com/tensorflow/tensorflow/graphs/contributors\">on GitHub</a>."
 }

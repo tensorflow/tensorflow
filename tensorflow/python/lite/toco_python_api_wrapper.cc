@@ -47,14 +47,6 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       TOCO conversion.
     )pbdoc");
   m.def(
-      "TocoGetPotentiallySupportedOps",
-      []() {
-        return tensorflow::PyoOrThrow(toco::TocoGetPotentiallySupportedOps());
-      },
-      R"pbdoc(
-      Returns a list of names of all ops potentially supported by tflite.
-    )pbdoc");
-  m.def(
       "ExperimentalMlirQuantizeModel",
       [](py::object input_contents_txt_raw, bool disable_per_channel,
          bool fully_quantize, int inference_type, int input_data_type,

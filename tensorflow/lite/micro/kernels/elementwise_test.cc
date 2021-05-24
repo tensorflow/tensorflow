@@ -24,8 +24,8 @@ namespace tflite {
 namespace testing {
 
 void TestElementwiseFloat(const TfLiteRegistration& registration,
-                          const int* input_dims_data, const float* input_data,
-                          const int* output_dims_data,
+                          int* input_dims_data, const float* input_data,
+                          int* output_dims_data,
                           const float* expected_output_data,
                           float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -61,8 +61,8 @@ void TestElementwiseFloat(const TfLiteRegistration& registration,
 }
 
 void TestElementwiseBool(const TfLiteRegistration& registration,
-                         const int* input_dims_data, const bool* input_data,
-                         const int* output_dims_data,
+                         int* input_dims_data, const bool* input_data,
+                         int* output_dims_data,
                          const bool* expected_output_data, bool* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -79,9 +79,9 @@ void TestElementwiseBool(const TfLiteRegistration& registration,
     output_data[i] = false;
   }
 
-  const int inputs_array_data[] = {1, 0};
+  int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  const int outputs_array_data[] = {1, 1};
+  int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
@@ -103,7 +103,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(Abs) {
   constexpr int output_dims_count = 4;
-  const int shape[] = {2, 2, 2};
+  int shape[] = {2, 2, 2};
   const float input[] = {0.01, -0.01, 10, -10};
   const float golden[] = {0.01, 0.01, 10, 10};
   float output_data[output_dims_count];
@@ -114,7 +114,7 @@ TF_LITE_MICRO_TEST(Abs) {
 
 TF_LITE_MICRO_TEST(Sin) {
   constexpr int output_dims_count = 4;
-  const int shape[] = {2, 2, 2};
+  int shape[] = {2, 2, 2};
   const float input[] = {0, 3.1415926, -3.1415926, 1};
   const float golden[] = {0, 0, 0, 0.84147};
   float output_data[output_dims_count];
@@ -125,7 +125,7 @@ TF_LITE_MICRO_TEST(Sin) {
 
 TF_LITE_MICRO_TEST(Cos) {
   constexpr int output_dims_count = 4;
-  const int shape[] = {2, 2, 2};
+  int shape[] = {2, 2, 2};
   const float input[] = {0, 3.1415926, -3.1415926, 1};
   const float golden[] = {1, -1, -1, 0.54030};
   float output_data[output_dims_count];
@@ -136,7 +136,7 @@ TF_LITE_MICRO_TEST(Cos) {
 
 TF_LITE_MICRO_TEST(Log) {
   constexpr int output_dims_count = 4;
-  const int shape[] = {2, 2, 2};
+  int shape[] = {2, 2, 2};
   const float input[] = {1, 2.7182818, 0.5, 2};
   const float golden[] = {0, 1, -0.6931472, 0.6931472};
   float output_data[output_dims_count];
@@ -147,7 +147,7 @@ TF_LITE_MICRO_TEST(Log) {
 
 TF_LITE_MICRO_TEST(Sqrt) {
   constexpr int output_dims_count = 4;
-  const int shape[] = {2, 2, 2};
+  int shape[] = {2, 2, 2};
   const float input[] = {0, 1, 2, 4};
   const float golden[] = {0, 1, 1.41421, 2};
   float output_data[output_dims_count];
@@ -158,7 +158,7 @@ TF_LITE_MICRO_TEST(Sqrt) {
 
 TF_LITE_MICRO_TEST(Rsqrt) {
   constexpr int output_dims_count = 4;
-  const int shape[] = {2, 2, 2};
+  int shape[] = {2, 2, 2};
   const float input[] = {1, 2, 4, 9};
   const float golden[] = {1, 0.7071, 0.5, 0.33333};
   float output_data[output_dims_count];
@@ -169,7 +169,7 @@ TF_LITE_MICRO_TEST(Rsqrt) {
 
 TF_LITE_MICRO_TEST(Square) {
   constexpr int output_dims_count = 4;
-  const int shape[] = {2, 2, 2};
+  int shape[] = {2, 2, 2};
   const float input[] = {1, 2, 0.5, -3.0};
   const float golden[] = {1, 4.0, 0.25, 9.0};
   float output_data[output_dims_count];
@@ -180,7 +180,7 @@ TF_LITE_MICRO_TEST(Square) {
 
 TF_LITE_MICRO_TEST(LogicalNot) {
   constexpr int output_dims_count = 4;
-  const int shape[] = {2, 2, 2};
+  int shape[] = {2, 2, 2};
   const bool input[] = {true, false, false, true};
   const bool golden[] = {false, true, true, false};
   bool output_data[output_dims_count];

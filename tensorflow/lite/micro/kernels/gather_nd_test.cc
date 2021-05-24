@@ -24,9 +24,9 @@ namespace testing {
 namespace {
 
 template <typename ParamType, typename IndexType>
-void TestGatherNd(const int* param_dims, const ParamType* param_data,
-                  const int* index_dims, const IndexType* index_data,
-                  int* output_dims, ParamType* output_data,
+void TestGatherNd(int* param_dims, const ParamType* param_data, int* index_dims,
+                  const IndexType* index_data, int* output_dims,
+                  ParamType* output_data,
                   const ParamType* expected_output_data) {
   TfLiteIntArray* pdims = IntArrayFromInts(param_dims);
   TfLiteIntArray* idims = IntArrayFromInts(index_dims);
@@ -69,8 +69,8 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(GatherNd_ElementIndexingIntoMatrix) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {2, 2, 2};
-  const int index_dims[] = {2, 2, 2};
+  int input_dims[] = {2, 2, 2};
+  int index_dims[] = {2, 2, 2};
   const int32_t index_data[] = {0, 0, 1, 1};
   const float input_data[] = {1.1, 1.2, 2.1, 2.2};
   const float golden_data[] = {1.1, 2.2};
@@ -84,8 +84,8 @@ TF_LITE_MICRO_TEST(GatherNd_ElementIndexingIntoMatrix) {
 TF_LITE_MICRO_TEST(GatherNd_SliceIndexingIntoMatrix) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {2, 2, 2};
-  const int index_dims[] = {2, 2, 1};
+  int input_dims[] = {2, 2, 2};
+  int index_dims[] = {2, 2, 1};
   const int32_t index_data[] = {1, 0};
   const float input_data[] = {1.1, 1.2, 2.1, 2.2};
   const float golden_data[] = {2.1, 2.2, 1.1, 1.2};
@@ -99,8 +99,8 @@ TF_LITE_MICRO_TEST(GatherNd_SliceIndexingIntoMatrix) {
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoMatrix1) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {2, 2, 2};
-  const int index_dims[] = {3, 2, 1, 1};
+  int input_dims[] = {2, 2, 2};
+  int index_dims[] = {3, 2, 1, 1};
   const int32_t index_data[] = {1, 0};
   const float input_data[] = {1.1, 1.2, 2.1, 2.2};
   const float golden_data[] = {2.1, 2.2, 1.1, 1.2};
@@ -114,8 +114,8 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoMatrix1) {
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoMatrix2) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {2, 2, 2};
-  const int index_dims[] = {3, 2, 1, 2};
+  int input_dims[] = {2, 2, 2};
+  int index_dims[] = {3, 2, 1, 2};
   const int32_t index_data[] = {0, 0, 1, 1};
   const float input_data[] = {1.1, 1.2, 2.1, 2.2};
   const float golden_data[] = {1.1, 2.2};
@@ -129,8 +129,8 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoMatrix2) {
 TF_LITE_MICRO_TEST(GatherNd_DuplicateIndexingIntoMatrix) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {2, 2, 2};
-  const int index_dims[] = {2, 2, 2};
+  int input_dims[] = {2, 2, 2};
+  int index_dims[] = {2, 2, 2};
   const int32_t index_data[] = {0, 0, 0, 0};
   const float input_data[] = {1.1, 1.2, 2.1, 2.2};
   const float golden_data[] = {1.1, 1.1};
@@ -144,8 +144,8 @@ TF_LITE_MICRO_TEST(GatherNd_DuplicateIndexingIntoMatrix) {
 TF_LITE_MICRO_TEST(GatherNd_ElementIndexingIntoRank3Tensor) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {3, 1, 2, 3};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {3, 1, 2, 3};
   const int32_t index_data[] = {0, 0, 1, 1, 1, 0};
   const float input_data[] = {1.1, -1.2, 1.3,  -2.1, 2.2,  2.3,  //
                               3.1, 3.2,  -3.3, -4.1, -4.2, 4.3,  //
@@ -161,8 +161,8 @@ TF_LITE_MICRO_TEST(GatherNd_ElementIndexingIntoRank3Tensor) {
 TF_LITE_MICRO_TEST(GatherNd_SliceIndexingIntoRank3Tensor) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {2, 2, 1};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {2, 2, 1};
   const int32_t index_data[] = {0, 2};
   const float input_data[] = {1.1, -1.2, 1.3,  -2.1, 2.2,  2.3,  //
                               3.1, 3.2,  -3.3, -4.1, -4.2, 4.3,  //
@@ -179,8 +179,8 @@ TF_LITE_MICRO_TEST(GatherNd_SliceIndexingIntoRank3Tensor) {
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor1) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {3, 2, 1, 3};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {3, 2, 1, 3};
   const int32_t index_data[] = {0, 0, 1, 1, 1, 0};
   const float input_data[] = {1.1, -1.2, 1.3,  -2.1, 2.2,  2.3,  //
                               3.1, 3.2,  -3.3, -4.1, -4.2, 4.3,  //
@@ -196,8 +196,8 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor1) {
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor2) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {3, 3, 1, 1};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {3, 3, 1, 1};
   const int32_t index_data[] = {1, 2, 0};
   const float input_data[] = {1.1, -1.2, 1.3,  -2.1, 2.2,  2.3,  //
                               3.1, 3.2,  -3.3, -4.1, -4.2, 4.3,  //
@@ -215,8 +215,8 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor2) {
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor3) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {3, 2, 2, 2};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {3, 2, 2, 2};
   const int32_t index_data[] = {0, 1, 1, 0, 0, 0, 2, 1};
   const float input_data[] = {1.1, -1.2, 1.3,  -2.1, 2.2,  2.3,  //
                               3.1, 3.2,  -3.3, -4.1, -4.2, 4.3,  //
@@ -233,8 +233,8 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor3) {
 TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor4) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {3, 2, 2, 3};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {3, 2, 2, 3};
   const int32_t index_data[] = {0, 0, 1, 1, 0, 1, 1, 1, 2, 2, 1, 2};
   const float input_data[] = {1.1, -1.2, 1.3,  -2.1, 2.2,  2.3,  //
                               3.1, 3.2,  -3.3, -4.1, -4.2, 4.3,  //
@@ -250,8 +250,8 @@ TF_LITE_MICRO_TEST(GatherNd_BatchedIndexingIntoRank3Tensor4) {
 TF_LITE_MICRO_TEST(GatherNd_DuplicateIndexingIntoRank3Tensor) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {2, 2, 2};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {2, 2, 2};
   const int32_t index_data[] = {0, 1, 0, 1};
   const float input_data[] = {1.1, -1.2, 1.3,  -2.1, 2.2,  2.3,  //
                               3.1, 3.2,  -3.3, -4.1, -4.2, 4.3,  //
@@ -267,8 +267,8 @@ TF_LITE_MICRO_TEST(GatherNd_DuplicateIndexingIntoRank3Tensor) {
 TF_LITE_MICRO_TEST(GatherNd_Float32Int32) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {2, 2, 2};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {2, 2, 2};
   const int32_t index_data[] = {0, 1, 1, 0};
   const float input_data[] = {1.1, -1.2, 1.3,  -2.1, 2.2,  2.3,  //
                               3.1, 3.2,  -3.3, -4.1, -4.2, 4.3,  //
@@ -284,8 +284,8 @@ TF_LITE_MICRO_TEST(GatherNd_Float32Int32) {
 TF_LITE_MICRO_TEST(GatherNd_Int8Int32) {
   // For input_dims[], index_dims[], or output_dims[], element 0 is the
   // number of dimensions in that array, not the actual dimension data.
-  const int input_dims[] = {3, 3, 2, 3};
-  const int index_dims[] = {2, 2, 2};
+  int input_dims[] = {3, 3, 2, 3};
+  int index_dims[] = {2, 2, 2};
   const int32_t index_data[] = {0, 1, 1, 0};
   const int8_t input_data[] = {1, -1, 1,  -2, 2,  2,  //
                                3, 3,  -3, -4, -4, 4,  //

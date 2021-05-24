@@ -267,8 +267,6 @@ StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
 
         // Generic subclasses of DeviceArray, e.g., ShardedDeviceArray.
         (*p)[PyBuffer::base_type()] = HandleDeviceArray;
-        // The C++ PyBuffer class is handled specially.
-        (*p)[PyBuffer::type()] = HandlePyBuffer;
 
         try {
           py::object xla_module = py::module::import("jax.interpreters.xla");
@@ -323,6 +321,11 @@ StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
         return p;
       }();
 
+  // Fast-path for the most common case of PyBuffer.
+  if (arg.get_type().ptr() == PyBuffer::type()) {
+    return HandlePyBuffer(arg, to_device, options);
+  }
+
   auto res = handlers->find(arg.get_type().ptr());
   if (res == handlers->end()) {
     for (auto base_class : arg.get_type().attr("mro")()) {
@@ -337,9 +340,8 @@ StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
                   "DeviceArray, Numpy arrays scalars of supported types "
                   "(see implementation), or Python scalars. Got type ",
                   py::cast<std::string>(py::str(arg.get_type()))));
-  } else {
-    return res->second(arg, to_device, options);
   }
+  return res->second(arg, to_device, options);
 }
 
 bool IsFloat0(py::array arg) {
@@ -368,9 +370,6 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
   static const absl::flat_hash_map<
       PyObject*, ToPyArgSignatureHandler>* const handlers = [] {
     auto p = new absl::flat_hash_map<PyObject*, ToPyArgSignatureHandler>();
-
-    const auto xla_module = py::module::import("jax.interpreters.xla");
-    const auto& device_array = xla_module.attr("_DeviceArray");
 
     const NumpyScalarTypes& dtypes = GetNumpyScalarTypes();
 
@@ -418,19 +417,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
     (*p)[reinterpret_cast<PyObject*>(&PyFloat_Type)] = float_handler;
     (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] = complex_handler;
 
-    // The Buffer types
-    // PyBuffer necessarily has a trivial LazyExpr, no need to check it.
-    ToPyArgSignatureHandler buffer_handler =
-        [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
-      TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(h));
-      bool weak_type = buffer->weak_type().has_value()
-                           ? *buffer->weak_type()
-                           : py::cast<bool>(h.attr("aval").attr("weak_type"));
-      return PyArgSignature(buffer->buffer()->on_device_shape().element_type(),
-                            buffer->buffer()->on_device_shape().dimensions(),
-                            weak_type);
-    };
-    (*p)[PyBuffer::base_type()] = buffer_handler;
+    // The Buffer types except for fast-path PyBuffer.
     ToPyArgSignatureHandler device_array_handler =
         [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
       py::handle aval = h.attr("aval");
@@ -439,17 +426,33 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
                             py::cast<std::vector<int64>>(aval.attr("shape")),
                             py::cast<py::bool_>(aval.attr("weak_type")));
     };
-    // ShardedDeviceArray is covered by the MRO fallback on _DeviceArray.
-    (*p)[device_array.ptr()] = device_array_handler;
+    (*p)[PyBuffer::base_type()] = device_array_handler;
+
+    try {
+      py::object xla_module = py::module::import("jax.interpreters.xla");
+      py::object device_array =
+          py::getattr(xla_module, "_DeviceArray", py::none());
+      if (!device_array.is_none()) {
+        (*p)[device_array.ptr()] = device_array_handler;
+      }
+    } catch (const py::error_already_set& e) {
+      // Ignore; jax may not be present.
+    }
+
+    try {
+      py::object pxla_module = py::module::import("jax.interpreters.pxla");
+      py::object sda =
+          py::getattr(pxla_module, "ShardedDeviceArray", py::none());
+      if (!sda.is_none()) {
+        (*p)[sda.ptr()] = device_array_handler;
+      }
+    } catch (const py::error_already_set& e) {
+      // Ignore; jax may not be present.
+    }
 
     ToPyArgSignatureHandler numpy_handler =
         [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
       py::array numpy_array = py::cast<py::array>(h);
-      if (IsFloat0(numpy_array)) {
-        return InvalidArgument(
-            "float0 numpy arrays not supported in C++. "
-            "Falling back to Python.");
-      }
       TF_ASSIGN_OR_RETURN(PrimitiveType dtype,
                           DtypeToPrimitiveType(numpy_array.dtype()));
       if (!jax_enable_x64) {
@@ -468,8 +471,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
           /*weak_type=*/false);
     };
     const auto numpy = py::module::import("numpy");
-    const auto& ndarray = numpy.attr("ndarray");
-    (*p)[ndarray.ptr()] = numpy_handler;
+    (*p)[numpy.attr("ndarray").ptr()] = numpy_handler;
 
     ToPyArgSignatureHandler np_uint64_handler =
         [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
@@ -520,6 +522,18 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
     return p;
   }();
 
+  // Fast-path for the most common case of PyBuffer.
+  if (arg.get_type().ptr() == PyBuffer::type()) {
+    // PyBuffer necessarily has a trivial LazyExpr, no need to check it.
+    TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(arg));
+    bool weak_type = buffer->weak_type().has_value()
+                         ? *buffer->weak_type()
+                         : py::cast<bool>(arg.attr("aval").attr("weak_type"));
+    return PyArgSignature(buffer->buffer()->on_device_shape().element_type(),
+                          buffer->buffer()->on_device_shape().dimensions(),
+                          weak_type);
+  }
+
   auto res = handlers->find(arg.get_type().ptr());
   if (res == handlers->end()) {
     // We attempt to look at the MRO classes
@@ -536,9 +550,8 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
                      "arrays scalars of supported types "
                      "(see implementation), or Python scalars. Got type ",
                      py::cast<std::string>(py::str(arg.get_type()))));
-  } else {
-    return res->second(arg, jax_enable_x64);
   }
+  return res->second(arg, jax_enable_x64);
 }
 
 }  // namespace xla

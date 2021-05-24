@@ -64,5 +64,4 @@ target_compile_options(label_image
 )
 target_link_libraries(label_image
   tensorflow-lite
-  ${CMAKE_DL_LIBS}
 )

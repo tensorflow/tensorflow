@@ -123,25 +123,37 @@ static Status DoGemmWithAlgorithm(
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
   se::DeviceMemory<Element> output_data(output_matrix.data);
 
+  int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
+  int64 rhs_stride = rhs_matrix.num_rows * rhs_matrix.num_cols;
+  int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
+
   if (algorithm) {
-    // Autotuning is disabled for batch_size != 1.
-    CHECK_EQ(1, batch_size);
-    return stream->ThenBlasGemmWithAlgorithm(
-        lhs_transpose, rhs_transpose, output_matrix.num_rows,
-        output_matrix.num_cols,
-        /*size of reduce dim=*/k,
-        /*alpha=*/alpha, lhs_data,
-        /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
-        /*leading dim of RHS=*/rhs_matrix.num_rows,
-        /*beta=*/beta, &output_data,
-        /*leading dim of output=*/output_matrix.num_rows, computation_type,
-        *algorithm, output_profile_result);
+    if (batch_size != 1) {
+      return stream->ThenBlasGemmStridedBatchedWithAlgorithm(
+          lhs_transpose, rhs_transpose, output_matrix.num_rows,
+          output_matrix.num_cols,
+          /*size of reduce dim=*/k,
+          /*alpha=*/alpha, lhs_data, lhs_stride,
+          /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows, rhs_stride,
+          /*beta=*/beta, &output_data,
+          /*leading dim of output=*/output_matrix.num_rows, output_stride,
+          batch_size, computation_type, *algorithm, output_profile_result);
+    } else {
+      return stream->ThenBlasGemmWithAlgorithm(
+          lhs_transpose, rhs_transpose, output_matrix.num_rows,
+          output_matrix.num_cols,
+          /*size of reduce dim=*/k,
+          /*alpha=*/alpha, lhs_data,
+          /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows,
+          /*beta=*/beta, &output_data,
+          /*leading dim of output=*/output_matrix.num_rows, computation_type,
+          *algorithm, output_profile_result);
+    }
   }
 
   if (batch_size != 1) {
-    int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
-    int64 rhs_stride = rhs_matrix.num_rows * rhs_matrix.num_cols;
-    int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
     return stream->ThenBlasGemmStridedBatched(
         lhs_transpose, rhs_transpose, output_matrix.num_rows,
         output_matrix.num_cols, /*size of reduce dim=*/k,
@@ -152,7 +164,6 @@ static Status DoGemmWithAlgorithm(
         /*leading dim of output=*/output_matrix.num_rows, output_stride,
         batch_size);
   }
-
   return stream->ThenBlasGemm(
       lhs_transpose, rhs_transpose, output_matrix.num_rows,
       output_matrix.num_cols, /*size of reduce dim=*/k,

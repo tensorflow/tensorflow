@@ -315,6 +315,18 @@ The benefit of this optimization is reduced memory requirement on host. For
 multiple writes (one from each replica) to such variables, the host would
 allocate buffer space to recieve the device output from all replicas, which is
 not required. We can use the output of first replica in such cases.
+### `-tf-lower-quantized`: Lowers ops that require quantized input or output.
+This pass rewrites all ops that have at least one input or output that must
+be a quantized type to ops whose inputs and outputs allow non-quantized
+types. Examples of quantized types are TF_Qint8 or TF_Quint8.
+
+An example is TF_DequantizeOp, which converts a quantized type to a float.
+This op is rewritten to generic ops that perform the scale and shift
+and can operate on non-quantized types.
+
+Currently, TF_DequantizeOp is the only op with a lowering that falls
+in this category. When more lowerings are added (e.g. QuantizeV2Op),
+they should be added to this pass.
 ### `-tf-mark-ops-for-outside-compilation`: Marks ops in device cluster for outside compilation if they are unsupported on device.
 This pass marks unsupported ops in a device cluster with
 `_xla_outside_compilation` attribute so the operations will run on the host

@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -181,10 +182,10 @@ bool IsScalarTensorType(Type ty) {
 }
 
 Type DeriveRankedTensorTypes(Type ty, int64_t rank) {
-  auto unranked_ty = ty.dyn_cast<UnrankedTensorType>();
-  if (!unranked_ty) return ty;
+  auto tensor_ty = ty.dyn_cast<TensorType>();
+  if (!tensor_ty) return ty;
   SmallVector<int64_t, 8> shape(rank, ShapedType::kDynamicSize);
-  return RankedTensorType::get(shape, unranked_ty.getElementType());
+  return RankedTensorType::get(shape, tensor_ty.getElementType());
 }
 
 Type DeriveUnrankedTensorTypes(Type ty) {
@@ -207,7 +208,7 @@ Optional<Value> FindUniqueNonScalar(ValueRange values) {
 
 SmallVector<Value, 8> MaterializeRankedOperations(
     OpBuilder &b, Location loc, BlockAndValueMapping &bvm,
-    chlo::RankSpecializationClusterOp &op, int64_t target_rank) {
+    chlo::RankSpecializationClusterOp op, int64_t target_rank) {
   // Create ranked operations.
   for (Operation &nested_op : op.getBody()->without_terminator()) {
     auto mapped_operands = llvm::to_vector<4>(llvm::map_range(
@@ -255,45 +256,367 @@ SmallVector<Value, 8> MaterializeFinalReshape(
       }));
 }
 
-struct LowerSingleNonScalarOperandPattern
+Value MaterializeScalarRankSpecializationCase(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
+    const SmallVector<Value, 8> &shapes, int64_t non_scalar_idx,
+    function_ref<void(OpBuilder &, Location)> else_builder_fn) {
+  // Materialize predicate: All operands except one are scalars.
+  Value one = b.create<ConstantIndexOp>(loc, 1);
+  Value all_others_are_scalar;
+  for (auto it : llvm::enumerate(shapes)) {
+    if (it.index() == non_scalar_idx) continue;
+    auto literal =
+        b.create<CmpIOp>(loc, CmpIPredicate::eq,
+                         b.create<shape::NumElementsOp>(loc, it.value()), one);
+    all_others_are_scalar =
+        all_others_are_scalar
+            ? b.create<AndOp>(loc, all_others_are_scalar, literal).getResult()
+            : literal.result();
+  }
+
+  auto if_op = b.create<scf::IfOp>(
+      loc, op->getResultTypes(), all_others_are_scalar,
+      [&](OpBuilder &b, Location loc) {
+        // Flatten the non-scalar operand.
+        Value flat_shape = b.create<tensor::FromElementsOp>(
+            loc, b.create<shape::NumElementsOp>(loc, b.getIndexType(),
+                                                shapes[non_scalar_idx])
+                     .result());
+        Value non_scalar_operand = op.operands()[non_scalar_idx];
+        Value flat_non_scalar_operand = b.create<mhlo::DynamicReshapeOp>(
+            loc,
+            DeriveRankedTensorTypes(non_scalar_operand.getType(), /*rank=*/1),
+            non_scalar_operand, flat_shape);
+
+        // Derive ranked operands.
+        auto ranked_operands =
+            llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
+              if (v == non_scalar_operand) return flat_non_scalar_operand;
+              return b
+                  .create<mhlo::ReshapeOp>(
+                      loc, DeriveRankedTensorTypes(v.getType(), /*rank=*/0), v)
+                  .getResult();
+            }));
+
+        // Materialize ranked variants for the element-wise operations.
+        BlockAndValueMapping bvm;
+        for (auto it : llvm::zip(op.getBody()->getArguments(), ranked_operands))
+          bvm.map(std::get<0>(it), std::get<1>(it));
+        Value unshaped_result =
+            MaterializeRankedOperations(b, loc, bvm, op, /*target_rank=*/1)
+                .front();
+
+        // Return as unranked tensor for compatibility with the other cases.
+        b.create<scf::YieldOp>(
+            loc, b.create<tensor::CastOp>(
+                      loc, DeriveUnrankedTensorTypes(unshaped_result.getType()),
+                      unshaped_result)
+                     .dest());
+      },
+      else_builder_fn);
+
+  return if_op.results().front();
+}
+
+Value MaterializeEqualShapesRankSpecializationCase(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
+    const SmallVector<Value, 8> &shapes,
+    function_ref<void(OpBuilder &, Location)> else_builder_fn) {
+  assert(shapes.size() >= 2 &&
+         "This strategy should only be materialized if there are at least two "
+         "shapes involved.");
+
+  // Materialize all shapes equal predicate.
+  Value all_shapes_eq;
+  for (Value s : llvm::drop_begin(shapes)) {
+    auto literal = b.create<shape::ShapeEqOp>(loc, shapes.front(), s);
+    all_shapes_eq =
+        all_shapes_eq
+            ? b.create<mlir::AndOp>(loc, all_shapes_eq, literal).result()
+            : literal;
+  }
+
+  auto if_op = b.create<scf::IfOp>(
+      loc, op->getResultTypes(), all_shapes_eq,
+      [&](OpBuilder &b, Location loc) {
+        // Flatten operands.
+        Value shape = shapes.front();
+        for (Value s : llvm::drop_begin(shapes)) {
+          shape = b.create<shape::AnyOp>(loc, shape.getType(),
+                                         ValueRange{shape, s});
+        }
+        Value flat_shape = b.create<tensor::FromElementsOp>(
+            loc, b.create<shape::NumElementsOp>(loc, b.getIndexType(), shape)
+                     .result());
+        auto flat_operands =
+            llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
+              return b
+                  .create<mhlo::DynamicReshapeOp>(
+                      loc, DeriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
+                      flat_shape)
+                  .result();
+            }));
+
+        // Materialize ranked variants for the element-wise operations.
+        // TODO(frgossen): Materializae non-broadcasting equivalents instead.
+        BlockAndValueMapping bvm;
+        for (auto it : llvm::zip(op.getBody()->getArguments(), flat_operands))
+          bvm.map(std::get<0>(it), std::get<1>(it));
+        Value unshaped_result =
+            MaterializeRankedOperations(b, loc, bvm, op, /*target_rank=*/1)
+                .front();
+
+        // Return as unranked tensor for compatibility with the other cases.
+        b.create<scf::YieldOp>(
+            loc, b.create<tensor::CastOp>(
+                      loc, DeriveUnrankedTensorTypes(unshaped_result.getType()),
+                      unshaped_result)
+                     .dest());
+      },
+      else_builder_fn);
+
+  return if_op.results().front();
+}
+
+Value MaterializeTargetRankSpecializationCase(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
+    const SmallVector<Value, 8> &shapes, int64_t target_rank) {
+  // Reshape operands to match the target rank.
+  llvm::SmallVector<int64_t, 8> ranked_ty_dynamic_dims(
+      target_rank, RankedTensorType::kDynamicSize);
+  RankedTensorType extent_tensor_ty =
+      shape::getExtentTensorType(b.getContext(), target_rank);
+  Value all_ones_shape = b.create<shape::ConstShapeOp>(
+      loc, extent_tensor_ty,
+      mlir::DenseIntElementsAttr::get(extent_tensor_ty,
+                                      SmallVector<int64_t, 6>(target_rank, 1)));
+  SmallVector<Value, 8> ranked_operands;
+  for (auto it : llvm::zip(op.operands(), shapes)) {
+    Value operand, shape;
+    std::tie(operand, shape) = it;
+    Value ranked_shape = b.create<tensor::CastOp>(
+        loc, extent_tensor_ty,
+        b.create<shape::BroadcastOp>(loc,
+                                     shape::getExtentTensorType(b.getContext()),
+                                     shape, all_ones_shape,
+                                     /*error=*/nullptr));
+    Type element_ty = operand.getType().dyn_cast<TensorType>().getElementType();
+    auto ranked_ty = RankedTensorType::get(ranked_ty_dynamic_dims, element_ty);
+    ranked_operands.push_back(b.create<mhlo::DynamicReshapeOp>(
+        loc, ranked_ty, operand, ranked_shape));
+  }
+
+  // Materialize ranked versions of the element-wise operations.
+  BlockAndValueMapping bvm;
+  for (auto it : llvm::zip(op.body().front().getArguments(), ranked_operands))
+    bvm.map(std::get<0>(it), std::get<1>(it));
+
+  // Return as unranked for compatibility with other target ranks.
+  auto unshaped_result =
+      MaterializeRankedOperations(b, loc, bvm, op, target_rank).front();
+  return b.create<tensor::CastOp>(
+      loc, DeriveUnrankedTensorTypes(unshaped_result.getType()),
+      unshaped_result);
+}
+
+Value RecusivelyMaterializeTargetRankSpecializationCases(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
+    const SmallVector<Value, 8> &shapes, Value max_rank,
+    int64_t min_target_rank, int64_t max_target_rank) {
+  Value min_target_rank_predicate =
+      b.create<CmpIOp>(loc, CmpIPredicate::eq, max_rank,
+                       b.create<ConstantIndexOp>(loc, min_target_rank));
+
+  // If only a unique target rank is left, we can lower to an assert instead
+  // of the usual if operation.
+  if (min_target_rank == max_target_rank) {
+    b.create<AssertOp>(loc, min_target_rank_predicate,
+                       "Input for dynamic binary or n-ary op lowering was of "
+                       "a rank greater than " +
+                           std::to_string(max_target_rank));
+    return MaterializeTargetRankSpecializationCase(b, loc, op, shapes,
+                                                   min_target_rank);
+  }
+
+  // Materialize IR for the smallest considered target rank.
+  auto if_op =
+      b.create<scf::IfOp>(loc, op->getResultTypes(), min_target_rank_predicate,
+                          /*withElseRegion=*/true);
+  auto then_builder = if_op.getThenBodyBuilder();
+  then_builder.create<scf::YieldOp>(
+      loc, MaterializeTargetRankSpecializationCase(then_builder, loc, op,
+                                                   shapes, min_target_rank));
+
+  // Recurse for all remaining target ranks.
+  auto else_builder = if_op.getElseBodyBuilder();
+  else_builder.create<scf::YieldOp>(
+      loc, RecusivelyMaterializeTargetRankSpecializationCases(
+               else_builder, loc, op, shapes, max_rank, min_target_rank + 1,
+               max_target_rank));
+
+  return if_op.results().front();
+}
+
+Value MaterializeGenericRankSpecializationCases(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
+    const SmallVector<Value, 8> &shapes) {
+  // Get the minimum broadcast shapes of the operands.
+  ValueRange reduced_shapes =
+      b.create<chlo::MinimumBroadcastShapesOp>(
+           loc,
+           SmallVector<Type, 8>(shapes.size(),
+                                shape::getExtentTensorType(b.getContext())),
+           shapes)
+          .results();
+  // TODO(frgossen): Avoid this reshape if it is redundant in all cases.
+  SmallVector<Value, 8> reshaped_args;
+  for (auto it : llvm::zip(op.operands(), reduced_shapes)) {
+    Value arg = std::get<0>(it);
+    Value reduced_shape = std::get<1>(it);
+    reshaped_args.push_back(b.create<mhlo::DynamicReshapeOp>(
+        loc, arg.getType(), arg, reduced_shape));
+  }
+
+  // Find the maximum rank among the reduced operand shapes.
+  Value max_rank;
+  for (Value shape : reduced_shapes) {
+    Value rank = b.create<shape::RankOp>(loc, b.getIndexType(), shape);
+    if (!max_rank) {
+      max_rank = rank;
+    } else {
+      max_rank = b.create<mlir::SelectOp>(
+          loc, b.create<CmpIOp>(loc, CmpIPredicate::sgt, max_rank, rank),
+          max_rank, rank);
+    }
+  }
+
+  // Materialize rank specialization for ranks 1, ..., 8.
+  // TODO(frgossen): For clusters w/o a select operation, consider only ranks
+  // 1, ..., 5.
+  const int64_t kMinTargetRank = 1;
+  const int64_t kMaxTargetRank = 8;
+  return RecusivelyMaterializeTargetRankSpecializationCases(
+      b, loc, op, reduced_shapes, max_rank, kMinTargetRank, kMaxTargetRank);
+}
+
+Value MaterializeDefaultRankSpecializationCases(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
+    const SmallVector<Value, 8> &shapes) {
+  return MaterializeEqualShapesRankSpecializationCase(
+      b, loc, op, shapes, [&](OpBuilder &b, Location loc) {
+        b.create<scf::YieldOp>(
+            loc, MaterializeGenericRankSpecializationCases(b, loc, op, shapes));
+      });
+}
+
+Value MaterializeRankSpecializationForExactlyTwoOperands(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op) {
+  assert(op->getNumOperands() == 2 && op.getNumResults() == 1 &&
+         "The rank specialization strategy for clusters with exactly two "
+         "operands supports only one result.");
+
+  auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
+    return b.create<shape::ShapeOfOp>(loc, v).result();
+  }));
+
+  // Materialize all the different cases.
+  Value unshaped_result = MaterializeScalarRankSpecializationCase(
+      b, loc, op, shapes, /*non_scalar_idx=*/1,
+      [&](OpBuilder &b, Location loc) {
+        b.create<scf::YieldOp>(
+            loc, MaterializeScalarRankSpecializationCase(
+                     b, loc, op, shapes, /*non_scalar_idx=*/0,
+                     [&](OpBuilder &b, Location loc) {
+                       b.create<scf::YieldOp>(
+                           loc, MaterializeDefaultRankSpecializationCases(
+                                    b, loc, op, shapes));
+                     }));
+      });
+
+  // Materialize final reshape once and for all rank specialization cases.
+  return MaterializeFinalReshape(b, loc, op, unshaped_result).front();
+}
+
+SmallVector<Value, 8> MaterializeRankSpecializationForSingleNonScalarOperand(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
+    Value non_scalar_operand) {
+  // Flatten the non-scalar operand.
+  Value flat_shape = b.create<tensor::FromElementsOp>(
+      loc, b.create<shape::NumElementsOp>(
+                loc, b.getIndexType(),
+                b.create<shape::ShapeOfOp>(loc, non_scalar_operand))
+               .result());
+  Value flat_non_scalar_operand = b.create<mhlo::DynamicReshapeOp>(
+      loc, DeriveRankedTensorTypes(non_scalar_operand.getType(), /*rank=*/1),
+      non_scalar_operand, flat_shape);
+
+  // Materialize ranked variants for the element-wise operations.
+  BlockAndValueMapping bvm;
+  for (auto it : llvm::zip(op.getBody()->getArguments(), op.operands())) {
+    Value operand = std::get<1>(it);
+    bvm.map(std::get<0>(it),
+            operand == non_scalar_operand ? flat_non_scalar_operand : operand);
+  }
+  SmallVector<Value, 8> unshaped_results =
+      MaterializeRankedOperations(b, loc, bvm, op, /*target_rank=*/1);
+
+  // Restore the results' expected shape.
+  return MaterializeFinalReshape(b, loc, op, unshaped_results);
+}
+
+// Materialize rank generic rank specialization.
+Value MaterializeDefaultRankSpecialization(
+    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op) {
+  auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
+    return b.create<shape::ShapeOfOp>(loc, v).result();
+  }));
+
+  // Materialize all the different cases.
+  Value unshaped_result =
+      MaterializeDefaultRankSpecializationCases(b, loc, op, shapes);
+
+  // Materialize final reshape once and for all rank specialization cases.
+  return MaterializeFinalReshape(b, loc, op, unshaped_result).front();
+}
+
+struct LowerRankSpecializationClusterPattern
     : public OpRewritePattern<chlo::RankSpecializationClusterOp> {
   using OpRewritePattern<chlo::RankSpecializationClusterOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(chlo::RankSpecializationClusterOp op,
                                 PatternRewriter &rewriter) const override {
-    // Only apply this pattern if we can statically know that all operands have
-    // the same shape or are scalars, i.e. all but one operands are scalars.
-    Optional<Value> non_scalar_operand = FindUniqueNonScalar(op.operands());
-    if (!non_scalar_operand) return failure();
-
-    // Flatten the non-scalar operand.
     Location loc = op.getLoc();
-    Value flat_shape = rewriter.create<tensor::FromElementsOp>(
-        loc,
-        rewriter
-            .create<shape::NumElementsOp>(
-                loc, rewriter.getIndexType(),
-                rewriter.create<shape::ShapeOfOp>(loc, *non_scalar_operand))
-            .result());
-    Value flat_non_scalar_operand = rewriter.create<mhlo::DynamicReshapeOp>(
-        loc, DeriveRankedTensorTypes(non_scalar_operand->getType(), /*rank=*/1),
-        *non_scalar_operand, flat_shape);
 
-    // Materialize ranked variants for the element-wise operations.
-    BlockAndValueMapping bvm;
-    for (auto it : llvm::zip(op.getBody()->getArguments(), op.operands())) {
-      Value operand = std::get<1>(it);
-      bvm.map(std::get<0>(it), operand == *non_scalar_operand
-                                   ? flat_non_scalar_operand
-                                   : operand);
+    // Restoring the result shape currently relies on all operands being used
+    // for a single result. The result shape is then the broadcasted shape of
+    // all operands.
+    if (op.getNumResults() != 1) return failure();
+
+    // TODO(frgossen): If there is a single operand, we can flatten it
+    // completely and apply a non-broadcasting operation.
+
+    // If there is only one unranked operand and all others are known scalars,
+    // we can flatten the operands to rank 1.
+    if (Optional<Value> non_scalar_operand =
+            FindUniqueNonScalar(op.operands())) {
+      rewriter.replaceOp(op,
+                         MaterializeRankSpecializationForSingleNonScalarOperand(
+                             rewriter, loc, op, *non_scalar_operand));
+      return success();
     }
-    SmallVector<Value, 8> unshaped_results =
-        MaterializeRankedOperations(rewriter, loc, bvm, op, /*target_rank=*/1);
 
-    // Restore the results' expected shape.
-    SmallVector<Value, 8> results =
-        MaterializeFinalReshape(rewriter, loc, op, unshaped_results);
-    rewriter.replaceOp(op, results);
+    // If there are only two operands, we can consider extra cases in which
+    // either operand is scalar.
+    if (op->getNumOperands() == 2) {
+      rewriter.replaceOp(op, MaterializeRankSpecializationForExactlyTwoOperands(
+                                 rewriter, loc, op));
+      return success();
+    }
+
+    // For all other cases, reshape the operands to match in rank, apply the
+    // operation, and restore the expected shape.
+    rewriter.replaceOp(op,
+                       MaterializeDefaultRankSpecialization(rewriter, loc, op));
     return success();
   }
 };
@@ -302,7 +625,7 @@ struct RankSpecializationToSCFPass
     : public PassWrapper<RankSpecializationToSCFPass, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, chlo::HloClientDialect,
-                    shape::ShapeDialect>();
+                    shape::ShapeDialect, scf::SCFDialect>();
   }
 
   void runOnFunction() override {
@@ -325,7 +648,7 @@ void PopulateRankSpecializationClusterPatterns(
 
 void PopulateRankSpecializationToSCFPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
-  patterns->insert<LowerSingleNonScalarOperandPattern>(context);
+  patterns->insert<LowerRankSpecializationClusterPattern>(context);
 }
 
 std::unique_ptr<FunctionPass> createRankSpecializationClusterPass() {

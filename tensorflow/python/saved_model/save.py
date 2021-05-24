@@ -61,6 +61,7 @@ from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.saved_model.experimental import pywrap_libexport
+from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_object_util
@@ -84,6 +85,9 @@ _CapturedTensor = collections.namedtuple("_CapturedTensor",
 
 # Number of untraced functions to display to user in warning message.
 _NUM_DISPLAY_UNTRACED_FUNCTIONS = 5
+
+# API label for SavedModel metrics.
+_SAVE_V2_LABEL = "save_v2"
 
 
 class _AugmentedGraphView(graph_view.ObjectGraphView):
@@ -361,11 +365,6 @@ class _SaveableView(object):
         object_map.update(node_object_map)
         resource_map.update(node_resource_map)
 
-    # Note: some concrete functions can have been realized when tracing other
-    # functions, and might closure-capture tensors from their parent functions.
-    # This is normal, but it means those concrete functions can't be serialized
-    # as their own independent endpoints, so we filter them out here.
-    bad_functions = []
     for concrete_function in self.concrete_functions:
       if not concrete_function.graph.saveable:
         raise ValueError(
@@ -386,8 +385,12 @@ class _SaveableView(object):
             continue
           capture_constant_value = tensor_util.constant_value(capture)
           if capture_constant_value is None:
-            bad_functions.append(concrete_function)
-            continue
+            raise ValueError(
+                "Unable to save function {name} because it captures graph "
+                "tensor {capture} from a parent function which cannot be "
+                "converted to a constant with `tf.get_static_value`.".format(
+                    name=concrete_function.name, capture=capture))
+
           if numpy.prod(capture.shape.as_list()) > 1 and numpy.all(
               capture_constant_value == capture_constant_value.flat[0]):
             # For the common case of a constant array filled with the same
@@ -409,7 +412,6 @@ class _SaveableView(object):
 
     self.concrete_functions = [
         self._wrapped_functions.get(x, x) for x in self.concrete_functions
-        if x not in bad_functions
     ]
     return object_map, resource_map, asset_info
 
@@ -1185,8 +1187,11 @@ def save(obj, export_dir, signatures=None, options=None):
   @end_compatibility
   """
   # pylint: enable=line-too-long
-  save_and_return_nodes(obj, export_dir, signatures, options,
-                        raise_metadata_warning=True)
+  metrics.IncrementWriteApi(_SAVE_V2_LABEL)
+  result = save_and_return_nodes(
+      obj, export_dir, signatures, options, raise_metadata_warning=True)
+  metrics.IncrementWrite()
+  return result
 
 
 def save_and_return_nodes(obj,

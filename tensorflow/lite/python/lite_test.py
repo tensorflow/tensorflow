@@ -2805,12 +2805,6 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     self.assertEqual('Placeholder', input_details[0]['name'])
 
 
-class ImportOpsUtilTest(LiteTest):
-
-  def testGetPotentiallySupportedOps(self):
-    self.assertIsNotNone(lite.get_potentially_supported_ops())
-
-
 class DefaultConverterAttrsTest(LiteTest):
 
   def testAttrs(self):

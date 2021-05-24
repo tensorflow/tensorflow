@@ -543,25 +543,24 @@ void TestSVDF(const int batch_size, const int num_units, const int input_size,
               const float* expected_output, float tolerance = 1e-5f) {
   const int num_filters = num_units * rank;
 
-  const int input_dims_arg[] = {2, batch_size, input_size};
+  int input_dims_arg[] = {2, batch_size, input_size};
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_arg);
 
-  const int feature_weights_dims_args[] = {2, num_filters, input_size};
+  int feature_weights_dims_args[] = {2, num_filters, input_size};
   TfLiteIntArray* feature_weights_dims =
       IntArrayFromInts(feature_weights_dims_args);
 
-  const int time_weights_dims_args[] = {2, num_filters, memory_size};
+  int time_weights_dims_args[] = {2, num_filters, memory_size};
   TfLiteIntArray* time_weights_dims = IntArrayFromInts(time_weights_dims_args);
 
-  const int activation_state_dims_args[] = {2, batch_size,
-                                            memory_size * num_filters};
+  int activation_state_dims_args[] = {2, batch_size, memory_size * num_filters};
   TfLiteIntArray* activation_state_dims =
       IntArrayFromInts(activation_state_dims_args);
 
-  const int bias_dims_args[] = {1, num_units};
+  int bias_dims_args[] = {1, num_units};
   TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_args);
 
-  const int output_dims_args[] = {2, batch_size, num_units};
+  int output_dims_args[] = {2, batch_size, num_units};
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_args);
 
   const int tensor_count = 6;  // 5 inputs, 1 output
@@ -603,25 +602,24 @@ inline void TestIntegerSVDF(
     int8_t* golden_output_quantized, int golden_output_len) {
   const int num_filters = num_units * rank;
 
-  const int input_dims_arg[] = {2, batch_size, input_size};
+  int input_dims_arg[] = {2, batch_size, input_size};
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_arg);
 
-  const int feature_weights_dims_args[] = {2, num_filters, input_size};
+  int feature_weights_dims_args[] = {2, num_filters, input_size};
   TfLiteIntArray* feature_weights_dims =
       IntArrayFromInts(feature_weights_dims_args);
 
-  const int time_weights_dims_args[] = {2, num_filters, memory_size};
+  int time_weights_dims_args[] = {2, num_filters, memory_size};
   TfLiteIntArray* time_weights_dims = IntArrayFromInts(time_weights_dims_args);
 
-  const int bias_dims_data[] = {1, num_units};
+  int bias_dims_data[] = {1, num_units};
   TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
 
-  const int activation_state_dims_args[] = {2, batch_size,
-                                            memory_size * num_filters};
+  int activation_state_dims_args[] = {2, batch_size, memory_size * num_filters};
   TfLiteIntArray* activation_state_dims =
       IntArrayFromInts(activation_state_dims_args);
 
-  const int output_dims_args[] = {2, batch_size, num_units};
+  int output_dims_args[] = {2, batch_size, num_units};
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_args);
 
   const int tensor_count = 6;  // 5 inputs, 1 output

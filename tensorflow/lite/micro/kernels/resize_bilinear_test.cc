@@ -58,11 +58,10 @@ TfLiteStatus ValidateGoldens(TfLiteTensor* tensors, int tensors_size,
 }
 
 template <typename T>
-void TestResizeBilinear(const int* input_dims_data, const T* input_data,
+void TestResizeBilinear(int* input_dims_data, const T* input_data,
                         const int32_t* expected_size_data,
-                        const T* expected_output_data,
-                        const int* output_dims_data, T* output_data,
-                        TfLiteResizeBilinearParams* params,
+                        const T* expected_output_data, int* output_dims_data,
+                        T* output_data, TfLiteResizeBilinearParams* params,
                         float tolerance = 1e-5) {
   int expected_size_dims_data[] = {1, 2};
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -96,11 +95,11 @@ void TestResizeBilinear(const int* input_dims_data, const T* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(HorizontalResize) {
-  const int input_dims[] = {4, 1, 1, 2, 1};
+  int input_dims[] = {4, 1, 1, 2, 1};
   const float input_data[] = {3, 6};
   const int32_t expected_size_data[] = {1, 3};
   const float expected_output_data[] = {3, 5, 6};
-  const int output_dims[] = {4, 1, 1, 3, 1};
+  int output_dims[] = {4, 1, 1, 3, 1};
   float output_data[3];
 
   TfLiteResizeBilinearParams params = {
@@ -114,11 +113,11 @@ TF_LITE_MICRO_TEST(HorizontalResize) {
 }
 
 TF_LITE_MICRO_TEST(HorizontalResizeInt8) {
-  const int input_dims[] = {4, 1, 1, 2, 1};
+  int input_dims[] = {4, 1, 1, 2, 1};
   const int8_t input_data[] = {3, 6};
   const int32_t expected_size_data[] = {1, 3};
   const int8_t expected_output_data[] = {3, 5, 6};
-  const int output_dims[] = {4, 1, 1, 3, 1};
+  int output_dims[] = {4, 1, 1, 3, 1};
   int8_t output_data[3];
 
   TfLiteResizeBilinearParams params = {
@@ -132,11 +131,11 @@ TF_LITE_MICRO_TEST(HorizontalResizeInt8) {
 }
 
 TF_LITE_MICRO_TEST(VerticalResize) {
-  const int input_dims[] = {4, 1, 2, 1, 1};
+  int input_dims[] = {4, 1, 2, 1, 1};
   const float input_data[] = {3, 9};
   const int32_t expected_size_data[] = {3, 1};
   const float expected_output_data[] = {3, 7, 9};
-  const int output_dims[] = {4, 1, 3, 1, 1};
+  int output_dims[] = {4, 1, 3, 1, 1};
   float output_data[3];
 
   TfLiteResizeBilinearParams params = {
@@ -150,11 +149,11 @@ TF_LITE_MICRO_TEST(VerticalResize) {
 }
 
 TF_LITE_MICRO_TEST(VerticalResizeInt8) {
-  const int input_dims[] = {4, 1, 2, 1, 1};
+  int input_dims[] = {4, 1, 2, 1, 1};
   const int8_t input_data[] = {3, 9};
   const int32_t expected_size_data[] = {3, 1};
   const int8_t expected_output_data[] = {3, 7, 9};
-  const int output_dims[] = {4, 1, 3, 1, 1};
+  int output_dims[] = {4, 1, 3, 1, 1};
   int8_t output_data[3];
 
   TfLiteResizeBilinearParams params = {
@@ -168,7 +167,7 @@ TF_LITE_MICRO_TEST(VerticalResizeInt8) {
 }
 
 TF_LITE_MICRO_TEST(TwoDimensionalResize) {
-  const int input_dims[] = {4, 1, 2, 2, 1};
+  int input_dims[] = {4, 1, 2, 2, 1};
   const float input_data[] = {
       3, 6,   //
       9, 12,  //
@@ -180,7 +179,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResize) {
       9, 11, 12   //
   };
 
-  const int output_dims[] = {4, 1, 3, 3, 1};
+  int output_dims[] = {4, 1, 3, 3, 1};
   float output_data[9];
 
   TfLiteResizeBilinearParams params = {
@@ -194,7 +193,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResize) {
 }
 
 TF_LITE_MICRO_TEST(TwoDimensionalResizeInt8) {
-  const int input_dims[] = {4, 1, 2, 2, 1};
+  int input_dims[] = {4, 1, 2, 2, 1};
   const int8_t input_data[] = {
       3, 6,   //
       9, 12,  //
@@ -205,7 +204,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeInt8) {
       7, 9,  10,  //
       9, 11, 12,  //
   };
-  const int output_dims[] = {4, 1, 3, 3, 1};
+  int output_dims[] = {4, 1, 3, 3, 1};
   int8_t output_data[9];
 
   TfLiteResizeBilinearParams params = {
@@ -219,7 +218,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeInt8) {
 }
 
 TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatches) {
-  const int input_dims[] = {4, 2, 2, 2, 1};
+  int input_dims[] = {4, 2, 2, 2, 1};
   const float input_data[] = {
       3,  6,   //
       9,  12,  //
@@ -235,7 +234,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatches) {
       8,  12, 14,  //
       10, 14, 16,  //
   };
-  const int output_dims[] = {4, 2, 3, 3, 1};
+  int output_dims[] = {4, 2, 3, 3, 1};
   float output_data[18];
 
   TfLiteResizeBilinearParams params = {
@@ -249,7 +248,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatches) {
 }
 
 TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatchesInt8) {
-  const int input_dims[] = {4, 2, 2, 2, 1};
+  int input_dims[] = {4, 2, 2, 2, 1};
   const int8_t input_data[] = {
       3,  6,   //
       9,  12,  //
@@ -265,7 +264,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatchesInt8) {
       9,  12, 13,  //
       12, 14, 16,  //
   };
-  const int output_dims[] = {4, 2, 3, 3, 1};
+  int output_dims[] = {4, 2, 3, 3, 1};
   int8_t output_data[18];
 
   TfLiteResizeBilinearParams params = {
@@ -279,7 +278,7 @@ TF_LITE_MICRO_TEST(TwoDimensionalResizeWithTwoBatchesInt8) {
 }
 
 TF_LITE_MICRO_TEST(ThreeDimensionalResize) {
-  const int input_dims[] = {4, 1, 2, 2, 2};
+  int input_dims[] = {4, 1, 2, 2, 2};
   const float input_data[] = {
       3, 4,  6,  10,  //
       9, 10, 12, 16,  //
@@ -290,7 +289,7 @@ TF_LITE_MICRO_TEST(ThreeDimensionalResize) {
       7, 8,  9,  12, 10, 14,  //
       9, 10, 11, 14, 12, 16,  //
   };
-  const int output_dims[] = {4, 1, 3, 3, 2};
+  int output_dims[] = {4, 1, 3, 3, 2};
   float output_data[18];
 
   TfLiteResizeBilinearParams params = {
@@ -304,7 +303,7 @@ TF_LITE_MICRO_TEST(ThreeDimensionalResize) {
 }
 
 TF_LITE_MICRO_TEST(ThreeDimensionalResizeInt8) {
-  const int input_dims[] = {4, 1, 2, 2, 2};
+  int input_dims[] = {4, 1, 2, 2, 2};
   const int8_t input_data[] = {
       3,  4,  6,  10,  //
       10, 12, 14, 16,  //
@@ -315,7 +314,7 @@ TF_LITE_MICRO_TEST(ThreeDimensionalResizeInt8) {
       7,  9,  10, 12, 11, 13,  //
       10, 12, 12, 14, 14, 16,  //
   };
-  const int output_dims[] = {4, 1, 3, 3, 2};
+  int output_dims[] = {4, 1, 3, 3, 2};
   int8_t output_data[18];
 
   TfLiteResizeBilinearParams params = {

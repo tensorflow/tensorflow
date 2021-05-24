@@ -342,7 +342,7 @@ std::string TruncateString(const char* str, int size_limit,
 }  // namespace
 
 // Prints a dump of what tensors and what nodes are in the interpreter.
-void PrintInterpreterState(Interpreter* interpreter) {
+void PrintInterpreterState(const Interpreter* interpreter) {
   const size_t num_subgraphs = interpreter->subgraphs_size();
   printf("Interpreter has %zu subgraphs.\n\n", num_subgraphs);
 
