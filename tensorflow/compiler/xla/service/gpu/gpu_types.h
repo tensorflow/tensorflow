@@ -29,14 +29,12 @@ namespace gpu {
 // On Cuda platform, it comprises of an <int, int> pair
 // denoting major and minor version.
 //
-// On ROCm platform, it comprises of an <int, string> pair
-// the int has the contents of the hipDeviceProp_t::gcnArchValue field.
-// the string has the contents of the hipDeviceProp_t::gcnArchName field.
+// On ROCm platform, the string has the contents of the 
+// hipDeviceProp_t::gcnArchName field.
 // The string contains all the information needed to create an exact LLVM
-// AMDGPUTarget corresopnding the AMDGPU device it represents, the int value
-// by itself is not sufficient for this purpose
+// AMDGPUTarget corresponding the AMDGPU device it represents.
 using GpuVersion =
-    absl::variant<std::pair<int, int>, std::pair<int, std::string>>;
+    absl::variant<std::pair<int, int>, std::string>;
 }  // namespace gpu
 }  // namespace xla
 

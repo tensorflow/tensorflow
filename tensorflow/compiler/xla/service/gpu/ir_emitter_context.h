@@ -41,6 +41,7 @@ class IrEmitterContext {
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
       std::string platform_name, GpuDeviceInfo gpu_device_info,
       absl::optional<CudaComputeCapability> cuda_compute_capability,
+      std::string amdgpu_arch,
       const HloProfileIndexMap* profile_index_map,
       mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
@@ -48,6 +49,7 @@ class IrEmitterContext {
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         cuda_compute_capability_(cuda_compute_capability),
+        amdgpu_arch_(amdgpu_arch),
         profile_index_map_(profile_index_map),
         mlir_context_(mlir_context),
         llvm_module_(llvm_module) {}
@@ -64,6 +66,9 @@ class IrEmitterContext {
   GpuDeviceInfo gpu_device_info() const { return gpu_device_info_; }
   absl::optional<CudaComputeCapability> cuda_compute_capability() const {
     return cuda_compute_capability_;
+  }
+  std::string amdgpu_arch() const {
+    return amdgpu_arch_;
   }
   const HloProfileIndexMap* profile_index_map() { return profile_index_map_; }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
@@ -91,6 +96,7 @@ class IrEmitterContext {
   std::string platform_name_;
   GpuDeviceInfo gpu_device_info_;
   absl::optional<CudaComputeCapability> cuda_compute_capability_;
+  std::string amdgpu_arch_;
   const HloProfileIndexMap* profile_index_map_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
