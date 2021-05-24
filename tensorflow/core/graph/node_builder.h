@@ -148,6 +148,7 @@ class NodeBuilder {
   bool GetOutputType(const Node* node, int i, DataType* dt);
 
   NodeDefBuilder def_builder_;
+  const OpRegistryInterface* op_registry_;
   std::vector<NodeOut> inputs_;
   std::vector<Node*> control_inputs_;
   std::vector<string> errors_;

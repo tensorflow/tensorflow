@@ -64,9 +64,10 @@ class LowerWhileHelper {
  public:
   static Status Run(Node* while_op, const NameAttrList& cond_fn,
                     const NameAttrList& body_fn, int parallel_iterations,
-                    Graph* graph, bool keep_node_fetchable) {
+                    Graph* graph, const FunctionLibraryDefinition* flib_def,
+                    bool keep_node_fetchable) {
     LowerWhileHelper helper(while_op, cond_fn, body_fn, parallel_iterations,
-                            graph, keep_node_fetchable);
+                            graph, flib_def, keep_node_fetchable);
     return helper.RunInternal();
   }
 
@@ -76,7 +77,8 @@ class LowerWhileHelper {
   // the given graph.
   LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
                    const NameAttrList& body_fn, int parallel_iterations,
-                   Graph* graph, bool keep_node_fetchable);
+                   Graph* graph, const FunctionLibraryDefinition* flib_def,
+                   bool keep_node_fetchable);
 
   Status RunInternal();
 
@@ -145,6 +147,7 @@ class LowerWhileHelper {
   // used as a source of outgoing control edges from lowered While node.
   Node* lowered_while_executed_;
   Graph* graph_;
+  const FunctionLibraryDefinition* flib_def_;
   // Name of the `while_op_`.
   string name_;
   // Max number of parallel_iterations for the while loop.
@@ -177,16 +180,18 @@ class LowerWhileHelper {
 LowerWhileHelper::LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
                                    const NameAttrList& body_fn,
                                    int parallel_iterations, Graph* graph,
+                                   const FunctionLibraryDefinition* flib_def,
                                    bool keep_node_fetchable)
     : while_op_(while_op),
       graph_(graph),
+      flib_def_(flib_def),
       name_(while_op->name()),
       parallel_iterations_(parallel_iterations),
       keep_node_fetchable_(keep_node_fetchable),
       debug_info_(*while_op_),
-      cond_call_builder_(NewName("cond"), cond_fn.name(), graph->op_registry(),
+      cond_call_builder_(NewName("cond"), cond_fn.name(), flib_def,
                          &debug_info_),
-      body_call_builder_(NewName("body"), body_fn.name(), graph->op_registry(),
+      body_call_builder_(NewName("body"), body_fn.name(), flib_def,
                          &debug_info_),
       num_loop_inputs_(while_op_->num_inputs()) {
   cond_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
@@ -239,8 +244,7 @@ Status LowerWhileHelper::CreateEnterNodes() {
   for (const Edge* edge : edges) {
     Node* enter_node;
     NodeBuilder builder =
-        NodeBuilder(NewName("enter"), "Enter", graph_->op_registry(),
-                    &debug_info_)
+        NodeBuilder(NewName("enter"), "Enter", flib_def_, &debug_info_)
             .Input(NodeOut(edge->src(), edge->src_output()))
             .Attr("frame_name", name_)
             .Attr("parallel_iterations", parallel_iterations_)
@@ -263,7 +267,7 @@ Status LowerWhileHelper::CreateEnterNodes() {
   if (!control_inputs.empty()) {
     Node* incoming_control_node;
     TF_RETURN_IF_ERROR(NodeBuilder(NewName("LoopControlInputs"), "NoOp",
-                                   graph_->op_registry(), &debug_info_)
+                                   flib_def_, &debug_info_)
                            .ControlInputs(control_inputs)
                            .Device(while_op_->requested_device())
                            .Finalize(graph_, &incoming_control_node));
@@ -281,8 +285,7 @@ Status LowerWhileHelper::CreateMergeNodes() {
     }
     Node* merge_node;
     TF_RETURN_IF_ERROR(
-        NodeBuilder(NewName("merge"), "Merge", graph_->op_registry(),
-                    &debug_info_)
+        NodeBuilder(NewName("merge"), "Merge", flib_def_, &debug_info_)
             .Input({NodeOut(enter_node, 0), NodeOut(enter_node, 0)})
             .Device(enter_node->requested_device())
             .AssignedDevice(enter_node->assigned_device_name())
@@ -307,11 +310,11 @@ Status LowerWhileHelper::CreateCondFuncCallNode() {
   // are in the same frame as the rest of the function, otherwise
   // `BuildControlFlowInfo` throws an error.
   graph_->AddControlEdge(merge_nodes_[0], cond_call_node_);
-  TF_RETURN_IF_ERROR(NodeBuilder(NewName("LoopCond"), "LoopCond",
-                                 graph_->op_registry(), &debug_info_)
-                         .Input(NodeOut(cond_call_node_, 0))
-                         .Device(while_op_->requested_device())
-                         .Finalize(graph_, &loop_cond_node_));
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(NewName("LoopCond"), "LoopCond", flib_def_, &debug_info_)
+          .Input(NodeOut(cond_call_node_, 0))
+          .Device(while_op_->requested_device())
+          .Finalize(graph_, &loop_cond_node_));
   return Status::OK();
 }
 
@@ -332,13 +335,13 @@ Status LowerWhileHelper::CreateSwitchNodes() {
     if (IsRefType(merge_node->output_type(0))) {
       op_type = "RefSwitch";
     }
-    TF_RETURN_IF_ERROR(NodeBuilder(NewName(op_name), op_type,
-                                   graph_->op_registry(), &debug_info_)
-                           .Input(NodeOut(merge_node, 0))
-                           .Input(NodeOut(loop_cond_node_, 0))
-                           .Device(merge_node->requested_device())
-                           .AssignedDevice(merge_node->assigned_device_name())
-                           .Finalize(graph_, &switch_node));
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(NewName(op_name), op_type, flib_def_, &debug_info_)
+            .Input(NodeOut(merge_node, 0))
+            .Input(NodeOut(loop_cond_node_, 0))
+            .Device(merge_node->requested_device())
+            .AssignedDevice(merge_node->assigned_device_name())
+            .Finalize(graph_, &switch_node));
     switch_nodes_.emplace_back(switch_node);
   }
   return Status::OK();
@@ -368,7 +371,7 @@ Status LowerWhileHelper::CreateBodyFuncCallNode() {
     op_type = "RefIdentity";
   }
   TF_RETURN_IF_ERROR(NodeBuilder(NewName("loop_body_control"), op_type,
-                                 graph_->op_registry(), &debug_info_)
+                                 flib_def_, &debug_info_)
                          .Input(NodeOut(switch_nodes_[0], 1))
                          .Device(while_op_->requested_device())
                          .Finalize(graph_, &body_control_node_));
@@ -389,8 +392,7 @@ Status LowerWhileHelper::CreateExitNodes() {
     } else {
       Node* exit_node;
       TF_RETURN_IF_ERROR(
-          NodeBuilder(NewName("exit"), "Exit", graph_->op_registry(),
-                      &debug_info_)
+          NodeBuilder(NewName("exit"), "Exit", flib_def_, &debug_info_)
               .Input(NodeOut(switch_nodes_[op_input_output_to_lowered_node_[i]],
                              0))
               .Device(switch_nodes_[op_input_output_to_lowered_node_[i]]
@@ -446,7 +448,7 @@ Status LowerWhileHelper::CreateNextIterationNodes() {
     }
     Node* merge_node = merge_nodes_[op_input_output_to_lowered_node_[i]];
     TF_RETURN_IF_ERROR(NodeBuilder(NewName("next_iteration"), "NextIteration",
-                                   graph_->op_registry(), &debug_info_)
+                                   flib_def_, &debug_info_)
                            .Input(NodeOut(body_call_node_, i))
                            .ControlInput(body_call_node_)
                            .Device(merge_node->requested_device())
@@ -503,6 +505,7 @@ bool LowerWhileHelper::IsResource(int index) {
 }  // namespace
 
 Status RewriteWhileNode(Node* n, Graph* g,
+                        const FunctionLibraryDefinition* flib_def,
                         bool keep_node_fetchable) {
   VLOG(2) << "Lower While node (keep_node_fetchable=" << keep_node_fetchable
           << "): " << SummarizeNode(*n);
@@ -523,7 +526,7 @@ Status RewriteWhileNode(Node* n, Graph* g,
 
   TF_RETURN_IF_ERROR(LowerWhileHelper::Run(
       n, cond_attr->func(), body_attr->func(), parallel_iterations_attr->i(), g,
-      keep_node_fetchable));
+      flib_def, keep_node_fetchable));
   g->RemoveNode(n);
 
   return Status::OK();

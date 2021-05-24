@@ -164,7 +164,8 @@ Status LowerFunctionalOpsPass::Run(
       TF_RETURN_IF_ERROR(RewriteCaseNode(n, g, keep_lowered_nodes_fetchable));
 
     } else if (n->IsWhileNode() && lower_control_flow(n)) {
-      TF_RETURN_IF_ERROR(RewriteWhileNode(n, g, keep_lowered_nodes_fetchable));
+      TF_RETURN_IF_ERROR(
+          RewriteWhileNode(n, g, flib_def, keep_lowered_nodes_fetchable));
 
     } else {
       DCHECK(!lower_control_flow(n))

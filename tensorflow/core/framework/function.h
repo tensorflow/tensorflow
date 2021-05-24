@@ -517,6 +517,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
+  void set_default_registry(const OpRegistryInterface* registry) {
+    default_registry_ = registry;
+  }
 
   // Returns a copy of `*this` with only the subset of functions that are
   // reachable from the nodes of `graph` or `func`.
@@ -597,7 +600,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
-  const OpRegistryInterface* const default_registry_;
+  const OpRegistryInterface* default_registry_;
   gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
       function_defs_ TF_GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ TF_GUARDED_BY(mu_);
