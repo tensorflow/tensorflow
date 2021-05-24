@@ -162,7 +162,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   2 - By subclassing the `Model` class: in that case, you should define your
   layers in `__init__` and you should implement the model's forward pass
-  in `call`.
+  in `call`. Note that because this method of instantiation does not include an
+  explicit `Input` operation defining the input shape, inputs will
+  automatically be expanded to at least 2D in `model.fit()`, model.predict()`,
+  and `model.evaluate() so that the first dimension can be assumed to be the
+  batch dimension.
 
   ```python
   import tensorflow as tf
