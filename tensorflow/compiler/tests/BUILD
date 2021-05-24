@@ -11,6 +11,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = [":internal"],
@@ -2001,5 +2002,24 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/ops/risc:risc_ops",
+    ],
+)
+
+tpu_py_test(
+    name = "const_op_test",
+    srcs = [
+        "const_op_test.py",
+    ],
+    disable_experimental = True,
+    # TODO(b/188995810): Add an optimization in MLIR importer to not
+    # materialize giant splat constants.
+    disable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/tpu:tpu_lib",
     ],
 )
