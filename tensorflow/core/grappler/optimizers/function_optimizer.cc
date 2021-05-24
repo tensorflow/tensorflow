@@ -1259,7 +1259,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       } else if (n->IsCaseNode()) {
         TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
       } else if (n->IsWhileNode()) {
-        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));
+        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), &flib_def, false));
       }
       continue;
     }

@@ -941,6 +941,7 @@ cc_library(
         ":computation_placer",
         ":dump",
         ":dynamic_dimension_inference",
+        ":dynamic_padder",
         ":executable",
         ":execution_tracker",
         ":hlo",

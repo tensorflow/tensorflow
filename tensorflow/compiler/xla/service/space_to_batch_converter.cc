@@ -1345,7 +1345,6 @@ bool ConvolutionVisitor::IsOpcodeNonPropagatable(HloInstruction* consumer) {
   // We can add more non-propagatable opcodes as needed.
   switch (consumer->opcode()) {
     case HloOpcode::kCustomCall:
-    case HloOpcode::kReshape:
       return true;
     default:
       return false;
