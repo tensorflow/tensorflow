@@ -492,6 +492,12 @@ class Reshape(Layer):
       target_shape: Target shape. Tuple of integers, does not include the
         samples dimension (batch size).
       **kwargs: Any additional layer keyword arguments.
+    
+    Returns:
+      A layer to Reshape the input.
+    
+    Raises:
+      ValueError: If input_shape and target_shape are of different shape.
     """
     super(Reshape, self).__init__(**kwargs)
     self.target_shape = tuple(target_shape)
