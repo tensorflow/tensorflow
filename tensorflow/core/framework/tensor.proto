@@ -52,7 +52,7 @@ message TensorProto {
   // DT_DOUBLE.
   repeated double double_val = 6 [packed = true];
 
-  // DT_INT32, DT_INT16, DT_INT8, DT_UINT8.
+  // DT_INT32, DT_INT16, DT_UINT16, DT_INT8, DT_UINT8.
   repeated int32 int_val = 7 [packed = true];
 
   // DT_STRING
