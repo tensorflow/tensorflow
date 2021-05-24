@@ -158,10 +158,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // GATHER updates the output tensor dimensions, but TfLiteTensor in the
   // MicroInterpreter is a temporary allocation. We must therefore relocate the
   // dims from the FlatBuffer to the persistant storage arena.
-  //
-  // TODO(b/162311891): Drop this method when the interpreter has an API for
-  // returning buffers on TfLiteEvalTensor.
-  // ???
   TfLiteEvalTensor* output_eval =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE_OK(context, tflite::micro::CreateWritableTensorDimsWithCopy(
