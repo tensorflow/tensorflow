@@ -796,6 +796,29 @@ func @HardSwishPattern(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   // CHECK: %0 = "tfl.hard_swish"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
 }
 
+// CHECK-LABEL: @HardSwishPatternTwo
+func @HardSwishPatternTwo(%arg0: tensor<1x128x128x3xf32>) -> tensor<1x128x128x3xf32> {
+  %three = constant dense<3.000000e+00> : tensor<f32>
+  %six = constant dense<0.1666666666666> : tensor<f32>
+  %0 = "tfl.add"(%arg0, %three) {fused_activation_function = "NONE"} : (tensor<1x128x128x3xf32>, tensor<f32>) -> tensor<1x128x128x3xf32>
+  %1 = "tfl.relu6"(%0) : (tensor<1x128x128x3xf32>) -> tensor<1x128x128x3xf32>
+  %2 = tfl.mul %arg0, %1 {fused_activation_function = "NONE"} : tensor<1x128x128x3xf32>
+  %3 = "tfl.mul"(%2, %six) {fused_activation_function = "NONE"} : (tensor<1x128x128x3xf32>, tensor<f32>) -> tensor<1x128x128x3xf32>
+  return %3 : tensor<1x128x128x3xf32>
+  // CHECK: %0 = "tfl.hard_swish"(%arg0) : (tensor<1x128x128x3xf32>) -> tensor<1x128x128x3xf32>
+}
+
+// CHECK-LABEL: @HardSwishPatternThree
+func @HardSwishPatternThree(%arg0: tensor<1x128x128x3xf32>) -> tensor<1x128x128x3xf32> {
+  %three = constant dense<3.000000e+00> : tensor<f32>
+  %six = constant dense<0.1666666666666> : tensor<f32>
+  %0 = "tfl.add"(%arg0, %three) {fused_activation_function = "RELU6"} : (tensor<1x128x128x3xf32>, tensor<f32>) -> tensor<1x128x128x3xf32>
+  %1 = tfl.mul %arg0, %0 {fused_activation_function = "NONE"} : tensor<1x128x128x3xf32>
+  %2 = "tfl.mul"(%1, %six) {fused_activation_function = "NONE"} : (tensor<1x128x128x3xf32>, tensor<f32>) -> tensor<1x128x128x3xf32>
+  return %2 : tensor<1x128x128x3xf32>
+  // CHECK: %0 = "tfl.hard_swish"(%arg0) : (tensor<1x128x128x3xf32>) -> tensor<1x128x128x3xf32>
+}
+
 // CHECK-LABEL: @HardSwishPatternFail
 func @HardSwishPatternFail(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   %three = constant dense<4.> : tensor<f32>
