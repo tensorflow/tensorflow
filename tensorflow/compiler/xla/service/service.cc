@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+#include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -1073,12 +1075,28 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       CreateModuleFromProto(arg->computation(), config));
+  DynamicPadder dynamic_padder;
+  TF_RETURN_IF_ERROR(dynamic_padder.Run(module.get()).status());
 
   TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
                       DynamicDimensionInference::Run(module.get()));
 
   HloEvaluator evaluator;
   evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
+  evaluator.set_custom_call_handler(
+      [](HloInstruction* custom_call,
+         absl::Span<const Literal*> operands) -> StatusOr<Literal> {
+        if (custom_call->custom_call_target() == "SliceToDynamic") {
+          auto result = operands[0]->Clone();
+          for (int64 i = 0; i < result.shape().rank(); ++i) {
+            result.SetDynamicSize(i, operands[1 + i]->Get<int32>({}));
+          }
+          return result.ToStatic();
+        }
+        return Unimplemented("Custom call %s is not supported: %s",
+                             custom_call->custom_call_target(),
+                             custom_call->ToString());
+      });
   TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
 
   // Since the result layout is non-effective to the Evaluator results, explicit
