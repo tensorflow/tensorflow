@@ -242,7 +242,7 @@ tf_py_test(
     ],
 )
 
-pybind_extension(
+tf_python_pybind_extension(
     name = "_pywrap_tf2",
     srcs = ["enable_tf2.cc"],
     hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
