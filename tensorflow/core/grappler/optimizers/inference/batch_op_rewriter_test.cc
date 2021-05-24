@@ -149,8 +149,6 @@ TEST_P(BatchOpRewriterTest, InvalidArgumentForAdaptiveBatchScheduler) {
 // Tests that reserved attributes relevant with adaptive scheduler are
 // overridden in the output GraphDef.
 TEST_P(BatchOpRewriterTest, AdaptiveBatchScheduler) {
-  GrapplerItem item;
-  AddBatchOp(&item.graph, 16);
   BatchOpRewriteConfig config;
 
   // PARSE_TEXT_PROTO isn't available in TF OSS.
@@ -169,15 +167,17 @@ TEST_P(BatchOpRewriterTest, AdaptiveBatchScheduler) {
       ->set_value(32);
 
   RewriterConfig_CustomGraphOptimizer rewriter_config = MakeConfig(config);
+  ConfigProto config_proto;
+  config_proto.mutable_experimental()->mutable_session_metadata()->set_version(
+      123);
+  config_proto.mutable_experimental()->mutable_session_metadata()->set_name(
+      "model_with_override");
   BatchOpRewriter optimizer;
-  TF_ASSERT_OK(optimizer.Init(&rewriter_config));
-  optimizer.config_proto_.mutable_experimental()
-      ->mutable_session_metadata()
-      ->set_version(123);
-  optimizer.config_proto_.mutable_experimental()
-      ->mutable_session_metadata()
-      ->set_name("model_with_override");
+  TF_ASSERT_OK(optimizer.InitWithConfig(config_proto, &rewriter_config));
+
   GraphDef optimized_graph;
+  GrapplerItem item;
+  AddBatchOp(&item.graph, 16);
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
   // We can't use the testing::EqualsProto matcher because it is not available
   // in OSS.
