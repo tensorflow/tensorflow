@@ -247,7 +247,7 @@ class CSRAddOp : public OpKernel {
                               .HostMemory("beta"),    \
                           CSRAddOp<DEV##Device, T>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(T) REGISTER(GPU, T)
 
@@ -264,7 +264,7 @@ REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(
     ADD_VARIANT_BINARY_OP, DEVICE_GPU, CSRSparseMatrix,
     (CSRSparseMatrixBinaryHelper<GPUDevice, CSRSparseMatrixSumFunctor>));
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER
 
