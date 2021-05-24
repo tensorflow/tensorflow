@@ -228,8 +228,6 @@ class SpaceToBatchOp : public OpKernel {
     OP_REQUIRES(
         context, block_size_ > 1,
         errors::InvalidArgument("Block size should be > 1: ", block_size_));
-    // We don't use context->allocate_persistent because the allocation must
-    // happen on the CPU regardless of Device.
     block_shape_ = Tensor(tensorflow::DT_INT64, TensorShape({2}));
     auto block_shape_vec = block_shape_.vec<int64>();
     block_shape_vec(0) = block_size_;
