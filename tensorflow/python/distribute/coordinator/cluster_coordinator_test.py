@@ -1202,6 +1202,21 @@ class StrategyIntegrationTest(test.TestCase):
                                                   dataset.element_spec),
         per_worker_distribute_dataset.element_spec)
 
+  # TODO(rchao): Enable this once PerWorkerValues is made a CompositeTensor.
+  def DISABLED_testPerWorkerDistributedIteratorTypeSpec(self):
+
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    worker_fn.get_concrete_function(iter(distributed_dataset))
+
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
