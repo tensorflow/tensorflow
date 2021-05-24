@@ -13390,13 +13390,13 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_NumberNotQuantizedOrStr, TF_Bool]>, [{Up to 8-D.}]>:$tensor,
+    Arg<TensorOf<[TF_Float, TF_Int, TF_Complex, TF_Bool, TF_Str]>, [{Up to 8-D.}]>:$tensor,
     Arg<TF_I32OrI64Tensor, [{1-D. The indices of the dimensions to reverse. Must be in the range
 `[-rank(tensor), rank(tensor))`.}]>:$axis
   );
 
   let results = (outs
-    Res<TensorOf<[TF_NumberNotQuantizedOrStr, TF_Bool]>, [{The same shape as `tensor`.}]>:$output
+    Res<TensorOf<[TF_Float, TF_Int, TF_Complex, TF_Bool, TF_Str]>, [{The same shape as `tensor`.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
