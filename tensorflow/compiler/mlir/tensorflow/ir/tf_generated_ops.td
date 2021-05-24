@@ -2171,7 +2171,7 @@ Mutually reduces multiple tensors of identical type and shape.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
+    TF_FpOrI32OrI64Tensor:$input,
 
     I64Attr:$group_size,
     I64Attr:$group_key,
@@ -2185,7 +2185,7 @@ Mutually reduces multiple tensors of identical type and shape.
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$data
+    TF_FpOrI32OrI64Tensor:$data
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2197,7 +2197,7 @@ Mutually reduces multiple tensors of identical type and shape.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
+    TF_FpOrI32OrI64Tensor:$input,
     TF_Int32Tensor:$group_size,
     TF_Int32Tensor:$group_key,
     TF_Int32Tensor:$instance_key,
@@ -2211,7 +2211,7 @@ Mutually reduces multiple tensors of identical type and shape.
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$data
+    TF_FpOrI32OrI64Tensor:$data
   );
 
   TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
