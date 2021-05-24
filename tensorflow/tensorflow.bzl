@@ -2113,6 +2113,18 @@ def pywrap_tensorflow_macro(
         ],
     )
 
+    # There should only be one instance of Env::Default within all .dll/.so/.dylib/.pyd files
+    # inside tensorflow, to make sure file system registration work.
+    # //tensorflow/core/platform:env_impl is already part of
+    # //tensorflow:libtensorflow_framework_import_lib (libtensorflow_framework.so).
+    # The following only include //tensorflow/core/platform:env_impl if
+    # pywrap_tensorflow_internal.so does not depends on libtensorflow_framework.so in
+    # monolithic build (if_static).
+    extra_deps += if_static(
+        extra_deps = ["//tensorflow/core/platform:env_impl"],
+        otherwise = [],
+    )
+
     tf_cc_shared_object(
         name = cc_library_name,
         srcs = srcs,

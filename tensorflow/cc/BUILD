@@ -773,6 +773,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:env_impl",
         "@com_google_absl//absl/strings",
     ],
 )

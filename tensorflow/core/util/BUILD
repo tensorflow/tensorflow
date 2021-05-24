@@ -450,7 +450,6 @@ cc_library(
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
