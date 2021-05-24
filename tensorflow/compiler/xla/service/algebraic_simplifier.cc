@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -4710,17 +4711,47 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // A Transpose feeding a reduce can simply permute the reduction dimensions
   // field if the output of the reduce is a vector or scalar. Higher ranked
   // result may require a transpose of the output.
-  if (reduce_result_shape.rank() <= 1 &&
-      arg->opcode() == HloOpcode::kTranspose) {
+  if (arg->opcode() == HloOpcode::kTranspose) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64> new_reduce_dimensions;
     for (auto dim : dimensions) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
-    return ReplaceWithNewInstruction(
-        reduce, HloInstruction::CreateReduce(
-                    reduce_result_shape, arg->mutable_operand(0), init_value,
-                    new_reduce_dimensions, function));
+
+    Shape new_reduce_result_shape = ShapeUtil::FilterDimensions(
+        [&](const int64 dim) {
+          return !absl::c_linear_search(new_reduce_dimensions, dim);
+        },
+        arg->mutable_operand(0)->shape());
+    HloInstruction* new_reduce =
+        computation_->AddInstruction(HloInstruction::CreateReduce(
+            new_reduce_result_shape, arg->mutable_operand(0), init_value,
+            new_reduce_dimensions, function));
+    reduce->SetupDerivedInstruction(new_reduce);
+    std::vector<int64> new_transpose_dimensions;
+    for (auto dim : transpose_dimensions) {
+      if (absl::c_linear_search(new_reduce_dimensions, dim)) {
+        continue;
+      }
+      new_transpose_dimensions.push_back(dim);
+    }
+
+    // If new transpose dimensions are sorted, then there is no need to
+    // transpose reduce result.
+    if (absl::c_is_sorted(new_transpose_dimensions)) {
+      return ReplaceInstruction(reduce, new_reduce);
+    }
+    for (auto& d : new_transpose_dimensions) {
+      auto old_dim = d;
+      for (auto reduced_dim : new_reduce_dimensions) {
+        if (old_dim > reduced_dim) {
+          --d;
+        }
+      }
+    }
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_transpose,
+                        MakeTransposeHlo(new_reduce, new_transpose_dimensions));
+    return ReplaceInstruction(reduce, new_transpose);
   }
 
   // If a reduce feeds a reduce with the same computation and initial value,
