@@ -83,6 +83,25 @@ string Shape::ToString(bool print_layout) const {
   }
 }
 
+bool Shape::IsInteger() const {
+  switch (element_type()) {
+    case PrimitiveType::S8:
+    case PrimitiveType::S16:
+    case PrimitiveType::S32:
+    case PrimitiveType::S64:
+    case PrimitiveType::U8:
+    case PrimitiveType::U16:
+    case PrimitiveType::U32:
+    case PrimitiveType::U64:
+      return true;
+    case PrimitiveType::TUPLE:
+      return absl::c_any_of(tuple_shapes_,
+                            [](const Shape& s) { return s.IsInteger(); });
+    default:
+      return false;
+  }
+}
+
 bool Shape::is_static() const {
   if (IsTuple()) {
     for (const Shape& subshape : tuple_shapes_) {
@@ -141,9 +160,16 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
     }
   }
 
-  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
-    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
-    return false;
+  if (!ignore_dimensions_) {
+    if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+      VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+      return false;
+    }
+  } else {
+    if (!ShapeUtil::SameRank(lhs, rhs)) {
+      VLOG(3) << "CompareShapes: lhs rank != rhs rank";
+      return false;
+    }
   }
 
   if (!ignore_layout_) {

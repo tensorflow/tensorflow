@@ -440,7 +440,7 @@ class TensorTieFactory {
   std::unique_ptr<TensorObjectConverterBuilder> converter_builder_;
 };
 
-class InferenceRunnerImpl : public InferenceRunner {
+class InferenceRunnerImpl : public CLInferenceRunner {
  public:
   InferenceRunnerImpl(Environment* environment,
                       std::unique_ptr<InferenceContext> context
@@ -503,25 +503,59 @@ class InferenceRunnerImpl : public InferenceRunner {
     return outputs_[index]->SetExternalObject(object);
   }
 
+  absl::Status CopyFromExternalInput(int index) override {
+    if (index > inputs_.size()) {
+      return absl::NotFoundError(
+          absl::StrCat("Input id ", index, " is an invalid input index."));
+    }
+    RETURN_IF_ERROR(inputs_[index]->CopyFromExternalObject());
+    return queue_->WaitForCompletion();
+  }
+
+  absl::Status CopyToExternalOutput(int index) override {
+    if (index > outputs_.size()) {
+      return absl::NotFoundError(
+          absl::StrCat("Output id ", index, " is an invalid output index"));
+    }
+    RETURN_IF_ERROR(outputs_[index]->CopyToExternalObject());
+    return queue_->WaitForCompletion();
+  }
+
   absl::Status Run() override {
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Start());
     }
 #endif
-    for (auto& obj : inputs_) {
-      RETURN_IF_ERROR(obj->CopyFromExternalObject());
+    for (const auto& input : inputs_) {
+      RETURN_IF_ERROR(input->CopyFromExternalObject());
     }
-    RETURN_IF_ERROR(context_->AddToQueue(queue_));
-    clFlush(queue_->queue());
-    for (auto& obj : outputs_) {
-      RETURN_IF_ERROR(obj->CopyToExternalObject());
+
+    RETURN_IF_ERROR(RunWithoutExternalBufferCopy());
+
+    bool has_async_copies = false;
+    for (const auto& output : outputs_) {
+      RETURN_IF_ERROR(output->CopyToExternalObject());
+      if (output->def().external_def.object_def.object_type ==
+          ObjectType::CPU_MEMORY) {
+        has_async_copies = true;
+      }
     }
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Finish());
     }
 #endif
+    if (has_async_copies) {
+      RETURN_IF_ERROR(queue_->WaitForCompletion());
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status RunWithoutExternalBufferCopy() override {
+    RETURN_IF_ERROR(context_->AddToQueue(queue_));
+    clFlush(queue_->queue());
+
     return absl::OkStatus();
   }
 
@@ -638,6 +672,11 @@ class InferenceBuilderImpl : public InferenceBuilder {
       create_info.hints.Add(ModelHints::kFastTuning);
     } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
       create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+    }
+    if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
+                              InferencePriority::MIN_LATENCY) ==
+        PriorityImportance::HIGHER) {
+      create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 

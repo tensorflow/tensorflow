@@ -71,7 +71,8 @@ HloComputation::HloComputation(
     : name_(NameUniquer::GetSanitizedName(name)),
       unique_id_(-1),
       root_instruction_(root_instruction),
-      fusion_instruction_(fusion_instruction) {
+      fusion_instruction_(fusion_instruction),
+      is_fusion_computation_(fusion_instruction != nullptr) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -90,6 +91,14 @@ HloComputation::HloComputation(
   }
   CHECK(root_found)
       << "\nERROR: root instruction is not present in computation.";
+}
+
+HloComputation::~HloComputation() {
+  if (fusion_instruction_ != nullptr) {
+    CHECK(fusion_instruction_->fused_instructions_computation() == this);
+    fusion_instruction_->ClearCalledComputations();
+    fusion_instruction_ = nullptr;
+  }
 }
 
 HloInstruction* HloComputation::AddInstruction(
@@ -919,11 +928,13 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   // function, and that they would be correlated to the same TF op. This might
   // not always be correct since HLO optimizations can cross TF op boundaries.
   // But still this seems to be better than nothing.
-  bool overwrite_dummy_name =
-      absl::StartsWith(new_instruction->metadata().op_name(), "DUMMY") &&
-      !old_instruction->metadata().op_name().empty() &&
-      !absl::StartsWith(old_instruction->metadata().op_name(), "DUMMY");
-  if (new_instruction->metadata().op_name().empty() || overwrite_dummy_name) {
+  bool overwrite_op_name = new_instruction->metadata().op_name().empty() &&
+                           !old_instruction->metadata().op_name().empty();
+  bool overwrite_pass_id =
+      new_instruction->metadata().op_name().empty() &&
+      new_instruction->metadata().logical_creation_pass_id() == 0 &&
+      old_instruction->metadata().logical_creation_pass_id() != 0;
+  if (overwrite_op_name || overwrite_pass_id) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
   if (new_instruction->frontend_attributes().map().empty()) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/conv_2d_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include <fp16.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -130,7 +132,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
     const std::array<int32_t, 1> densify_filter_inputs{{0}};
     const std::array<int32_t, 1> densify_filter_outputs{
-        {FP16Weights() ? 1 : 2}};
+        {(FP16Weights() || INT8Weights()) ? 1 : 2}};
     operators.emplace_back(CreateOperator(
         builder, /*opcode_index=*/operator_codes.size() - 1,
         builder.CreateVector<int32_t>(densify_filter_inputs.data(),
@@ -139,6 +141,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                                       densify_filter_outputs.size())));
   }
 
+  float filter_scale = 0;
   if (FP16Weights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
@@ -228,10 +231,39 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
       }
     }
 
-    buffers.emplace_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(filter_data.data()),
-                     sizeof(float) * filter_data.size())));
+    if (INT8Weights()) {
+      operator_codes.emplace_back(
+          CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+
+      filter_scale = GetInt8QuantizationScale(filter_data);
+      std::vector<int8_t> quantized_filter_data(filter_data.size());
+      std::transform(
+          filter_data.begin(), filter_data.end(), quantized_filter_data.begin(),
+          std::bind(QuantizeInt8, std::placeholders::_1, 0, filter_scale));
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_filter_data.data()),
+              sizeof(int8_t) * quantized_filter_data.size())));
+
+      const std::array<int32_t, 1> dequantize_filter_inputs{
+          {SparseWeights() ? 1 : 0}};
+      const std::array<int32_t, 1> dequantize_filter_outputs{
+          {SparseWeights() ? 3 : 2}};
+      operators.emplace_back(CreateOperator(
+          builder, /*opcode_index=*/operator_codes.size() - 1,
+          builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
+                                        dequantize_filter_inputs.size()),
+          builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
+                                        dequantize_filter_outputs.size())));
+    } else {
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(filter_data.data()),
+                       sizeof(float) * filter_data.size())));
+    }
+
+    // Bias is stored in FP32 even when filter is quantized to INT8
     buffers.emplace_back(CreateBuffer(
         builder,
         builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
@@ -265,12 +297,27 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
     flatbuffers::Offset<SparsityParameters> sparsity_param =
         CreateSparsityParameters(builder, builder.CreateVector(traversal_order),
                                  0, builder.CreateVector(dim_metadata));
-    tensors.emplace_back(CreateTensor(
-        builder,
-        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-        /*type=*/FP16Weights() ? TensorType_FLOAT16 : TensorType_FLOAT32,
-        /*buffer=*/1, /*name=*/0, /*quantization=*/0,
-        /*is_variable=*/false, /*sparsity=*/sparsity_param));
+    if (INT8Weights()) {
+      tensors.emplace_back(
+          CreateTensor(builder,
+                       builder.CreateVector<int32_t>(filter_shape.data(),
+                                                     filter_shape.size()),
+                       /*type=*/TensorType_INT8,
+                       /*buffer=*/1, /*name=*/0,
+                       CreateQuantizationParameters(
+                           builder, /*min=*/0, /*max=*/0,
+                           builder.CreateVector<float>({filter_scale}),
+                           builder.CreateVector<int64_t>({0})),
+                       /*is_variable=*/false, /*sparsity=*/sparsity_param));
+    } else {
+      tensors.emplace_back(CreateTensor(
+          builder,
+          builder.CreateVector<int32_t>(filter_shape.data(),
+                                        filter_shape.size()),
+          /*type=*/FP16Weights() ? TensorType_FLOAT16 : TensorType_FLOAT32,
+          /*buffer=*/1, /*name=*/0, /*quantization=*/0,
+          /*is_variable=*/false, /*sparsity=*/sparsity_param));
+    }
   }
   if (FP16Weights()) {
     tensors.emplace_back(CreateTensor(
@@ -281,6 +328,15 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         builder,
         builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
         TensorType_FLOAT16, /*buffer=*/2));
+  } else if (INT8Weights()) {
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        TensorType_INT8, /*buffer=*/SparseWeights() ? 0 : 1, /*name=*/0,
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>({static_cast<float>(filter_scale)}),
+            builder.CreateVector<int64_t>({0}))));
   }
   tensors.emplace_back(CreateTensor(
       builder,
@@ -289,7 +345,8 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_FLOAT32, /*buffer=*/FP16Weights() || SparseWeights() ? 0 : 1));
+      TensorType_FLOAT32,
+      /*buffer=*/(FP16Weights() || INT8Weights() || SparseWeights()) ? 0 : 1));
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),

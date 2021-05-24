@@ -23,16 +23,26 @@ namespace gpu {
 
 enum class WeightsLayout {
   kUnknown,
-  kOHWIOGroupI4O4,
-  kOICustomSSpatialI4O4,
+  // Spatial is DHW/HW depending on amount of spatial dimensions (Depth, Height,
+  // Width).
+  kOSpatialIOGroupI4O4,
+  kOSpatialIOGroupO4I4,
+  kOICustomSpatialI4O4,
+  kOICustomSpatialO4I4,
+  k2DX4I4YIsSpatialIAndXIsOOGroupO4,
+  k2DX4O4YIsSpatialIAndXIsOOGroupI4,
 };
 
 struct WeightsDescription {
   WeightsLayout layout;
-  // applicable with kOHWIOGroupI4O4
-  int output_group_size;
-  // applicable with kOICustomSSpatialI4O4
+  // applicable with layouts that have OGroup.
+  int output_group_size;  // OGroup size
+  // applicable with layouts that have CustomSpatial
   std::vector<int> spatial_remap;
+
+  int GetOutputGroupSize() const;
+  bool IsI4O4() const;
+  bool IsO4I4() const;
 };
 
 }  // namespace gpu

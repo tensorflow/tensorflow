@@ -7,7 +7,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -30,6 +30,7 @@ cc_library(
     hdrs = ["conv_emitter.h"],
     deps = [
         ":conv_emitter_transforms",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -37,6 +38,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -61,9 +63,6 @@ cc_library(
 tf_cc_test(
     name = "conv_emitter_test",
     srcs = ["conv_emitter_test.cc"],
-    tags = [
-        "no_oss",  # TODO(b/148143101): Test should pass in OSS.
-    ],
     deps = [
         ":conv_emitter",
         "//tensorflow/compiler/xla/service:hlo_parser",
@@ -75,10 +74,11 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AffineToStandardTransforms",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",

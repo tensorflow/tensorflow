@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/auto_shard_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/rewrite_utils.h"
+#include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -55,6 +55,11 @@ void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       ctx, index >= 0 && index < num_workers,
       errors::InvalidArgument("index must be between 0 and ", num_workers - 1));
   auto_shard_policy = auto_shard_policy_;
+  if (input->options().distribute_options().auto_shard_policy() !=
+      AutoShardPolicy::AUTO) {
+    auto_shard_policy =
+        input->options().distribute_options().auto_shard_policy();
+  }
   num_replicas = num_replicas_;
 
   auto config_factory = [num_workers, index, auto_shard_policy,

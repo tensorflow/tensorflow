@@ -17,7 +17,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(glob([
@@ -42,6 +42,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ] + select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
@@ -55,12 +56,6 @@ cc_library(
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
-    }) + select({
-        "//tensorflow:fuchsia": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        ],
     }),
 )
 

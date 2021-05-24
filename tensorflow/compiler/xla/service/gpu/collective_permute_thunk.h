@@ -24,23 +24,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct CollectivePermuteConfig {
-  std::vector<std::pair<int64, int64>> source_target_pairs;
-};
-
-CollectivePermuteConfig GetCollectivePermuteConfig(const HloInstruction* instr);
-
 // Thunk that implements the collective-permute HLO.
 class CollectivePermuteThunk : public Thunk {
  public:
-  CollectivePermuteThunk(ThunkInfo thunk_info, CollectivePermuteConfig config,
-                         const BufferAllocation::Slice& src,
-                         const BufferAllocation::Slice& dest);
+  CollectivePermuteThunk(
+      ThunkInfo thunk_info,
+      std::vector<std::pair<int64, int64>> source_target_pairs,
+      const BufferAllocation::Slice& src, const BufferAllocation::Slice& dest);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const CollectivePermuteConfig config_;
+  const std::vector<std::pair<int64, int64>> source_target_pairs_;
   const BufferAllocation::Slice src_;
   const BufferAllocation::Slice dest_;
 };

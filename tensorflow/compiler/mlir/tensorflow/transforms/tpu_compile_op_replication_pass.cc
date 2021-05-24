@@ -71,7 +71,7 @@ class TPUCompileOpReplicationPass
           OpBuilder builder(tpu_compile_op);
           new_compile_op = builder.clone(*tpu_compile_op.getOperation());
           new_compile_op->setAttr(kDeviceAttr,
-                                  StringAttr::get(device_name, &getContext()));
+                                  StringAttr::get(&getContext(), device_name));
           TF::TPUCompileSucceededAssertOp new_assert_op =
               builder.create<TF::TPUCompileSucceededAssertOp>(
                   new_compile_op->getLoc(),

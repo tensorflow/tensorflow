@@ -1,15 +1,16 @@
 # Description:
 # TensorFlow Lite Java API.
 
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
-load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
+load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
@@ -19,14 +20,18 @@ exports_files([
     "src/testdata/mul_add_signature_def.bin",
     "src/testdata/tile_with_bool_input.bin",
     "AndroidManifest.xml",
+    "AndroidManifestGpu.xml",
     "proguard.flags",
     "tflite_version_script.lds",
 ])
 
-JAVA_SRCS = glob([
-    "src/main/java/org/tensorflow/lite/*.java",
-    "src/main/java/org/tensorflow/lite/annotations/*.java",
-]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"]
+filegroup(
+    name = "java_srcs",
+    srcs = glob([
+        "src/main/java/org/tensorflow/lite/*.java",
+        "src/main/java/org/tensorflow/lite/annotations/*.java",
+    ]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"],
+)
 
 # Building tensorflow-lite.aar including 4 variants of .so
 # To build an aar for release, run below command:
@@ -64,13 +69,15 @@ aar_with_jni(
     ],
 )
 
-android_library(
+android_library_with_tflite(
     name = "tensorflowlite",
-    srcs = JAVA_SRCS,
+    srcs = [":java_srcs"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
-    deps = [
+    tflite_deps = [
         ":tensorflowlite_native",
+    ],
+    deps = [
         "@org_checkerframework_qual",
     ],
 )
@@ -97,9 +104,11 @@ tflite_flex_android_library(
 # EXPERIMENTAL: Android target for GPU acceleration. Note that this library
 # contains *only* the GPU delegate and its Java wrapper; clients must also
 # include the core `tensorflowlite` runtime.
+# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
+    exports_manifest = 1,
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     deps = [
@@ -111,7 +120,7 @@ android_library(
 
 android_library(
     name = "tensorflowlite_java",
-    srcs = JAVA_SRCS,
+    srcs = [":java_srcs"],
     proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",
@@ -120,7 +129,7 @@ android_library(
 
 java_library(
     name = "tensorflowlite_javalib",
-    srcs = JAVA_SRCS,
+    srcs = [":java_srcs"],
     javacopts = JAVACOPTS,
     deps = [
         "@org_checkerframework_qual",
@@ -129,7 +138,7 @@ java_library(
 
 java_library(
     name = "tensorflowlitelib",
-    srcs = JAVA_SRCS,
+    srcs = [":java_srcs"],
     javacopts = JAVACOPTS,
     deps = [
         ":libtensorflowlite_jni.so",
@@ -180,7 +189,7 @@ java_test(
 java_test(
     name = "TensorFlowLiteNoNativeLibTest",
     size = "small",
-    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
+    srcs = [":java_srcs"] + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteNoNativeLibTest",
     visibility = ["//visibility:private"],
@@ -194,7 +203,7 @@ java_test(
 java_test(
     name = "TensorFlowLiteInvalidNativeLibTest",
     size = "small",
-    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
+    srcs = [":java_srcs"] + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteInvalidNativeLibTest",
     visibility = ["//visibility:private"],
@@ -319,9 +328,7 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        # TODO(b/121204962): Re-enable test after fixing memory leaks.
-        "noasan",
-        "notsan",  # TODO(b/158651814) Re-enable after fixing racing condition.
+        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
@@ -434,20 +441,19 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+alias(
     name = "libtensorflowlite_jni",
-    srcs = select({
-        "//conditions:default": [":libtensorflowlite_jni.so"],
+    actual = select({
+        "//conditions:default": ":libtensorflowlite_jni.so",
     }),
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "tensorflowlite_native",
-    srcs = ["libtensorflowlite_jni.so"],
-    visibility = ["//visibility:private"],
+    tflite_jni_binaries = ["libtensorflowlite_jni.so"],
 )
 
 cc_library(
@@ -456,9 +462,12 @@ cc_library(
     visibility = ["//visibility:private"],
 )
 
-tflite_jni_binary(
+jni_binary_with_tflite(
     name = "libtensorflowlite_jni.so",
     linkscript = ":tflite_version_script.lds",
+    tflite_deps = [
+        "//tensorflow/lite/java/src/main/native",
+    ],
     deps = [
         # Note that we explicitly include the C API here for convenience, as it
         # allows bundling of the C lib w/ AAR distribution.
@@ -466,7 +475,6 @@ tflite_jni_binary(
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//tensorflow/lite/java/src/main/native",
     ],
 )
 

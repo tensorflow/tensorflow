@@ -99,8 +99,6 @@ LogicalResult GetLstmProperty(
       !op.projection_weights().getType().template isa<NoneType>();
   lstm_variant->use_peephole =
       !op.cell_to_output_weights().getType().template isa<NoneType>();
-  lstm_variant->use_peephole =
-      !op.cell_to_output_weights().getType().template isa<NoneType>();
   lstm_variant->use_layer_norm =
       !op.forget_layer_norm_coefficients().getType().template isa<NoneType>();
 
@@ -225,10 +223,14 @@ template <typename SourceOp>
 struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
  public:
   explicit ConvertOpStatsToQDQs(MLIRContext* context,
+                                const QuantizationSpecs& quant_specs,
                                 PatternBenefit benefit = 1)
-      : OpRewritePattern<SourceOp>(context, benefit) {}
+      : OpRewritePattern<SourceOp>(context, benefit),
+        quant_specs(quant_specs) {}
 
  protected:
+  QuantizationSpecs quant_specs;
+
   LogicalResult processInputs(
       SourceOp op, const operator_property::OpVariant& op_variant,
       const operator_property::OperatorProperty& op_property,
@@ -302,15 +304,15 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
                                    /*symmetric=*/true, mins, maxs);
       double scale = maxs[0] / -llvm::minIntN(tensor_property.number_of_bits);
       quant_type = UniformQuantizedType::getChecked(
-          quant::QuantizationFlags::Signed, rewriter.getIntegerType(16),
-          attr.getType().getElementType(), scale, /*zeroPoint=*/0,
-          llvm::minIntN(10), -llvm::minIntN(10), const_op->getLoc());
+          const_op->getLoc(), quant::QuantizationFlags::Signed,
+          rewriter.getIntegerType(16), attr.getType().getElementType(), scale,
+          /*zeroPoint=*/0, llvm::minIntN(10), -llvm::minIntN(10));
     } else {
       quant_type =
           quant::GetUniformQuantizedTypeForWeight(
               attr, /*symmetric=*/true,
               /*num_bits=*/tensor_property.number_of_bits, /*is_signed=*/true,
-              /*narrow_range=*/true)
+              /*narrow_range=*/true, quant_specs.legacy_float_scale)
               .template dyn_cast<quant::UniformQuantizedType>();
     }
     if (!quant_type) {
@@ -364,11 +366,11 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       double bound = PowerOfTwoBound(std::max(std::abs(min), std::abs(max)));
       // Set flags to 1 for signed type.
       quant_type = UniformQuantizedType::getChecked(
-          quant::QuantizationFlags::Signed,
+          op.getLoc(), quant::QuantizationFlags::Signed,
           rewriter.getIntegerType(tensor_property.number_of_bits), expressed,
           /*scale=*/bound / -llvm::minIntN(tensor_property.number_of_bits),
           /*zeroPoint=*/0, llvm::minIntN(tensor_property.number_of_bits),
-          llvm::maxIntN(tensor_property.number_of_bits), op.getLoc());
+          llvm::maxIntN(tensor_property.number_of_bits));
     } else {
       // int16 uses range [-32767, 32767]
       if (tensor_property.number_of_bits == 16) {
@@ -383,6 +385,9 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
             op.getLoc(), tensor_property.number_of_bits, min, max,
             /*narrowRange=*/false, expressed,
             /*isSigned=*/true);
+      }
+      if (quant_specs.legacy_float_scale) {
+        quant_type = quant::DownCastScale(quant_type, min, max, op.getLoc());
       }
     }
     rewriter.setInsertionPointAfter(stats_op);
@@ -400,7 +405,7 @@ struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
   ConvertLstmStatsToQDQs(MLIRContext* context,
                          const QuantizationSpecs& quant_specs)
 
-      : ConvertOpStatsToQDQs<SourceOp>(context), quant_specs(quant_specs) {}
+      : ConvertOpStatsToQDQs<SourceOp>(context, quant_specs) {}
   LogicalResult matchAndRewrite(SourceOp op,
                                 PatternRewriter& rewriter) const override {
     operator_property::OpVariant lstm_variant;
@@ -419,8 +424,6 @@ struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
   }
 
  private:
-  QuantizationSpecs quant_specs;
-
   LogicalResult processIntermediates(
       SourceOp op, const operator_property::OpVariant& lstm_variant,
       const operator_property::OperatorProperty& lstm_property) const {
@@ -463,7 +466,12 @@ struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
             op.getLoc(), tensor_property.number_of_bits,
             calibrated_type.getMin(), calibrated_type.getMax(),
             /*narrowRange=*/false, calibrated_type.getExpressedType(),
-            /*isSigned=*/quant_specs.IsSignedInferenceType());
+            /*isSigned=*/this->quant_specs.IsSignedInferenceType());
+        if (this->quant_specs.legacy_float_scale) {
+          qtype = quant::DownCastScale(qtype, calibrated_type.getMin(),
+                                       calibrated_type.getMax(), op.getLoc())
+                      .template cast<UniformQuantizedType>();
+        }
       } else if (tensor_property.number_of_bits == 16) {
         double max = std::max(std::abs(calibrated_type.getMin()),
                               std::abs(calibrated_type.getMax()));
@@ -476,7 +484,6 @@ struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
                        << tensor_property.number_of_bits;
         return failure();
       }
-
       op->setAttr(intermediate_attributes[index],
                   TypeAttr::get(qtype.castFromExpressedType(
                       qtype.castToExpressedType(attr.getValue()))));
@@ -490,10 +497,11 @@ struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
 // quantization type of other operands.
 inline quant::AccumulatorScaleFunc GetUniformQuantizedTypeForBiasWithScale(
     double scale) {
-  return [=](const std::vector<quant::QuantParams>& quant_params)
-             -> quant::QuantParams {
-    if (auto qtype = GetUniformQuantizedTypeForBias(quant_params)
-                         .dyn_cast_or_null<UniformQuantizedType>()) {
+  return [=](const std::vector<quant::QuantParams>& quant_params,
+             bool legacy_float_scale) -> quant::QuantParams {
+    if (auto qtype =
+            GetUniformQuantizedTypeForBias(quant_params, legacy_float_scale)
+                .dyn_cast_or_null<UniformQuantizedType>()) {
       return quant::UniformQuantizedType::get(
           qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
           qtype.getScale() * scale, qtype.getZeroPoint(),
@@ -546,8 +554,9 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
 
 struct ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
  public:
-  explicit ConvertSvdfStatsToQDQs(MLIRContext* context)
-      : ConvertOpStatsToQDQs<TFL::SVDFOp>(context) {}
+  explicit ConvertSvdfStatsToQDQs(MLIRContext* context,
+                                  const QuantizationSpecs& quant_specs_param)
+      : ConvertOpStatsToQDQs<TFL::SVDFOp>(context, quant_specs_param) {}
   LogicalResult matchAndRewrite(TFL::SVDFOp op,
                                 PatternRewriter& rewriter) const override {
     operator_property::OpVariant op_variant;

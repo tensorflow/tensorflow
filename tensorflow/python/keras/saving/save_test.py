@@ -14,14 +14,12 @@
 # ==============================================================================
 """Tests for Keras model saving code."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
 import os
+import pathlib
 import shutil
-import sys
 import tempfile
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -31,6 +29,7 @@ from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import combinations
@@ -39,6 +38,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.keras.feature_column import sequence_feature_column as ksfc
@@ -54,8 +54,6 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.training import training as training_module
 
 
-if sys.version_info >= (3, 6):
-  import pathlib  # pylint:disable=g-import-not-at-top
 try:
   import h5py  # pylint:disable=g-import-not-at-top
 except ImportError:
@@ -86,8 +84,6 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_format_defaults_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model_path'
     save.save_model(self.model, path)
     self.assert_saved_model(path)
@@ -104,8 +100,6 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_load_hdf5_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     save.save_model(self.model, path, save_format='h5')
     save.load_model(path)
@@ -129,24 +123,18 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_load_tf_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     save.save_model(self.model, path, save_format='tf')
     save.load_model(path)
 
   @testing_utils.run_v2_only
   def test_save_load_weights_tf_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     self.model.save_weights(path, save_format='tf')
     self.model.load_weights(path)
 
   @testing_utils.run_v2_only
   def test_save_load_weights_hdf5_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     self.model.save_weights(path, save_format='h5')
     self.model.load_weights(path)
@@ -299,6 +287,29 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     new_batch_loss = new_model.train_on_batch(x, y)
 
     self.assertAllClose(batch_loss, new_batch_loss)
+
+  @combinations.generate(combinations.combine(mode=['eager', 'graph']))
+  def test_save_include_optimizer_false(self):
+
+    def get_variables(file_name):
+      reader = training_module.load_checkpoint(
+          os.path.join(file_name, 'variables/variables'))
+      shape_from_key = reader.get_variable_to_shape_map()
+      return sorted(shape_from_key.keys())
+
+    path = os.path.join(self.get_temp_dir(), 'no_optimizer')
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(1))
+      model.compile('adam', loss='mse')
+      model.train_on_batch(x, y)
+      model.save(path, save_format='tf', include_optimizer=False)
+
+    variables = get_variables(path)
+    for v in variables:
+      self.assertNotIn('optimizer', v)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_model_with_custom_object(self):
@@ -848,7 +859,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
 
-    # Make sure it can be successfully saved and loaded
+    # Make sure it can be successfully saved and loaded.
     save_format = testing_utils.get_save_format()
     saved_model_dir = self._save_model_dir()
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
@@ -858,6 +869,259 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     self.assertAllEqual(loaded_model(args), expected)
     self.assertAllEqual(loaded_model.predict(args, batch_size=batch_size),
                         expected)
+
+  @combinations.generate(combinations.combine(mode=['eager', 'graph']))
+  def test_custom_functional_registered(self):
+
+    def _get_cls_definition():
+      class CustomModel(keras.Model):
+
+        def c(self):
+          return 'c'
+
+      return CustomModel
+
+    cls = _get_cls_definition()
+    self.assertEqual(cls.__bases__[0], keras.Model)
+
+    with self.cached_session() as sess:
+      input_ = keras.layers.Input(shape=(1,))
+      output = keras.layers.Dense(1)(input_)
+      model = cls(input_, output)
+      # `cls` now inherits from `Functional` class.
+      self.assertEqual(cls.__bases__[0], functional.Functional)
+
+      if not context.executing_eagerly():
+        sess.run([v.initializer for v in model.variables])
+
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+
+    loaded_model = keras.models.load_model(
+        saved_model_dir, custom_objects={'CustomModel': cls})
+    self.assertIsInstance(loaded_model, cls)
+
+    # Check with "new" `CustomModel` class definition.
+    new_cls = _get_cls_definition()
+    # The new `CustomModel` class is *not* derived from `Functional`.
+    self.assertEqual(new_cls.__bases__[0], keras.Model)
+    reloaded_model = keras.models.load_model(
+        saved_model_dir, custom_objects={'CustomModel': new_cls})
+    self.assertIsInstance(reloaded_model, new_cls)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_shared_objects(self):
+    class OuterLayer(keras.layers.Layer):
+
+      def __init__(self, inner_layer):
+        super(OuterLayer, self).__init__()
+        self.inner_layer = inner_layer
+
+      def call(self, inputs):
+        return self.inner_layer(inputs)
+
+      def get_config(self):
+        return {
+            'inner_layer': generic_utils.serialize_keras_object(
+                self.inner_layer)
+        }
+
+      @classmethod
+      def from_config(cls, config):
+        return cls(generic_utils.deserialize_keras_object(
+            config['inner_layer']))
+
+    class InnerLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(InnerLayer, self).__init__()
+        self.v = self.add_weight(name='v', shape=[], dtype=dtypes.float32)
+
+      def call(self, inputs):
+        return self.v + inputs
+
+      @classmethod
+      def from_config(cls, config):
+        return cls()
+
+    # Create a model with 2 output layers that share the same inner layer.
+    inner_layer = InnerLayer()
+    outer_layer_1 = OuterLayer(inner_layer)
+    outer_layer_2 = OuterLayer(inner_layer)
+    input_ = keras.Input(shape=(1,))
+    model = keras.Model(
+        inputs=input_, outputs=[outer_layer_1(input_), outer_layer_2(input_)])
+
+    # Changes to the shared layer should affect both outputs.
+    model.layers[1].inner_layer.v.assign(5)
+    self.assertAllEqual(model(1), [6.0, 6.0])
+    model.layers[1].inner_layer.v.assign(3)
+    self.assertAllEqual(model(1), [4.0, 4.0])
+
+    # After loading, changes to the shared layer should still affect both
+    # outputs.
+    def _do_assertions(loaded):
+      loaded.layers[1].inner_layer.v.assign(5)
+      self.assertAllEqual(loaded(1), [6.0, 6.0])
+      loaded.layers[1].inner_layer.v.assign(3)
+      self.assertAllEqual(loaded(1), [4.0, 4.0])
+      loaded.layers[2].inner_layer.v.assign(5)
+      self.assertAllEqual(loaded(1), [6.0, 6.0])
+      loaded.layers[2].inner_layer.v.assign(3)
+      self.assertAllEqual(loaded(1), [4.0, 4.0])
+
+    # We'd like to make sure we only attach shared object IDs when strictly
+    # necessary, so we'll recursively traverse the generated config to count
+    # whether we have the exact number we expect.
+    def _get_all_keys_recursive(dict_or_iterable):
+      if isinstance(dict_or_iterable, dict):
+        for key in dict_or_iterable.keys():
+          yield key
+        for key in _get_all_keys_recursive(dict_or_iterable.values()):
+          yield key
+      elif isinstance(dict_or_iterable, str):
+        return
+      else:
+        try:
+          for item in dict_or_iterable:
+            for key in _get_all_keys_recursive(item):
+              yield key
+        # Not an iterable or dictionary
+        except TypeError:
+          return
+
+    with generic_utils.CustomObjectScope({
+        'OuterLayer': OuterLayer, 'InnerLayer': InnerLayer}):
+
+      # Test saving and loading to disk
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+      loaded = keras.models.load_model(saved_model_dir)
+      _do_assertions(loaded)
+
+      # Test recreating directly from config
+      config = model.get_config()
+      key_count = collections.Counter(_get_all_keys_recursive(config))
+      self.assertEqual(key_count[generic_utils.SHARED_OBJECT_KEY], 2)
+      loaded = keras.Model.from_config(config)
+      _do_assertions(loaded)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_shared_objects_wrapper(self):
+    """Tests that shared layers wrapped with `Wrapper` restore correctly."""
+    input_ = keras.Input(shape=(1,))
+    unwrapped = keras.layers.Layer(name='unwrapped')
+    wrapped = keras.layers.Wrapper(unwrapped, name='wrapped')
+    model = keras.Model(inputs=input_,
+                        outputs=[unwrapped(input_), wrapped(input_)])
+
+    # Test recreating directly from config
+    config = model.get_config()
+    loaded = keras.Model.from_config(config)
+    self.assertIs(loaded.layers[1], loaded.layers[2].layer)
+
+    # Test saving and loading to disk
+    save_format = testing_utils.get_save_format()
+    saved_model_dir = self._save_model_dir()
+    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+    loaded = keras.models.load_model(saved_model_dir)
+    self.assertIs(loaded.layers[1], loaded.layers[2].layer)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], fit=[True, False]))
+  def test_multi_output_metrics_name_stay_same(self, fit):
+    """Tests that metric names don't change with each save/load cycle.
+
+    e.g. "head_0_accuracy" should not become "head_0_head_0_accuracy" after
+    saving and loading a model.
+
+    Arguments:
+      fit: Whether the model should be fit before saving.
+    """
+    # This doesn't work at all, so we can't check whether metric names are
+    # correct.
+    if not context.executing_eagerly() and not fit:
+      self.skipTest('b/181767784')
+
+    with self.cached_session():
+      input_ = keras.Input((4,))
+      model = keras.Model(
+          input_,
+          [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
+           keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
+      metric = keras.metrics.BinaryAccuracy()
+      model.compile(optimizer='rmsprop',
+                    loss='mse',
+                    metrics={'head_0': [metric, 'accuracy']})
+
+      x = np.random.rand(2, 4)
+      y = {'head_0': np.random.randint(2, size=(2, 3)),
+           'head_1': np.random.randint(2, size=(2, 5))}
+
+      # Make sure metrix prefixing works the same regardless of whether the user
+      # has fit the model before saving.
+      if fit:
+        model.fit(x, y, verbose=0)
+
+      # Save and reload.
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+      loaded = keras.models.load_model(saved_model_dir)
+
+    # Make sure the metrics names from the model before saving match the loaded
+    # model.
+    self.assertSequenceEqual(model.metrics_names, loaded.metrics_names)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_warning_when_saving_invalid_custom_mask_layer(self):
+
+    class MyMasking(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+      def compute_mask(self, inputs, mask=None):
+        mask = math_ops.not_equal(inputs, 0)
+        return mask
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, mask=None):
+        return array_ops.identity(inputs)
+
+    samples = np.random.random((2, 2))
+    model = keras.Sequential([MyMasking(), MyLayer()])
+    model.predict(samples)
+    with warnings.catch_warnings(record=True) as w:
+      model.save(self._save_model_dir(), testing_utils.get_save_format())
+    self.assertIn(generic_utils.CustomMaskWarning,
+                  {warning.category for warning in w})
+
+    # Test that setting up a custom mask correctly does not issue a warning.
+    class MyCorrectMasking(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+      def compute_mask(self, inputs, mask=None):
+        mask = math_ops.not_equal(inputs, 0)
+        return mask
+
+      # This get_config doesn't actually do anything because our mask is
+      # static and doesn't need any external information to work. We do need a
+      # dummy get_config method to prevent the warning from appearing, however.
+      def get_config(self, *args, **kwargs):
+        return {}
+
+    model = keras.Sequential([MyCorrectMasking(), MyLayer()])
+    model.predict(samples)
+    with warnings.catch_warnings(record=True) as w:
+      model.save(self._save_model_dir(), testing_utils.get_save_format())
+    self.assertNotIn(generic_utils.CustomMaskWarning,
+                     {warning.category for warning in w})
 
 
 # Factory functions to create models that will be serialized inside a Network.

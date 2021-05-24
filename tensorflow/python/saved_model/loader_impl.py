@@ -34,10 +34,14 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+# API label for SavedModel metrics.
+_LOADER_LABEL = "loader"
 
 
 def parse_saved_model_with_debug_info(export_dir):
@@ -69,6 +73,7 @@ def parse_saved_model_with_debug_info(export_dir):
   return (saved_model, debug_info)
 
 
+@tf_export("__internal__.saved_model.parse_saved_model", v1=[])
 def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 
@@ -94,24 +99,26 @@ def parse_saved_model(export_dir):
   # Parse the SavedModel protocol buffer.
   saved_model = saved_model_pb2.SavedModel()
   if file_io.file_exists(path_to_pb):
+    with file_io.FileIO(path_to_pb, "rb") as f:
+      file_content = f.read()
     try:
-      file_content = file_io.FileIO(path_to_pb, "rb").read()
       saved_model.ParseFromString(file_content)
       return saved_model
     except message.DecodeError as e:
       raise IOError("Cannot parse file %s: %s." % (path_to_pb, str(e)))
   elif file_io.file_exists(path_to_pbtxt):
+    with file_io.FileIO(path_to_pbtxt, "rb") as f:
+      file_content = f.read()
     try:
-      file_content = file_io.FileIO(path_to_pbtxt, "rb").read()
       text_format.Merge(file_content.decode("utf-8"), saved_model)
       return saved_model
     except text_format.ParseError as e:
       raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
   else:
-    raise IOError("SavedModel file does not exist at: %s/{%s|%s}" %
-                  (export_dir,
-                   constants.SAVED_MODEL_FILENAME_PBTXT,
-                   constants.SAVED_MODEL_FILENAME_PB))
+    raise IOError(
+        "SavedModel file does not exist at: %s%s{%s|%s}" %
+        (export_dir, os.path.sep, constants.SAVED_MODEL_FILENAME_PBTXT,
+         constants.SAVED_MODEL_FILENAME_PB))
 
 
 # TODO(b/120594573): Make this symbol also available as private, so that
@@ -448,9 +455,12 @@ class SavedModelLoader(object):
     Returns:
       `MetagraphDef` proto of the graph that was loaded.
     """
+    metrics.IncrementReadApi(_LOADER_LABEL)
     with sess.graph.as_default():
       saver, _ = self.load_graph(sess.graph, tags, import_scope,
                                  **saver_kwargs)
       self.restore_variables(sess, saver, import_scope)
       self.run_init_ops(sess, tags, import_scope)
-    return self.get_meta_graph_def_from_tags(tags)
+    meta_graph_def = self.get_meta_graph_def_from_tags(tags)
+    metrics.IncrementRead()
+    return meta_graph_def

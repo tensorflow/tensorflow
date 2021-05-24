@@ -1,9 +1,9 @@
 """loads the highwayhash library, used by TF."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "highwayhash",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",

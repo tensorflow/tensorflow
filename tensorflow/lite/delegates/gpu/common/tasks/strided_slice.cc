@@ -108,20 +108,19 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
   const std::string batch_id =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
+  c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
-       "Z >= args.dst_tensor.Slices()) { \n";
+       "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  int s_x = X * args.stride_x + args.offset_x;\n";
@@ -131,14 +130,14 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
     c += "  args.src_tensor.SetBatchRef(s_b);\n";
   }
   if (alignedx4) {
-    c += "  int s_z = Z + args.offset_z;\n";
+    c += "  int s_z = S + args.offset_z;\n";
     c += "  FLT4 result = args.src_tensor.Read(s_x, s_y, s_z);\n";
   } else {
     c += "  FLT4 result;\n";
     const std::string postfixes[] = {"x", "y", "z", "w"};
     for (int i = 0; i < 4; ++i) {
       c += "  {\n";
-      const std::string channel = "(Z * 4 + " + std::to_string(i) + ")";
+      const std::string channel = "(S * 4 + " + std::to_string(i) + ")";
       c += "    int s_ch = " + channel + " * args.stride_z + args.offset_z;\n";
       c += "    int s_z = min(s_ch >> 2, args.src_tensor.Slices() - 1);\n";
       c += "    int s_z_rem = s_ch & 3;\n";
@@ -148,7 +147,7 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
       c += "  }\n";
     }
   }
-  c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
+  c += "  args.dst_tensor.Write(result, X, Y, S);\n";
   c += "}\n";
   return c;
 }

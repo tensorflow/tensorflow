@@ -6,7 +6,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -18,6 +18,7 @@ filegroup(
 py_library(
     name = "rnn_cell_impl",
     srcs = ["rnn_cell_impl.py"],
+    srcs_version = "PY3",
     deps = [
         ":rnn_cell_wrapper_impl",
         "//tensorflow/python:array_ops",
@@ -38,8 +39,8 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:tf_utils",
@@ -50,6 +51,7 @@ py_library(
 py_library(
     name = "rnn_cell_wrapper_impl",
     srcs = ["rnn_cell_wrapper_impl.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",

@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -238,6 +238,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],

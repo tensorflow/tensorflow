@@ -759,7 +759,8 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   Add(x, y);
 
   Shape argument_layout =
-      ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0});
+      local_client_->backend().compiler()->DeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().ValueOrDie(), {&argument_layout},
@@ -937,9 +938,9 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
       LiteralUtil::CreateR1<float>({-5.0, 123.0, 42.0}),
       local_client_->default_device_ordinal()));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          local_client_->TransferFromOutfeedLocal(
-                              shape, local_client_->default_device_ordinal()));
+  Literal result(shape);
+  ASSERT_IS_OK(local_client_->TransferFromOutfeedLocal(
+      local_client_->default_device_ordinal(), &result));
 
   LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, result);
 }

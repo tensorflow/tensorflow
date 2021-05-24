@@ -188,18 +188,22 @@ float QuantizedTypeMaxAsFloat(DataType data_type) {
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
                                  DeviceBase* cpu_device,
-                                 bool disable_compressed_tensor_optimization)
+                                 bool disable_compressed_tensor_optimization,
+                                 bool fold_quantization_emulation)
     : opt_level_(opt_level),
       cpu_device_(cpu_device),
       disable_compressed_tensor_optimization_(
-          disable_compressed_tensor_optimization) {
+          disable_compressed_tensor_optimization),
+      fold_quantization_emulation_(fold_quantization_emulation) {
   resource_mgr_.reset(new ResourceMgr());
 }
 
 ConstantFolding::ConstantFolding(DeviceBase* cpu_device,
-                                 bool disable_compressed_tensor_optimization)
+                                 bool disable_compressed_tensor_optimization,
+                                 bool fold_quantization_ops)
     : ConstantFolding(RewriterConfig::ON, cpu_device,
-                      disable_compressed_tensor_optimization) {}
+                      disable_compressed_tensor_optimization,
+                      fold_quantization_ops) {}
 
 // static
 string ConstantFolding::AddControlDependency(const string& input_name,
@@ -208,9 +212,13 @@ string ConstantFolding::AddControlDependency(const string& input_name,
   if (IsControlInput(input_name)) {
     return input_name;
   }
-  const NodeDef& node = *node_map->GetNode(input_name);
-  if (!IsSwitch(node)) {
-    return AsControlDependency(node);
+  const NodeDef* node = node_map->GetNode(input_name);
+  // Sanity check for missing node.
+  if (!node) {
+    return input_name;
+  }
+  if (!IsSwitch(*node)) {
+    return AsControlDependency(*node);
   } else {
     // We can't anchor control dependencies directly on the switch node: unlike
     // other nodes only one of the outputs of the switch node will be generated
@@ -218,9 +226,9 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // dependency is only triggered when the corresponding output is triggered.
     // We start by looking for an identity node connected to the output of the
     // switch node, and use it to anchor the control dependency.
-    for (const NodeDef* output : node_map->GetOutputs(node.name())) {
+    for (const NodeDef* output : node_map->GetOutputs(node->name())) {
       if (IsIdentity(*output) || IsIdentityNSingleInput(*output)) {
-        if (IsSameInput(node.input(0), input_name)) {
+        if (IsSameInput(node->input(0), input_name)) {
           return AsControlDependency(*output);
         }
       }
@@ -231,19 +239,19 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     string ctrl_dep_name = ParseNodeName(input_name, &port);
     strings::StrAppend(&ctrl_dep_name, "_", port);
     ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
-    const DataType output_type = node.attr().at("T").type();
+    const DataType output_type = node->attr().at("T").type();
 
     NodeDef* added_node = node_map->GetNode(ctrl_dep_name);
     if (added_node == nullptr) {
       added_node = graph->add_node();
       added_node->set_name(ctrl_dep_name);
       added_node->set_op("Identity");
-      added_node->set_device(node.device());
+      added_node->set_device(node->device());
 
       (*added_node->mutable_attr())["T"].set_type(output_type);
       *added_node->add_input() = input_name;
       node_map->AddNode(added_node->name(), added_node);
-      node_map->AddOutput(node.name(), added_node->name());
+      node_map->AddOutput(node->name(), added_node->name());
     }
     return AsControlDependency(*added_node);
   }
@@ -279,6 +287,11 @@ bool ConstantFolding::ForwardInputs(NodeDef* node,
            consumer_input_idx < consumer->input_size(); ++consumer_input_idx) {
         const string& consumer_input = consumer->input(consumer_input_idx);
         if (IsControlInput(consumer_input)) {
+          break;
+        }
+        // It is illegal to add control dependencies to _Retval nodes, so we
+        // can't bypass value producing `node` and forward inputs to `consumer`.
+        if (IsRetval(*consumer)) {
           break;
         }
         int output_idx;
@@ -1061,6 +1074,10 @@ bool ConstantFolding::MaybeFoldable(const NodeDef& node,
     return false;
   }
 
+  if (!fold_quantization_emulation_ && IsQuantizationEmulation(node)) {
+    return false;
+  }
+
   const string& op = node.op();
   if (op.find("Save") != string::npos || op.find("Restore") != string::npos ||
       op.find("Reader") != string::npos) {
@@ -1338,9 +1355,12 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
-    CHECK(value->FromProto(raw_val))
-        << "Unable to make Tensor from proto for " << node.name()
-        << " with shape " << raw_val.tensor_shape().DebugString();
+    if (!value->FromProto(raw_val)) {
+      delete (value);
+      return errors::InvalidArgument("Unable to make Tensor from proto for ",
+                                     node.name(), " with shape ",
+                                     raw_val.tensor_shape().DebugString());
+    }
     inputs.emplace_back(value);
     total_inputs_size += value->TotalBytes();
   }
@@ -2910,7 +2930,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
   const bool is_matmul = IsAnyMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
   const bool is_sub = IsSub(*node);
-  const bool is_any_div = IsAnyDiv(*node);
+  const bool is_any_div = IsAnyDiv(*node) && !IsFloorDiv(*node);
   // Simplify arithmetic operations with ones or zeros.
   if (use_shape_info &&
       (is_mul || is_matmul || is_add || is_sub || is_any_div) &&
@@ -3085,6 +3105,12 @@ bool ConstantFolding::PrepareConstantPushDown(
   }
   NodeDef* left_child = node_map_->GetNode(parent.input(0));
   NodeDef* right_child = node_map_->GetNode(parent.input(1));
+
+  // Sanity check for missing children.
+  if (left_child == nullptr || right_child == nullptr) {
+    return false;
+  }
+
   ctx->left_child_is_const = IsReallyConstant(*left_child);
   ctx->right_child_is_const = IsReallyConstant(*right_child);
   ctx->op_child = ctx->left_child_is_const ? right_child : left_child;

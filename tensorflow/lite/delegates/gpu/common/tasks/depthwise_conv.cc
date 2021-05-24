@@ -41,7 +41,7 @@ std::string GetSrcValue(int channel_multiplier, const std::string coords) {
     c += "      int s_layer = S / 2;\n";
     c += "      FLT4 src = args.src_tensor.Read(" + coords + ", s_layer);\n";
     c += "      FLT2 t0 = S % 2 == 0 ? src.xy : src.zw;\n";
-    c += "      FLT4 src_final = (FLT4)(t0.x, t0.x, t0.y, t0.y);\n";
+    c += "      FLT4 src_final = INIT_FLT4v4(t0.x, t0.x, t0.y, t0.y);\n";
   } else if (channel_multiplier == 4) {
     c += "      int s_layer = S / 4;\n";
     c += "      FLT4 src = args.src_tensor.Read(" + coords + ", s_layer);\n";
@@ -50,7 +50,7 @@ std::string GetSrcValue(int channel_multiplier, const std::string coords) {
     c += "      if (reminder == 1) t0 = src.y;\n";
     c += "      if (reminder == 2) t0 = src.z;\n";
     c += "      if (reminder == 3) t0 = src.w;\n";
-    c += "      FLT4 src_final = (FLT4)(t0, t0, t0, t0);\n";
+    c += "      FLT4 src_final = INIT_FLT4v4(t0, t0, t0, t0);\n";
   } else {
     c += "      int s_layer = S / args.ch_multiplier;\n";
     c += "      FLT4 src = args.src_tensor.Read(" + coords + ", s_layer);\n";
@@ -87,22 +87,22 @@ std::string GenerateDepthwiseConvolutionCode(
 
   std::string c;
 
-  c += "__kernel void main_function(\n";
+  c += "MAIN_FUNCTION(\n";
   c += "$0) {\n";
-  c += "  int X = get_global_id(0);\n";
+  c += "  int X = GLOBAL_ID_0;\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-    c += "  int linear_id_1 = get_global_id(1);\n";
+    c += "  int linear_id_1 = GLOBAL_ID_1;\n";
     c += "  int Y = linear_id_1 / args.dst_tensor.Depth();\n";
     c += "  int Z = linear_id_1 % args.dst_tensor.Depth();\n";
   } else {
-    c += "  int Y = get_global_id(1);\n";
+    c += "  int Y = GLOBAL_ID_1;\n";
   }
-  c += "  int S = get_global_id(2);\n";
+  c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  ACCUM_FLT4 r = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
+  c += "  ACCUM_FLT4 r = INIT_ACCUM_FLT4(0.0f);\n";
   if (stride_correction) {
     c += "  int x_offseted = " +
          GetXStrideCorrectedV2("X", "args.src_tensor.Batch()", "args.stride_x",
@@ -236,7 +236,8 @@ std::string GenerateDepthwiseConvolutionCode(
 GPUOperation CreateDepthwiseConvolution2D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  bool weights_are_buffer = !gpu_info.SupportsImages() || gpu_info.IsMali();
+  bool weights_are_buffer =
+      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple();
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);
@@ -285,8 +286,10 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
   TensorLinearDescriptor desc;
-  desc.storage_type = gpu_info.IsMali() ? LinearStorageType::BUFFER
-                                        : LinearStorageType::TEXTURE_2D;
+  desc.storage_type =
+      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple()
+          ? LinearStorageType::BUFFER
+          : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   op.args_.AddObject(
@@ -297,7 +300,8 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
 GPUOperation CreateDepthwiseConvolution3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr) {
-  bool weights_are_buffer = !gpu_info.SupportsImages() || gpu_info.IsMali();
+  bool weights_are_buffer =
+      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple();
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);

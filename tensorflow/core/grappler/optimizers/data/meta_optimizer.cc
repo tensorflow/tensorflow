@@ -35,9 +35,10 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 19> kTFDataOptimizations = {
+constexpr std::array<const char*, 21> kTFDataOptimizations = {
     "noop_elimination",
     "disable_intra_op_parallelism",
+    "use_private_thread_pool",
     "shuffle_and_repeat_fusion",
     "map_fusion",
     "filter_fusion",
@@ -47,6 +48,7 @@ constexpr std::array<const char*, 19> kTFDataOptimizations = {
     "map_parallelization",
     "map_and_batch_fusion",
     "map_vectorization",
+    "batch_parallelization",
     "latency_all_edges",
     "make_sloppy",
     "parallel_batch",
@@ -198,7 +200,6 @@ Status TFDataMetaOptimizer::Init(
 
       enabled_optimizers_[optimizer_name] = std::move(optimizer);
     } else {
-      // This should never happen.
       return errors::Internal(
           "Tried to register a dataset optimizer that doesn't exist: ",
           optimizer_name);

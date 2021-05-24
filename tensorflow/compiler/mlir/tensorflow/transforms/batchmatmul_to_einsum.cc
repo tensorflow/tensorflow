@@ -88,13 +88,13 @@ struct BatchMatMulToEinsumPass
 };
 
 void BatchMatMulToEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
 
   patterns.insert<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulV2Op>>(
       &getContext());
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 PassRegistration<BatchMatMulToEinsumPass> pass(

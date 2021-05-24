@@ -50,6 +50,7 @@ enum class AdrenoGpu {
   kAdreno685,
   kAdreno680,
   kAdreno675,
+  kAdreno660,
   kAdreno650,
   kAdreno640,
   kAdreno630,
@@ -216,6 +217,12 @@ struct OpenGlInfo {
   int max_work_group_invocations = 0;
   int max_texture_size = 0;
   int max_array_texture_layers = 0;
+  int max_fragment_image_units = 0;
+  int max_fragment_uniform_vec4_count = 0;
+  int max_color_atttachments = 0;
+  int max_viewport_width = 0;
+  int max_viewport_height = 0;
+  int max_renderbuffer_size = 0;
 
   std::vector<std::string> extensions;
   int max_compute_work_group_size_x;
@@ -230,10 +237,13 @@ struct VulkanInfo {
   uint32_t api_version_minor = -1;
   uint32_t api_version_patch = -1;
 
-  uint32_t max_per_stage_descriptor_sampled_images = 0;
+  int max_per_stage_descriptor_sampled_images = 0;
   uint32_t max_compute_work_group_invocations;
   uint32_t max_image_dimension_2d;
   uint32_t max_image_array_layers;
+
+  uint32_t subgroup_size = 0;
+  bool supports_subgroup_arithmetic = false;
 
   std::vector<std::string> extensions;
   int max_compute_work_group_size_x;
@@ -262,6 +272,7 @@ struct OpenClInfo {
   bool supports_images;
   int compute_units_count;
   uint64_t buffer_max_size;
+  uint64_t max_allocation_size;
   uint64_t image2d_max_width;
   uint64_t image2d_max_height;
   uint64_t image_buffer_max_size;
@@ -273,6 +284,7 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
+  uint64_t image_pitch_alignment;
 
   // rtn is ROUND_TO_NEAREST
   // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
@@ -291,6 +303,8 @@ struct OpenClInfo {
   bool supports_rg_f32_tex2d = false;
   bool supports_rgb_f32_tex2d = false;
   bool supports_rgba_f32_tex2d = false;
+
+  bool IsImage2dFromBufferSupported() const;
 };
 
 enum class MetalLanguageVersion {
@@ -356,6 +370,7 @@ struct GpuInfo {
   uint64_t GetMaxImage3DHeight() const;
   uint64_t GetMaxImage3DDepth() const;
   uint64_t GetMaxBufferSize() const;
+  uint64_t GetMaxMemoryAllocationSize() const;
   uint64_t GetMaxImageBufferWidth() const;
 
   GpuVendor vendor = GpuVendor::kUnknown;

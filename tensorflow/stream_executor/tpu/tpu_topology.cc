@@ -91,11 +91,17 @@ bool TpuTopologyExternal::HasChip(int x, int y, int z) const {
   return tpu::ExecutorApiFn()->TpuTopology_HasChipFn(topology_, x, y, z);
 }
 
-TpuCoreLocationExternal TpuTopologyExternal::Core(int x, int y, int z,
-                                                  TpuCoreTypeEnum core_type,
+TpuCoreLocationExternal TpuTopologyExternal::CoreForId(
+    TpuCoreTypeEnum core_type, int id) const {
+  return TpuCoreLocationExternal(
+      tpu::ExecutorApiFn()->TpuTopology_CoreForIdFn(topology_, core_type, id));
+}
+
+TpuCoreLocationExternal TpuTopologyExternal::Core(TpuCoreTypeEnum core_type,
+                                                  int x, int y, int z,
                                                   int index) const {
   return TpuCoreLocationExternal(tpu::ExecutorApiFn()->TpuTopology_CoreFn(
-      topology_, x, y, z, core_type, index));
+      topology_, core_type, x, y, z, index));
 }
 
 std::vector<TpuCoreLocationExternal> TpuTopologyExternal::cores(

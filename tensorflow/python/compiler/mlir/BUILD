@@ -2,13 +2,13 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
     name = "mlir",
     srcs = ["mlir.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:pywrap_mlir",
         "//tensorflow/python/util:tf_export",

@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """V1 Training-related part of the Keras engine."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import warnings
@@ -37,7 +34,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizer_v1
@@ -67,7 +64,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.types import core
 from tensorflow.python.util import nest
 
 try:
@@ -228,7 +224,7 @@ class Model(training_lib.Model):
         ValueError: If `skip_mismatch` is set to `True` when `by_name` is
           `False`.
     """
-    if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
+    if backend.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
           (not saving_utils.is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
@@ -309,6 +305,7 @@ class Model(training_lib.Model):
 
     # Prepare Session arguments (legacy).
     kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
+    self._from_serialized = kwargs.pop('from_serialized', False)
     allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
     unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
     if unknown_kwargs:
@@ -409,7 +406,8 @@ class Model(training_lib.Model):
         self._distribution_strategy is not None):
       # Ensures a Session is created and configured correctly for Distribution
       # Strategy.
-      K.configure_and_create_distributed_session(self._distribution_strategy)
+      backend.configure_and_create_distributed_session(
+          self._distribution_strategy)
     # Initialize model metric attributes.
     self._init_metric_attributes()
     if not self.built or not self.inputs or not self.outputs:
@@ -441,7 +439,7 @@ class Model(training_lib.Model):
       self._compile_eagerly(metrics, weighted_metrics, sample_weight_mode)
       return
 
-    with K.get_graph().as_default():
+    with backend.get_graph().as_default():
       # Save all metric attributes per output of the model.
       self._cache_output_metric_attributes(metrics, weighted_metrics)
 
@@ -1002,7 +1000,7 @@ class Model(training_lib.Model):
     """Resets the state of metrics."""
     metrics = self._get_training_eval_metrics()
     for m in metrics:
-      m.reset_states()
+      m.reset_state()
 
     # Reset metrics on all the distributed (cloned) models.
     if self._distribution_strategy:
@@ -1088,7 +1086,7 @@ class Model(training_lib.Model):
       x = training_utils_v1.ModelInputs(x).as_list()
       ins = x + list(y or []) + list(sample_weights or [])
 
-      if not isinstance(K.symbolic_learning_phase(), int):
+      if not isinstance(backend.symbolic_learning_phase(), int):
         ins += [True]  # Add learning phase value.
 
       self._update_sample_weight_modes(sample_weights=sample_weights)
@@ -1527,7 +1525,7 @@ class Model(training_lib.Model):
         same length as the number of outputs. If left as `None`, placeholders
         are used instead.
     """
-    with K.get_graph().as_default():
+    with backend.get_graph().as_default():
       if sample_weights is not None:
         self._update_sample_weight_modes(sample_weights)
       self._prepare_sample_weights(sample_weights)
@@ -1583,7 +1581,7 @@ class Model(training_lib.Model):
       raise TypeError('total loss can not be computed when compiled with '
                       'run_eagerly = True.')
     loss_list = []
-    with K.name_scope('loss'):
+    with backend.name_scope('loss'):
       for endpoint, mask in zip(self._training_endpoints, masks):
         if endpoint.should_skip_target():
           continue
@@ -1594,7 +1592,7 @@ class Model(training_lib.Model):
         loss_name = endpoint.loss_name()
         sample_weight = endpoint.sample_weight
 
-        with K.name_scope(loss_name):
+        with backend.name_scope(loss_name):
           if mask is not None:
             mask = math_ops.cast(mask, y_pred.dtype)
             # Update weights with mask.
@@ -1800,17 +1798,19 @@ class Model(training_lib.Model):
       else:
         output_shapes.append(output.shape.as_list())
     self._per_output_metrics = training_utils_v1.collect_per_output_metric_info(
-        metrics, self.output_names, output_shapes, self.loss_functions)
+        metrics, self.output_names, output_shapes, self.loss_functions,
+        from_serialized=self._from_serialized)
     self._per_output_weighted_metrics = (
         training_utils_v1.collect_per_output_metric_info(
             weighted_metrics,
             self.output_names,
             output_shapes,
             self.loss_functions,
+            from_serialized=self._from_serialized,
             is_weighted=True))
 
-  def _add_unique_metric_name(self, metric_name, output_index):
-    """Makes the metric name unique and adds it to the model's metric name list.
+  def _add_unique_metric_name(self, metric_name, metric_fn, output_index):
+    """Makes the metric name unique.
 
       If there are multiple outputs for which the metrics are calculated, the
       metric names have to be made unique by appending an integer.
@@ -1818,14 +1818,24 @@ class Model(training_lib.Model):
     Args:
       metric_name: Metric name that corresponds to the metric specified by the
           user. For example: 'acc'.
+      metric_fn: The Metric object.
       output_index: The index of the model output for which the metric name is
         being added.
 
     Returns:
       string, name of the model's unique metric name
     """
+    # For multi-output models, prepend the output names to the metric name.
     if len(self.output_names) > 1:
-      metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
+      # If we're loading from an already-serialized model, we've already
+      # prepended the output name, and we don't want to do it again.
+      #
+      # Alternatively, we may be receiving a stateless metric (e.g. the string
+      # "accuracy") rather than a `Metric` object, in which case we want to
+      # prepend the output name even if we are loading a serialized model.
+      if not getattr(metric_fn, '_from_serialized', False):
+        metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
+
     j = 1
     base_metric_name = metric_name
     while metric_name in self.metrics_names:
@@ -1853,7 +1863,8 @@ class Model(training_lib.Model):
     """
     updated_metrics_dict = collections.OrderedDict()
     for metric_name, metric_fn in metrics_dict.items():
-      metric_name = self._add_unique_metric_name(metric_name, output_index)
+      metric_name = self._add_unique_metric_name(
+          metric_name, metric_fn, output_index)
 
       # Update the name on the metric class to be the unique generated name.
       metric_fn._name = metric_name  # pylint: disable=protected-access
@@ -1911,7 +1922,7 @@ class Model(training_lib.Model):
     """
     metric_results = []
     for metric_name, metric_fn in metrics_dict.items():
-      with K.name_scope(metric_name):
+      with backend.name_scope(metric_name):
         metric_result = training_utils_v1.call_metric_function(
             metric_fn, y_true, y_pred, weights=weights, mask=mask)
         metric_results.append(metric_result)
@@ -1949,7 +1960,7 @@ class Model(training_lib.Model):
     # the eager and graph logic is bit different.
     skip_target_masks = skip_target_masks or [False] * len(outputs)
     metric_results = []
-    with K.name_scope('metrics'):
+    with backend.name_scope('metrics'):
       # Invoke all metrics added using `compile`.
       for i in range(len(outputs)):
         if skip_target_masks[i]:
@@ -2008,11 +2019,11 @@ class Model(training_lib.Model):
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
-      if not isinstance(K.symbolic_learning_phase(), int):
-        inputs += [K.symbolic_learning_phase()]
+      if not isinstance(backend.symbolic_learning_phase(), int):
+        inputs += [backend.symbolic_learning_phase()]
 
-      with K.get_graph().as_default():
-        with K.name_scope('training'):
+      with backend.get_graph().as_default():
+        with backend.name_scope('training'):
           # Training updates
           updates = self.optimizer.get_updates(
               params=self._collected_trainable_weights, loss=self.total_loss)
@@ -2026,9 +2037,9 @@ class Model(training_lib.Model):
             m._call_result for m in metrics if hasattr(m, '_call_result')  # pylint: disable=protected-access
         ]
 
-      with K.name_scope('training'):
+      with backend.name_scope('training'):
         # Gets loss and metrics. Updates weights at each call.
-        fn = K.function(
+        fn = backend.function(
             inputs, [self.total_loss] + metrics_tensors,
             updates=updates,
             name='train_function',
@@ -2048,17 +2059,17 @@ class Model(training_lib.Model):
                 self._feed_targets +
                 self._feed_sample_weights)
 
-      with K.get_graph().as_default():
+      with backend.get_graph().as_default():
         metrics = self._get_training_eval_metrics()
         metrics_tensors = [
             m._call_result for m in metrics if hasattr(m, '_call_result')  # pylint: disable=protected-access
         ]
 
-      with K.name_scope('evaluation'):
+      with backend.name_scope('evaluation'):
         updates = self.state_updates
         # Return loss and metrics, no gradient updates.
         # Does update the network states.
-        fn = K.function(
+        fn = backend.function(
             inputs, [self.total_loss] + metrics_tensors,
             updates=updates,
             name='test_function',
@@ -2073,8 +2084,8 @@ class Model(training_lib.Model):
       # Gets network outputs. Does not update weights.
       # Does update the network states.
       kwargs = getattr(self, '_function_kwargs', {})
-      with K.name_scope(ModeKeys.PREDICT):
-        self.predict_function = K.function(
+      with backend.name_scope(ModeKeys.PREDICT):
+        self.predict_function = backend.function(
             inputs,
             self.outputs,
             updates=self.state_updates,
@@ -2137,8 +2148,7 @@ class Model(training_lib.Model):
                                 'when using tf.distribute.Strategy.')
 
     if (sample_weight is not None and sample_weight.all() and
-        distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+        backend.is_tpu_strategy(self._distribution_strategy)):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
@@ -2158,7 +2168,7 @@ class Model(training_lib.Model):
       if ops.executing_eagerly_outside_functions():
         session = None
       else:
-        session = K.get_session()
+        session = backend.get_session()
 
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray):
@@ -2192,8 +2202,7 @@ class Model(training_lib.Model):
         # TODO(b/131720208): We still drop remainder here if number of examples
         # is divisible by batch size, as sometimes dynamic padder will time out
         # with keras.metrics.CategoricalAccuracy() metric.
-        if distributed_training_utils.is_tpu_strategy(
-            strategy) and not drop_remainder:
+        if backend.is_tpu_strategy(strategy) and not drop_remainder:
           dataset_size = first_x_value.shape[0]
           if dataset_size % batch_size == 0:
             drop_remainder = True
@@ -2615,7 +2624,7 @@ class Model(training_lib.Model):
         # In V2 mode, feeding `training=None` is not allowed because any value
         # explicitly passed by the user is respected, even `None`.`
         if training is None and not ops.executing_eagerly_outside_functions():
-          training = K.learning_phase()
+          training = backend.learning_phase()
         if training is not None:
           kwargs['training'] = training
       try:
@@ -2665,10 +2674,10 @@ class Model(training_lib.Model):
     self._feed_input_shapes = []
 
     for k, v in model_inputs.as_dict():
-      if K.is_placeholder(v):
+      if backend.is_placeholder(v):
         self._feed_input_names.append(k)
         self._feed_inputs.append(v)
-        self._feed_input_shapes.append(K.int_shape(v))
+        self._feed_input_shapes.append(backend.int_shape(v))
 
     return inputs
 
@@ -2932,7 +2941,7 @@ class _TrainingEndpoint(object):
 
   @property
   def shape(self):
-    return K.int_shape(self.output)
+    return backend.int_shape(self.output)
 
   @property
   def loss_fn(self):
@@ -2982,7 +2991,7 @@ class _TrainingEndpoint(object):
     if self.should_skip_target():
       self.training_target = _TrainingTarget(None)
     else:
-      if target is not None and not K.is_placeholder(target):
+      if target is not None and not backend.is_placeholder(target):
         feedable = False
         skip_target_weights = True
       else:
@@ -2991,12 +3000,12 @@ class _TrainingEndpoint(object):
 
       if target is None:
         target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
-            self.loss_fn, K.dtype(self.output))
+            self.loss_fn, backend.dtype(self.output))
 
-        target = K.placeholder(
+        target = backend.placeholder(
             ndim=len(self.shape),
             name=self.output_name + '_target',
-            sparse=K.is_sparse(self.output),
+            sparse=backend.is_sparse(self.output),
             dtype=target_dtype)
 
       self.training_target = _TrainingTarget(
@@ -3056,7 +3065,7 @@ class _TrainingEndpoint(object):
     if ((isinstance(self.loss_fn, losses.LossFunctionWrapper) and
          self.loss_fn.fn == losses.sparse_categorical_crossentropy)) or (
              isinstance(self.loss_fn, losses.SparseCategoricalCrossentropy)):
-      if K.image_data_format() == 'channels_first':
+      if backend.image_data_format() == 'channels_first':
         return (self.shape[0], 1) + self.shape[2:]
       else:
         return self.shape[:-1] + (1,)
@@ -3103,7 +3112,7 @@ class _TrainingEndpoint(object):
       self._sample_weight = sample_weight
     else:
       self._sample_weight = array_ops.placeholder_with_default(
-          constant_op.constant(default_value, dtype=K.floatx()),
+          constant_op.constant(default_value, dtype=backend.floatx()),
           shape=shape,
           name=self.output_name + '_sample_weights')
 
@@ -3163,20 +3172,20 @@ def _convert_scipy_sparse_tensor(value, expected_input):
     The possibly-converted 'value'.
   """
   if issparse is not None and issparse(value):
-    if isinstance(expected_input, core.Tensor):
-      if ops.executing_eagerly_outside_functions():
-        # In TF2 we do not silently densify sparse matrices.
-        raise ValueError('A SciPy sparse matrix was passed to a model '
-                         'that expects dense inputs. Please densify your '
-                         'inputs first, such as by calling `x.toarray().')
-      return value.toarray()
-    else:
+    if backend.is_sparse(expected_input):
       sparse_coo = value.tocoo()
       row, col = sparse_coo.row, sparse_coo.col
       data, shape = sparse_coo.data, sparse_coo.shape
       indices = np.concatenate((np.expand_dims(row, 1), np.expand_dims(col, 1)),
                                1)
       return sparse_tensor.SparseTensor(indices, data, shape)
+    else:
+      if ops.executing_eagerly_outside_functions():
+        # In TF2 we do not silently densify sparse matrices.
+        raise ValueError('A SciPy sparse matrix was passed to a model '
+                         'that expects dense inputs. Please densify your '
+                         'inputs first, such as by calling `x.toarray().')
+      return value.toarray()
   else:
     return value
 

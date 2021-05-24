@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Contains private utilities used mainly by the base Layer class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import threading
@@ -216,6 +213,9 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
     have been wrapped in `TensorFlowOpLayer` instances. Second element is
     a list of the `TensorFlowOpLayer` instances created.
   """
+  if ops.executing_eagerly_outside_functions():
+    raise ValueError(
+        '`create_keras_history` should only be called if eager is disabled!')
   # Import of `base_layer` needed in order to create `TensorFlowOpLayer`.
   # Cannot be imported at top because of circular dependencies.
   # TODO(omalleyt): Resolve circular dependency.
@@ -258,10 +258,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             constants[i] = op_input
           else:
             with ops.init_scope():
-              if ops.executing_eagerly_outside_functions():
-                constants[i] = backend.eval_in_eager_or_function(op_input)
-              else:
-                constants[i] = backend.function([], op_input)([])
+              constants[i] = backend.function([], op_input)([])
       layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
@@ -802,35 +799,46 @@ class TrackableWeightHandler(object):
 
     # TODO(b/141682913): Figure out why this is private and fix it.
     saveables = trackable._gather_saveables_for_checkpoint().values()  # pylint: disable=protected-access
-    if len(saveables) != 1:
-      raise ValueError('Only Trackables with one Saveable are supported.')
-    saveable = list(saveables)[0]
+    # 'Saveables' won't exist when we're passed a legacy TF1 table like
+    # a StaticHashTable.
+    if not saveables:
+      self._num_tensors = 0
+      self._setter = lambda weights: None
+      self._getter = lambda: []
 
-    if ops.executing_eagerly_outside_functions():
-      # If we're in eager mode, we need to defer calling the Trackable's
-      # saveable() callable until data export time.
-      # However, it is safe to call the saveable as many times as we want, so
-      # we will call it now to figure out how many tensors this Trackable will
-      # produce.
-      self._saveable = saveable
-      self._num_tensors = len(self._saveable().specs)
-      self._setter = lambda weights: self._saveable().restore(weights, None)
-      self._getter = lambda: [spec.tensor for spec in self._saveable().specs]
+    elif len(saveables) == 1:
+      saveable = list(saveables)[0]
+
+      if ops.executing_eagerly_outside_functions():
+        # If we're in eager mode, we need to defer calling the Trackable's
+        # saveable() callable until data export time.
+        # However, it is safe to call the saveable as many times as we want, so
+        # we will call it now to figure out how many tensors this Trackable will
+        # produce.
+        self._saveable = saveable
+        self._num_tensors = len(self._saveable().specs)
+        self._setter = lambda weights: self._saveable().restore(weights, None)
+        self._getter = lambda: [spec.tensor for spec in self._saveable().specs]
+      else:
+        # If we're in Graph mode, we need to evaluate the Saveable only once and
+        # cache the resulting restore graph. Failing to do this will result in
+        # new assignment ops being added to the graph each time set_weights() is
+        # called.
+        self._placeholder_tensors = []
+        self._saveable = saveable()
+        self._num_tensors = len(self._saveable.specs)
+        for spec in self._saveable.specs:
+          tensor = spec.tensor
+          self._placeholder_tensors.append(
+              array_ops.placeholder(tensor.dtype, tensor.shape))
+        self._assign_op = self._saveable.restore(self._placeholder_tensors,
+                                                 None)
+        self._setter = self._set_weights_v1
+        self._getter = lambda: [spec.tensor for spec in self._saveable.specs]
     else:
-      # If we're in Graph mode, we need to evaluate the Saveable only once and
-      # cache the resulting restore graph. Failing to do this will result in
-      # new assignment ops being added to the graph each time set_weights() is
-      # called.
-      self._placeholder_tensors = []
-      self._saveable = saveable()
-      self._num_tensors = len(self._saveable.specs)
-      for spec in self._saveable.specs:
-        tensor = spec.tensor
-        self._placeholder_tensors.append(
-            array_ops.placeholder(tensor.dtype, tensor.shape))
-      self._assign_op = self._saveable.restore(self._placeholder_tensors, None)
-      self._setter = self._set_weights_v1
-      self._getter = lambda: [spec.tensor for spec in self._saveable.specs]
+      raise ValueError('Only Trackables with one Saveable are supported. '
+                       'The Trackable %s has %d Saveables.' %
+                       (trackable, len(saveables)))
 
   @property
   def num_tensors(self):
@@ -852,6 +860,21 @@ class TrackableWeightHandler(object):
     for idx, tensor in enumerate(weights):
       feed_dict[self._placeholder_tensors[idx]] = tensor
     backend.get_session().run(self._assign_op, feed_dict)
+
+
+class StaticTableHandler(TrackableWeightHandler):
+  """Wrapper for handling weight collection for static hash tables."""
+
+  def __init__(self, getter_lambda):  # pylint: disable=super-init-not-called
+    self._num_tensors = 2
+    self._getter = getter_lambda
+    self._distribute_strategy = distribution_strategy_context.get_strategy()
+
+    def raise_error(_):
+      raise RuntimeError('This layer contains a static lookup table, which '
+                         'cannot be changed via set_weights().')
+
+    self._setter = raise_error
 
 
 def no_ragged_support(inputs, layer_name):

@@ -75,7 +75,8 @@ class TpuTopologyExternal {
   int32 ChipsPerHost() const;
   TpuTopologyChipBoundsExternal chip_bounds() const;
   bool HasChip(int x, int y, int z) const;
-  TpuCoreLocationExternal Core(int x, int y, int z, TpuCoreTypeEnum core_type,
+  TpuCoreLocationExternal CoreForId(TpuCoreTypeEnum core_type, int id) const;
+  TpuCoreLocationExternal Core(TpuCoreTypeEnum core_type, int x, int y, int z,
                                int index) const;
   std::vector<TpuCoreLocationExternal> cores(TpuCoreTypeEnum core_type) const;
   int IdForHost(TpuDimensionsExternal host) const;

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
@@ -81,6 +82,94 @@ StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
       return stream_executor::dnn::kBandPass;
     default:
       return InternalError("Unexpected activation");
+  }
+}
+
+// Convert replica group from MLIR encoding to HLO.
+// See HloFunctionImporter::ConvertReplicaGroups for the MLIR encoding.
+StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
+    mlir::DenseIntElementsAttr input) {
+  mlir::RankedTensorType type =
+      input.getType().dyn_cast<mlir::RankedTensorType>();
+  if (!type || type.getRank() != 2 ||
+      !type.getElementType().isInteger(/*width=*/64)) {
+    return InternalError("Execpted replica group to be a rank 2 tensor of i64");
+  }
+  // rank 0 is num_groups, rank 1 is group size.
+  auto replica_group_values_it = input.getValues<uint64_t>().begin();
+  std::vector<ReplicaGroup> replica_groups(type.getDimSize(0));
+  for (ReplicaGroup& group : replica_groups) {
+    for (int64 element_idx = 0; element_idx < type.getDimSize(1);
+         ++element_idx, ++replica_group_values_it) {
+      // For replica group attribute, -1 indicates padding added by
+      // ConvertReplicaGroups. This show always be at the end and can be dropped
+      // when converting back to XLA HLO ReplicaGroups.
+      if (*replica_group_values_it != -1) {
+        group.add_replica_ids(*replica_group_values_it);
+      }
+    }
+  }
+  return replica_groups;
+}
+
+// Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
+// and source-target pairs are defined in HLO.
+StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
+    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
+  if (!optional_attr.hasValue()) return std::vector<std::pair<int64, int64>>{};
+  mlir::DenseIntElementsAttr attr = *optional_attr;
+  auto type = attr.getType().dyn_cast<mlir::RankedTensorType>();
+  if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
+    return InternalError("expected Nx2 attribute to be a tensor of shape Nx2");
+  auto it = attr.getValues<int64>().begin();
+  std::vector<std::pair<int64, int64>> out(attr.getNumElements() / 2);
+  for (auto& item : out) {
+    int64 first = *it;
+    ++it;
+    int64 second = *it;
+    ++it;
+    item = {first, second};
+  }
+  return out;
+}
+
+StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
+  llvm::Optional<mlir::mhlo::FftType> type =
+      mlir::mhlo::symbolizeEnum<mlir::mhlo::FftType>(type_string);
+  if (!type) return InvalidArgument("Unknown FFT type %s", type_string.str());
+
+  switch (*type) {
+    case mlir::mhlo::FftType::FFT:
+      return xla::FftType::FFT;
+    case mlir::mhlo::FftType::IFFT:
+      return xla::FftType::IFFT;
+    case mlir::mhlo::FftType::RFFT:
+      return xla::FftType::RFFT;
+    case mlir::mhlo::FftType::IRFFT:
+      return xla::FftType::IRFFT;
+    default:
+      return InvalidArgument("Unknown FFT type enum #%d", *type);
+  }
+}
+
+StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
+    llvm::StringRef transpose_string) {
+  llvm::Optional<mlir::mhlo::Transpose> transpose =
+      mlir::mhlo::symbolizeTranspose(transpose_string);
+  if (!transpose)
+    return InvalidArgument("Unknown transpose type %s", transpose_string.str());
+
+  switch (*transpose) {
+    case mlir::mhlo::Transpose::NO_TRANSPOSE:
+      return TriangularSolveOptions::NO_TRANSPOSE;
+    case mlir::mhlo::Transpose::TRANSPOSE:
+      return TriangularSolveOptions::TRANSPOSE;
+    case mlir::mhlo::Transpose::ADJOINT:
+      return TriangularSolveOptions::ADJOINT;
+    case mlir::mhlo::Transpose::TRANSPOSE_INVALID:
+      return TriangularSolveOptions::TRANSPOSE_INVALID;
+    default:
+      return InvalidArgument("Unknown transpose enum value #%d", *transpose);
   }
 }
 

@@ -34,14 +34,13 @@ void TestComparison(const TfLiteRegistration& registration,
                     bool* output_data) {
   const int output_dims_count = ElementCount(*tensors[inputs_size].dims);
 
-  const int inputs_array_data[] = {2, 0, 1};
+  int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  const int outputs_array_data[] = {1, 2};
+  int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, /*builtin_data=*/nullptr,
-                             micro_test::reporter);
+                             outputs_array, /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

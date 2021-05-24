@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.client import pywrap_tf_session as c_api
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -330,9 +331,10 @@ def _SegmentMeanGrad(op, grad):
   input_rank = array_ops.rank(op.inputs[0])
   ones_shape = array_ops.concat([
       array_ops.shape(op.inputs[1]),
-      array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)
+      array_ops.ones(
+          array_ops.expand_dims(input_rank - 1, 0), dtype=dtypes.int32)
   ], 0)
-  ones = array_ops.fill(ones_shape, constant_op.constant(1, dtype=grad.dtype))
+  ones = array_ops.ones(ones_shape, dtype=grad.dtype)
   scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
@@ -340,19 +342,26 @@ def _SegmentMeanGrad(op, grad):
 @ops.RegisterGradient("SparseSegmentSum")
 def _SparseSegmentSumGrad(op, grad):
   """Gradient for SparseSegmentSum."""
-  input_rows = array_ops.shape(op.inputs[0])[0]
-  return (math_ops.unsorted_segment_sum(
-      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
-          None)
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  if compat.forward_compatible(2021, 6, 10):
+    return (math_ops.sparse_segment_sum_grad(grad, op.inputs[1], op.inputs[2],
+                                             dim0), None, None)
+  else:
+    return (math_ops.unsorted_segment_sum(
+        array_ops.gather(grad, op.inputs[2]), op.inputs[1], dim0), None, None)
 
 
 @ops.RegisterGradient("SparseSegmentSumWithNumSegments")
 def _SparseSegmentSumWithNumSegmentsGrad(op, grad):
   """Gradient for SparseSegmentSumWithNumSegments."""
-  input_rows = array_ops.shape(op.inputs[0])[0]
-  return (math_ops.unsorted_segment_sum(
-      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
-          None, None)
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  if compat.forward_compatible(2021, 6, 10):
+    return (math_ops.sparse_segment_sum_grad(grad, op.inputs[1], op.inputs[2],
+                                             dim0), None, None, None)
+  else:
+    return (math_ops.unsorted_segment_sum(
+        array_ops.gather(grad, op.inputs[2]), op.inputs[1],
+        dim0), None, None, None)
 
 
 @ops.RegisterGradient("SparseSegmentMean")
@@ -1178,7 +1187,7 @@ def _SigmoidGradGrad(op, grad):
 def _SignGrad(op, _):
   """Returns 0."""
   x = op.inputs[0]
-  return array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
+  return array_ops.zeros_like(x)
 
 
 @ops.RegisterGradient("Sin")
@@ -1560,11 +1569,9 @@ def _MaximumMinimumGrad(op, grad, selector_op):
     # No gradient skipping, so do the full gradient computation
     pass
   x = op.inputs[0]
-  gdtype = grad.dtype
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  gradshape = array_ops.shape(grad)
-  zeros = array_ops.zeros(gradshape, gdtype)
+  zeros = array_ops.zeros_like(grad)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   if skip_input_indices is not None and 0 in skip_input_indices:
@@ -1845,6 +1852,7 @@ def _BatchMatMul(op, grad):
 
 
 @ops.RegisterGradient("BatchMatMulV2")
+@ops.RegisterGradient("BatchMatMulV3")
 def _BatchMatMulV2(op, grad):
   """Returns the gradient of x and y given the gradient of x * y."""
   x = op.inputs[0]

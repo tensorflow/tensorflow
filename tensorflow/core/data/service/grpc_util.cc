@@ -39,6 +39,13 @@ Status WrapError(const std::string& message, const ::grpc::Status& status) {
 
 Status Retry(const std::function<Status()>& f, const std::string& description,
              int64 deadline_micros) {
+  return Retry(
+      f, [] { return true; }, description, deadline_micros);
+}
+
+Status Retry(const std::function<Status()>& f,
+             const std::function<bool()>& should_retry,
+             const std::string& description, int64 deadline_micros) {
   Status s = f();
   for (int num_retries = 0;; ++num_retries) {
     if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
@@ -46,7 +53,7 @@ Status Retry(const std::function<Status()>& f, const std::string& description,
       return s;
     }
     int64 now_micros = EnvTime::NowMicros();
-    if (now_micros > deadline_micros) {
+    if (now_micros > deadline_micros || !should_retry()) {
       return s;
     }
     int64 deadline_with_backoff_micros =

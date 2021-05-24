@@ -110,6 +110,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("workspace_size_bytes", 1 << 20)
                      .Attr("precision_mode", "FP32")
                      .Attr("use_calibration", false)
+                     .Attr("profile_strategy", "optimal")
                      .Attr("_use_implicit_batch", use_implicit_batch)
                      .Attr("_allow_build_at_runtime", allow_build_at_runtime)
                      .Attr("_allow_soft_placement", false)
@@ -245,16 +246,11 @@ TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
       device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
-  // Due to the way the engine lookup is implemented, explicit batch mode
-  // requires profile generation. Currently profile generaton is not enabled in
-  // this test therfore engine creation fails.
-  //
-  // TODO(Tamas) find a way to enable profile generation mode and test it
   auto cache = &cache_resource->cache_;
-  EXPECT_EQ(0, cache->size());
-  // ASSERT_EQ(1, cache->count({input_shape}));
-  // EngineContext* ectx = cache->at({input_shape}).get();
-  // EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_EQ(1, cache->size());
+  ASSERT_EQ(1, cache->count({input_shape}));
+  EngineContext* ectx = cache->at({input_shape}).get();
+  EXPECT_NE(ectx->cuda_engine, nullptr);
 }
 
 TEST_F(TRTEngineOpTestBase, DynamicShapes) {
@@ -278,13 +274,11 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
       device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
-  // We did not have profile generation mode therfore engine creation failed.
-  // TODO(Tamas) find a way to enable profile generation mode and test it
   auto cache = &cache_resource->cache_;
-  EXPECT_EQ(0, cache->size());
-  // ASSERT_EQ(1, cache->count({input_shape}));
-  // EngineContext* ectx = cache->at({input_shape}).get();
-  // EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_EQ(1, cache->size());
+  ASSERT_EQ(1, cache->count({input_shape}));
+  EngineContext* ectx = cache->at({input_shape}).get();
+  EXPECT_NE(ectx->cuda_engine, nullptr);
 }
 
 template <typename T>

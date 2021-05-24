@@ -41,7 +41,7 @@ struct MemcpyDetails {
   bool async;
   // This contains CUpti_ActivityMemcpyKind for activity event (on device).
   // For events from other CuptiTracerEventSource, it is always 0.
-  int8 kind;
+  int8 copy_kind;
   // CUpti_ActivityMemoryKind of source.
   int8 src_mem_kind;
   // CUpti_ActivityMemoryKind of destination.
@@ -52,18 +52,24 @@ struct MemAllocDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
   // The CUpti_ActivityMemoryKind value for this activity event.
-  int8 kind;
+  int8 mem_kind;
   // The virtual address of allocation. 0 if it is a free operation.
   uint64 address;
 };
 
 using MemFreeDetails = MemAllocDetails;
 
+// Memory residency contains details read from CUpti_ActivityMemory type. This
+// is populated in the CUPTI tracer encounters a CUPTI_ACTIVITY_KIND_MEMORY
+// event. The start of this even corresponse to a cudaMalloc, and the end
+// corresponds to a cudaFree.
+using MemoryResidencyDetails = MemAllocDetails;
+
 struct MemsetDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
   // The CUpti_ActivityMemoryKind value for this activity event.
-  int8 kind;
+  int8 mem_kind;
   // Whether or not the memset is asynchronous.
   bool async;
 };
@@ -102,7 +108,7 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
 }
 
 // Gets the name of the CUpti_ActivityMemoryKind value.
-absl::string_view GetMemoryKindName(int8 kind);
+absl::string_view GetMemoryKindName(int8 memory_kind);
 
 enum class CuptiTracerEventType {
   Unsupported = 0,
@@ -117,6 +123,7 @@ enum class CuptiTracerEventType {
   UnifiedMemory = 9,
   MemoryFree = 10,
   Memset = 11,
+  MemoryResidency = 12,
   Generic = 100,
 };
 
@@ -166,6 +173,8 @@ struct CuptiTracerEvent {
     MemFreeDetails memfree_info;
     // Used for Memset API and activities. `type` must be Memset.
     MemsetDetails memset_info;
+    // Used for Memory residency activities. `type` must be MemoryResidency.
+    MemoryResidencyDetails memory_residency_info;
   };
 };
 

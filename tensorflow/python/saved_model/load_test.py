@@ -19,13 +19,18 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import functools
+import gc
+import io
 import os
 import sys
 import tempfile
 import weakref
 
 from absl.testing import parameterized
+import numpy as np
+
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
@@ -48,19 +53,19 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import numpy_ops as tnp
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training.tracking import tracking
@@ -68,7 +73,7 @@ from tensorflow.python.training.tracking import util
 from tensorflow.python.util import tf_inspect
 
 
-def cycle(obj, cycles, signatures=None):
+def cycle(obj, cycles, signatures=None, options=None):
   to_save = obj
   # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
   # point w.r.t. saving/restoring, ideally after 2nd saving.
@@ -78,7 +83,7 @@ def cycle(obj, cycles, signatures=None):
     # just makes sure we aren't throwing errors and have enough
     # device("CPU") blocks to satisfy the placer.
     with test_util.use_gpu():
-      save.save(to_save, path, signatures)
+      save.save(to_save, path, signatures, options=options)
       loaded = load.load(path)
       signatures = loaded.signatures
     to_save = loaded
@@ -1850,19 +1855,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
           name="my_var",
           container="my_container")
 
-    class MyResourceDeleter(tracking.CapturableResourceDeleter):
-
-      def destroy_resource(self):
-        handle = get_handle()
-        resource_variable_ops.destroy_resource_op(
-            handle, ignore_lookup_error=True)
-
     class MyResource(tracking.TrackableResource):
-
-      def __init__(self):
-        # Set the resource deleter, so when the resource object goes out of
-        # scope it will be deleted automatically.
-        super(MyResource, self).__init__(deleter=MyResourceDeleter())
 
       def _create_resource(self):
         return get_handle()
@@ -1870,6 +1863,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       def _initialize(self):
         resource_variable_ops.assign_variable_op(
             self.resource_handle, 1.0, name="assign")
+
+      def _destroy_resource(self):
+        handle = get_handle()
+        resource_variable_ops.destroy_resource_op(
+            handle, ignore_lookup_error=True)
 
     class MyModel(tracking.AutoTrackable):
 
@@ -1967,33 +1965,83 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
 
-  def test_saving_ndarray_specs(self, cycles):
-    class NdarrayModule(module.Module):
+  def test_load_resource_with_dependency(self, cycles):
+    # Test with StaticHashTable, which has a _initializer attribute that tracks
+    # the Asset vocab table.
 
-      @def_function.function
-      def plain(self, x):
-        return tnp.add(x, 1)
+    class MyLookupModel(tracking.AutoTrackable):
+
+      def __init__(self, vocab_file):
+
+        vocab_initializer = lookup_ops.TextFileInitializer(
+            vocab_file,
+            key_dtype=dtypes.string,
+            key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_dtype=dtypes.int64,
+            value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+        self._vocab_table = lookup_ops.StaticHashTable(vocab_initializer,
+                                                       default_value=-1)
 
       @def_function.function(input_signature=[
-          np_arrays.NdarraySpec(tensor_spec.TensorSpec([], dtypes.float32))])
-      def with_signature(self, x):
-        return tnp.add(x, 1)
+          tensor_spec.TensorSpec((None,), dtypes.string)])
+      def __call__(self, inputs):
+        return self._vocab_table.lookup(inputs)
 
-    m = NdarrayModule()
-    c = tnp.asarray(3.0, tnp.float32)
-    output_plain, output_with_signature = m.plain(c), m.with_signature(c)
+    vocab_file = self._make_asset("\n".join(["a", "b", "c", "d"]))
+    root = MyLookupModel(vocab_file)
+    imported = cycle(root, cycles)
+    file_io.delete_file(vocab_file)
+    self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
+                        [3, 1])
 
-    loaded_m = cycle(m, cycles)
+  def test_custom_gradients(self, cycles):
 
-    load_output_plain, load_output_with_signature = (
-        loaded_m.plain(c), loaded_m.with_signature(c))
+    @custom_gradient.custom_gradient
+    def log1pexp(x):
+      e = math_ops.exp(x)
 
-    self.assertIsInstance(output_plain, tnp.ndarray)
-    self.assertIsInstance(load_output_plain, tnp.ndarray)
-    self.assertIsInstance(output_with_signature, tnp.ndarray)
-    self.assertIsInstance(load_output_with_signature, tnp.ndarray)
-    self.assertAllClose(output_plain, load_output_plain)
-    self.assertAllClose(output_with_signature, load_output_with_signature)
+      def grad(dy):
+        return dy * e  # incorrect to check the custom gradients is respected.
+
+      return math_ops.log(1 + e), grad
+
+    @def_function.function
+    def g(x):
+      y = log1pexp(x)
+
+      @def_function.function
+      def g_nest():
+        return log1pexp(y)
+
+      return g_nest()
+
+    @def_function.function
+    def f(x):
+      return log1pexp(g(x * x))
+
+    v = variables.Variable(1.)
+
+    with backprop.GradientTape() as tape2:
+      with backprop.GradientTape() as tape:
+        tape.watch(v)
+        y = f(v)
+        expected_grads = tape.gradient(y, v)
+      expected_grad_grads = tape2.gradient(expected_grads, v)
+
+    root = tracking.AutoTrackable()
+    root.f = f
+    loaded = cycle(
+        root, cycles, options=save_options.SaveOptions(
+            experimental_custom_gradients=True))
+    with backprop.GradientTape() as tape2:
+      with backprop.GradientTape() as tape:
+        tape.watch(v)
+        y = loaded.f(v)
+        grads = tape.gradient(y, v)
+      grad_grads = tape2.gradient(grads, v)
+
+    self.assertAllClose(grads, expected_grads)
+    self.assertAllClose(grad_grads, expected_grad_grads)
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
@@ -2045,7 +2093,6 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         [[-3.]],
         f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
-
 
   def test_object_with_extra_dependencies(self):
 
@@ -2118,7 +2165,6 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
   # allocations at a lower level.
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def test_functions_cleaned(self):
-    self.skipTest("TODO(b/175152958): The test is leaking function definitions")
     if sys.version_info.major < 3:
       self.skipTest("Not working in Python 2")
     root = module.Module()
@@ -2157,6 +2203,24 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "requires inputs/variables"):
       imported = load.load_partial(save_dir, ["root.adder"])
 
+  def test_load_partial_checkpoint(self):
+    root = module.Module()
+    root.variables_holder = module.Module()
+    root.variables_holder.v = variables.Variable(1.)
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+    loaded = module.Module()
+    loaded.v = variables.Variable(2.)
+
+    load.load_partial(
+        save_dir, {"root": loaded},
+        options=load_options.LoadOptions(allow_partial_checkpoint=True))
+    self.assertEqual(loaded.variables_holder.v.numpy(), 1)
+    with self.assertRaisesRegex(AssertionError, "were not bound"):
+      load.load_partial(save_dir, {"root": loaded})
+
   def test_call_untraced_function_raises_error(self):
 
     class ObjWithFunction(module.Module):
@@ -2178,6 +2242,179 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, "Found zero restored functions for caller function."):
       loaded.foo(1)
+
+  def test_restored_function_execute_eagerly(self):
+    try:
+      def_function.run_functions_eagerly(True)
+
+      class MyModel(module.Module):
+
+        @def_function.function
+        def __call__(self, inputs, training=False):
+          return math_ops.multiply(0.5, inputs)
+
+      model = MyModel()
+      model.__call__.get_concrete_function(
+          tensor_spec.TensorSpec([None], dtypes.float32))
+      loaded = cycle(model, 1)
+
+      # Calling the function should not throw an exception.
+      loaded(constant_op.constant([1.0]))
+
+    finally:
+      def_function.run_functions_eagerly(False)
+
+  def test_restored_model_concrete_function_is_deterministic(self):
+    previous_concrete_function = None
+    for _ in range(100):
+
+      class MyModel(module.Module):
+
+        @def_function.function
+        def __call__(self, x):
+          return x * constant_op.constant(3.0)
+
+      model = MyModel()
+      model(array_ops.ones((7, 3), dtype=dtypes.float32))
+      model.__call__.get_concrete_function(
+          tensor_spec.TensorSpec([None, 3], dtypes.float32))
+      loaded = cycle(model, 1)
+
+      # Ensure the newly loaded concrete function is the same as the previous
+      # after a cycle of serialization / deserialization.
+      new_concrete_function = loaded.__call__.get_concrete_function(
+          tensor_spec.TensorSpec([None, 3], dtypes.float32))
+      if previous_concrete_function is not None:
+        self.assertEqual(previous_concrete_function.pretty_printed_signature(),
+                         new_concrete_function.pretty_printed_signature())
+
+      previous_concrete_function = new_concrete_function
+
+  def test_garbage_collection_capturable_resource_doesnt_raise_exception(self):
+    model = module.Module()
+    model.mapping = lookup_ops.StaticHashTable(
+        lookup_ops.KeyValueTensorInitializer(
+            keys=math_ops.range(1, dtype=dtypes.int32),
+            values=["foo"]),
+        "default_value")
+    loaded = cycle(model, 1)
+    del model
+    del loaded
+    # Exceptions raised during garbage collection are simply printed to stderr
+    # and ignored, and we have no way to access them. We'll capture stdout
+    # during the garbage collection process and inspect to see if any
+    # exceptions were raised.
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+      gc.collect()
+    if "Exception ignored in" in stderr.getvalue():
+      raise Exception(stderr.getvalue())
+
+
+class DeferredInitModuleVariablesTest(test.TestCase):
+
+  def test_deferred_init_module_variables(self):
+    """Defer initialization of variables in a module to the load stage."""
+
+    class MyModule(module.Module):
+
+      def __init__(self, size):
+        super().__init__()
+        self.size = size
+        # variable initialized by a Tensor-compatible value
+        self.w1 = variables.Variable(
+            constant_op.constant(1., shape=[self.size]), trainable=False)
+        # variable initialized by a function
+        self.w2 = variables.Variable(
+            lambda: constant_op.constant(2., shape=[self.size]))
+        # variable instantiated lazily in call()
+        self.w3 = None
+
+      def call(self):
+        if self.w3 is None:
+          self.w3 = variables.Variable(
+              constant_op.constant(3., shape=[self.size]))
+        for w in (self.w1, self.w2, self.w3):
+          w.assign_add(constant_op.constant(1., shape=[self.size]))
+        return self.w1, self.w2, self.w3
+
+    def export_initializer(initial_value, export_dir):
+
+      class Initializer(module.Module):
+
+        @def_function.function(input_signature=[])
+        def call(self):
+          if callable(initial_value):
+            return initial_value()
+          return initial_value
+
+      save.save(Initializer(), export_dir)
+
+    def create_and_save_module(weight_size):
+
+      initial_values = {}  # For storing initial_value of created variables
+
+      def variable_creator(next_creator, **kwargs):
+        variable = next_creator(**kwargs)
+        variable_name = variable.name
+        if ":" in variable_name:
+          variable_name = variable_name[:variable_name.index(":")]
+        initial_values[variable_name] = kwargs["initial_value"]
+        return variable
+
+      export_dir = self.create_tempdir().full_path
+
+      with ops.Graph().as_default():
+        with variable_scope.variable_creator_scope(variable_creator):
+          exported = MyModule(weight_size)
+          exported.call = def_function.function(input_signature=[])(
+              exported.call)
+
+          module_dir = f"{export_dir}/module"
+          file_io.recursive_create_dir(module_dir)
+          save.save_and_return_nodes(
+              exported, module_dir, experimental_skip_checkpoint=True)
+
+      # Save the initializer of the created variables.
+      for variable_name, initial_value in initial_values.items():
+        export_initializer(initial_value,
+                           f"{export_dir}/variables/{variable_name}")
+
+      return export_dir
+
+    def load_and_run_module(export_dir, weight_size):
+
+      # pylint: disable=unused-argument
+      def layer_variable_creator(next_creator, **kwargs):
+        variable_dir = f"{export_dir}/variables/{kwargs['name']}"
+        initializer = load.load(variable_dir)
+        kwargs["initial_value"] = initializer.call
+        variable = resource_variable_ops.ResourceVariable(**kwargs)
+        return variable
+
+      with ops.Graph().as_default():
+        with variable_scope.variable_creator_scope(layer_variable_creator):
+          imported = load.load(
+              f"{export_dir}/module",
+              options=load_options.LoadOptions(
+                  experimental_skip_checkpoint=True))
+        outputs = imported.call()
+
+        with self.cached_session() as sess:
+          variables.global_variables_initializer().run()
+          # Check if variables work as expected across multiple iterations.
+          for i in range(3):
+            np_outputs = sess.run(outputs)
+            for j, np_output in enumerate(np_outputs):
+              self.assertAllClose(np_output, np.full(weight_size, i + j + 2))
+
+    # The size of the serialized content (both module and variables) stays
+    # small even with a large weight_size as the initial values are not stored
+    # in checkpoints.
+    weight_size = 1024
+    export_dir = create_and_save_module(weight_size)
+    load_and_run_module(export_dir, weight_size)
+
 
 if __name__ == "__main__":
   test.main()

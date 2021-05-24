@@ -24,12 +24,6 @@ set +u
 # From this point on, logs can be publicly available
 set -x
 
-function setup_pip () {
-  python3.7 -m virtualenv tf_build_env --system-site-packages
-  source tf_build_env/bin/activate
-  install_macos_pip_deps virtualenv
-}
-
 function run_build () {
   # Run configure.
   export TF_NEED_CUDA=0
@@ -62,5 +56,6 @@ function run_build () {
 source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
-setup_pip
+# Set up and install MacOS pip dependencies.
+setup_venv_macos python3.7
 run_build

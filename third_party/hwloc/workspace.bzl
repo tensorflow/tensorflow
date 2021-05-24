@@ -1,9 +1,9 @@
 """loads the hwloc library, used by TF."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "hwloc",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/download.open-mpi.org/release/hwloc/v2.0/hwloc-2.0.3.tar.gz",

@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -99,6 +99,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )

@@ -121,7 +121,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   @property
   def trt_incompatible_op(self):
-    return math_ops.erf
+    return math_ops.erfc
 
   @property
   def precision_modes(self):
@@ -163,6 +163,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     self._trt_test_params = None
     self._disable_non_trt_optimizers = False
     self._use_implicit_batch = True
+    self._profile_strategy = "Unknown"
 
   def setUp(self):
     """Setup method."""
@@ -264,8 +265,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def DisableNonTrtOptimizers(self):
     self._disable_non_trt_optimizers = True
 
-  def DisableImplicitBatchMode(self):
+  def SetDynamicShapeModeAndProfileStrategy(self, profile_strategy="Range"):
     self._use_implicit_batch = False
+    self._profile_strategy = profile_strategy
 
   def GetParams(self):
     """Returns a TfTrtIntegrationTestParams for the test."""
@@ -453,11 +455,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if run_params.is_v2:
       converter_v2 = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
-          conversion_params=conversion_params)
+          conversion_params=conversion_params,
+          use_dynamic_shape=not self._use_implicit_batch,
+          dynamic_shape_profile_strategy=self._profile_strategy)
       if self._disable_non_trt_optimizers:
         converter_v2._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
-      if not self._use_implicit_batch:
-        converter_v2._test_only_use_implicit_batch = False  # pylint: disable=protected-access
       return converter_v2
 
     converter_v1 = trt_convert.TrtGraphConverter(
@@ -501,6 +503,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     converter.save(trt_saved_model_dir)
     return trt_saved_model_dir
 
+  def _ShouldConverterBuild(self, run_params):
+    return True
+
   def _GetInferGraph(self, run_params, saved_model_dir):
     """Return trt converted graphdef."""
     conversion_params = self.GetConversionParams(run_params)
@@ -510,7 +515,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                       conversion_params)
     converter.convert()
 
-    if not self._use_implicit_batch:
+    if not self._use_implicit_batch and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")
 
       def _BuildInputFn():
@@ -827,7 +832,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_engine = not node.attr["static_engine"].b
         self.assertNotEmpty(segment_funcdef_name, node.name)
         self.assertIn(function_name, functions)
-        if not IsQuantizationWithCalibration and not is_dynamic_engine:
+        if (not IsQuantizationWithCalibration(run_params) and
+            not is_dynamic_engine):
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(
             self._RemoveGraphSequenceNumber(node.name), expected_engines)
@@ -865,9 +871,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       return
     expected_engines = self.ExpectedEnginesToBuild(run_params)
     all_op_names = [node.name for node in gdef_to_verify.node]
-    trt_op_names = [
-        node.name for node in gdef_to_verify.node if node.op == "TRTEngineOp"
-    ]
+    trt_op_names = []
     for func in gdef_to_verify.library.function:
       if not re.search(r"TRTEngineOp_\d+_\d+_native_segment",
                        func.signature.name):
@@ -875,6 +879,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           all_op_names.append(node.name)
           if node.op == "TRTEngineOp":
             trt_op_names.append(node.name)
+            if not self._use_implicit_batch:
+              self.assertEqual(
+                  self._ToString(node.attr["profile_strategy"].s).lower(),
+                  self._profile_strategy.lower())
 
     all_op_names = self._Canonicalize(all_op_names)
     trt_op_names = self._RemoveGraphSequenceNumber(

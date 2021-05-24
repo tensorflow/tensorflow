@@ -133,6 +133,165 @@ MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized) {
   }
 }
 
+void WriteDataToTexture2D(id<MTLTexture> texture, id<MTLDevice> device, const void* data) {
+  const int pixel_size = PixelFormatToSizeInBytes(texture.pixelFormat);
+  id<MTLBuffer> temp_buffer = [device newBufferWithBytes:data
+                                                  length:pixel_size * texture.width * texture.height
+                                                 options:MTLResourceStorageModeShared];
+
+  id<MTLCommandQueue> command_queue = [device newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+
+  id<MTLBlitCommandEncoder> blitCommandEncoder = [command_buffer blitCommandEncoder];
+  [blitCommandEncoder copyFromBuffer:temp_buffer
+                        sourceOffset:0
+                   sourceBytesPerRow:pixel_size * texture.width
+                 sourceBytesPerImage:pixel_size * texture.width * texture.height
+                          sourceSize:MTLSizeMake(texture.width, texture.height, 1)
+                           toTexture:texture
+                    destinationSlice:0
+                    destinationLevel:0
+                   destinationOrigin:MTLOriginMake(0, 0, 0)];
+  [blitCommandEncoder endEncoding];
+
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+}
+
+void ReadDataFromTexture2D(id<MTLTexture> texture, id<MTLDevice> device, void* data) {
+  const int pixel_size = PixelFormatToSizeInBytes(texture.pixelFormat);
+  const int buffer_size = pixel_size * texture.width * texture.height;
+  id<MTLBuffer> temp_buffer = [device newBufferWithLength:buffer_size
+                                                  options:MTLResourceStorageModeShared];
+
+  id<MTLCommandQueue> command_queue = [device newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+
+  id<MTLBlitCommandEncoder> blitCommandEncoder = [command_buffer blitCommandEncoder];
+  [blitCommandEncoder copyFromTexture:texture
+                          sourceSlice:0
+                          sourceLevel:0
+                         sourceOrigin:MTLOriginMake(0, 0, 0)
+                           sourceSize:MTLSizeMake(texture.width, texture.height, 1)
+                             toBuffer:temp_buffer
+                    destinationOffset:0
+               destinationBytesPerRow:pixel_size * texture.width
+             destinationBytesPerImage:pixel_size * texture.width * texture.height];
+  [blitCommandEncoder endEncoding];
+
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+  std::memcpy(data, [temp_buffer contents], buffer_size);
+}
+
+void WriteDataToTexture3D(id<MTLTexture> texture, id<MTLDevice> device, const void* data) {
+  const int pixel_size = PixelFormatToSizeInBytes(texture.pixelFormat);
+  id<MTLBuffer> temp_buffer =
+      [device newBufferWithBytes:data
+                          length:pixel_size * texture.width * texture.height * texture.depth
+                         options:MTLResourceStorageModeShared];
+
+  id<MTLCommandQueue> command_queue = [device newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+
+  id<MTLBlitCommandEncoder> blitCommandEncoder = [command_buffer blitCommandEncoder];
+  [blitCommandEncoder copyFromBuffer:temp_buffer
+                        sourceOffset:0
+                   sourceBytesPerRow:pixel_size * texture.width
+                 sourceBytesPerImage:pixel_size * texture.width * texture.height
+                          sourceSize:MTLSizeMake(texture.width, texture.height, texture.depth)
+                           toTexture:texture
+                    destinationSlice:0
+                    destinationLevel:0
+                   destinationOrigin:MTLOriginMake(0, 0, 0)];
+  [blitCommandEncoder endEncoding];
+
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+}
+
+void ReadDataFromTexture3D(id<MTLTexture> texture, id<MTLDevice> device, void* data) {
+  const int pixel_size = PixelFormatToSizeInBytes(texture.pixelFormat);
+  const int buffer_size = pixel_size * texture.width * texture.height * texture.depth;
+  id<MTLBuffer> temp_buffer = [device newBufferWithLength:buffer_size
+                                                  options:MTLResourceStorageModeShared];
+
+  id<MTLCommandQueue> command_queue = [device newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+
+  id<MTLBlitCommandEncoder> blitCommandEncoder = [command_buffer blitCommandEncoder];
+  [blitCommandEncoder copyFromTexture:texture
+                          sourceSlice:0
+                          sourceLevel:0
+                         sourceOrigin:MTLOriginMake(0, 0, 0)
+                           sourceSize:MTLSizeMake(texture.width, texture.height, texture.depth)
+                             toBuffer:temp_buffer
+                    destinationOffset:0
+               destinationBytesPerRow:pixel_size * texture.width
+             destinationBytesPerImage:pixel_size * texture.width * texture.height];
+  [blitCommandEncoder endEncoding];
+
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+  std::memcpy(data, [temp_buffer contents], buffer_size);
+}
+
+void WriteDataToTexture2DArray(id<MTLTexture> texture, id<MTLDevice> device, const void* data) {
+  const int pixel_size = PixelFormatToSizeInBytes(texture.pixelFormat);
+  id<MTLBuffer> temp_buffer =
+      [device newBufferWithBytes:data
+                          length:pixel_size * texture.width * texture.height * texture.arrayLength
+                         options:MTLResourceStorageModeShared];
+
+  id<MTLCommandQueue> command_queue = [device newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+
+  for (int i = 0; i < texture.arrayLength; ++i) {
+    id<MTLBlitCommandEncoder> blitCommandEncoder = [command_buffer blitCommandEncoder];
+    [blitCommandEncoder copyFromBuffer:temp_buffer
+                          sourceOffset:pixel_size * texture.width * texture.height * i
+                     sourceBytesPerRow:pixel_size * texture.width
+                   sourceBytesPerImage:pixel_size * texture.width * texture.height
+                            sourceSize:MTLSizeMake(texture.width, texture.height, 1)
+                             toTexture:texture
+                      destinationSlice:i
+                      destinationLevel:0
+                     destinationOrigin:MTLOriginMake(0, 0, 0)];
+    [blitCommandEncoder endEncoding];
+  }
+
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+}
+
+void ReadDataFromTexture2DArray(id<MTLTexture> texture, id<MTLDevice> device, void* data) {
+  const int pixel_size = PixelFormatToSizeInBytes(texture.pixelFormat);
+  const int buffer_size = pixel_size * texture.width * texture.height * texture.arrayLength;
+  id<MTLBuffer> temp_buffer = [device newBufferWithLength:buffer_size
+                                                  options:MTLResourceStorageModeShared];
+
+  id<MTLCommandQueue> command_queue = [device newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+
+  for (int i = 0; i < texture.arrayLength; ++i) {
+    id<MTLBlitCommandEncoder> blitCommandEncoder = [command_buffer blitCommandEncoder];
+    [blitCommandEncoder copyFromTexture:texture
+                            sourceSlice:i
+                            sourceLevel:0
+                           sourceOrigin:MTLOriginMake(0, 0, 0)
+                             sourceSize:MTLSizeMake(texture.width, texture.height, 1)
+                               toBuffer:temp_buffer
+                      destinationOffset:pixel_size * texture.width * texture.height * i
+                 destinationBytesPerRow:pixel_size * texture.width
+               destinationBytesPerImage:pixel_size * texture.width * texture.height];
+    [blitCommandEncoder endEncoding];
+  }
+
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+  std::memcpy(data, [temp_buffer contents], buffer_size);
+}
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

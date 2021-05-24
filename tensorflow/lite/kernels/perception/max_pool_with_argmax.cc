@@ -244,6 +244,11 @@ TfLiteRegistration* RegisterMaxPoolWithArgmax() {
   return &r;
 }
 
+// Alias for selective build.
+TfLiteRegistration* Register_MAX_POOL_WITH_ARGMAX() {
+  return RegisterMaxPoolWithArgmax();
+}
+
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite

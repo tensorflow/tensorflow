@@ -27,8 +27,8 @@ constexpr char kAutotune[] = "autotune";
 // This optimization does the following:
 //
 // 1. Adds `prefetch(AUTOTUNE)` after all asynchronous tf.data transformations
-// (e.g. parallel map, parallel interleave, and map + batch) if they are not
-// followed by a `prefetch` yet.
+// (e.g. parallel batch, parallel map, parallel interleave, and map + batch) if
+// they are not followed by a `prefetch` yet.
 //
 // 2. If there exists any `prefetch(buffer_size=N)` for `N>=0`,  it will replace
 // the transformation with autotunable version of `prefetch` which uses N as

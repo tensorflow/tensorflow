@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
@@ -56,8 +56,9 @@ class EagerOpRewriteTest : public ::testing::Test {
   // Validates the result of MKL eager rewrite.
   void CheckRewrite(EagerOperation* orig_op, string expected_op_name) {
     std::unique_ptr<tensorflow::EagerOperation> out_op;
-    EagerOpRewriteRegistry::Global()->RunRewrite(
-        EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op);
+    EXPECT_EQ(Status::OK(),
+              EagerOpRewriteRegistry::Global()->RunRewrite(
+                  EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op));
 
     // actual_op_name is same as original op name if rewrite didn't happen.
     string actual_op_name = orig_op->Name();
@@ -129,6 +130,7 @@ REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Negative);
                                "AvgPool3D",                      \
                                "AvgPool3DGrad",                  \
                                "BatchMatMul",                    \
+                               "Einsum",                         \
                                "FusedBatchNorm",                 \
                                "FusedBatchNormV2",               \
                                "FusedBatchNormV3",               \
@@ -159,13 +161,14 @@ REGISTER_TEST_ALL_TYPES(MostOps_Positive);
   }
 #define DATA_FORMAT "NCDHW"
 REGISTER_TEST_ALL_TYPES(FusedBatchNormV3_5D_Negative_1);
+#undef DATA_FORMAT
 
 #define DATA_FORMAT "NDHWC"
 REGISTER_TEST_ALL_TYPES(FusedBatchNormV3_5D_Negative_2);
-
 #undef DATA_FORMAT
+
 #undef REGISTER_TEST
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

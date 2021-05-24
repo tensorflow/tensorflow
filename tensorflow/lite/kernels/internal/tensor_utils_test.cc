@@ -1182,16 +1182,13 @@ TEST(uKernels, DotprodMatrixBatchVectorMultiplyAccumulateTest) {
               testing::ElementsAre(10416, 26288, 8490, 23312, 18276, 70756,
                                    37416, 60916));
 
-  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(4, 32, 3),
-              testing::ElementsAre(10416, 26288, 8490, 23312, 18276, 70756,
-                                   37416, 60916, 52080, 142704, 55878, 125712));
-
-  ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(8, 1024, 3),
-              testing::ElementsAreArray(
-                  {841094,  853168,  866642,  840286,  860760,  862754,
-                   843678,  872552,  1724476, 1769072, 1747588, 1738844,
-                   1758240, 1742916, 1761612, 1755808, 2506896, 2564262,
-                   2629188, 2515824, 2598390, 2569236, 2537352, 2645118}));
+  std::vector<float> results = TestDotprodMatrixBatchVectorMultiply(32, 512, 5);
+  EXPECT_NEAR(415566, results[0], 0.0001);
+  EXPECT_NEAR(880736, results[50], 0.0001);
+  EXPECT_NEAR(1312062, results[72], 0.0001);
+  EXPECT_NEAR(1750384, results[100], 0.0001);
+  EXPECT_NEAR(1776224, results[120], 0.0001);
+  EXPECT_NEAR(2101860, results[150], 0.0001);
 
   const bool kNegative = true;
   ASSERT_THAT(TestDotprodMatrixBatchVectorMultiply(4, 64, 1, kNegative),
@@ -1216,18 +1213,15 @@ TEST(uKernels, PerChannelDotprodMatrixBatchVectorMultiplyAccumulateTest) {
               testing::ElementsAre(10416 / 2, 26288, 8490 / 2, 23312, 18276 / 2,
                                    70756, 37416 / 2, 60916));
 
-  ASSERT_THAT(TestPerChannelDotprodMatrixBatchVectorMultiply(4, 32, 3),
-              testing::ElementsAre(10416 / 2, 26288, 8490 / 2, 23312, 18276 / 2,
-                                   70756, 37416 / 2, 60916, 52080 / 2, 142704,
-                                   55878 / 2, 125712));
-
-  ASSERT_THAT(
-      TestPerChannelDotprodMatrixBatchVectorMultiply(8, 1024, 3),
-      testing::ElementsAreArray(
-          {841094 / 2,  853168,  866642 / 2,  840286,  860760 / 2,  862754,
-           843678 / 2,  872552,  1724476 / 2, 1769072, 1747588 / 2, 1738844,
-           1758240 / 2, 1742916, 1761612 / 2, 1755808, 2506896 / 2, 2564262,
-           2629188 / 2, 2515824, 2598390 / 2, 2569236, 2537352 / 2, 2645118}));
+  std::vector<float> results =
+      TestPerChannelDotprodMatrixBatchVectorMultiply(32, 512, 5);
+  EXPECT_NEAR(207783, results[0], 0.0001);
+  EXPECT_NEAR(411552, results[13], 0.0001);
+  EXPECT_NEAR(835936, results[39], 0.0001);
+  EXPECT_NEAR(440368, results[50], 0.0001);
+  EXPECT_NEAR(875192, results[100], 0.0001);
+  EXPECT_NEAR(1775536, results[123], 0.0001);
+  EXPECT_NEAR(1050930, results[150], 0.0001);
 }
 
 TEST(uKernels, DotprodMatrixBatchFourVectorMultiplyAccumulateDotprodTest) {

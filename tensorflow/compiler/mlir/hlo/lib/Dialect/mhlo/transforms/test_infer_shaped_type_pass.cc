@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/MLIRContext.h"
@@ -73,7 +74,8 @@ struct ReifyReturnTypeShapesPattern : public RewritePattern {
         op->getOperand(0).getDefiningOp());
     if (!defining_op) return failure();
     SmallVector<Value, 4> return_shapes;
-    if (failed(defining_op.reifyReturnTypeShapes(rewriter, return_shapes))) {
+    if (failed(defining_op.reifyReturnTypeShapes(
+            rewriter, defining_op->getOperands(), return_shapes))) {
       return failure();
     }
     rewriter.replaceOp(op, return_shapes);
@@ -83,11 +85,14 @@ struct ReifyReturnTypeShapesPattern : public RewritePattern {
 
 struct TestInferShapedTypeMethodsPass
     : public PassWrapper<TestInferShapedTypeMethodsPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<shape::ShapeDialect>();
+  }
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
     patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

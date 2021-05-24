@@ -1137,7 +1137,7 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
                                    data_format_str);
   }
   const int rank =
-      (data_format_str == "NDHWC" or data_format_str == "NCDHW") ? 5 : 4;
+      (data_format_str == "NDHWC" || data_format_str == "NCDHW") ? 5 : 4;
   ShapeHandle x;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &x));
 
@@ -1210,7 +1210,7 @@ Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
                                    data_format_str);
   }
   const int rank =
-      (data_format_str == "NDHWC" or data_format_str == "NCDHW") ? 5 : 4;
+      (data_format_str == "NDHWC" || data_format_str == "NCDHW") ? 5 : 4;
   ShapeHandle y_backprop;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &y_backprop));
   ShapeHandle x;
@@ -2450,6 +2450,51 @@ Status SparseReduceShapeFn(InferenceContext* c) {
     return Status::OK();
   }
   return UnknownShape(c);
+}
+
+Status QuantizedConv2DShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+  c->set_output(1, c->Scalar());
+  c->set_output(2, c->Scalar());
+  return Status::OK();
+}
+
+Status QuantizedAvgPoolShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::AvgPoolShape(c));
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+  c->set_output(1, c->Scalar());
+  c->set_output(2, c->Scalar());
+  return Status::OK();
+}
+
+Status QuantizeV2Shape(InferenceContext* c) {
+  int axis = -1;
+  Status s = c->GetAttr("axis", &axis);
+  if (!s.ok() && s.code() != error::NOT_FOUND) {
+    return s;
+  }
+  const int minmax_rank = (axis == -1) ? 0 : 1;
+  TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+  ShapeHandle minmax;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
+  if (axis != -1) {
+    ShapeHandle input;
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
+    DimensionHandle depth;
+    TF_RETURN_IF_ERROR(
+        c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
+  }
+  c->set_output(1, minmax);
+  c->set_output(2, minmax);
+  return Status::OK();
 }
 
 }  // namespace shape_inference

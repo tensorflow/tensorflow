@@ -56,6 +56,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
+#include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -84,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
+#include "tensorflow/compiler/xla/service/eigh_expander.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -102,12 +105,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
+#include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
@@ -182,6 +187,19 @@ CpuCompiler::CpuCompiler() {
     return true;
   }();
   (void)llvm_initialized;
+}
+
+StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+    const CompileOptions& options) {
+  for (const std::vector<se::StreamExecutor*>& se_vector : stream_execs) {
+    if (se_vector.size() != 1) {
+      return Unimplemented(
+          "Model partitioning not implemented for the CPU compiler");
+    }
+  }
+  return LLVMCompiler::Compile(std::move(module_group), stream_execs, options);
 }
 
 /* static */ void CpuCompiler::InitializeLLVMTarget() {
@@ -272,6 +290,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
                                             /*allow_mixed_precision=*/false);
 
   pipeline.AddPass<OperandUpcaster>();
+  pipeline.AddPass<ResultCaster>();
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
@@ -289,7 +308,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
+  pipeline.AddPass<EighExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
+  pipeline.AddPass<AllGatherDecomposer>();
+  pipeline.AddPass<AllToAllDecomposer>();
 
   // Inline computations with a single call site.
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
@@ -643,7 +665,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       absl::StrCat("Compiling module ", module->name());
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
-  TF_RET_CHECK(stream_exec != nullptr);
   absl::call_once(llvm_command_line_options_initialized,
                   &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
 

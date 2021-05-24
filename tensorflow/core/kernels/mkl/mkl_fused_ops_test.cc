@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
@@ -320,7 +320,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     if (!NativeFormatEnabled()) {
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-      for (const Tensor& arg : args)
+      for (int i = 0; i < num_args; ++i)
         AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     }
     TF_ASSERT_OK(RunOpKernel());
@@ -641,7 +641,7 @@ class MklFusedDepthwiseConv2DOpTest : public OpsTestBase {
     if (!NativeFormatEnabled()) {
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-      for (const Tensor& arg : args)
+      for (int i = 0; i < num_args; ++i)
         AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     }
     TF_ASSERT_OK(RunOpKernel());
@@ -888,11 +888,7 @@ TYPED_TEST_P(FusedPadConvOpTest, PaddingConvTestNchw) { this->Run("NCHW"); }
 REGISTER_TYPED_TEST_SUITE_P(FusedPadConvOpTest, PaddingConvTest,
                             PaddingConvTestNchw);
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 using FusedPadConvDataTypes = ::testing::Types<float, bfloat16>;
-#else
-using FusedPadConvDataTypes = ::testing::Types<float>;
-#endif
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedPadConvOpTest, FusedPadConvDataTypes);
 
 class FilterCacheTest : public OpsTestBase {
@@ -1038,7 +1034,7 @@ class MklFusedMatMulOpTest : public OpsTestBase {
       // Add MKL meta input for input, filter and bias.
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
       AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-      for (const Tensor& arg : args)
+      for (int i = 0; i < num_args; ++i)
         AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     }
 
@@ -1215,7 +1211,7 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,
 // This test is flaky for --config=mkl_threadpool (The supposedly cached op
 // sometimes took longer than even 0.9 * original_time.)
 // TODO(intel-tf): Re-enable the test for --config=mkl_threadpool.
-#ifndef ENABLE_MKLDNN_THREADPOOL
+#ifdef ENABLE_ONEDNN_OPENMP
 // Test the performance of MklFusedMatMul weight cache.
 // For the first time B matrix will be reordered and cached which will be
 // used for subsequent runs
@@ -1318,7 +1314,7 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
     test::ExpectTensorNear<float>(expected, output_new, 1e-5);
   }
 }
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // ENABLE_ONEDNN_OPENMP
 
 class BiasCacheTest : public OpsTestBase {
  public:
@@ -1341,19 +1337,9 @@ class BiasCacheTest : public OpsTestBase {
             .Input(FakeInput(DT_FLOAT))  // Max-filter
             .Input(FakeInput(DT_FLOAT))  // Min-output
             .Input(FakeInput(DT_FLOAT))  // Max-output
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
             .Attr("Tinput", DT_QUINT8)
             .Attr("Tfilter", DT_QINT8)
             .Attr("Tbias", DT_FLOAT)
-            .Attr("T", DT_QINT8)
             .Attr("out_type", DT_QUINT8)
             .Attr("data_format", "NHWC")
             .Attr("strides", {1, stride, stride, 1})
@@ -1374,23 +1360,12 @@ class BiasCacheTest : public OpsTestBase {
     AddInputFromArray<float>(max_filter.shape(), max_filter.flat<float>());
     AddInputFromArray<float>(min_output.shape(), min_output.flat<float>());
     AddInputFromArray<float>(max_output.shape(), max_output.flat<float>());
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
 
     TF_ASSERT_OK(RunOpKernel());
 
     // Compare outputs to expected results
     const Tensor& output = *GetOutput(0);
-    const Tensor& output_layout = *GetOutput(3);
-    CommonTestUtilities<quint8> conv_comp;
-    conv_comp.ConvertAndCompareIntegral(dtype, output, output_layout, expected);
+    test::ExpectTensorEqual<quint8>(expected, output);
 
     // TODO(wenxi): For now, we rely on internal performance tests to
     // determine if filter data is being cached and reused.
@@ -1400,10 +1375,7 @@ class BiasCacheTest : public OpsTestBase {
 
     // Compare output to expected results
     const Tensor& output_new = *GetOutput(0);
-    const Tensor& output_layout_new = *GetOutput(3);
-    CommonTestUtilities<quint8> conv_comp_new;
-    conv_comp_new.ConvertAndCompareIntegral(dtype, output_new,
-                                            output_layout_new, expected);
+    test::ExpectTensorEqual<quint8>(expected, output_new);
   }
 };
 
@@ -1693,4 +1665,4 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklPadWithFusedConv2DOpTest,
                                MklPadWithFusedConv2DDataTypes);
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

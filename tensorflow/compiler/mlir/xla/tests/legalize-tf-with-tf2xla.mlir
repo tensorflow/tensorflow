@@ -296,11 +296,11 @@ func @multinomial(%arg0: tensor<2x4xf32>, %seed: tensor<i32>, %seed2: tensor<i32
 }
 
 // CHECK-LABEL: @set_dynamic_dimension_size
-func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<4xf32> {
+func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
   %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
   // CHECK: mhlo.set_dimension_size
-  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: @erfinv
@@ -337,6 +337,26 @@ func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor
   // CHECK-NOT: XlaSvd
   %s, %u, %v = "tf.XlaSvd"(%arg0) {max_iter = 1, epsilon = 1.0E-09 : f32, precision_config = ""} : (tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>)
   return %s, %u, %v : tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>
+}
+
+func @abs_impl(%arg0: f32) -> f32 {
+ return %arg0 : f32
+}
+
+// This test verifies that legalization for ops with symbol reference attribute
+// is not attempted even if they are in allow-list. XLA op kernels for these
+// ops compile the function to HLO on-demand which won't work in our case as it
+// may contain unsupported ops in the fallback nor we provide XlaCompiler to
+// the kernel. Using a allowed op Abs to protect against future addition of a
+// new op with a symbol ref.
+
+// CHECK-LABEL: @abs_with_symbol_ref
+func @abs_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: tf.Abs
+  // expected-remark@+1 {{ops with symbol references are not supported}}
+  %0 = "tf.Abs"(%arg0) {_body = @abs_impl} : (tensor<2xf32>) -> tensor<2xf32>
+
+  return %0 : tensor<2xf32>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

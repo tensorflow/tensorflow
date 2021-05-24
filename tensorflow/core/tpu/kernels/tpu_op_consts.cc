@@ -20,5 +20,6 @@ const char kCompilationCacheResourceName[] = "tpu_compilation_cache";
 const char kCompiledProtoCacheResourceName[] = "tpu_proto_cache";
 const char kCompilationCacheUnloaderResourceName[] =
     "tpu_compilation_cache_unloader";
+const char kFingerprintLookupResourceName[] = "tpu_fingerprint_lookup";
 }  // namespace tpu
 }  // namespace tensorflow

@@ -110,7 +110,8 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
 
   return kernel->Run(/*step_container=*/nullptr, args, /*outputs=*/nullptr,
                      /*cancellation_manager=*/nullptr,
-                     /*remote_func_params=*/absl::nullopt);
+                     /*remote_func_params=*/absl::nullopt,
+                     /*stack_trace=*/absl::nullopt);
 }
 
 void RemoteCopyNode::StartSend() {
@@ -195,7 +196,8 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
   std::vector<EagerKernelRet> rets;
   TF_RETURN_IF_ERROR(kernel->Run(/*step_container*/ nullptr, args, &rets,
                                  captured_state_->recv_cancellation(),
-                                 /*remote_func_params=*/absl::nullopt));
+                                 /*remote_func_params=*/absl::nullopt,
+                                 /*stack_trace=*/absl::nullopt));
   outputs->clear();
   for (const auto& ret : rets) {
     if (ret.index() == 0) {
@@ -423,8 +425,6 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
-  // TODO(b/110044833): this is currently slow, but can be fixed by making
-  // tensor handles aware of more than one device.
   // TODO(fishx): Make CopyToDevice asynchronous.
   Tensor tensor;
   s = src_->CopyToDevice(*ctx_, ctx_->HostCPU(), &tensor);

@@ -4,7 +4,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_protos_all")
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 VECTORIZER_DEPS = [
@@ -52,6 +52,7 @@ cc_library(
 
 tf_cc_test(
     name = "vectorizer_registry_test",
+    size = "small",
     srcs = ["vectorizer_registry_test.cc"],
     tags = [
         "manual",  # TODO(b/159771496)

@@ -81,6 +81,11 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
       return errors::Internal("Dim out of bounds");
     }
   }
+
+  Status SummarizeValue(std::string& summary) const override {
+    summary = std::string("TestValue");
+    return Status::OK();
+  }
 };
 
 TEST(CustomDevice, TestTensorHandle) {
@@ -105,7 +110,8 @@ TEST(CustomDevice, TestTensorHandle) {
   s = tensor->NumElements(&num_elements);
   ASSERT_TRUE(s.ok()) << s.error_message();
   EXPECT_EQ(3, num_elements);
-  EXPECT_EQ("TensorHandle(shape=[3], dtype=DT_FLOAT)", tensor->DebugString());
+  EXPECT_EQ("TensorHandle(TestValue, shape=[3], dtype=DT_FLOAT)",
+            tensor->DebugString());
 }
 
 TEST(CustomDevice, TestResourcePlacement) {
@@ -138,43 +144,47 @@ TEST(CustomDevice, TestResourcePlacement) {
   TF_ASSERT_OK(op.Reset("AssignVariableOp", ""));
   TF_ASSERT_OK(op.AddInput(physical_resource_tensor.get()));
   TF_ASSERT_OK(op.AddInput(custom_float_tensor.get()));
-  VariantDevice placed_device(kVariantDeviceNull);
-  TF_ASSERT_OK(MaybePinToCustomDevice(&placed_device, op));
+  CustomDevice* placed_device = nullptr;
+  TF_ASSERT_OK(ctx->GetCustomDeviceOpHandler().MaybePinToCustomDevice(
+      &placed_device, op));
   // MaybePinToCustomDevice has no opinion about ops which have physical
   // resource-dtype inputs. They'll get placed on physical devices.
-  EXPECT_EQ(kVariantDeviceNull, placed_device);
+  EXPECT_EQ(nullptr, placed_device);
 
   op.Clear();
   TF_ASSERT_OK(op.Reset("AssignVariableOp", custom_device_name.c_str()));
   TF_ASSERT_OK(op.AddInput(physical_resource_tensor.get()));
   TF_ASSERT_OK(op.AddInput(custom_float_tensor.get()));
-  placed_device = kVariantDeviceNull;
-  TF_ASSERT_OK(MaybePinToCustomDevice(&placed_device, op));
+  placed_device = nullptr;
+  TF_ASSERT_OK(ctx->GetCustomDeviceOpHandler().MaybePinToCustomDevice(
+      &placed_device, op));
   // Explicit placement onto a custom device also doesn't trigger custom device
   // placement if there's a physical device resource input.
-  EXPECT_EQ(kVariantDeviceNull, placed_device);
+  EXPECT_EQ(nullptr, placed_device);
 
   op.Clear();
   TF_ASSERT_OK(
       op.Reset("Identity", "/job:localhost/replica:0/task:0/device:CPU:0"));
   TF_ASSERT_OK(op.AddInput(physical_float_tensor.get()));
-  placed_device = kVariantDeviceNull;
-  TF_ASSERT_OK(MaybePinToCustomDevice(&placed_device, op));
+  placed_device = nullptr;
+  TF_ASSERT_OK(ctx->GetCustomDeviceOpHandler().MaybePinToCustomDevice(
+      &placed_device, op));
   // Explicit placements typically override input-based placement onto a custom
   // device.
-  EXPECT_EQ(kVariantDeviceNull, placed_device);
+  EXPECT_EQ(nullptr, placed_device);
 
   op.Clear();
   TF_ASSERT_OK(op.Reset("AssignVariableOp",
                         "/job:localhost/replica:0/task:0/device:CPU:0"));
   TF_ASSERT_OK(op.AddInput(custom_resource_tensor.get()));
   TF_ASSERT_OK(op.AddInput(physical_float_tensor.get()));
-  placed_device = kVariantDeviceNull;
-  TF_ASSERT_OK(MaybePinToCustomDevice(&placed_device, op));
+  placed_device = nullptr;
+  TF_ASSERT_OK(ctx->GetCustomDeviceOpHandler().MaybePinToCustomDevice(
+      &placed_device, op));
   // Even with an explicit physical device placement, custom device resource
   // inputs place the op on the custom device.
-  ASSERT_TRUE(absl::holds_alternative<CustomDevice*>(placed_device));
-  EXPECT_EQ(&custom_device, absl::get<CustomDevice*>(placed_device));
+  ASSERT_NE(placed_device, nullptr);
+  EXPECT_EQ(&custom_device, placed_device);
 }
 
 }  // namespace

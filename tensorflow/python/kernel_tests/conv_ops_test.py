@@ -834,17 +834,26 @@ class Conv2DTest(test.TestCase):
           results[0], results[1], atol=tol_to_use, rtol=tol_to_use)
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_cuda_only
   def testConv2DGroupConvFwd(self):
-    for data_format in ["NHWC", "NCHW"]:
+    if test.is_gpu_available(cuda_only=True):
+      data_formats = ["NHWC", "NCHW"]
+    # TODO(Intel-tf) Remove this check once group conv is implemented in the
+    # oneDNN based conv2d op kernel.
+    elif (not test_util.IsMklEnabled() and
+          os.getenv("TF_ENABLE_ONEDNN_OPTS", "0") == "0"):
+      data_formats = ["NHWC"]
+    else:
+      data_formats = []
+    for data_format in data_formats:
       for dilation in [1, 2]:
         for stride in [1, 2]:
-          self._VerifyGroupConvFwd([10, 32, 32, 16], [3, 3, 4, 8],
-                                   dilations=[dilation, dilation],
-                                   strides=[stride, stride],
-                                   padding="SAME",
-                                   data_format=data_format,
-                                   dtype=dtypes.float32)
+          for filter_dims in [[3, 3, 4, 8], [1, 1, 2, 16]]:
+            self._VerifyGroupConvFwd([10, 32, 32, 16], filter_dims,
+                                     dilations=[dilation, dilation],
+                                     strides=[stride, stride],
+                                     padding="SAME",
+                                     data_format=data_format,
+                                     dtype=dtypes.float32)
 
   @test_util.deprecated_graph_mode_only
   @test_util.run_cuda_only
@@ -2787,7 +2796,7 @@ class SeparableConv2DTest(test.TestCase):
       expected: An array containing the expected operation outputs.
       data_format: string data format for input tensor.
     """
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session():
       t1 = self._InitValues(tensor_in_sizes)
       f1 = self._InitValues(depthwise_filter_in_sizes)
       f1.set_shape(depthwise_filter_in_sizes)
@@ -2899,7 +2908,7 @@ class SeparableConv2DTest(test.TestCase):
     depthwise_filter_in_sizes = [2, 2, 2, 3]
     pointwise_filter_in_sizes = [1, 1, 6, 7]
     padding = [[0, 0], [1, 2], [3, 4], [0, 0]]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # Compute the 'expected' values by manually padding before calling
       # separable_conv2d
       t1 = self._InitValues(tensor_in_sizes)

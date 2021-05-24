@@ -115,10 +115,6 @@ GpuContext* ExtractGpuContext(GpuExecutor* cuda_exec) {
   return cuda_exec->gpu_context();
 }
 
-GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {
-  return static_cast<GpuExecutor*>(stream_exec->implementation());
-}
-
 GpuExecutor::~GpuExecutor() {
   CHECK(kernel_to_gpu_binary_.empty()) << "GpuExecutor has live kernels.";
   CHECK(gpu_binary_to_module_.empty()) << "GpuExecutor has loaded modules.";

@@ -14,16 +14,12 @@
 # ==============================================================================
 """Tests for Keras metrics functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 
 from absl.testing import parameterized
 import numpy as np
-from scipy.special import expit
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import combinations
@@ -31,10 +27,12 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -734,11 +732,15 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     s_obj = metrics.SensitivityAtSpecificity(
-        0.4, num_thresholds=100, name='sensitivity_at_specificity_1')
+        0.4,
+        num_thresholds=100,
+        class_id=12,
+        name='sensitivity_at_specificity_1')
     self.assertEqual(s_obj.name, 'sensitivity_at_specificity_1')
     self.assertLen(s_obj.variables, 4)
     self.assertEqual(s_obj.specificity, 0.4)
     self.assertEqual(s_obj.num_thresholds, 100)
+    self.assertEqual(s_obj.class_id, 12)
 
     # Check save and restore config
     s_obj2 = metrics.SensitivityAtSpecificity.from_config(s_obj.get_config())
@@ -746,6 +748,7 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
     self.assertLen(s_obj2.variables, 4)
     self.assertEqual(s_obj2.specificity, 0.4)
     self.assertEqual(s_obj2.num_thresholds, 100)
+    self.assertEqual(s_obj.class_id, 12)
 
   def test_value_is_idempotent(self):
     s_obj = metrics.SensitivityAtSpecificity(0.7)
@@ -802,6 +805,17 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
     result = s_obj(y_true, y_pred)
     self.assertAlmostEqual(0.6, self.evaluate(result))
 
+  def test_unweighted_class_id(self):
+    s_obj = metrics.SpecificityAtSensitivity(0.4, class_id=2)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+    label_values = [0, 0, 0, 0, 0, 2, 2, 2, 2, 2]
+
+    y_pred = array_ops.transpose([pred_values] * 3)
+    y_true = array_ops.one_hot(label_values, depth=3)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.6, self.evaluate(result))
+
   @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
   def test_weighted(self, label_dtype):
     s_obj = metrics.SensitivityAtSpecificity(0.4)
@@ -831,11 +845,15 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     s_obj = metrics.SpecificityAtSensitivity(
-        0.4, num_thresholds=100, name='specificity_at_sensitivity_1')
+        0.4,
+        num_thresholds=100,
+        class_id=12,
+        name='specificity_at_sensitivity_1')
     self.assertEqual(s_obj.name, 'specificity_at_sensitivity_1')
     self.assertLen(s_obj.variables, 4)
     self.assertEqual(s_obj.sensitivity, 0.4)
     self.assertEqual(s_obj.num_thresholds, 100)
+    self.assertEqual(s_obj.class_id, 12)
 
     # Check save and restore config
     s_obj2 = metrics.SpecificityAtSensitivity.from_config(s_obj.get_config())
@@ -843,6 +861,7 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
     self.assertLen(s_obj2.variables, 4)
     self.assertEqual(s_obj2.sensitivity, 0.4)
     self.assertEqual(s_obj2.num_thresholds, 100)
+    self.assertEqual(s_obj.class_id, 12)
 
   def test_value_is_idempotent(self):
     s_obj = metrics.SpecificityAtSensitivity(0.7)
@@ -898,6 +917,17 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
     result = s_obj(y_true, y_pred)
     self.assertAlmostEqual(0.6, self.evaluate(result))
 
+  def test_unweighted_class_id(self):
+    s_obj = metrics.SpecificityAtSensitivity(0.4, class_id=2)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+    label_values = [0, 0, 0, 0, 0, 2, 2, 2, 2, 2]
+
+    y_pred = array_ops.transpose([pred_values] * 3)
+    y_true = array_ops.one_hot(label_values, depth=3)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.6, self.evaluate(result))
+
   @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
   def test_weighted(self, label_dtype):
     s_obj = metrics.SpecificityAtSensitivity(0.4)
@@ -927,11 +957,12 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     s_obj = metrics.PrecisionAtRecall(
-        0.4, num_thresholds=100, name='precision_at_recall_1')
+        0.4, num_thresholds=100, class_id=12, name='precision_at_recall_1')
     self.assertEqual(s_obj.name, 'precision_at_recall_1')
     self.assertLen(s_obj.variables, 4)
     self.assertEqual(s_obj.recall, 0.4)
     self.assertEqual(s_obj.num_thresholds, 100)
+    self.assertEqual(s_obj.class_id, 12)
 
     # Check save and restore config
     s_obj2 = metrics.PrecisionAtRecall.from_config(s_obj.get_config())
@@ -939,6 +970,7 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
     self.assertLen(s_obj2.variables, 4)
     self.assertEqual(s_obj2.recall, 0.4)
     self.assertEqual(s_obj2.num_thresholds, 100)
+    self.assertEqual(s_obj.class_id, 12)
 
   def test_value_is_idempotent(self):
     s_obj = metrics.PrecisionAtRecall(0.7)
@@ -996,6 +1028,18 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
     # For 0.2 < decision threshold < 0.5.
     self.assertAlmostEqual(0.75, self.evaluate(result))
 
+  def test_unweighted_class_id(self):
+    s_obj = metrics.PrecisionAtRecall(0.6, class_id=2)
+    pred_values = [0.0, 0.1, 0.2, 0.5, 0.6, 0.2, 0.5, 0.6, 0.8, 0.9]
+    label_values = [0, 0, 0, 0, 0, 2, 2, 2, 2, 2]
+
+    y_pred = array_ops.transpose([pred_values] * 3)
+    y_true = array_ops.one_hot(label_values, depth=3)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # For 0.2 < decision threshold < 0.5.
+    self.assertAlmostEqual(0.75, self.evaluate(result))
+
   @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
   def test_weighted(self, label_dtype):
     s_obj = metrics.PrecisionAtRecall(7.0/8)
@@ -1026,11 +1070,12 @@ class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     s_obj = metrics.RecallAtPrecision(
-        0.4, num_thresholds=100, name='recall_at_precision_1')
+        0.4, num_thresholds=100, class_id=12, name='recall_at_precision_1')
     self.assertEqual(s_obj.name, 'recall_at_precision_1')
     self.assertLen(s_obj.variables, 4)
     self.assertEqual(s_obj.precision, 0.4)
     self.assertEqual(s_obj.num_thresholds, 100)
+    self.assertEqual(s_obj.class_id, 12)
 
     # Check save and restore config
     s_obj2 = metrics.RecallAtPrecision.from_config(s_obj.get_config())
@@ -1038,6 +1083,7 @@ class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(s_obj2.variables, 4)
     self.assertEqual(s_obj2.precision, 0.4)
     self.assertEqual(s_obj2.num_thresholds, 100)
+    self.assertEqual(s_obj.class_id, 12)
 
   def test_value_is_idempotent(self):
     s_obj = metrics.RecallAtPrecision(0.7)
@@ -1096,6 +1142,21 @@ class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
     # recalls:    [1,   1,    5/6, 5/6, 5/6, 5/6, 2/3, 1/2, 1/2, 1/3, 1/6, 1/6].
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # The precision 5/7 can be reached at thresholds 00.3<=t<0.35.
+    self.assertAlmostEqual(5. / 6, self.evaluate(result))
+
+  def test_unweighted_class_id(self):
+    s_obj = metrics.RecallAtPrecision(2.0 / 3, class_id=2)
+    pred_values = [
+        0.05, 0.1, 0.2, 0.3, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.9, 0.95
+    ]
+    label_values = [0, 2, 0, 0, 0, 2, 2, 0, 2, 2, 0, 2]
+    # precisions: [1/2, 6/11, 1/2, 5/9, 5/8, 5/7, 2/3, 3/5, 3/5, 2/3, 1/2, 1].
+    # recalls:    [1,   1,    5/6, 5/6, 5/6, 5/6, 2/3, 1/2, 1/2, 1/3, 1/6, 1/6].
+    y_pred = array_ops.transpose([pred_values] * 3)
+    y_true = array_ops.one_hot(label_values, depth=3)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
     # The precision 5/7 can be reached at thresholds 00.3<=t<0.35.
@@ -1414,16 +1475,20 @@ class AUCTest(test.TestCase, parameterized.TestCase):
       metrics.AUC(summation_method='Invalid')
 
   def test_extra_dims(self):
-    self.setup()
-    logits = expit(-np.array([[[-10., 10., -10.], [10., -10., 10.]],
-                              [[-12., 12., -12.], [12., -12., 12.]]],
-                             dtype=np.float32))
-    labels = np.array([[[1, 0, 0], [1, 0, 0]],
-                       [[0, 1, 1], [0, 1, 1]]], dtype=np.int64)
-    auc_obj = metrics.AUC()
-    self.evaluate(variables.variables_initializer(auc_obj.variables))
-    result = auc_obj(labels, logits)
-    self.assertEqual(self.evaluate(result), 0.5)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.setup()
+      logits = special.expit(-np.array([[[-10., 10., -10.], [10., -10., 10.]],
+                                        [[-12., 12., -12.], [12., -12., 12.]]],
+                                       dtype=np.float32))
+      labels = np.array([[[1, 0, 0], [1, 0, 0]], [[0, 1, 1], [0, 1, 1]]],
+                        dtype=np.int64)
+      auc_obj = metrics.AUC()
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      result = auc_obj(labels, logits)
+      self.assertEqual(self.evaluate(result), 0.5)
+    except ImportError as e:
+      tf_logging.warning('Cannot test special functions: %s' % str(e))
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1701,15 +1766,130 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
         metrics=[metrics.AUC(multi_label=True)]
     )
 
-  def test_reset_states(self):
+  def test_reset_state(self):
     with self.test_session():
       self.setup()
       auc_obj = metrics.AUC(num_thresholds=self.num_thresholds,
                             multi_label=True)
       self.evaluate(variables.variables_initializer(auc_obj.variables))
       auc_obj(self.y_true_good, self.y_pred)
-      auc_obj.reset_states()
+      auc_obj.reset_state()
       self.assertAllEqual(auc_obj.true_positives, np.zeros((5, 2)))
+
+
+@combinations.generate(combinations.combine(mode=['eager']))
+class ThresholdsTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters([
+      metrics.TruePositives(),
+      metrics.TrueNegatives(),
+      metrics.FalsePositives(),
+      metrics.FalseNegatives(),
+      metrics.Precision(),
+      metrics.Recall(),
+      metrics.SensitivityAtSpecificity(0.5),
+      metrics.SpecificityAtSensitivity(0.5),
+      metrics.PrecisionAtRecall(0.5),
+      metrics.RecallAtPrecision(0.5),
+      metrics.AUC()])
+  def test_with_default_thresholds(self, metric_obj):
+    # By default, the thresholds will be evenly distributed if there are more
+    # than 1. In case there is only 1 thresholds, then we expect
+    # _thresholds_distributed_evenly to be false.
+    expected = len(metric_obj.thresholds) > 1
+    self.assertEqual(metric_obj._thresholds_distributed_evenly, expected)
+
+  @parameterized.parameters([
+      metrics.TruePositives,
+      metrics.TrueNegatives,
+      metrics.FalsePositives,
+      metrics.FalseNegatives,
+      metrics.Precision,
+      metrics.Recall])
+  def test_with_manual_thresholds(self, metric_cls):
+    even_thresholds = [0.0, 0.25, 0.5, 0.75, 1.0]
+    metric_obj = metric_cls(thresholds=even_thresholds)
+    self.assertTrue(metric_obj._thresholds_distributed_evenly)
+
+    uneven_thresholds = [0.0, 0.45, 1.0]
+    metric_obj = metric_cls(thresholds=uneven_thresholds)
+    self.assertFalse(metric_obj._thresholds_distributed_evenly)
+
+  def test_manual_thresholds_auc(self):
+    # The AUC metric handles manual thresholds input differently (it will add
+    # 0.0 and 1.0 for user).
+    even_thresholds = [0.25, 0.5, 0.75]
+    auc = metrics.AUC(thresholds=even_thresholds)
+    self.assertTrue(auc._thresholds_distributed_evenly)
+
+    # Test for save model
+    cloned = metrics.AUC.from_config(auc.get_config())
+    self.assertTrue(cloned._thresholds_distributed_evenly)
+
+    uneven_thresholds = [0.45,]
+    auc = metrics.AUC(thresholds=uneven_thresholds)
+    self.assertFalse(auc._thresholds_distributed_evenly)
+
+    cloned = metrics.AUC.from_config(auc.get_config())
+    self.assertFalse(cloned._thresholds_distributed_evenly)
+
+  @parameterized.parameters([
+      metrics.TruePositives,
+      metrics.TrueNegatives,
+      metrics.FalsePositives,
+      metrics.FalseNegatives,
+      metrics.Precision,
+      metrics.Recall,
+      metrics.AUC])
+  def test_even_thresholds_correctness(self, metric_cls):
+    with compat.forward_compatibility_horizon(2021, 6, 9):
+      # make sure the old approach and new approach produce same result
+      # for evenly distributed thresholds
+      y_true = np.random.randint(2, size=(10,))
+      y_pred = np.random.rand(10)
+
+      even_thresholds = [0.0, 0.25, 0.5, 0.75, 1.0]
+      if metric_cls == metrics.AUC:
+        even_thresholds = even_thresholds[1:-1]
+      metric_obj = metric_cls(thresholds=even_thresholds)
+      metric_obj.update_state(y_true, y_pred)
+      result1 = metric_obj.result()
+
+      metric_obj2 = metric_cls(thresholds=even_thresholds)
+      # Force to use the old approach
+      metric_obj2._thresholds_distributed_evenly = False
+      metric_obj2.update_state(y_true, y_pred)
+      result2 = metric_obj2.result()
+
+      self.assertAllClose(result1, result2)
+      # Check all the variables are the same, eg tp, tn, fp, fn
+      for v1, v2 in zip(metric_obj.variables, metric_obj2.variables):
+        self.assertAllClose(v1, v2)
+
+  @parameterized.parameters([
+      metrics.SensitivityAtSpecificity,
+      metrics.SpecificityAtSensitivity,
+      metrics.PrecisionAtRecall,
+      metrics.RecallAtPrecision])
+  def test_even_thresholds_correctness_2(self, metric_cls):
+    with compat.forward_compatibility_horizon(2021, 6, 9):
+      y_true = np.random.randint(2, size=(10,))
+      y_pred = np.random.rand(10)
+
+      metric_obj = metric_cls(0.5)
+      metric_obj.update_state(y_true, y_pred)
+      result1 = metric_obj.result()
+
+      metric_obj2 = metric_cls(0.5)
+      # Force to use the old approach
+      metric_obj2._thresholds_distributed_evenly = False
+      metric_obj2.update_state(y_true, y_pred)
+      result2 = metric_obj2.result()
+
+      self.assertAllClose(result1, result2)
+      # Check all the variables are the same, eg tp, tn, fp, fn
+      for v1, v2 in zip(metric_obj.variables, metric_obj2.variables):
+        self.assertAllClose(v1, v2)
 
 
 if __name__ == '__main__':

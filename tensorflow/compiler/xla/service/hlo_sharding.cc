@@ -67,7 +67,9 @@ HloSharding HloSharding::PartialTile(
 HloSharding HloSharding::PartialTile(
     const Array<int64>& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
-  if (tile_assignment_last_dim_replicate.num_dimensions() == 1) {
+  if (tile_assignment_last_dim_replicate.num_dimensions() == 1 ||
+      tile_assignment_last_dim_replicate.dimensions().back() ==
+          tile_assignment_last_dim_replicate.num_elements()) {
     return Replicate(metadata);
   }
   if (tile_assignment_last_dim_replicate.dimensions().back() == 1) {
@@ -95,9 +97,10 @@ HloSharding HloSharding::PartialTile(
       });
   Array<int64> sorted_tile(tile_assignment_last_dim_replicate.dimensions());
   sorted_tile.Each([&](absl::Span<const int64> indices, int64* device) {
-    auto begin = sorted_groups[get_group_id(indices)].begin();
+    const int64 group_id = get_group_id(indices);
+    auto begin = sorted_groups[group_id].begin();
     *device = *begin;
-    sorted_groups[get_group_id(indices)].erase(begin);
+    sorted_groups[group_id].erase(begin);
   });
   return HloSharding(sorted_tile, /*replicate_on_last_tile_dim=*/true,
                      metadata);
@@ -426,20 +429,19 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   // unique.
   Status status = Status::OK();
   absl::flat_hash_set<int64> seen_cores;
-  tile_assignment_.Each(
-      [&](absl::Span<const int64> indices, int32 core) {
-        // Don't overwrite a bad status, so we report the first error.
-        if (status.ok()) {
-          if (core >= num_devices) {
-            status = tensorflow::errors::InvalidArgument(StrCat(
-                "core ", core, " > ", num_devices, " in tile assignment"));
-          } else if (seen_cores.contains(core)) {
-            status = tensorflow::errors::InvalidArgument(
-                StrCat("core ", core, " is not unique in tile assignment"));
-          }
-          seen_cores.insert(core);
-        }
-      });
+  tile_assignment_.Each([&](absl::Span<const int64> indices, int32 core) {
+    // Don't overwrite a bad status, so we report the first error.
+    if (status.ok()) {
+      if (core >= num_devices) {
+        status = tensorflow::errors::InvalidArgument(
+            StrCat("core ", core, " > ", num_devices, " in tile assignment"));
+      } else if (seen_cores.contains(core)) {
+        status = tensorflow::errors::InvalidArgument(
+            StrCat("core ", core, " is not unique in tile assignment"));
+      }
+      seen_cores.insert(core);
+    }
+  });
   if (!status.ok()) {
     return status;
   }
@@ -655,6 +657,34 @@ absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
     }
   }
   return tuple_elements_.front();
+}
+
+HloSharding HloSharding::WithMetadata(absl::Span<const OpMetadata> metadata,
+                                      bool overwrite) const {
+  auto assign_metadata = [&](HloSharding& sharding) {
+    if (sharding.metadata_.empty() || overwrite) {
+      sharding.metadata_.assign(metadata.begin(), metadata.end());
+    }
+  };
+
+  HloSharding sharding = *this;
+  if (sharding.IsTuple()) {
+    for (HloSharding& sub_sharding : sharding.tuple_elements()) {
+      assign_metadata(sub_sharding);
+    }
+  } else {
+    assign_metadata(sharding);
+  }
+  return sharding;
+}
+
+HloSharding HloSharding::WithoutMetadata() const {
+  HloSharding sharding = *this;
+  sharding.metadata_.clear();
+  for (HloSharding& sub_sharding : sharding.tuple_elements()) {
+    sub_sharding.metadata_.clear();
+  }
+  return sharding;
 }
 
 size_t HloSharding::Hash() const {

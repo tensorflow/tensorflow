@@ -4,15 +4,18 @@
 // CHECK-LABEL: func @min_op
 func @min_op(%lhs: memref<4x3x2x1xf32>, %rhs: memref<4x3x2x1xf32>,
              %result: memref<4x3x2x1xf32>) -> () {
+  // CHECK-NEXT: %[[NAN:.*]] = constant 0x7FC00000 : f32
   // CHECK-NEXT: affine.for %[[I:.*]] = 0 to 4 {
   // CHECK-NEXT:   affine.for %[[J:.*]] = 0 to 3 {
   // CHECK-NEXT:     affine.for %[[K:.*]] = 0 to 2 {
   // CHECK-NEXT:       affine.for %[[L:.*]] = 0 to 1 {
   // CHECK-NEXT:         %[[LHS:.*]] = affine.load %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
   // CHECK-NEXT:         %[[RHS:.*]] = affine.load %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
-  // CHECK-NEXT:         %[[MIN_PREDICATE:.*]] = cmpf "olt", %[[LHS]], %[[RHS]] : f32
+  // CHECK-NEXT:         %[[MIN_PREDICATE:.*]] = cmpf olt, %[[LHS]], %[[RHS]] : f32
   // CHECK-NEXT:         %[[MIN:.*]] = select %[[MIN_PREDICATE]], %[[LHS]], %[[RHS]] : f32
-  // CHECK-NEXT:         affine.store %[[MIN]], %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
+  // CHECK-NEXT:         %[[ISNAN:.*]] = cmpf uno, %[[LHS]], %[[RHS]] : f32
+  // CHECK-NEXT:         %[[MIN_NONAN:.*]] = select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
+  // CHECK-NEXT:         affine.store %[[MIN_NONAN]], %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
   // CHECK:      return
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"} :
       (memref<4x3x2x1xf32>, memref<4x3x2x1xf32>, memref<4x3x2x1xf32>) -> ()
@@ -69,8 +72,11 @@ func @int_div_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
 // CHECK-LABEL: func @float_max_op
 func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
-  // CHECK: %[[CHECK:.*]] = cmpf "ogt", %[[ONE:.*]], %[[TWO:.*]] : f32
-  // CHECK: select %[[CHECK]], %[[ONE]], %[[TWO]] : f32
+  // CHECK: %[[NAN:.*]] = constant 0x7FC00000 : f32
+  // CHECK: %[[CMP:.*]] = cmpf ogt, %[[LHS_IN:.*]], %[[RHS_IN:.*]] : f32
+  // CHECK: %[[MIN:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
+  // CHECK: %[[ISNAN:.*]] = cmpf uno, %[[LHS_IN]], %[[RHS_IN]] : f32
+  // CHECK: select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
   return
@@ -79,7 +85,7 @@ func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
 // CHECK-LABEL: func @int_max_op
 func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
-  // CHECK: %[[CHECK:.*]] = cmpi "sgt", %[[ONE:.*]], %[[TWO:.*]] : i32
+  // CHECK: %[[CHECK:.*]] = cmpi sgt, %[[ONE:.*]], %[[TWO:.*]] : i32
   // CHECK: select %[[CHECK]], %[[ONE]], %[[TWO]] : i32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
@@ -90,8 +96,11 @@ func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
 // CHECK-LABEL: func @float_min_op
 func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
-  // CHECK: %[[CHECK:.*]] = cmpf "olt", %[[ONE:.*]], %[[TWO:.*]] : f32
-  // CHECK: select %[[CHECK]], %[[ONE]], %[[TWO]] : f32
+  // CHECK: %[[NAN:.*]] = constant 0x7FC00000 : f32
+  // CHECK: %[[CMP:.*]] = cmpf olt, %[[LHS_IN:.*]], %[[RHS_IN:.*]] : f32
+  // CHECK: %[[MIN:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
+  // CHECK: %[[ISNAN:.*]] = cmpf uno, %[[LHS_IN]], %[[RHS_IN]] : f32
+  // CHECK: select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
   return
@@ -100,7 +109,7 @@ func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
 // CHECK-LABEL: func @int_min_op
 func @int_min_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
-  // CHECK: %[[CHECK:.*]] = cmpi "slt", %[[ONE:.*]], %[[TWO:.*]] : i32
+  // CHECK: %[[CHECK:.*]] = cmpi slt, %[[ONE:.*]], %[[TWO:.*]] : i32
   // CHECK: select %[[CHECK]], %[[ONE]], %[[TWO]] : i32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
@@ -192,4 +201,40 @@ func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
      } :
     (memref<7x3xi32>, memref<3x4xi32>, memref<7x4xi32>) -> ()
   return
+}
+
+// CHECK-LABEL: func @concatenate
+func @concatenate(%arg0: memref<1x1xf32>, %arg1: memref<1x100xf32>, %arg2: memref<1x200xf32>, %arg3: memref<1x301xf32>) {
+    // CHECK-NEXT:    %[[RESULT:.*]] = memref.alloc() : memref<1x301xf32>
+    // CHECK-NEXT:    affine.for %[[X:.*]] = 0 to 1 {
+    // CHECK-NEXT:      affine.for %[[Y:.*]] = 0 to 1 {
+    // CHECK-NEXT:        %[[LOAD:.*]] = affine.load %arg0[%[[X]], %[[Y]]] : memref<1x1xf32>
+    // CHECK-NEXT:        affine.store %[[LOAD]], %[[RESULT]][%[[X]], %[[Y]]] : memref<1x301xf32>
+    // CHECK-NEXT:      }
+    // CHECK-NEXT:    }
+    // CHECK-NEXT:    affine.for %[[X:.*]] = 0 to 1 {
+    // CHECK-NEXT:      affine.for %[[Y:.*]] = 1 to 101 {
+    // CHECK-NEXT:        %[[LOAD:.*]] = affine.load %arg1[%[[X]], %[[Y]] - 1] : memref<1x100xf32>
+    // CHECK-NEXT:        affine.store %[[LOAD]], %[[RESULT]][%[[X]], %[[Y]]] : memref<1x301xf32>
+    // CHECK-NEXT:      }
+    // CHECK-NEXT:    }
+    // CHECK-NEXT:    affine.for %[[X:.*]] = 0 to 1 {
+    // CHECK-NEXT:      affine.for %[[Y:.*]] = 101 to 301 {
+    // CHECK-NEXT:        %[[LOAD:.*]] = affine.load %arg2[%[[X]], %[[Y]] - 101] : memref<1x200xf32>
+    // CHECK-NEXT:        affine.store %[[LOAD]], %[[RESULT]][%[[X]], %[[Y]]] : memref<1x301xf32>
+    %0 = memref.alloc() : memref<1x301xf32>
+    "lmhlo.concatenate"(%arg0, %arg1, %arg2, %0) {dimension = 1 : i64} : (memref<1x1xf32>, memref<1x100xf32>, memref<1x200xf32>, memref<1x301xf32>) -> ()
+    "lmhlo.copy"(%0, %arg3) : (memref<1x301xf32>, memref<1x301xf32>) -> ()
+    "lmhlo.terminator"() : () -> ()
+}
+
+// TODO(pashu123): Extend Support for dynamic dimensions.
+// CHECK-LABEL: func @concatenate_dynamic
+func @concatenate_dynamic(%arg0: memref<1x?xf32>, %arg1: memref<1x?xf32>, %arg2: memref<1x?xf32>) {
+    // CHECK: "lmhlo.concatenate"
+    %cst_1 = constant 1 : index
+    %0 = memref.alloc(%cst_1) : memref<1x?xf32>
+    "lmhlo.concatenate"(%arg0, %arg1, %0) {dimension = 1 : i64} : (memref<1x?xf32>,  memref<1x?xf32>, memref<1x?xf32>) -> ()
+    "lmhlo.copy"(%0, %arg2) : (memref<1x?xf32>, memref<1x?xf32>) -> ()
+    "lmhlo.terminator"() : () -> ()
 }

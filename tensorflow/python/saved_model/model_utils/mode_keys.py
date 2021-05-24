@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """Utils for managing different mode strings used by Keras and Estimator models.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.util.compat import collections_abc
 
@@ -107,3 +104,4 @@ class ModeKeyMap(collections_abc.Mapping):
 
   def __len__(self):
     return len(self._keys)
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/mode_keys.py)

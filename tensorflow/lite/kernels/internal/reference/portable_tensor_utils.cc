@@ -715,9 +715,9 @@ void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
   }
 }
 
-void PortableMeanStddevNormalization(const float* input_vector,
-                                     float* output_vector, int v_size,
-                                     int n_batch) {
+void PortableMeanStddevNormalization(const float* __restrict__ input_vector,
+                                     float* __restrict__ output_vector,
+                                     int v_size, int n_batch) {
   for (int batch = 0; batch < n_batch; ++batch) {
     float sum = 0.0f;
     for (int i = 0; i < v_size; ++i) {

@@ -33,21 +33,21 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
 
   def testBroadcastToBasic(self):
     for dtype in [np.uint8, np.uint16, np.int8, np.int16, np.int32, np.int64]:
-      with self.session(use_gpu=True):
+      with self.session():
         x = np.array([1, 2, 3], dtype=dtype)
         v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
         v_np = np.broadcast_to(x, [3, 3])
         self.assertAllEqual(v_tf, v_np)
 
   def testBroadcastToString(self):
-    with self.session(use_gpu=True):
+    with self.session():
       x = np.array([b"1", b"2", b"3"])
       v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
       v_np = np.broadcast_to(x, [3, 3])
       self.assertAllEqual(v_tf, v_np)
 
   def testBroadcastToBool(self):
-    with self.session(use_gpu=True):
+    with self.session():
       x = np.array([True, False, True], dtype=np.bool)
       v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
       v_np = np.broadcast_to(x, [3, 3])
@@ -56,7 +56,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
   def testBroadcastToShape(self):
     for input_dim in range(1, 6):
       for output_dim in range(input_dim, 6):
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           input_shape = [2] * input_dim
           output_shape = [2] * output_dim
           x = np.array(np.random.randint(5, size=input_shape), dtype=np.int32)
@@ -67,7 +67,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
   def testBroadcastToShapeInnerDim(self):
     input_shape = [2, 1, 3]
     output_shape = [2, 5, 3]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = np.array(np.random.randint(5, size=input_shape), dtype=np.int32)
       v_tf = array_ops.broadcast_to(constant_op.constant(x), output_shape)
       v_np = np.broadcast_to(x, output_shape)
@@ -76,7 +76,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
   def testBroadcastToShapeLargerDim(self):
     input_shape = [2, 1, 3, 2, 2, 2]
     output_shape = [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 15, 3, 2, 2, 2]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = np.array(np.random.randint(5, size=input_shape), dtype=np.int32)
       v_tf = array_ops.broadcast_to(constant_op.constant(x), output_shape)
       v_np = np.broadcast_to(x, output_shape)
@@ -85,21 +85,21 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
   def testBroadcastToShapeLargerDim2(self):
     input_shape = [2, 1, 3, 2, 2, 2, 1, 1, 1]
     output_shape = [1, 1, 1, 2, 5, 3, 2, 2, 2, 3, 3, 3]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = np.array(np.random.randint(5, size=input_shape), dtype=np.int32)
       v_tf = array_ops.broadcast_to(constant_op.constant(x), output_shape)
       v_np = np.broadcast_to(x, output_shape)
       self.assertAllEqual(v_tf, v_np)
 
   def testBroadcastToScalar(self):
-    with self.session(use_gpu=True):
+    with self.session():
       x = np.array(1, dtype=np.int32)
       v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
       v_np = np.broadcast_to(x, [3, 3])
       self.assertAllEqual(v_tf, v_np)
 
   def testBroadcastScalarToNonScalar(self):
-    with self.session(use_gpu=True):
+    with self.session():
       x = np.array(1.0, dtype=np.float)
       v_tf = array_ops.broadcast_to(constant_op.constant(1.0), [2, 3, 4,
                                                                 1, 1, 1])
@@ -108,7 +108,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
 
   def testBroadcastToShapeTypeAndInference(self):
     for dtype in [dtypes.int32, dtypes.int64]:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         x = np.array([1, 2, 3])
         v_tf = array_ops.broadcast_to(
             constant_op.constant(x),

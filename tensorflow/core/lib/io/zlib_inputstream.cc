@@ -255,6 +255,9 @@ Status ZlibInputStream::Inflate() {
     }
     return errors::DataLoss(error_string);
   }
+  if (error == Z_STREAM_END && zlib_options_.window_bits == MAX_WBITS + 16) {
+    inflateReset(z_stream_def_->stream.get());
+  }
   return Status::OK();
 }
 

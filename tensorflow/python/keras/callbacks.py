@@ -14,34 +14,32 @@
 # ==============================================================================
 # pylint: disable=g-import-not-at-top
 # pylint: disable=g-classes-have-attributes
-"""Callbacks: utilities called at certain points during model training.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Callbacks: utilities called at certain points during model training."""
 
 import collections
 import copy
 import csv
-import io
 import json
 import os
 import re
+import sys
 import time
 
 import numpy as np
-import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.distribute import worker_training_state
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
@@ -201,7 +199,7 @@ def make_logs(model, logs, outputs, mode, prefix=''):
 
 
 @keras_export('keras.callbacks.CallbackList')
-class CallbackList(object):
+class CallbackList:
   """Container abstracting a list of callbacks."""
 
   def __init__(self,
@@ -236,6 +234,14 @@ class CallbackList(object):
 
     # Performance optimization: determines if batch hooks need to be called.
     # pylint: disable=protected-access
+    self._supports_tf_logs = all(
+        getattr(cb, '_supports_tf_logs', False) for cb in self.callbacks)
+    self._batch_hooks_support_tf_logs = all(
+        getattr(cb, '_supports_tf_logs', False)
+        for cb in self.callbacks
+        if cb._implements_train_batch_hooks() or cb
+        ._implements_test_batch_hooks() or cb._implements_predict_batch_hooks())
+
     self._should_call_train_batch_hooks = any(
         cb._implements_train_batch_hooks() for cb in self.callbacks)
     self._should_call_test_batch_hooks = any(
@@ -244,10 +250,12 @@ class CallbackList(object):
         cb._implements_predict_batch_hooks() for cb in self.callbacks)
     # pylint: enable=protected-access
 
+    self._disallow_batch_hooks_in_ps_strategy()
+
     # Performance check: Check batch hooks for slowness compared to batch time.
     # Only run check for custom callbacks (i.e. not present in this file).
-    self._check_timing = any([cbk.__class__.__name__ not in globals()
-                              for cbk in self.callbacks])
+    self._check_timing = any(
+        cbk.__class__.__name__ not in globals() for cbk in self.callbacks)
     self._num_batches_for_timing_check = 5
     self._hook_times = {}
     self._batch_start_time = None
@@ -271,6 +279,16 @@ class CallbackList(object):
     if self._history is None and add_history:
       self._history = History()
       self.callbacks.append(self._history)
+
+  def _process_logs(self, logs, is_batch_hook=False):
+    """Turns tensors into numpy arrays or Python scalars if necessary."""
+    if logs is None:
+      return {}
+    if self._supports_tf_logs:
+      return logs
+    if is_batch_hook and self._batch_hooks_support_tf_logs:
+      return logs
+    return tf_utils.sync_to_numpy_or_python_type(logs)
 
   def append(self, callback):
     self.callbacks.append(callback)
@@ -347,19 +365,13 @@ class CallbackList(object):
 
   def _call_batch_hook_helper(self, hook_name, batch, logs):
     """Helper function for `on_*_batch_*` methods."""
-    logs = logs or {}
-    numpy_logs = None
     if self._check_timing:
       start_time = time.time()
 
+    logs = self._process_logs(logs, is_batch_hook=True)
     for callback in self.callbacks:
       hook = getattr(callback, hook_name)
-      if getattr(callback, '_supports_tf_logs', False):
-        hook(batch, logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        hook(batch, numpy_logs)
+      hook(batch, logs)
 
     if self._check_timing:
       if hook_name not in self._hook_times:
@@ -402,15 +414,9 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_epoch_begin(epoch, logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_epoch_begin(epoch, numpy_logs)
+      callback.on_epoch_begin(epoch, logs)
 
   def on_epoch_end(self, epoch, logs=None):
     """Calls the `on_epoch_end` methods of its callbacks.
@@ -423,15 +429,9 @@ class CallbackList(object):
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_epoch_end(epoch, logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_epoch_end(epoch, numpy_logs)
+      callback.on_epoch_end(epoch, logs)
 
   def on_train_batch_begin(self, batch, logs=None):
     """Calls the `on_train_batch_begin` methods of its callbacks.
@@ -506,15 +506,9 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_train_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_train_begin(numpy_logs)
+      callback.on_train_begin(logs)
 
   def on_train_end(self, logs=None):
     """Calls the `on_train_end` methods of its callbacks.
@@ -523,15 +517,9 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_train_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_train_end(numpy_logs)
+      callback.on_train_end(logs)
 
   def on_test_begin(self, logs=None):
     """Calls the `on_test_begin` methods of its callbacks.
@@ -540,15 +528,9 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_test_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_test_begin(numpy_logs)
+      callback.on_test_begin(logs)
 
   def on_test_end(self, logs=None):
     """Calls the `on_test_end` methods of its callbacks.
@@ -557,15 +539,9 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_test_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_test_end(numpy_logs)
+      callback.on_test_end(logs)
 
   def on_predict_begin(self, logs=None):
     """Calls the 'on_predict_begin` methods of its callbacks.
@@ -574,15 +550,9 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_predict_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_predict_begin(numpy_logs)
+      callback.on_predict_begin(logs)
 
   def on_predict_end(self, logs=None):
     """Calls the `on_predict_end` methods of its callbacks.
@@ -591,23 +561,82 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_predict_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_predict_end(numpy_logs)
+      callback.on_predict_end(logs)
 
   def __iter__(self):
     return iter(self.callbacks)
 
+  def _disallow_batch_hooks_in_ps_strategy(self):
+    """Error out if batch-level callbacks are passed with PSStrategy."""
+    # pylint: disable=protected-access
+    strategy = ds_context.get_strategy()
+    if strategy._should_use_with_coordinator:
+      unsupported_callbacks = []
+      for cb in self.callbacks:
+        # These Callbacks can accept RemoteValues directly.
+        if getattr(cb, '_supports_tf_logs', False):
+          continue
+        if (cb._implements_train_batch_hooks() or
+            cb._implements_test_batch_hooks() or
+            cb._implements_predict_batch_hooks()):
+          unsupported_callbacks.append(cb)
+      if unsupported_callbacks:
+        raise ValueError('Batch-level `Callback`s are not supported with '
+                         '`ParameterServerStrategy`. Found unsupported '
+                         'callbacks: {}'.format(unsupported_callbacks))
+    # pylint: enable=protected-access
+
 
 @keras_export('keras.callbacks.Callback')
-class Callback(object):
+class Callback:
   """Abstract base class used to build new callbacks.
+
+  Callbacks can be passed to keras methods such as `fit`, `evaluate`, and
+  `predict` in order to hook into the various stages of the model training and
+  inference lifecycle.
+
+  To create a custom callback, subclass `keras.callbacks.Callback` and override
+  the method associated with the stage of interest. See
+  https://www.tensorflow.org/guide/keras/custom_callback for more information.
+
+  Example:
+
+  >>> training_finished = False
+  >>> class MyCallback(tf.keras.callbacks.Callback):
+  ...   def on_train_end(self, logs=None):
+  ...     global training_finished
+  ...     training_finished = True
+  >>> model = tf.keras.Sequential([tf.keras.layers.Dense(1, input_shape=(1,))])
+  >>> model.compile(loss='mean_squared_error')
+  >>> model.fit(tf.constant([[1.0]]), tf.constant([[1.0]]),
+  ...           callbacks=[MyCallback()])
+  >>> assert training_finished == True
+
+  If you want to use `Callback` objects in a custom training loop:
+
+  1. You should pack all your callbacks into a single `callbacks.CallbackList`
+     so they can all be called together.
+  2. You will need to manually call all the `on_*` methods at the apropriate
+     locations in your loop. Like this:
+
+     ```
+     callbacks =  tf.keras.callbacks.CallbackList([...])
+     callbacks.append(...)
+
+     callbacks.on_train_begin(...)
+     for epoch in range(EPOCHS):
+       callbacks.on_epoch_begin(epoch)
+       for i, data in dataset.enumerate():
+         callbacks.on_train_batch_begin(i)
+         batch_logs = model.train_step(data)
+         callbacks.on_train_batch_end(i, batch_logs)
+       epoch_logs = ...
+       callbacks.on_epoch_end(epoch, epoch_logs)
+     final_logs=...
+     callbacks.on_train_end(final_logs)
+     ```
 
   Attributes:
       params: Dict. Training parameters
@@ -670,7 +699,8 @@ class Callback(object):
         logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`. For training epoch, the values of the
-         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'acc': 0.7}`.
+         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'accuracy':
+           0.7}`.
     """
 
   @doc_controls.for_subclass_implementers
@@ -933,7 +963,7 @@ class TerminateOnNaN(Callback):
     logs = logs or {}
     loss = logs.get('loss')
     if loss is not None:
-      loss = tf_utils.to_numpy_or_python_type(loss)
+      loss = tf_utils.sync_to_numpy_or_python_type(loss)
       if np.isnan(loss) or np.isinf(loss):
         print('Batch %d: Invalid loss, terminating training' % (batch))
         self.model.stop_training = True
@@ -967,7 +997,7 @@ class ProgbarLogger(Callback):
     else:
       raise ValueError('Unknown `count_mode`: ' + str(count_mode))
     # Defaults to all Model's metrics except for loss.
-    self.stateful_metrics = set(stateful_metrics) if stateful_metrics else None
+    self.stateful_metrics = set(stateful_metrics) if stateful_metrics else set()
 
     self.seen = 0
     self.progbar = None
@@ -1044,11 +1074,17 @@ class ProgbarLogger(Callback):
     self.progbar = None
 
   def _maybe_init_progbar(self):
-    if self.stateful_metrics is None:
-      if self.model:
-        self.stateful_metrics = set(m.name for m in self.model.metrics)
-      else:
-        self.stateful_metrics = set()
+    """Instantiate a `Progbar` if not yet, and update the stateful metrics."""
+    # TODO(rchao): Legacy TF1 code path may use list for
+    # `self.stateful_metrics`. Remove "cast to set" when TF1 support is dropped.
+    self.stateful_metrics = set(self.stateful_metrics)
+
+    if self.model:
+      # Update the existing stateful metrics as `self.model.metrics` may contain
+      # updated metrics after `MetricsContainer` is built in the first train
+      # step.
+      self.stateful_metrics = self.stateful_metrics.union(
+          set(m.name for m in self.model.metrics))
 
     if self.progbar is None:
       self.progbar = Progbar(
@@ -1056,6 +1092,8 @@ class ProgbarLogger(Callback):
           verbose=self.verbose,
           stateful_metrics=self.stateful_metrics,
           unit_name='step' if self.use_steps else 'sample')
+
+    self.progbar._update_stateful_metrics(self.stateful_metrics)  # pylint: disable=protected-access
 
   def _implements_train_batch_hooks(self):
     return self._call_batch_hooks
@@ -1083,11 +1121,11 @@ class ProgbarLogger(Callback):
 
     if self.verbose == 1:
       # Only block async when verbose = 1.
-      logs = tf_utils.to_numpy_or_python_type(logs)
+      logs = tf_utils.sync_to_numpy_or_python_type(logs)
       self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
   def _finalize_progbar(self, logs, counter):
-    logs = tf_utils.to_numpy_or_python_type(logs or {})
+    logs = tf_utils.sync_to_numpy_or_python_type(logs or {})
     if self.target is None:
       if counter is not None:
         counter = counter.numpy()
@@ -1105,6 +1143,19 @@ class History(Callback):
   This callback is automatically applied to
   every Keras model. The `History` object
   gets returned by the `fit` method of models.
+
+  Example:
+
+  >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+  >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
+  >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
+  ...                     epochs=10)
+  >>> print(history.params)
+  {'verbose': 1, 'epochs': 10, 'steps': 1}
+  >>> # check the keys of history object
+  >>> print(history.history.keys())
+  dict_keys(['loss'])
+
   """
 
   def __init__(self):
@@ -1205,8 +1256,9 @@ class ModelCheckpoint(Callback):
         decision to overwrite the current save file is made based on either
         the maximization or the minimization of the monitored quantity.
         For `val_acc`, this should be `max`, for `val_loss` this should be
-        `min`, etc. In `auto` mode, the direction is automatically inferred
-        from the name of the monitored quantity.
+        `min`, etc. In `auto` mode, the mode is set to `max` if the quantities
+        monitored are 'acc' or start with 'fmeasure' and are set to `min` for
+        the rest of the quantities.
       save_weights_only: if True, then only the model's weights will be saved
         (`model.save_weights(filepath)`), else the full model is saved
         (`model.save(filepath)`).
@@ -1252,7 +1304,7 @@ class ModelCheckpoint(Callback):
           options, checkpoint_options_lib.CheckpointOptions):
         self._options = options or checkpoint_options_lib.CheckpointOptions()
       else:
-        raise TypeError('If save_weights_only is True, then `options` must be'
+        raise TypeError('If save_weights_only is True, then `options` must be '
                         'either None or a tf.train.CheckpointOptions')
     else:
       if options is None or isinstance(options, save_options_lib.SaveOptions):
@@ -1306,14 +1358,6 @@ class ModelCheckpoint(Callback):
     # Only the chief worker writes model checkpoints, but all workers
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
-
-  def set_model(self, model):
-    self.model = model
-    # Use name matching rather than `isinstance` to avoid circular dependencies.
-    if (not self.save_weights_only and
-        not model._is_graph_network and  # pylint: disable=protected-access
-        model.__class__.__name__ != 'Sequential'):
-      self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
     if self.load_weights_on_restart:
@@ -1376,7 +1420,7 @@ class ModelCheckpoint(Callback):
     if isinstance(self.save_freq,
                   int) or self.epochs_since_last_save >= self.period:
       # Block only when saving interval is reached.
-      logs = tf_utils.to_numpy_or_python_type(logs)
+      logs = tf_utils.sync_to_numpy_or_python_type(logs)
       self.epochs_since_last_save = 0
       filepath = self._get_file_path(epoch, logs)
 
@@ -1412,9 +1456,13 @@ class ModelCheckpoint(Callback):
             self.model.save(filepath, overwrite=True, options=self._options)
 
         self._maybe_remove_file()
-      except IOError as e:
+      except IsADirectoryError as e:  # h5py 3.x
+        raise IOError('Please specify a non-directory filepath for '
+                      'ModelCheckpoint. Filepath used is an existing '
+                      'directory: {}'.format(filepath))
+      except IOError as e:  # h5py 2.x
         # `e.errno` appears to be `None` so checking the content of `e.args[0]`.
-        if 'is a directory' in six.ensure_str(e.args[0]).lower():
+        if 'is a directory' in str(e.args[0]).lower():
           raise IOError('Please specify a non-directory filepath for '
                         'ModelCheckpoint. Filepath used is an existing '
                         'directory: {}'.format(filepath))
@@ -1609,7 +1657,8 @@ class BackupAndRestore(Callback):
     self._supported_strategies = (
         mirrored_strategy.MirroredStrategy,
         collective_all_reduce_strategy.CollectiveAllReduceStrategy,
-        tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
+        tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2,
+        parameter_server_strategy_v2.ParameterServerStrategyV2)
 
     if not context.executing_eagerly():
       if ops.inside_function():
@@ -1625,9 +1674,6 @@ class BackupAndRestore(Callback):
     # Only the chief worker writes model checkpoints, but all workers
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
-
-  def set_model(self, model):
-    self.model = model
 
   def on_train_begin(self, logs=None):
     # TrainingState is used to manage the training state needed for
@@ -1915,7 +1961,7 @@ class LearningRateScheduler(Callback):
     if not hasattr(self.model.optimizer, 'lr'):
       raise ValueError('Optimizer must have a "lr" attribute.')
     try:  # new API
-      lr = float(K.get_value(self.model.optimizer.lr))
+      lr = float(backend.get_value(self.model.optimizer.lr))
       lr = self.schedule(epoch, lr)
     except TypeError:  # Support for old API for backward compatibility
       lr = self.schedule(epoch)
@@ -1924,14 +1970,14 @@ class LearningRateScheduler(Callback):
                        'should be float.')
     if isinstance(lr, ops.Tensor) and not lr.dtype.is_floating:
       raise ValueError('The dtype of Tensor should be float')
-    K.set_value(self.model.optimizer.lr, K.get_value(lr))
+    backend.set_value(self.model.optimizer.lr, backend.get_value(lr))
     if self.verbose > 0:
-      print('\nEpoch %05d: LearningRateScheduler reducing learning '
+      print('\nEpoch %05d: LearningRateScheduler setting learning '
             'rate to %s.' % (epoch + 1, lr))
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
-    logs['lr'] = K.get_value(self.model.optimizer.lr)
+    logs['lr'] = backend.get_value(self.model.optimizer.lr)
 
 
 def keras_model_summary(name, data, step=None):
@@ -1968,7 +2014,7 @@ def keras_model_summary(name, data, step=None):
     json_string = data.to_json()
   except Exception as exc:  # pylint: disable=broad-except
     # An exception should not break a model code.
-    logging.warn('Model failed to serialize as JSON. Ignoring... %s', exc)
+    logging.warning('Model failed to serialize as JSON. Ignoring... %s', exc)
     return False
 
   with summary_ops_v2.summary_scope(name, 'graph_keras_model',
@@ -1992,6 +2038,11 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   * Training graph visualization
   * Activation histograms
   * Sampled profiling
+
+  When used in `Model.evaluate`, in addition to epoch summaries, there will be
+  a summary that records evaluation metrics vs `Model.optimizer.iterations`
+  written. The metric names will be prepended with `evaluation`, with
+  `Model.optimizer.iterations` being the step in the visualized TensorBoard.
 
   If you have installed TensorFlow with pip, you should be able
   to launch TensorBoard from the command line:
@@ -2030,12 +2081,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         to disable profiling.
       embeddings_freq: frequency (in epochs) at which embedding layers will be
         visualized. If set to 0, embeddings won't be visualized.
-      embeddings_metadata: a dictionary which maps layer name to a file name in
-        which metadata for this embedding layer is saved. See the
-        [details](
-          https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
-        about metadata files format. In case if the same metadata file is
-        used for all embedding layers, string can be passed.
+      embeddings_metadata: Dictionary which maps embedding layer names to the
+        filename of a file in which to save metadata for the embedding layer.
+        In case the same metadata file is to be
+        used for all embedding layers, a single filename can be passed.
 
   Examples:
 
@@ -2131,7 +2180,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self.embeddings_freq = embeddings_freq
     self.embeddings_metadata = embeddings_metadata
     self._init_profile_batch(profile_batch)
-    self._epoch = 0
     self._global_train_batch = 0
     self._previous_epoch_iterations = 0
     self._train_accumulated_time = 0
@@ -2272,35 +2320,24 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.update_freq == 'epoch':
       return
 
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    self._prev_summary_state.append({
-        'is_recording': summary_state.is_recording,
-        'writer': summary_state.writer,
-        'step': summary_state.step
-    })
-
-    if self.update_freq == 'epoch':
-      should_record = False
-      writer = None
-    else:
-      should_record = lambda: math_ops.equal(step % self.update_freq, 0)
-
-    summary_state.is_recording = should_record
-    summary_state.writer = writer
+    should_record = lambda: math_ops.equal(step % self.update_freq, 0)
     # TODO(b/151339474): Fix deadlock when not using .value() here.
-    summary_ops_v2.set_step(step.value())
+    summary_context = (writer.as_default(step.value()),
+                       summary_ops_v2.record_if(should_record))
+    self._prev_summary_state.append(summary_context)
+    summary_context[0].__enter__()
+    summary_context[1].__enter__()
 
   def _pop_writer(self):
     """Pops the current writer."""
     if self.update_freq == 'epoch':
       return
 
-    prev_state = self._prev_summary_state.pop()
-
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    summary_state.is_recording = prev_state['is_recording']
-    summary_state.writer = prev_state['writer']
-    summary_ops_v2.set_step(prev_state['step'])
+    # See _push_writer for the content of the previous_context, which is pair
+    # of context.
+    previous_context = self._prev_summary_state.pop()
+    previous_context[1].__exit__(*sys.exc_info())
+    previous_context[0].__exit__(*sys.exc_info())
 
   def _close_writers(self):
     for writer in self._writers.values():
@@ -2308,15 +2345,14 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def _init_profile_batch(self, profile_batch):
     """Validate profile_batch value and set the range of batches to profile.
+    Sets values of _start_batch and _stop_batch attributes,
+    specifying the start and stop batch to profile.
+    Setting `profile_batch=0` disables profiling.
 
     Args:
       profile_batch: The range of batches to profile. Should be a non-negative
         integer or a comma separated string of pair of positive integers. A pair
         of positive integers signify a range of batches to profile.
-
-    Returns:
-      A pair of non-negative integers specifying the start and stop batch to
-      profile.
 
     Raises:
       ValueError: If profile_batch is not an integer or a comma seperated pair
@@ -2329,7 +2365,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         'to profile. Found: {}'.format(profile_batch))
 
     # Support legacy way of specifying "start,stop" or "start" as str.
-    if isinstance(profile_batch, six.string_types):
+    if isinstance(profile_batch, str):
       profile_batch = str(profile_batch).split(',')
       profile_batch = nest.map_structure(int, profile_batch)
 
@@ -2344,10 +2380,14 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self._start_batch < 0 or self._stop_batch < self._start_batch:
       raise ValueError(profile_batch_error_message)
 
+    # True when the profiler was successfully started by this callback.
+    # We track the status here to make sure callbacks do not interfere with
+    # each other. The callback will only stop the profiler it started.
+    self._profiler_started = False
     if self._start_batch > 0:
       # Warm up and improve the profiling accuracy.
-      profiler.start('')
-      profiler.stop(save=False)
+      self._start_profiler(logdir='')
+      self._stop_profiler(save=False)
     # True when a trace is running.
     self._is_tracing = False
 
@@ -2373,6 +2413,13 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._push_writer(self._val_writer, self._val_step)
 
   def on_test_end(self, logs=None):
+    if self.model.optimizer and hasattr(self.model.optimizer, 'iterations'):
+      with summary_ops_v2.record_if(True), self._val_writer.as_default():
+        for name, value in logs.items():
+          summary_ops_v2.scalar(
+              'evaluation_' + name + '_vs_iterations',
+              value,
+              step=self.model.optimizer.iterations.read_value())
     self._pop_writer()
 
   def _implements_train_batch_hooks(self):
@@ -2396,7 +2443,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.write_steps_per_second:
       batch_run_time = time.time() - self._batch_start_time
       self._train_accumulated_time += batch_run_time
-      summary_ops_v2.scalar('batch_steps_per_second', 1. / batch_run_time)
+      summary_ops_v2.scalar(
+          'batch_steps_per_second', 1. / batch_run_time, step=self._train_step)
     if not self._should_trace:
       return
 
@@ -2405,7 +2453,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def on_epoch_begin(self, epoch, logs=None):
     # Keeps track of epoch for profiling.
-    self._epoch = epoch
     if self.write_steps_per_second:
       self._previous_epoch_iterations = self.model.optimizer.iterations.numpy()
       self._train_accumulated_time = 0
@@ -2422,7 +2469,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def _start_trace(self):
     summary_ops_v2.trace_on(graph=True, profiler=False)
-    profiler.start(logdir=self._train_dir)
+    self._start_profiler(logdir=self._train_dir)
     self._is_tracing = True
 
   def _stop_trace(self, batch=None):
@@ -2433,7 +2480,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       with summary_ops_v2.record_if(True):
         # TODO(b/126388999): Remove step info in the summary name.
         summary_ops_v2.trace_export(name='batch_%d' % batch, step=batch)
-    profiler.stop()
+    self._stop_profiler()
     self._is_tracing = False
 
   def _collect_learning_rate(self, logs):
@@ -2490,23 +2537,23 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _log_weight_as_image(self, weight, weight_name, epoch):
     """Logs a weight as a TensorBoard image."""
     w_img = array_ops.squeeze(weight)
-    shape = K.int_shape(w_img)
+    shape = backend.int_shape(w_img)
     if len(shape) == 1:  # Bias case
       w_img = array_ops.reshape(w_img, [1, shape[0], 1, 1])
     elif len(shape) == 2:  # Dense layer kernel case
       if shape[0] > shape[1]:
         w_img = array_ops.transpose(w_img)
-        shape = K.int_shape(w_img)
+        shape = backend.int_shape(w_img)
       w_img = array_ops.reshape(w_img, [1, shape[0], shape[1], 1])
     elif len(shape) == 3:  # ConvNet case
-      if K.image_data_format() == 'channels_last':
+      if backend.image_data_format() == 'channels_last':
         # Switch to channels_first to display every kernel as a separate
         # image.
         w_img = array_ops.transpose(w_img, perm=[2, 0, 1])
-        shape = K.int_shape(w_img)
+        shape = backend.int_shape(w_img)
       w_img = array_ops.reshape(w_img, [shape[0], shape[1], shape[2], 1])
 
-    shape = K.int_shape(w_img)
+    shape = backend.int_shape(w_img)
     # Not possible to handle 3D convnets etc.
     if len(shape) == 4 and shape[-1] in [1, 3, 4]:
       summary_ops_v2.image(weight_name, w_img, step=epoch)
@@ -2515,6 +2562,37 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     embeddings_ckpt = os.path.join(self._log_write_dir, 'train',
                                    'keras_embedding.ckpt-{}'.format(epoch))
     self.model.save_weights(embeddings_ckpt)
+
+  def _start_profiler(self, logdir):
+    """Starts the profiler if currently inactive.
+
+    Args:
+      logdir: Directory where profiler results will be saved.
+    """
+    if self._profiler_started:
+      return
+    try:
+      profiler.start(logdir=logdir)
+      self._profiler_started = True
+    except errors.AlreadyExistsError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to start profiler: %s', e.message)
+
+  def _stop_profiler(self, save=True):
+    """Stops the profiler if currently active.
+
+    Args:
+      save: Whether to save the profiler results to TensorBoard.
+    """
+    if not self._profiler_started:
+      return
+    try:
+      profiler.stop(save=save)
+    except errors.UnavailableError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to stop profiler: %s', e.message)
+    finally:
+      self._profiler_started = False
 
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')
@@ -2608,7 +2686,7 @@ class ReduceLROnPlateau(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
-    logs['lr'] = K.get_value(self.model.optimizer.lr)
+    logs['lr'] = backend.get_value(self.model.optimizer.lr)
     current = logs.get(self.monitor)
     if current is None:
       logging.warning('Learning rate reduction is conditioned on metric `%s` '
@@ -2626,11 +2704,11 @@ class ReduceLROnPlateau(Callback):
       elif not self.in_cooldown():
         self.wait += 1
         if self.wait >= self.patience:
-          old_lr = K.get_value(self.model.optimizer.lr)
+          old_lr = backend.get_value(self.model.optimizer.lr)
           if old_lr > np.float32(self.min_lr):
             new_lr = old_lr * self.factor
             new_lr = max(new_lr, self.min_lr)
-            K.set_value(self.model.optimizer.lr, new_lr)
+            backend.set_value(self.model.optimizer.lr, new_lr)
             if self.verbose > 0:
               print('\nEpoch %05d: ReduceLROnPlateau reducing learning '
                     'rate to %s.' % (epoch + 1, new_lr))
@@ -2669,32 +2747,24 @@ class CSVLogger(Callback):
     self.writer = None
     self.keys = None
     self.append_header = True
-    if six.PY2:
-      self.file_flags = 'b'
-      self._open_args = {}
-    else:
-      self.file_flags = ''
-      self._open_args = {'newline': '\n'}
     super(CSVLogger, self).__init__()
 
   def on_train_begin(self, logs=None):
     if self.append:
       if file_io.file_exists_v2(self.filename):
-        with open(self.filename, 'r' + self.file_flags) as f:
+        with gfile.GFile(self.filename, 'r') as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'
     else:
       mode = 'w'
-    self.csv_file = io.open(self.filename,
-                            mode + self.file_flags,
-                            **self._open_args)
+    self.csv_file = gfile.GFile(self.filename, mode)
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
 
     def handle_value(k):
       is_zero_dim_ndarray = isinstance(k, np.ndarray) and k.ndim == 0
-      if isinstance(k, six.string_types):
+      if isinstance(k, str):
         return k
       elif isinstance(k, collections.abc.Iterable) and not is_zero_dim_ndarray:
         return '"[%s]"' % (', '.join(map(str, k)))

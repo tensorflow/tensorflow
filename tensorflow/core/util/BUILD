@@ -41,7 +41,11 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    licenses = ["notice"],  # Apache 2.0
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
+    licenses = ["notice"],
 )
 
 # List of exported source files.
@@ -80,6 +84,8 @@ filegroup(
         "bcast.h",
         "command_line_flags.cc",
         "command_line_flags.h",
+        "determinism.cc",
+        "determinism.h",
         "device_name_utils.cc",
         "device_name_utils.h",
         "dump_graph.cc",
@@ -143,6 +149,7 @@ filegroup(
         "bcast.h",
         "command_line_flags.h",
         "debug_events_writer.h",
+        "determinism.h",
         "device_name_utils.h",
         "dump_graph.h",
         "einsum_op_util.h",
@@ -161,7 +168,6 @@ filegroup(
         "matmul_bcast.h",
         "mirror_pad_mode.h",
         "mkl_threadpool.h",
-        "mkl_types.h",
         "mkl_util.h",
         "overflow.h",
         "padding.h",
@@ -211,6 +217,7 @@ filegroup(
         "bcast.cc",
         "command_line_flags.cc",
         "debug_events_writer.cc",
+        "determinism.cc",
         "device_name_utils.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
@@ -238,6 +245,7 @@ filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
         "env_var.h",
+        "use_cudnn.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -291,7 +299,6 @@ filegroup(
     name = "mkl_util_hdrs",
     srcs = [
         "mkl_threadpool.h",
-        "mkl_types.h",
         "mkl_util.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -468,19 +475,22 @@ cc_library(
 )
 
 cc_library(
-    name = "abstract_stack_trace",
+    name = "managed_stack_trace",
     hdrs = ["managed_stack_trace.h"],
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stack_frame",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

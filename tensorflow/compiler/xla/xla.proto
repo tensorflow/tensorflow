@@ -250,6 +250,9 @@ message DebugOptions {
   // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
   bool xla_dump_hlo_as_html = 116;
 
+  // Dump the visualization of the fusion progress.
+  bool xla_dump_fusion_visualization = 149;
+
   // If true, every time an HLO module is run, we will dump an HloSnapshot
   // (essentially, a serialized module plus its inputs) to the --xla_dump_to
   // directory.
@@ -263,6 +266,9 @@ message DebugOptions {
 
   // Dump HloModuleMetadata as a text proto for each HLO module.
   bool xla_dump_module_metadata = 144;
+
+  // GZip-compress protos dumped via --xla_dump_hlo_as_proto.
+  bool xla_dump_compress_protos = 151;
 
   //
   // END flags controlling dumping HLO modules.
@@ -299,8 +305,10 @@ message DebugOptions {
   // reached.
   int32 xla_multiheap_size_constraint_per_heap = 142;
 
-  // Enable detailed logging into vlog.
-  bool xla_detailed_logging = 143;
+  // Enable detailed logging into vlog and xla dumping. If this is disabled, no
+  // compilation summary will be printed in the end of computation and no hlo
+  // modules will be dumped.
+  bool xla_detailed_logging_and_dumping = 143;
 
   // Overrides normal multi-threaded compilation settting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
@@ -311,7 +319,10 @@ message DebugOptions {
   // Compilation errors out if these ops are encountered.
   bool xla_gpu_deterministic_ops = 148;
 
-  // Next id: 149
+  // Paths to files with LLVM code.
+  repeated string xla_gpu_llvm_ir_file = 150;
+
+  // Next id: 152
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -374,6 +385,8 @@ message ExecutionOptions {
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.
   bool deduplicate_hlo = 12;
+
+  reserved 13;  // Was broadcast_replicated_parameters_via_collectives
 }
 
 message GetDeviceHandlesRequest {

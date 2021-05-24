@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/fully_connected_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include <fp16.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -125,6 +127,7 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
   std::vector<flatbuffers::Offset<Buffer>> buffers{
       {CreateBuffer(builder, builder.CreateVector({}))}};
 
+  float filter_scale = 0;
   if (FP16Weights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
@@ -154,27 +157,32 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
         builder, builder.CreateVector(
                      reinterpret_cast<const uint8_t*>(filter_data.data()),
                      sizeof(uint16_t) * filter_data.size())));
-    buffers.emplace_back(CreateBuffer(
-        builder,
-        builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
-                             sizeof(uint16_t) * bias_data.size())));
+    if (HasBias()) {
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(uint16_t) * bias_data.size())));
+    }
 
     const std::array<int32_t, 1> dequantize_filter_inputs{{0}};
-    const std::array<int32_t, 1> dequantize_filter_outputs{{3}};
+    const std::array<int32_t, 1> dequantize_filter_outputs{
+        {2 + static_cast<int32_t>(HasBias())}};
     operators.emplace_back(CreateOperator(
         builder, /*opcode_index=*/1,
         builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
                                       dequantize_filter_inputs.size()),
         builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
                                       dequantize_filter_outputs.size())));
-    const std::array<int32_t, 1> dequantize_bias_inputs{{1}};
-    const std::array<int32_t, 1> dequantize_bias_outputs{{4}};
-    operators.emplace_back(CreateOperator(
-        builder, /*opcode_index=*/1,
-        builder.CreateVector<int32_t>(dequantize_bias_inputs.data(),
-                                      dequantize_bias_inputs.size()),
-        builder.CreateVector<int32_t>(dequantize_bias_outputs.data(),
-                                      dequantize_bias_outputs.size())));
+    if (HasBias()) {
+      const std::array<int32_t, 1> dequantize_bias_inputs{{1}};
+      const std::array<int32_t, 1> dequantize_bias_outputs{{4}};
+      operators.emplace_back(CreateOperator(
+          builder, /*opcode_index=*/1,
+          builder.CreateVector<int32_t>(dequantize_bias_inputs.data(),
+                                        dequantize_bias_inputs.size()),
+          builder.CreateVector<int32_t>(dequantize_bias_outputs.data(),
+                                        dequantize_bias_outputs.size())));
+    }
   } else {
     std::vector<float> filter_data(InputChannels() * OutputChannels());
     std::vector<float> bias_data(OutputChannels());
@@ -196,14 +204,42 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
       }
     }
 
-    buffers.emplace_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(filter_data.data()),
-                     sizeof(float) * filter_data.size())));
-    buffers.emplace_back(CreateBuffer(
-        builder,
-        builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
-                             sizeof(float) * bias_data.size())));
+    if (INT8Weights()) {
+      filter_scale = GetInt8QuantizationScale(filter_data);
+      std::vector<int8_t> quantized_filter_data(filter_data.size());
+      std::transform(
+          filter_data.begin(), filter_data.end(), quantized_filter_data.begin(),
+          std::bind(QuantizeInt8, std::placeholders::_1, 0, filter_scale));
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_filter_data.data()),
+              sizeof(int8_t) * quantized_filter_data.size())));
+
+      operator_codes.emplace_back(
+          CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+      const std::array<int32_t, 1> dequantize_filter_inputs{{0}};
+      const std::array<int32_t, 1> dequantize_filter_outputs{{2}};
+      operators.emplace_back(CreateOperator(
+          builder, /*opcode_index=*/1,
+          builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
+                                        dequantize_filter_inputs.size()),
+          builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
+                                        dequantize_filter_outputs.size())));
+    } else {
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(filter_data.data()),
+                       sizeof(float) * filter_data.size())));
+    }
+
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    if (HasBias()) {
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(float) * bias_data.size())));
+    }
   }
 
   const std::array<int32_t, 2> filter_shape{
@@ -217,10 +253,21 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
         builder,
         builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
         TensorType_FLOAT16, /*buffer=*/1));
+    if (HasBias()) {
+      tensors.emplace_back(CreateTensor(
+          builder,
+          builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+          TensorType_FLOAT16, /*buffer=*/2));
+    }
+  } else if (INT8Weights()) {
     tensors.emplace_back(CreateTensor(
         builder,
-        builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
-        TensorType_FLOAT16, /*buffer=*/2));
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        TensorType_INT8, /*buffer=*/1, /*name=*/0,
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>({filter_scale}),
+            builder.CreateVector<int64_t>({0}))));
   }
   tensors.emplace_back(CreateTensor(
       builder,
@@ -229,11 +276,13 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 1));
-  tensors.emplace_back(CreateTensor(
-      builder,
-      builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
-      TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 2));
+      TensorType_FLOAT32, /*buffer=*/(FP16Weights() || INT8Weights()) ? 0 : 1));
+  if (HasBias()) {
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+        TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 2));
+  }
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),
@@ -244,12 +293,14 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
                                   FullyConnectedOptionsWeightsFormat_DEFAULT,
                                   KeepDims());
 
-  const std::array<int32_t, 3> op_inputs{
-      {static_cast<int>(tensors.size()) - 4,
-       static_cast<int>(tensors.size()) - 3,
-       static_cast<int>(tensors.size()) - 2}};
+  std::vector<int32_t> op_inputs{{static_cast<int32_t>(tensors.size()) - 3,
+                                  static_cast<int32_t>(tensors.size()) - 2}};
+  if (HasBias()) {
+    op_inputs.insert(op_inputs.begin(),
+                     static_cast<int32_t>(tensors.size()) - 4);
+  }
   const std::array<int32_t, 1> op_outputs{
-      {static_cast<int>(tensors.size()) - 1}};
+      {static_cast<int32_t>(tensors.size()) - 1}};
   operators.emplace_back(CreateOperator(
       builder, /*opcode_index=*/0,
       builder.CreateVector<int32_t>(op_inputs.data(), op_inputs.size()),
@@ -257,7 +308,7 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
       BuiltinOptions_FullyConnectedOptions, fully_connected_options.Union()));
 
   const std::array<int32_t, 1> subgraph_inputs{
-      {static_cast<int>(tensors.size()) - 4}};
+      {static_cast<int>(tensors.size()) - 3 - static_cast<int32_t>(HasBias())}};
   const std::array<int32_t, 1> subgraph_outputs{
       {static_cast<int>(tensors.size()) - 1}};
   flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(

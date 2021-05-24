@@ -24,7 +24,7 @@ go
 ```
 
 The scripts used in training the model have been sourced from the
-[Simple Audio Recognition](https://www.tensorflow.org/tutorials/sequences/audio_recognition)
+[Simple Audio Recognition](https://www.tensorflow.org/tutorials/audio/simple_audio)
 tutorial.
 
 ## Table of contents

@@ -35,6 +35,14 @@ inline bool TFDataFormatIsNHWC(Operation *op) {
   return !attr || attr.getValue() == "NHWC";
 }
 
+// Returns true if the given TensorFlow op does not have a `data_format`
+// attribute (then default to "NDHWC"), or its `data_format` attribute is
+// "NDHWC".
+inline bool TFDataFormatIsNDHWC(Operation *op) {
+  auto attr = op->getAttrOfType<StringAttr>("data_format");
+  return !attr || attr.getValue() == "NDHWC";
+}
+
 // Returns true if the given `op`
 //   * has an attribute with the given `name`,
 //   * and the attribute is an integer list of the form [1, X, Y, 1],
@@ -44,6 +52,13 @@ bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
 
 // Returns true if the attribute is an integer list of the form [1, X, Y, 1],
 bool TFIntListIs1XY1(const ArrayAttr &attr);
+
+// Returns true if the given `op`
+//   * has an attribute with the given `name`,
+//   * and the attribute is an integer list of the form [1, X, Y, Z, 1],
+// and writes X, Y as 32-bit integer attribute to `x`, `y`, z.
+bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
+                      IntegerAttr *y, IntegerAttr *z);
 
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
@@ -62,6 +77,18 @@ inline bool TFTypeIsBFloat16Tensor(Value value) {
   auto tensorType = value.getType().dyn_cast<TensorType>();
   if (!tensorType) return false;
   return tensorType.getElementType().isBF16();
+}
+
+// Returns true iff the given value is a f16 tensor.
+inline bool TFTypeIsHalfTensor(Value value) {
+  auto tensorType = value.getType().dyn_cast<TensorType>();
+  if (!tensorType) return false;
+  return tensorType.getElementType().isF16();
+}
+
+// Returns true iff the given value is a f16 or bf16 tensor.
+inline bool TFTypeIsBFloat16OrHalfTensor(Value value) {
+  return TFTypeIsBFloat16Tensor(value) || TFTypeIsHalfTensor(value);
 }
 
 // Returns true iff the given TensorFlow op has a `padding` attribute whose

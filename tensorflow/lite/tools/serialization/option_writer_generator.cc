@@ -83,6 +83,10 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteCumsumParams",
                                       "TfLiteCallOnceParams",
                                       "TfLiteConv3DParams",
+                                      "TfLiteHashtableParams",
+                                      "TfLiteHashtableFindParams",
+                                      "TfLiteHashtableImportParams",
+                                      "TfLiteHashtableSizeParams",
                                       nullptr};
 }  // namespace
 
@@ -155,6 +159,7 @@ class OpOptionData {
     op_to_option_["REDUCE_MAX"] = "ReducerOptions";
     op_to_option_["REDUCE_MIN"] = "ReducerOptions";
     op_to_option_["REDUCE_ANY"] = "ReducerOptions";
+    op_to_option_["REDUCE_ALL"] = "ReducerOptions";
     op_to_option_["SUM"] = "ReducerOptions";
     op_to_option_["REDUCE_MAX"] = "ReducerOptions";
     op_to_option_["REDUCE_PROD"] = "ReducerOptions";
@@ -193,6 +198,9 @@ class OpOptionData {
     op_to_option_["RSQRT"] = "";
     op_to_option_["ELU"] = "";
     op_to_option_["REVERSE_SEQUENCE"] = "";
+    op_to_option_["REAL"] = "";
+    op_to_option_["IMAG"] = "";
+    op_to_option_["COMPLEX_ABS"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";
@@ -274,14 +282,17 @@ void GenerateImportForResizeBilinearOp(FILE* fp) {
 // Reshape Op infers output shape either from Parameter or from shape tensor
 // that's is an additional input. When we have this additional shape tensor as
 // input we don't have the parameter present in this layer. In case of more than
-// one input we import an empty vector for the parameters.
+// one input and the shape parameter does not have a valid value, we import an
+// empty vector for the parameters.
 void GenerateImportForReshapeOp(FILE* fp) {
   fprintf(fp,
           "  case BuiltinOperator_RESHAPE:  {\n"
           "    const auto* params = reinterpret_cast<const "
           "TfLiteReshapeParams*>(builtin_op_data);\n"
           "    flatbuffers::Offset<void> union_type;\n"
-          "    if (node.inputs->size > 1) {\n"
+          "    if (node.inputs->size > 1 && (params->num_dimensions <= 0 || "
+          "params->num_dimensions > TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT))"
+          " {\n"
           "      union_type = CreateReshapeOptions(*fbb).Union();\n"
           "    } else {\n"
           "      auto val0 = fbb->CreateVector(std::vector<int>(params->shape, "

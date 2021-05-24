@@ -8,7 +8,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -17,6 +17,8 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
+        "//third_party/iree/...",
+        "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -251,6 +253,41 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "util_test",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":test",
+        ":types",
+        ":util",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:bfloat16",
+    ],
+)
+
+cc_library(
+    name = "permutation_util",
+    srcs = ["permutation_util.cc"],
+    hdrs = ["permutation_util.h"],
+    deps = [
+        ":types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "permutation_util_test",
+    srcs = ["permutation_util_test.cc"],
+    deps = [
+        ":permutation_util",
+        ":test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "protobuf_util",
     srcs = ["protobuf_util.cc"],
@@ -264,19 +301,8 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/time",
-    ],
-)
-
-tf_cc_test(
-    name = "util_test",
-    srcs = ["util_test.cc"],
-    deps = [
-        ":test",
-        ":types",
-        ":util",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:bfloat16",
     ],
 )
 
@@ -311,6 +337,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":permutation_util",
         ":protobuf_util",
         ":status",
         ":status_macros",
@@ -325,6 +352,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
@@ -343,6 +371,7 @@ tf_cc_test(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings",
     ],
@@ -352,6 +381,7 @@ tf_cc_test(
     name = "shape_util_test",
     srcs = ["shape_util_test.cc"],
     deps = [
+        ":permutation_util",
         ":shape_util",
         ":status_macros",
         ":test",
@@ -429,6 +459,7 @@ cc_library(
         ":array2d",
         ":array3d",
         ":array4d",
+        ":permutation_util",
         ":shape_util",
         ":status_macros",
         ":types",
@@ -964,7 +995,22 @@ cc_library(
     hdrs = ["union_find.h"],
 )
 
+cc_library(
+    name = "side_effect_util",
+    srcs = ["side_effect_util.cc"],
+    hdrs = ["side_effect_util.h"],
+)
+
 # -----------------------------------------------------------------------------
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xla_data_proto_py_pb2",
+#     api_version = 2,
+#     visibility = [":friends"],
+#     deps = [":xla_data_proto"],
+# )
+# copybara:uncomment_end
 
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
 cc_header_only_library(

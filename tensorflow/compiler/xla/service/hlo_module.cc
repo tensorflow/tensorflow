@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -295,6 +297,7 @@ HloModuleProto HloModule::ToProto() const {
       prefetch->add_index(index);
     }
   }
+  proto.set_is_dynamic(is_dynamic_);
   return proto;
 }
 
@@ -427,6 +430,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         prefetch.parameter(),
         ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
   }
+
+  module->set_is_dynamic(proto.is_dynamic());
 
   return std::move(module);
 }
@@ -661,19 +666,37 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
 }
 
 namespace {
-bool CompareComputationsByContent(HloComputation* a, HloComputation* b) {
-  if (a->instruction_count() != b->instruction_count()) {
-    return a->instruction_count() < b->instruction_count();
+bool CompareComputationsByContent(const std::pair<HloComputation*, uint64>& a,
+                                  const std::pair<HloComputation*, uint64>& b) {
+  if (a.first->instruction_count() != b.first->instruction_count()) {
+    return a.first->instruction_count() < b.first->instruction_count();
   }
-  return a->ToString(HloPrintOptions::Fingerprint()) <
-         b->ToString(HloPrintOptions::Fingerprint());
+  return a.second < b.second;
 }
+
+void SortComputationsByContent(std::vector<HloComputation*>* computations) {
+  std::vector<std::pair<HloComputation*, uint64>> pairs;
+  pairs.reserve(computations->size());
+  // Iterate and call ToString() once per computation because it is expensive
+  // for a large computation.
+  for (auto* computation : *computations) {
+    pairs.emplace_back(computation,
+                       tensorflow::Fingerprint64(computation->ToString(
+                           HloPrintOptions::Fingerprint())));
+  }
+  absl::c_sort(pairs, CompareComputationsByContent);
+  computations->clear();
+  for (const auto& pair : pairs) {
+    computations->push_back(pair.first);
+  }
+}
+
 }  // anonymous namespace
 
 std::vector<HloComputation*> HloModule::MakeComputationSorted() const {
   std::vector<HloComputation*> result = MakeComputationPostOrder();
   if (config().content_aware_computation_sorting()) {
-    absl::c_sort(result, CompareComputationsByContent);
+    SortComputationsByContent(&result);
   }
   return result;
 }
@@ -691,7 +714,7 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
     const {
   auto result = MakeNonfusionComputations();
   if (config().content_aware_computation_sorting()) {
-    absl::c_sort(result, CompareComputationsByContent);
+    SortComputationsByContent(&result);
   }
   return result;
 }
@@ -710,17 +733,22 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
   module->input_output_alias_config() = input_output_alias_config();
-
+  module->set_is_dynamic(is_dynamic());
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());
     for (HloComputation* computation : computations()) {
       if (schedule().is_computation_scheduled(computation)) {
-        HloInstructionSequence& clone_sequence =
-            clone_schedule.GetOrCreateSequence(
-                context.GetComputation(computation));
-        for (const HloInstruction* instruction :
-             schedule().sequence(computation).instructions()) {
-          clone_sequence.push_back(context.GetInstruction(instruction));
+        HloComputation* new_computation = context.FindComputation(computation);
+        // The module being cloned may have computations that are dead, i.e.,
+        // unreachable from the entry computation. In that case, new_computation
+        // is nullptr.
+        if (new_computation != nullptr) {
+          HloInstructionSequence& clone_sequence =
+              clone_schedule.GetOrCreateSequence(new_computation);
+          for (const HloInstruction* instruction :
+               schedule().sequence(computation).instructions()) {
+            clone_sequence.push_back(context.GetInstruction(instruction));
+          }
         }
       }
     }

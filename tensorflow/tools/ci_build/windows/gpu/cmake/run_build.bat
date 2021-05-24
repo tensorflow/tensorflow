@@ -28,7 +28,7 @@ ECHO ON
 IF DEFINED CMAKE_EXE (ECHO CMAKE_EXE is set to %CMAKE_EXE%) ELSE (SET CMAKE_EXE="C:\Program Files\cmake\bin\cmake.exe")
 IF DEFINED SWIG_EXE (ECHO SWIG_EXE is set to %SWIG_EXE%) ELSE (SET SWIG_EXE="C:\swigwin-3.0.10\swig.exe")
 IF DEFINED PY_EXE (ECHO PY_EXE is set to %PY_EXE%) ELSE (SET PY_EXE="C:\Program Files\Anaconda3\python.exe")
-IF DEFINED PY_LIB (ECHO PY_LIB is set to %PY_LIB%) ELSE (SET PY_LIB="C:\Program Files\Anaconda3\libs\python35.lib")
+IF DEFINED PY_LIB (ECHO PY_LIB is set to %PY_LIB%) ELSE (SET PY_LIB="C:\Program Files\Anaconda3\libs\python36.lib")
 IF DEFINED CUDNN_HOME (ECHO CUDNN_HOME is set to %CUDNN_HOME%) ELSE (SET CUDNN_HOME="c:\tools\cuda")
 IF DEFINED DISABLE_FORCEINLINE (ECHO DISABLE_FORCEINLINE is set to %DISABLE_FORCEINLINE%) ELSE (SET DISABLE_FORCEINLINE="OFF")
 

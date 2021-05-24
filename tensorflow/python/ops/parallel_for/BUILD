@@ -4,7 +4,7 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -16,7 +16,7 @@ py_library(
         "pfor.py",
         "test_util.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":control_flow_ops",
         ":gradients",
@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:smart_cond",
         "//tensorflow/python/ops/signal",
         "@absl_py//absl/flags",
     ],
@@ -50,7 +51,7 @@ py_library(
 py_library(
     name = "pfor_lib",
     srcs = ["pfor.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
@@ -76,7 +77,7 @@ py_library(
 py_library(
     name = "control_flow_ops",
     srcs = ["control_flow_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":pfor_lib",
@@ -98,7 +99,7 @@ py_library(
 py_library(
     name = "test_util",
     srcs = ["test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":pfor_lib",
         "//tensorflow/python:client_testlib",
@@ -139,6 +140,7 @@ cuda_py_test(
         "no_mac",
         "no_windows",
         "nogpu",  # TODO(b/155761551): Flaky on GPU on TAP
+        "no_tfrt",  # Note: Legacy XLA test, which depends on EncapsulateXlaComputationsPass.
     ],
     xla_enabled = True,
     deps = [
@@ -189,7 +191,7 @@ cuda_py_test(
 py_library(
     name = "gradients",
     srcs = ["gradients.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":control_flow_ops",
         "//tensorflow/python:array_ops",

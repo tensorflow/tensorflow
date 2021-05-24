@@ -18,9 +18,10 @@ It is sometimes useful to be able to build HLO programs directly from
 TensorFlow. This file provides Tensorflow operators that mirror the semantics of
 HLO operators as closely as possible.
 
-Note: There is no promise of backward or forward compatibility for operators
-defined in this module. This is primarily because the underlying HLO operators
-do not promise backward or forward compatibility.
+Note: Most of the operators defined in this module are used by the jax2tf
+converter (see go/jax2tf for details) and are used in SavedModel produced
+by jax2tf. Hence, we need to maintain backwards compatibility for these
+operators. Please reach out to the JAX team if you want to make changes.
 """
 
 from __future__ import absolute_import
@@ -39,6 +40,7 @@ from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops.numpy_ops import np_utils
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
 # ops include:
@@ -249,6 +251,7 @@ def conv(lhs,
          dimension_numbers,
          feature_group_count=1,
          precision_config=None,
+         preferred_element_type=None,
          name=None):
   """Wraps the XLA ConvGeneralDilated operator.
 
@@ -266,6 +269,7 @@ def conv(lhs,
     dimension_numbers: a `ConvolutionDimensionNumbers` proto.
     feature_group_count: number of feature groups for grouped convolution.
     precision_config: a `xla.PrecisionConfig` proto.
+    preferred_element_type: the result `dtype`.
     name: an optional name for the operator
 
   Returns:
@@ -274,6 +278,22 @@ def conv(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
+  if preferred_element_type is None:
+    preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
+  if needs_v2:
+    return gen_xla_ops.xla_conv_v2(
+        lhs,
+        rhs,
+        window_strides=window_strides,
+        padding=padding,
+        lhs_dilation=lhs_dilation,
+        rhs_dilation=rhs_dilation,
+        feature_group_count=feature_group_count,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        precision_config=precision_config_proto,
+        preferred_element_type=preferred_element_type,
+        name=name)
   return gen_xla_ops.xla_conv(
       lhs,
       rhs,
@@ -294,10 +314,26 @@ def dot(lhs, rhs, name=None):
   return math_ops.tensordot(lhs, rhs, axes=1, name=name)
 
 
-def dot_general(lhs, rhs, dimension_numbers, precision_config=None, name=None):
+def dot_general(lhs,
+                rhs,
+                dimension_numbers,
+                precision_config=None,
+                preferred_element_type=None,
+                name=None):
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
+  if preferred_element_type is None:
+    preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
+  if needs_v2:
+    return gen_xla_ops.xla_dot_v2(
+        lhs,
+        rhs,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        precision_config=precision_config_proto,
+        preferred_element_type=preferred_element_type,
+        name=name)
   return gen_xla_ops.xla_dot(
       lhs,
       rhs,
@@ -444,10 +480,11 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
-  grad_sharding = gen_xla_ops.xla_sharding(grad)
+  sharding_attr = op.get_attr("sharding")
+  grad_sharding = gen_xla_ops.xla_sharding(grad, sharding=sharding_attr)
   # pylint: disable=protected-access
-  grad_sharding.op._set_attr(
-      "_XlaSharding", attr_value_pb2.AttrValue(s=op.get_attr("_XlaSharding")))
+  grad_sharding.op._set_attr("_XlaSharding",
+                             attr_value_pb2.AttrValue(s=sharding_attr))
   return [grad_sharding]
 
 

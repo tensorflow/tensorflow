@@ -91,6 +91,7 @@ using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
 using mlir::Value;
 using mlir::quant::QuantizedType;
+using tflite::OperatorT;
 using tflite::TensorT;
 using xla::Status;
 using xla::StatusOr;
@@ -116,6 +117,23 @@ Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
     return base;
   }
   return mlir::NameLoc::get(builder.getIdentifier(tensor.name), base);
+}
+
+// Create the MLIR Location corresponding to a given op. This is an
+// experimental/debugging feature and production code should not rely on names
+// of intermediate tensors since importer doesn't guarantee to preserve tensor
+// names except output tensors.
+Location OpLoc(const OperatorT& op,
+               const std::vector<std::unique_ptr<tflite::TensorT>>& tensors,
+               Builder builder, Location base) {
+  if (op.outputs.empty()) return base;
+
+  llvm::SmallVector<Location, 4> locations;
+  locations.reserve(op.outputs.size());
+  for (auto tensor_index : op.outputs) {
+    locations.push_back(TensorLoc(*tensors[tensor_index], builder, base));
+  }
+  return mlir::FusedLoc::get(builder.getContext(), locations);
 }
 
 // Returns the correct type for a quantized tensor
@@ -197,8 +215,6 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool is_constant = false,
                                          bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
-  // TODO(b/139554398) Store min/max (even for non-quantized tensors) somewhere
-  // if it's set
   if (IsQuantized(tensor)) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
@@ -863,7 +879,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
     Value full_range_const = value;
     for (auto& use : value.getUses()) {
       Operation* user = use.getOwner();
-      if (user->isKnownTerminator()) return;
+      if (user->hasTrait<mlir::OpTrait::IsTerminator>()) return;
       auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
           value.getType());
       // Only the 8-bit constants are imported with narrow range.
@@ -1102,11 +1118,8 @@ StatusOr<FuncOp> ConvertSubgraph(
       intermediate_types.emplace_back(type);
     }
 
-    // The NameLoc corresponding to the name of the first output tensor
-    auto op_loc =
-        op->outputs.empty()
-            ? base_loc
-            : TensorLoc(*subgraph.tensors[op->outputs[0]], builder, base_loc);
+    auto op_loc = OpLoc(*op, subgraph.tensors, builder, base_loc);
+
     // If there's an optional argument, maybe_optional_arg_marker has been set
     // to a valid Value
     TF_ASSIGN_OR_RETURN(
@@ -1192,11 +1205,11 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
     auto cond = symbol_table.lookup<mlir::FuncOp>(
         while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.cond(), cond);
-    while_op.removeAttr("cond");
+    while_op->removeAttr("cond");
     auto body = symbol_table.lookup<mlir::FuncOp>(
         while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.body(), body);
-    while_op.removeAttr("body");
+    while_op->removeAttr("body");
   });
 }
 }  // namespace

@@ -94,7 +94,7 @@ class JitCompileTest(test.TestCase):
       inputs = array_ops.placeholder(dtypes.float32, [5])
       x = xla_func(inputs)
       with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  "not compilable"):
+                                  "Detected unsupported operations"):
         with session.Session(graph=g) as sess:
           sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
 

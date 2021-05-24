@@ -13,17 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Utilities related to layer/model functionality.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Utilities related to layer/model functionality."""
 
 import functools
 import weakref
 
 import numpy as np
-import six
 
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -79,8 +74,7 @@ def validate_string_arg(input_data,
     return
   elif allow_callables and callable(input_data):
     return
-  elif isinstance(input_data,
-                  six.string_types) and input_data in allowable_strings:
+  elif isinstance(input_data, str) and input_data in allowable_strings:
     return
   else:
     allowed_args = '`None`, ' if allow_none else ''
@@ -274,61 +268,6 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   print_fn('Trainable params: {:,}'.format(trainable_count))
   print_fn('Non-trainable params: {:,}'.format(non_trainable_count))
   print_fn('_' * line_length)
-
-
-def gather_trainable_weights(trainable, sub_layers, extra_variables):
-  """Lists the trainable weights for an object with sub-layers.
-
-  Args:
-    trainable: Whether the object collecting the variables is trainable.
-    sub_layers: A flat list of Layer objects owned by this object, to collect
-      variables from.
-    extra_variables: Any extra variables to include. Their `.trainable` property
-      is used to categorize them.
-
-  Returns:
-    A list of collected trainable weights/variables.
-  """
-  if not trainable:
-    return []
-  weights = []
-  for layer in sub_layers:
-    weights += layer.trainable_weights
-  trainable_extra_variables = [
-      v for v in extra_variables if v.trainable]
-  return weights + trainable_extra_variables
-
-
-def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
-  """Lists the non-trainable weights for an object with sub-layers.
-
-  Args:
-    trainable: Whether the object collecting the variables is trainable.
-    sub_layers: A flat list of Layer objects owned by this object, to collect
-      variables from.
-    extra_variables: Any extra variables to include. Their `.trainable` property
-      is used to categorize them.
-
-  Returns:
-    A list of collected non-trainable weights/variables.
-  """
-  trainable_extra_variables = []
-  non_trainable_extra_variables = []
-  for v in extra_variables:
-    if v.trainable:
-      trainable_extra_variables.append(v)
-    else:
-      non_trainable_extra_variables.append(v)
-  weights = []
-  for layer in sub_layers:
-    weights += layer.non_trainable_weights
-  if not trainable:
-    trainable_weights = []
-    for layer in sub_layers:
-      trainable_weights += layer.trainable_weights
-    return (trainable_weights + trainable_extra_variables
-            + weights + non_trainable_extra_variables)
-  return weights + non_trainable_extra_variables
 
 
 def convert_dense_weights_data_format(dense,

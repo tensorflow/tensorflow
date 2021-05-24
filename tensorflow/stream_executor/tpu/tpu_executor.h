@@ -155,6 +155,10 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   Status WaitForOutfeedReady(int32 outfeed_queue_index);
 
+  Status UnloadAllPrograms() override;
+
+  Status EnqueueCompactionOnStreamForHbm(Stream* compaction_stream) override;
+
   const ::tensorflow::tpu::TpuPlatformInterface& platform() const override {
     return *platform_;
   }

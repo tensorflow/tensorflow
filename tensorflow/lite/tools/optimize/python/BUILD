@@ -4,7 +4,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_binary(
@@ -37,9 +37,6 @@ py_test(
     srcs = ["modify_model_interface_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
-    ],
     deps = [
         ":modify_model_interface_lib",
         "//tensorflow:tensorflow_py",

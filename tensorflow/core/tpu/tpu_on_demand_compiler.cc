@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream.h"
 
 namespace ApiConverter {
@@ -211,7 +212,7 @@ class TpuCompiler : public Compiler {
   ~TpuCompiler() override { ExecutorApiFn()->TpuCompiler_FreeFn(compiler_); }
 
   stream_executor::Platform::Id PlatformId() const override {
-    return tensorflow::tpu::TpuPlatform::kId;
+    return tensorflow::tpu::GetTpuPlatformId();
   }
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
@@ -219,15 +220,14 @@ class TpuCompiler : public Compiler {
       stream_executor::StreamExecutor* executor,
       const CompileOptions& options) override {
     XLA_HloModule hlo_module;
-    XLA_HloModule result;
-    auto cleanup = xla::MakeCleanup([&hlo_module, &result]() {
+    auto cleanup = xla::MakeCleanup([&hlo_module]() {
       stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
-      stream_executor::tpu::SerializedProto_Free(result.proto);
       ApiConverter::Free(&hlo_module.module_config);
     });
     hlo_module.module_config = ApiConverter::ToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
     auto allocator = ApiConverter::ToC(options.device_allocator);
+    XLA_HloModule result;
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
         compiler_, &hlo_module,
@@ -239,6 +239,7 @@ class TpuCompiler : public Compiler {
     }
     HloModuleProto result_proto =
         stream_executor::tpu::DeserializeProto<HloModuleProto>(result.proto);
+    stream_executor::tpu::SerializedProto_Free(result.proto);
     return HloModule::CreateFromProto(result_proto, module->config());
   }
 
@@ -371,7 +372,7 @@ class TpuCompiler : public Compiler {
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
-      tensorflow::tpu::TpuPlatform::kId,
+      tensorflow::tpu::GetTpuPlatformId(),
       []() { return absl::make_unique<TpuCompiler>(); });
   return true;
 }

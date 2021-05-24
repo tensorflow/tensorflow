@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Target/NVVMIR.h"  // from @llvm-project
-#include "mlir/Target/ROCDLIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -70,7 +69,7 @@ class GpuKernelToBlobPass
       const auto& blob = blob_or.ValueOrDie();
       std::string blob_string(blob.begin(), blob.end());
       gpu_module->setAttr(blob_annotation_,
-                          mlir::StringAttr::get(blob_string, &getContext()));
+                          mlir::StringAttr::get(&getContext(), blob_string));
       return;
     }
     // Forward the error by attaching the message to the gpu module.
@@ -90,9 +89,9 @@ class GpuKernelToBlobPass
     }
 
     llvm::LLVMContext llvmContext;
+    auto llvmModule = mlir::translateModuleToLLVMIR(gpu_module, llvmContext);
 
 #if TENSORFLOW_USE_ROCM
-    auto llvmModule = mlir::translateModuleToROCDLIR(gpu_module, llvmContext);
     if (!llvmModule) {
       return InternalError("Could not translate MLIR module to ROCDL IR");
     }
@@ -143,7 +142,6 @@ class GpuKernelToBlobPass
     return tensorflow::se::BundleGpuAsm(images, tensorflow::RocmRoot());
 
 #elif GOOGLE_CUDA
-    auto llvmModule = mlir::translateModuleToNVVMIR(gpu_module, llvmContext);
     if (!llvmModule) {
       return InternalError("Could not translate MLIR module to NVVM");
     }
@@ -154,6 +152,8 @@ class GpuKernelToBlobPass
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
+    // Make sure we use full precision division operations.
+    (*options.mutable_xla_backend_extra_options())["-nvptx-prec-divf32"] = "2";
     config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {
@@ -222,8 +222,7 @@ class GpuKernelToBlobPass
 
     // TODO(b/169870789): Revisit the use of fatbins.
     // Bundle cubin and PTX images into a single fatbin.
-    return tensorflow::se::BundleGpuAsm(images,
-                                        gpu_asm_opts.preferred_cuda_dir);
+    return tensorflow::se::BundleGpuAsm(images, gpu_asm_opts);
 #endif
 
     return InternalError(

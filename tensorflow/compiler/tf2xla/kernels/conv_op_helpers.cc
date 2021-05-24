@@ -85,32 +85,6 @@ xla::XlaOp TransposeFilterForGroupConvolutionBackpropInput(
   return result;
 }
 
-// Returns the transposed input for use in BackpropFilter of group convolution.
-xla::XlaOp TransposeInputForGroupConvolutionBackpropFilter(
-    xla::XlaOp input, const xla::Shape& input_shape, int64 num_groups,
-    int batch_dim, int depth_dim) {
-  // 1. Reshape the depth_dim C into [G, C/G]
-  int num_dims = input_shape.dimensions_size();
-  std::vector<int64> reshape_dims = xla::SpanToVector(input_shape.dimensions());
-  reshape_dims[depth_dim] = reshape_dims[depth_dim] / num_groups;
-  reshape_dims.insert(reshape_dims.begin() + depth_dim, num_groups);
-  xla::XlaOp result = xla::Reshape(input, reshape_dims);
-
-  // 2. Transpose G to the axis before N, e.g.: [G, N, H, W, C/G]
-  std::vector<int64> transpose_dims(num_dims + 1);
-  std::iota(transpose_dims.begin(), transpose_dims.end(),
-            0);  // e.g.: [0, 1, 2, 3, 4] -> [N, H, W, G, C/G]
-  transpose_dims.erase(transpose_dims.begin() + depth_dim);
-  transpose_dims.insert(
-      transpose_dims.begin() + batch_dim,
-      depth_dim);  // e.g.: [3, 0, 1, 2, 4] -> [G, N, H, W, C/G]
-  result = xla::Transpose(result, transpose_dims);
-
-  // 3. Merge [G, N] to [G*N]
-  result = xla::Collapse(result, {batch_dim, batch_dim + 1});
-  return result;
-}
-
 // Reshapes a filter of shape [H, W, ..., M, N] to [H, W, ..., 1, M*N]. Used to
 // build a depthwise convolution.
 xla::XlaOp ReshapeFilterForDepthwiseConvolution(const xla::Shape& filter_shape,
@@ -183,9 +157,8 @@ std::vector<DataType> GetXlaConvTypes() {
   return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE};
 }
 
-xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
-                                               bool depthwise,
-                                               OpKernelConstruction* ctx) {
+StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims, bool depthwise,
+                                          OpKernelConstruction* ctx) {
   ConvOpAttrs attrs;
   attrs.num_spatial_dims = num_spatial_dims;
   attrs.depthwise = depthwise;
@@ -210,7 +183,7 @@ xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
   return attrs;
 }
 
-xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
+StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
     StringPiece /*type_string*/, xla::XlaOp conv_input, xla::XlaOp filter,
     const ConvOpAttrs& attrs, const xla::PrecisionConfig* precision_config) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
@@ -316,7 +289,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
       /*batch_group_count=*/1, precision_config);
 }
 
-xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
+StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
     StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
     xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
     const xla::PrecisionConfig* precision_config, xla::XlaOp* input_sizes) {
@@ -414,7 +387,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
                                  /*batch_group_count=*/1, precision_config);
 }
 
-xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
+StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     StringPiece type_string, xla::XlaOp activations,
     const xla::Shape& filter_shape, xla::XlaOp gradients,
     const ConvOpAttrs& attrs, const xla::PrecisionConfig* precision_config) {

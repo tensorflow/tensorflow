@@ -24,13 +24,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-class OwningRewritePatternList;
-
-// Populates a collection of rewrite patterns to realize element-wise operations
-// on ranked tensors where possible.
-void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
-                                          OwningRewritePatternList *patterns);
-
 namespace mhlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
@@ -64,7 +57,11 @@ void populateHLOToLHLOConversionPattern(MLIRContext *context,
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
+                                          TypeConverter &typeConverter,
                                           OwningRewritePatternList *patterns);
+
+// Converter to signless intergers to be used with linalg conversion patterns.
+std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter();
 
 // Sets up legality definitions for materializing broadcasts.
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,
@@ -84,6 +81,9 @@ void SetupTransformUnrankedHloLegality(MLIRContext *context,
 void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns);
 
+void PopulateDynamicShapeFusionPatterns(MLIRContext *context,
+                                        OwningRewritePatternList *patterns);
+
 // Populate a collection of conversion patterns for un-fusing
 // batch_norm_inference and batch_norm_training into constituent HLO ops.
 // TODO(laurenzo): Implement un-fusing of batch_norm_training.
@@ -95,14 +95,32 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
 void PopulateTrigonometricToApproximationPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
+void PopulateMoveUpDynamicBroadcastsForFusionLegality(ConversionTarget *target);
+
+void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+
+/// Populate rank specialization clustering and lowering patterns.
+void PopulateRankSpecializationClusterPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+void PopulateRankSpecializationToSCFPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+
 }  // namespace mhlo
 
 namespace chlo {
 
+// Populates a collection of conversion patterns for legalizing broadcasting
+// client-HLO to their non-broadcasting counterparts.
+void PopulateChloBroadcastingPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns);
+
 // Populates a collection of conversion patterns for legalizing client-HLO to
-// HLO.
-void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
-                                       OwningRewritePatternList *patterns);
+// HLO by decomposing client-operations to corresponding sequences of more
+// primitive operations. This does not include the
+// PopulateChloBroadcastingPatterns above.
+void PopulateDecomposeChloPatterns(MLIRContext *context,
+                                   OwningRewritePatternList *patterns);
 
 }  // namespace chlo
 

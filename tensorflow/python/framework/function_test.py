@@ -422,7 +422,9 @@ class FunctionTest(test.TestCase):
       with ops.control_dependencies([z]):
         return x * 2
 
-    with ops.Graph().as_default(), self.cached_session():
+    # @function.Defun creates a non-partitioned function.  If we place this on
+    # the GPU then the inner `Print` op cannot be run.
+    with ops.Graph().as_default(), self.cached_session(use_gpu=False):
       z = Foo(constant_op.constant(3.0))
       self.assertAllEqual(z, 6.0)
 
@@ -460,7 +462,7 @@ class FunctionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testWhileLoopCallsFunc(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session():
 
       @function.Defun(dtypes.float32)
       def Times2(x):

@@ -98,7 +98,7 @@ class GpuMultiOutputFusion : public HloModulePass {
  private:
   bool FuseSiblings(HloInstruction* parent);
 
-  bool DoMultiOutputFusion();
+  StatusOr<bool> DoMultiOutputFusion();
 
   // Recompute reachability for the current computation.
   void RecomputeReachability();

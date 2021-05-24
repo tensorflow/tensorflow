@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -69,7 +70,7 @@ class HloModuleConfig {
   // ProgramShape creates a computation layout using this shape.
   // The layouts in the ProgramShape will be reset to default unless
   // ignore_layouts is set to false.
-  HloModuleConfig() = default;
+  HloModuleConfig() { debug_options_ = DefaultDebugOptionsIgnoringFlags(); }
 
   explicit HloModuleConfig(const ProgramShape& program_shape,
                            bool ignore_layouts = true);
@@ -132,6 +133,14 @@ class HloModuleConfig {
     num_partitions_ = num_partitions;
   }
   int64 num_partitions() const { return num_partitions_; }
+
+  const std::vector<bool> param_requires_broadcast_via_collectives() const {
+    return param_requires_broadcast_via_collectives_;
+  }
+  void set_param_requires_broadcast_via_collectives(
+      const std::vector<bool> require_broadcast) {
+    param_requires_broadcast_via_collectives_ = std::move(require_broadcast);
+  }
 
   void set_use_spmd_partitioning(bool use_spmd_partitioning) {
     use_spmd_partitioning_ = use_spmd_partitioning;
@@ -248,6 +257,9 @@ class HloModuleConfig {
 
   // The number of partitions (model parallelism) to compile this binary for.
   int64 num_partitions_ = 1;
+
+  // Whether to broadcast args across all replicas. One entry per arg.
+  std::vector<bool> param_requires_broadcast_via_collectives_;
 
   // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
   // needs to partition the module.

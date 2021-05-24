@@ -47,53 +47,7 @@ namespace {
 static constexpr int kReservedSamplesPerOutput = 256;
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
-// Buffer that holds multiple samples. Operator()(random::PhiloxRandom*) returns
-// a single sample from this buffer. If the buffer is empty, it first generates
-// new samples using the provided distribution.
-//
-// If the call to Distribution::operator() returns samples[0...N-1], then this
-// class returns samples in the following order:
-//
-//   samples[N-1], samples[N-2],..., samples[1], samples[0]
-//
-// For comparison, random::SingleSampleAdapter returns samples in
-// the following order:
-//
-//   samples[0], samples[1],...,samples[N-2], samples[N-1].
-//
-template <class Distribution>
-class SampleBuffer {
- public:
-  typedef typename Distribution::ResultElementType ResultElementType;
-
-  PHILOX_DEVICE_INLINE
-  explicit SampleBuffer(Distribution* distribution)
-      : distribution_(distribution), remaining_numbers_(0) {}
-
-  PHILOX_DEVICE_INLINE
-  ResultElementType operator()(random::PhiloxRandom* random) {
-    if (remaining_numbers_ == 0) {
-      results_ = (*distribution_)(random);
-      remaining_numbers_ = Distribution::kResultElementCount;
-    }
-
-    remaining_numbers_--;
-    return results_[remaining_numbers_];
-  }
-
-  // Mark this buffer as empty. The next call to operator() will fill it
-  // with new random numbers.
-  PHILOX_DEVICE_INLINE
-  void Clear() { remaining_numbers_ = 0; }
-
- private:
-  typedef typename Distribution::ResultType ResultType;
-
-  Distribution* distribution_;
-  ResultType results_;
-  int remaining_numbers_;
-};
+typedef Eigen::GpuDevice GPUDevice;
 
 };  // namespace
 
@@ -102,7 +56,8 @@ namespace functor {
 template <typename T>
 struct StatelessRandomGammaFunctor<CPUDevice, T> {
   static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
-                     int64 num_alphas, int64 samples_per_alpha,
+                     int64 num_samples, int64 num_alphas,
+                     int64 samples_per_alpha,
                      const random::PhiloxRandom& random, T* samples_flat) {
     typedef random::NormalDistribution<random::PhiloxRandom, double> Normal;
     typedef random::UniformDistribution<random::PhiloxRandom, double> Uniform;
@@ -124,8 +79,8 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
       Normal normal;
       Uniform uniform;
 
-      SampleBuffer<Normal> normal_buffer(&normal);
-      SampleBuffer<Uniform> uniform_buffer(&uniform);
+      RandomSampleBuffer<Normal> normal_buffer(&normal);
+      RandomSampleBuffer<Uniform> uniform_buffer(&uniform);
 
       for (int64 output_idx = start_output; output_idx < limit_output;
            /* output_idx incremented within inner loop below */) {
@@ -138,14 +93,14 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
         const double alpha = static_cast<double>(alpha_flat[alpha_idx]);
 
         DISABLE_FLOAT_EQUALITY_WARNING
-        if (alpha == static_cast<double>(1.0)) {
+        if (alpha == 1.0) {
           ENABLE_FLOAT_EQUALITY_WARNING
           // Sample from an exponential distribution.
           for (int64 sample_idx = output_idx % samples_per_alpha;
                sample_idx < samples_per_alpha && output_idx < limit_output;
                sample_idx++, output_idx++) {
-            // As we want data stable regardless of sharding
-            // (including eventually on GPU), we skip on a per-sample basis.
+            // As we want data stable regardless of sharding, we skip on a
+            // per-sample basis.
             random::PhiloxRandom gen = random;
             gen.Skip(kReservedSamplesPerOutput * output_idx);
             double u = uniform(&gen)[Uniform::kResultElementCount - 1];
@@ -162,7 +117,7 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
           //
           // For alpha<1, we add one to d=alpha-1/3, and multiply the final
           // result by uniform()^(1/alpha)
-          const bool alpha_less_than_one = alpha < 1;
+          const bool alpha_less_than_one = alpha < 1.0;
           const double d = alpha + (alpha_less_than_one ? 2.0 / 3 : -1.0 / 3);
           const double c = 1.0 / 3 / sqrt(d);
 
@@ -171,8 +126,8 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
                sample_idx < samples_per_alpha && output_idx < limit_output;
                sample_idx++, output_idx++) {
             // Since each sample may use a variable number of normal/uniform
-            // samples, and we want data stable regardless of sharding
-            // (including eventually on GPU), we skip on a per-sample basis.
+            // samples, and we want data stable regardless of sharding, we skip
+            // on a per-sample basis.
             random::PhiloxRandom gen = random;
             gen.Skip(kReservedSamplesPerOutput * output_idx);
 
@@ -226,8 +181,8 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
                                     Uniform::kElementCost +
                                     3 * random::PhiloxRandom::kElementCost;
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    Shard(worker_threads.num_threads, worker_threads.workers,
-          num_alphas * samples_per_alpha, kElementCost, DoWork);
+    Shard(worker_threads.num_threads, worker_threads.workers, num_samples,
+          kElementCost, DoWork);
     return Status::OK();
   }
 };
@@ -280,19 +235,21 @@ class StatelessRandomGammaOp : public OpKernel {
                     "Input alpha should have non-zero element count, got: ",
                     num_alphas));
 
-    const int64 samples_per_alpha = samples_shape.num_elements() / num_alphas;
+    const int64 num_samples = samples_shape.num_elements();
+    const int64 samples_per_alpha = num_samples / num_alphas;
     const auto alpha_flat = alpha_t.flat<T>().data();
     auto samples_flat = output->flat<T>().data();
 
     OP_REQUIRES_OK(ctx, functor::StatelessRandomGammaFunctor<Device, T>::Fill(
-                            ctx, alpha_flat, num_alphas, samples_per_alpha,
-                            random, samples_flat));
+                            ctx, alpha_flat, num_samples, num_alphas,
+                            samples_per_alpha, random, samples_flat));
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomGammaOp);
 };
 
-#define REGISTER_GAMMA(TYPE)                                  \
+// Register CPU kernels for stateless gamma op.
+#define REGISTER_GAMMA_CPU(TYPE)                              \
   REGISTER_KERNEL_BUILDER(Name("StatelessRandomGammaV2")      \
                               .Device(DEVICE_CPU)             \
                               .HostMemory("shape")            \
@@ -301,12 +258,32 @@ class StatelessRandomGammaOp : public OpKernel {
                               .TypeConstraint<TYPE>("dtype"), \
                           StatelessRandomGammaOp<CPUDevice, TYPE>)
 
-TF_CALL_half(REGISTER_GAMMA);
-TF_CALL_bfloat16(REGISTER_GAMMA);
-TF_CALL_float(REGISTER_GAMMA);
-TF_CALL_double(REGISTER_GAMMA);
+TF_CALL_half(REGISTER_GAMMA_CPU);
+TF_CALL_bfloat16(REGISTER_GAMMA_CPU);
+TF_CALL_float(REGISTER_GAMMA_CPU);
+TF_CALL_double(REGISTER_GAMMA_CPU);
 
-#undef REGISTER_GAMMA
+#undef REGISTER_GAMMA_CPU
+
+// Register GPU kernels for stateless gamma op.
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define REGISTER_GAMMA_GPU(TYPE)                              \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomGammaV2")      \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("shape")            \
+                              .HostMemory("seed")             \
+                              .TypeConstraint<TYPE>("dtype"), \
+                          StatelessRandomGammaOp<GPUDevice, TYPE>)
+
+TF_CALL_half(REGISTER_GAMMA_GPU);
+TF_CALL_bfloat16(REGISTER_GAMMA_GPU);
+TF_CALL_float(REGISTER_GAMMA_GPU);
+TF_CALL_double(REGISTER_GAMMA_GPU);
+
+#undef REGISTER_GAMMA_GPU
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace
 }  // namespace tensorflow

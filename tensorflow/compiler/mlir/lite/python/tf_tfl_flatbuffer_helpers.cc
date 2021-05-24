@@ -113,14 +113,22 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_DOUBLE;
     case toco::IODataType::QUANTIZED_UINT8:
       return DT_QUINT8;
-    case toco::IODataType::INT8:
+    case toco::IODataType::QUANTIZED_INT8:
       return DT_QINT8;
     case toco::IODataType::QUANTIZED_INT16:
+      return DT_QINT16;
+    case toco::IODataType::INT8:
+      return DT_INT8;
+    case toco::IODataType::INT16:
       return DT_INT16;
     case toco::IODataType::INT32:
       return DT_INT32;
+    case toco::IODataType::UINT32:
+      return DT_UINT32;
     case toco::IODataType::INT64:
       return DT_INT64;
+    case toco::IODataType::UINT8:
+      return DT_UINT8;
     case toco::IODataType::UINT64:
       return DT_UINT64;
     case toco::IODataType::STRING:
@@ -131,6 +139,10 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_COMPLEX64;
     case toco::IODataType::COMPLEX128:
       return DT_COMPLEX128;
+    case toco::IODataType::RESOURCE:
+      return DT_RESOURCE;
+    case toco::IODataType::VARIANT:
+      return DT_VARIANT;
     default:
       return DT_INVALID;
   }
@@ -282,8 +294,8 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
 }
 
 Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::TocoFlags& toco_flags, mlir::OwningModuleRef module,
-    const mlir::TFL::PassConfig& pass_config,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    mlir::OwningModuleRef module, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session) {
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
@@ -305,7 +317,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
                        mlir::OpPassManager::Nesting::Implicit);
   ::tensorflow::SetCrashReproducer(pm);
 
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm, session);
+  tensorflow::AddTFToTFLConversionPasses(model_flags, toco_flags, pass_config,
+                                         &pm, session);
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {
     pm.addPass(mlir::TFL::CreateWhileOutlinePass());

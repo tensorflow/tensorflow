@@ -10,6 +10,20 @@ index 4a370e33..224ad9c6 100644
  from pw_presubmit import call, log_run, plural, PresubmitFailure, tools
  
  _LOG = logging.getLogger(__name__)
+diff --git a/pw_presubmit/py/pw_presubmit/format_code.py b/pw_presubmit/py/pw_presubmit/format_code.py
+index 19d09546..dae2e813 100755
+--- a/pw_presubmit/py/pw_presubmit/format_code.py
++++ b/pw_presubmit/py/pw_presubmit/format_code.py
+@@ -229,8 +229,7 @@ def print_format_check(errors: Dict[Path, str],
+             except ValueError:
+                 return Path(path).resolve()
+ 
+-        message = (f'  pw format --fix {path_relative_to_cwd(path)}'
+-                   for path in errors)
++        message = (f' tensorflow/lite/{__file__} --fix {path}' for path in errors)
+         _LOG.warning('To fix formatting, run:\n\n%s\n', '\n'.join(message))
+ 
+ 
 diff --git a/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py b/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py
 index 794967db..061db7ea 100755
 --- a/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py

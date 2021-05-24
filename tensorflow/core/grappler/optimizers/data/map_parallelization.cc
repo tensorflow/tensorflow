@@ -32,7 +32,7 @@ namespace grappler {
 namespace {
 
 constexpr char kMapDataset[] = "MapDataset";
-constexpr char kParallelMapDataset[] = "ParallelMapDataset";
+constexpr char kParallelMapDataset[] = "ParallelMapDatasetV2";
 
 NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
   // The inputs of the node to be parallelized could be changed by the
@@ -45,8 +45,9 @@ NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
                                       &parallel_map);
   parallel_map.set_op(kParallelMapDataset);
   auto* num_parallel_calls = graph_utils::AddScalarConstNode(
-      static_cast<int32>(data::model::kAutotune), graph);
+      static_cast<int64>(data::model::kAutotune), graph);
   parallel_map.add_input(num_parallel_calls->name());
+  AddNodeAttr("deterministic", "true", &parallel_map);
 
   return parallel_map;
 }

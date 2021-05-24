@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -25,6 +27,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
@@ -50,7 +53,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_nearest_neighbor(input_tensor,
                                                      out_shape[1:3])
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         self.assertEqual(out_shape, list(resize_out.get_shape()))
         resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
@@ -65,7 +68,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
       def resize_nn(t, shape=out_shape):
         return image_ops.resize_nearest_neighbor(t, shape[1:3])
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         input_tensor = constant_op.constant(x, shape=in_shape)
         err = gradient_checker_v2.max_error(
             *gradient_checker_v2.compute_gradient(
@@ -82,7 +85,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
       def resize_nn(t, shape=out_shape):
         return image_ops.resize_nearest_neighbor(t, shape[1:3])
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         input_tensor = constant_op.constant(x, shape=in_shape)
         err = gradient_checker_v2.max_error(
             *gradient_checker_v2.compute_gradient(
@@ -106,7 +109,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
           grad_cpu = gradient_checker_v2.compute_gradient(
               resize_nn, [input_tensor], delta=1 / 8)
 
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           input_tensor = constant_op.constant(x, shape=in_shape)
           grad_gpu = gradient_checker_v2.compute_gradient(
               resize_nn, [input_tensor], delta=1 / 8)
@@ -444,7 +447,7 @@ class CropAndResizeOpTestBase(test.TestCase):
         constant_op.constant(boxes, shape=[num_boxes, 4]),
         constant_op.constant(box_ind, shape=[num_boxes]),
         constant_op.constant(crop_size, shape=[2]))
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       self.assertEqual(crops_shape, list(crops.get_shape()))
       crops = self.evaluate(crops)
       self.assertEqual(crops_shape, list(crops.shape))
@@ -535,17 +538,27 @@ class CropAndResizeOpTestBase(test.TestCase):
               with test_util.device(use_gpu=True):
                 with self.cached_session():
                   # pylint: disable=cell-var-from-loop
-                  err1 = gradient_checker_v2.max_error(
-                      *gradient_checker_v2.compute_gradient(
+                  if (os.getenv('TF_DETERMINISTIC_OPS', '0') == '1' and
+                      test_util.is_gpu_available()):
+                    with self.assertRaises(errors_impl.UnimplementedError):
+                      gradient_checker_v2.compute_gradient(
                           lambda x: crop_resize(x, boxes_tensor),
-                          [image_tensor]))
-                  err2 = gradient_checker_v2.max_error(
-                      *gradient_checker_v2.compute_gradient(
+                          [image_tensor])
+                    with self.assertRaises(errors_impl.UnimplementedError):
+                      gradient_checker_v2.compute_gradient(
                           lambda x: crop_resize(image_tensor, x),
-                          [boxes_tensor]))
-                  err = max(err1, err2)
-
-              self.assertLess(err, 2e-3)
+                          [boxes_tensor])
+                  else:
+                    err1 = gradient_checker_v2.max_error(
+                        *gradient_checker_v2.compute_gradient(
+                            lambda x: crop_resize(x, boxes_tensor),
+                            [image_tensor]))
+                    err2 = gradient_checker_v2.max_error(
+                        *gradient_checker_v2.compute_gradient(
+                            lambda x: crop_resize(image_tensor, x),
+                            [boxes_tensor]))
+                    err = max(err1, err2)
+                    self.assertLess(err, 2e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -561,7 +574,7 @@ class RGBToHSVOpTestBase(test.TestCase):
       x = np.random.randint(0, high=255, size=[2, 20, 30, 3]).astype(nptype)
       rgb_input_tensor = constant_op.constant(x, shape=in_shape)
       hsv_out = gen_image_ops.rgb_to_hsv(rgb_input_tensor)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         self.assertEqual(out_shape, list(hsv_out.get_shape()))
       hsv_out = self.evaluate(hsv_out)
       self.assertEqual(out_shape, list(hsv_out.shape))

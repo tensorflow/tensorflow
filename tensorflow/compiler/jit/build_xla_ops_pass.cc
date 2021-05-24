@@ -293,7 +293,7 @@ Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
 }
 
 // Replaces `n` with a `PartitionedCall` op that calls the same function.
-xla::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
+StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, Node* n, Graph* g,
     const NameAttrList& func, const Scope& root) {
@@ -309,9 +309,13 @@ xla::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
     }
   }
 
-  ops::PartitionedCall call(
-      root.WithOpName("partitioned_call"), args, n->output_types(), func,
-      ops::PartitionedCall::Attrs{}.ConfigProto(config_string));
+  // In theory we can use PartitionedCall if the XLA cluster does not have any
+  // stateful operations.  However, for now we choose to be conservative since
+  // we don't have any evidence that choosing a stateless partitioned call helps
+  // for performance.
+  ops::StatefulPartitionedCall call(
+      root.WithOpName("stateful_partitioned_call"), args, n->output_types(),
+      func, ops::StatefulPartitionedCall::Attrs{}.ConfigProto(config_string));
 
   for (const Edge* e : n->in_edges()) {
     if (e->IsControlEdge()) {
@@ -339,7 +343,7 @@ xla::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
   return call.operation.node();
 }
 
-xla::StatusOr<jit::DeviceId> InferDeviceForCluster(
+StatusOr<jit::DeviceId> InferDeviceForCluster(
     jit::DeviceInfoCache* device_info_cache, Node* n,
     const string& function_name, const FunctionLibraryDefinition& flib_def) {
   const FunctionDef* func_def = flib_def.Find(function_name);
@@ -397,8 +401,7 @@ std::vector<Output> GetXlaRunArgs(const Scope& s,
   return xla_run_args;
 }
 
-xla::StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root,
-                                                     Node* n) {
+StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root, Node* n) {
   MemoryTypeVector input_mtypes, output_mtypes;
   DeviceType device_type("");
   TF_RETURN_IF_ERROR(

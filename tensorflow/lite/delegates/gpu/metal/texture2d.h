@@ -47,11 +47,11 @@ class Texture2D : public GPUObject {
   // Writes data to a texture. Data should point to a region that
   // has exact width * height * sizeof(pixel) bytes.
   template <typename T>
-  absl::Status WriteData(const absl::Span<T> data);
+  absl::Status WriteData(id<MTLDevice> device, const absl::Span<T> data);
 
   // Reads data from Texture2D into CPU memory.
   template <typename T>
-  absl::Status ReadData(std::vector<T>* result) const;
+  absl::Status ReadData(id<MTLDevice> device, std::vector<T>* result) const;
 
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
@@ -80,37 +80,29 @@ absl::Status CreateTexture2DRGBA(DataType type, int width, int height, void* dat
                                  id<MTLDevice> device, Texture2D* result);
 
 template <typename T>
-absl::Status Texture2D::WriteData(const absl::Span<T> data) {
+absl::Status Texture2D::WriteData(id<MTLDevice> device,
+                                  const absl::Span<T> data) {
   const int pixel_size = PixelFormatToSizeInBytes(pixel_format_);
   if (width_ * height_ * pixel_size != data.size() * sizeof(T)) {
     return absl::InvalidArgumentError(
         "absl::Span<T> data size is different from texture allocated size.");
   }
 
-  MTLRegion region = {{0, 0, 0},
-                      {static_cast<NSUInteger>(width_), static_cast<NSUInteger>(height_), 1}};
-  [texture_ replaceRegion:region
-              mipmapLevel:0
-                withBytes:data.data()
-              bytesPerRow:width_ * pixel_size];
+  WriteDataToTexture2D(texture_, device, data.data());
 
   return absl::OkStatus();
 }
 
 template <typename T>
-absl::Status Texture2D::ReadData(std::vector<T>* result) const {
+absl::Status Texture2D::ReadData(id<MTLDevice> device,
+                                 std::vector<T>* result) const {
   const int pixel_size = PixelFormatToSizeInBytes(pixel_format_);
   if (pixel_size % sizeof(T) != 0) {
     return absl::InvalidArgumentError("Pixel format is different.");
   }
   result->resize(width_ * height_ * (pixel_size / sizeof(T)));
 
-  MTLRegion region = {{0, 0, 0},
-                      {static_cast<NSUInteger>(width_), static_cast<NSUInteger>(height_), 1}};
-  [texture_ getBytes:result->data()
-         bytesPerRow:width_ * pixel_size
-          fromRegion:region
-         mipmapLevel:0];
+  ReadDataFromTexture2D(texture_, device, result->data());
 
   return absl::OkStatus();
 }

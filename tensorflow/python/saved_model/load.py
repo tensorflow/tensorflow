@@ -20,12 +20,14 @@ from __future__ import print_function
 
 import functools
 import os
+import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -45,6 +47,7 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
@@ -54,6 +57,9 @@ from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+
+# API label for SavedModel metrics.
+_LOAD_V2_LABEL = "load_v2"
 
 
 def _unused_handle():
@@ -120,7 +126,7 @@ class Loader(object):
   """Helper class to load an object-based SavedModel."""
 
   def __init__(self, object_graph_proto, saved_model_proto, export_dir,
-               ckpt_options, filters):
+               ckpt_options, save_options, filters):
     meta_graph = saved_model_proto.meta_graphs[0]
     self._asset_file_def = meta_graph.asset_file_def
     self._operation_attributes = {
@@ -129,8 +135,9 @@ class Loader(object):
     self._export_dir = export_dir
     self._concrete_functions = (
         function_deserialization.load_function_def_library(
-            meta_graph.graph_def.library))
+            meta_graph.graph_def.library, wrapper_function=_WrapperFunction))
     self._checkpoint_options = ckpt_options
+    self._save_options = save_options
 
     # Stores user-defined node_filters argument.
     self._node_filters = filters
@@ -152,19 +159,15 @@ class Loader(object):
     # loaded. This list includes ids of child nodes.
     self._filtered_nodes = self._retrieve_all_filtered_nodes()
 
-    for name, concrete_function in self._concrete_functions.items():
-      # Wrap all the concrete function so that they are capable of dealing with
-      # both in replica and cross replica cases.
-      self._concrete_functions[name] = _WrapperFunction(concrete_function)
-
     self._load_all()
-    self._restore_checkpoint()
 
-    for node in self._nodes:
-      if isinstance(node, tracking.CapturableResource):
-        init_op = node._initialize()  # pylint: disable=protected-access
-        if not context.executing_eagerly():
-          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    if not save_options.experimental_skip_checkpoint:
+      self._restore_checkpoint()
+      for node in self._nodes:
+        if isinstance(node, tracking.CapturableResource):
+          init_op = node._initialize()  # pylint: disable=protected-access
+          if not context.executing_eagerly():
+            ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _convert_node_paths_to_ints(self):
     """Maps all string node paths in node_filters to the int node ids."""
@@ -457,21 +460,6 @@ class Loader(object):
                    for node_id in range(len(self._proto.nodes))]
     self._node_setters = node_setters
 
-  @property
-  def _expect_partial_checkpoint(self):
-    """Whether to expect that some objects aren't loaded.
-
-    This should be set to True in subclasses of the Loader class which generate
-    a trackable object with an object graph that is different from the graph
-    in the SavedModel. Setting this property to True suppresses the warnings
-    that are printed out when there are unused parts of the checkpoint or
-    object.
-
-    Returns:
-      boolean
-    """
-    return False
-
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
@@ -480,12 +468,13 @@ class Loader(object):
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     with ops.device("CPU"):
       saver._file_prefix_placeholder = constant_op.constant(variables_path)
-    if self._expect_partial_checkpoint:
+    if self._save_options.allow_partial_checkpoint:
       load_status = saver.restore(variables_path,
                                   self._checkpoint_options).expect_partial()
+      load_status.assert_nontrivial_match()
     else:
       load_status = saver.restore(variables_path, self._checkpoint_options)
-    load_status.assert_existing_objects_matched()
+      load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
 
     if not context.executing_eagerly():
@@ -546,6 +535,8 @@ class Loader(object):
         "variable": lambda: self._recreate_variable(proto.variable),
         "constant": lambda: self._recreate_constant(proto.constant),
         "resource": lambda: self._recreate_resource(proto.resource),
+        "captured_tensor": functools.partial(
+            self._get_tensor_from_fn, proto.captured_tensor),
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
@@ -627,8 +618,13 @@ class Loader(object):
       imported_constant = constant_op.constant(ndarray)
     return imported_constant, setattr
 
+  def _get_tensor_from_fn(self, proto):
+    outer_graph = self._concrete_functions[proto.concrete_function].graph
+    captured_tensor = outer_graph.get_tensor_by_name(proto.name)
+    return captured_tensor, setattr
+
   def _recreate_resource(self, proto):
-    return _RestoredResource(device=proto.device), setattr
+    return _RestoredResource(device=proto.device), _setattr_and_track
 
 
 # TODO(b/124205571,b/124092991): Solve destruction of resources.
@@ -637,7 +633,6 @@ class _RestoredResource(tracking.TrackableResource):
 
   def __init__(self, device=""):
     super(_RestoredResource, self).__init__(device=device)
-    self._destroy_resource_fn = None
 
   def _create_resource(self):
     raise RuntimeError()
@@ -645,15 +640,13 @@ class _RestoredResource(tracking.TrackableResource):
   def _initialize(self):
     raise RuntimeError()
 
-  @property
+  # _list_functions_for_serialization expects Function objects, but unlike
+  # _create_resource and _initialize, _destroy_function didn't always exist in
+  # older TrackableResource implementations, so this default stub must be a
+  # Function.
+  @def_function.function
   def _destroy_resource(self):
-    return self._destroy_resource_fn
-
-  @_destroy_resource.setter
-  def _destroy_resource(self, destroy_resource_fn):
-    self._resource_deleter = tracking.CapturableResourceDeleter(
-        destroy_resource_fn)
-    self._destroy_resource_fn = destroy_resource_fn
+    raise RuntimeError()
 
   def _list_functions_for_serialization(self, unused_serialization_cache):
     # Overwrite this method to avoid the implementation of
@@ -662,14 +655,20 @@ class _RestoredResource(tracking.TrackableResource):
     functions = {
         "_create_resource": self._create_resource,
         "_initialize": self._initialize,
+        "_destroy_resource": self._destroy_resource,
     }
-    if self._destroy_resource:
-      functions.update(_destroy_resource=self._destroy_resource)
     return functions
 
 
 def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
+
+
+def _setattr_and_track(obj, name, value):
+  """Sets new attribute and marks it as a dependency if Trackable."""
+  setattr(obj, name, value)
+  if isinstance(value, base.Trackable):
+    obj._track_trackable(value, name)  # pylint:disable=protected-access
 
 
 @tf_export("__internal__.saved_model.load_partial", v1=[])
@@ -854,14 +853,17 @@ def load(export_dir, tags=None, options=None):
 
   Returns:
     A trackable object with a `signatures` attribute mapping from signature
-    keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
+    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
     it also points to trackable objects, functions, debug info which it has been
     saved.
 
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
-  return load_internal(export_dir, tags, options)["root"]
+  metrics.IncrementReadApi(_LOAD_V2_LABEL)
+  result = load_internal(export_dir, tags, options)["root"]
+  metrics.IncrementRead()
+  return result
 
 
 def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
@@ -878,6 +880,12 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     meta_graph_def = saved_model_proto.meta_graphs[0]
+    # tensor_content field contains raw bytes in litle endian format
+    # which causes problems when loaded on big-endian systems
+    # requiring byteswap
+    if sys.byteorder == "big":
+      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little",
+                                                     "big")
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(
@@ -892,7 +900,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     with ops.init_scope():
       try:
         loader = loader_cls(object_graph_proto, saved_model_proto, export_dir,
-                            ckpt_options, filters)
+                            ckpt_options, options, filters)
       except errors.NotFoundError as err:
         raise FileNotFoundError(
             str(err) + "\n If trying to load on a different device from the "

@@ -56,7 +56,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
       tf_func = rewriter.create<LLVMFuncOp>(rewriter.getUnknownLoc(),
                                             tf_func_name, func_type);
     }
-    return SymbolRefAttr::get(tf_func_name, rewriter.getContext());
+    return SymbolRefAttr::get(rewriter.getContext(), tf_func_name);
   }
 
  protected:
@@ -356,7 +356,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         loc, getVoidPtrType(), sizes.front(), llvm::None);
 
     // Populate underlying ranked descriptor.
-    unsigned address_space = result_type.getMemorySpace();
+    unsigned address_space = result_type.getMemorySpaceAsInt();
     Type elem_type = result_type.getElementType();
     Type llvm_elem_type = typeConverter->convertType(elem_type);
     Type elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
@@ -382,7 +382,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
 }  // namespace
 
 void PopulateTFFrameworkToLLVMConversionPatterns(
-    LLVMTypeConverter *converter, OwningRewritePatternList *patterns) {
+    LLVMTypeConverter *converter, RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
       NullContextOpConverter,

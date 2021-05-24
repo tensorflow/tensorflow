@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `models.py` (model cloning, mainly)."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 
@@ -28,7 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
@@ -244,6 +240,28 @@ class TestModelCloning(keras_parameterized.TestCase):
     y = np.array([[[1], [1]], [[1], [1]]])
     loss = model.train_on_batch(x, y)
     self.assertEqual(float(loss), 0.)
+
+  def test_clone_rnn(self):
+    # Test cloning a model with multiple cells in an RNN.  This exercises a
+    # few "fancier" features such as the `Bidrectional` wrapper and
+    # `StackedRNNCells` under the hood.
+    inputs = keras.Input(shape=(3, 3))
+    cells = [
+        keras.layers.LSTMCell(
+            units=32,
+            enable_caching_device=True,
+            implementation=2,
+            activation='relu')]
+    rnn = keras.layers.RNN(cells, return_sequences=True)
+    outputs = keras.layers.Bidirectional(rnn)(inputs)
+    outputs = keras.layers.Dense(
+        12, activation='softmax', name='scores')(outputs)
+    model = keras.Model(inputs=inputs, outputs=outputs)
+    model.compile(
+        loss=keras.losses.CategoricalCrossentropy(),
+        optimizer=keras.optimizer_v2.rmsprop.RMSprop(lr=0.01),
+        metrics=['accuracy'])
+    keras.models.clone_model(model)
 
   def test_model_cloning_invalid_use_cases(self):
     seq_model = keras.models.Sequential()
@@ -511,7 +529,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     out = np.random.random((10, 4))
     clone_model.train_on_batch(inp, out)
 
-    self.assertEqual(K.eval(global_step), 124)
+    self.assertEqual(backend.eval(global_step), 124)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes

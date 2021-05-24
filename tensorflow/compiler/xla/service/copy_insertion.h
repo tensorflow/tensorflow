@@ -63,8 +63,10 @@ class CopyInsertion : public HloModulePass {
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
   // eligible for copy elision are considered for removal.
-  Status RemoveUnnecessaryCopies(const HloOrdering& ordering,
-                                 HloModule* module);
+  // If check_live_range_ordering is true, check that live ranges are ordered
+  // in all the existing aliased buffers.
+  Status RemoveUnnecessaryCopies(const HloOrdering& ordering, HloModule* module,
+                                 bool check_live_range_ordering = false);
 
   // Add copies to address special constraints on the roots of computations not
   // related to live range interference:
@@ -82,6 +84,10 @@ class CopyInsertion : public HloModulePass {
   // Override which requires the caller to pass in a call graph.
   virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
                                       HloModule* module);
+
+  // Add copies for conditional instructions.
+  virtual Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
+                                         HloInstruction* conditional);
 
   // Backend specific function that decides whether an instruction can share
   // buffer with its operand.

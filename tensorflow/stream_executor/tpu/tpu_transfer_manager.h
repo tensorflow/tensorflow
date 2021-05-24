@@ -56,7 +56,6 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
   Status TransferLiteralFromOutfeed(
       stream_executor::StreamExecutor* executor,
-      const xla::Shape& literal_shape,
       xla::MutableBorrowingLiteral literal) override;
 
   Status TransferBuffersToInfeed(
@@ -89,8 +88,14 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
       const xla::LiteralSlice& literal,
       std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) override;
 
+  Status ReadDynamicShapes(se::Stream* stream, xla::ShapedBuffer* device_buffer,
+                           xla::Shape* device_shape) override;
+
  private:
   XLA_TransferManager* manager_;
+  Status UpdateShapesFromMetadata(
+      const xla::MutableBorrowingLiteral& metadata_literal,
+      xla::Shape* device_shape);
 };
 
 }  // namespace tpu

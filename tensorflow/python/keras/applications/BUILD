@@ -8,7 +8,7 @@ package(
         # Remove this deps to integration test.
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -36,7 +36,7 @@ py_library(
         "vgg19.py",
         "xception.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:lib",

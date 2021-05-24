@@ -106,6 +106,7 @@ def mirrored_and_tpu_strategy_combinations():
   return combinations.combine(
       distribution=[
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
           strategy_combinations.tpu_strategy,
           strategy_combinations.tpu_strategy_packed_var,
       ],
@@ -278,6 +279,8 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
               strategy_combinations.tpu_strategy,
               strategy_combinations.tpu_strategy_packed_var,
               strategy_combinations.central_storage_strategy_with_two_gpus,
@@ -299,6 +302,8 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
               strategy_combinations.tpu_strategy,
               strategy_combinations.tpu_strategy_packed_var,
               strategy_combinations.central_storage_strategy_with_two_gpus,
@@ -399,12 +404,14 @@ class DistributedDelegateTest(test.TestCase):
         distribution=[
             strategy_combinations.mirrored_strategy_with_one_cpu,
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+            strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
             strategy_combinations.tpu_strategy,
             strategy_combinations.tpu_strategy_packed_var,
             strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
-            strategy_combinations.multi_worker_mirrored_2x2_gpu
+            strategy_combinations.multi_worker_mirrored_2x2_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
         ],
         synchronization=[
             variables_lib.VariableSynchronization.ON_READ,
@@ -596,12 +603,13 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                                  aggregation):
     if len(distribution.extended.parameter_devices) != 2:
       self.skipTest("n/a: needs exactly two parameter devices")
+    if (synchronization == variables_lib.VariableSynchronization.ON_WRITE and
+        aggregation != variables_lib.VariableAggregation.NONE):
+      self.skipTest("n/a: doesn't apply to ON_WRITE variable with aggregation")
     with distribution.scope():
       v = variables_lib.Variable(
           0., synchronization=synchronization, aggregation=aggregation)
-    # Note that this is actually real usage. We're doing this in optimizer to
-    # workaround the current restriction in strategy.extended.update().
-    value = values_lib.Mirrored([1., 2.])
+    value = values_lib.PerReplica([1., 2.])
 
     assign_fn = lambda var, value: var.assign(value)
     self.evaluate(distribution.extended.update(v, assign_fn, args=(value,)))
@@ -834,6 +842,8 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
         and mode == "graph"):
       self.skipTest("MWMS combinations tests do not work well in graph mode.")
+    if not distribution.extended._use_merge_call():
+      self.skipTest("Unsupported combination.")
     with distribution.scope():
       v = variables_lib.Variable([1., 1.],
                                  synchronization=synchronization,
@@ -869,6 +879,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     # 2) aggregation is SUM.
     if (synchronization == variables_lib.VariableSynchronization.ON_READ and
         (aggregation == variables_lib.VariableAggregation.SUM or
+         (not distribution.extended._use_merge_call()) or
          (isinstance(distribution.extended,
                      collective_all_reduce_strategy.CollectiveAllReduceExtended)
           and aggregation == variables_lib.VariableAggregation.MEAN))):
@@ -1182,6 +1193,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(
       distribution=[
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
           strategy_combinations.tpu_strategy,
           strategy_combinations.tpu_strategy_packed_var,
       ], mode=["eager"]))

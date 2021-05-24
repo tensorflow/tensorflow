@@ -16,41 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-namespace xla {
+namespace jax {
 
-// Describes the abstract shape and dtype of an argument.
-struct ArgSignature {
-  ArgSignature(PrimitiveType dtype, absl::Span<const int64> shape,
-               bool weak_type)
-      : dtype(dtype), shape(shape.begin(), shape.end()), weak_type(weak_type) {}
-  // This is the XLA dtype of the object.
-  const PrimitiveType dtype;
-  const absl::InlinedVector<int64, 4> shape;
-  // JAX arguments can be of weak type, if and only if they are Python scalars
-  // or `DeviceArray` values such that `aval.weak_type` is true.
-  const bool weak_type;
-  bool operator==(const ArgSignature& other) const {
-    return std::tie(dtype, weak_type, shape) ==
-           std::tie(other.dtype, other.weak_type, other.shape);
-  }
-  bool operator!=(const ArgSignature& other) const { return !(*this == other); }
-  std::string DebugString() const;
-};
-
-template <typename H>
-H AbslHashValue(H h, const ArgSignature& s) {
-  h = H::combine(std::move(h), s.dtype);
-  h = H::combine_contiguous(std::move(h), s.shape.data(), s.shape.size());
-  return h;
-}
+// Returns the value for jax_enable_x64 (defined by a thread-local value if
+// defined, defaulting to the value of the flag otherwise).
+bool GetEnableX64();
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
@@ -62,49 +43,38 @@ H AbslHashValue(H h, const ArgSignature& s) {
 // (a) equality of the arguments and keyword arguments ArgSignature
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
-  struct KwargEntry {
-    // To avoid comparing strings, we intern the kwargs strings.
-    // The compilation cache holds a reference to all the keys.
-    pybind11::handle key;
-    PyTreeDef value_treedef;
-    bool operator==(const KwargEntry& other) const {
-      return key.ptr() == other.key.ptr() &&
-             value_treedef == other.value_treedef;
-    }
-    bool operator!=(const KwargEntry& other) const { return !(*this == other); }
-  };
-
-  // Only contains the arguments associated to `static_argnums`, sorted in the
-  // order of their argnum index.
-  std::vector<pybind11::object> static_args;
-  // A PyTreeDef for each positional dynamic (i.e. not static) argument.
-  std::vector<PyTreeDef> dynamic_positional_args_treedef;
-  // Keyword arguments. Sorted by the keyword name.
-  std::vector<KwargEntry> keyword_args;
+  // A PyTreeDef for each dynamic argument, positional arguments first
+  // followed by keyword arguments. Keyword arguments are in the order given
+  // by dynamic_arg_names.
+  absl::InlinedVector<xla::PyTreeDef, 2> dynamic_arg_treedefs;
+  // Dynamic keyword argument names. Interned, and sorted by the keyword
+  // name.
+  std::vector<pybind11::object> dynamic_arg_names;
   // Shape and dtype for both the dynamic positional arguments and the keyword
   // arguments (sorted by keyword name).
-  std::vector<ArgSignature> dynamic_args_signatures;
-  PjRtDevice* device;
+  absl::InlinedVector<xla::PyArgSignature, 2> dynamic_arg_signatures;
+
+  // Static arguments. Contains the positional arguments sorted in argument
+  // order, followed by static keyword arguments in the order given by
+  // `static_arg_names`.
+  std::vector<pybind11::object> static_args;
+  // Static keyword argument names. Interned, and sorted by keyword name.
+  std::vector<pybind11::object> static_arg_names;
+
+  xla::PjRtDevice* device;
+  bool jax_enable_x64;
+
+  // Opaque additional context that should be included as part of the cache key.
+  pybind11::object global_extra_jit_context;
+  absl::optional<pybind11::object> thread_local_extra_jit_context;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
     return !(*this == other);
   }
 
-  // To be used when we want to keep ownership of Python values referenced by
-  // the `CallSignature` (i.e. when we insert an entry).
-  void IncRef() const;
-  // The destructor of the cache should call this on all entries.
-  void DecRef() const;
-
   std::string DebugString() const;
 };
-
-template <typename H>
-H AbslHashValue(H h, const CallSignature::KwargEntry& kw) {
-  h = H::combine(std::move(h), kw.key.ptr(), kw.value_treedef);
-  return h;
-}
 
 template <typename H>
 H AbslHashValue(H h, const CallSignature& s);
@@ -118,58 +88,29 @@ struct ParsedArgumentsAsBuffers {
   CallSignature signature;
   // The concatenation of the dynamic positional arguments and the sorted
   // keyword arguments.
-  std::vector<pybind11::object> flat_dynamic_args;
+  absl::InlinedVector<pybind11::object, 2> flat_dynamic_args;
   std::vector<pybind11::object> keep_alive_objects;
 
   // The following is only valid if the parsing succeeds.
   std::vector<xla::PjRtBuffer*> arg_buffers;
   // We may need to keep these objects around, because:
   // (a) we need to extend the lifetime of objects created within
-  //    `ConvertArgsToBuffers`
+  //    `CopyBuffersToDevice`
   // (b) `arg_buffers` do not maintain ownership
   std::vector<std::unique_ptr<xla::PjRtBuffer>> keep_alive;
 };
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-Status ParseArguments(const pybind11::args& args,
-                      const pybind11::kwargs& py_kwargs,
-                      absl::Span<int const> static_argnums,
-                      ParsedArgumentsAsBuffers& arguments);
-
-struct DevicePutResult {
-  explicit DevicePutResult(PjRtBuffer* b, bool weak_type)
-      : buffer(b), weak_type(weak_type), owned_buffer(nullptr) {}
-  DevicePutResult(std::unique_ptr<PjRtBuffer> new_buffer, bool weak_type)
-      : buffer(new_buffer.get()),
-        weak_type(weak_type),
-        owned_buffer(std::move(new_buffer)) {}
-
-  PjRtBuffer* buffer;
-  bool weak_type;
-  std::unique_ptr<PjRtBuffer> owned_buffer;
-};
-
-// Returns the ArgSignature associated with an argument. Returns an error if
-// the argument is not supported.
-StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
-                                           bool jax_enable_x64);
-
-// Moves a device-like object to be on device.
-// - If the object is already on device, `owned_buffer` will be nullptr.
-// - If it's not, a new buffer will be created and returned using
-//   `owned_buffer`.
-// In all cases, `buffer` will point to the already existing or newly created
-// buffer.
-// If `obj` is not convertible to a `PjRtBuffer` from C++, an error will be
-// returned; float0 dtype and `_DeviceArray` with non-trivial LazyExpr are not
-// supported yet.
-StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
-                                    bool jax_enable_x64, PyClient& pyclient);
+xla::Status ParseArguments(pybind11::handle args,
+                           const absl::optional<pybind11::kwargs>& py_kwargs,
+                           absl::Span<int const> static_argnums,
+                           absl::Span<pybind11::str const> static_argnames,
+                           ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.
 void BuildJaxjitSubmodule(pybind11::module& m);
 
-}  // namespace xla
+}  // namespace jax
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_

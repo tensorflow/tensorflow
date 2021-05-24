@@ -78,94 +78,100 @@ struct MatrixDescriptor {
   int64 num_cols;
 };
 
-template <typename Element, typename AlphaType>
-static bool DoGemmWithAlgorithm(
-    int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-    MatrixDescriptor output_matrix, AlphaType alpha, double beta,
-    se::Stream *stream, absl::optional<se::blas::AlgorithmType> algorithm,
-    se::blas::ProfileResult *output_profile_result) {
-  DCHECK(!output_matrix.transpose);
-
-  PrimitiveType type = primitive_util::NativeToPrimitiveType<Element>();
-
-  // Converts from an XLA PrimitiveType to a blas::ComputationType, which is
-  // used to specify the precision with which matmul computations should be
-  // performed, separately from the precision of the inputs and result.
-  se::blas::ComputationType computation_type;
+// Converts from an XLA PrimitiveType to a blas::ComputationType, which is
+// used to specify the precision with which matmul computations should be
+// performed, separately from the precision of the inputs and result.
+static absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
+    PrimitiveType type) {
   switch (type) {
     case F16:
       // Use F32 as computation type for F16 as we currently only implement
       // the cuDNN pseudo half configuration for half precision.
-      computation_type = se::blas::ComputationType::kF32;
-      break;
+      return se::blas::ComputationType::kF32;
     case F32:
-      computation_type = se::blas::ComputationType::kF32;
-      break;
+      return se::blas::ComputationType::kF32;
     case F64:
-      computation_type = se::blas::ComputationType::kF64;
-      break;
+      return se::blas::ComputationType::kF64;
     case C64:
-      computation_type = se::blas::ComputationType::kComplexF32;
-      break;
+      return se::blas::ComputationType::kComplexF32;
     case C128:
-      computation_type = se::blas::ComputationType::kComplexF64;
-      break;
+      return se::blas::ComputationType::kComplexF64;
     default:
-      return false;
+      return absl::nullopt;
   }
+}
+
+template <typename Element>
+static Status DoGemmWithAlgorithm(
+    int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+    MatrixDescriptor output_matrix, Element alpha, Element beta,
+    se::Stream *stream, absl::optional<se::blas::AlgorithmType> algorithm,
+    se::blas::ProfileResult *output_profile_result) {
+  CHECK(!output_matrix.transpose);
+  PrimitiveType type = primitive_util::NativeToPrimitiveType<Element>();
+  se::blas::ComputationType computation_type =
+      *ComputationTypeFromPrimitive(type);
+  se::blas::Transpose lhs_transpose = lhs_matrix.transpose
+                                          ? se::blas::Transpose::kTranspose
+                                          : se::blas::Transpose::kNoTranspose;
+  se::blas::Transpose rhs_transpose = rhs_matrix.transpose
+                                          ? se::blas::Transpose::kTranspose
+                                          : se::blas::Transpose::kNoTranspose;
+  int64 k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
   se::DeviceMemory<Element> output_data(output_matrix.data);
 
-  auto lhs_transpose = lhs_matrix.transpose ? se::blas::Transpose::kTranspose
-                                            : se::blas::Transpose::kNoTranspose;
-  auto rhs_transpose = rhs_matrix.transpose ? se::blas::Transpose::kTranspose
-                                            : se::blas::Transpose::kNoTranspose;
-  auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
+  int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
+  int64 rhs_stride = rhs_matrix.num_rows * rhs_matrix.num_cols;
+  int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
 
   if (algorithm) {
-    // Autotuning is disabled for batch_size != 1.
-    CHECK_EQ(1, batch_size);
-    return stream
-        ->ThenBlasGemmWithAlgorithm(
-            lhs_transpose, rhs_transpose, output_matrix.num_rows,
-            output_matrix.num_cols,
-            /*size of reduce dim=*/k,
-            /*alpha=*/static_cast<Element>(alpha), lhs_data,
-            /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
-            /*leading dim of RHS=*/rhs_matrix.num_rows,
-            /*beta=*/static_cast<Element>(beta), &output_data,
-            /*leading dim of output=*/output_matrix.num_rows, computation_type,
-            *algorithm, output_profile_result)
-        .ok();
+    if (batch_size != 1) {
+      return stream->ThenBlasGemmStridedBatchedWithAlgorithm(
+          lhs_transpose, rhs_transpose, output_matrix.num_rows,
+          output_matrix.num_cols,
+          /*size of reduce dim=*/k,
+          /*alpha=*/alpha, lhs_data, lhs_stride,
+          /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows, rhs_stride,
+          /*beta=*/beta, &output_data,
+          /*leading dim of output=*/output_matrix.num_rows, output_stride,
+          batch_size, computation_type, *algorithm, output_profile_result);
+    } else {
+      return stream->ThenBlasGemmWithAlgorithm(
+          lhs_transpose, rhs_transpose, output_matrix.num_rows,
+          output_matrix.num_cols,
+          /*size of reduce dim=*/k,
+          /*alpha=*/alpha, lhs_data,
+          /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows,
+          /*beta=*/beta, &output_data,
+          /*leading dim of output=*/output_matrix.num_rows, computation_type,
+          *algorithm, output_profile_result);
+    }
   }
 
   if (batch_size != 1) {
-    int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
-    int64 rhs_stride = rhs_matrix.num_rows * rhs_matrix.num_cols;
-    int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
-    return stream
-        ->ThenBlasGemmStridedBatched(
-            lhs_transpose, rhs_transpose, output_matrix.num_rows,
-            output_matrix.num_cols, /*size of reduce dim=*/k,
-            /*alpha=*/alpha, lhs_data,
-            /*leading dim of LHS=*/lhs_matrix.num_rows, lhs_stride, rhs_data,
-            /*leading dim of RHS=*/rhs_matrix.num_rows, rhs_stride,
-            /*beta=*/beta, &output_data,
-            /*leading dim of output=*/output_matrix.num_rows, output_stride,
-            batch_size)
-        .ok();
+    return stream->ThenBlasGemmStridedBatched(
+        lhs_transpose, rhs_transpose, output_matrix.num_rows,
+        output_matrix.num_cols, /*size of reduce dim=*/k,
+        /*alpha=*/alpha, lhs_data,
+        /*leading dim of LHS=*/lhs_matrix.num_rows, lhs_stride, rhs_data,
+        /*leading dim of RHS=*/rhs_matrix.num_rows, rhs_stride,
+        /*beta=*/beta, &output_data,
+        /*leading dim of output=*/output_matrix.num_rows, output_stride,
+        batch_size);
   }
-
-  return stream
-      ->ThenBlasGemm(
-          lhs_transpose, rhs_transpose, output_matrix.num_rows,
-          output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/alpha,
-          lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
-          /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/beta,
-          &output_data, /*leading dim of output=*/output_matrix.num_rows)
-      .ok();
+  return stream->ThenBlasGemm(
+      lhs_transpose, rhs_transpose, output_matrix.num_rows,
+      output_matrix.num_cols, /*size of reduce dim=*/k,
+      /*alpha=*/alpha, lhs_data,
+      /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+      /*leading dim of RHS=*/rhs_matrix.num_rows,
+      /*beta=*/beta, &output_data,
+      /*leading dim of output=*/output_matrix.num_rows);
 }
 
 Status RunGemm(const GpuGemmConfig &gemm_config,
@@ -270,45 +276,41 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   complex128 alpha = {backend_config.alpha_real(), backend_config.alpha_imag()};
   double beta = backend_config.beta();
 
-  bool launch_ok = [&]() {
-    switch (output_shape.element_type()) {
-      case F16:
-        CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<Eigen::half, double>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
-            beta, stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      case F32:
-        CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<float, double>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
-            beta, stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      case F64:
-        CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<double, double>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
-            beta, stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      case C64:
-        return DoGemmWithAlgorithm<complex64, complex64>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix,
-            static_cast<complex64>(alpha), beta, stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      case C128:
-        return DoGemmWithAlgorithm<complex128, complex128>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha, beta,
-            stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      default:
-        return false;
-    }
-  }();
-
-  if (!launch_ok) {
-    return InternalError("Unable to launch cuBLAS gemm on stream %p", stream);
+  switch (output_shape.element_type()) {
+    case F16:
+      CHECK_EQ(alpha.imag(), 0);
+      return DoGemmWithAlgorithm<Eigen::half>(
+          batch_size, lhs_matrix, rhs_matrix, output_matrix,
+          static_cast<Eigen::half>(alpha.real()),
+          static_cast<Eigen::half>(beta), stream, best_algorithm,
+          /*output_profile_result=*/profile_result);
+    case F32:
+      CHECK_EQ(alpha.imag(), 0);
+      return DoGemmWithAlgorithm<float>(
+          batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(), beta,
+          stream, best_algorithm,
+          /*output_profile_result=*/profile_result);
+    case F64:
+      CHECK_EQ(alpha.imag(), 0);
+      return DoGemmWithAlgorithm<double>(
+          batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(), beta,
+          stream, best_algorithm,
+          /*output_profile_result=*/profile_result);
+    case C64:
+      return DoGemmWithAlgorithm<complex64>(
+          batch_size, lhs_matrix, rhs_matrix, output_matrix,
+          static_cast<complex64>(alpha), static_cast<complex64>(beta), stream,
+          best_algorithm,
+          /*output_profile_result=*/profile_result);
+    case C128:
+      return DoGemmWithAlgorithm<complex128>(
+          batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha,
+          static_cast<complex128>(beta), stream, best_algorithm,
+          /*output_profile_result=*/profile_result);
+    default:
+      return InternalError("Unexpected GEMM datatype: %s",
+                           output_shape.ToString());
   }
-  return Status::OK();
 }
 
 }  // namespace gpu

@@ -315,6 +315,14 @@ llvm_all_cmake_vars = select({
             darwin_cmake_vars,
         ),
     ),
+    "@org_tensorflow//tensorflow:linux_aarch64": cmake_var_string(
+        _dict_add(
+            cmake_vars,
+            llvm_target_cmake_vars("AArch64", "aarch64-unknown-linux_gnu"),
+            posix_cmake_vars,
+            linux_cmake_vars,
+        ),
+    ),
     "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
         _dict_add(
             cmake_vars,

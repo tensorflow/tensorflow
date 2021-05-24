@@ -17,6 +17,8 @@ limitations under the License.
 // structured control flow and descriptors.
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
+#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
@@ -49,7 +51,9 @@ struct ShapeToDescriptorsPass
     ConversionTarget target(ctx);
     target.addIllegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<scf::SCFDialect>();
+    target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<math::MathDialect>();
     target.addLegalDialect<tensor::TensorDialect>();
     // Don't mark the primary Cstr/Assuming ops as illegal, so they can be
     // lowered at a later time to assertions.
@@ -57,9 +61,9 @@ struct ShapeToDescriptorsPass
                       shape::CstrRequireOp>();
 
     // Setup conversion patterns.
-    OwningRewritePatternList patterns;
-    populateShapeRewritePatterns(&ctx, patterns);
-    populateShapeToStandardConversionPatterns(patterns, &ctx);
+    RewritePatternSet patterns(&getContext());
+    populateShapeRewritePatterns(patterns);
+    populateShapeToStandardConversionPatterns(patterns);
 
     // Apply conversion.
     auto module = getOperation();

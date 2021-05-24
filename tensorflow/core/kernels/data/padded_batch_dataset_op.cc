@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/padded_batch_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -63,7 +63,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         traceme_metadata_(
             {{"batch_size",
               strings::Printf("%lld", static_cast<long long>(batch_size))},
-             {"drop_remainder", drop_remainder ? "true" : "false"}}) {
+             {"drop_remainder", drop_remainder ? "true" : "false"},
+             {"parallel_copy", parallel_copy ? "true" : "false"}}) {
     input_->Ref();
 
     // NOTE(mrry): Currently we implement "batch up to" semantics. If we could

@@ -59,6 +59,9 @@ $0.w = $0.w < INIT_FLT(0.0f) ? exp($0.w) - INIT_FLT(1.0f) : $0.w;)";
     case OperationType::EXP:
       result = "$0 = exp($0);\n";
       break;
+    case OperationType::FLOOR:
+      result = "$0 = floor($0);\n";
+      break;
     case OperationType::HARD_SWISH:
       result =
           "$0 *= clamp($0 * INIT_FLT(0.16666667f) + INIT_FLT(0.5f), "
@@ -113,6 +116,12 @@ std::string GetTwoInputCode(const OperationType& op_type,
       break;
     case OperationType::DIV:
       result += "$0 = $1 / $2;\n";
+      break;
+    case OperationType::FLOOR_DIV:
+      result = "$0 = floor($1 / $2);\n";
+      break;
+    case OperationType::FLOOR_MOD:
+      result = "$0 = $1 - floor($1 / $2) * $2;\n";
       break;
     case OperationType::MAXIMUM:
       result += "$0 = max($1, $2);\n";
@@ -205,9 +214,13 @@ GPUOperation CreateElementwiseTwoInput(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs) {
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
-  TensorStorageType storage_type =
-      SelectBestStorageType(gpu_info, shape, definition.GetPrimaryStorageType(),
-                            definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type;
+  auto status = SelectBestStorageType(
+      gpu_info, shape, definition.GetPrimaryStorageType(),
+      definition.GetDataType(), Layout::HWC, &storage_type);
+  if (!status.ok()) {
+    storage_type = TensorStorageType::BUFFER;
+  }
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   desc.UploadData(constant_tensor);
 
@@ -237,9 +250,13 @@ GPUOperation CreateElementwiseTwoInput(
     bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
-  TensorStorageType storage_type =
-      SelectBestStorageType(gpu_info, shape, definition.GetPrimaryStorageType(),
-                            definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type;
+  auto status = SelectBestStorageType(
+      gpu_info, shape, definition.GetPrimaryStorageType(),
+      definition.GetDataType(), Layout::HWC, &storage_type);
+  if (!status.ok()) {
+    storage_type = TensorStorageType::BUFFER;
+  }
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   desc.UploadData(constant_tensor);
 

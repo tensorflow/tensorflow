@@ -23,7 +23,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/core/platform/threadpool.h"
+
+namespace stream_executor {
+
+// Forward-declared to avoid StreamExecutor dependency.
+class DeviceMemoryAllocator;
+
+}  // namespace stream_executor
 
 namespace xla {
 
@@ -135,6 +142,7 @@ class ExecutableBuildOptions {
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;
   bool deduplicate_hlo_ = false;
+  bool broadcast_replicated_params_ = false;
   absl::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;

@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import itertools
+import time
 
 from absl.testing import parameterized
 import numpy as np
@@ -27,6 +29,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
+from tensorflow.python.autograph.lang import directives
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -50,11 +53,13 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_v2
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import momentum
@@ -1558,6 +1563,305 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
     grad = tape.gradient(out, x)
     self.assertAllEqual(grad, 20.0)
+
+
+class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
+                               parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self._while_paralelism = while_v2.glob_stateful_parallelism
+
+  def tearDown(self):
+    while_v2.glob_stateful_parallelism = self._while_paralelism
+    super().tearDown()
+
+  @parameterized.parameters(*itertools.product(
+      (False, True),
+      (False, True),
+      (False, True),
+      (False, True),
+      (False, True),
+  ))
+  def testResourceHandlingInLoop(self, read_before, read_after, modify_in_loop,
+                                 modify_before, modify_after):
+
+    if not tf2.enabled():
+      self.skipTest("V2-only test.")
+
+    while_v2.glob_stateful_parallelism = True
+
+    ticker = variables.Variable(0)
+
+    @def_function.function
+    def run_loop(n):
+      ticker.assign(0)
+      i = constant_op.constant(0)
+      t_acc = tensor_array_ops.TensorArray(
+          dtypes.int32, size=0, dynamic_size=True)
+
+      if read_before:
+        rb = ticker.read_value()
+      else:
+        rb = constant_op.constant(0)
+      if modify_before:
+        ticker.assign_add(1)
+
+      while i < n:
+        directives.set_loop_options(parallel_iterations=10)
+
+        if modify_in_loop:
+          ticker.assign_add(1)
+        t_acc = t_acc.write(i, ticker.read_value())
+        i += 1
+
+      if read_after:
+        ra = ticker.read_value()
+      else:
+        ra = constant_op.constant(0)
+      if modify_after:
+        ticker.assign_add(1)
+
+      return t_acc.stack(), rb, ra
+
+    # Warm-up.
+    self.evaluate(run_loop(1))
+
+    self.evaluate(ticker.assign(123))
+    acc, rb, ra = run_loop(3)
+    self.assertEqual(
+        self.evaluate(math_ops.reduce_max(acc)),
+        int(modify_before) + 3 * int(modify_in_loop))
+
+    # Double check variable reads are still sequenced.
+    self.assertEqual(self.evaluate(rb), 0)
+
+    if read_after:
+      expected_ra = int(modify_before) + 3 * int(modify_in_loop)
+    else:
+      expected_ra = 0
+    self.assertEqual(self.evaluate(ra), expected_ra)
+
+    # Double-check that the loop ran completely.
+    self.assertEqual(
+        self.evaluate(ticker.read_value()),
+        int(modify_before) + 3 * int(modify_in_loop) + int(modify_after))
+
+  def testMultiReadsBeforeWrite(self):
+
+    if not tf2.enabled():
+      self.skipTest("V2-only test.")
+
+    while_v2.glob_stateful_parallelism = True
+
+    ticker = variables.Variable(0)
+
+    @def_function.function
+    def run_loop(n):
+      ticker.assign(0)
+      i = constant_op.constant(0)
+      t_acc = tensor_array_ops.TensorArray(
+          dtypes.int32, size=0, dynamic_size=True)
+
+      while i < n:
+        directives.set_loop_options(parallel_iterations=10)
+
+        a = ticker.read_value()
+        b = ticker.read_value()
+        t_acc = t_acc.write(2 * i, a)
+        t_acc = t_acc.write(2 * i + 1, b)
+
+        # Slow write forces reads to sprint ahead if they can.
+        # This test verifies that they don't.
+        ticker.assign_add(
+            math_ops.cast(
+                math_ops.reduce_max(
+                    random_ops.random_uniform(
+                        shape=(1000,), minval=1.0, maxval=1.001)),
+                dtypes.int32))
+
+        i += 1
+
+      a = ticker.read_value()
+      b = ticker.read_value()
+      t_acc = t_acc.write(2 * i, a)
+      t_acc = t_acc.write(2 * i + 1, b)
+
+      return t_acc.stack()
+
+    # Warm-up.
+    self.evaluate(run_loop(1))
+
+    acc = run_loop(3)
+    self.assertAllEqual(acc, [0, 0, 1, 1, 2, 2, 3, 3])
+
+  def testCondDependenceOnMutatedResource(self):
+
+    if not tf2.enabled():
+      self.skipTest("V2-only test.")
+
+    # TODO(b/187340669): Switch to True. Current status is: not yet supported.
+    while_v2.glob_stateful_parallelism = "stateless_cond"
+
+    ticker = variables.Variable(0)
+    counter = variables.Variable(1)
+
+    @def_function.function
+    def run_loop(n):
+      ticker.assign(0)
+      counter.assign(0)
+
+      while ticker.read_value() < n:
+        directives.set_loop_options(parallel_iterations=10)
+
+        # Run a slow assign, to make sure counter sprints ahead.
+        ticker.assign_add(
+            math_ops.cast(
+                math_ops.reduce_max(
+                    random_ops.random_uniform(
+                        shape=(1000,), minval=1.0, maxval=1.001)),
+                dtypes.int32))
+        counter.assign_add(1)
+
+      return ticker.read_value(), counter.read_value()
+
+    # Warm-up.
+    self.evaluate(run_loop(1))
+
+    t, c = run_loop(3)
+    self.assertEqual(self.evaluate(t), 3)
+    self.assertEqual(self.evaluate(c), 3)
+
+  def testIndependentSideEffectsInCond(self):
+
+    if not tf2.enabled():
+      self.skipTest("V2-only test.")
+
+    # TODO(b/187340669): Switch to True. Current status is: not yet supported.
+    while_v2.glob_stateful_parallelism = "stateless_cond"
+
+    state = []
+
+    def record_side_effect(c):
+
+      def side_effect_py_fn():
+        state.append(c)
+        return 0
+
+      script_ops.eager_py_func(side_effect_py_fn, [], [dtypes.int32])
+
+    @def_function.function
+    def run_loop(n):
+
+      def complex_cond(i):
+        record_side_effect("A")
+        return i < n
+
+      i = constant_op.constant(0)
+
+      while complex_cond(i):
+        directives.set_loop_options(parallel_iterations=10)
+
+        record_side_effect("B")
+        i += 1
+
+      return i
+
+    # Warm-up.
+    self.evaluate(run_loop(1))
+
+    state.clear()
+    i = run_loop(3)
+    self.assertEqual(self.evaluate(i), 3)
+    self.assertListEqual(state, ["A", "B", "A", "B", "A", "B", "A"])
+
+  def testStatelessLoop(self):
+
+    while_v2.glob_stateful_parallelism = True
+
+    @def_function.function
+    def run_loop(n):
+
+      a = 0
+      b = 1
+
+      i = constant_op.constant(0)
+      while i < n:
+        directives.set_loop_options(parallel_iterations=10)
+        i += 1
+        a += 2
+        b *= 3
+
+      return i, a, b
+
+    i, a, b = run_loop(3)
+    self.assertEqual(self.evaluate(i), 3)
+    self.assertEqual(self.evaluate(a), 6)
+    self.assertEqual(self.evaluate(b), 27)
+
+  def testStatefulParallelism(self):
+
+    if not tf2.enabled():
+      self.skipTest("V2-only test.")
+
+    while_v2.glob_stateful_parallelism = True
+
+    ticker = variables.Variable(0)
+    # Secondary state for the pyfunc that lets us verify that things ran in
+    # the correct relative order.
+    ticker_state = []
+
+    def wait_then_tick(i):
+      # The contents of py_funcs is opaque, so TF doesn't see this variable
+      # assignment. In turn, this allows us to run it in parallel with
+      # the variable read.
+      def wait_then_tick_py_fn(i):
+        time.sleep(1)
+        ticker.assign_add(1)
+        ticker_state.append(i.numpy().item())
+        return 1
+
+      return script_ops.eager_py_func(wait_then_tick_py_fn, [i],
+                                      [dtypes.int32])[0]
+
+    @def_function.function
+    def run_loop(n):
+      ticker.assign(0)
+      i = constant_op.constant(0)
+      t_acc = tensor_array_ops.TensorArray(
+          dtypes.int32, size=0, dynamic_size=True)
+
+      while i < n:
+        directives.set_loop_options(parallel_iterations=10)
+
+        wait_then_tick(i + 1)
+        # The read is expected to run in much less than `wait_then_tick`,
+        # which sleeps for 1s. Hence all reads should complete before the first
+        # `wait_then_tick` increments the `ticker` variable.
+        t_acc = t_acc.write(i, ticker.read_value())
+        i += 1
+
+      return t_acc.stack()
+
+    # Warm-up.
+    self.evaluate(run_loop(1))
+
+    # This test is deterministic so long as the runtime is fast enough to
+    # execute `t_acc = t_acc.write(i, ticker.read_value())` in much less than
+    # one second.
+    self.evaluate(ticker.assign(123))
+    ticker_state.clear()
+    acc = run_loop(3)
+    # Because the loop iterations are allowed to run in parallel, reads from
+    # different iterations may proceed ahead of pyfuncs from other iterations.
+    # Because reads are much faster, they should all complete before a single
+    # pyfunc does.
+    self.assertEqual(self.evaluate(math_ops.reduce_max(acc)), 0)
+
+    # Double-check that the loop ran completely.
+    self.assertEqual(self.evaluate(ticker.read_value()), 3)
+    # Double check that the pyfuncs ran in order.
+    self.assertListEqual(ticker_state, [1, 2, 3])
 
 
 class AssertTest(test_util.TensorFlowTestCase):

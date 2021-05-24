@@ -283,6 +283,8 @@ class BufferAllocation {
     param_shape_index_ = std::move(param_shape_index);
   }
 
+  void set_constant(bool is_constant) { is_constant_ = is_constant; }
+
  private:
   // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
   friend class BufferAssigner;
@@ -291,7 +293,6 @@ class BufferAllocation {
   // Adds a LogicalBuffer to the set assigned to this buffer.
   void AddAssignment(const HloValue& buffer, int64 offset, int64 size);
 
-  void set_constant(bool is_constant) { is_constant_ = is_constant; }
   void set_index(Index index) { index_ = index; }
   void set_size(int64 size) { size_ = size; }
 
@@ -466,6 +467,7 @@ class BufferAssignment {
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
   string ToString() const;
+  string BufferInfoString() const;
   BufferAssignmentProto ToProto() const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always

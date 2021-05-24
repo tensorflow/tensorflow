@@ -83,8 +83,8 @@ std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
     const OperationDef& op_def) {
   if (gpu_info.IsAdreno()) {
     return SelectConvolutionTransposedAdreno(attr, gpu_info, op_def);
-  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() ||
-             gpu_info.IsNvidia() || gpu_info.IsIntel()) {
+  } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsNvidia() ||
+             gpu_info.IsIntel() || gpu_info.IsApple()) {
     return SelectConvolutionTransposedPowerVR(attr, gpu_info, op_def);
   } else if (gpu_info.IsMali()) {
     return SelectConvolutionTransposedMali(attr, gpu_info, op_def);

@@ -582,6 +582,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Prod", EIGEN_COST(scalar_product_op<float>));
   elementwise_ops_.emplace("QuantizeAndDequantizeV2",
                            quantize_and_dequantize_v2_cost);
+  elementwise_ops_.emplace("QuantizeAndDequantizeV4",
+                           quantize_and_dequantize_v2_cost);
   elementwise_ops_.emplace("QuantizedSigmoid",
                            EIGEN_COST(scalar_logistic_op<float>));
   elementwise_ops_.emplace("QuantizeV2", quantize_v2_cost);
@@ -714,6 +716,8 @@ Status OpLevelCostEstimator::PredictNodeCosts(const OpContext& op_context,
   return PredictCostOfAnUnknownOp(op_context, node_costs);
 }
 
+// This method assumes a typical system composed of CPUs and GPUs, connected
+// through PCIe. To define device info more precisely, override this method.
 DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
     const DeviceProperties& device) const {
   double gflops = -1;
@@ -755,12 +759,14 @@ DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
     } else {
       gb_per_sec = 100;
     }
+  } else {
+    LOG_EVERY_N(WARNING, 1000) << "Unknown device type: " << device.type()
+                               << ", assuming PCIe between CPU and GPU.";
+    gflops = 1;  // Dummy value; data transfer ops would not have compute ops.
+    gb_per_sec = 12;  // default PCIe x16 gen3.
   }
   VLOG(1) << "Device: " << device.type() << " gflops: " << gflops
           << " gb_per_sec: " << gb_per_sec;
-
-  DCHECK_LT(0, gflops) << device.DebugString();
-  DCHECK_LT(0, gb_per_sec) << device.DebugString();
 
   return DeviceInfo(gflops, gb_per_sec);
 }

@@ -15,9 +15,7 @@
 # pylint: disable=protected-access
 """Tests the JSON encoder and decoder."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import enum
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -64,6 +62,14 @@ class JsonUtilsTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'No TypeSpec has been registered'):
       loaded = json_utils.decode(string)
 
+  def test_encode_decode_enum(self):
+    class Enum(enum.Enum):
+      CLASS_A = 'a'
+      CLASS_B = 'b'
+    config = {'key': Enum.CLASS_A, 'key2': Enum.CLASS_B}
+    string = json_utils.Encoder().encode(config)
+    loaded = json_utils.decode(string)
+    self.assertAllEqual({'key': 'a', 'key2': 'b'}, loaded)
 
 if __name__ == '__main__':
   test.main()

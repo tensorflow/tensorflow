@@ -44,19 +44,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this(byteBuffer, /* options= */ null);
   }
 
-  NativeInterpreterWrapper(final String modelPath, Interpreter.Options options) {
+  NativeInterpreterWrapper(String modelPath, Interpreter.Options options) {
     TensorFlowLite.init();
-    ModelCreator modelCreator =
-        new ModelCreator() {
-          @Override
-          public long create(long errorHandle) {
-            return createModel(modelPath, errorHandle);
-          }
-        };
-    init(modelCreator, options);
+    long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
+    long modelHandle = createModel(modelPath, errorHandle);
+    init(errorHandle, modelHandle, options);
   }
 
-  NativeInterpreterWrapper(final ByteBuffer buffer, Interpreter.Options options) {
+  NativeInterpreterWrapper(ByteBuffer buffer, Interpreter.Options options) {
     TensorFlowLite.init();
     if (buffer == null
         || (!(buffer instanceof MappedByteBuffer)
@@ -66,67 +61,45 @@ final class NativeInterpreterWrapper implements AutoCloseable {
               + "ByteBuffer using ByteOrder.nativeOrder() which contains bytes of model content.");
     }
     this.modelByteBuffer = buffer;
-    ModelCreator modelCreator =
-        new ModelCreator() {
-          @Override
-          public long create(long errorHandle) {
-            return createModelWithBuffer(buffer, errorHandle);
-          }
-        };
-    init(modelCreator, options);
+    long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
+    long modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
+    init(errorHandle, modelHandle, options);
   }
 
-  private interface ModelCreator {
-    public long create(long errorHandle);
-  }
-
-  private void init(ModelCreator modelCreator, Interpreter.Options options) {
+  private void init(long errorHandle, long modelHandle, Interpreter.Options options) {
     if (options == null) {
       options = new Interpreter.Options();
     }
-    // First initialize native handles to zero. If an exception is encountered, we will dispose of
-    // them, and this avoids deleting an uninitialized pointer if handle creation fails.
-    errorHandle = 0;
-    modelHandle = 0;
-    interpreterHandle = 0;
-    try {
-      errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
-      modelHandle = modelCreator.create(errorHandle);
-      interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
-      if (options.allowCancellation != null && options.allowCancellation) {
-        cancellationFlagHandle = createCancellationFlag(interpreterHandle);
-      }
-      inputTensors = new Tensor[getInputCount(interpreterHandle)];
-      outputTensors = new Tensor[getOutputCount(interpreterHandle)];
-      if (options.allowFp16PrecisionForFp32 != null) {
-        allowFp16PrecisionForFp32(
-            interpreterHandle, options.allowFp16PrecisionForFp32.booleanValue());
-      }
-      if (options.allowBufferHandleOutput != null) {
-        allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
-      }
-      applyDelegates(options);
-
-      // Simply use "-1" to represent the default mode.
-      int applyXNNPACKMode = -1;
-      if (options.useXNNPACK != null) {
-        applyXNNPACKMode = options.useXNNPACK.booleanValue() ? 1 : 0;
-      }
-
-      // TODO(b/171856982): uncomment the following when applying XNNPACK delegate by default is
-      // enabled for C++ TfLite library on Android platform.
-      if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
-        useXNNPACK(interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
-      }
-      allocateTensors(interpreterHandle, errorHandle);
-      isMemoryAllocated = true;
-    } finally {
-      // If any of the native handles were created successfully, we should dispose of them if
-      // creation and allocation did not succeed. This avoids leaks in the event of an error.
-      if (!isMemoryAllocated && (errorHandle != 0 || modelHandle != 0 || interpreterHandle != 0)) {
-        delete(errorHandle, modelHandle, interpreterHandle);
-      }
+    this.errorHandle = errorHandle;
+    this.modelHandle = modelHandle;
+    this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
+    if (options.allowCancellation != null && options.allowCancellation) {
+      this.cancellationFlagHandle = createCancellationFlag(interpreterHandle);
     }
+    this.inputTensors = new Tensor[getInputCount(interpreterHandle)];
+    this.outputTensors = new Tensor[getOutputCount(interpreterHandle)];
+    if (options.allowFp16PrecisionForFp32 != null) {
+      allowFp16PrecisionForFp32(
+          interpreterHandle, options.allowFp16PrecisionForFp32.booleanValue());
+    }
+    if (options.allowBufferHandleOutput != null) {
+      allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
+    }
+    applyDelegates(options);
+
+    // Simply use "-1" to represent the default mode.
+    int applyXNNPACKMode = -1;
+    if (options.useXNNPACK != null) {
+      applyXNNPACKMode = options.useXNNPACK.booleanValue() ? 1 : 0;
+    }
+
+    // TODO(b/171856982): uncomment the following when applying XNNPACK delegate by default is
+    // enabled for C++ TfLite library on Android platform.
+    if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
+      useXNNPACK(interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
+    }
+    allocateTensors(interpreterHandle, errorHandle);
+    this.isMemoryAllocated = true;
   }
 
   /** Releases resources associated with this {@code NativeInterpreterWrapper}. */
@@ -171,8 +144,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     if (inputs == null || inputs.isEmpty()) {
       throw new IllegalArgumentException("Input error: Inputs should not be null or empty.");
     }
-    if (outputs == null || outputs.isEmpty()) {
-      throw new IllegalArgumentException("Input error: Outputs should not be null or empty.");
+    if (outputs == null) {
+      throw new IllegalArgumentException("Input error: Outputs should not be null.");
     }
     initTensorIndexesMaps();
     // Map inputs/output to input indexes.
@@ -202,8 +175,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     if (inputs == null || inputs.length == 0) {
       throw new IllegalArgumentException("Input error: Inputs should not be null or empty.");
     }
-    if (outputs == null || outputs.isEmpty()) {
-      throw new IllegalArgumentException("Input error: Outputs should not be null or empty.");
+    if (outputs == null) {
+      throw new IllegalArgumentException("Input error: Outputs should not be null.");
     }
 
     // TODO(b/80431971): Remove implicit resize after deprecating multi-dimensional array inputs.
@@ -240,7 +213,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       }
     }
     for (Map.Entry<Integer, Object> output : outputs.entrySet()) {
-      getOutputTensor(output.getKey()).copyTo(output.getValue());
+      // Null output placeholders are allowed and ignored.
+      if (output.getValue() != null) {
+        getOutputTensor(output.getKey()).copyTo(output.getValue());
+      }
     }
 
     // Only set if the entire operation succeeds.

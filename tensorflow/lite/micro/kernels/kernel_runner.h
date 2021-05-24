@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/micro/mock_micro_graph.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 
 namespace tflite {
@@ -33,12 +34,10 @@ class KernelRunner {
  public:
   KernelRunner(const TfLiteRegistration& registration, TfLiteTensor* tensors,
                int tensors_size, TfLiteIntArray* inputs,
-               TfLiteIntArray* outputs, void* builtin_data,
-               ErrorReporter* error_reporter);
+               TfLiteIntArray* outputs, void* builtin_data);
 
   // Calls init and prepare on the kernel (i.e. TfLiteRegistration) struct. Any
-  // exceptions will be reported through the error_reporter and returned as a
-  // status code here.
+  // exceptions will be DebugLog'd and returned as a status code.
   TfLiteStatus InitAndPrepare(const char* init_data = nullptr,
                               size_t length = 0);
 
@@ -46,6 +45,10 @@ class KernelRunner {
   // After successful invoke, results will be available in the output tensor as
   // passed into the constructor of this class.
   TfLiteStatus Invoke();
+
+  // Returns a pointer to the internal MockMicroGraph which KernelRunner uses
+  // to stub out MicroGraph methods and track invocations on each subgraph.
+  MockMicroGraph* GetMockGraph() { return &mock_micro_graph_; }
 
  protected:
   static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
@@ -59,6 +62,11 @@ class KernelRunner {
   static void* GetScratchBuffer(TfLiteContext* context, int buffer_index);
   static void ReportOpError(struct TfLiteContext* context, const char* format,
                             ...);
+  // This method matches GetExecutionPlan from TfLiteContext since TFLM reuses
+  // this method to get the MicroGraph from an operator context.
+  // TODO(b/188226309): Design a cleaner way to get a graph from kernel context.
+  static TfLiteStatus GetGraph(struct TfLiteContext* context,
+                               TfLiteIntArray** args);
 
  private:
   static constexpr int kNumScratchBuffers_ = 12;
@@ -69,7 +77,7 @@ class KernelRunner {
   SimpleMemoryAllocator* allocator_ = nullptr;
   const TfLiteRegistration& registration_;
   TfLiteTensor* tensors_ = nullptr;
-  ErrorReporter* error_reporter_ = nullptr;
+  MockMicroGraph mock_micro_graph_;
 
   TfLiteContext context_ = {};
   TfLiteNode node_ = {};

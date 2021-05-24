@@ -202,6 +202,11 @@ MemoryInfo GetMemoryInfo() {
   return mem_info;
 }
 
+MemoryBandwidthInfo GetMemoryBandwidthInfo() {
+  MemoryBandwidthInfo membw_info = {INT64_MAX};
+  return membw_info;
+}
+
 int NumHyperthreadsPerCore() {
   static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
   return (ht_per_core > 0) ? ht_per_core : 1;

@@ -5,7 +5,7 @@ load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -165,7 +165,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service/gpu:gpu_debug_info_manager",
+        "//tensorflow/compiler/xla/service:xla_debug_info_manager",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",

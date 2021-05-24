@@ -106,7 +106,18 @@ Status RunGpuConvForwardActivation(GpuConvParams params,
       .set_width(1)
       .set_feature_map_count(
           params.config.output_descriptor.feature_map_count())
-      .set_layout(params.config.output_descriptor.layout());
+      .set_layout([&] {
+        // Normalize NCHW_VECT_C to NCHW for layout of `bias`, even though it's
+        // actually the same (because `bias` only has one dimension):  cudnn
+        // does not accept NCHW_VECT_C for `bias`.
+        DataLayout layout = params.config.output_descriptor.layout();
+        switch (layout) {
+          case DataLayout::kBatchDepthYX4:
+            return DataLayout::kBatchDepthYX;
+          default:
+            return layout;
+        }
+      }());
 
   se::DeviceMemory<OutputType> side_input(params.fusion->side_input_buf);
   // If there is no side input, use output as the side input.
@@ -371,10 +382,17 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
                           dnums, input_shape.layout(), filter_shape.layout(),
                           output_shape.layout()));
 
+  // TODO(b/188571332): Support int8x32.
+  int input_feature_factor = input_dl == DataLayout::kBatchDepthYX4 ? 4 : 1;
+  int filter_input_feature_factor =
+      filter_dl == FilterLayout::kOutputInputYX4 ? 4 : 1;
+  int output_feature_factor = output_dl == DataLayout::kBatchDepthYX4 ? 4 : 1;
+
   BatchDescriptor& input_descriptor = config.input_descriptor;
   input_descriptor = BatchDescriptor(effective_num_dimensions);
   input_descriptor.set_layout(input_dl)
       .set_feature_map_count(
+          input_feature_factor *
           input_shape.dimensions(dnums.input_feature_dimension()))
       .set_count(input_shape.dimensions(dnums.input_batch_dimension()));
   for (int dim = 0; dim < num_dimensions; ++dim) {
@@ -388,6 +406,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   filter_descriptor = FilterDescriptor(effective_num_dimensions);
   filter_descriptor.set_layout(filter_dl)
       .set_input_feature_map_count(
+          filter_input_feature_factor *
           filter_shape.dimensions(dnums.kernel_input_feature_dimension()))
       .set_output_feature_map_count(
           filter_shape.dimensions(dnums.kernel_output_feature_dimension()));
@@ -417,6 +436,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   output_descriptor = BatchDescriptor(effective_num_dimensions);
   output_descriptor.set_layout(output_dl)
       .set_feature_map_count(
+          output_feature_factor *
           output_shape.dimensions(dnums.output_feature_dimension()))
       .set_count(output_shape.dimensions(dnums.output_batch_dimension()));
   for (int dim = 0; dim < num_dimensions; ++dim) {

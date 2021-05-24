@@ -17,8 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
 
 #include <string>
+#include <vector>
 
-#include "tensorflow/core/platform/status.h"
+#include "absl/strings/match.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/platform/stack_frame.h"
 
 namespace tensorflow {
 
@@ -32,6 +35,16 @@ using StackTraceFilter = std::function<bool(const char*)>;
 using ToStackFramesFunctor = std::vector<StackFrame>(int, const StackTraceMap&,
                                                      const StackTraceFilter&,
                                                      bool, int);
+
+// Returns whether the given frame is internal to TF.
+inline bool IsInternalFrameForFilename(absl::string_view file_name) {
+  // Use a simple heuristic for now.
+  // TODO(cheshire): Build a more sophisticated mechanism, rely on @tf.export.
+  return (absl::StrContains(file_name, "tensorflow/python") ||
+          absl::StrContains(file_name, "tensorflow\\python")) &&
+         !absl::StrContains(file_name, "keras") &&
+         !absl::StrContains(file_name, "test.py");
+}
 
 // Language agnostic stack trace class. It only saves an id, and language
 // clients are responsible for managing the actual stack trace objects.

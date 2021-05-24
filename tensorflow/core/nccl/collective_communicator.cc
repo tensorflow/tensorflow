@@ -69,17 +69,17 @@ std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator() {
 
 void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                                StatusCallback done) {
-  const CollectiveParams& col_params = col_ctx->col_params;
-  const int num_global_devices = col_params.group.group_size;
-  const int num_local_devices = col_params.group.num_devices_per_task.at(
-      col_params.group.task_names[col_params.default_rank]);
+  const CollectiveParams* col_params = col_ctx->col_params;
+  const int num_global_devices = col_params->group.group_size;
+  const int num_local_devices = col_params->group.num_devices_per_task.at(
+      col_params->group.task_names[col_params->default_rank]);
   const string nccl_collective_key =
       NcclCollectiveKey(col_ctx->exec_key, col_ctx->step_id);
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
   auto* gpu_info = col_ctx->op_ctx->device()->tensorflow_gpu_device_info();
   auto participant = absl::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream, gpu_info, col_ctx->input,
-      col_ctx->output, col_ctx->col_params.default_rank,
+      col_ctx->output, col_ctx->col_params->default_rank,
       /*done_callback=*/nullptr);
   CancellationManager* cancel_mgr = col_ctx->op_ctx->cancellation_manager();
   if (cancel_mgr == nullptr) {
@@ -105,15 +105,24 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   }
   NcclManager::Context context(
       nccl_collective_key, num_local_devices, num_global_devices,
-      col_params.group.runtime_details.communicator_key,
-      col_params.source_rank);
-  VLOG(1) << "NcclCommunicator::Enqueue type " << col_params.instance.type
-          << " num_tasks " << col_params.group.num_tasks << " current task "
-          << col_params.group.task_names[col_params.default_rank]
+      col_params->group.runtime_details.communicator_key,
+      col_params->source_rank);
+  VLOG(1) << "NcclCommunicator::Enqueue type " << col_params->instance.type
+          << " num_tasks " << col_params->group.num_tasks << " current task "
+          << col_params->group.task_names[col_params->default_rank]
           << " num local devices " << num_local_devices
           << " num global devices " << num_global_devices << " device "
           << col_ctx->device_name << " instance "
-          << col_params.instance.instance_key;
+          << col_params->instance.instance_key;
+  // Hold a ref to col_params for the rest of this function.
+  // NOTE: an alternate design can be one in which CollectiveParams is not
+  // refcounted.  In such a design, we would need to ensure that the
+  // done_callback of each participant is called only after this function is
+  // done with accessing the params.  This would likely require some
+  // coordination mechanism, and may even require the participant thread to
+  // block until after UnblockDependencies is called below.
+  col_params->Ref();
+  core::ScopedUnref unref(col_params);
   // `AddTo*` performs consistency checks for the NCCL call and enqueues the
   // `Participant` struct locally.  When all local participants with this
   // `nccl_collective_key` have called `AddToAllReduce` and
@@ -123,10 +132,11 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   // The `NcclManager` uses a dedicated CUDA stream for NCCL kernels.  At this
   // point, it synchronizes the NCCL stream with the compute stream, and then
   // enqueues the NCCL kernel on the NCCL stream.
-  switch (col_params.instance.type) {
+  switch (col_params->instance.type) {
     case REDUCTION_COLLECTIVE: {
       ncclRedOp_t reduction_op;
-      Status s = ReductionOp(col_params.merge_op->type_string(), &reduction_op);
+      Status s =
+          ReductionOp(col_params->merge_op->type_string(), &reduction_op);
       if (!s.ok()) {
         participant->done_callback(s);
         return;
@@ -140,7 +150,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
       break;
     }
     case BROADCAST_COLLECTIVE: {
-      if (col_params.is_source) {
+      if (col_params->is_source) {
         nccl_manager_.AddBroadcastSend(std::move(participant), context);
       } else {
         nccl_manager_.AddBroadcastRecv(std::move(participant), context);
@@ -149,7 +159,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     }
     default: {
       participant->done_callback(errors::Internal("Unexpected CollectiveType ",
-                                                  col_params.instance.type));
+                                                  col_params->instance.type));
       return;
     }
   }
@@ -175,7 +185,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     // ready to go.
     profiler::TraceMe activity("WaitForDependencies",
                                profiler::TraceMeLevel::kInfo);
-    col_ctx->col_exec->WaitForDependencies(col_params);
+    col_ctx->col_exec->WaitForDependencies(*col_params);
     nccl_manager_.SignalMultiNodeReady(nccl_collective_key);
   }
   {
@@ -184,7 +194,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     // implementation of `UnblockDependencies` keeps track of the number of
     // devices that have launched.
     profiler::TraceMe activity("Schedule", profiler::TraceMeLevel::kInfo);
-    col_ctx->col_exec->UnblockDependencies(col_params);
+    col_ctx->col_exec->UnblockDependencies(*col_params);
   }
 }
 

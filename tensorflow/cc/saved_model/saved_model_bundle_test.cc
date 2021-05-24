@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/experimental/libexport/metrics.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/reader.h"
@@ -30,6 +31,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+namespace metrics = libexport::metrics;
 
 constexpr char kTestDataPbTxt[] =
     "cc/saved_model/testdata/half_plus_two_pbtxt/00000123";
@@ -343,6 +346,23 @@ TEST_F(LoaderTest, BadNodeAttr) {
   EXPECT_NE(
       st.error_message().find("constant tensor but no value has been provided"),
       std::string::npos);
+}
+
+TEST_F(LoaderTest, UpdateMetrics) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+  const string kCCLoadV1Label = "cc_load";
+
+  const int read_count = metrics::Read().value();
+  const int api_count = metrics::ReadApi(kCCLoadV1Label).value();
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
+
+  EXPECT_EQ(metrics::Read().value(), read_count + 1);
+  EXPECT_EQ(metrics::ReadApi(kCCLoadV1Label).value(), api_count + 1);
 }
 
 }  // namespace

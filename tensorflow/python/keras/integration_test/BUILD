@@ -4,12 +4,13 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = [
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_py_test(
@@ -80,9 +81,25 @@ cuda_py_test(
     name = "gradient_checkpoint_test",
     srcs = ["gradient_checkpoint_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)
+
+cuda_py_test(
+    name = "central_storage_strategy_test",
+    srcs = ["central_storage_strategy_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+        "no_windows_gpu",  # TODO(b/130551176)
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/keras/utils:kpl_test_utils",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -103,12 +120,27 @@ tf_py_test(
     name = "multi_worker_tutorial_test",
     srcs = ["multi_worker_tutorial_test.py"],
     python_version = "PY3",
-    shard_count = 3,
+    shard_count = 6,
     tags = [
-        "no_tfrt",  # TODO(b/171765113)
+        "no_windows",  # TODO(b/183102726)
         "noasan",  # TODO(b/156029134)
+        "nomac",  # TODO(b/182567880)
         "nomsan",  # TODO(b/156029134)
         "notsan",  # TODO(b/156029134)
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "parameter_server_keras_preprocessing_test",
+    srcs = ["parameter_server_keras_preprocessing_test.py"],
+    python_version = "PY3",
+    shard_count = 4,  # TODO(b/184290570): Investigate why only 1 shard times out.
+    tags = [
+        "multi_and_single_gpu",
     ],
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",

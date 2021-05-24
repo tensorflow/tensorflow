@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/string_util.h"
 
+#include <stdint.h>
+
+#include <string>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -191,9 +195,3 @@ TEST(StringUtil, TestShapes) {
 }
 
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

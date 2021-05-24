@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,160 +13,119 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/reference/fill.h"
+
 #include <stdint.h>
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
-namespace fill {
 
 namespace {
+
+template <typename T>
+TfLiteStatus EnsureEqImpl(TfLiteContext* context, const TfLiteIntArray* array,
+                          const TfLiteTensor* tensor) {
+  for (int i = 0; i < array->size; ++i) {
+    TF_LITE_ENSURE_EQ(context, array->data[i], GetTensorData<T>(tensor)[i]);
+  }
+  return kTfLiteOk;
+}
+
+// Ensure the equality of an int array and a tensor, which must be
+// one-dimensional and of an integer type.
+TfLiteStatus EnsureEq(TfLiteContext* context, const TfLiteIntArray* array,
+                      const TfLiteTensor* tensor) {
+  TF_LITE_ENSURE_EQ(context, NumDimensions(tensor), 1);
+  const auto tensor_len = tensor->dims->data[0];
+  TF_LITE_ENSURE_EQ(context, array->size, tensor_len);
+
+  switch (tensor->type) {
+    case kTfLiteInt8:
+      return EnsureEqImpl<int8_t>(context, array, tensor);
+    case kTfLiteUInt8:
+      return EnsureEqImpl<uint8_t>(context, array, tensor);
+    case kTfLiteInt16:
+      return EnsureEqImpl<int16_t>(context, array, tensor);
+    case kTfLiteInt32:
+      return EnsureEqImpl<int32_t>(context, array, tensor);
+    case kTfLiteInt64:
+      return EnsureEqImpl<int64_t>(context, array, tensor);
+    default:
+      TF_LITE_KERNEL_LOG(context,
+                         "cannot compare int array to tensor of type %d.",
+                         tensor->type);
+      return kTfLiteError;
+  }
+}
 
 constexpr int kDimsTensor = 0;
 constexpr int kValueTensor = 1;
 constexpr int kOutputTensor = 0;
 
-template <typename T>
-TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
-                              TfLiteTensor* output) {
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(dims->dims->data[0]);
-  for (int i = 0; i < output_shape->size; ++i) {
-    T data = GetTensorData<T>(dims)[i];
-    if (data < 0) {
-      TfLiteIntArrayFree(output_shape);
-      TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0",
-                         TfLiteTypeGetName(dims->type));
-      return kTfLiteError;
-    }
-    output_shape->data[i] = data;
-  }
-  return context->ResizeTensor(context, output, output_shape);
-}
-
-TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* dims,
-                          TfLiteTensor* output) {
-  switch (dims->type) {
-    case kTfLiteInt32:
-      return ResizeOutputImpl<int32_t>(context, dims, output);
-    case kTfLiteInt64:
-      return ResizeOutputImpl<int64_t>(context, dims, output);
-    default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Fill only currently supports int32, int64 for input 0, got %s.",
-          TfLiteTypeGetName(dims->type));
-      return kTfLiteError;
-  }
-}
-
-}  // namespace
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
+  // Ensure inputs and outputs exist.
   const TfLiteTensor* dims;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kDimsTensor, &dims));
   const TfLiteTensor* value;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kValueTensor, &value));
-
-  // Make sure the 1st input tensor is 1-D.
-  TF_LITE_ENSURE_EQ(context, NumDimensions(dims), 1);
-
-  // Make sure the 1st input tensor is int32 or int64.
-  const auto dtype = dims->type;
-  TF_LITE_ENSURE(context, dtype == kTfLiteInt32 || dtype == kTfLiteInt64);
-
-  // Make sure the 2nd input tensor is a scalar.
-  TF_LITE_ENSURE_EQ(context, NumDimensions(value), 0);
-
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  output->type = value->type;
 
-  if (IsConstantTensor(dims)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
-  } else {
-    SetTensorToDynamic(output);
-  }
+  // The value tensor must be a scalar.
+  TF_LITE_ENSURE_EQ(context, NumDimensions(value), 0);
+
+  // The value type and output type must match.
+  TF_LITE_ENSURE_EQ(context, value->type, output->type);
+
+  // The dims tensor must match the output tensor shape. As a byproduct,
+  // ensures the dims tensor is of an integer type.
+  TF_LITE_ENSURE_OK(context, EnsureEq(context, output->dims, dims));
+
   return kTfLiteOk;
 }
 
-TfLiteStatus FillString(const TfLiteTensor* value, TfLiteTensor* output) {
-  DynamicBuffer buffer;
-  const auto string_ref = GetString(value, 0);
-  int n = 1;
-  for (int i = 0; i < output->dims->size; ++i) {
-    n *= output->dims->data[i];
-  }
-  for (int i = 0; i < n; ++i) {
-    buffer.AddString(string_ref.str, string_ref.len);
-  }
-  buffer.WriteToTensor(output, /*new_shape=*/nullptr);
-  return kTfLiteOk;
+template <typename T>
+void FillImpl(const TfLiteEvalTensor* value, TfLiteEvalTensor* output) {
+  reference_ops::Fill(
+      micro::GetTensorShape(value), micro::GetTensorData<T>(value),
+      micro::GetTensorShape(output), micro::GetTensorData<T>(output));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* value;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kValueTensor, &value));
+  const TfLiteEvalTensor* value =
+      micro::GetEvalInput(context, node, kValueTensor);
+  TfLiteEvalTensor* output = micro::GetEvalOutput(context, node, kOutputTensor);
 
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-
-  if (IsDynamicTensor(output)) {
-    const TfLiteTensor* dims;
-    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kDimsTensor, &dims));
-    TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
-  }
-#define TF_LITE_FILL(data_type)                                               \
-  reference_ops::Fill(GetTensorShape(value), GetTensorData<data_type>(value), \
-                      GetTensorShape(output),                                 \
-                      GetTensorData<data_type>(output))
-  switch (output->type) {
-    case kTfLiteInt32:
-      TF_LITE_FILL(int32_t);
-      break;
-    case kTfLiteInt64:
-      TF_LITE_FILL(int64_t);
-      break;
+  switch (value->type) {
     case kTfLiteFloat32:
-      TF_LITE_FILL(float);
-      break;
-    case kTfLiteBool:
-      TF_LITE_FILL(bool);
-      break;
-    case kTfLiteString:
-      FillString(value, output);
+      FillImpl<float>(value, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(
-          context,
-          "Fill only currently supports int32, int64, float32, bool, string "
-          "for input 1, got %d.",
+          context, "Fill only currently supports float32 for input 1, got %d.",
           TfLiteTypeGetName(value->type));
       return kTfLiteError;
   }
-#undef TF_LITE_FILL
+
   return kTfLiteOk;
 }
 
-}  // namespace fill
+}  // namespace
 
-TfLiteRegistration* Register_FILL() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 fill::Prepare, fill::Eval};
-  return &r;
+TfLiteRegistration Register_FILL() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-}  // namespace builtin
-}  // namespace ops
 }  // namespace tflite

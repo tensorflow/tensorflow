@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Wrapper for using the Scikit-Learn API with Keras models.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Wrapper for using the Scikit-Learn API with Keras models."""
+# pylint: disable=g-classes-have-attributes
 
 import copy
 import types
@@ -261,7 +258,7 @@ class KerasClassifier(BaseWrapper):
             (instead of `(n_sample, 1)` as in Keras).
     """
     kwargs = self.filter_sk_params(Sequential.predict_proba, kwargs)
-    probs = self.model.predict_proba(x, **kwargs)
+    probs = self.model.predict(x, **kwargs)
 
     # check if binary classification
     if probs.shape[1] == 1:

@@ -208,7 +208,7 @@ enum TensorToGrid : byte {
 enum CompilerOptions : byte {
   ADRENO_FULL_SIMD_LINE = 0,
   ADRENO_MORE_WAVES = 1,
-  POWERVR_FP16 = 2,
+  CL_FAST_RELAXED_MATH = 2,
   CL_OPT_DISABLE = 3,
   CL_2_0 = 4,
   CL_3_0 = 5,

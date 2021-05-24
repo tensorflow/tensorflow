@@ -14,7 +14,7 @@ load(
 
 package(
     default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -41,7 +41,7 @@ py_library(
     name = "xla_test",
     testonly = 1,
     srcs = ["xla_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -65,7 +65,7 @@ py_library(
         "__init__.py",
         "test_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -695,7 +695,7 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["fft_test.py"],
     python_version = "PY3",
-    shard_count = 6,
+    shard_count = 12,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
@@ -773,6 +773,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_gpu",  # TODO(b/177961887): Fails after NCCL update
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -1048,7 +1049,6 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1277,6 +1277,7 @@ tf_xla_py_test(
     name = "stateful_random_ops_test",
     size = "medium",
     srcs = ["stateful_random_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
     tags = [
@@ -1624,7 +1625,7 @@ cuda_py_test(
     name = "jit_test",
     size = "medium",
     srcs = ["jit_test.py"],
-    shard_count = 5,
+    #shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1641,6 +1642,28 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)
+
+cuda_py_test(
+    name = "async_comp_test",
+    size = "medium",
+    srcs = ["async_comp_test.py"],
+    shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":test_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
 )
@@ -1729,7 +1752,7 @@ py_library(
     name = "lstm",
     testonly = 1,
     srcs = ["lstm.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",

@@ -6,7 +6,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(glob([
@@ -42,7 +42,7 @@ tf_cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -110,7 +110,7 @@ tf_cc_test(
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -147,7 +147,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -173,17 +172,14 @@ tf_cc_test(
     name = "model_utils_test",
     srcs = ["model_utils_test.cc"],
     tags = [
-        "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
     deps = [
         ":model_utils",
         ":test_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -323,6 +319,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc_qat.bin",
+        "//tensorflow/lite/tools/optimize:testdata/gather_nd.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated2.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_quantized.bin",
@@ -345,6 +342,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
+        "//tensorflow/lite/tools/optimize:testdata/where.bin",
     ],
     tags = [
         "tflite_not_portable_android",

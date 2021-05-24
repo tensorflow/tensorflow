@@ -74,6 +74,7 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                     const dnn::RnnSequenceTensorDescriptor& input_desc,
                     const DeviceMemory<Eigen::half>& input_data,
+                    const DeviceMemory<int>& seq_lengths_data,
                     const dnn::RnnStateTensorDescriptor& input_h_desc,
                     const DeviceMemory<Eigen::half>& input_h_data,
                     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -92,6 +93,7 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                     const dnn::RnnSequenceTensorDescriptor& input_desc,
                     const DeviceMemory<float>& input_data,
+                    const DeviceMemory<int>& seq_lengths_data,
                     const dnn::RnnStateTensorDescriptor& input_h_desc,
                     const DeviceMemory<float>& input_h_data,
                     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -110,6 +112,7 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                     const dnn::RnnSequenceTensorDescriptor& input_desc,
                     const DeviceMemory<double>& input_data,
+                    const DeviceMemory<int>& seq_lengths_data,
                     const dnn::RnnStateTensorDescriptor& input_h_desc,
                     const DeviceMemory<double>& input_h_data,
                     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -128,6 +131,7 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
                      const DeviceMemory<Eigen::half>& input_data,
+                     const DeviceMemory<int>& seq_lengths_data,
                      const dnn::RnnStateTensorDescriptor& input_h_desc,
                      const DeviceMemory<Eigen::half>& input_h_data,
                      const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -153,6 +157,7 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
                      const DeviceMemory<float>& input_data,
+                     const DeviceMemory<int>& seq_lengths_data,
                      const dnn::RnnStateTensorDescriptor& input_h_desc,
                      const DeviceMemory<float>& input_h_data,
                      const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -178,6 +183,7 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
                      const DeviceMemory<double>& input_data,
+                     const DeviceMemory<int>& seq_lengths_data,
                      const dnn::RnnStateTensorDescriptor& input_h_desc,
                      const DeviceMemory<double>& input_h_data,
                      const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -203,6 +209,24 @@ class CudnnSupport : public dnn::DnnSupport {
   bool GetConvolveAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
+
+  bool GetConvolveExecutionPlans(
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans)
+      override;
+
+  port::Status GetFusedConvolveExecutionPlans(
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
@@ -276,6 +300,19 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
+
+  port::Status DoConvolveWithExecutionPlan(
+      dnn::ConvolutionKind kind, dnn::DataType element_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::AlgorithmConfig& plan_config,
+      ScratchAllocator* scratch_allocator,
+      dnn::ProfileResult* output_profile_result);
 
   port::Status DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
@@ -629,6 +666,24 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result);
 
+  template <typename ElementType, typename BiasType, typename ScaleType,
+            typename OutputType>
+  port::Status DoFusedConvolveWithExecutionPlanImpl(
+      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+      const DeviceMemory<ElementType>& conv_input_data,
+      ScaleType conv_input_scale,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<ElementType>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<OutputType>& side_input_data,
+      ScaleType side_input_scale, const dnn::BatchDescriptor& bias_descriptor,
+      const DeviceMemory<BiasType>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<OutputType>* output_data, dnn::DataType accumulator_type,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& plan_config,
+      dnn::ProfileResult* output_profile_result);
+
   template <class T>
   port::Status DoConvolveBackwardBiasImpl(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
@@ -641,6 +696,7 @@ class CudnnSupport : public dnn::DnnSupport {
       Stream* stream, const CudnnRnnDescriptor& rnn_desc,
       const CudnnRnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<T>& input_data,
+      const DeviceMemory<int>& seq_lengths_data,
       const CudnnRnnStateTensorDescriptor& input_h_desc,
       const DeviceMemory<T>& input_h_data,
       const CudnnRnnStateTensorDescriptor& input_c_desc,
@@ -660,6 +716,7 @@ class CudnnSupport : public dnn::DnnSupport {
       Stream* stream, const CudnnRnnDescriptor& rnn_desc,
       const CudnnRnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<T>& input_data,
+      const DeviceMemory<int>& seq_lengths_data,
       const CudnnRnnStateTensorDescriptor& input_h_desc,
       const DeviceMemory<T>& input_h_data,
       const CudnnRnnStateTensorDescriptor& input_c_desc,

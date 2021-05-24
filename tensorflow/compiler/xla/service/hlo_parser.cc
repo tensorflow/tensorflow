@@ -253,6 +253,7 @@ class HloParserImpl : public HloParser {
   bool ParseInstructionRhs(HloComputation::Builder* builder,
                            const std::string& name, LocTy name_loc);
   bool ParseControlPredecessors(HloInstruction* instruction);
+  bool ParseLiteral(Literal* literal);
   bool ParseLiteral(Literal* literal, const Shape& shape);
   bool ParseTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseNonTupleLiteral(Literal* literal, const Shape& shape);
@@ -307,6 +308,7 @@ class HloParserImpl : public HloParser {
     kInt32,
     kFloat,
     kString,
+    kLiteral,
     kBracedInt64List,
     kBracedInt64ListList,
     kHloComputation,
@@ -334,6 +336,7 @@ class HloParserImpl : public HloParser {
     kRandomAlgorithm,
     kAliasing,
     kInstructionAliasing,
+    kCustomCallSchedule,
   };
 
   struct AttrConfig {
@@ -477,6 +480,7 @@ class HloParserImpl : public HloParser {
       std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>*
           aliasing_output_operand_pairs);
 
+  bool ParseCustomCallSchedule(CustomCallSchedule* result);
   bool ParseShapeIndex(ShapeIndex* out);
 
   // Returns true if the current token is the beginning of a shape.
@@ -778,6 +782,23 @@ bool HloParserImpl::ParseInstructionOutputOperandAliasing(
           "Expects '}' at the end of instruction aliasing description")) {
     return false;
   }
+  return true;
+}
+
+bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
+  VLOG(3) << "ParseCustomCallSchedule";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects custom-call schedule");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToCustomCallSchedule(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        StrFormat("expects custom-call schedule but sees: %s, error: %s", val,
+                  status_or_result.status().error_message()));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
   return true;
 }
 
@@ -1215,7 +1236,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllGather(
-          shape, operands[0], dimensions->at(0), replica_groups,
+          shape, operands, dimensions->at(0), replica_groups,
           constrain_layout ? *constrain_layout : false, channel_id,
           use_global_device_ids ? *use_global_device_ids : false));
       break;
@@ -1286,8 +1307,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           /*required=*/true, AttrTy::kBracedInt64ListList, &source_targets};
       optional<int64> channel_id;
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      optional<std::vector<std::vector<int64_t>>> slice_sizes;
+      attrs["slice_sizes"] = {/*required=*/false, AttrTy::kBracedInt64ListList,
+                              &slice_sizes};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
       std::vector<std::pair<int64, int64>> pairs(source_targets->size());
@@ -1299,18 +1322,48 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         pairs[i].first = (*source_targets)[i][0];
         pairs[i].second = (*source_targets)[i][1];
       }
-      if (opcode == HloOpcode::kCollectivePermute) {
-        instruction =
-            builder->AddInstruction(HloInstruction::CreateCollectivePermute(
-                shape, operands[0], pairs, channel_id));
-      } else if (opcode == HloOpcode::kCollectivePermuteStart) {
-        instruction = builder->AddInstruction(
-            HloInstruction::CreateCollectivePermuteStart(shape, operands[0],
-                                                         pairs, channel_id));
+      if (!slice_sizes.has_value()) {
+        if (operands.size() != 1) {
+          return TokenError(
+              "CollectivePermute and CollectivePermuteStart must "
+              "have exactly  one operand (input buffer) unless "
+              "it performs dynamic-slice and in-place update.");
+        }
+        if (opcode == HloOpcode::kCollectivePermute) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCollectivePermute(
+                  shape, operands[0], pairs, channel_id));
+        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+          instruction = builder->AddInstruction(
+              HloInstruction::CreateCollectivePermuteStart(shape, operands[0],
+                                                           pairs, channel_id));
+        } else {
+          LOG(FATAL) << "Expect opcode to be CollectivePermute or "
+                        "CollectivePermuteStart, but got "
+                     << HloOpcodeString(opcode);
+        }
       } else {
-        LOG(FATAL) << "Expect opcode to be CollectivePermute or "
-                      "CollectivePermuteStart, but got "
-                   << HloOpcodeString(opcode);
+        if (operands.size() != 4) {
+          return TokenError(
+              "CollectivePermute and CollectivePermuteStart must "
+              "have exactly four operands for dynamic-slice and "
+              "in-place update.");
+        }
+        if (opcode == HloOpcode::kCollectivePermute) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCollectivePermute(
+                  shape, operands[0], operands[1], operands[2], operands[3],
+                  pairs, *slice_sizes, channel_id));
+        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+          instruction = builder->AddInstruction(
+              HloInstruction::CreateCollectivePermuteStart(
+                  shape, operands[0], operands[1], operands[2], operands[3],
+                  pairs, *slice_sizes, channel_id));
+        } else {
+          LOG(FATAL) << "Expect opcode to be CollectivePermute or "
+                        "CollectivePermuteStart, but got "
+                     << HloOpcodeString(opcode);
+        }
       }
       break;
     }
@@ -2244,6 +2297,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           output_to_operand_aliasing;
       optional<PaddingType> padding_type;
       optional<std::vector<HloComputation*>> called_computations;
+      optional<CustomCallSchedule> custom_call_schedule;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -2268,6 +2322,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
 
       attrs["padding_type"] = {/*required=*/false, AttrTy::kPaddingType,
                                &padding_type};
+
+      optional<Literal> literal;
+      attrs["literal"] = {/*required=*/false, AttrTy::kLiteral, &literal};
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
@@ -2276,6 +2333,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                      "A single instruction can't have both to_apply and "
                      "calls field");
       }
+      attrs["schedule"] = {/*required=*/false, AttrTy::kCustomCallSchedule,
+                           &custom_call_schedule};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -2353,9 +2412,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         custom_call_instr->set_custom_call_has_side_effect(
             *custom_call_has_side_effect);
       }
+      if (custom_call_schedule.has_value()) {
+        custom_call_instr->set_custom_call_schedule(*custom_call_schedule);
+      }
       if (output_to_operand_aliasing.has_value()) {
         custom_call_instr->set_output_to_operand_aliasing(
             std::move(*output_to_operand_aliasing));
+      }
+      if (literal.has_value()) {
+        custom_call_instr->set_literal(std::move(*literal));
       }
       PrecisionConfig precision_config;
       if (operand_precision) {
@@ -3046,6 +3111,14 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   literal->data<LiteralNativeT>().at(index) =
       static_cast<LiteralNativeT>(value);
   return true;
+}
+
+bool HloParserImpl::ParseLiteral(Literal* literal) {
+  Shape literal_shape;
+  if (!ParseShape(&literal_shape)) {
+    return false;
+  }
+  return ParseLiteral(literal, literal_shape);
 }
 
 // literal
@@ -3828,6 +3901,30 @@ bool HloParserImpl::ParseAttributeHelper(
             std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>>*>(
             attr_out_ptr)
             ->emplace(std::move(aliasing_output_operand_pairs));
+        return true;
+      }
+      case AttrTy::kLiteral: {
+        if (!ParseToken(TokKind::kLparen, "expects '(' before literal")) {
+          return false;
+        }
+        Literal result;
+        if (!ParseLiteral(&result)) {
+          return false;
+        }
+        if (!ParseToken(TokKind::kRparen, "expects ')' after literal")) {
+          return false;
+        }
+        static_cast<optional<Literal>*>(attr_out_ptr)
+            ->emplace(std::move(result));
+        return true;
+      }
+      case AttrTy::kCustomCallSchedule: {
+        CustomCallSchedule result;
+        if (!ParseCustomCallSchedule(&result)) {
+          return false;
+        }
+        static_cast<optional<CustomCallSchedule>*>(attr_out_ptr)
+            ->emplace(result);
         return true;
       }
     }

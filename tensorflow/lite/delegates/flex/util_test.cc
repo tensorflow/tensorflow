@@ -120,6 +120,8 @@ TEST(UtilTest, TypeConversionsFromTFLite) {
   EXPECT_EQ(TF_COMPLEX128, GetTensorFlowDataType(kTfLiteComplex128));
   EXPECT_EQ(TF_STRING, GetTensorFlowDataType(kTfLiteString));
   EXPECT_EQ(TF_BOOL, GetTensorFlowDataType(kTfLiteBool));
+  EXPECT_EQ(TF_RESOURCE, GetTensorFlowDataType(kTfLiteResource));
+  EXPECT_EQ(TF_VARIANT, GetTensorFlowDataType(kTfLiteVariant));
 }
 
 TEST(UtilTest, TypeConversionsFromTensorFlow) {
@@ -135,16 +137,10 @@ TEST(UtilTest, TypeConversionsFromTensorFlow) {
   EXPECT_EQ(kTfLiteComplex128, GetTensorFlowLiteType(TF_COMPLEX128));
   EXPECT_EQ(kTfLiteString, GetTensorFlowLiteType(TF_STRING));
   EXPECT_EQ(kTfLiteBool, GetTensorFlowLiteType(TF_BOOL));
-  EXPECT_EQ(kTfLiteNoType, GetTensorFlowLiteType(TF_RESOURCE));
-  EXPECT_EQ(kTfLiteNoType, GetTensorFlowLiteType(TF_VARIANT));
+  EXPECT_EQ(kTfLiteResource, GetTensorFlowLiteType(TF_RESOURCE));
+  EXPECT_EQ(kTfLiteVariant, GetTensorFlowLiteType(TF_VARIANT));
 }
 
 }  // namespace
 }  // namespace flex
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

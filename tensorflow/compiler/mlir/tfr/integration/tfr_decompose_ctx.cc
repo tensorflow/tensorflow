@@ -92,7 +92,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
     StringPiece tfr_raw_text, mlir::MLIRContext* mlir_ctx) {
   mlir_ctx->allowUnregisteredDialects(/*allow=*/true);
   // Load dialects involved in the conversion
-  mlir::DialectRegistry& registry = mlir_ctx->getDialectRegistry();
+  mlir::DialectRegistry registry;
   // clang-format off
   registry.insert<mlir::StandardOpsDialect,
                   mlir::scf::SCFDialect,
@@ -102,7 +102,8 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::TFR::TFRDialect>();
   // clang-format on
-  registry.loadAll(mlir_ctx);
+  mlir_ctx->appendDialectRegistry(registry);
+  mlir_ctx->loadAllAvailableDialects();
 
   // Load the TFR functions in a mlir::ModuleOp
   auto memory_buffer = llvm::MemoryBuffer::getMemBuffer(

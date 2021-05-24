@@ -32,7 +32,7 @@ from tensorflow.python.training import slot_creator
 from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(touts): switch to variables.Variable.
+@tf_export("__internal__.train.assign_moving_average", v1=[])
 def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   """Compute the moving average of a variable.
 
@@ -453,11 +453,14 @@ class ExponentialMovingAverage(object):
         # tensors, we rely on the existing device allocation mechanism.
         with ops.init_scope():
           if isinstance(var, variables.Variable):
+            with ops.device(var.device):
+              initialized_value = var.initialized_value()
             avg = slot_creator.create_slot(
                 var,
-                var.initialized_value(),
+                initialized_value,
                 self.name,
-                colocate_with_primary=True)
+                colocate_with_primary=True,
+                copy_xla_sharding=True)
             # NOTE(mrry): We only add `tf.Variable` objects to the
             # `MOVING_AVERAGE_VARIABLES` collection.
             ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
@@ -467,7 +470,8 @@ class ExponentialMovingAverage(object):
                 self.name,
                 colocate_with_primary=(var.op.type in [
                     "Variable", "VariableV2", "VarHandleOp"
-                ]))
+                ]),
+                copy_xla_sharding=True)
             if self._zero_debias:
               zero_debias_true.add(avg.ref())
         self._averages[var.ref()] = avg

@@ -15,16 +15,9 @@
 # ==============================================================================
 """Python module for evaluation loop."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import re
-
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
@@ -57,14 +50,28 @@ def list_checkpoint_attributes(ckpt_dir_or_file):
 class SidecarEvaluator(object):
   """A class designed for a dedicated evaluator task.
 
-  `SidecarEvaluator` is expected to be run on a process in
-  a separate machine from the training cluster. It continuously loads
-  checkpoints saved periodically by that training counterpart, and performs
-  evaluation using the model (with compiled metrics) provided at `__init__`. It
-  is expected to be used for the purpose of a dedicated evaluator, evaluating
-  the metric results of a training cluster which has one or more workers
-  performing the training and saving checkpoints. `SidecarEvaluator` uses
-  `model.evaluate` for evaluation.
+  `SidecarEvaluator` is expected to be run in a process on a separate machine
+  from the training cluster. It is meant for the purpose of a dedicated
+  evaluator, evaluating the metric results of a training cluster which has one
+  or more workers performing the training, and saving checkpoints.
+
+  The `SidecarEvaluator` API is compatible with both Custom Training Loop (CTL),
+  and Keras `Model.fit` to be used in the training cluster. Using the model
+  (with compiled metrics) provided at `__init__`, `SidecarEvaluator` repeatedly
+  performs evaluation "epochs" when it finds a checkpoint that has not yet been
+  used. Depending on the `steps` argument, an eval epoch is evaluation over all
+  eval data, or up to certain number of steps (batches). See examples below for
+  how the training program should save the checkpoints in order to be recognized
+  by `SidecarEvaluator`.
+
+  Since under the hood, `SidecarEvaluator` uses `model.evaluate` for evaluation,
+  it also supports arbitrary Keras callbacks. That is, if one or more callbacks
+  are provided, their `on_test_batch_begin` and `on_test_batch_end` methods are
+  called at the start and end of a batch, and their `on_test_begin` and
+  `on_test_end` are called at the start and end of an evaluation epoch. Note
+  that `SidecarEvaluator` may skip some checkpoints because it always picks up
+  the latest checkpoint available, and during an evaluation epoch, multiple
+  checkpoints can be produced from the training side.
 
   Example:
   ```python
@@ -78,8 +85,8 @@ class SidecarEvaluator(object):
       data=data,
       checkpoint_dir='/tmp/checkpoint_dir',  # dir for training-saved checkpoint
       steps=None,  # Eval until dataset is exhausted
-      log_dir='/tmp/log_dir',
-      max_evaluations=None  # The evaluation needs to be stopped manually
+      max_evaluations=None,  # The evaluation needs to be stopped manually
+      callbacks=[tf.keras.callbacks.TensorBoard(log_dir='/tmp/log_dir')]
   ).start()
   ```
 
@@ -87,31 +94,45 @@ class SidecarEvaluator(object):
   files which can be visualized by tensorboard (which provides a webpage link):
 
   ```bash
-  $ tensorboard --logdir=/tmp/log_dir
+  $ tensorboard --logdir=/tmp/log_dir/validation
   ...
   TensorBoard 2.4.0a0 at http://host:port (Press CTRL+C to quit)
   ```
 
-  The `checkpoint_dir` should contain checkpoints that track `model` and
-  `optimizer` to fulfill `SidecarEvaluator`'s
-  expectation:
+  If the training cluster uses a CTL, the `checkpoint_dir` should contain
+  checkpoints that track both `model` and `optimizer`, to fulfill
+  `SidecarEvaluator`'s expectation. This can be done by a
+  `tf.train.Checkpoint` and a `tf.train.CheckpointManager`:
 
   ```python
+  checkpoint_dir = ...  # Same `checkpoint_dir` supplied to `SidecarEvaluator`.
   checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
   checkpoint_manager = tf.train.CheckpointManager(
       checkpoint, checkpoint_dir=..., max_to_keep=...)
   checkpoint_manager.save()
   ```
 
+  If the training cluster uses Keras `Model.fit` API, a
+  `tf.keras.callbacks.ModelCheckpoint` should be used, with
+  `save_weights_only=True`, and the `filepath` should have 'ckpt-{epoch}'
+  appended:
+
+  ```python
+  checkpoint_dir = ...  # Same `checkpoint_dir` supplied to `SidecarEvaluator`.
+  model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+      filepath=os.path.join(checkpoint_dir, 'ckpt-{epoch}'),
+      save_weights_only=True)
+  model.fit(dataset, epochs, callbacks=[model_checkpoint])
+  ```
   """
 
   def __init__(self,
                model,
                data,
                checkpoint_dir,
-               log_dir=None,
                steps=None,
-               max_evaluations=None):
+               max_evaluations=None,
+               callbacks=None):
     """Initializes an `SidecarEvaluator` object.
 
     Args:
@@ -123,7 +144,6 @@ class SidecarEvaluator(object):
         types that Keras `model.evaluate` supports as the input data `x`, such
         as a `tf.data.Dataset`.
       checkpoint_dir: Directory where checkpoint files are saved.
-      log_dir: Directory where summary files for TensorBoard are saved.
       steps: Number of steps to perform evaluation for, when evaluating a single
         checkpoint file. If `None`, evaluation continues until the dataset is
         exhausted. For repeated evaluation dataset, user must specify `steps` to
@@ -142,21 +162,19 @@ class SidecarEvaluator(object):
         checkpoints may be skipped if evaluation is slower than checkpoint
         creation. If `None`, `SidecarEvaluator` will evaluate indefinitely, and
         the user must terminate evaluator program themselves.
+      callbacks: List of `keras.callbacks.Callback` instances to apply during
+        evaluation. See [callbacks](/api_docs/python/tf/keras/callbacks).
     """
     self.model = model
     self.data = data
     self.checkpoint_dir = checkpoint_dir
-    if log_dir:
-      self._summary_writer = summary_ops_v2.create_file_writer_v2(
-          logdir=log_dir)
-    else:
-      self._summary_writer = None
     self._iterations = variables.Variable(
         name='iterations',
         initial_value=_ITERATIONS_UNINITIALIZED,
         dtype=dtypes.int64)
     self.max_evaluations = max_evaluations
     self.steps = steps
+    self.callbacks = callbacks or []
 
   def start(self):
     """Starts the evaluation loop."""
@@ -174,17 +192,15 @@ class SidecarEvaluator(object):
         # The checkpoint should contain model and optimizer for SidecarEvaluator
         # to work. But the model weights saved by ModelCheckpoint callback does
         # not contain model as an attribute. To make SidecarEvaluator compatibly
-        # work in this case, if model attribute is not found but
-        # layer_with_weights attribute is found, use model.load_weights to load
-        # the model's weights, while self._iterations is still restored by
-        # checkpoint variable.
+        # work in this case, use model.load_weights to load the model's weights,
+        # while self._iterations is still restored by checkpoint variable.
         if 'model' not in checkpoint_attributes:
-          for attribute in checkpoint_attributes:
-            # check whether the checkpoint has the required attributes for
-            # model.load_weights to work.
-            if re.match(r'^layer_with_weights-[\d+]', attribute) is not None:
-              self.model.load_weights(latest_checkpoint)
-              break
+          self.model.load_weights(latest_checkpoint)
+        # The model checkpoint might not include optimizer in cases, e.g.
+        # using a custom training loop. Directly assign the iterations
+        # property to be used in callbacks.
+        if self.model.optimizer:
+          self.model.optimizer.iterations.assign(self._iterations)
       except (errors_impl.OpError,) as e:
         # A couple errors can happen here with the coordinator racing to write
         # checkpoint:
@@ -208,22 +224,22 @@ class SidecarEvaluator(object):
           'Evaluation starts: Model weights loaded from latest '
           'checkpoint file: %s.', latest_checkpoint)
 
-      # TODO(rchao): Support arbitrary callback for extensibility.
-      self.model.evaluate(self.data, steps=self.steps)
+      self.model.evaluate(
+          self.data, steps=self.steps, callbacks=self.callbacks, verbose=2)
 
-      logging.info('End of evaluation. Accuracy: %r', [
-          metric.result().numpy()
-          for metric in self.model.compiled_metrics.metrics
-      ])
+      return_metrics = {}
+      for metric in self.model.metrics:
+        result = metric.result()
+        if isinstance(result, dict):
+          return_metrics.update(result)
+        else:
+          return_metrics[metric.name] = result
 
-      if self._summary_writer:
-        with summary_ops_v2.always_record_summaries(
-        ), self._summary_writer.as_default():
-          for metric in self.model.compiled_metrics.metrics:
-            summary_ops_v2.scalar(
-                metric.name,
-                metric.result(),
-                step=self._iterations.read_value())
+      logging.info(
+          'End of evaluation. Metrics: %s', ' '.join([
+              '{}={}'.format(name, value.numpy())
+              for name, value in return_metrics.items()
+          ]))
 
       # TODO(rchao): Make the max evaluation robust in case users save the
       # checkpoints with epoch format {epoch:03d}.

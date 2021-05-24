@@ -13,7 +13,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -138,8 +138,6 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels:quantization_utils",
     ] + if_not_windows([
-        "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
-        "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
         "//tensorflow/core:sparse_ops_op_lib",
         "//tensorflow/core:parsing_ops_op_lib",
         "//tensorflow/core:sendrecv_ops_op_lib",
@@ -152,7 +150,6 @@ cc_library(
         "//tensorflow/core:user_ops_op_lib",
         "//tensorflow/core:training_ops_op_lib",
         "//tensorflow/core:string_ops_op_lib",
-        "//tensorflow/core:remote_fused_graph_ops_op_lib",
         "//tensorflow/core:random_ops_op_lib",
         "//tensorflow/core:rnn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
@@ -334,7 +331,7 @@ tf_cc_binary(
 py_library(
     name = "transform_graph_py",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",

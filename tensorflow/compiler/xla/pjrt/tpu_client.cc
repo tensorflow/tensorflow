@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/service/tpu_computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/tpu/tpu_computation_placer.h"
 #include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
@@ -49,7 +49,7 @@ namespace {
 class TpuDeviceState : public LocalDeviceState {
  public:
   TpuDeviceState(se::StreamExecutor* executor, LocalClient* client,
-                 bool asynchronous);
+                 int max_inflight_computations);
 
   Status ThenMemcpyDeviceToDevice(se::Stream* transfer_stream,
                                   se::Stream* dst_stream,
@@ -58,10 +58,12 @@ class TpuDeviceState : public LocalDeviceState {
 };
 
 TpuDeviceState::TpuDeviceState(se::StreamExecutor* executor,
-                               LocalClient* client, bool asynchronous)
+                               LocalClient* client,
+                               int max_inflight_computations)
     : LocalDeviceState(executor, client, LocalDeviceState::kAsynchronous,
-                       asynchronous,
-                       /*allow_event_reuse=*/false) {}
+                       max_inflight_computations,
+                       /*allow_event_reuse=*/false,
+                       /*use_callback_stream=*/true) {}
 
 Status TpuDeviceState::ThenMemcpyDeviceToDevice(
     se::Stream* transfer_stream, se::Stream* dst_stream,
@@ -77,7 +79,11 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
  public:
   PjRtTpuClient(LocalClient* client,
                 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-                int host_id);
+                int process_index);
+
+  absl::string_view platform_version() const override {
+    return platform_version_;
+  }
 
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -86,16 +92,32 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
 
   StatusOr<absl::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override;
+
+ private:
+  const std::string platform_version_;
 };
 
 PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
-    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int host_id)
-    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices), host_id,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+    int process_index)
+    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices),
+                               process_index,
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,
                                /*should_stage_host_to_device_transfers=*/false,
-                               /*gpu_run_options=*/nullptr) {}
+                               /*gpu_run_options=*/nullptr),
+      platform_version_([]() {
+        // Example platform version string:
+        //   libtpu version 0.0.1
+        //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
+        tf_tpu::TpuPlatformInterface* platform =
+            tf_tpu::TpuPlatformInterface::GetRegisteredPlatform();
+        TpuRuntimeVersion version = platform->version();
+        return absl::StrCat(
+            "libtpu version ", absl::StrJoin(version.version, "."), "\n",
+            absl::string_view(version.metadata, version.metadata_size));
+      }()) {}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
@@ -155,7 +177,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
     auto it = core_id_to_device_ordinal.find(core.Id());
     int device_ordinal =
         (it != core_id_to_device_ordinal.end()) ? it->second : -1;
-    int host_id = topology.IdForHost(core.host_coordinates());
+    int process_index = topology.IdForHost(core.host_coordinates());
     const tf_tpu::TpuDimensionsExternal coords = core.chip_coordinates();
     std::array<int, 3> coords_array = {coords.x, coords.y, coords.z};
     std::unique_ptr<LocalDeviceState> local_device_state;
@@ -163,7 +185,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
       local_device_state = std::move(local_device_states[device_ordinal]);
     }
     auto device = absl::make_unique<PjRtTpuDevice>(
-        core, std::move(local_device_state), host_id, coords_array,
+        core, std::move(local_device_state), process_index, coords_array,
         std::string(tf_tpu::TpuVersionEnumToString(topology.version())));
     devices.push_back(std::move(device));
   }
@@ -173,7 +195,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
 }  // namespace
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
-    bool asynchronous, absl::Duration init_retry_timeout) {
+    int max_inflight_computations, absl::Duration init_retry_timeout) {
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);
@@ -184,17 +206,26 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   // RPCs may timeout waiting for other hosts to come up, but will succeed
   // at a later point if retried).
   auto start = absl::Now();
-  // TODO(b/165870356): TpuPlatform::Initialized() always returns true!
-  auto status = platform->Initialize({});
-  while (!platform->Initialized()) {
-    status = platform->Initialize({});
-    if (!status.ok()) {
-      LOG(ERROR) << "Platform initialization failed: " << status;
-      if ((absl::Now() - start) >= init_retry_timeout) {
-        return status;
-      }
+  while (true) {
+    Status status = platform->Initialize({});
+    if (status.ok()) {
+      break;
     }
+    // TODO(b/165870356): refactor this loop to be
+    // while(!platform->Initialized()) once the Initialized() function works
+    // correctly, and remove this check. The platform may already be initialized
+    // when running internally.
+    if (status.code() == tensorflow::error::ALREADY_EXISTS) {
+      LOG(INFO) << "TpuPlatform already initialized, continuing...";
+      break;
+    }
+    LOG(INFO) << "TPU platform initialization failed: " << status;
+    if ((absl::Now() - start) >= init_retry_timeout) {
+      return status;
+    }
+    absl::SleepFor(absl::Microseconds(10));
   }
+  CHECK(platform->Initialized());
   if (platform->VisibleDeviceCount() <= 0) {
     return InvalidArgument("No TPU devices found.");
   }
@@ -208,16 +239,16 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
-    local_device_states.push_back(
-        absl::make_unique<TpuDeviceState>(executor, client, asynchronous));
+    local_device_states.push_back(absl::make_unique<TpuDeviceState>(
+        executor, client, max_inflight_computations));
   }
 
   TF_ASSIGN_OR_RETURN(auto devices,
                       GetTpuDevices(client, std::move(local_device_states)));
-  int host_id = platform->GetTpuHostLocation().Id();
+  int process_index = platform->GetTpuHostLocation().Id();
 
-  return std::shared_ptr<PjRtClient>(
-      absl::make_unique<PjRtTpuClient>(client, std::move(devices), host_id));
+  return std::shared_ptr<PjRtClient>(absl::make_unique<PjRtTpuClient>(
+      client, std::move(devices), process_index));
 }
 
 }  // namespace xla

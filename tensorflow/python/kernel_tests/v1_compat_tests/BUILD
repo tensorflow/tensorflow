@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_py_test(
@@ -40,5 +40,31 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "array_ops_test",
+    size = "small",
+    srcs = ["array_ops_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+cuda_py_test(
+    name = "stack_op_test",
+    size = "small",
+    srcs = ["stack_op_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )

@@ -21,8 +21,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -40,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -63,7 +67,7 @@ static Value materializeTensorLoad(OpBuilder& builder, TensorType type,
                                    ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
   assert(inputs[0].getType().isa<BaseMemRefType>());
-  return builder.create<TensorLoadOp>(loc, type, inputs[0]);
+  return builder.create<memref::TensorLoadOp>(loc, type, inputs[0]);
 }
 
 // TODO(pifon): Remove as soon as https://reviews.llvm.org/D93126 is landed.
@@ -95,12 +99,13 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
-      return builder.create<TensorToMemrefOp>(loc, type, inputs[0]);
+      return builder.create<memref::BufferCastOp>(loc, type, inputs[0]);
     });
   }
 };
 
-struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
+struct ComputeOpAndFuncBufferizePass
+    : public ComputeOpAndFuncBufferizePassBase<ComputeOpAndFuncBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<lmhlo::LmhloDialect>();
@@ -108,31 +113,31 @@ struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
 
  public:
   void runOnOperation() override {
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<lmhlo::LmhloDialect>();
-    target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalDialect<lmhlo::LmhloDialect, StandardOpsDialect>();
-    target.addLegalDialect<tensor::TensorDialect>();
+    target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
+                           memref::MemRefDialect, StandardOpsDialect,
+                           tensor::TensorDialect, math::MathDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
+    target.addIllegalOp<SubTensorOp, SubTensorInsertOp>();
 
     CustomBufferizeTypeConverter converter;
     // Configure bufferize pattern for functions and lhlo.
     mhlo::populateDynamicHLOToLHLOConversionPattern(
         &context, &converter, &patterns, /*insert_copy=*/false);
-    populateFuncOpTypeConversionPattern(patterns, &context, converter);
-    populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
-        patterns, &context, converter);
+    populateFuncOpTypeConversionPattern(patterns, converter);
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
 
     // Configure legality and structural patterns.
     populateBufferizeMaterializationLegality(target);
-    linalg::populateLinalgBufferizePatterns(&context, converter, patterns);
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
-    scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
-                                                         patterns, target);
+    linalg::populateLinalgBufferizePatterns(converter, patterns);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
+    scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
+                                                         target);
     // TODO(herhut): Move this legality configuration to bufferize itself?
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
@@ -162,35 +167,36 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   void runOnOperation() override {
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<scf::SCFDialect, StandardOpsDialect,
-                           tensor::TensorDialect,
-                           tf_framework::TFFrameworkDialect, AffineDialect,
-                           shape::ShapeDialect, lmhlo::LmhloDialect,
-                           linalg::LinalgDialect>();
-    target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
+    target.addLegalDialect<
+        complex::ComplexDialect, memref::MemRefDialect, StandardOpsDialect,
+        scf::SCFDialect, tensor::TensorDialect,
+        tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
+        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
+        vector::VectorDialect>();
+    target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<DynamicTensorFromElementsOp, tensor::ExtractOp,
-                        TensorFromElementsOp, tensor::CastOp, TensorLoadOp,
-                        TensorToMemrefOp>();
+    target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
+                        tensor::FromElementsOp, tensor::CastOp,
+                        chlo::MinimumBroadcastShapesOp, memref::TensorLoadOp,
+                        memref::BufferCastOp, linalg::TensorReshapeOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, DimOp, RankOp, SelectOp>(
-        typesAreLegal);
+    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, IndexCastOp, RankOp,
+                                 SelectOp>(typesAreLegal);
 
-    OwningRewritePatternList patterns;
-    populateTensorBufferizePatterns(&context, converter, patterns);
-    populateStdBufferizePatterns(&context, converter, patterns);
-    populateEliminateBufferizeMaterializationsPatterns(&context, converter,
-                                                       patterns);
-    populateExtraStdBufferizePattern(&context, &converter, &patterns);
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
-    scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
-                                                         patterns, target);
+    RewritePatternSet patterns(&getContext());
+    populateTensorBufferizePatterns(converter, patterns);
+    populateStdBufferizePatterns(converter, patterns);
+    populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
+    populateExtraStdBufferizePattern(&getContext(), &converter, &patterns);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
+    scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
+                                                         target);
 
     auto module = getOperation();
     if (failed(applyFullConversion(module, target, std::move(patterns)))) {
@@ -201,8 +207,9 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> > CreateHloBufferizePass() {
-  return std::make_unique<HloBufferizePass>();
+std::unique_ptr<OperationPass<ModuleOp> >
+CreateComputeOpAndFuncBufferizePass() {
+  return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
 std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {
@@ -212,4 +219,3 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir
-

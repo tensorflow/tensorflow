@@ -42,6 +42,10 @@ namespace {
 struct FunctionalToExecutorDialectConversion
     : public PassWrapper<FunctionalToExecutorDialectConversion, FunctionPass> {
   void runOnFunction() override;
+
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::tf_executor::TensorFlowExecutorDialect>();
+  }
 };
 }  // end anonymous namespace
 

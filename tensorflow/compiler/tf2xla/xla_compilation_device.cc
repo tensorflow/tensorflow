@@ -110,8 +110,9 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   AttachLocationToMetadata(metadata, op_kernel, xla_context);
   b->SetOpMetadata(metadata);
 
-  auto sharding_parse_result = ParseShardingFromDevice(
-      op_kernel->def(), std::numeric_limits<int>::max());
+  auto sharding_parse_result =
+      ParseShardingFromDevice(op_kernel->def(), std::numeric_limits<int>::max(),
+                              /*add_metadata=*/false);
   OP_REQUIRES_OK(context, sharding_parse_result.status());
   absl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();

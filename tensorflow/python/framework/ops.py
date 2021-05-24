@@ -23,6 +23,7 @@ import re
 import sys
 import threading
 import types
+from absl import app
 
 import numpy as np
 import six
@@ -61,7 +62,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
-from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.types import core as core_tf_types
@@ -233,6 +233,7 @@ def numpy_text(tensor, is_repr=False):
     text = "\n" + text
   return text
 
+
 @tf_export(v1=["enable_tensor_equality"])
 def enable_tensor_equality():
   """Compare Tensors with element-wise comparison and thus be unhashable.
@@ -242,6 +243,7 @@ def enable_tensor_equality():
   unhashable. Thus tensors can no longer be directly used in sets or as a key in
   a dictionary.
   """
+  logging.vlog(1, "Enabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(True)
   Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
 
@@ -252,12 +254,13 @@ def disable_tensor_equality():
 
   This is a legacy behaviour of TensorFlow and is highly discouraged.
   """
+  logging.vlog(1, "Disabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
-@tf_export("Tensor")
+@tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
 class Tensor(internal.NativeObject, core_tf_types.Tensor):
   """A tensor is a multidimensional array of elements represented by a
 
@@ -385,6 +388,17 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     self._consumers = []
     self._id = uid()
     self._name = None
+
+  def __getattr__(self, name):
+    if name in {"T", "astype", "ravel", "transpose", "reshape", "clip", "size",
+                "tolist", "data"}:
+      # TODO(wangpeng): Export the enable_numpy_behavior knob
+      raise AttributeError("""
+        '{}' object has no attribute '{}'.
+        If you are looking for numpy-related methods, please run the following:
+        import tensorflow.python.ops.numpy_ops.np_config
+        np_config.enable_numpy_behavior()""".format(type(self).__name__, name))
+    self.__getattribute__(name)
 
   @staticmethod
   def _create_with_tf_output(op, value_index, dtype, tf_output):
@@ -1010,12 +1024,20 @@ class _EagerTensorBase(Tensor):
     return self
 
   def __str__(self):
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self), self.shape,
+    if self._has_custom_summarizer():
+      value_text = self._summarize_value()
+    else:
+      value_text = numpy_text(self)
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (value_text, self.shape,
                                                   self.dtype.name)
 
   def __repr__(self):
-    return "<tf.Tensor: shape=%s, dtype=%s, numpy=%s>" % (
-        self.shape, self.dtype.name, numpy_text(self, is_repr=True))
+    if self._has_custom_summarizer():
+      value_text = "value=" + self._summarize_value()
+    else:
+      value_text = "numpy=" + numpy_text(self, is_repr=True)
+    return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (self.shape, self.dtype.name,
+                                                    value_text)
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""
@@ -2602,7 +2624,8 @@ class Operation(object):
     """
     _run_using_default_session(self, feed_dict, self.graph, session)
 
-_gradient_registry = registry.Registry("gradient")
+# TODO(b/185395742): Clean up usages of _gradient_registry
+gradient_registry = _gradient_registry = registry.Registry("gradient")
 
 
 @tf_export("RegisterGradient")
@@ -2649,7 +2672,7 @@ class RegisterGradient(object):
 
   def __call__(self, f):
     """Registers the function `f` as gradient function for `op_type`."""
-    _gradient_registry.register(f, self._op_type)
+    gradient_registry.register(f, self._op_type)
     return f
 
 
@@ -2685,7 +2708,7 @@ def no_gradient(op_type):
   """
   if not isinstance(op_type, six.string_types):
     raise TypeError("op_type must be a string")
-  _gradient_registry.register(None, op_type)
+  gradient_registry.register(None, op_type)
 
 
 # Aliases for the old names, will be eventually removed.
@@ -2706,7 +2729,7 @@ def get_gradient_function(op):
     op_type = op.get_attr("_gradient_op_type")
   except ValueError:
     op_type = op.type
-  return _gradient_registry.lookup(op_type)
+  return gradient_registry.lookup(op_type)
 
 
 def set_shape_and_handle_data_for_outputs(_):
@@ -3293,12 +3316,15 @@ class Graph(object):
             continue
           # TODO(b/141471245): Fix the inconsistency when inputs of func graph
           # are appended during gradient computation of while/cond.
-          for input_tensor, arg_def in zip(func_graph_inputs,
-                                           function_def.signature.input_arg):
-            input_shapes.list.shape.add().CopyFrom(
-                input_tensor.get_shape().as_proto())
-            if input_tensor.dtype == dtypes.resource:
-              _copy_handle_data_to_arg_def(input_tensor, arg_def)
+          assert len(input_shapes.list.shape) in [0, len(func_graph_inputs)]
+          # If the function_def has inputs already filled out, skip this step.
+          if not input_shapes.list.shape:
+            for input_tensor, arg_def in zip(func_graph_inputs,
+                                             function_def.signature.input_arg):
+              input_shapes.list.shape.add().CopyFrom(
+                  input_tensor.get_shape().as_proto())
+              if input_tensor.dtype == dtypes.resource:
+                _copy_handle_data_to_arg_def(input_tensor, arg_def)
 
           for output_tensor, arg_def in zip(func_graph.outputs,
                                             function_def.signature.output_arg):
@@ -5868,6 +5894,7 @@ def enable_eager_execution(config=None, device_policy=None,
      to this function.
   """
   _api_usage_gauge.get_cell().set(True)
+  logging.vlog(1, "Enabling eager execution")
   if context.default_execution_mode != context.EAGER_MODE:
     return enable_eager_execution_internal(
         config=config,
@@ -5885,6 +5912,7 @@ def disable_eager_execution():
   projects from TensorFlow 1.x to 2.x.
   """
   _api_usage_gauge.get_cell().set(False)
+  logging.vlog(1, "Disabling eager execution")
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:
@@ -6941,6 +6969,30 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
 
   assert i == len(inputs)
   return grouped_inputs
+
+
+_numpy_style_type_promotion = False
+
+
+def enable_numpy_style_type_promotion():
+  """If called, follows NumPy's rules for type promotion.
+
+  Used for enabling NumPy behavior on methods for TF NumPy.
+  """
+  global _numpy_style_type_promotion
+  _numpy_style_type_promotion = True
+
+
+_numpy_style_slicing = False
+
+
+def enable_numpy_style_slicing():
+  """If called, follows NumPy's rules for slicing Tensors.
+
+  Used for enabling NumPy behavior on slicing for TF NumPy.
+  """
+  global _numpy_style_slicing
+  _numpy_style_slicing = True
 
 
 class _TensorIterator(object):

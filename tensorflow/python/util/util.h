@@ -65,7 +65,7 @@ bool IsCompositeTensor(PyObject* o);
 //   True if the sequence is a TypeSpec, but is not a TensorSpec.
 bool IsTypeSpec(PyObject* o);
 
-// Implements the same interface as tensorflow.util.nest._is_namedtuple
+// Implements the same interface as tensorflow.util.nest.is_namedtuple
 // Returns Py_True iff `instance` should be considered a `namedtuple`.
 //
 // Args:
@@ -187,7 +187,7 @@ bool IsVariable(PyObject* o);
 //   True if the object is an ops.IndexedSlices.
 bool IsIndexedSlices(PyObject* o);
 
-// Implements the same interface as tensorflow.util.nest._same_namedtuples
+// Implements the same interface as tensorflow.util.nest.same_namedtuples
 // Returns Py_True iff the two namedtuples have the same name and fields.
 // Raises RuntimeError if `o1` or `o2` don't look like namedtuples (don't have
 // '_fields' attribute).

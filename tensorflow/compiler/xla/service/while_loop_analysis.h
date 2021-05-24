@@ -36,6 +36,11 @@ absl::optional<int64> ComputeWhileLoopTripCount(
 absl::optional<int64> ComputeWhileLoopTripCountUpperBound(
     HloInstruction *while_op);
 
+// The below function identifies a subset of all possible auxiliary
+// induction variables (AIV). Specifically, candidates are gtes, e.g.,
+// gte(param0, N)
+std::vector<const HloInstruction *> GetAuxiliaryLoopInductionVars(
+    const HloInstruction *while_op);
 // Returns the tuple index of the loop induction variable if there is such an
 // induction variable detected. Otherwise returns nullopt.
 absl::optional<int64> GetLoopInductionVarTupleIdx(

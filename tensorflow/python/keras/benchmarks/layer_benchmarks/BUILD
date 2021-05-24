@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -40,16 +40,18 @@ BECHMARK_TAGS = [
 py_library(
     name = "run_xprof",
     srcs = ["run_xprof.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow/python/keras:__subpackages__"],
 )
 
 py_library(
     name = "layer_benchmarks_test_base",
     srcs = ["layer_benchmarks_test_base.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow/python/keras:__subpackages__"],
     deps = [
         ":run_xprof",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
@@ -61,7 +63,7 @@ tf_py_test(
     tags = BECHMARK_TAGS,
     deps = [
         ":layer_benchmarks_test_base",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/keras/benchmarks:benchmark_util",
     ],
 )

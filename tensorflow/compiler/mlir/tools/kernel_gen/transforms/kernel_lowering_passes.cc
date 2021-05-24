@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
@@ -21,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // from @llvm-project
+#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -47,10 +50,16 @@ class GpuKernelToNVVMPass
   void runOnOperation() override {
     GPUModuleOp m = getOperation();
 
-    OwningRewritePatternList patterns;
-    LLVMTypeConverter converter(m.getContext());
+    RewritePatternSet patterns(&getContext());
+    mlir::LowerToLLVMOptions llvm_opts(
+        m.getContext(),
+        DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
+    llvm_opts.overrideIndexBitwidth(32);
+    LLVMTypeConverter converter(m.getContext(), llvm_opts);
+    populateComplexToStandardConversionPatterns(patterns);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
+    populateComplexToLLVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());
     configureGpuToNVVMConversionLegality(target);
     if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {
@@ -71,10 +80,12 @@ class GpuKernelToROCDLPass
   void runOnOperation() override {
     gpu::GPUModuleOp m = getOperation();
 
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(m.getContext());
+    populateComplexToStandardConversionPatterns(patterns);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToROCDLConversionPatterns(converter, patterns);
+    populateComplexToLLVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());
     configureGpuToROCDLConversionLegality(target);
     if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {

@@ -41,6 +41,19 @@ class ConvertMaxUnpoolingFunc {
   mlir::TF::FuncAttr attr_;
 };
 
+// Fuse DenseImageWarp ops annotated by tf.function to a TFLite custom op.
+class ConvertDenseImageWarpFunc {
+ public:
+  explicit ConvertDenseImageWarpFunc(FuncOp func) : func_(func) {}
+
+  LogicalResult RewriteFunc();
+
+  LogicalResult VerifySignature();
+
+ private:
+  FuncOp func_;
+};
+
 }  // end namespace TFL
 }  // end namespace mlir
 

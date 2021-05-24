@@ -51,6 +51,8 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kProcessingMode = "processing_mode";
   static constexpr const char* const kAddress = "address";
   static constexpr const char* const kProtocol = "protocol";
+  static constexpr const char* const kDataTransferProtocol =
+      "data_transfer_protocol";
   static constexpr const char* const kJobName = "job_name";
   static constexpr const char* const kConsumerIndex = "consumer_index";
   static constexpr const char* const kNumConsumers = "num_consumers";
@@ -76,6 +78,7 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   int64 task_refresh_interval_hint_ms_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+  std::string data_transfer_protocol_;
 };
 
 }  // namespace data

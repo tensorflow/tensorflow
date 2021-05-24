@@ -27,6 +27,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -430,7 +431,7 @@ def expand_dims_v2(input, axis, name=None):
     inserted at the index specified by `axis`.
 
   Raises:
-    ValueError: If `axis` is not specified.
+    TypeError: If `axis` is not specified.
     InvalidArgumentError: If `axis` is out of range `[-(D+1), D]`.
   """
   return gen_array_ops.expand_dims(input, axis, name)
@@ -962,6 +963,9 @@ def _slice_helper(tensor, slice_spec, var=None):
       tf.newaxis or scalar int32/int64 tensors.
   """
   tensor = ops.convert_to_tensor(tensor)
+  # TODO(wangpeng): Consider supporting var
+  if var is None and ops._numpy_style_slicing:  # pylint: disable=protected-access
+    return tensor._numpy_style_getitem(slice_spec)  # pylint: disable=protected-access
 
   if isinstance(slice_spec, bool) or \
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
@@ -2120,11 +2124,12 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
   """
-  size_splits = ops.convert_to_tensor(num_or_size_splits)
   if isinstance(num_or_size_splits,
                 (numbers.Integral, tensor_shape.Dimension)):
     return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
+
+  size_splits = ops.convert_to_tensor(num_or_size_splits)
 
   if size_splits._rank() == 0:
     raise ValueError(
@@ -2692,6 +2697,9 @@ def matrix_diag_part(
 
   Returns:
     A Tensor containing diagonals of `input`. Has the same type as `input`.
+
+  Raises:
+    InvalidArgumentError: When `k` is out of bound or when `k[0]>k[1:]`.
   """
   # Special case to sidestep the tf.constant conversion error:
   # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2960,7 +2968,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
         # Go through tensor shapes to get int64-if-needed semantics
         shape = constant_op._tensor_shape_tensor_conversion_function(
             tensor_shape.TensorShape(shape))
-      except (TypeError, ValueError):
+      except (TypeError, ValueError, errors.UnimplementedError):
         # Happens when shape is a list with tensor elements
         shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
     if not shape._shape_tuple():
@@ -4643,21 +4651,33 @@ def where_v2(condition, x=None, y=None, name=None):
   dtype=int32)>
 
   Note that if the gradient of either branch of the tf.where generates
-  a NaN, then the gradient of the entire tf.where will be NaN.
+  a NaN, then the gradient of the entire tf.where will be NaN. This is because
+  the gradient calculation for tf.where combines the two branches, for
+  performance reasons.
+
   A workaround is to use an inner tf.where to ensure the function has
   no asymptote, and to avoid computing a value whose gradient is NaN by
   replacing dangerous inputs with safe inputs.
 
   Instead of this,
 
-  >>> y = tf.constant(-1, dtype=tf.float32)
-  >>> tf.where(y > 0, tf.sqrt(y), y)
-  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+  >>> x = tf.constant(0., dtype=tf.float32)
+  >>> with tf.GradientTape() as tape:
+  ...   tape.watch(x)
+  ...   y = tf.where(x < 1., 0., 1. / x)
+  >>> print(tape.gradient(y, x))
+  tf.Tensor(nan, shape=(), dtype=float32)
 
-  Use this
+  Although, the `1. / x` values are never used, its gradient is a NaN when x =
+  0. Instead, we should guard that with another `tf.where`
 
-  >>> tf.where(y > 0, tf.sqrt(tf.where(y > 0, y, 1)), y)
-  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+  >>> x = tf.constant(0., dtype=tf.float32)
+  >>> with tf.GradientTape() as tape:
+  ...   tape.watch(x)
+  ...   safe_x = tf.where(tf.equal(x, 0.), 1., x)
+  ...   y = tf.where(x < 1., 0., 1. / safe_x)
+  >>> print(tape.gradient(y, x))
+  tf.Tensor(0.0, shape=(), dtype=float32)
 
   Args:
     condition: A `tf.Tensor` of type `bool`
@@ -6069,14 +6089,14 @@ def searchsorted(sorted_sequence,
     name: Optional name for the operation.
 
   Returns:
-    An N-D `Tensor` the size of values containing the result of applying either
-    lower_bound or upper_bound (depending on side) to each value.  The result
-    is not a global index to the entire `Tensor`, but the index in the last
-    dimension.
+    An N-D `Tensor` the size of `values` containing the result of applying
+    either lower_bound or upper_bound (depending on side) to each value.  The
+    result is not a global index to the entire `Tensor`, but the index in the
+    last dimension.
 
   Raises:
     ValueError: If the last dimension of `sorted_sequence >= 2^31-1` elements.
-                If the total size of values exceeds `2^31 - 1` elements.
+                If the total size of `values` exceeds `2^31 - 1` elements.
                 If the first `N-1` dimensions of the two tensors don't match.
   """
   sequence_size = shape_internal(sorted_sequence)[-1]

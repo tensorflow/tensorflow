@@ -39,10 +39,10 @@ class OptimizeMhloPass : public PassWrapper<OptimizeMhloPass, FunctionPass> {
 // Lowers the complex operations that can be represented using other operations.
 void OptimizeMhloPass::runOnFunction() {
   // Add lowering patterns to the list.
-  mlir::OwningRewritePatternList patterns;
+  mlir::OwningRewritePatternList patterns(&getContext());
   mlir::mhlo::PopulateOptimizeMHLOPatterns(&getContext(), &patterns);
 
-  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 std::unique_ptr<mlir::FunctionPass> mlir::mhlo::createOptimizeMhloPass() {

@@ -25,27 +25,26 @@ namespace gpu {
 namespace {
 std::string GetReshapeCode(const OperationDef& op_def) {
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
+  c += "  int Z = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  FLT temps[4];\n";
-  c += "  temps[0] = (FLT)(0.0f);\n";
-  c += "  temps[1] = (FLT)(0.0f);\n";
-  c += "  temps[2] = (FLT)(0.0f);\n";
-  c += "  temps[3] = (FLT)(0.0f);\n";
+  c += "  temps[0] = INIT_FLT(0.0f);\n";
+  c += "  temps[1] = INIT_FLT(0.0f);\n";
+  c += "  temps[2] = INIT_FLT(0.0f);\n";
+  c += "  temps[3] = INIT_FLT(0.0f);\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int base = B;\n";
   } else {
@@ -73,7 +72,11 @@ std::string GetReshapeCode(const OperationDef& op_def) {
   c += "      temps[i] = t_ar[src_sub_ch];\n";
   c += "    }\n";
   c += "  }\n";
-  c += "  FLT4 result = (FLT4)(temps[0], temps[1], temps[2], temps[3]);\n";
+  c += "  FLT4 result;\n";
+  c += "  result.x = temps[0];\n";
+  c += "  result.y = temps[1];\n";
+  c += "  result.z = temps[2];\n";
+  c += "  result.w = temps[3];\n";
   c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
   c += "}\n";
   return c;

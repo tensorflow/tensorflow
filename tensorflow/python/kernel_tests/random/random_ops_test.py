@@ -230,7 +230,7 @@ class TruncatedNormalTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testLargeShape(self):
-    with self.session(use_gpu=True):
+    with self.session():
       v = variables.Variable(
           array_ops.zeros(dtype=dtypes.float32, shape=[2**33, 1]))
       n = random_ops.truncated_normal(v.shape)
@@ -238,7 +238,7 @@ class TruncatedNormalTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testNoCSE(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [2, 3, 4]
       rnd1 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
       rnd2 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
@@ -371,7 +371,7 @@ class RandomUniformTest(RandomOpTestCommon):
   def testNoCSE(self):
     shape = [2, 3, 4]
     for dtype in dtypes.float16, dtypes.float32, dtypes.int32:
-      with self.session(use_gpu=True):
+      with self.session():
         rnd1 = random_ops.random_uniform(shape, 0, 17, dtype=dtype)
         rnd2 = random_ops.random_uniform(shape, 0, 17, dtype=dtype)
         diff = (rnd2 - rnd1).eval()

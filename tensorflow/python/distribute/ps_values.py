@@ -155,6 +155,9 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
   def op(self):
     return self._v.op
 
+  def value(self):
+    return self._v.value()
+
   def read_value(self):
     return self._v.read_value()
 

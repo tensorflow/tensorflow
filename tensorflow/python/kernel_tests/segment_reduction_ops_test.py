@@ -307,7 +307,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
         ops_list = self.complex_ops_list if dtype.is_complex else self.ops_list
         tf_x, np_x = self._input(shape, dtype=dtype)
         for use_gpu in [True, False]:
-          with self.cached_session(use_gpu=True):
+          with self.cached_session():
             for np_op1, np_op2, tf_op, init_op in ops_list:
               # sqrt_n doesn't support integers
               if (np_op2 == self._sqrt_n_reduce_op and dtype.is_integer):
@@ -333,7 +333,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
     for indices in indices_flat, indices_flat.reshape(5, 2):
       shape = indices.shape + (2,)
       for dtype in dtypes:
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           tf_x, np_x = self._input(shape)
           num_segments_constant = constant_op.constant(
               num_segments, dtype=dtype)
@@ -433,7 +433,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
     shape = [n, num_cols]
     num_segments = max(indices) + 1
     for dtype in self.differentiable_dtypes:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         tf_x, np_x = self._input(shape, dtype=dtype)
         # Results from UnsortedSegmentSum
         unsorted_s = math_ops.unsorted_segment_sum(
@@ -470,7 +470,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
   def testEmptySecondDimension(self):
     dtypes = [np.float16, np.float32, np.float64, np.int64, np.int32,
               np.complex64, np.complex128]
-    with self.session(use_gpu=True):
+    with self.session():
       for dtype in dtypes:
         for itype in (np.int32, np.int64):
           data = np.zeros((2, 0), dtype=dtype)
@@ -486,7 +486,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
     for indices in indices_flat, indices_flat.reshape(5, 2):
       shape = indices.shape + (2,)
       for dtype in self.all_dtypes:
-        with self.session(use_gpu=True):
+        with self.session():
           tf_x, np_x = self._input(shape, dtype=dtype)
           np_ans = self._segmentReduce(
               indices, np_x, np.add, op2=None, num_segments=num_segments)
@@ -852,7 +852,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     # Baseline for the testGradient*Invalid* methods below.
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
     ops_list = [
-        math_ops.sparse_segment_mean_grad, math_ops.sparse_segment_sqrt_n_grad
+        math_ops.sparse_segment_sum_grad, math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad
     ]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, 0, 9]
@@ -865,7 +866,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
   def testGradientIndicesInvalid1(self):
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
     ops_list = [
-        math_ops.sparse_segment_mean_grad, math_ops.sparse_segment_sqrt_n_grad
+        math_ops.sparse_segment_sum_grad, math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad
     ]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, 0, 10]
@@ -879,7 +881,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
   def testGradientIndicesInvalid2(self):
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
     ops_list = [
-        math_ops.sparse_segment_mean_grad, math_ops.sparse_segment_sqrt_n_grad
+        math_ops.sparse_segment_sum_grad, math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad
     ]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, -1, 9]
@@ -894,7 +897,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     tf_x, _ = self._input(
         [3, 4], dtype=dtypes_lib.float32)  # expecting 3 segments
     ops_list = [
-        math_ops.sparse_segment_mean_grad, math_ops.sparse_segment_sqrt_n_grad
+        math_ops.sparse_segment_sum_grad, math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad
     ]
     segment_indices = [0, 1, 1, 4]  # 5 segments
     tf_indices = [8, 3, 0, 9]
@@ -908,7 +912,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
   def testGradientSegmentsInvalid2(self):
     tf_x, _ = self._input([1, 4], dtype=dtypes_lib.float32)
     ops_list = [
-        math_ops.sparse_segment_mean_grad, math_ops.sparse_segment_sqrt_n_grad
+        math_ops.sparse_segment_sum_grad, math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad
     ]
     segment_indices = [0, 1, 2, 0]
     tf_indices = [8, 3, 0, 9]
@@ -922,7 +927,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
   def testGradientSegmentsInvalid3(self):
     tf_x, _ = self._input([2, 4], dtype=dtypes_lib.float32)
     ops_list = [
-        math_ops.sparse_segment_mean_grad, math_ops.sparse_segment_sqrt_n_grad
+        math_ops.sparse_segment_sum_grad, math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad
     ]
     segment_indices = [-1, 0, 1, 1]
     tf_indices = [8, 3, 0, 9]
@@ -936,7 +942,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
   def testGradientSegmentsInvalid4(self):
     tf_x, _ = self._input([0, 4], dtype=dtypes_lib.float32)
     ops_list = [
-        math_ops.sparse_segment_mean_grad, math_ops.sparse_segment_sqrt_n_grad
+        math_ops.sparse_segment_sum_grad, math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad
     ]
     segment_indices = [0, 1, 2, -1]
     tf_indices = [8, 3, 0, 9]

@@ -110,7 +110,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
 
   void StartAbort(const Status& s) override TF_LOCKS_EXCLUDED(status_mu_);
 
-  void ExecuteAsync(OpKernelContext* ctx, const CollectiveParams& col_params,
+  void ExecuteAsync(OpKernelContext* ctx, const CollectiveParams* col_params,
                     const string& exec_key, StatusCallback done) override;
 
   void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,

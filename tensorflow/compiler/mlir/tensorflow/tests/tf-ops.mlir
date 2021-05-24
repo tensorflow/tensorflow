@@ -26,6 +26,16 @@ func @opaquetensorattr() -> () {
 }
 
 //===--------------------------------------------------------------------===//
+//  Test TF placeholder attribute
+//===--------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @placeholderattr
+func @placeholderattr() -> ()
+// CHECK:    attributes {some_placeholder = #tf.placeholder<"foo">} {
+    attributes {some_placeholder = #tf.placeholder<"foo">} {
+  return
+}
+//===--------------------------------------------------------------------===//
 //  Test TF operations (tf.*)
 //===--------------------------------------------------------------------===//
 
@@ -308,6 +318,34 @@ func @testIncompatibleElementTypes(%arg0: tensor<3x2xf32>, %arg1: tensor<3x2xf32
 
 // -----
 
+func @testPadRank1Paddings(%input: tensor<2xi64>) -> tensor<3xi64> {
+  %paddings = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{failed to verify that operand 1 is 2-D}}
+  %0 = "tf.Pad"(%input, %paddings) : (tensor<2xi64>, tensor<2xi64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+}
+
+// -----
+
+func @testPadV2Rank1Paddings(%input: tensor<2xi64>) -> tensor<3xi64> {
+  %constant = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+  %paddings = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{failed to verify that operand 1 is 2-D}}
+  %0 = "tf.PadV2"(%input, %paddings, %constant) : (tensor<2xi64>, tensor<2xi64>, tensor<i64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+}
+
+// -----
+
+func @testMirrorPadRank1Paddings(%input: tensor<2xi64>) -> tensor<3xi64> {
+  %paddings = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{failed to verify that operand 1 is 2-D}}
+  %0 = "tf.MirrorPad"(%input, %paddings) { mode = "SYMMETRIC" }: (tensor<2xi64>, tensor<2xi64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+}
+
+// -----
+
 // CHECK-LABEL: func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<10000xf32>, %arg3: tensor<*xi32>)
 func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<10000xf32>, %arg3: tensor<*xi32>) -> (tensor<100x100xf32>, tensor<*xf32>, tensor<100x100xf32>, tensor<100x100xf32>, tensor<*xf32>, tensor<*xf32>) {
   %shape1 = constant dense<100> : tensor<2xi32>
@@ -583,7 +621,7 @@ func @testConv2D(%arg0: tensor<256x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> te
 // -----
 
 func @testConv3D(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
-  // expected-error @+1 {{'tf.Conv3D' op inferred type incompatible with return type of operation}}
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x32x32x32x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   return %0 : tensor<256x32x32x16xf32>
 }
@@ -639,7 +677,7 @@ func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) ->
 // -----
 
 func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
-  // expected-error @+1 {{'tf.Conv2D' op inferred type incompatible with return type of operation}}
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x16x11x16xf32>' are incompatible with return type(s) of operation 'tensor<256x30x30x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 2, 3, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
   return %0 : tensor<256x30x30x16xf32>
 }
@@ -647,7 +685,7 @@ func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) ->
 // -----
 
 func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x16x30x16xf32> {
-  // expected-error @+1 {{'tf.Conv2D' op inferred type incompatible with return type of operation}}
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x16x11x16xf32>' are incompatible with return type(s) of operation 'tensor<256x16x30x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 2, 3, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x16x30x16xf32>
   return %0 : tensor<256x16x30x16xf32>
 }
@@ -655,7 +693,7 @@ func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) ->
 // -----
 
 func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
-  // expected-error @+1 {{'tf.Conv2D' op inferred type incompatible with return type of operation}}
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x6x6x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "EXPLICIT", dilations = [1, 2, 3, 4], explicit_paddings = [1, 2, 3, 4, 5, 6, 7, 8], strides = [5, 6, 7, 8]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   return %0 : tensor<256x32x32x16xf32>
 }
@@ -663,7 +701,7 @@ func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) ->
 // -----
 
 func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
-  // expected-error @+1 {{'tf.Conv2D' op inferred type incompatible with return type of operation}}
+  // expected-error @+1 {{op inferred type(s) 'tensor<256x30x30x16xf32>' are incompatible with return type(s) of operation 'tensor<256x32x32x16xf32>'}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
   return %0 : tensor<256x32x32x16xf32>
 }
@@ -4158,4 +4196,110 @@ func @testVarHandleOp() -> tensor<*x!tf.resource> {
     shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
   } : () -> tensor<*x!tf.resource>
   return %0 : tensor<*x!tf.resource>
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+  // expected-error @+1 {{broadcast_dims must have size equal to the smaller argument rank}}
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<1xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
+  // expected-error @+1 {{if broadcast_dims is empty, both arguments must have equal rank or at least one argument must be a scalar}}
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<0xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<5x2xi32>, %arg1: tensor<2x3x5xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<0> : tensor<2xi64>} : () -> tensor<2xi64>
+  // expected-error @+1 {{broadcast_dims has duplicates}}
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<5x2xi32>, tensor<2x3x5xi32>, tensor<2xi64>) -> (tensor<2x1x5xi32>, tensor<2x3x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<2xi32>, %arg1: tensor<i32>) -> () {
+  %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2xi32>, tensor<i32>, tensor<0xi64>) -> (tensor<2xi32>, tensor<i32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<5x2xi32>, %arg1: tensor<2x3x5xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<[2, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<5x2xi32>, tensor<2x3x5xi32>, tensor<2xi64>) -> (tensor<2x1x5xi32>, tensor<2x3x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaBroadcastHelper(%arg0: tensor<2x3x5xi32>, %arg1: tensor<5x2xi32>) -> () {
+  %0 = "tf.Const"() {value = dense<[2, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+  %lhs_output, %rhs_output = "tf.XlaBroadcastHelper"(%arg0, %arg1, %0) : (tensor<2x3x5xi32>, tensor<5x2xi32>, tensor<2xi64>) -> (tensor<2x3x5xi32>, tensor<2x1x5xi32>)
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module=""} : (tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> (tensor<2xf32>)
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  // expected-error @+1 {{can not be deserialized}}
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="bad_module"} : (tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  // expected-error @+1 {{'host_mlir_module' does not contain 'host_func' function}}
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @bad_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  // expected-error @+1 {{Number of operands/inputs should be the same}}
+  "tf._XlaHostComputeMlir"() {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : () -> ()
+  return
+}
+
+// -----
+
+func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
+  // expected-error @+1 {{Number of results should be the same}}
+  "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
+func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf16> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  // expected-error @+1 {{dim_index (1) is out of range [0, 1)}}
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf16>
+  return %0 : tensor<?xf16>
 }

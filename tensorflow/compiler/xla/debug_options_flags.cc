@@ -40,12 +40,13 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_asm_extra_flags("");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
+  opts.set_xla_dump_fusion_visualization(false);
   opts.set_xla_dump_include_timestamp(true);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
-#ifdef INTEL_MKL
+#ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
-#endif  // INTEL_MKL
+#endif  // ENABLE_MKL
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
@@ -75,7 +76,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
-  opts.set_xla_detailed_logging(true);
+  opts.set_xla_detailed_logging_and_dumping(true);
   return opts;
 }
 
@@ -169,6 +170,12 @@ static void AllocateFlags() {
   // Custom "sub-parser" lambda for xla_gpu_ptx_file.
   auto setter_for_xla_gpu_ptx_file = [](string value) {
     flag_values->add_xla_gpu_ptx_file(value);
+    return true;
+  };
+
+  // Custom "sub-parser" lambda for xla_gpu_llvm_ir_file.
+  auto setter_for_xla_gpu_llvm_ir_file = [](const string& value) {
+    flag_values->add_xla_gpu_llvm_ir_file(value);
     return true;
   };
 
@@ -369,7 +376,15 @@ static void AllocateFlags() {
       "If non-empty, specifies a file containing ptx to use. The filename "
       "prefix must have the same pattern as PTX dumped by XLA. This allows to "
       "match one specific module. General workflow. Get the generated module "
-      "ptx from XLA. Modify it. Then pass it back via this option."));
+      "ptx from XLA, modify it, then pass it back via this option."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_llvm_ir_file", setter_for_xla_gpu_llvm_ir_file, "",
+      "If non-empty, specifies a file containing textual LLVM IR to use. The "
+      "filename prefix must have the same pattern as LLVM dumped by XLA "
+      "(i.e. module_0001.ir-no-opt.ll -> module_0001.MY_NEW_FILE.ll). This "
+      "allows to match one specific module. General workflow. Get the not "
+      "optimized LLVM IR from XLA, modify it, then pass it back via this "
+      "option."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_test_all_output_layouts",
       bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
@@ -484,6 +499,15 @@ static void AllocateFlags() {
       "default; you need to add a plugin which calls "
       "RegisterGraphToURLRenderer()."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_fusion_visualization",
+      bool_setter_for(&DebugOptions::set_xla_dump_fusion_visualization),
+      flag_values->xla_dump_fusion_visualization(),
+      "Tries to generate HLO fusion visualization as an HTML page to the "
+      "directory specified by --xla_dump_to). This is not implemented by "
+      "default; you need to add a plugin which calls "
+      "RegisterGraphToURLRenderer(). Generates a file per computation. "
+      "Currently only implemented for the GPU backend."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_dump_hlo_snapshots",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_snapshots),
       flag_values->xla_dump_hlo_snapshots(),
@@ -519,6 +543,11 @@ static void AllocateFlags() {
       flag_values->xla_dump_module_metadata(),
       "Dumps HloModuleMetadata as text protos to the directory specified "
       "by --xla_dump_to."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_compress_protos",
+      bool_setter_for(&DebugOptions::set_xla_dump_compress_protos),
+      flag_values->xla_dump_compress_protos(),
+      "Gzip-compress protos dumped by --xla_dump_hlo_as_proto."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_hlo_graph_addresses",
       bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),

@@ -136,8 +136,7 @@ class Delegate {
     RETURN_IF_ERROR(BuildModel(context, delegate_params, &graph));
 
     // Apply general transformations on the graph.
-    NullTransformationReporter reporter;
-    ModelTransformer transformer(&graph, &reporter);
+    ModelTransformer transformer(&graph);
     if (!ApplyModelTransformations(&transformer)) {
       return absl::InternalError("Graph transformations failed");
     }

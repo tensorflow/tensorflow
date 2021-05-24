@@ -217,9 +217,8 @@ class ComparisonOpTest(test.TestCase):
     for t in dtypes:
       for f in funcs:
         with self.subTest(t=t, f=f):
-          with self.assertRaisesRegex(
-              (ValueError, errors.InvalidArgumentError),
-              "Incompatible shapes|Dimensions must be equal"):
+          with self.assertRaisesIncompatibleShapesError(
+              (ValueError, errors.InvalidArgumentError)):
             f(x.astype(t), y.astype(t))
 
 
@@ -761,8 +760,8 @@ class MinMaxOpTest(test.TestCase):
   def testBasic(self):
     x = np.random.rand(1, 3, 2) * 100.
     y = np.random.rand(1, 3, 2) * 100.
-    for t in [np.float16, np.float32, np.float64, np.uint8, np.int16, np.int32,
-              np.int64]:
+    for t in [np.float16, np.float32, np.float64, np.int8, np.uint8, np.int16,
+              np.uint16, np.int32, np.uint32, np.int64, np.uint64]:
       with self.subTest(t=t):
         self._compare(x.astype(t), y.astype(t), use_gpu=False)
         self._compare(x.astype(t), y.astype(t), use_gpu=True)
@@ -871,6 +870,11 @@ class MathOpsOverloadTest(test.TestCase):
         dtypes_lib.float32,
         dtypes_lib.float64,
         dtypes_lib.bfloat16,
+        dtypes_lib.uint16,
+        dtypes_lib.uint32,
+        dtypes_lib.uint64,
+        dtypes_lib.int8,
+        dtypes_lib.int16,
         dtypes_lib.int32,
         dtypes_lib.int64,
         dtypes_lib.complex64,
@@ -890,6 +894,10 @@ class MathOpsOverloadTest(test.TestCase):
           if dtype in (dtypes_lib.complex64,
                        dtypes_lib.complex128) and tf_func == _FLOORDIV:
             continue  # floordiv makes no sense for complex
+          if dtype in (dtypes_lib.uint16, dtypes_lib.uint32,
+                       dtypes_lib.uint64) and tf_func in (_POW, _FLOORDIV,
+                                                          _TRUEDIV):
+            continue  # power and div not supported for unsigned types
           self._compareBinary(10, 5, dtype, np_func, tf_func)
     # Mod only works for int32 and int64.
     for dtype in [dtypes_lib.int32, dtypes_lib.int64]:
@@ -901,6 +909,12 @@ class MathOpsOverloadTest(test.TestCase):
         dtypes_lib.float16,
         dtypes_lib.float32,
         dtypes_lib.float64,
+        dtypes_lib.uint8,
+        dtypes_lib.uint16,
+        dtypes_lib.uint32,
+        dtypes_lib.uint64,
+        dtypes_lib.int8,
+        dtypes_lib.int16,
         dtypes_lib.int32,
         dtypes_lib.int64,
     ]

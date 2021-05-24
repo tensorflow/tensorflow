@@ -1,20 +1,20 @@
 # Utilities for signature_defs in TFLite
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
     name = "signature_def_util",
     srcs = ["signature_def_util.cc"],
     hdrs = ["signature_def_util.h"],
-    copts = tflite_copts() + tflite_copts_warnings(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
@@ -50,7 +50,7 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -71,7 +71,7 @@ pybind_extension(
 py_library(
     name = "signature_def_utils",
     srcs = ["signature_def_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_signature_def_util_wrapper",
         "//tensorflow/core:protos_all_py",
@@ -83,7 +83,7 @@ py_test(
     srcs = ["signature_def_utils_test.py"],
     data = ["//tensorflow/lite:testdata/add.bin"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_mac",
     ],

@@ -250,6 +250,52 @@ func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>) -> 
 // CHECK:      return %[[REPLICATE]]#0, %[[REPLICATE]]#3
 
 
+// Test replication with model parallelism using partitioned resource inputs.
+// The cluster will be wrapped in a `tf_device.cluster` first and then by a
+// replicate.
+// TPUPartitionedInput nodes would be inside the replicate but outside the
+// cluster.
+// TPUReplicatedInput and TPUReplicatedOutput nodes will be replaced by the
+// replicate operands and results.
+// CHECK-LABEL: func @replication_with_model_parallelism
+// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>, %[[ARG_1:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>, %[[ARG_2:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>, %[[ARG_3:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>)
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+
+func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> (tensor<10x3xf32>, tensor<f32>) {
+  %0 = "tf.opA"() : () -> tensor<i32>
+  %1 = "tf.opB"() : () -> tensor<i32>
+  %2 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
+  %3 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
+  %4 = "tf.TPUPartitionedInput"(%2, %3) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %5 = "tf.TPUReplicatedInput"(%0, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %6 = "tf.opC"(%4) {_tpu_replicate = "replicate"} : (!rtype) -> tensor<10x3xf32>
+  %7:2 = "tf.TPUReplicatedOutput"(%6) : (tensor<10x3xf32>) -> (tensor<10x3xf32>, tensor<10x3xf32>)
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_cores_per_replica = 2 : i64, num_replicas = 2 : i64, topology = "topology"} : () -> ()
+  %8 = "tf.opD"(%5) {_tpu_replicate = "replicate"} : (tensor<i32>) -> tensor<f32>
+  %9:2 = "tf.TPUReplicatedOutput"(%8) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  return %7#0, %9#1 : tensor<10x3xf32>, tensor<f32>
+}
+
+// CHECK:      %[[OP_A:[0-9]*]] = "tf.opA"
+// CHECK:      %[[OP_B:[0-9]*]] = "tf.opB"
+// CHECK:      %[[REPLICATE:[0-9]*]]:4 = tf_device.replicate
+// CHECK-DAG:  [%[[ARG_0]], %[[ARG_2]]] as %[[RI_0:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>
+// CHECK-DAG:  [%[[ARG_1]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>
+// CHECK-DAG:  [%[[OP_A]], %[[OP_B]]] as %[[RI_2:[a-z0-9]*]]: tensor<i32>
+// CHECK-NOT:  _replicated_input_indices
+// CHECK-SAME: n = 2 : i32
+// CHECK:        %[[PI:[0-9]*]] = "tf.TPUPartitionedInput"(%[[RI_0]], %[[RI_1]])
+// CHECK-NEXT:   %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ( {
+// CHECK:          %[[OP_C:[0-9]*]] = "tf.opC"(%[[PI]])
+// CHECK:          %[[OP_D:[0-9]*]] = "tf.opD"(%[[RI_2]])
+// CHECK:          tf_device.return %[[OP_C]], %[[OP_D]]
+// CHECK-NEXT:   _tpu_replicate = "replicate"
+// CHECK-SAME:   device = "device"
+// CHECK-SAME:   topology = "topology"
+// CHECK:        tf_device.return %[[CLUSTER]]#0, %[[CLUSTER]]#1
+// CHECK:      return %[[REPLICATE]]#0, %[[REPLICATE]]#3
+
+
 // Test TPUReplicatedInput ops are sorted by their `index` attribute.
 // Non-negative `index` should precede `index` of -1, and ordering of ops with
 // `index` of -1 does not matter.
@@ -270,15 +316,16 @@ func @sort_replicated_input(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<
 }
 
 // CHECK:      tf_device.replicate
-// CHECK-SAME: [%[[ARG_2]], %[[ARG_2]]] as %{{[a-z0-9]*}}
-// CHECK-SAME: [%[[ARG_4]], %[[ARG_4]]] as %{{[a-z0-9]*}}
-// CHECK-SAME: [%[[ARG_1]], %[[ARG_1]]] as %{{[a-z0-9]*}}
-// CHECK-DAG:  [%[[ARG_0]], %[[ARG_0]]] as %{{[a-z0-9]*}}
-// CHECK-DAG:  [%[[ARG_3]], %[[ARG_3]]] as %{{[a-z0-9]*}}
-// CHECK-DAG:  [%[[ARG_7]], %[[ARG_7]]] as %{{[a-z0-9]*}}
-// CHECK-DAG:  %[[ARG_6]] as %{{[a-z0-9]*}}
-// CHECK-DAG:  %[[ARG_5]] as %{{[a-z0-9]*}}
+// CHECK-SAME: [%[[ARG_2]], %[[ARG_2]]] as %[[RI_2:[a-z0-9]*]]
+// CHECK-SAME: [%[[ARG_4]], %[[ARG_4]]] as %[[RI_4:[a-z0-9]*]]
+// CHECK-SAME: [%[[ARG_1]], %[[ARG_1]]] as %[[RI_1:[a-z0-9]*]]
+// CHECK-DAG:  [%[[ARG_0]], %[[ARG_0]]] as %[[RI_0:[a-z0-9]*]]
+// CHECK-DAG:  [%[[ARG_3]], %[[ARG_3]]] as %[[RI_3:[a-z0-9]*]]
+// CHECK-DAG:  [%[[ARG_7]], %[[ARG_7]]] as %[[RI_7:[a-z0-9]*]]
+// CHECK-DAG:  %[[ARG_6]] as %[[RI_6:[a-z0-9]*]]
+// CHECK-DAG:  %[[ARG_5]] as %[[RI_5:[a-z0-9]*]]
 // CHECK-SAME: _replicated_input_indices = [0, 1, 3, -1, -1, -1, 2, -1]
+// CHECK: "tf.opA"(%[[RI_0]], %[[RI_1]], %[[RI_2]], %[[RI_3]], %[[RI_4]], %[[RI_5]], %[[RI_6]], %[[RI_7]])
 
 
 // Test TPUReplicatedInputs with non contiguous `index` attributes.
@@ -550,6 +597,20 @@ func @bad_num_replicas() {
   return
 }
 
+// -----
+
+// Test cluster with bad `num_cores_per_replica` attribute.
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> (tensor<10x3xf32>) {
+  %2 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
+  %3 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
+  // expected-error@+1 {{'tf.TPUPartitionedInput' op requires 4 operands but found 2}}
+  %4 = "tf.TPUPartitionedInput"(%2, %3) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %6 = "tf.opC"(%4) {_tpu_replicate = "replicate"} : (!rtype) -> tensor<10x3xf32>
+  %7:2 = "tf.TPUReplicatedOutput"(%6) : (tensor<10x3xf32>) -> (tensor<10x3xf32>, tensor<10x3xf32>)
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_cores_per_replica = 4 : i64, num_replicas = 2 : i64, topology = "topology"} : () -> ()
+  return %7#0 : tensor<10x3xf32>
+}
 
 // -----
 
@@ -624,3 +685,17 @@ func @input_index_gaps(%arg0: tensor<i1>) {
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @cluster_ops_keep_replicated_core_attr
+func @cluster_ops_keep_replicated_core_attr() {
+  %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "/device:TPU_REPLICATED_CORE:0", name = "name"} : () -> tensor<i1>
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
+  return
+}
+
+// CHECK:      "tf.opA"
+// CHECK-SAME-DAG: name = "name"
+// CHECK-SAME-DAG:  device = "/device:TPU_REPLICATED_CORE:0"
+// CHECK:      tf_device.return

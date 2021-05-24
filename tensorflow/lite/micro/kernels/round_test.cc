@@ -24,7 +24,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestRound(const int* input_dims_data, const float* input_data,
+void TestRound(int* input_dims_data, const float* input_data,
                const float* expected_output_data, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
@@ -44,7 +44,7 @@ void TestRound(const int* input_dims_data, const float* input_data,
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_ROUND();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, nullptr, micro_test::reporter);
+                             outputs_array, nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -61,7 +61,7 @@ void TestRound(const int* input_dims_data, const float* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SingleDim) {
-  const int input_dims[] = {1, 6};
+  int input_dims[] = {1, 6};
   const float input_data[] = {8.5, 0.0, 3.5, 4.2, -3.5, -4.5};
   const float golden[] = {8, 0, 4, 4, -4, -4};
   float output_data[6];
@@ -69,7 +69,7 @@ TF_LITE_MICRO_TEST(SingleDim) {
 }
 
 TF_LITE_MICRO_TEST(MultiDims) {
-  const int input_dims[] = {4, 2, 1, 1, 6};
+  int input_dims[] = {4, 2, 1, 1, 6};
   const float input_data[] = {0.0001,  8.0001,  0.9999,  9.9999, 0.5,  -0.0001,
                               -8.0001, -0.9999, -9.9999, -0.5,   -2.5, 1.5};
   const float golden[] = {0, 8, 1, 10, 0, 0, -8, -1, -10, -0, -2, 2};

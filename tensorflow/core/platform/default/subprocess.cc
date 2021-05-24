@@ -13,18 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/subprocess.h"
+
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
+#include <spawn.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+
 #include <memory>
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/subprocess.h"
+
+// Android versions older than 28 do not have posix_spawn().
+#define USE_POSIX_SPAWN !defined(__ANDROID_API__) || __ANDROID_API__ >= 28
 
 // 1) FYI from m3b@ about fork():
 // A danger of calling fork() (as opposed to clone() or vfork()) is that if
@@ -63,6 +69,12 @@ limitations under the License.
 // of the exec functions is called."  Notice that execve() is listed as
 // async-signal-safe, but execvp() is not, and the difference is just the
 // handling of the environment.
+
+extern "C" {
+
+extern char** environ;
+
+}  // extern "C"
 
 namespace tensorflow {
 
@@ -159,6 +171,164 @@ void SubProcess::SetChannelAction(Channel chan, ChannelAction action) {
   }
 }
 
+#if USE_POSIX_SPAWN
+
+// Implementation based on posix_spawn().
+// We prefer to use posix_spawn() where possible to avoid calling
+// pthread_atfork() handlers. POSIX does not guarantee this, but for example,
+// glibc 2.24 or newer do so, as does the FreeBSD libc.
+bool SubProcess::Start() {
+  mutex_lock procLock(proc_mu_);
+  mutex_lock dataLock(data_mu_);
+  if (running_) {
+    LOG(ERROR) << "Start called after the process was started.";
+    return false;
+  }
+  if ((exec_path_ == nullptr) || (exec_argv_ == nullptr)) {
+    LOG(ERROR) << "Start called without setting a program.";
+    return false;
+  }
+
+  // Create parent/child pipes for the specified channels and make the
+  // parent-side of the pipes non-blocking.
+  for (int i = 0; i < kNFds; i++) {
+    if (action_[i] == ACTION_PIPE) {
+      int pipe_fds[2];
+      if (pipe(pipe_fds) < 0) {
+        LOG(ERROR) << "Start cannot create pipe: " << strerror(errno);
+        ClosePipes();
+        return false;
+      }
+      // Handle the direction of the pipe (stdin vs stdout/err).
+      if (i == 0) {
+        parent_pipe_[i] = pipe_fds[1];
+        child_pipe_[i] = pipe_fds[0];
+      } else {
+        parent_pipe_[i] = pipe_fds[0];
+        child_pipe_[i] = pipe_fds[1];
+      }
+
+      if (fcntl(parent_pipe_[i], F_SETFL, O_NONBLOCK) < 0) {
+        LOG(ERROR) << "Start cannot make pipe non-blocking: "
+                   << strerror(errno);
+        ClosePipes();
+        return false;
+      }
+      if (fcntl(parent_pipe_[i], F_SETFD, FD_CLOEXEC) < 0) {
+        LOG(ERROR) << "Start cannot make pipe close-on-exec: "
+                   << strerror(errno);
+        ClosePipes();
+        return false;
+      }
+    }
+  }
+
+  posix_spawn_file_actions_t file_actions;
+  int ret;
+  ret = posix_spawn_file_actions_init(&file_actions);
+  if (ret != 0) {
+    LOG(ERROR) << "Start cannot initialize POSIX file actions: "
+               << strerror(ret);
+    ClosePipes();
+    return false;
+  }
+
+  // In the child process: close parent-side pipes and channels marked for
+  // closing.
+  // For pipe channels, replace their file descriptors with the pipes.
+  int devnull_fd = -1;
+  for (int i = 0; i < kNFds; i++) {
+    if (parent_pipe_[i] >= 0) {
+      ret = posix_spawn_file_actions_addclose(&file_actions, parent_pipe_[i]);
+      if (ret != 0) {
+        LOG(ERROR) << "posix_spawn_file_actions_addclose() failed: "
+                   << strerror(ret);
+      }
+    }
+
+    switch (action_[i]) {
+      case ACTION_DUPPARENT:
+        // Nothing to do, posix_spawnp() took care of it.
+        break;
+
+      case ACTION_PIPE:
+        ret =
+            posix_spawn_file_actions_adddup2(&file_actions, child_pipe_[i], i);
+        if (ret != 0) {
+          LOG(ERROR) << "posix_spawn_file_actions_adddup2() failed: "
+                     << strerror(ret);
+        }
+        ret = posix_spawn_file_actions_addclose(&file_actions, child_pipe_[i]);
+        if (ret != 0) {
+          LOG(ERROR) << "posix_spawn_file_actions_addclose() failed: "
+                     << strerror(ret);
+        }
+        break;
+
+      case ACTION_CLOSE:
+      default:
+        // Do not close stdin/out/err, instead redirect them to /dev/null so
+        // their file descriptors remain unavailable for reuse by open(), etc.
+        if (i <= CHAN_STDERR) {
+          if (devnull_fd < 0) {
+            ret = posix_spawn_file_actions_addopen(&file_actions, i,
+                                                   "/dev/null", O_RDWR, 0);
+            if (ret != 0) {
+              LOG(ERROR) << "posix_spawn_file_actions_addopen() failed: "
+                         << strerror(ret);
+            }
+            devnull_fd = i;
+          } else {
+            ret =
+                posix_spawn_file_actions_adddup2(&file_actions, devnull_fd, i);
+            if (ret != 0) {
+              LOG(ERROR) << "posix_spawn_file_actions_adddup2() failed: "
+                         << strerror(ret);
+            }
+          }
+        } else {
+          ret = posix_spawn_file_actions_addclose(&file_actions, i);
+          if (ret != 0) {
+            LOG(ERROR) << "posix_spawn_file_actions_addclose() failed: "
+                       << strerror(ret);
+          }
+        }
+        break;
+    }
+  }
+
+  // Start the child process and setup the file descriptors of both processes.
+  ret = posix_spawnp(&pid_, exec_path_, &file_actions, nullptr, exec_argv_,
+                     environ);
+  if (ret != 0) {
+    LOG(INFO) << "Start cannot spawn child process: " << strerror(ret);
+    ClosePipes();
+    return false;
+  }
+
+  ret = posix_spawn_file_actions_destroy(&file_actions);
+  if (ret != 0) {
+    LOG(WARNING) << "Start cannot destroy POSIX file actions: "
+                 << strerror(ret);
+  }
+
+  // Parent process: close the child-side pipes and return.
+  running_ = true;
+  for (int i = 0; i < kNFds; i++) {
+    if (child_pipe_[i] >= 0) {
+      if (close(child_pipe_[i]) < 0) {
+        LOG(ERROR) << "close() failed: " << strerror(errno);
+      }
+      child_pipe_[i] = -1;
+    }
+  }
+  return true;
+}
+
+#else  // !USE_POSIX_SPAWN
+
+// Implementation based on fork() and exec(); used when posix_spawn() is not
+// available.
 bool SubProcess::Start() {
   mutex_lock procLock(proc_mu_);
   mutex_lock dataLock(data_mu_);
@@ -293,6 +463,8 @@ bool SubProcess::Start() {
   execvp(exec_path_, exec_argv_);
   _exit(1);
 }
+
+#endif  // USE_POSIX_SPAWN
 
 bool SubProcess::Wait() {
   int status;

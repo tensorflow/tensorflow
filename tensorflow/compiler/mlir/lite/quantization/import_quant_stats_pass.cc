@@ -177,7 +177,7 @@ void ImportQuantStatsPass::runOnFunction() {
   OpBuilder builder(func);
 
   func.walk([&](Operation *op) {
-    if (op->isKnownTerminator()) return;
+    if (op->hasTrait<OpTrait::IsTerminator>()) return;
     auto op_name = op_to_name_(op);
 
     // Check the named info collection first.

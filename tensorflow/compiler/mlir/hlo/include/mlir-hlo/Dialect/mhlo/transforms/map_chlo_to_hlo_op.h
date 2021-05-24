@@ -25,53 +25,47 @@ limitations under the License.
 namespace mlir {
 namespace chlo {
 
-struct HloComplexAdaptor {
-  static mhlo::ComplexOp CreateOp(BroadcastComplexOp from_op, Type result_type,
-                                  Value broadcasted_lhs, Value broadcasted_rhs,
-                                  OpBuilder &builder) {
-    return builder.create<mhlo::ComplexOp>(from_op.getLoc(), result_type,
-                                           broadcasted_lhs, broadcasted_rhs);
-  }
-};
 template <typename FromOpTy, typename ToOpTy>
-struct HloBinaryElementwiseAdaptor {
+struct HloNaryElementwiseAdaptor {
   static ToOpTy CreateOp(FromOpTy from_op, Type result_type,
-                         Value broadcasted_lhs, Value broadcasted_rhs,
-                         OpBuilder &builder) {
+                         ValueRange broadcasted_operands, OpBuilder &builder) {
     return builder.create<ToOpTy>(from_op.getLoc(), result_type,
-                                  broadcasted_lhs, broadcasted_rhs);
+                                  broadcasted_operands);
   }
 };
 struct HloCompareAdaptor {
   static mhlo::CompareOp CreateOp(BroadcastCompareOp from_op, Type result_type,
-                                  Value broadcasted_lhs, Value broadcasted_rhs,
+                                  ValueRange broadcasted_operands,
                                   OpBuilder &builder) {
     return builder.create<mhlo::CompareOp>(
-        from_op.getLoc(), result_type, broadcasted_lhs, broadcasted_rhs,
-        from_op.comparison_direction(), from_op.compare_typeAttr());
+        from_op.getLoc(), result_type, broadcasted_operands[0],
+        broadcasted_operands[1], from_op.comparison_direction(),
+        from_op.compare_typeAttr());
   }
 };
 
 // Populate a pattern for each Broadcasting CHlo op. This requires the pattern
-// to take a ChloOpTy, MhloOpTy, and an Adaptor as templated values.
+// to take a ChloOpTy, NonBroadcastingOpTy, and an Adaptor as templated values.
 template <template <typename, typename, typename> class Pattern,
           typename... ConstructorArgs>
 void PopulateForBroadcastingBinaryOp(MLIRContext *context,
                                      OwningRewritePatternList *patterns,
                                      ConstructorArgs &&...args) {
-#define POPULATE_BCAST(ChloOp, HloOp)                                      \
-  patterns->insert<                                                        \
-      Pattern<ChloOp, HloOp, HloBinaryElementwiseAdaptor<ChloOp, HloOp>>>( \
+#define POPULATE_BCAST(ChloOp, HloOp)                                    \
+  patterns->insert<                                                      \
+      Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
       context, args...);
 
   POPULATE_BCAST(BroadcastAddOp, mhlo::AddOp);
   POPULATE_BCAST(BroadcastAndOp, mhlo::AndOp);
   POPULATE_BCAST(BroadcastAtan2Op, mhlo::Atan2Op);
+  POPULATE_BCAST(BroadcastComplexOp, mhlo::ComplexOp);
   POPULATE_BCAST(BroadcastDivOp, mhlo::DivOp);
   POPULATE_BCAST(BroadcastMaxOp, mhlo::MaxOp);
   POPULATE_BCAST(BroadcastMinOp, mhlo::MinOp);
   POPULATE_BCAST(BroadcastMulOp, mhlo::MulOp);
   POPULATE_BCAST(BroadcastOrOp, mhlo::OrOp);
+  POPULATE_BCAST(BroadcastPolygammaOp, PolygammaOp);
   POPULATE_BCAST(BroadcastPowOp, mhlo::PowOp);
   POPULATE_BCAST(BroadcastRemOp, mhlo::RemOp);
   POPULATE_BCAST(BroadcastShiftLeftOp, mhlo::ShiftLeftOp);
@@ -79,11 +73,9 @@ void PopulateForBroadcastingBinaryOp(MLIRContext *context,
   POPULATE_BCAST(BroadcastShiftRightLogicalOp, mhlo::ShiftRightLogicalOp);
   POPULATE_BCAST(BroadcastSubOp, mhlo::SubOp);
   POPULATE_BCAST(BroadcastXorOp, mhlo::XorOp);
+  POPULATE_BCAST(BroadcastZetaOp, ZetaOp);
 
   // Broadcasting ops requiring special construction.
-  patterns
-      ->insert<Pattern<BroadcastComplexOp, mhlo::ComplexOp, HloComplexAdaptor>>(
-          context, args...);
   patterns
       ->insert<Pattern<BroadcastCompareOp, mhlo::CompareOp, HloCompareAdaptor>>(
           context, args...);

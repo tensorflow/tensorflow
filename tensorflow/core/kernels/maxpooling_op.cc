@@ -199,7 +199,9 @@ static void SpatialMaxPoolWithArgMaxHelper(
         // CHECK(input_backprop_index >= in_start && input_backprop_index <
         // in_end)
         FastBoundsCheck(input_backprop_index - in_start, in_end - in_start);
-        input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
+        if (index < out_backprop.NumElements()) {
+          input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
+        }
       }
     }
   };
@@ -1014,6 +1016,9 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
         const int input_start = start * input_size_per_batch;
         const int input_end = limit * input_size_per_batch;
         for (int64 index = input_start; index < input_end; index++) {
+          if (index >= argmax.NumElements()) {
+            break;
+          }
           int64 grad_out_index = argmax_flat(index);
           if (!include_batch_in_index) {
             const int64 cur_batch = index / input_size_per_batch;
@@ -1084,6 +1089,8 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     Tensor* grad_out = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, out_shape, &grad_out));
+
+    if (out_shape.num_elements() == 0) return;  // nothing to be done
 
     LaunchMaxPoolingGradWithArgmax<Device, T>::launch(
         context, params, grad_in, argmax, grad_out, include_batch_in_index_);

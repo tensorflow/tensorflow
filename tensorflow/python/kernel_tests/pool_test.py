@@ -248,7 +248,7 @@ class PoolingTest(test.TestCase):
   def testPoolNC(self):
     if test.is_gpu_available(cuda_only=True):
       # "NC*" format is currently only supported on CUDA.
-      with self.session(use_gpu=True):
+      with self.session():
         for padding in ["SAME", "VALID"]:
           self._test(
               input_shape=[2, 2, 9],

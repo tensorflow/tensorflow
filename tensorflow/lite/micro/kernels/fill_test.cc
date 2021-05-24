@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,131 +12,117 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
 
-#include <initializer_list>
-#include <string>
-#include <vector>
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/micro_utils.h"
+#include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_type.h"
-
-namespace tflite {
 namespace {
 
-using ::testing::ElementsAreArray;
-using ::testing::IsEmpty;
+template <typename DimsType, typename ValueType, typename OutputType>
+void TestFill(int* dims_shape, DimsType* dims_data, int* value_shape,
+              ValueType* value_data, int* output_shape,
+              OutputType* output_data) {
+  using tflite::testing::CreateTensor;
+  using tflite::testing::IntArrayFromInts;
 
-enum class TestType {
-  kConst = 0,
-  kDynamic = 1,
-};
+  TfLiteTensor tensors[] = {
+      CreateTensor(dims_data, IntArrayFromInts(dims_shape)),
+      CreateTensor(value_data, IntArrayFromInts(value_shape)),
+      CreateTensor(output_data, IntArrayFromInts(output_shape))};
+  constexpr int dims_index = 0;
+  constexpr int value_index = 1;
+  constexpr int output_index = 2;
+  int inputs[] = {2, dims_index, value_index};
+  int outputs[] = {1, output_index};
+  const auto registration = tflite::Register_FILL();
+  tflite::micro::KernelRunner runner{registration,
+                                     tensors,
+                                     sizeof(tensors) / sizeof(TfLiteTensor),
+                                     IntArrayFromInts(inputs),
+                                     IntArrayFromInts(outputs),
+                                     /*builtin_data=*/nullptr};
 
-template <typename dims_type, typename value_type>
-class FillOpModel : public SingleOpModel {
- public:
-  explicit FillOpModel(TensorType dims_tensor_type,
-                       std::initializer_list<int> dims_shape,
-                       std::initializer_list<dims_type> dims_data,
-                       value_type value, TestType input_tensor_types) {
-    if (input_tensor_types == TestType::kDynamic) {
-      dims_ = AddInput(dims_tensor_type);
-      value_ = AddInput(GetTensorType<value_type>());
-    } else {
-      dims_ = AddConstInput(dims_tensor_type, dims_data, dims_shape);
-      value_ = AddConstInput(GetTensorType<value_type>(), {value}, {});
+  TF_LITE_MICRO_EXPECT_EQ(runner.InitAndPrepare(), kTfLiteOk);
+  TF_LITE_MICRO_EXPECT_EQ(runner.Invoke(), kTfLiteOk);
+
+  // The output shape must match the shape requested via dims.
+  const auto output_rank = output_shape[0];
+  const auto requested_rank = dims_shape[1];  // yes, 1
+  if (output_rank == requested_rank) {
+    for (int i = 0; i < requested_rank; ++i) {
+      TF_LITE_MICRO_EXPECT_EQ(output_shape[i + 1], dims_data[i]);
     }
-    output_ = AddOutput(GetTensorType<value_type>());
-    SetBuiltinOp(BuiltinOperator_FILL, BuiltinOptions_FillOptions,
-                 CreateFillOptions(builder_).Union());
-    BuildInterpreter({dims_shape, {}});
-
-    if (input_tensor_types == TestType::kDynamic) {
-      if (dims_data.size() > 0) {
-        PopulateTensor<dims_type>(dims_, dims_data);
-      }
-      PopulateTensor<value_type>(value_, {value});
-    }
+  } else {
+    TF_LITE_MICRO_FAIL("output shape does not match shape requested via dims");
   }
 
-  std::vector<value_type> GetOutput() {
-    return ExtractVector<value_type>(output_);
+  // The output type matches the value type.
+  TF_LITE_MICRO_EXPECT_EQ(tensors[output_index].type,
+                          tensors[value_index].type);
+
+  // The output elements contain the fill value.
+  const auto elements = tflite::ElementCount(*IntArrayFromInts(output_shape));
+  for (int i = 0; i < elements; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(output_data[i], value_data[0]);
   }
-  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- protected:
-  int dims_;
-  int value_;
-  int output_;
-};
-
-class FillOpTest : public ::testing::TestWithParam<TestType> {};
-
-TEST_P(FillOpTest, FillInt32) {
-  FillOpModel<int32_t, int32_t> m(TensorType_INT32, {2}, {2, 3}, -11,
-                                  GetParam());
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-11, -11, -11, -11, -11, -11}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
 }
-
-TEST_P(FillOpTest, FillInt64) {
-  FillOpModel<int64_t, int64_t> m(TensorType_INT64, {2}, {2, 4}, 1LL << 45,
-                                  GetParam());
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45,
-                                1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 4}));
-}
-
-TEST_P(FillOpTest, FillFloat) {
-  FillOpModel<int64_t, float> m(TensorType_INT64, {3}, {2, 2, 2}, 4.0,
-                                GetParam());
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
-}
-
-TEST_P(FillOpTest, FillFloatInt32Dims) {
-  FillOpModel<int32_t, float> m(TensorType_INT32, {3}, {2, 2, 2}, 4.0,
-                                GetParam());
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
-}
-
-TEST_P(FillOpTest, FillOutputScalar) {
-  FillOpModel<int64_t, float> m(TensorType_INT64, {0}, {}, 4.0, GetParam());
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4.0}));
-  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
-}
-
-TEST_P(FillOpTest, FillBool) {
-  FillOpModel<int64_t, bool> m(TensorType_INT64, {3}, {2, 2, 2}, true,
-                               GetParam());
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({true, true, true, true, true,
-                                               true, true, true}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
-}
-
-TEST(FillOpTest, FillString) {
-  FillOpModel<int64_t, std::string> m(TensorType_INT64, {3}, {2, 2, 2}, "AB",
-                                      TestType::kDynamic);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({"AB", "AB", "AB", "AB", "AB",
-                                               "AB", "AB", "AB"}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
-}
-
-INSTANTIATE_TEST_SUITE_P(FillOpTest, FillOpTest,
-                         ::testing::Values(TestType::kConst,
-                                           TestType::kDynamic));
 
 }  // namespace
-}  // namespace tflite
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(FillFloatInt64Dims) {
+  constexpr int kDim1 = 2;
+  constexpr int kDim2 = 2;
+  constexpr int kDim3 = 2;
+
+  int dims_shape[] = {1, 3};
+  int64_t dims_data[] = {kDim1, kDim2, kDim3};
+
+  int value_shape[] = {0};
+  float value_data[] = {4.0};
+
+  int output_shape[] = {3, kDim1, kDim2, kDim3};
+  float output_data[kDim1 * kDim2 * kDim3];
+
+  TestFill(dims_shape, dims_data, value_shape, value_data, output_shape,
+           output_data);
+}
+
+TF_LITE_MICRO_TEST(FillFloatInt32Dims) {
+  constexpr int kDim1 = 2;
+  constexpr int kDim2 = 2;
+  constexpr int kDim3 = 2;
+
+  int dims_shape[] = {1, 3};
+  int32_t dims_data[] = {kDim1, kDim2, kDim3};
+
+  int value_shape[] = {0};
+  float value_data[] = {4.0};
+
+  int output_shape[] = {3, kDim1, kDim2, kDim3};
+  float output_data[kDim1 * kDim2 * kDim3];
+
+  TestFill(dims_shape, dims_data, value_shape, value_data, output_shape,
+           output_data);
+}
+
+TF_LITE_MICRO_TEST(FillScalar) {
+  int dims_shape[] = {1, 0};
+  int64_t dims_data[] = {0};
+
+  int value_shape[] = {0};
+  float value_data[] = {4.0};
+
+  int output_shape[] = {0};
+  float output_data[] = {0};
+
+  TestFill(dims_shape, dims_data, value_shape, value_data, output_shape,
+           output_data);
+}
+
+TF_LITE_MICRO_TESTS_END

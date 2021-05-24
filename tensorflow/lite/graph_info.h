@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_GRAPH_INFO_H_
 #define TENSORFLOW_LITE_GRAPH_INFO_H_
 
+#include <stddef.h>
+
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"

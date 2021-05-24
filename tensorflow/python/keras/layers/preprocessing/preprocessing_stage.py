@@ -14,9 +14,6 @@
 # ==============================================================================
 """Preprocessing stage."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
@@ -29,8 +26,9 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util import nest
 
 
-class PreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
-                         sequential.Sequential):
+# Sequential methods should take precedence.
+class PreprocessingStage(sequential.Sequential,
+                         base_preprocessing_layer.PreprocessingLayer):
   """A sequential preprocessing stage.
 
   This preprocessing stage wraps a list of preprocessing layers into a
@@ -96,8 +94,9 @@ class PreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
                                              reset_state=reset_state)
 
 
-class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
-                                   functional.Functional):
+# Functional methods shoud take precedence.
+class FunctionalPreprocessingStage(functional.Functional,
+                                   base_preprocessing_layer.PreprocessingLayer):
   """A functional preprocessing stage.
 
   This preprocessing stage wraps a graph of preprocessing layers into a
@@ -171,9 +170,8 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
     """
     if not isinstance(data, dataset_ops.Dataset):
       data = self._flatten_to_reference_inputs(data)
-      if any([
-          not isinstance(datum, (np.ndarray, ops.EagerTensor)) for datum in data
-      ]):
+      if any(not isinstance(datum, (np.ndarray, ops.EagerTensor))
+             for datum in data):
         raise ValueError(
             '`adapt()` requires a batched Dataset, a list of EagerTensors '
             'or Numpy arrays as input, got {}'.format(type(data)))
@@ -227,7 +225,7 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
         args, kwargs = node.map_arguments(ds_dict)
         args = dataset_ops.Dataset.zip(nest.list_to_tuple(*args))
 
-        if hasattr(node.layer, 'adapt'):
+        if node.layer.stateful and hasattr(node.layer, 'adapt'):
           node.layer.adapt(args, reset_state=reset_state)
 
         map_fn = build_map_fn(node, args, kwargs)

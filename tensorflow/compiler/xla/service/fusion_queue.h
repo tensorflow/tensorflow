@@ -45,6 +45,11 @@ class FusionQueue {
                                    HloInstruction* original_producer,
                                    HloInstruction* original_consumer) {}
 
+  // A callback passed to the queue implementation when a proposed fusion does
+  // not happen.
+  virtual void NotFusingInstruction(HloInstruction* producer,
+                                    HloInstruction* consumer) {}
+
   // A callback passed to the queue implementation to notify the removal of an
   // instruction.
   virtual void RemoveInstruction(HloInstruction* instruction) = 0;

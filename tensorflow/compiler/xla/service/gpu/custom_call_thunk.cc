@@ -19,14 +19,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/errors.h"
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#endif
 
 namespace xla {
 namespace gpu {
 
 CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, void* call_target,
-                                 std::vector<BufferAllocation::Slice> operands,
-                                 std::vector<BufferAllocation::Slice> results,
+                                 std::vector<OptionalSlice> operands,
+                                 std::vector<OptionalSlice> results,
                                  const std::string& opaque)
     : Thunk(Thunk::kCustomCall, thunk_info),
       call_target_(call_target),
@@ -36,25 +39,33 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, void* call_target,
 
 Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
+  std::vector<void*> buffers;
+  buffers.reserve(operands_.size() + results_.size());
+  for (const std::vector<OptionalSlice>& slices : {operands_, results_}) {
+    for (const OptionalSlice& slice : slices) {
+      if (slice) {
+        if (!slice->allocation())
+          return InternalError("custom call input missing buffer allocation");
+        buffers.push_back(
+            params.buffer_allocations->GetDeviceAddress(*slice).opaque());
+      } else {
+        buffers.push_back(nullptr);
+      }
+    }
+  }
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   auto gpu_stream = se::gpu::AsGpuStreamValue(params.stream);
   using call_type = void (*)(decltype(gpu_stream), void** /*buffers*/,
                              const char* /*opaque*/, size_t /*opaque_len*/);
   auto typed_call_target = reinterpret_cast<call_type>(call_target_);
-
-  std::vector<void*> buffers;
-  buffers.reserve(operands_.size() + results_.size());
-  for (const std::vector<BufferAllocation::Slice>& slices :
-       {operands_, results_}) {
-    for (const BufferAllocation::Slice& slice : slices) {
-      if (!slice.allocation())
-        return InternalError("custom call input missing buffer allocation");
-      buffers.push_back(
-          params.buffer_allocations->GetDeviceAddress(slice).opaque());
-    }
-  }
-
   typed_call_target(gpu_stream, buffers.data(), opaque_.data(), opaque_.size());
   return Status::OK();
+#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return Unavailable(
+      "Custom calls on GPU are not supported in this configuration. Please "
+      "build with --config=cuda or --config=rocm");
+#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 }  // namespace gpu

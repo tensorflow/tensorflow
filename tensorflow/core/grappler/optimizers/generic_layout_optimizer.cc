@@ -77,7 +77,7 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
 
   for (const auto& node : context.graph_view->GetNodes()) {
     const auto* node_def = node.node();
-    if (!IsConv2D(*node_def) and !IsConv3D(*node_def)) {
+    if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
       continue;
     }
     const string& device_name =

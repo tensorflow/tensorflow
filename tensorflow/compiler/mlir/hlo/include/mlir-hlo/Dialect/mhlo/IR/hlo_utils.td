@@ -30,6 +30,15 @@ class ConstantSplat<string value> : NativeCodeCall<
 class HLO_ConstantLike<string value> : NativeCodeCall<
     "chlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
 
+def HLO_ConstantLikeMaxFiniteValue : NativeCodeCall<
+    "chlo::getConstantLikeMaxFiniteValue($_builder, $_loc, $0)">;
+
+def HLO_ConstantLikePosInfValue : NativeCodeCall<
+    "chlo::getConstantLikeInfValue($_builder, $_loc, $0, /*negative=*/false)">;
+
+def HLO_ConstantLikeNegInfValue : NativeCodeCall<
+    "chlo::getConstantLikeInfValue($_builder, $_loc, $0, /*negative=*/true)">;
+
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def BinBroadcastDimensions : NativeCodeCall<
@@ -46,5 +55,9 @@ class GetScalarOfType<int value> : NativeCodeCall<
 // Constraint that Attr has values [0, 1, ...].
 def IdentityBroadcastDims : AttrConstraint<
     CPred<"hlo::IsSequenceStartingWith0($_self)">>;
+
+def NonComplexElementType : Type<
+  CPred<"!$_self.cast<ShapedType>().getElementType().isa<ComplexType>()">,
+  "Non-complex element type">;
 
 #endif // HLO_UTILS

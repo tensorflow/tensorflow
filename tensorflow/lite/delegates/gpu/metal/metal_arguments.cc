@@ -180,7 +180,7 @@ absl::Status MetalArguments::Init(
     const std::map<std::string, std::string>& linkables, MetalDevice* device,
     Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, device->device()));
-  RETURN_IF_ERROR(AddObjectArgs(args));
+  RETURN_IF_ERROR(AddObjectArgs(device->GetInfo(), args));
   RETURN_IF_ERROR(
       ResolveSelectorsPass(device->GetInfo(), *args, linkables, code));
   object_refs_ = std::move(args->object_refs_);
@@ -196,9 +196,33 @@ using namespace metal;
   header += struct_desc + "\n";
   *code = header + *code;
   std::string arguments = GetListOfArgs(/*buffer_offset*/ 0);
-  if (code->find("GLOBAL_ID_") != std::string::npos) {
+  const bool use_global_id = code->find("GLOBAL_ID_") != std::string::npos;
+  const bool use_local_id = code->find("LOCAL_ID_") != std::string::npos;
+  const bool use_group_id = code->find("GROUP_ID_") != std::string::npos;
+  const bool use_group_size = code->find("GROUP_SIZE_") != std::string::npos;
+  const bool use_simd_id =
+      code->find("SUB_GROUP_LOCAL_ID") != std::string::npos;
+  if (use_global_id) {
     AppendArgument("uint3 reserved_gid[[thread_position_in_grid]]", &arguments);
-  } else if (!arguments.empty()) {
+  }
+  if (use_local_id) {
+    AppendArgument("uint3 reserved_lid[[thread_position_in_threadgroup]]",
+                   &arguments);
+  }
+  if (use_group_id) {
+    AppendArgument("uint3 reserved_group_id[[threadgroup_position_in_grid]]",
+                   &arguments);
+  }
+  if (use_group_size) {
+    AppendArgument("uint3 reserved_group_size[[threads_per_threadgroup]]",
+                   &arguments);
+  }
+  if (use_simd_id) {
+    AppendArgument("uint reserved_simd_id[[thread_index_in_simdgroup]]",
+                   &arguments);
+  }
+  if (!use_global_id && !use_local_id && !use_group_id && !use_group_size &&
+      !arguments.empty()) {
     arguments += ",\n";
   }
   *code = absl::Substitute(*code, arguments);
@@ -218,6 +242,18 @@ std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
       pos++;
       struct_desc += "  float " + fvalue.first + ";\n";
       ReplaceAllWords(kArgsPrefix + fvalue.first, "U." + fvalue.first, code);
+    }
+  }
+  for (const auto& hfvalue : args->half_values_) {
+    auto& new_val = float_values_[hfvalue.first];
+    new_val.value = hfvalue.second.value;
+    new_val.active = hfvalue.second.active;
+    if (hfvalue.second.active) {
+      new_val.bytes_offset = pos * 4;
+      pos++;
+      struct_desc += "  float " + hfvalue.first + ";\n";
+      ReplaceAllWords(kArgsPrefix + hfvalue.first,
+                      "static_cast<half>(U." + hfvalue.first + ")", code);
     }
   }
   for (auto& ivalue : args->int_values_) {
@@ -275,6 +311,21 @@ std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
       std::string new_name =
           "U.cmp_float4_" + std::to_string(pos / 4) + channels[pos % 4];
       ReplaceAllWords(kArgsPrefix + fvalue.first, new_name, code);
+      pos++;
+    }
+  }
+  for (const auto& hfvalue : args->half_values_) {
+    auto& new_val = float_values_[hfvalue.first];
+    new_val.value = hfvalue.second.value;
+    new_val.active = hfvalue.second.active;
+    if (hfvalue.second.active) {
+      new_val.bytes_offset = pos * 4;
+      if (pos % 4 == 0) {
+        struct_desc += "  float4 cmp_float4_" + std::to_string(pos / 4) + ";\n";
+      }
+      std::string new_name = "static_cast<half>(U.cmp_float4_" +
+                             std::to_string(pos / 4) + channels[pos % 4] + ")";
+      ReplaceAllWords(kArgsPrefix + hfvalue.first, new_name, code);
       pos++;
     }
   }
@@ -348,8 +399,18 @@ absl::Status MetalArguments::SetFloat(const std::string& name, float value) {
 }
 
 absl::Status MetalArguments::SetHalf(const std::string& name, half value) {
-  return absl::UnimplementedError(
-      "No support of half uniforms in Metal backend");
+  auto it = float_values_.find(name);
+  if (it == float_values_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No half argument with name - ", name));
+  }
+  it->second.value = value;
+  if (it->second.active) {
+    float* ptr =
+        reinterpret_cast<float*>(&const_data_[it->second.bytes_offset]);
+    *ptr = value;
+  }
+  return absl::OkStatus();
 }
 
 absl::Status MetalArguments::SetObjectRef(const std::string& name,
@@ -405,12 +466,13 @@ absl::Status MetalArguments::AllocateObjects(const Arguments& args,
   return absl::OkStatus();
 }
 
-absl::Status MetalArguments::AddObjectArgs(Arguments* args) {
+absl::Status MetalArguments::AddObjectArgs(const GpuInfo& gpu_info,
+                                           Arguments* args) {
   for (auto& t : args->objects_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info), args);
   }
   for (auto& t : args->object_refs_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info), args);
   }
   return absl::OkStatus();
 }
@@ -430,6 +492,9 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
   for (auto& t : images2d_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
     std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    if (t.second.desc.normalized) {
+      data_type = ToMetalDataType(t.second.desc.normalized_type);
+    }
     AppendArgument(absl::StrCat("texture2d<", data_type, ", ", access, "> ",
                                 t.first, "[[texture(", textures_offset, ")]]"),
                    &result);
@@ -669,7 +734,7 @@ absl::Status MetalArguments::ResolveSelector(
     return absl::NotFoundError(
         absl::StrCat("No object with name - ", object_name));
   }
-  auto names = desc_ptr->GetGPUResources().GetNames();
+  auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
   if (tensor_desc && (selector == "Write" || selector == "Linking")) {
     auto it = linkables.find(object_name);
