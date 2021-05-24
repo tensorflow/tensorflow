@@ -103,6 +103,9 @@ TFE_Op* IdentityOp(TFE_Context* ctx, TFE_TensorHandle* a);
 // Return a shape op fetching the shape of `a`.
 TFE_Op* ShapeOp(TFE_Context* ctx, TFE_TensorHandle* a);
 
+// Return an allreduce op adding up input tensor `in` from `group_size` workers.
+TFE_Op* AllReduceOp(TFE_Context* ctx, TFE_TensorHandle* in, int group_size);
+
 // Return an 1-D INT32 tensor containing a single value 1.
 TFE_TensorHandle* TestAxisTensorHandle(TFE_Context* ctx);
 
@@ -122,5 +125,10 @@ tensorflow::ServerDef GetServerDef(const tensorflow::string& job_name,
 
 // Create a ServerDef with job name "localhost" and add `num_tasks` tasks in it.
 tensorflow::ServerDef GetServerDef(int num_tasks);
+
+// Create a multi-client ServerDef with the given `job_name` and add `num_tasks`
+// tasks in it.
+tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
+                                              int num_tasks);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
