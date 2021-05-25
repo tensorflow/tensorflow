@@ -36,11 +36,11 @@ namespace {
 
 template <typename T>
 void TestFullyConnectedQuantized(
-    const int* input_dims_data, const T* input_data, const float input_min,
-    const float input_max, const int* weights_dims_data, const T* weights_data,
-    const float weights_min, const float weights_max, const int* bias_dims_data,
+    int* input_dims_data, const T* input_data, const float input_min,
+    const float input_max, int* weights_dims_data, const T* weights_data,
+    const float weights_min, const float weights_max, int* bias_dims_data,
     const int32_t* bias_data, const float bias_scale,
-    const T* expected_output_data, const int* output_dims_data,
+    const T* expected_output_data, int* output_dims_data,
     const float output_min, const float output_max,
     TfLiteFusedActivation activation, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -131,16 +131,16 @@ TF_LITE_MICRO_TEST(SystemSimpleTestQuantized1) {
   const float output_min = -128.0f;
   const float output_max = 127.0f;
 
-  const int input_dims_data[] = {2, 2, 10};
+  int input_dims_data[] = {2, 2, 10};
   const int8_t input_data[] = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
                                2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
   const int weights_dims_data[] = {2, 3, 10};
   const int8_t weights_data[] = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
                                  2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
-  const int bias_dims_data[] = {1, 3};
+  int bias_dims_data[] = {1, 3};
   const int32_t bias_data[] = {1, 1, 1};
   const int8_t expected_output_data[] = {41, 41, 41, 41, 41, 41};
-  const int output_dims_data[] = {2, 2, 3};
+  int output_dims_data[] = {2, 2, 3};
 
   const int output_dims_count = 6;
   int8_t output_data[output_dims_count];

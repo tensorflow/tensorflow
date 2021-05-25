@@ -834,10 +834,6 @@ string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
 
 // static
 bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
-  if (DatasetOpRegistry::IsRegistered(op_def->name())) {
-    return true;
-  }
-
   return (op_def->output_arg_size() == 1 &&
           op_def->output_arg(0).type() == DT_VARIANT &&
           (absl::EndsWith(op_def->name(), "Dataset") ||
@@ -913,19 +909,6 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
-}
-
-// static
-void DatasetOpRegistry::Register(const string& op_name) {
-  mutex_lock l(*get_dataset_op_registry_lock());
-  get_dataset_op_registry()->insert(op_name);
-}
-
-// static
-bool DatasetOpRegistry::IsRegistered(const string& op_name) {
-  mutex_lock l(*get_dataset_op_registry_lock());
-  std::unordered_set<string>* op_names = get_dataset_op_registry();
-  return op_names->find(op_name) != op_names->end();
 }
 
 namespace {

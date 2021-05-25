@@ -536,9 +536,10 @@ def get_memory_info(device):
   ...   tf.config.experimental.get_memory_info('GPU:0')
 
   Currently returns the following keys:
-    `'current'`: The current memory used by the device, in bytes.
-    `'peak'`: The peak memory used by the device across the run of the program,
-        in bytes.
+    - `'current'`: The current memory used by the device, in bytes.
+    - `'peak'`: The peak memory used by the device across the run of the
+        program, in bytes. Can be reset with
+        `tf.config.experimental.reset_memory_stats`.
 
   More keys may be added in the future, including device-specific keys.
 
@@ -563,6 +564,42 @@ def get_memory_info(device):
 
   """
   return context.context().get_memory_info(device)
+
+
+@tf_export('config.experimental.reset_memory_stats')
+def reset_memory_stats(device):
+  """Resets the tracked memory stats for the chosen device.
+
+  This function sets the tracked peak memory for a device to the device's
+  current memory usage. This allows you to measure the peak memory usage for a
+  specific part of your program. For example:
+
+  >>> if tf.config.list_physical_devices('GPU'):
+  ...   # Sets the peak memory to the current memory.
+  ...   tf.config.experimental.reset_memory_stats('GPU:0')
+  ...   # Creates the first peak memory usage.
+  ...   x1 = tf.ones(1000 * 1000, dtype=tf.float64)
+  ...   del x1 # Frees the memory referenced by `x1`.
+  ...   peak1 = tf.config.experimental.get_memory_info('GPU:0')['peak']
+  ...   # Sets the peak memory to the current memory again.
+  ...   tf.config.experimental.reset_memory_stats('GPU:0')
+  ...   # Creates the second peak memory usage.
+  ...   x2 = tf.ones(1000 * 1000, dtype=tf.float32)
+  ...   del x2
+  ...   peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
+  ...   assert peak2 < peak1  # tf.float32 consumes less memory than tf.float64.
+
+  Currently raises an exception for the CPU.
+
+  Args:
+    device: Device string to reset the memory stats, e.g. `"GPU:0"`. See
+      https://www.tensorflow.org/api_docs/python/tf/device for specifying device
+        strings.
+
+  Raises:
+    ValueError: Non-existent or CPU device specified.
+  """
+  context.context().reset_memory_stats(device)
 
 
 @deprecation.deprecated(

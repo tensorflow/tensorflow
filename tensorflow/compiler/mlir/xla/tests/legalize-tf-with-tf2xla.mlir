@@ -2,12 +2,10 @@
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
-// CHECK-LABEL: abs
-func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: %[[RESULT:.*]] = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-
-  // return %[[RESULT]]
+// CHECK-LABEL: binary_op
+func @binary_op(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: mhlo.atan2 %arg0, %arg1 : tensor<2xf32>
+  %0 = "tf.Atan2"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
@@ -30,18 +28,18 @@ func @not_allowlisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor
 
 // CHECK-LABEL: unranked_operand
 func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: tf.Abs
+  // CHECK: tf.Atan2
   // expected-remark@+1 {{lowering requires static shaped tensor operands}}
-  %0 = "tf.Abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Atan2"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
   return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: dynamic_operand
 func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  // CHECK: tf.Abs
+  // CHECK: tf.Atan2
   // expected-remark@+1 {{lowering requires static shaped tensor operands}}
-  %0 = "tf.Abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Atan2"(%arg0, %arg0) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
 
   return %0 : tensor<?xf32>
 }
@@ -67,17 +65,10 @@ func @unsupported_dtype(%arg0: tensor<2x!tf.variant>) -> tensor<2x!tf.variant> {
 func @multiple_dialect_ops(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: mhlo.negate
   %0 = "mhlo.negate"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  // CHECK: mhlo.abs
-  %1 = "tf.Abs"(%0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: mhlo.atan2
+  %1 = "tf.Atan2"(%arg0, %0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
 
   return %1 : tensor<2xf32>
-}
-
-// CHECK-LABEL: binary_op
-func @binary_op(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: mhlo.atan2 %arg0, %arg1 : tensor<2xf32>
-  %0 = "tf.Atan2"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL: binary_op_broadcast
@@ -151,9 +142,9 @@ func @non_const_inputs(%arg0: tensor<2x2xf64>, %arg1: tensor<f64>, %arg2: tensor
 
 // CHECK-LABEL: dynamic_result_type
 func @dynamic_result_type(%arg0: tensor<2xf32>) -> tensor<*xf32> {
-  // CHECK: %[[RESULT:.*]] = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  // CHECK: tensor.cast %0 : tensor<2xf32> to tensor<*xf32>
-  %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<*xf32>
+  // CHECK: %[[RESULT:.*]] = mhlo.atan2 %arg0, %arg0 : tensor<2xf32>
+  // CHECK: tensor.cast %[[RESULT]] : tensor<2xf32> to tensor<*xf32>
+  %0 = "tf.Atan2"(%arg0, %arg0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<*xf32>
 
   // return %[[RESULT]]
   return %0 : tensor<*xf32>
@@ -296,11 +287,11 @@ func @multinomial(%arg0: tensor<2x4xf32>, %seed: tensor<i32>, %seed2: tensor<i32
 }
 
 // CHECK-LABEL: @set_dynamic_dimension_size
-func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<4xf32> {
+func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
   %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
   // CHECK: mhlo.set_dimension_size
-  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: @erfinv
@@ -339,7 +330,7 @@ func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor
   return %s, %u, %v : tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>
 }
 
-func @abs_impl(%arg0: f32) -> f32 {
+func @identity(%arg0: f32) -> f32 {
  return %arg0 : f32
 }
 
@@ -347,14 +338,14 @@ func @abs_impl(%arg0: f32) -> f32 {
 // is not attempted even if they are in allow-list. XLA op kernels for these
 // ops compile the function to HLO on-demand which won't work in our case as it
 // may contain unsupported ops in the fallback nor we provide XlaCompiler to
-// the kernel. Using a allowed op Abs to protect against future addition of a
+// the kernel. Using a allowed op Atan2 to protect against future addition of a
 // new op with a symbol ref.
 
-// CHECK-LABEL: @abs_with_symbol_ref
-func @abs_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: tf.Abs
+// CHECK-LABEL: @atan2_with_symbol_ref
+func @atan2_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: tf.Atan2
   // expected-remark@+1 {{ops with symbol references are not supported}}
-  %0 = "tf.Abs"(%arg0) {_body = @abs_impl} : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.Atan2"(%arg0, %arg0) {_body = @identity} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
 }

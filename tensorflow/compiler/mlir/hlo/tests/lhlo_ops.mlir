@@ -198,13 +198,12 @@ func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2:
 // CHECK-LABEL: func @convolution
 // CHECK: lmhlo.convolution
 // CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+// CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
 func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
   lmhlo.convolution(%arg0, %arg1, %arg2)
-     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
-       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
-       rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
-       window_strides = dense<[2, 1]> : tensor<2xi64>}
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
   : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
 }
 
@@ -290,6 +289,48 @@ func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2:
        window_strides = dense<[2, 1]> : tensor<2xi64>}
   : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
   return
+}
+
+// -----
+
+func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
+  // expected-error@+3{{Expected array with2 elements, got 3 elements instead}}
+  lmhlo.convolution(%arg0, %arg1, %arg2)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, 1], pad = [[0, 1, 2], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
+}
+
+// -----
+
+func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
+  // expected-error@+3{{Unexpected keyword stide}}
+  lmhlo.convolution(%arg0, %arg1, %arg2)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stide = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
+}
+// -----
+
+func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
+  // expected-error@+3{{expected integer value}}
+  lmhlo.convolution(%arg0, %arg1, %arg2)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, b], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
+}
+// -----
+
+func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
+  // expected-error@+3{{Unexpected keyword stride}}
+  lmhlo.convolution(%arg0, %arg1, %arg2)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2], stride=[2,1]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()  return
 }
 
 // -----

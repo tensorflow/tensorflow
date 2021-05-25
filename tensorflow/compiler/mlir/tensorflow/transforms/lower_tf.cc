@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -60,6 +61,26 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   return DenseIntElementsAttr::get(ty, vals);
 }
 
+// Return an Attr representation of the value.
+static DenseElementsAttr GetF32Scalar(OpBuilder *builder, float value) {
+  return DenseElementsAttr::get(
+      RankedTensorType::get({}, builder->getF32Type()),
+      FloatAttr::get(builder->getF32Type(), value));
+}
+
+// Returns a TF_CastOp to F32. This function is used for CastOps that are
+// intermediate nodes in a TableGen pattern result. In such a case, the
+// destination type is not inferred and must be given explicitly.
+//
+// Preconditions: The given value must have a ShapedType.
+static Value CreateTFCastOpF32(OpBuilder *builder, Location loc, Value x,
+                               BoolAttr truncate) {
+  auto x_type = x.getType().dyn_cast_or_null<ShapedType>();
+  if (!x_type) llvm_unreachable("unsupported type");
+  Type type = x_type.clone(builder->getF32Type());
+  return builder->create<CastOp>(loc, type, x, truncate);
+}
+
 static APFloat ConvertToAPFloat(double val, Type type) {
   if (type.getIntOrFloatBitWidth() == 32) {
     return APFloat(static_cast<float>(val));
@@ -90,6 +111,31 @@ static DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
     }
   }
   llvm_unreachable("unsupported type");
+}
+
+// Return true if the passed quantized type is unsigned.
+bool QuantizedTypeIsUnsigned(Type type) {
+  return TypeSwitch<Type, bool>(type)
+      .Case<mlir::TF::Qint8Type>([](Type) { return false; })
+      .Case<mlir::TF::Qint16Type>([](Type) { return false; })
+      .Case<mlir::TF::Qint32Type>([](Type) { return false; })
+      .Case<mlir::TF::Quint8Type>([](Type) { return true; })
+      .Case<mlir::TF::Quint16Type>([](Type) { return true; })
+      .Default([](Type) {
+        llvm_unreachable("QuantizedTypeIsUnsigned: not a quantized type");
+        return false;
+      });
+}
+
+// Return the half_range value that is used by DequantizeOp. half_range is used
+// to offset the quantized representation before it gets scaled. In the case
+// of negative quantize types, this offset is half the type's range.
+static DenseElementsAttr DequantizeHalfRange(OpBuilder *builder, Value input) {
+  auto input_type = input.getType().dyn_cast_or_null<ShapedType>();
+  if (!input_type) llvm_unreachable("DequantizeHalfRange: not a ShapedType");
+  bool is_unsigned = QuantizedTypeIsUnsigned(input_type.getElementType());
+  float half_range = is_unsigned ? 0 : 128;
+  return GetScalarOfType(builder->getF32Type(), half_range);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -1557,6 +1603,14 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerXlog1pyOp,
       LowerXlogyOp,
       LowerZerosLikeOp>(context);
+  // clang-format on
+}
+
+void PopulateLoweringQuantizedPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns) {
+  // clang-format off
+  patterns->insert<
+      LowerDequantizeOp>(context);
   // clang-format on
 }
 

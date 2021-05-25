@@ -161,7 +161,9 @@ llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     auto walk_result = cluster_op.walk([&](Operation* op) {
       for (Value operand : op->getOperands()) {
         Operation* operand_op = GetOpOfValue(operand);
-        if (head_outside_compiled_ops.count(operand_op)) continue;
+        if (head_outside_compiled_ops.count(operand_op) ||
+            operand_op == &cluster_op)
+          continue;
 
         if (operand_op->getParentRegion() == cluster_region)
           return WalkResult::interrupt();

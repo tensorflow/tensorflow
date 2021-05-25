@@ -33,8 +33,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-xla::StatusOr<string> SummarizeClustering(
-    const GraphDef& auto_clustered_graph_def) {
+StatusOr<string> SummarizeClustering(const GraphDef& auto_clustered_graph_def) {
   testing::ResetClusterSequenceNumber();
   Graph graph(OpRegistry::Global());
   GraphConstructorOptions graph_opts;

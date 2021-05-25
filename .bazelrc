@@ -599,7 +599,7 @@ build:asan --linkopt -fsanitize=address
 # CC=clang bazel build --config msan
 build:msan --strip=never
 build:msan --copt -fsanitize=memory
-build:msan --copt -DADDRESS_SANITIZER
+build:msan --copt -DMEMORY_SANITIZER
 build:msan --copt -g
 build:msan --copt -O3
 build:msan --copt -fno-omit-frame-pointer
@@ -609,6 +609,7 @@ build:msan --linkopt -fsanitize=memory
 # CC=clang bazel build --config ubsan
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
+build:msan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
 build:ubsan --copt -g
 build:ubsan --copt -O3
 build:ubsan --copt -fno-omit-frame-pointer

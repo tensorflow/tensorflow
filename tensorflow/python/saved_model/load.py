@@ -47,6 +47,7 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
@@ -56,6 +57,9 @@ from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+
+# API label for SavedModel metrics.
+_LOAD_V2_LABEL = "load_v2"
 
 
 def _unused_handle():
@@ -856,7 +860,10 @@ def load(export_dir, tags=None, options=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
-  return load_internal(export_dir, tags, options)["root"]
+  metrics.IncrementReadApi(_LOAD_V2_LABEL)
+  result = load_internal(export_dir, tags, options)["root"]
+  metrics.IncrementRead()
+  return result
 
 
 def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,

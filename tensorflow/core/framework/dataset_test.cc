@@ -20,13 +20,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_DATASET_OP_NAME("DummyDatasetOp");
-
-TEST(DatasetTest, RegisterDatasetOp) {
-  EXPECT_TRUE(data::DatasetOpRegistry::IsRegistered("DummyDatasetOp"));
-  EXPECT_FALSE(data::DatasetOpRegistry::IsRegistered("InvalidDatasetOp"));
-}
-
 TEST(DatasetTest, FullName) {
   EXPECT_EQ(data::FullName("prefix", "name"),
             "60d899aa0d8ce4351e7c3b419e92d25b|prefix:name");

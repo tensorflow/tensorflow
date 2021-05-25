@@ -43,6 +43,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
@@ -118,6 +119,26 @@ except ImportError:
     from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
   except ImportError:
     pass
+
+
+def is_asan_enabled():
+  """Check if ASAN is enabled."""
+  return pywrap_sanitizers.is_asan_enabled()
+
+
+def is_msan_enabled():
+  """Check if MSAN is enabled."""
+  return pywrap_sanitizers.is_msan_enabled()
+
+
+def is_tsan_enabled():
+  """Check if TSAN is enabled."""
+  return pywrap_sanitizers.is_tsan_enabled()
+
+
+def is_ubsan_enabled():
+  """Check if UBSAN is enabled."""
+  return pywrap_sanitizers.is_ubsan_enabled()
 
 
 def _get_object_count_by_type(exclude=()):
@@ -1856,6 +1877,34 @@ def disable_mlir_bridge(description):  # pylint: disable=unused-argument
 
 
 # The description is just for documentation purposes.
+def disable_asan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if ASAN is not enabled."""
+  execute_func = not is_asan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_msan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if MSAN is not enabled."""
+  execute_func = not is_msan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_tsan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if TSAN is not enabled."""
+  execute_func = not is_tsan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_ubsan(description):  # pylint: disable=unused-argument
+  """Execute the test method only if UBSAN is not enabled."""
+  execute_func = not is_ubsan_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
 def disable_tfrt(unused_description):
 
   def disable_tfrt_impl(cls_or_func):
@@ -2587,7 +2636,16 @@ class TensorFlowTestCase(googletest.TestCase):
       return np.array(a)
     return a
 
+  def evaluate_if_both_tensors(self, a, b):
+    if (tensor_util.is_tf_type(a) and tensor_util.is_tf_type(b) and
+        not isinstance(a, ops._EagerTensorBase) and
+        not isinstance(b, ops._EagerTensorBase)):
+      return self.evaluate((a, b))
+    else:
+      return (a, b)
+
   def _assertArrayLikeAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # When the array rank is small, print its contents. Numpy array printing is
@@ -2673,6 +2731,7 @@ class TensorFlowTestCase(googletest.TestCase):
       # Try to directly compare a, b as ndarrays; if not work, then traverse
       # through the sequence, which is more expensive.
       try:
+        (a, b) = self.evaluate_if_both_tensors(a, b)
         a_as_ndarray = self._GetNdArray(a)
         b_as_ndarray = self._GetNdArray(b)
         self._assertArrayLikeAllClose(
@@ -2774,6 +2833,7 @@ class TensorFlowTestCase(googletest.TestCase):
       bfloat16_atol: absolute tolerance for bfloat16.
       msg: Optional message to report on failure.
     """
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # types with lower tol are put later to overwrite previous ones.
@@ -2828,6 +2888,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if (ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b)):
       return self._assertRaggedEqual(a, b, msg)
     msg = msg if msg else ""
+    (a, b) = self.evaluate_if_both_tensors(a, b)
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     # Arbitrary bounds so that we don't print giant tensors.
@@ -2905,6 +2966,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertGreater(np.min(a), comparison_target)
 
@@ -2917,6 +2979,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertLess(np.max(a), comparison_target)
 
@@ -2929,6 +2992,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertGreaterEqual(np.min(a), comparison_target)
 
@@ -2941,6 +3005,7 @@ class TensorFlowTestCase(googletest.TestCase):
         `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
+    (a, comparison_target) = self.evaluate_if_both_tensors(a, comparison_target)
     a = self._GetNdArray(a)
     self.assertLessEqual(np.max(a), comparison_target)
 

@@ -1355,9 +1355,12 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
-    CHECK(value->FromProto(raw_val))
-        << "Unable to make Tensor from proto for " << node.name()
-        << " with shape " << raw_val.tensor_shape().DebugString();
+    if (!value->FromProto(raw_val)) {
+      delete (value);
+      return errors::InvalidArgument("Unable to make Tensor from proto for ",
+                                     node.name(), " with shape ",
+                                     raw_val.tensor_shape().DebugString());
+    }
     inputs.emplace_back(value);
     total_inputs_size += value->TotalBytes();
   }

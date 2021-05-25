@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -4661,6 +4662,78 @@ TEST_F(ArithmeticOptimizerTest, SimplifyEmbeddingLookup) {
       }
       EXPECT_NE(node.op(), "Unique");
       EXPECT_NE(node.op(), "Gather");
+    }
+
+    auto tensors = EvaluateNodes(output, item.fetch);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, SimplifyResourceEmbeddingLookup) {
+  for (DataType unique_idx_type : {DT_INT32, DT_INT64}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output embeddings = ops::Const(s.WithOpName("embeddings"),
+                                   {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+    Output segment_ids =
+        ops::Const(s.WithOpName("segment_ids"), {0, 1, 1, 2, 2, 2, 2});
+    Output indices = ops::Const(s.WithOpName("indices"), {0, 0, 1, 0, 1, 0, 1});
+    auto unique = ops::Unique(s.WithOpName("unique"), indices,
+                              /*attrs=*/{unique_idx_type});
+    Output ids = unique.y;
+    Output idx = unique.idx;
+
+    auto var =
+        ops::VarHandleOp(s.WithOpName("var"), DT_FLOAT, TensorShape({2, 2}));
+    ops::AssignVariableOp assign_op(s.WithOpName("assign_var_handle"), var,
+                                    embeddings);
+
+    Output gathered_rows = ops::ResourceGather(
+        s.WithOpName("gathered_rows")
+            .WithControlDependencies(std::vector<Operation>{assign_op}),
+        var, ids, DT_FLOAT);
+    gathered_rows.node()->AddAttr("_class", {"test_class"});
+    Output result =
+        ops::SparseSegmentSum(s.WithOpName("result").WithControlDependencies(
+                                  std::vector<Operation>{assign_op}),
+                              gathered_rows, idx, segment_ids);
+    Output id = ops::Identity(s.WithOpName("id"), result);
+
+    GrapplerItem item;
+    item.init_ops.push_back("assign_var_handle");
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch = {"id"};
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+    ASSERT_EQ(tensors_expected.size(), 1);
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlySimplifyEmbeddingLookup(&optimizer);
+    OptimizeAndPrune(&optimizer, &item, &output);
+    bool read_var_node_found = false;
+    for (const auto& node : output.node()) {
+      if (node.name() == "result") {
+        EXPECT_EQ(
+            node.input(0),
+            "ArithmeticOptimizer/SimplifyEmbeddingLookupStage_ReadVar_result");
+        EXPECT_EQ(node.input(1), "indices");
+      }
+      if (node.op() == "ReadVariableOp") {
+        read_var_node_found = true;
+        EXPECT_EQ(node.attr().at("_class").list().s(0), "test_class");
+      }
+      EXPECT_NE(node.op(), "Unique");
+      EXPECT_NE(node.op(), "Gather");
+    }
+    EXPECT_TRUE(read_var_node_found);
+    // Add a control dependency to the ReadVar to do the AssignVar first. This
+    // shouldn't be an issue in actual use as variables are assumed initialized
+    // during setup.
+    for (int i = 0; i < output.node_size(); ++i) {
+      if (output.node(i).name() ==
+          "ArithmeticOptimizer/SimplifyEmbeddingLookupStage_ReadVar_result") {
+        output.mutable_node(i)->add_input("^assign_var_handle");
+      }
     }
 
     auto tensors = EvaluateNodes(output, item.fetch);

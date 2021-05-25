@@ -216,18 +216,6 @@ void AsyncOpKernel::Compute(OpKernelContext* context) {
   n.WaitForNotification();
 }
 
-// PersistentTensor ----------------------------------------------------------
-
-Tensor* PersistentTensor::AccessTensor(OpKernelConstruction* context) {
-  // the caller has to have a valid context
-  CHECK(context);
-  return &tensor_;
-}
-
-Tensor* PersistentTensor::AccessTensor(OpKernelContext* context) {
-  return &tensor_;
-}
-
 // OpKernelConstruction ------------------------------------------------------
 
 OpKernelConstruction::OpKernelConstruction(
@@ -303,22 +291,6 @@ Status OpKernelConstruction::allocate_temp(DataType type,
         def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
-  return Status::OK();
-}
-
-Status OpKernelConstruction::allocate_persistent(
-    DataType type, const TensorShape& shape, PersistentTensor* out_persistent,
-    Tensor** out_tensor) {
-  // for now just do the same thing as allocate_temp
-  // TODO(misard) add specific memory tracking for persistent tensors
-  Tensor persistent;
-  TF_RETURN_IF_ERROR(allocate_temp(type, shape, &persistent));
-
-  *out_persistent = PersistentTensor(persistent);
-  Tensor* allocated = out_persistent->AccessTensor(this);
-  if (out_tensor) {
-    *out_tensor = allocated;
-  }
   return Status::OK();
 }
 
@@ -782,10 +754,9 @@ Status OpKernelContext::allocate_temp(
     AllocatorAttributes allocator_attr,
     const AllocationAttributes& allocation_attr) {
   if (allocator_attr.scope_id > 0) {
-    // We do not allow ScopedAllocator calls from allocate_temp.  Unlike
-    // allocate_persistent where we return an error if a kernel provides a
-    // meaningful scope_id, here we clear the scope_id and return a temporary
-    // buffer.  This is because it is legal for a kernel to call allocate_temp
+    // We do not allow ScopedAllocator calls from allocate_temp.
+    // Here we clear the scope_id and return a temporary buffer.
+    // This is because it is legal for a kernel to call allocate_temp
     // and then set_output with the temp tensor.
     //
     // We achieve memory correctness by forcing an allocation in set_output and
@@ -811,52 +782,6 @@ Status OpKernelContext::allocate_temp(
     DCHECK(tracking_state_);
     mutex_lock l(tracking_state_->stats_mu);
     tracking_state_->temp_memory_allocated += out_temp->TotalBytes();
-  }
-  return s;
-}
-
-Status OpKernelContext::allocate_persistent(DataType type,
-                                            const TensorShape& shape,
-                                            PersistentTensor* out_persistent,
-                                            Tensor** out_tensor,
-                                            AllocatorAttributes attr) {
-  if (attr.scope_id > 0) {
-    // ScopedAllocator cannot be used for persistent tensors, because these
-    // tensors may persist across kernel invocations/steps, whereas the backing
-    // tensor for the scoped allocator will be reallocated every step.
-    return errors::Internal(
-        "Unexpected call to allocate_persistent with scope_id ", attr.scope_id);
-  }
-  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
-                                            step_id(), "persist", type, &shape);
-  Tensor persistent;
-  Status s = allocate_tensor(type, shape, &persistent, attr);
-  if (s.ok()) {
-    *out_persistent = PersistentTensor(persistent);
-    Tensor* t = out_persistent->AccessTensor(this);
-
-    if (out_tensor) {
-      *out_tensor = t;
-    }
-
-    if (track_allocations()) {
-      Allocator* a = get_allocator(attr);
-      if (a->TracksAllocationSizes()) {
-        // Zero-byte Tensors don't use allocators: check and skip tracking.
-        AllocationDescription alloc_desc;
-        TensorReference tensor_ref(*t);
-        tensor_ref.FillDescription(&alloc_desc);
-        tensor_ref.Unref();
-
-        if (alloc_desc.allocated_bytes()) {  // Non-zero sized tensor.
-          int64 alloc_size = a->AllocatedSize(t->tensor_data().data());
-          int64 alloc_id = a->AllocationId(t->tensor_data().data());
-          record_persistent_memory_allocation(alloc_size, alloc_id);
-        }
-      }
-    } else if (record_memory_consumption_) {
-      record_persistent_memory_allocation(t->TotalBytes());
-    }
   }
   return s;
 }

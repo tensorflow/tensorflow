@@ -179,7 +179,7 @@ Status GraphMgr::InitItem(
       return PartitionOptions::kIllegalIncarnation;
     }
   };
-  popts.flib_def = &graph.flib_def();
+  popts.flib_def = item->lib_def.get();
   popts.control_flow_added = true;
   popts.scheduling_for_recvs = graph_options.enable_recv_scheduling();
   TF_RETURN_IF_ERROR(Partition(popts, &graph, &partitions));

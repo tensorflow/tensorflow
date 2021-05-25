@@ -15,7 +15,6 @@ package(
 )
 
 exports_files([
-    "LICENSE",
     "jni/version_script.lds",
 ])
 

@@ -368,6 +368,7 @@ Status DispatcherState::TasksForJob(
 Status DispatcherState::TasksForWorker(
     absl::string_view worker_address,
     std::vector<std::shared_ptr<const Task>>& tasks) const {
+  tasks.clear();
   auto it = tasks_by_worker_.find(worker_address);
   if (it == tasks_by_worker_.end()) {
     return errors::NotFound("Worker ", worker_address, " not found");

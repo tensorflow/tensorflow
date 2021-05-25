@@ -869,4 +869,35 @@ TF_LITE_MICRO_TEST(TestTypicalFirstOpAndSecondOpWithScratchTensors) {
       0, subgraph_allocations[0].tensors[5].data.uint8 - start);
 }
 
+TF_LITE_MICRO_TEST(TestModelWithUnusedTensors) {
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
+
+  const tflite::Model* model = tflite::testing::GetModelWithUnusedInputs();
+
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
+  constexpr size_t arena_size = 4096;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator = tflite::MicroAllocator::Create(
+      arena, arena_size, tflite::GetMicroErrorReporter());
+
+  tflite::SubgraphAllocations* subgraph_allocations =
+      allocator->StartModelAllocation(model);
+  TF_LITE_MICRO_EXPECT(nullptr != subgraph_allocations);
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->FinishModelAllocation(model, subgraph_allocations,
+                                                  &scratch_buffer_handles));
+
+  // Unused input tensor should not occupy any space.
+  uint8_t* start = subgraph_allocations[0].tensors[2].data.uint8;
+  TF_LITE_MICRO_EXPECT_EQ(
+      64, subgraph_allocations[0].tensors[0].data.uint8 - start);
+  TF_LITE_MICRO_EXPECT_EQ(
+      0, subgraph_allocations[0].tensors[1].data.uint8 - start);
+  TF_LITE_MICRO_EXPECT_EQ(
+      0, subgraph_allocations[0].tensors[2].data.uint8 - start);
+  // Unused tensor should not occupy any space.
+  TF_LITE_MICRO_EXPECT_EQ(
+      0, subgraph_allocations[0].tensors[3].data.uint8 - start);
+}
+
 TF_LITE_MICRO_TESTS_END

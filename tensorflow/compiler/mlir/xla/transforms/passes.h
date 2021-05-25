@@ -44,7 +44,8 @@ namespace mhlo {
 /// used.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion = false, bool legalize_chlo = true,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None);
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None,
+    bool prefer_tf2xla = false);
 
 /// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
 /// specified device type.
@@ -82,7 +83,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
 LogicalResult legalizeTF(
     Operation* op, bool allow_partial_conversion = false,
     bool legalize_chlo = true,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None);
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None,
+    bool prefer_tf2xla = false);
 
 // Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
 // ops.

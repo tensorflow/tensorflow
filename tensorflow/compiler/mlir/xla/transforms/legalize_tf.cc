@@ -81,9 +81,11 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
  public:
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
-                      llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+                      llvm::Optional<StringRef> tf2xla_fallback_device_type,
+                      bool prefer_tf2xla) {
     allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
+    prefer_tf2xla_ = prefer_tf2xla;
     use_tf2xla_fallback_ = tf2xla_fallback_device_type.hasValue();
     if (tf2xla_fallback_device_type.hasValue()) {
       device_type_ = tf2xla_fallback_device_type.getValue().str();
@@ -5716,7 +5718,6 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
                                 PatternRewriter &rewriter) const override {
     Value input = op.input();
 
-    auto shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), input);
     auto result_ty = op.getResult().getType().dyn_cast<RankedTensorType>();
     if (!result_ty) {
       return failure();
@@ -5724,10 +5725,23 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
 
     auto index_tensor =
         RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
-    auto extent_tensor = rewriter.create<shape::ToExtentTensorOp>(
-        op.getLoc(), index_tensor, shape_op);
+    auto shape_op =
+        rewriter.create<shape::ShapeOfOp>(op.getLoc(), index_tensor, input);
 
-    rewriter.replaceOpWithNewOp<IndexCastOp>(op, result_ty, extent_tensor);
+    // Index cast is not defined on tensors, so we use a tensor.generate to have
+    // it work on scalars.
+    rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
+        op, result_ty,
+        result_ty.hasStaticShape()
+            ? ValueRange{}
+            : ValueRange{rewriter.create<RankOp>(op.getLoc(), input)},
+        [&](OpBuilder &b, Location loc, ValueRange args) {
+          Value dim = args.front();
+          Value extent = b.create<tensor::ExtractOp>(loc, shape_op, dim);
+          Value casted =
+              b.create<IndexCastOp>(loc, extent, result_ty.getElementType());
+          b.create<tensor::YieldOp>(loc, casted);
+        });
     return success();
   }
 };
@@ -6370,7 +6384,8 @@ void LegalizeTF::runOnFunction() {
     tf2xla_fallback_device_type = device_type_;
   }
   if (failed(legalizeTF(getFunction(), allow_partial_conversion_,
-                        legalize_chlo_, tf2xla_fallback_device_type))) {
+                        legalize_chlo_, tf2xla_fallback_device_type,
+                        prefer_tf2xla_))) {
     signalPassFailure();
   }
 }
@@ -6379,9 +6394,10 @@ void LegalizeTF::runOnFunction() {
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
-LogicalResult legalizeTF(
-    Operation *op, bool allow_partial_conversion, bool legalize_chlo,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
+                         bool legalize_chlo,
+                         llvm::Optional<StringRef> tf2xla_fallback_device_type,
+                         bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
   OwningRewritePatternList patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
@@ -6409,7 +6425,8 @@ LogicalResult legalizeTF(
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
   if (legalize_chlo) {
-    chlo::PopulateLegalizeChloToHloPatterns(context, &patterns);
+    chlo::PopulateDecomposeChloPatterns(context, &patterns);
+    chlo::PopulateChloBroadcastingPatterns(context, &patterns);
   }
   // ConstantLike op is convenient to create splat constants, but is
   // canonicalized to plain HLO constant if statically shaped. Add the
@@ -6532,9 +6549,10 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+    llvm::Optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
-                                      tf2xla_fallback_device_type);
+                                      tf2xla_fallback_device_type,
+                                      prefer_tf2xla);
 }
 
 }  // end namespace mhlo

@@ -611,9 +611,9 @@ class DeviceTest(test.TestCase):
 
   @reset_eager
   def testGetMemoryInfoCPU(self):
-    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
+    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
       config.get_memory_info('CPU:0')
-    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
+    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
       config.get_memory_usage('CPU:0')
 
   @reset_eager
@@ -644,6 +644,39 @@ class DeviceTest(test.TestCase):
       self.skipTest('Need at least 2 GPUs')
     with self.assertRaisesRegex(ValueError, 'Multiple devices'):
       config.get_memory_usage('GPU')
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testResetMemoryStats(self):
+    x = array_ops.zeros((1000, 1000), dtype=dtypes.float32)
+    config.reset_memory_stats('GPU:0')
+    info1 = config.get_memory_info('GPU:0')
+    self.assertGreaterEqual(info1['peak'], 4 * 1000 * 1000)
+    self.assertGreaterEqual(info1['peak'], info1['current'])
+    self.assertGreater(info1['current'], 0)
+
+    del x  # With CPython, causes tensor memory to be immediately freed
+    config.reset_memory_stats('GPU:0')
+    info2 = config.get_memory_info('GPU:0')
+    self.assertLess(info2['peak'], info1['peak'])
+
+  @reset_eager
+  def testResetMemoryStatsCPU(self):
+    with self.assertRaisesRegex(ValueError, 'Cannot reset memory stats'):
+      config.reset_memory_stats('CPU:0')
+
+  @reset_eager
+  def testResetMemoryStatsUnknownDevice(self):
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      config.reset_memory_stats('unknown_device')
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testResetMemoryStatsAmbiguousDevice(self):
+    if len(config.list_physical_devices('GPU')) < 2:
+      self.skipTest('Need at least 2 GPUs')
+    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
+      config.reset_memory_stats('GPU')
 
   @test_util.run_gpu_only
   @reset_eager

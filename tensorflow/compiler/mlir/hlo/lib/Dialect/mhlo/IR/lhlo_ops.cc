@@ -363,6 +363,11 @@ LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
   return success();
 }
 
+// suppress warning.
+
+using mlir::hlo::parseWindowAttributes;
+using mlir::hlo::printWindowAttributes;
+
 }  // namespace lmhlo
 }  // namespace mlir
 

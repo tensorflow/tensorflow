@@ -157,14 +157,50 @@ enum GPUBackend {
   // METAL = 4;
 }
 
+// GPU inference priorities define relative priorities given by the GPU delegate
+// to different client needs.
+// Corresponds to TfLiteGpuInferencePriority.
+enum GPUInferencePriority {
+  GPU_PRIORITY_AUTO = 0;
+  GPU_PRIORITY_MAX_PRECISION = 1;
+  GPU_PRIORITY_MIN_LATENCY = 2;
+  GPU_PRIORITY_MIN_MEMORY_USAGE = 3;
+}
+
 // GPU Delegate settings.
 //
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/delegate.h
 message GPUSettings {
+  // Ignored if inference_priority1/2/3 are set.
   optional bool is_precision_loss_allowed = 1;
   optional bool enable_quantized_inference = 2 [default = true];
   optional GPUBackend force_backend = 3;
+
+  // Ordered priorities provide better control over desired semantics,
+  // where priority(n) is more important than priority(n+1). Therefore,
+  // each time inference engine needs to make a decision, it uses
+  // ordered priorities to do so.
+  //
+  // Default values correspond to GPU_PRIORITY_AUTO.
+  // AUTO priority can only be used when higher priorities are fully specified.
+  // For example:
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = AUTO, priority3 = AUTO
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = MAX_PRECISION,
+  //            priority3 = AUTO
+  //   INVALID: priority1 = AUTO, priority2 = MIN_LATENCY, priority3 = AUTO
+  //   INVALID: priority1 = MIN_LATENCY, priority2 = AUTO,
+  //            priority3 = MAX_PRECISION
+  // Invalid priorities will result in error.
+  //
+  // For more information, see TfLiteGpuDelegateOptionsV2.
+  optional GPUInferencePriority inference_priority1 = 4
+      [default = GPU_PRIORITY_AUTO];
+  optional GPUInferencePriority inference_priority2 = 5
+      [default = GPU_PRIORITY_AUTO];
+  optional GPUInferencePriority inference_priority3 = 6
+      [default = GPU_PRIORITY_AUTO];
+
   // TODO(b/152019007): add remaining options.
 }
 

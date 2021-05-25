@@ -118,9 +118,12 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
       return;
     }
     if (n == 1) {
-      OP_REQUIRES(context, diag(0) != zero,
-                  errors::InvalidArgument(kNotInvertibleScalarMsg));
-      x.row(0) = rhs.row(0) / diag(0);
+      if (diag(0) == zero) {
+        LOG(WARNING) << kNotInvertibleScalarMsg;
+        x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+      } else {
+        x.row(0) = rhs.row(0) / diag(0);
+      }
       return;
     }
 
@@ -158,8 +161,11 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
     for (int i = 0; i < n - 1; ++i) {
       if (std::abs(u(i)) >= std::abs(subdiag(i + 1))) {
         // No row interchange.
-        OP_REQUIRES(context, u(i) != zero,
-                    errors::InvalidArgument(kNotInvertibleMsg));
+        if (u(i) == zero) {
+          LOG(WARNING) << kNotInvertibleMsg;
+          x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+          return;
+        }
         const Scalar factor = subdiag(i + 1) / u(i, 0);
         u(i + 1, 0) = diag(i + 1) - factor * u(i, 1);
         x.row(i + 1) = rhs.row(i + 1) - factor * x.row(i);
@@ -181,8 +187,11 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
         }
       }
     }
-    OP_REQUIRES(context, u(n - 1, 0) != zero,
-                errors::InvalidArgument(kNotInvertibleMsg));
+    if (u(n - 1, 0) == zero) {
+      LOG(WARNING) << kNotInvertibleMsg;
+      x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+      return;
+    }
     x.row(n - 1) /= u(n - 1, 0);
     x.row(n - 2) = (x.row(n - 2) - u(n - 2, 1) * x.row(n - 1)) / u(n - 2, 0);
     for (int i = n - 3; i >= 0; --i) {
@@ -204,14 +213,21 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
     // one superdiagonal).
     Eigen::Matrix<Scalar, Eigen::Dynamic, 1> u(n);
 
-    OP_REQUIRES(context, diag(0) != zero,
-                errors::InvalidArgument(kThomasFailedMsg));
+    if (diag(0) == zero) {
+      LOG(WARNING) << kThomasFailedMsg;
+      x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+      return;
+    }
+
     u(0) = superdiag(0) / diag(0);
     x.row(0) = rhs.row(0) / diag(0);
     for (int i = 1; i < n; ++i) {
       auto denom = diag(i) - subdiag(i) * u(i - 1);
-      OP_REQUIRES(context, denom != zero,
-                  errors::InvalidArgument(kThomasFailedMsg));
+      if (denom == zero) {
+        LOG(WARNING) << kThomasFailedMsg;
+        x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+        return;
+      }
       u(i) = superdiag(i) / denom;
       x.row(i) = (rhs.row(i) - subdiag(i) * x.row(i - 1)) / denom;
     }

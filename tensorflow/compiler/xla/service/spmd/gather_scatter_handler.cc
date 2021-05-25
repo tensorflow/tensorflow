@@ -366,9 +366,17 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
           indices_sharding.ReplicateOnLastTileDim()
               ? HloSharding::PartialTile(output_tile_assignment)
               : HloSharding::Tile(output_tile_assignment);
-      if (output_sharding.NumTiles() > gather_output_sharding.NumTiles()) {
+      // Refine output sharding from the operand. it should be inferred from
+      // operand sharding, so that the partitioned gather can be either 1)
+      // directly created on the partitioned operand, or 2) recursively created
+      // without aligning the groups.
+      if (auto maybe_passthrough =
+              hlo_sharding_util::GatherOutputShardingFromDataOperand(
+                  hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+                      operand_sharding, operand_parallel_dims),
+                  *gather, output_shape, operand.base_shape())) {
         hlo_sharding_util::MergeShardingIfCompatible(
-            output_sharding,
+            *maybe_passthrough,
             /*minimum_tiles=*/gather_output_sharding.NumTiles() + 1,
             &gather_output_sharding);
       }

@@ -397,6 +397,8 @@ class AutomaticControlDependencies(object):
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
         continue
       # Make merges trigger all other computation which must run
+      # TODO(mdan): Don't do this. Write a transform to chains instead.
+      # See core/common_runtime/control_flow_deps_to_chains.cc.
       if op.type == "Merge":
         for o in ops_which_must_run:
           op._add_control_input(o)
@@ -499,6 +501,10 @@ class AutomaticControlDependencies(object):
     if self.record_initial_resource_uses:
       first_uses_by_output_ops = {}
       for op in ops_which_must_run:
+        if op not in resources_by_op:
+          # This may happen with Merge/Switch nodes which are special cased
+          # above.
+          continue
         for r in resources_by_op[op]:
           if op not in first_uses_by_output_ops:
             first_uses_by_output_ops[op] = set()

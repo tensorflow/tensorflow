@@ -91,7 +91,7 @@ if [ -d ${DOWNLOADED_FLATBUFFERS_PATH} ]; then
   echo >&2 "${DOWNLOADED_FLATBUFFERS_PATH} already exists, skipping the download."
 else
   ZIP_PREFIX="dca12522a9f9e37f126ab925fd385c807ab4f84e"
-  FLATBUFFERS_URL="http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/${ZIP_PREFIX}.zip"
+  FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/${ZIP_PREFIX}.zip"
   FLATBUFFERS_MD5="aa9adc93eb9b33fa1a2a90969e48baee"
 
   TEMPDIR="$(mktemp -d)"

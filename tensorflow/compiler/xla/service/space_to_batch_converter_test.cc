@@ -48,7 +48,8 @@ ENTRY computation {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 8});
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
@@ -91,7 +92,8 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 8});
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
   // Test that a reduce window consumer with different rank won't freeze the
   // compiler.
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
@@ -111,7 +113,8 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 1});
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 1});
   ASSERT_FALSE(converter.Run(module.get()).ValueOrDie());
 }
 
@@ -133,7 +136,8 @@ TEST_F(SpaceToBatchConverterTest, UnpropagatableOp) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 1});
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 1});
   ASSERT_FALSE(converter.Run(module.get()).ValueOrDie());
 }
 
@@ -152,7 +156,8 @@ TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 4});
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 4});
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
@@ -185,7 +190,8 @@ ENTRY computation {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  SpaceToBatchConverter converter(SpaceToBatchController{true, true, true, 8});
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
