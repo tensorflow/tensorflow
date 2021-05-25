@@ -165,22 +165,15 @@ def custom_gradient(f=None):
   Additional arguments to the inner `@tf.custom_gradient`-decorated function
   control the expected return values of the innermost function.
 
-  Above examples illustrates how you can create custom scalar gradient
-  function. Now, let us understand using linear polynomial on how to create
-  gradient which also computes gradient of a variable which can be `weights`
-  of model.
+  The examples above illustrate how to specify custom gradients for functions
+  which do not read from variables. The following example uses variables, which
+  require special handling because they are effectively inputs of the forward
+  function.
 
   ```python
-  >>> trainable = []
-  ... # List to store the trainable variables (weights, biases etc.)
-  ...
-  ... @tf.custom_gradient
+  >>> weights = tf.Variable(tf.ones([2]))  # Trainable variable weights
+  >>> @tf.custom_gradient
   ... def linear_poly(x):
-  ...   # Weights will be trainable parameter and will represent coefficients
-  ...   # of poly and initialized as ones.
-  ...   weights = tf.Variable(tf.ones([2]))
-  ...   trainable.append(weights)
-  ...
   ...   # Creating polynomial
   ...   poly = weights[1] * x + weights[0]
   ...
@@ -194,27 +187,27 @@ def custom_gradient(f=None):
   ...       for v in variables:
   ...         if v is weights:
   ...           # Manually computing dy/dweights
-  ...           dy_dw = tf.Variable([x ** 1, x ** 0])
-  ...           dy_dw_concat = tf.concat(dy_dw, axis=0)
+  ...           dy_dw = tf.stack([x ** 1, x ** 0])
   ...           if input_shape > 0:
   ...             # Note here that reduce operation is performed
-  ...             # in axis so that it computes gradient w.r.t. entire batch
-  ...             # examples and it doesn't reduce the entire weights Variable
+  ...             # in axis so that it computes gradient of specific
+  ...             # example in batch and it doesn't reduce the entire batch
   ...             # that is why we are only reducing on axis 1.
   ...             grad_vars.append(
-  ...                 tf.reduce_sum(dy_dw_concat, axis=1)
+  ...                 tf.reduce_sum(dy_dw, axis=1)
   ...             )
   ...           else:
   ...             # No need to reduce if x is scalar
-  ...             grad_vars.append(dy_dw_concat)
+  ...             grad_vars.append(dy_dw)
   ...         else:  # Create elif if you have more variables
   ...           grad_vars.append(None)
   ...     return grad_xs, grad_vars
   ...   return poly, grad_fn
-  >>> x = tf.Variable([1., 2., 3.])
+  >>> x = tf.constant([1., 2., 3.])
   >>> with tf.GradientTape(persistent=True) as tape:
+  ...   tape.watch(x)
   ...   poly = linear_poly(x)
-  >>> poly  # poly = x + 1
+  >>> poly # poly = x + 1
   <tf.Tensor: shape=(3,),
     dtype=float32,
     numpy=array([2., 3., 4.], dtype=float32)>
@@ -222,32 +215,22 @@ def custom_gradient(f=None):
   <tf.Tensor: shape=(3,),
     dtype=float32,
     numpy=array([1., 1., 1.], dtype=float32)>
-  >>> tape.gradient(poly, trainable[0])  # gradient w.r.t weights dy/dweights
+  >>> tape.gradient(poly, weights)
   <tf.Tensor: shape=(2,),
     dtype=float32,
     numpy=array([6., 3.], dtype=float32)>
   ```
 
   Above example illustrates two things:
-  - Usage of trainable variable `weights` and computing it's gradient.
-  - Computing gradient in case of batches.
+  - Usage of trainable variable `weights`.
+  - Computing its gradient.
 
-  In example, You can see the inner `grad_fn` that accepts extra `variables`
-  input parameter and also returns extra `grad_vars` output as compared to
-  conventional scalar gradient functions. That second parameter is passed if
-  you have any trainable parameters in model and you need to compute the
-  gradient w.r.t. each of those variables and output it as list `grad_vars`.
-  Note here that default value of `variables` is set to `None` because the
-  gradient function should also be able to calculate gradient of scalar when
-  no `variables` are passed.
-
-  You can see that the shape of `x` is (3,) and `weights` is (2,). Here, you
-  can consider `x` being a batch input with `batch_size` 3. So, we need to
-  compute gradient w.r.t. `weights` combining all the 3 datapoints in batch.
-  You can observe `dy_dw_concat` that has shape (2, 3). Now, to compute
-  gradient w.r.t. `weights`, we need to apply reduce operation only to `axis`
-  1 and not to the entire matrix. With it, it will compute gradient of `poly`
-  w.r.t. `weights` combining all 3 data points in input batch.
+  In the example, the inner `grad_fn` accepts an extra `variables` input
+  parameter and also returns an extra `grad_vars` output. That extra argument
+  is passed if you have any trainable parameters in your model. You need to
+  compute the gradient w.r.t. each of those `variables` and output it as a list
+  of `grad_vars`. Note here that default value of `variables` is set to `None`
+  when no variables are used in the forward function.
 
   See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
