@@ -1091,6 +1091,22 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_tensor_load_op",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_tensor_load_op.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":lhlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "chlo_legalize_to_hlo",
     srcs = ["lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
@@ -1184,6 +1200,7 @@ cc_library(
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
         ":legalize_gather_to_torch_index_select",
+        ":legalize_tensor_load_op",
         ":legalize_to_linalg",
         ":legalize_to_standard",
         ":legalize_trigonometric_to_approximation",
