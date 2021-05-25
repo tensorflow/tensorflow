@@ -3816,51 +3816,6 @@ py_tests(
     ],
 )
 
-# TODO(scottzhu): Move all the tf.layer related targets.
-py_library(
-    name = "layers_base",
-    srcs = [
-        "layers/__init__.py",
-        "layers/base.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/keras/legacy_tf_layers:layers_base",
-    ],
-)
-
-py_library(
-    name = "layers_util",
-    srcs = [
-        "layers/utils.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":control_flow_ops",
-        ":variables",
-        "//tensorflow/python/framework:smart_cond",
-    ],
-)
-
-py_library(
-    name = "layers",
-    srcs = [
-        "layers/convolutional.py",
-        "layers/core.py",
-        "layers/layers.py",
-        "layers/normalization.py",
-        "layers/pooling.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":layers_base",
-        "//tensorflow/python/keras/legacy_tf_layers:convolutional",
-        "//tensorflow/python/keras/legacy_tf_layers:core",
-        "//tensorflow/python/keras/legacy_tf_layers:normalization",
-        "//tensorflow/python/keras/legacy_tf_layers:pooling",
-    ],
-)
-
 # -----------------------------------------------------------------------------
 # Quantization
 
@@ -4866,6 +4821,21 @@ alias(
     name = "tf_optimizer",
     actual = "//tensorflow/python/grappler:tf_optimizer",
     visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "layers_base",
+    actual = "//tensorflow/python/layers:layers_base",
+)
+
+alias(
+    name = "layers_util",
+    actual = "//tensorflow/python/layers:layers_util",
+)
+
+alias(
+    name = "layers",
+    actual = "//tensorflow/python/layers:layers",
 )
 
 py_library(
