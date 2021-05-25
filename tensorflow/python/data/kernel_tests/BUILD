@@ -569,7 +569,7 @@ cuda_py_test(
     name = "memory_cleanup_test",
     size = "small",
     srcs = ["memory_cleanup_test.py"],
-    shard_count = 2,
+    shard_count = 12,
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
         "notsan",  # TODO(b/144706539)
