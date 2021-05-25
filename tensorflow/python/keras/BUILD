@@ -32,9 +32,7 @@ py_library(
     deps = [
         ":backend",
         ":engine",
-        # TODO(scottzhu): Stop exporting the test_utils after removing all
-        # callers that using it.
-        ":testing_utils",
+        ":testing_utils",  # TODO(scottzhu): Stop exporting the test_utils after removing all the callers.
         "//tensorflow/python:training",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
