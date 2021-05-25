@@ -1,7 +1,6 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -27,6 +26,10 @@ load(
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load(
+    "//tensorflow/compiler/xla/service/gpu:thunk_config.bzl",
+    "if_using_bef_thunks",
 )
 
 # buildifier: disable=same-origin-load
@@ -538,16 +541,6 @@ alias(
     actual = if_cuda_or_rocm(":nccl_utils", ":empty"),
 )
 
-bool_flag(
-    name = "enable_bef_thunk",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "is_bef_thunk_enabled",
-    flag_values = {":enable_bef_thunk": "True"},
-)
-
 cc_library(
     name = "gpu_executable",
     srcs = [
@@ -597,12 +590,7 @@ cc_library(
     ] + if_cuda_is_configured([
         "cholesky_thunk.h",
     ]),
-    local_defines = if_cuda_is_configured([
-        "GOOGLE_CUDA=1",
-    ]) + select({
-        ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
-        "//conditions:default": [],
-    }),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_using_bef_thunks(["-DBEF_THUNKS=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -675,10 +663,9 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-    ]) + select({
-        ":is_bef_thunk_enabled": [
-            "@llvm-project//mlir:GPUTransforms",
-            "@llvm-project//mlir:Pass",
+    ]) + if_using_bef_thunks(
+        [
+            "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
             "//tensorflow/stream_executor/cuda:cublas_plugin",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
@@ -688,19 +675,13 @@ cc_library(
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
-            "@llvm-project//llvm:Support",
-            "//tensorflow/compiler/mlir/hlo:lhlo",
-            # copybara:uncomment_begin(targets not exported to OSS yet)
-            # # This target causes cycles in Android license tests, but needs to
-            # # be uncommented to enable bef thunks. TODO(b/187552519): investigate.
-            # # "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
-            # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
-            # "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-            # "@tf_runtime//backends/gpu:gpu_types",
-            # copybara:uncomment_end
-        ],
-        "//conditions:default": [],
-    }),
+        ] + if_cuda_is_configured([
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_system",
+            "@tf_runtime//backends/gpu:gpu_types",
+        ]),
+    ),
 )
 
 cc_library(
