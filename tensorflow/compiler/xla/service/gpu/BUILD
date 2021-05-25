@@ -590,7 +590,11 @@ cc_library(
     ] + if_cuda_is_configured([
         "cholesky_thunk.h",
     ]),
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_using_bef_thunks(["-DBEF_THUNKS=1"]),
+    local_defines = if_cuda_is_configured([
+        "GOOGLE_CUDA=1",
+    ]) + if_using_bef_thunks([
+        "BEF_THUNKS=1",
+    ]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -663,25 +667,25 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-    ]) + if_using_bef_thunks(
-        [
-            "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
-            "//tensorflow/stream_executor/cuda:cublas_plugin",
-            "//tensorflow/stream_executor/cuda:cuda_driver",
-            "//tensorflow/stream_executor/gpu:gpu_executor_header",
-            "@tf_runtime//:basic_kernels_alwayslink",
-            "@tf_runtime//:befexecutor",
-            "@tf_runtime//:core_runtime",
-            "@tf_runtime//:hostcontext",
-            "@tf_runtime//:mlirtobef_translate",
-            "@tf_runtime//:support",
-        ] + if_cuda_is_configured([
-            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
-            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-            "@tf_runtime//backends/gpu:gpu_system",
-            "@tf_runtime//backends/gpu:gpu_types",
-        ]),
-    ),
+    ]) + if_using_bef_thunks([
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:Pass",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+        "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/stream_executor/cuda:cuda_driver",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
+        "@tf_runtime//:basic_kernels_alwayslink",
+        "@tf_runtime//:befexecutor",
+        "@tf_runtime//:core_runtime",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:mlirtobef_translate",
+        "@tf_runtime//:support",
+        "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+        "@tf_runtime//backends/gpu:gpu_types",
+    ]),
 )
 
 cc_library(
