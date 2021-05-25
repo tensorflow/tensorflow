@@ -279,6 +279,16 @@ inline Value MapCompareOpToStdScalarOp(Location loc,
     return b->create<ScalarFOp<CompareOpTy>>(loc, predicate.getValue(), lhs,
                                              rhs);
   }
+  if (auto complex_type = element_type.dyn_cast<ComplexType>()) {
+    if (complex_type.getElementType().isa<FloatType>()) {
+      if (comparison_direction == "EQ") {
+        return b->create<complex::EqualOp>(loc, lhs, rhs);
+      }
+      if (comparison_direction == "NE") {
+        return b->create<complex::NotEqualOp>(loc, lhs, rhs);
+      }
+    }
+  }
   return nullptr;
 }
 
