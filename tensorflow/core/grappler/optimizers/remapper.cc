@@ -981,6 +981,11 @@ bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
     // We fuse FusedBatchNormGrad on GPU.
     if (!NodeIsOnGpu(node_def)) return false;
 
+    // We fuse FusedBatchNormGrad only for the training mode.
+    bool is_training;
+    if (!GetNodeAttr(*node_def, kIsTraining, &is_training).ok() || !is_training)
+      return false;
+
     // Data type must be DT_HALF.
     DataType t_dtype = GetDataTypeFromAttr(*node_def, "T");
     if (t_dtype != DT_HALF) return false;
