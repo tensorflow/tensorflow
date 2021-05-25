@@ -2493,6 +2493,7 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   @end_compatibility
   """
   name = name if name else "reduce_variance"
+  input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name):
     means = reduce_mean(input_tensor, axis=axis, keepdims=True)
     if means.dtype.is_integer:
