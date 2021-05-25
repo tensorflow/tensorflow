@@ -280,6 +280,30 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   return ops.count(abstractOp->typeID);
 }
 
+// List ops that should use MLIR legalization in the case of prefer_tf2xla. All
+// other ops not in this list should use the old bridge's XlaOpKernel
+// legalization.
+const llvm::DenseSet<mlir::TypeID>& MlirLegalizedUnderPreferTf2XlaSet() {
+  // The static variable is a pointer in order to avoid destruction upon thread
+  // termination.
+
+  // clang-format off
+  static const llvm::DenseSet<mlir::TypeID>* ops =
+      new llvm::DenseSet<mlir::TypeID>{
+    // Ops that are legalized in the old bridge using MlirXlaOpKernel
+    TypeID::get<TF::AbsOp>(),
+  };
+  // clang-format on
+  return *ops;
+}
+
+bool IsOpMlirLegalizedUnderPreferTf2Xla(Operation* op) {
+  auto mlir_ops = MlirLegalizedUnderPreferTf2XlaSet();
+  auto* abstractOp = op->getAbstractOperation();
+  if (!abstractOp) return false;
+  return mlir_ops.count(abstractOp->typeID);
+}
+
 namespace {
 
 template <typename T, size_t N>
@@ -571,33 +595,42 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
   explicit Tf2XlaRewritePattern(MLIRContext* ctx,
-                                const std::string& device_type)
+                                const std::string& device_type,
+                                bool prefer_tf2xla)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
-        device_type_(device_type) {}
+        device_type_(device_type),
+        prefer_tf2xla_(prefer_tf2xla) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (!IsOpAllowedTf2XlaFallback(op)) return failure();
+    if (prefer_tf2xla_) {
+      if (IsOpMlirLegalizedUnderPreferTf2Xla(op)) return failure();
+    } else {
+      if (!IsOpAllowedTf2XlaFallback(op)) return failure();
+    }
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
   }
 
  private:
   std::string device_type_;
+  bool prefer_tf2xla_;
 };
 
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
 
-  explicit LegalizeTF(llvm::StringRef device_type) {
+  explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {
     device_type_ = device_type.str();
+    prefer_tf2xla_ = prefer_tf2xla;
   }
 
   LegalizeTF(const LegalizeTF&) {}
 
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
-    patterns.insert<Tf2XlaRewritePattern>(&getContext(), device_type_);
+    patterns.insert<Tf2XlaRewritePattern>(&getContext(), device_type_,
+                                          prefer_tf2xla_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
       signalPassFailure();
@@ -609,6 +642,12 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   Option<std::string> device_type_{
       *this, "device-type",
       llvm::cl::desc("XLA device type for execution of TensorFlow ops.")};
+  Option<bool> prefer_tf2xla_{
+      *this,
+      "prefer-tf2xla",
+      llvm::cl::desc("Enable legalization when it is not in the list of "
+                     "MLIR-legalized ops."),
+  };
 };
 
 static PassRegistration<LegalizeTF> pass(
@@ -619,13 +658,14 @@ static PassRegistration<LegalizeTF> pass(
 
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           OwningRewritePatternList& patterns,
-                                          MLIRContext* ctx) {
-  patterns.insert<Tf2XlaRewritePattern>(ctx, device_type.str());
+                                          MLIRContext* ctx,
+                                          bool prefer_tf2xla) {
+  patterns.insert<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
-    llvm::StringRef device_type) {
-  return std::make_unique<LegalizeTF>(device_type);
+    llvm::StringRef device_type, bool prefer_tf2xla) {
+  return std::make_unique<LegalizeTF>(device_type, prefer_tf2xla);
 }
 
 }  // end namespace mhlo

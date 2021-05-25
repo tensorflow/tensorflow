@@ -6390,6 +6390,34 @@ void LegalizeTF::runOnFunction() {
   }
 }
 
+// Patterns whose root op is in the set `include_ops` are moved from the set
+// `from` to the returned set. This is used to partition patterns by op so they
+// can be cleanly migrated from the old bridge to the MLIR bridge.
+OwningRewritePatternList PatternsIncludeOps(
+    OwningRewritePatternList &from,
+    const llvm::DenseSet<mlir::TypeID> &include_ops);
+
+OwningRewritePatternList PatternsIncludeOps(
+    OwningRewritePatternList &from,
+    const llvm::DenseSet<mlir::TypeID> &include_ops) {
+  OwningRewritePatternList to(from.getContext());
+  // Filter NativePatterns.
+  for (auto &pattern : from.getNativePatterns()) {
+    Optional<OperationName> pat_op_name = pattern->getRootKind();
+    // If the pattern does not have a specific operation, always include it,
+    // If the pattern is in include_ops then include it.
+    bool include =
+        !pat_op_name ||
+        include_ops.count(pat_op_name->getAbstractOperation()->typeID);
+    if (include) to.add(std::move(pattern));
+  }
+
+  // Don't filter PDLPatterns.
+  to.add(std::move(from.getPDLPatterns()));
+
+  return to;
+}
+
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
@@ -6399,7 +6427,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
                          llvm::Optional<StringRef> tf2xla_fallback_device_type,
                          bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns(context);
+  OwningRewritePatternList legalize_lower_patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
   //    to arrive at conversion target). This requires relevant patterns to
@@ -6411,15 +6439,35 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   // 4) Order of patterns in `OwningRewritePatternList`.
 
   // Add TF->HLO legalization patterns.
-  PopulateLegalizeTfPatterns(context, &patterns);
+  PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
 
   // Add TF->TF lowering patterns.
-  TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
+  TF::PopulateTFLoweringBeforeHLOPatterns(context, &legalize_lower_patterns);
 
-  // Add TF->HLO legalization patterns via TF2XLA fallback.
-  if (tf2xla_fallback_device_type.hasValue()) {
+  if (tf2xla_fallback_device_type && prefer_tf2xla) {
+    VLOG(1) << "TF to XLA legalization patterns are partitioned by op into "
+               "either native MLIR legalization, or TF2XLA fallback "
+               "legalzation, with a preference toward TF2XLA.";
+  } else if (tf2xla_fallback_device_type) {
+    VLOG(1) << "TF to XLA legalization patterns include all native patterns "
+               "and TF2XLA fallback patterns.";
+  } else {
+    VLOG(1) << "TF to XLA legalization patterns are native patterns only.";
+  }
+
+  // Set patterns to legalize_lower_patters, where in the prefer_tf2xla case
+  // only patterns whose ops are in the set MlirLegalizedUnderPreferTf2XlaSet
+  // are kept.
+  OwningRewritePatternList patterns =
+      (tf2xla_fallback_device_type && prefer_tf2xla)
+          ? PatternsIncludeOps(legalize_lower_patterns,
+                               MlirLegalizedUnderPreferTf2XlaSet())
+          : std::move(legalize_lower_patterns);
+
+  if (tf2xla_fallback_device_type) {
+    // Add TF->HLO legalization patterns via TF2XLA fallback.
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
-                                         patterns, context);
+                                         patterns, context, prefer_tf2xla);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
