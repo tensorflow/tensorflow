@@ -114,6 +114,10 @@ class RunEagerOpAsFunctionTest(test.TestCase):
     self.skipTest("b/185403393")
     array_ops.identity_n([self._m_2_by_2, self._m_2_by_2])
 
+  def testListInputOutputVariation1(self):
+    self.skipTest("b/185403393")
+    array_ops.concat([[1], [2]], axis=-1)
+
 
 if __name__ == "__main__":
   context.enable_run_eager_op_as_function()
