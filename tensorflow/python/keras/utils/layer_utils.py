@@ -182,21 +182,23 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     left_to_print = [str(x) for x in fields]
     while any(left_to_print):
       line = ''
-      for i in range(len(left_to_print)):
-        if i > 0:
-          start_pos = positions[i-1]
+      for col in range(len(left_to_print)):
+        if col > 0:
+          start_pos = positions[col-1]
         else:
           start_pos = 0
-        end_pos = positions[i]
-        # Leave room for a space
-        delta = end_pos - start_pos - 1
-        fit_into_line = left_to_print[i][:delta]
+        end_pos = positions[col]
+        # Leave room for a space to delineate columns
+        # we don't need one if we are printing the last column
+        space = 1 if col - 1 == len(positions) else 0
+        delta = end_pos - start_pos - space
+        fit_into_line = left_to_print[col][:delta]
         line += fit_into_line
         line += ' '
-        left_to_print[i] = left_to_print[i][delta:]
+        left_to_print[col] = left_to_print[col][delta:]
 
         # Pad out to the next position
-        line += ' ' * (positions[i] - len(line))
+        line += ' ' * (positions[col] - len(line))
       print_fn(line)
 
   print_fn('Model: "{}"'.format(model.name))
