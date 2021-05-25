@@ -409,7 +409,7 @@ tf_py_test(
     name = "interleave_test",
     size = "small",
     srcs = ["interleave_test.py"],
-    shard_count = 4,
+    shard_count = 24,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
