@@ -36,7 +36,7 @@ add_subdirectory(
 
 set(CMAKE_CXX_STANDARD 11)
 
-if (MSVC AND (CMAKE_SIZEOF_VOID_P EQUAL 4))
+if(CMAKE_SYSTEM_NAME MATCHES "Windows" AND MSVC AND (CMAKE_SIZEOF_VOID_P EQUAL 4))
   message("Disabling MSVC /O2 optimization for Win32")
   set(CompFlags
     CMAKE_CXX_FLAGS_RELEASE
