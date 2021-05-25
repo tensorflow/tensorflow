@@ -65,6 +65,7 @@ struct LhloToScalarOp<lmhlo::MulOp> {
   using FOp = ::mlir::MulFOp;
   using IOp = ::mlir::MulIOp;
   using UOp = ::mlir::MulIOp;
+  using COp = ::mlir::complex::MulOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::RemOp> {
@@ -629,6 +630,19 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MinOp>(Location loc,
                                                            result_types,
                                                            arg_types, args, b),
       args, loc, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::MulOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Type> arg_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToScalarOpImpl<isSignedIntegerType, ScalarIOp<lmhlo::MulOp>,
+                                 isUnsignedIntegerType, ScalarUOp<lmhlo::MulOp>,
+                                 isFloatType, ScalarFOp<lmhlo::MulOp>,
+                                 isComplexType, ScalarCOp<lmhlo::MulOp>>{}(
+      loc, result_types, arg_types, args, b);
 }
 
 template <>

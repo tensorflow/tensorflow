@@ -65,6 +65,19 @@ func @integer_mul(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @complex_mul
+func @complex_mul(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.mul
+  %0 = "mhlo.multiply"(%lhs, %rhs)
+          : (tensor<2x2xcomplex<f32>>, tensor<2x2xcomplex<f32>>)
+          -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_remainder
 func @float_remainder(%lhs: tensor<2x2xf32>,
                       %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
