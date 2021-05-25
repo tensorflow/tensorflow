@@ -109,8 +109,10 @@ def _get_duration_microseconds(start_time_seconds, end_time_seconds):
 @tf_export("__internal__.tracking.register_session_provider", v1=[])
 def register_session_provider(session_provider):
   global _SESSION_PROVIDER
-  if _SESSION_PROVIDER is None:
-    _SESSION_PROVIDER = session_provider
+  # TODO(scottzhu): Change it back to only allow one time setting for session
+  # provider once we finished the keras repo split.
+  # if _SESSION_PROVIDER is None:
+  _SESSION_PROVIDER = session_provider
 
 
 def get_session():
