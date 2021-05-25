@@ -260,7 +260,15 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kAbs:
       return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
-      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+      // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
+      // AddOps on i1 are just addition with overflow; so, we have to implement
+      // the special behavior of HLO add ops on PRED here by creating an OrOp
+      // instead.
+      if (instr->shape().element_type() == xla::PRED) {
+        return CreateOpWithoutAttrs<lmhlo::OrOp>(instr);
+      } else {
+        return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+      }
     case HloOpcode::kAddDependency:
       return nullptr;
     case HloOpcode::kAfterAll:

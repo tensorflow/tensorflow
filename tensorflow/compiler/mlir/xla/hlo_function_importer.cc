@@ -722,6 +722,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getNamedAttr("fft_length", Convert(fft_length)));
       MakeAndReturn(FftOp);
     }
+
+    case HloOpcode::kAdd: {
+      // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
+      // AddOps on i1 are just addition with overflow; so, we have to implement
+      // the special behavior of HLO add ops on PRED here by creating an OrOp
+      // instead.
+      if (instruction->shape().element_type() == PRED) {
+        MakeAndReturn(OrOp);
+      } else {
+        MakeAndReturn(AddOp);
+      }
+    }
 #define NoAttributeCase(hlo_op_code, mlir_op) \
   case HloOpcode::hlo_op_code: {              \
     MakeAndReturn(mlir_op);                   \
@@ -731,7 +743,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
       NoAttributeCase(kAbs, AbsOp);
-      NoAttributeCase(kAdd, AddOp);
       NoAttributeCase(kAfterAll, AfterAllOp);
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
