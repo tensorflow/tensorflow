@@ -195,6 +195,7 @@ tf_py_test(
     name = "group_by_reducer_test",
     size = "small",
     srcs = ["group_by_reducer_test.py"],
+    shard_count = 12,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
