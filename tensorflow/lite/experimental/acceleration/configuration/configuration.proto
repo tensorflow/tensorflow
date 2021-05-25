@@ -507,3 +507,16 @@ message BenchmarkEvent {
   optional int64 boottime_us = 5;
   optional int64 wallclock_us = 6;
 }
+
+// Represent the decision on the best acceleration from the mini-benchmark.
+message BestAccelerationDecision {
+  // Number of events used to take the decision.
+  // Using just the size instaed of the full list of events to save space.
+  optional int32 number_of_source_events = 1;
+
+  // Event with min latency in the source ones.
+  optional BenchmarkEvent min_latency_event = 2;
+
+  // Min latency as read from min_latency_event.
+  optional int64 min_inference_time_us = 3;
+}
