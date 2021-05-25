@@ -176,6 +176,9 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
         "be all quantized or all floating-point.");
   }
 
+  int64_t clamp_min = 0;
+  Value clamp_in = tfl_relu_op.x();
+
   if (output_is_qtype) {
     RankedTensorType rescale_type =
         RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
@@ -186,23 +189,19 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
         output_type.getElementType()
             .dyn_cast<mlir::quant::UniformQuantizedType>();
 
-    Value op1_rescale_in =
+    clamp_min = output_qtype.getZeroPoint();
+    clamp_in =
         buildRescale(rewriter, op, output_type, tfl_relu_op.x(),
                      input_qtype.getScale() / output_qtype.getScale(),
                      input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
                      /*double_round=*/false, /*scale32=*/true);
-    rewriter.replaceOpWithNewOp<tosa::ClampOp>(
-        op, output_type, op1_rescale_in,
-        rewriter.getI64IntegerAttr(output_qtype.getZeroPoint()),
-        rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-        rewriter.getF32FloatAttr(0.0f), rewriter.getF32FloatAttr(0.0f));
-  } else {
-    rewriter.replaceOpWithNewOp<tosa::ClampOp>(
-        op, output_type, tfl_relu_op.x(), rewriter.getI64IntegerAttr(0),
-        rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-        rewriter.getF32FloatAttr(0.0f),
-        rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
   }
+
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      op, output_type, clamp_in, rewriter.getI64IntegerAttr(clamp_min),
+      rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
+      rewriter.getF32FloatAttr(0.0f),
+      rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
 
   return success();
 }
@@ -229,7 +228,10 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
         "be all quantized or all floating-point.");
   }
 
-  Value output;
+  int64_t clamp_min = 0;
+  int64_t clamp_max = 6;
+  Value clamp_in = tfl_relu6_op.x();
+
   if (output_is_qtype && input_is_qtype) {
     RankedTensorType rescale_type =
         RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
@@ -240,25 +242,21 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
         output_type.getElementType()
             .dyn_cast<mlir::quant::UniformQuantizedType>();
 
-    int64_t rescaled_6 = std::llround(6.0f / output_qtype.getScale()) +
-                         output_qtype.getZeroPoint();
+    clamp_min = output_qtype.getZeroPoint();
+    clamp_max = std::llround(6.0f / output_qtype.getScale()) +
+                output_qtype.getZeroPoint();
 
-    Value op1_rescale_in =
+    clamp_in =
         buildRescale(rewriter, op, output_type, tfl_relu6_op.x(),
                      input_qtype.getScale() / output_qtype.getScale(),
                      input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
                      /*double_round=*/false, /*scale32=*/true);
-    rewriter.replaceOpWithNewOp<tosa::ClampOp>(
-        op, output_type, op1_rescale_in,
-        rewriter.getI64IntegerAttr(output_qtype.getZeroPoint()),
-        rewriter.getI64IntegerAttr(rescaled_6), rewriter.getF32FloatAttr(0.0f),
-        rewriter.getF32FloatAttr(0.0f));
-  } else {
-    rewriter.replaceOpWithNewOp<tosa::ClampOp>(
-        op, output_type, tfl_relu6_op.x(), rewriter.getI64IntegerAttr(0),
-        rewriter.getI64IntegerAttr(6), rewriter.getF32FloatAttr(0.0f),
-        rewriter.getF32FloatAttr(6.0f));
   }
+
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      op, output_type, clamp_in, rewriter.getI64IntegerAttr(clamp_min),
+      rewriter.getI64IntegerAttr(clamp_max), rewriter.getF32FloatAttr(0.0f),
+      rewriter.getF32FloatAttr(6.0f));
 
   return success();
 }
