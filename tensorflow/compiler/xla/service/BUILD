@@ -558,6 +558,40 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "sharding_remover",
+    srcs = [
+        "sharding_remover.cc",
+    ],
+    hdrs = [
+        "sharding_remover.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "sharding_remover_test",
+    size = "small",
+    srcs = [
+        "sharding_remover_test.cc",
+    ],
+    deps = [
+        ":sharding_remover",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "dot_as_convolution_util",
     srcs = [
         "dot_as_convolution_util.cc",
