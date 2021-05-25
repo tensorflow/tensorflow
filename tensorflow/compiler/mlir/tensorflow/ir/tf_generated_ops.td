@@ -2171,7 +2171,7 @@ Mutually reduces multiple tensors of identical type and shape.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
+    TF_FpOrI32OrI64Tensor:$input,
 
     I64Attr:$group_size,
     I64Attr:$group_key,
@@ -2185,7 +2185,7 @@ Mutually reduces multiple tensors of identical type and shape.
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$data
+    TF_FpOrI32OrI64Tensor:$data
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2197,7 +2197,7 @@ Mutually reduces multiple tensors of identical type and shape.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
+    TF_FpOrI32OrI64Tensor:$input,
     TF_Int32Tensor:$group_size,
     TF_Int32Tensor:$group_key,
     TF_Int32Tensor:$instance_key,
@@ -2211,7 +2211,7 @@ Mutually reduces multiple tensors of identical type and shape.
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$data
+    TF_FpOrI32OrI64Tensor:$data
   );
 
   TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
@@ -13390,13 +13390,13 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Str, TF_Uint16, TF_Uint8]>, [{Up to 8-D.}]>:$tensor,
+    Arg<TensorOf<[TF_Float, TF_Int, TF_Complex, TF_Bool, TF_Str]>, [{Up to 8-D.}]>:$tensor,
     Arg<TF_I32OrI64Tensor, [{1-D. The indices of the dimensions to reverse. Must be in the range
 `[-rank(tensor), rank(tensor))`.}]>:$axis
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Str, TF_Uint16, TF_Uint8]>, [{The same shape as `tensor`.}]>:$output
+    Res<TensorOf<[TF_Float, TF_Int, TF_Complex, TF_Bool, TF_Str]>, [{The same shape as `tensor`.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

@@ -85,7 +85,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   // clang-format off
 
   static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
-    TypeID::get<TF::AbsOp>(),
     TypeID::get<TF::AcoshOp>(),
     TypeID::get<TF::AcosOp>(),
     TypeID::get<TF::AddNOp>(),
@@ -101,14 +100,12 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::AsinOp>(),
     TypeID::get<TF::Atan2Op>(),
     TypeID::get<TF::AtanhOp>(),
-    TypeID::get<TF::AtanOp>(),
     TypeID::get<TF::BatchMatMulV2Op>(),
     TypeID::get<TF::BatchMatMulV3Op>(),
     TypeID::get<TF::BatchToSpaceOp>(),
     TypeID::get<TF::BesselI0eOp>(),
     TypeID::get<TF::BesselI1eOp>(),
     TypeID::get<TF::BetaincOp>(),
-    TypeID::get<TF::BiasAddGradOp>(),
     TypeID::get<TF::BiasAddOp>(),
     TypeID::get<TF::BitwiseAndOp>(),
     TypeID::get<TF::BitwiseOrOp>(),
@@ -146,7 +143,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::FloorDivOp>(),
     TypeID::get<TF::FloorModOp>(),
     TypeID::get<TF::GatherNdOp>(),
-    TypeID::get<TF::GreaterEqualOp>(),
     TypeID::get<TF::GreaterOp>(),
     TypeID::get<TF::HSVToRGBOp>(),
     TypeID::get<TF::IFFT2DOp>(),
@@ -166,12 +162,10 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::LeakyReluGradOp>(),
     TypeID::get<TF::LeakyReluOp>(),
     TypeID::get<TF::LeftShiftOp>(),
-    TypeID::get<TF::LessEqualOp>(),
     TypeID::get<TF::LessOp>(),
     TypeID::get<TF::ListDiffOp>(),
     TypeID::get<TF::LogicalAndOp>(),
     TypeID::get<TF::LogicalNotOp>(),
-    TypeID::get<TF::LogicalOrOp>(),
     TypeID::get<TF::LogOp>(),
     TypeID::get<TF::LowerBoundOp>(),
     TypeID::get<TF::MakeUniqueOp>(),
@@ -278,7 +272,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
     TypeID::get<TF::XlaSortOp>(),
     TypeID::get<TF::XlaSvdOp>(),
-    TypeID::get<TF::ZetaOp>()
   };
   // clang-format on
 

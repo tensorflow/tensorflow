@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -129,6 +130,12 @@ xla::PrimitiveType XlaOpKernelContext::InputXlaType(absl::string_view name) {
 Status XlaOpKernelContext::ConstantInput(int index,
                                          xla::Literal* constant_literal,
                                          xla::ValueInferenceMode mode) {
+  if (this->InputXlaShape(index)->is_dynamic()) {
+    return errors::InvalidArgument(
+        "Reading input as constant from a dynamic tensor is not yet supported. "
+        "Xla shape: ",
+        this->InputXlaShape(index)->ToString());
+  }
   return ConstantInputReshaped(index,
                                context_->input(index).shape().dim_sizes(),
                                constant_literal, mode);

@@ -762,7 +762,6 @@ cc_test(
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
-        "testdata/unsupported_recursion.bin",
         "testdata/while_op_with_forwarding_input.bin",
     ],
     tags = [

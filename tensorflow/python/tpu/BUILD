@@ -88,6 +88,9 @@ tpu_py_test(
 pytype_library(
     name = "device_assignment",
     srcs = ["device_assignment.py"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         ":topology",
         "//tensorflow/python:platform",

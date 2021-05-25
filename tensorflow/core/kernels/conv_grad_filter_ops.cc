@@ -32,6 +32,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
@@ -986,6 +988,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
+    profiler::ScopedAnnotation trace("cudnn_autotuning");
+
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;

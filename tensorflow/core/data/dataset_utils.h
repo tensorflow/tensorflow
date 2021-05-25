@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -326,30 +327,29 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
 // Computes the set of experiments to apply based on the job name, rollout
 // percentage of registered experiments, and the TF_DATA_EXPERIMENT_OPT_IN and
 // TF_DATA_EXPERIMENT_OPT_OUT environment variables.
-std::vector<string> GetExperiments();
-std::vector<string> GetExperiments(
+absl::flat_hash_set<string> GetExperiments();
+absl::flat_hash_set<string> GetExperiments(
     const string& job_name, std::function<uint64(const string&)> hash_func);
 
 // Logs and records the experiments that will be applied.
-void LogAndRecordExperiments(const std::vector<string>& experiments);
+void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments);
 
 // Computes the set of enabled, disabled, and default optimizations based on the
 // given options.
 void GetOptimizations(const Options& options,
-                      std::vector<tstring>* optimizations_enabled,
-                      std::vector<tstring>* optimizations_disabled,
-                      std::vector<tstring>* optimizations_default);
+                      absl::flat_hash_set<tstring>* optimizations_enabled,
+                      absl::flat_hash_set<tstring>* optimizations_disabled,
+                      absl::flat_hash_set<tstring>* optimizations_default);
 
 // Determines which optimizations should be applied.
-std::vector<tstring> SelectOptimizations(
-    const std::vector<string>& experiments,
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default);
+absl::flat_hash_set<tstring> SelectOptimizations(
+    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default);
 
 // Creates graph rewrite configs based on the given options.
-void CreateGraphRewriteConfigs(const Options& options,
-                               std::vector<std::string>* configs);
+absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options);
 
 // Determines whether max intra-op parallelism should be configured.
 bool ShouldConfigureMaxIntraOpParallelism(const Options& options);
@@ -362,8 +362,9 @@ bool ShouldUseAutotuning(const Options& options);
 
 // Determines whether optimizations should be applied.
 bool ShouldApplyOptimizations(
-    const Options& options, const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_default);
+    const Options& options,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_default);
 
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {

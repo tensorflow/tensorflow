@@ -287,10 +287,10 @@ TF_LITE_MICRO_TEST(InterpreterWithProfilerShouldProfileOps) {
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 0);
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   TF_LITE_MICRO_EXPECT_EQ(interpreter.Invoke(), kTfLiteOk);
-#ifndef NDEBUG
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_starts(), 3);
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 3);
-#else  // Profile events will not occur on release builds.
+#else
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_starts(), 0);
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 0);
 #endif

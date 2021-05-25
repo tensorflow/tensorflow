@@ -532,6 +532,7 @@ def tridiagonal_solve(diagonals,
 
   Returns:
     A `Tensor` of shape [..., M] or [..., M, K] containing the solutions.
+    If the input matrix is singular, the result is undefined.
 
   Raises:
     ValueError: An unsupported type is provided as input, or when the input

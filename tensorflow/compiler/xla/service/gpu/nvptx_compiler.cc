@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
-#include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
@@ -163,11 +163,17 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
-  // Pad the dimensions of matrices in dot operations to multiples of 8.
+
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
   if (IsVoltaOrLater(*stream_exec)) {
-    pre_pipeline.AddPass<CublasGemmPadForTensorCores>();
+    // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
+    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::S8,
+                                            /*pad_to_multiple_of=*/4);
+
+    // Pad the dimensions of matrices in dot operations to multiples of 8.
+    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
+                                            /*pad_to_multiple_of=*/8);
   }
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 

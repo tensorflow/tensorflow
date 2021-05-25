@@ -149,7 +149,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 Depending on the use case, the `NLClassifier` API can load a TFLite model with
-or without [TFLite Model Metadata](../../convert/metadata.md).
+or without [TFLite Model Metadata](../../convert/metadata.md). See examples of
+creating metadata for natural language classifiers using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#nl_classifiers).
 
 The compatible models should meet the following requirements:
 

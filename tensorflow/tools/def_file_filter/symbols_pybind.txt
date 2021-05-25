@@ -107,7 +107,6 @@ tensorflow::swig::TryFindKernelClass
 
 [//tensorflow/lite/toco/python:toco_python_api] # toco_python_api
 toco::TocoConvert
-toco::TocoGetPotentiallySupportedOps
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
