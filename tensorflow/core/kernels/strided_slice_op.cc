@@ -119,7 +119,7 @@ class StridedSliceOp : public OpKernel {
     }
 
     // Optimization #2, slice is memory contiguous (only occurs in dim 0)
-    if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], end[0])) {
+    if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0])) {
       OP_REQUIRES(context, input.dims() >= 1,
                   errors::InvalidArgument(
                       "Input must have rank at least 1, got: ", input.dims()));

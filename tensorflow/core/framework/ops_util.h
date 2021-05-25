@@ -57,25 +57,21 @@ bool IsInnerDimsSizeAligned(const TensorShape& s) {
 #endif
 }
 
-// Given a shape 's' of a tensor of type T and the `start` and `end` index of a
+// Given a shape 's' of a tensor of type T and the `start` index of a
 // dim 0 slice, returns true iff slice is aligned with respect to original
 // tensor. Here aligned implies the address is a multiple of
 // EIGEN_MAX_ALIGN_BYTES.
 template <typename T>
-bool IsDim0SliceAligned(const TensorShape& s, int64 start, int64 end_or_size) {
+bool IsDim0SliceAligned(const TensorShape& s, int64 start) {
   if (s.dims() == 1) {
 #if EIGEN_MAX_ALIGN_BYTES == 0
     return true;
 #else
-    bool start_aligned = (start * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
-    // End is aligned if either the explicit end index is passed and is a
-    // a multiple of EIGEN_MAX_ALIGN_BYTES, or the start index is aligned and
-    // the size is aligned. So for convenience we can either pass start and
-    // index, or start and size.
-    bool end_aligned = (end_or_size * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
-    return start_aligned && end_aligned;
+    // For 1D, only the start of the slice needs to be aligned.
+    return (start * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
 #endif
   } else {
+    // TODO(b/189225441): investigate if start should be considered here too.
     return IsInnerDimsSizeAligned<T>(s);
   }
 }

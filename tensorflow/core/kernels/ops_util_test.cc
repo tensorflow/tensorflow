@@ -322,13 +322,13 @@ TEST_F(OpsUtilTest, Aligned1DSlice) {
   Tensor t(DT_FLOAT, TensorShape({3}));
   int64 start = 0;
   int64 end = 1;
-  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  bool output = IsDim0SliceAligned<float>(t.shape(), start);
   EXPECT_EQ(output, true);
 #else
   Tensor t(DT_FLOAT, TensorShape({EIGEN_MAX_ALIGN_BYTES * 2}));
   int64 start = 0;
   int64 end = EIGEN_MAX_ALIGN_BYTES;
-  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  bool output = IsDim0SliceAligned<float>(t.shape(), start);
   EXPECT_EQ(output, true);
   // Checks sliced 1D tensor is aligned for sanity.
   Tensor sliced;
@@ -342,7 +342,7 @@ TEST_F(OpsUtilTest, Misaligned1DSlice) {
   Tensor t(DT_FLOAT, TensorShape({EIGEN_MAX_ALIGN_BYTES * 2}));
   int64 start = 1;
   int64 end = EIGEN_MAX_ALIGN_BYTES + 1;
-  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  bool output = IsDim0SliceAligned<float>(t.shape(), start);
   EXPECT_EQ(output, false);
   // Checks sliced 1D tensor is misaligned for sanity.
   Tensor sliced;
@@ -358,7 +358,7 @@ TEST_F(OpsUtilTest, Aligned2DSliceOfDim0) {
   Tensor t(DT_FLOAT, TensorShape({3, 4}));
   int64 start = 1;
   int64 end = 2;
-  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  bool output = IsDim0SliceAligned<float>(t.shape(), start);
   EXPECT_EQ(output, true);
 #else
   // For multidimensional tensors, alignment is dictated by inner_dim_size.
@@ -366,7 +366,7 @@ TEST_F(OpsUtilTest, Aligned2DSliceOfDim0) {
   Tensor t(DT_FLOAT, TensorShape({3, inner_dim_size}));
   int64 start = 1;
   int64 end = 2;
-  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  bool output = IsDim0SliceAligned<float>(t.shape(), start);
   EXPECT_EQ(output, true);
   // Checks sliced 2D is aligned, for sanity.
   Tensor sliced;
@@ -382,7 +382,7 @@ TEST_F(OpsUtilTest, Misaligned2DSliceOfDim0) {
   Tensor t(DT_FLOAT, TensorShape({3, inner_dim_size}));
   int64 start = 1;
   int64 end = 2;
-  bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
+  bool output = IsDim0SliceAligned<float>(t.shape(), start);
   EXPECT_EQ(output, false);
   // Checks sliced 2D is misaligned, for sanity.
   Tensor sliced;
@@ -394,16 +394,14 @@ TEST_F(OpsUtilTest, Misaligned2DSliceOfDim0) {
 TEST_F(OpsUtilTest, MisalignedEmptyShape) {
   TensorShape shape({});
   int64 start = 1;
-  int64 end = 2;
-  bool output = IsDim0SliceAligned<float>(shape, start, end);
+  bool output = IsDim0SliceAligned<float>(shape, start);
   EXPECT_EQ(output, false);
 }
 
 TEST_F(OpsUtilTest, MisalignedEmptyDim0) {
   TensorShape shape({0, 1, 2});
   int64 start = 0;
-  int64 end = 1;
-  bool output = IsDim0SliceAligned<float>(shape, start, end);
+  bool output = IsDim0SliceAligned<float>(shape, start);
   EXPECT_EQ(output, false);
 }
 

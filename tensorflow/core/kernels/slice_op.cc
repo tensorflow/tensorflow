@@ -139,8 +139,7 @@ static void SharedSliceCommonCases(OpKernelContext* context,
     return;
   }
 
-  if (slice_dim0 &&
-      IsDim0SliceAligned<T>(input.shape(), (*begin)[0], (*size)[0])) {
+  if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), (*begin)[0])) {
     VLOG(1) << "Slice dim 0: " << input.shape().DebugString();
     CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
     context->set_output(0, input.Slice((*begin)[0], (*begin)[0] + (*size)[0]));
