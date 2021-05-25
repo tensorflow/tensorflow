@@ -158,8 +158,8 @@ func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
 
 // -----
 
-// CHECK-LABEL: func @is_finte
-func @is_finte(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
+// CHECK-LABEL: func @is_finite
+func @is_finite(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
   "lmhlo.is_finite"(%input, %result) : (memref<2x2xf32>, memref<2x2xi1>) -> ()
   return
 }
@@ -225,6 +225,20 @@ func @complex_cmp_neq(%lhs: memref<2xcomplex<f64>>, %rhs: memref<2xcomplex<f64>>
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: complex<f64>, %[[RHS_IN:.*]]: complex<f64>, %[[RESULT_OUT:.*]]: i1):
 // CHECK-NEXT:   %[[RESULT:.*]] = complex.neq %[[LHS_IN]], %[[RHS_IN]] : complex<f64>
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @complex_divide
+func @complex_divide(%lhs: memref<2xcomplex<f64>>, %rhs: memref<2xcomplex<f64>>,
+                     %result: memref<2xcomplex<f64>>) {
+  "lmhlo.divide"(%lhs, %rhs, %result)
+      : (memref<2xcomplex<f64>>, memref<2xcomplex<f64>>, memref<2xcomplex<f64>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: complex<f64>, %[[RHS_IN:.*]]: complex<f64>, %[[RESULT_OUT:.*]]: complex<f64>):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.div %[[LHS_IN]], %[[RHS_IN]] : complex<f64>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f64>
 
 // -----
 
