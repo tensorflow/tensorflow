@@ -1245,18 +1245,25 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   // Check if we can merge "adjacent" slice operands which take slices from the
   // same other op. For simplicity we only merge unstrided slices.
   int64 concatenate_dimension = concatenate->concatenate_dimension();
-  for (int64 i = 0; i < operands.size(); ++i) {
+  std::vector<HloInstruction*> new_operands;
+  int64 i = 0;
+  while (i < operands.size()) {
     if (operands[i]->opcode() != HloOpcode::kSlice ||
         !IsUnstridedSlice(operands[i])) {
+      new_operands.push_back(operands[i]);
+      ++i;
       continue;
     }
     int64 slice_end = operands[i]->slice_limits(concatenate_dimension);
     HloInstruction* slice_operand = operands[i]->mutable_operand(0);
     int64 j = i + 1;
-    while (j < operands.size() && operands[j]->opcode() == HloOpcode::kSlice &&
-           IsUnstridedSlice(operands[j]) &&
-           operands[j]->operand(0) == slice_operand &&
-           operands[j]->slice_starts(concatenate_dimension) == slice_end) {
+    while (j < operands.size()) {
+      if (operands[j]->opcode() != HloOpcode::kSlice ||
+          !IsUnstridedSlice(operands[j]) ||
+          operands[j]->operand(0) != slice_operand ||
+          operands[j]->slice_starts(concatenate_dimension) != slice_end) {
+        break;
+      }
       // Check that all the slice_start values are the same in all other
       // dimensions. This implies that the slice_limit values are also the same,
       // because operands of concatenate need to have the same shape, and we
@@ -1291,28 +1298,17 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
               /*start_indices=*/operands[i]->slice_starts(),
               /*limit_indices=*/new_limit_indices,
               /*strides=*/operands[i]->slice_strides()));
-      std::vector<HloInstruction*> new_operands;
-      for (int64 k = 0; k < i; ++k) {
-        new_operands.push_back(operands[k]);
-      }
       new_operands.push_back(new_slice_op);
-      for (int64 k = j; k < operands.size(); ++k) {
-        new_operands.push_back(operands[k]);
-      }
-      auto replacement =
-          computation_->AddInstruction(concatenate->CloneWithNewOperands(
-              concatenate->shape(), new_operands));
-
-      // Recurse to handle multiple disjoint sequence of inputs. The
-      // logic above merge only 1 sequential series of
-      // inputs. Otherwise, it can lead to the FixPass optimization
-      // hitting its threshold.
-      if (ReplaceInstructionIfSameShape(concatenate, replacement)) {
-        return HandleConcatenate(replacement);
-      }
-
-      return Status::OK();
+    } else {
+      new_operands.push_back(operands[i]);
     }
+    i = j;
+  }
+  if (new_operands.size() < operands.size()) {
+    auto replacement = computation_->AddInstruction(
+        concatenate->CloneWithNewOperands(concatenate->shape(), new_operands));
+    ReplaceInstructionIfSameShape(concatenate, replacement);
+    return Status::OK();
   }
 
   if (operands.size() == 2) {
