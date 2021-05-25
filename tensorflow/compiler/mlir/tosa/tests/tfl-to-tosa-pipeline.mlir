@@ -883,10 +883,8 @@ func @test_softmax_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.0156164625
 // -----
 
 // CHECK-LABEL: test_sigmoid_qi8
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<513xi16>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg0)
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.table"(%[[VAR1]], %[[VAR0]])
-// CHECK: %[[VAR3:.*]] = "tosa.rescale"(%[[VAR2]])
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<256xi8>}
+// CHECK: %[[VAR1:.*]] = "tosa.table"(%arg0, %[[VAR0]])
 func @test_sigmoid_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015667613595724106>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>> {
   %0 = "tfl.logistic"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015667613595724106>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>>
   return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>>
@@ -895,10 +893,8 @@ func @test_sigmoid_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.0156676135
 // -----
 
 // CHECK-LABEL: test_tanh_qi8
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<513xi16>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg0)
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.table"(%[[VAR1]], %[[VAR0]])
-// CHECK: %[[VAR3:.*]] = "tosa.rescale"(%[[VAR2]])
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<256xi8>}
+// CHECK: %[[VAR1:.*]] = "tosa.table"(%arg0, %[[VAR0]])
 func @test_tanh_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015673128888010979:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 7.812500e-03>> {
   %0 = "tfl.tanh"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015673128888010979:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 7.812500e-03>>
   return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 7.812500e-03>>

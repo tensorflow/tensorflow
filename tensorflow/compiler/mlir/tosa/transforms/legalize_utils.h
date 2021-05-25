@@ -23,10 +23,10 @@ limitations under the License.
 #include <numeric>
 
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"      // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"           // from @llvm-project
+#include "mlir/IR/PatternMatch.h"           // from @llvm-project
+#include "mlir/Support/LLVM.h"              // from @llvm-project
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
