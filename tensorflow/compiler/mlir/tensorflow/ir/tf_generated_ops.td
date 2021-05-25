@@ -5831,12 +5831,12 @@ Gamma function.
   }];
 
   let arguments = (ins
-    TF_F32OrF64Tensor:$a,
-    TF_F32OrF64Tensor:$x
+    TF_FloatTensor:$a,
+    TF_FloatTensor:$x
   );
 
   let results = (outs
-    TF_F32OrF64Tensor:$z
+    TF_FloatTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -5880,12 +5880,12 @@ Gamma function.
   }];
 
   let arguments = (ins
-    TF_F32OrF64Tensor:$a,
-    TF_F32OrF64Tensor:$x
+    TF_FloatTensor:$a,
+    TF_FloatTensor:$x
   );
 
   let results = (outs
-    TF_F32OrF64Tensor:$z
+    TF_FloatTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
