@@ -190,11 +190,11 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
         end_pos = positions[col]
         # Leave room for a space to delineate columns
         # we don't need one if we are printing the last column
-        space = 1 if col - 1 == len(positions) else 0
+        space = 1 if col != len(positions) - 1 else 0
         delta = end_pos - start_pos - space
         fit_into_line = left_to_print[col][:delta]
         line += fit_into_line
-        line += ' '
+        line += ' ' if space else ''
         left_to_print[col] = left_to_print[col][delta:]
 
         # Pad out to the next position
