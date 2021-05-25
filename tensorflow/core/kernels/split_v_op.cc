@@ -195,7 +195,7 @@ class SplitVOpBase : public OpKernel {
     }
     Tlen start = 0;
     for (const Tlen split_size : split_sizes) {
-      if (!IsDim0SliceAligned<T>(input_shape, start)) {
+      if (!IsDim0SliceAligned<T>(input_shape, start, start + split_size)) {
         return false;
       }
       start += split_size;
