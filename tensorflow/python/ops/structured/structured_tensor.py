@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import re
 from typing import Callable, Dict, List, Sequence, Tuple, Union
 
@@ -37,6 +38,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import row_partition as row_partition_lib
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -1132,30 +1134,40 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
     return StructuredTensor
 
   def _to_components(self, value):
-    if value._fields:
-      return value._fields
-    elif value.nrows() is None:
-      return ((), value.row_partitions)  # empty rank-0 structured tensor
-    else:
-      return (value.nrows(), value.row_partitions)
+    nrows = () if value.nrows() is None else value.nrows()
+    return (value._fields, nrows, value.row_partitions)
 
   def _from_components(self, components):
     if isinstance(components, dict):
-      fields = components
-      nrows = None
-      row_partitions = None
-    else:
+      logging.warning('Loading deprecated encoding for StructuredTensorSpec.')
+      return StructuredTensor.from_fields(components, self._shape,
+                                          validate=False)
+    elif not isinstance(components[0], dict):
+      logging.warning('Loading deprecated encoding for StructuredTensorSpec.')
       fields = {}
       nrows, row_partitions = components
       if isinstance(nrows, tuple) and not nrows:
         nrows = None  # empty rank-0 structured tensor
-    return StructuredTensor.from_fields(fields, self._shape, nrows=nrows,
-                                        row_partitions=row_partitions,
-                                        validate=False)
+      return StructuredTensor.from_fields(fields, self._shape, nrows=nrows,
+                                          row_partitions=row_partitions,
+                                          validate=False)
+
+    (fields, nrows, row_partitions) = components
+    if isinstance(nrows, tuple) and not nrows:
+      nrows = None  # empty rank-0 structured tensor
+    return StructuredTensor(fields, self._shape, nrows, row_partitions,
+                            internal=_structured_tensor_factory_key)
 
   @property
   def _component_specs(self):
-    return self._field_specs
+    if self._shape.rank == 0:
+      nrows_spec = ()
+    else:
+      nrows_spec = tensor_spec.TensorSpec([], dtypes.int64)
+
+    row_partition_specs = ((row_partition_lib.RowPartitionSpec(),)
+                           * (self._shape.rank - 1))
+    return (self._field_specs, nrows_spec, row_partition_specs)
 
   @classmethod
   def from_value(cls, value):
