@@ -123,6 +123,9 @@
     *   Fix mean op reference quantization rounding issue.
     *   Added `framework_stable` BUILD target, which links in only the
         non-experimental TF Lite APIs.
+    *   Remove deprecated Java `Interpreter` methods:
+        *    `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
+        *    `setNumThreads` - Use `Interpreter.Options.setNumThreads`
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,

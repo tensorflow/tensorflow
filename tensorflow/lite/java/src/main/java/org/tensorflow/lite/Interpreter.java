@@ -206,19 +206,6 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Initializes an {@code Interpreter} and specifies the number of threads used for inference.
-   *
-   * @param modelFile a file of a pre-trained TF Lite model
-   * @param numThreads number of threads to use for inference
-   * @deprecated Prefer using the {@link #Interpreter(File,Options)} constructor. This method will
-   *     be removed in a future release.
-   */
-  @Deprecated
-  public Interpreter(@NonNull File modelFile, int numThreads) {
-    this(modelFile, new Options().setNumThreads(numThreads));
-  }
-
-  /**
    * Initializes an {@code Interpreter} and specifies options for customizing interpreter behavior.
    *
    * @param modelFile a file of a pre-trained TF Lite model
@@ -243,36 +230,6 @@ public final class Interpreter implements AutoCloseable {
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer) {
     this(byteBuffer, /* options= */ null);
-  }
-
-  /**
-   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and specifies the
-   * number of threads used for inference.
-   *
-   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
-   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
-   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
-   *
-   * @deprecated Prefer using the {@link #Interpreter(ByteBuffer,Options)} constructor. This method
-   *     will be removed in a future release.
-   */
-  @Deprecated
-  public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
-    this(byteBuffer, new Options().setNumThreads(numThreads));
-  }
-
-  /**
-   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file.
-   *
-   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
-   * Interpreter}.
-   *
-   * @deprecated Prefer using the {@link #Interpreter(ByteBuffer,Options)} constructor. This method
-   *     will be removed in a future release.
-   */
-  @Deprecated
-  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
-    this(mappedByteBuffer, /* options= */ null);
   }
 
   /**
@@ -645,31 +602,6 @@ public final class Interpreter implements AutoCloseable {
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
     return wrapper.getLastNativeInferenceDurationNanoseconds();
-  }
-
-  /**
-   * Sets the number of threads to be used for ops that support multi-threading.
-   *
-   * @deprecated Prefer using {@link Interpreter.Options#setNumThreads(int)} directly for
-   *     controlling thread multi-threading. This method will be removed in a future release.
-   */
-  @Deprecated
-  public void setNumThreads(int numThreads) {
-    checkNotClosed();
-    wrapper.setNumThreads(numThreads);
-  }
-
-  /**
-   * Advanced: Modifies the graph with the provided {@link Delegate}.
-   *
-   * @throws IllegalArgumentException if error occurs when modifying graph with {@code delegate}.
-   * @deprecated Prefer using {@link Interpreter.Options#addDelegate} to provide delegates at
-   *     creation time. This method will be removed in a future release.
-   */
-  @Deprecated
-  public void modifyGraphWithDelegate(Delegate delegate) {
-    checkNotClosed();
-    wrapper.modifyGraphWithDelegate(delegate);
   }
 
   /**
