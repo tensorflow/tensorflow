@@ -187,10 +187,6 @@ def custom_gradient(f=None):
   ...     assert variables[0] is weights
   ...     # Manually computing dy/dweights
   ...     dy_dw = dpoly * tf.stack([x ** 1, x ** 0])
-  ...     # Note here that reduce operation is performed
-  ...     # in axis so that it computes gradient of specific
-  ...     # example in batch and it doesn't reduce the entire batch
-  ...     # that is why we are only reducing on axis 1.
   ...     grad_vars.append(
   ...         tf.reduce_sum(tf.reshape(dy_dw, [2, -1]), axis=1)
   ...     )
