@@ -44,26 +44,34 @@ namespace mhlo {
 /// used.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion = false, bool legalize_chlo = true,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None);
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None,
+    bool prefer_tf2xla = false);
 
 /// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
 /// specified device type.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
-    llvm::StringRef device_type);
+    llvm::StringRef device_type, bool prefer_tf2xla = false);
 
 /// Replaces types that do not exist in MHLO with equivalent types that do
 /// exist.
 std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
 
 /// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
+/// `prefer_tf2xla` means an op will be included iff it is not in
+/// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
+/// included iff it is in `IsOpAllowedTf2XlaFallback`.
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           OwningRewritePatternList& patterns,
-                                          MLIRContext* ctx);
+                                          MLIRContext* ctx,
+                                          bool prefer_tf2xla = false);
 
 /// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
 /// list.
 void PopulateLegalizeTfPatterns(MLIRContext* context,
                                 OwningRewritePatternList* patterns);
+
+/// Ops that should be legalized using MLIR given the prefer_tf2xla option.
+const llvm::DenseSet<mlir::TypeID>& MlirLegalizedUnderPreferTf2XlaSet();
 
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
 bool IsOpAllowedTf2XlaFallback(Operation* op);
@@ -82,7 +90,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
 LogicalResult legalizeTF(
     Operation* op, bool allow_partial_conversion = false,
     bool legalize_chlo = true,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None);
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None,
+    bool prefer_tf2xla = false);
 
 // Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
 // ops.

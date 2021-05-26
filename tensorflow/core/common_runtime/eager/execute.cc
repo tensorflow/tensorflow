@@ -386,14 +386,16 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 
 Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
   for (size_t i = 0; i < opdef.input_arg_size(); i++) {
-    if (!opdef.input_arg(i).type_list_attr().empty()) {
+    if (!opdef.input_arg(i).type_list_attr().empty() ||
+        !opdef.input_arg(i).number_attr().empty()) {
       return errors::Unimplemented("Input: ", opdef.input_arg(i).name(),
                                    " of op ", opdef.name(),
                                    " is of list type.");
     }
   }
   for (size_t i = 0; i < opdef.output_arg_size(); i++) {
-    if (!opdef.output_arg(i).type_list_attr().empty()) {
+    if (!opdef.output_arg(i).type_list_attr().empty() ||
+        !opdef.output_arg(i).number_attr().empty()) {
       return errors::Unimplemented("Output: ", opdef.output_arg(i).name(),
                                    " of op ", opdef.name(),
                                    " is of list type.");
@@ -591,8 +593,13 @@ Status GetOrCreateKernelAndDevice(
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
-      TF_RETURN_IF_ERROR(
-          ctx.SelectDevice(op->GetDeviceParsedName(), ndef, &device));
+      // Here in local execute, set preferred device to be on the local task to
+      // avoid placing op on a remote device with higher priority.
+      const DeviceNameUtils::ParsedName& preferred_device =
+          DeviceNameUtils::HasSomeDetails(op->GetDeviceParsedName())
+              ? op->GetDeviceParsedName()
+              : DeviceNameUtils::AddressSpace(ctx.HostCPUParsedName());
+      TF_RETURN_IF_ERROR(ctx.SelectDevice(preferred_device, ndef, &device));
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();

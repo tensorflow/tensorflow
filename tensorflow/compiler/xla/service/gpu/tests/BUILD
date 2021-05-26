@@ -88,6 +88,17 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "pred_arithmetic_test",
+    srcs = ["pred_arithmetic_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -143,6 +154,21 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "gpu_spmd_single_partition_test",
+    size = "small",
+    srcs = ["gpu_spmd_single_partition_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "gemm_rewrite_test",
     srcs = [
         "gemm_rewrite_test.cc",
@@ -161,6 +187,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -641,6 +668,7 @@ glob_lit_tests(
     tags_override = {
         "element_wise_row_vectorization.hlo": ["no_rocm"],
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
+        "element_wise_row_vectorization.hlo": ["no_rocm"],
     },
     test_file_exts = [
         "hlo",

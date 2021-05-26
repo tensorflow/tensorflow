@@ -36,6 +36,7 @@ from six.moves import queue as Queue
 
 from tensorflow.python import tf2
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import multi_process_lib
 from tensorflow.python.eager import context
 from tensorflow.python.util.tf_export import tf_export
@@ -76,9 +77,10 @@ _ProcessStatusInfo = collections.namedtuple(
 MultiProcessRunnerResult = collections.namedtuple('MultiProcessRunnerResult',
                                                   ['return_value', 'stdout'])
 
+# visible_gpus: If not None, CUDA_VISIBLE_DEVICES is set to visible_gpus.
 TestEnvironment = collections.namedtuple('TestEnvironment', [
     'task_type', 'task_id', 'cluster_spec', 'rpc_layer', 'grpc_fail_fast',
-    'v2_enabled', 'executing_eagerly'
+    'v2_enabled', 'executing_eagerly', 'visible_gpus'
 ])
 
 # Resources for communication between worker processes and the main process.
@@ -134,6 +136,7 @@ class MultiProcessRunner(object):
                daemon=False,
                dependence_on_chief=True,
                auto_restart=False,
+               share_gpu=True,
                args=None,
                kwargs=None):
     """Instantiation of a `MultiProcessRunner`.
@@ -178,6 +181,10 @@ class MultiProcessRunner(object):
         exits with a zero exit code.
       auto_restart: Whether to automatically restart processes that exit with
         non-zero exit code.
+      share_gpu: Whether to share GPUs among workers. If False, each worker is
+        assigned different GPUs in a roundrobin fashion. This should be True
+        whenever possible for better test execution coverage; some situations
+        that need it to be False are tests that runs NCCL.
       args: Positional arguments to be sent to `fn` run on subprocesses.
       kwargs: Keyword arguments to be sent to `fn` run on subprocesses.
 
@@ -209,6 +216,9 @@ class MultiProcessRunner(object):
     self._auto_restart = auto_restart
     self._args = args or ()
     self._kwargs = kwargs or {}
+
+    self._share_gpu = share_gpu
+    self._total_gpu = len(context.context().list_physical_devices('GPU'))
 
     # Child processes should have the same v2 and eager behavior.
     self._v2_enabled = tf2.enabled()
@@ -268,14 +278,24 @@ class MultiProcessRunner(object):
       raise unittest.SkipTest(
           'TODO(b/150264776): Resolve dependency issue in CI')
 
+    cluster_spec = cluster_spec or self._cluster_spec
+    visible_gpus = None
+    if not self._share_gpu and self._total_gpu > 0:
+      # Assign GPUs in a roundrobin fashion.
+      id_in_cluster = multi_worker_util.id_in_cluster(cluster_spec, task_type,
+                                                      task_id)
+      worker_count = multi_worker_util.worker_count(cluster_spec, task_type)
+      visible_gpus = list(range(id_in_cluster, self._total_gpu, worker_count))
+
     test_env = TestEnvironment(
         task_type=task_type,
         task_id=task_id,
-        cluster_spec=cluster_spec or self._cluster_spec,
+        cluster_spec=cluster_spec,
         rpc_layer=self._rpc_layer,
         grpc_fail_fast=self._grpc_fail_fast,
         v2_enabled=self._v2_enabled,
         executing_eagerly=self._executing_eagerly,
+        visible_gpus=visible_gpus,
     )
     pipe_r, pipe_w = multiprocessing.Pipe(duplex=False)
     resources = Resources(
@@ -727,6 +747,9 @@ class _Process(multi_process_lib.Process):
     test_env = self._test_env
     if test_env.grpc_fail_fast is not None:
       os.environ['GRPC_FAIL_FAST'] = str(test_env.grpc_fail_fast)
+    if test_env.visible_gpus:
+      os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(
+          [str(i) for i in test_env.visible_gpus])
     _set_tf_config(test_env.task_type, test_env.task_id, test_env.cluster_spec,
                    test_env.rpc_layer)
     return self._actual_run()
@@ -871,7 +894,7 @@ class MultiProcessPoolRunner(object):
   expensive initialization cost of Tensorflow.
   """
 
-  def __init__(self, cluster_spec, initializer=None):
+  def __init__(self, cluster_spec, initializer=None, share_gpu=True):
     """Creates a multi-process pool runner.
 
     Args:
@@ -881,6 +904,8 @@ class MultiProcessPoolRunner(object):
                     "worker1.example.com:2222",
                     "worker2.example.com:2222"]}
       initializer: a callable to called at the startup of worker processes.
+      share_gpu: Whether to share GPUs among workers. If False, each worker is
+        assigned different GPUs in a roundrobin fashion.
 
     Raises:
       RuntimeError: if `multi_process_runner.test_main()` is not called.
@@ -889,6 +914,7 @@ class MultiProcessPoolRunner(object):
     _active_pool_runners.add(self)
     self._cluster_spec = cluster_spec
     self._initializer = initializer
+    self._share_gpu = share_gpu
     self._conn = {}
     self._runner = None
 
@@ -921,7 +947,8 @@ class MultiProcessPoolRunner(object):
     self._runner = MultiProcessRunner(
         fn=lambda: None,
         cluster_spec=self._cluster_spec,
-        use_dill_for_args=False)
+        use_dill_for_args=False,
+        share_gpu=self._share_gpu)
     if self._initializer:
       initializer = dill.dumps(self._initializer, dill.HIGHEST_PROTOCOL)
     else:

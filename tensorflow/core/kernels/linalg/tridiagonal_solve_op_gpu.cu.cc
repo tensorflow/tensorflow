@@ -44,25 +44,22 @@ __global__ void SolveForSizeOneOrTwoKernel(const int m,
                                            const Scalar* __restrict__ diags,
                                            const Scalar* __restrict__ rhs,
                                            const int num_rhs,
-                                           Scalar* __restrict__ x,
-                                           bool* __restrict__ not_invertible) {
+                                           Scalar* __restrict__ x) {
+  const Scalar nan = Eigen::NumTraits<Scalar>::quiet_NaN();
   if (m == 1) {
-    if (diags[1] == Scalar(0)) {
-      *not_invertible = true;
-      return;
-    }
+    bool singular = diags[1] == Scalar(0);
     for (int i : GpuGridRangeX(num_rhs)) {
-      x[i] = rhs[i] / diags[1];
+      x[i] = singular ? nan : rhs[i] / diags[1];
     }
   } else {
-    Scalar det = diags[2] * diags[3] - diags[0] * diags[5];
-    if (det == Scalar(0)) {
-      *not_invertible = true;
-      return;
-    }
+    const Scalar det = diags[2] * diags[3] - diags[0] * diags[5];
+    bool singular = det == Scalar(0);
     for (int i : GpuGridRangeX(num_rhs)) {
-      x[i] = (diags[3] * rhs[i] - diags[0] * rhs[i + num_rhs]) / det;
-      x[i + num_rhs] = (diags[2] * rhs[i + num_rhs] - diags[5] * rhs[i]) / det;
+      x[i] = singular ? nan
+                      : (diags[3] * rhs[i] - diags[0] * rhs[i + num_rhs]) / det;
+      x[i + num_rhs] =
+          singular ? nan
+                   : (diags[2] * rhs[i + num_rhs] - diags[5] * rhs[i]) / det;
     }
   }
 }
@@ -227,20 +224,10 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
         /*work_element_count=*/1, device, &SolveForSizeOneOrTwoKernel<Scalar>,
         /*dynamic_shared_memory_size=*/0,
         /*block_size_limit=*/0);
-    bool* not_invertible_dev;
-    cudaMalloc(&not_invertible_dev, sizeof(bool));
     TF_CHECK_OK(GpuLaunchKernel(SolveForSizeOneOrTwoKernel<Scalar>,
                                 cfg.block_count, cfg.thread_per_block,
                                 /*shared_memory_size_bytes=*/0, device.stream(),
-                                m, diagonals, rhs, k, output,
-                                not_invertible_dev));
-    bool not_invertible_host;
-    cudaMemcpy(&not_invertible_host, not_invertible_dev, sizeof(bool),
-               cudaMemcpyDeviceToHost);
-    cudaFree(not_invertible_dev);
-    OP_REQUIRES(context, !not_invertible_host,
-                errors::InvalidArgument(m == 1 ? kNotInvertibleScalarMsg
-                                               : kNotInvertibleMsg));
+                                m, diagonals, rhs, k, output));
   }
 
   bool pivoting_;

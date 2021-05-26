@@ -52,7 +52,7 @@ REGISTER_XLA_OP(Name("IdentityN")
                     .AllowResourceTypes()
                     .AllowVariantTypes()
                     .CompilationOnly(),
-                MlirXlaOpKernel);
+                IdentityOp);
 REGISTER_XLA_OP(Name("PlaceholderWithDefault"), IdentityOp);
 REGISTER_XLA_OP(Name("PreventGradient"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("StopGradient").AllowVariantTypes(), IdentityOp);

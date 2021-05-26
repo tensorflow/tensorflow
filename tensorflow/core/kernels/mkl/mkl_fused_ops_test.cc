@@ -1337,19 +1337,9 @@ class BiasCacheTest : public OpsTestBase {
             .Input(FakeInput(DT_FLOAT))  // Max-filter
             .Input(FakeInput(DT_FLOAT))  // Min-output
             .Input(FakeInput(DT_FLOAT))  // Max-output
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
             .Attr("Tinput", DT_QUINT8)
             .Attr("Tfilter", DT_QINT8)
             .Attr("Tbias", DT_FLOAT)
-            .Attr("T", DT_QINT8)
             .Attr("out_type", DT_QUINT8)
             .Attr("data_format", "NHWC")
             .Attr("strides", {1, stride, stride, 1})
@@ -1370,23 +1360,12 @@ class BiasCacheTest : public OpsTestBase {
     AddInputFromArray<float>(max_filter.shape(), max_filter.flat<float>());
     AddInputFromArray<float>(min_output.shape(), min_output.flat<float>());
     AddInputFromArray<float>(max_output.shape(), max_output.flat<float>());
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
 
     TF_ASSERT_OK(RunOpKernel());
 
     // Compare outputs to expected results
     const Tensor& output = *GetOutput(0);
-    const Tensor& output_layout = *GetOutput(3);
-    CommonTestUtilities<quint8> conv_comp;
-    conv_comp.ConvertAndCompareIntegral(dtype, output, output_layout, expected);
+    test::ExpectTensorEqual<quint8>(expected, output);
 
     // TODO(wenxi): For now, we rely on internal performance tests to
     // determine if filter data is being cached and reused.
@@ -1396,10 +1375,7 @@ class BiasCacheTest : public OpsTestBase {
 
     // Compare output to expected results
     const Tensor& output_new = *GetOutput(0);
-    const Tensor& output_layout_new = *GetOutput(3);
-    CommonTestUtilities<quint8> conv_comp_new;
-    conv_comp_new.ConvertAndCompareIntegral(dtype, output_new,
-                                            output_layout_new, expected);
+    test::ExpectTensorEqual<quint8>(expected, output_new);
   }
 };
 

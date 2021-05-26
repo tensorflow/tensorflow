@@ -105,6 +105,8 @@ bool IsAssign(const NodeDef& node) {
 
 bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
 
+bool IsAsString(const NodeDef& node) { return node.op() == "AsString"; }
+
 bool IsAtan2(const NodeDef& node) { return node.op() == "Atan2"; }
 
 bool IsBetainc(const NodeDef& node) { return node.op() == "Betainc"; }
@@ -297,7 +299,7 @@ bool IsFusedBatchNormGrad(const NodeDef& node) {
 
 bool IsGather(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Gather" || op == "GatherV2";
+  return op == "Gather" || op == "GatherV2" || op == "ResourceGather";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
@@ -574,6 +576,10 @@ bool IsStridedSlice(const NodeDef& node) { return node.op() == "StridedSlice"; }
 
 bool IsStridedSliceGrad(const NodeDef& node) {
   return node.op() == "StridedSliceGrad";
+}
+
+bool IsStringToHashBucketFast(const NodeDef& node) {
+  return node.op() == "StringToHashBucketFast";
 }
 
 bool IsSub(const NodeDef& node) { return node.op() == "Sub"; }

@@ -275,29 +275,17 @@ add {
 HloModule ConvForward
 
 // CHECK-LABEL: func @main
-// CHECK: "lmhlo_gpu.conv_forward"
+// CHECK: lmhlo_gpu.conv_forward
+// CHECK-SAME: dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+// CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [0, 0], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [1, 1]}
 // CHECK-SAME: algorithm = 2 : i64
 // CHECK-SAME: operand_0_layout = [3, 2, 1, 0]
 // CKECK-SAME: operand_1_layout = [3, 2, 1, 0]
 // CHECK-SAME: result_layout = [3, 2, 1, 0]
 // CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
-// CHECK-SAME: input_batch_dimension = 0 : i64
-// CHECK-SAME: input_feature_dimension = 1 : i64
-// CHECK-SAME: input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
-// CHECK-SAME: kernel_input_feature_dimension = 1 : i64,
-// CHECK_SAME: kernel_output_feature_dimension = 0 : i64,
-// CHECK-SAME: kernel_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
-// CHECK-SAME: output_batch_dimension = 0 : i64
-// CHECK-SAME: output_feature_dimension = 1 : i64
-// CHECK-SAME: output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
 // CHECK-SAME: feature_group_count = 1 : i64
-// CHECK-SAME: lhs_dilation = dense<1> : tensor<2xi64>
-// CHECK-SAME: padding = dense<0> : tensor<2xi64>
 // CHECK_SAME: result_scale = 1.000000e+00 : f64
-// CHECK_SAME: rhs_dilation = dense<1> : tensor<2xi64>
-// CHECK-SAME: window_reversal = dense<true> : tensor<2xi1>
-// CHECK-SAME: window_strides = dense<1> : tensor<2xi64>
 // CHECK: (memref<4x256x3x3xf32>, memref<256x256x2x2xf32>, memref<4x256x2x2xf32>, memref<65536xui8>)
 ENTRY main {
   %input = f32[4,256,3,3]{3,2,1,0} parameter(0)
@@ -311,7 +299,9 @@ ENTRY main {
 // -----
 
 // CHECK: func @main
-// CHECK: "lmhlo_gpu.conv_forward_fused"
+// CHECK: lmhlo_gpu.conv_forward_fused
+// CHECK-SAME: dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1]
+// CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [1, 1], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [0, 0]}
 // CHECK-SAME: activation_mode = "Relu"
 // CHECK-SAME: algorithm = 0 : i64
 // CHECK-SAME: operand_0_layout = [1, 3, 2, 0]
@@ -319,23 +309,9 @@ ENTRY main {
 // CHECK-SAME: result_layout = [1, 3, 2, 0]
 // CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
-// CHECK-SAME: input_batch_dimension = 0 : i64
-// CHECK-SAME: input_feature_dimension = 1 : i64
-// CHECK-SAME: input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
-// CHECK-SAME: kernel_input_feature_dimension = 2 : i64
-// CHECK-SAME: kernel_output_feature_dimension = 3 : i64
-// CHECK-SAME: kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>
-// CHECK-SAME: output_batch_dimension = 0 : i64
-// CHECK-SAME: output_feature_dimension = 1 : i64
-// CHECK-SAME: output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
 // CHECK-SAME: feature_group_count = 1 : i64
-// CHECK-SAME: lhs_dilation = dense<1> : tensor<2xi64>
-// CHECK-SAME: padding = dense<1> : tensor<2xi64>
 // CHECK-SAME: precision_config = ["DEFAULT", "DEFAULT", "DEFAULT"]
 // CHECK-SAME: result_scale = 1.000000e+00 : f64
-// CHECK-SAME: rhs_dilation = dense<1> : tensor<2xi64>
-// CHECK-SAME: window_reversal = dense<false> : tensor<2xi1>
-// CHECK-SAME: window_strides = dense<1> : tensor<2xi64>
 // CHECK-SAME: (memref<1x17x9x9xf16, #map{{.*}}>, memref<3x3x17x32xf16, #map{{.*}}>, memref<32xf16>, memref<1x32x9x9xf16, #{{.*}}>, memref<0xui8>) -> ()
 
 HloModule FusedConvForward
@@ -350,7 +326,9 @@ ENTRY main {
 // -----
 
 // CHECK: func @main
-// CHECK: "lmhlo_gpu.conv_forward_fused_with_side_input"
+// CHECK: lmhlo_gpu.conv_forward_fused_with_side_input
+// CHECK-SAME: dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1]
+// CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [1, 1], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [0, 0]}
 // CHECK-SAME: activation_mode = "Relu"
 // CHECK-SAME: algorithm = 0 : i64
 // CHECK-SAME: operand_0_layout = [1, 3, 2, 0]
@@ -358,23 +336,10 @@ ENTRY main {
 // CHECK-SAME: result_layout = [1, 3, 2, 0]
 // CHECK-SAME: tensor_ops_enabled = false
 // CHECK-SAME: batch_group_count = 1 : i64
-// CHECK-SAME: input_batch_dimension = 0 : i64
-// CHECK-SAME: input_feature_dimension = 1 : i64
-// CHECK-SAME: input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
-// CHECK-SAME: kernel_input_feature_dimension = 2 : i64
-// CHECK-SAME: kernel_output_feature_dimension = 3 : i64
-// CHECK-SAME: kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>
-// CHECK-SAME: output_batch_dimension = 0 : i64
-// CHECK-SAME: output_feature_dimension = 1 : i64
-// CHECK-SAME: output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
 // CHECK-SAME: feature_group_count = 1 : i64
-// CHECK-SAME: lhs_dilation = dense<1> : tensor<2xi64>
-// CHECK-SAME: padding = dense<1> : tensor<2xi64>
 // CHECK-SAME: precision_config = ["DEFAULT", "DEFAULT", "DEFAULT", "DEFAULT"]
 // CHECK-SAME: result_scale = 1.000000e+00 : f64
-// CHECK-SAME: rhs_dilation = dense<1> : tensor<2xi64>
 // CHECK-SAME: side_input_scale = 1.000000e+00
-// CHECK-SAME: window_strides = dense<1> : tensor<2xi64>
 // CHECK-SAME: (memref<1x17x9x9xf16, #map{{.*}}>, memref<3x3x17x32xf16, #map{{.*}}>, memref<32xf16>, memref<1x32x9x9xf16, #{{.*}}>, memref<0xui8>) -> ()
 
 HloModule FusedConvForwardSideInput

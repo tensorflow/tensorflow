@@ -243,19 +243,6 @@ cc_library(
     ],
 )
 
-# TODO(ntv): Update these to enable simplifying the cmake and build files.
-cc_library(
-    name = "EDSC",
-    srcs = ["lib/EDSC/Builders.cpp"],
-    hdrs = ["include/mlir/EDSC/Builders.h"],
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":Support",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
 cc_library(
     name = "CAPIIR",
     srcs = [
@@ -1470,18 +1457,15 @@ cc_library(
         [
             "lib/Dialect/Affine/IR/*.cpp",
             "lib/Dialect/Affine/IR/*.h",
-            "lib/Dialect/Affine/EDSC/*.cpp",
         ],
     ) + ["include/mlir/Transforms/InliningUtils.h"],
     hdrs = glob([
         "include/mlir/Dialect/Affine/IR/*.h",
-        "include/mlir/Dialect/Affine/EDSC/*.h",
     ]),
     includes = ["include"],
     deps = [
         ":AffineMemoryOpInterfacesIncGen",
         ":AffineOpsIncGen",
-        ":EDSC",
         ":IR",
         ":LoopLikeInterface",
         ":MemRefDialect",
@@ -1747,17 +1731,14 @@ cc_library(
         [
             "lib/Dialect/SCF/*.cpp",
             "lib/Dialect/SCF/*.h",
-            "lib/Dialect/SCF/EDSC/*.cpp",
         ],
     ),
     hdrs = glob([
         "include/mlir/Dialect/SCF/*.h",
-        "include/mlir/Dialect/SCF/EDSC/*.h",
     ]),
     includes = ["include"],
     deps = [
         ":ControlFlowInterfaces",
-        ":EDSC",
         ":IR",
         ":LoopLikeInterface",
         ":MemRefDialect",
@@ -1998,7 +1979,6 @@ cc_library(
         [
             "lib/Dialect/StandardOps/IR/*.cpp",
             "lib/Dialect/StandardOps/IR/*.h",
-            "lib/Dialect/StandardOps/EDSC/*.cpp",
             "lib/Dialect/StandardOps/Utils/*.cpp",
         ],
     ) +
@@ -2008,7 +1988,6 @@ cc_library(
     ],
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
-        "include/mlir/Dialect/StandardOps/EDSC/*.h",
         "include/mlir/Dialect/StandardOps/Utils/*.h",
     ]) + ["include/mlir/Transforms/InliningUtils.h"],
     includes = ["include"],
@@ -2018,7 +1997,6 @@ cc_library(
         ":CommonFolders",
         ":ControlFlowInterfaces",
         ":CopyOpInterface",  # TODO: Stop depending on MemRefOps.
-        ":EDSC",
         ":IR",
         ":MemRefBaseIncGen",  # TODO: Stop depending on MemRefOps.
         ":MemRefOpsIncGen",  # TODO: Stop depending on MemRefOps.
@@ -2075,21 +2053,18 @@ cc_library(
         [
             "lib/Dialect/Vector/*.cpp",
             "lib/Dialect/Vector/*.h",
-            "lib/Dialect/Vector/EDSC/*.cpp",
-            "lib/Dialect/Vector/EDSC/*.h",
         ],
     ),
     hdrs = glob([
         "include/mlir/Dialect/Vector/*.h",
-        "include/mlir/Dialect/Vector/EDSC/*.h",
     ]),
     includes = ["include"],
     deps = [
         ":Affine",
+        ":AffineUtils",
         ":Analysis",
         ":DataLayoutInterfaces",
         ":DialectUtils",
-        ":EDSC",
         ":IR",
         ":LinalgOps",
         ":MemRefDialect",
@@ -2451,7 +2426,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Async",
-        ":EDSC",
         ":GPUDialect",
         ":GPUPassIncGen",
         ":MemRefDialect",
@@ -2546,8 +2520,8 @@ cc_library(
         ":GPUToNVVMGen",
         ":GPUTransforms",
         ":IR",
+        ":LLVMDialect",
         ":MathDialect",
-        ":MemRefDialect",
         ":NVVMDialect",
         ":Pass",
         ":StandardToLLVM",
@@ -3553,7 +3527,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Async",
-        ":EDSC",
         ":IR",
         ":MemRefDialect",
         ":ParallelLoopMapperAttrGen",
@@ -5428,7 +5401,6 @@ cc_library(
         ":AffineToStandard",
         ":Analysis",
         ":ConversionPassIncGen",
-        ":EDSC",
         ":IR",
         ":LLVMDialect",
         ":LinalgOps",
@@ -5505,7 +5477,6 @@ cc_library(
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
     ],
     hdrs = [
-        "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
     ],
@@ -5571,13 +5542,10 @@ cc_library(
         "lib/Dialect/Linalg/Transforms/*.h",
     ]) + [
         "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
-        "lib/Dialect/Linalg/EDSC/Builders.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
-        "include/mlir/Dialect/Linalg/EDSC/Builders.h",
-        "include/mlir/Dialect/Linalg/EDSC/FoldedIntrinsics.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/CodegenStrategy.h",
         "include/mlir/Dialect/Linalg/Transforms/Hoisting.h",
@@ -5587,14 +5555,11 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
-        ":AffineToStandard",
         ":AffineUtils",
         ":Analysis",
         ":ComplexDialect",
         ":DialectUtils",
-        ":EDSC",
         ":IR",
-        ":LLVMDialect",
         ":LinalgOps",
         ":LinalgPassIncGen",
         ":LinalgStructuredOpsIncGen",
@@ -5602,20 +5567,14 @@ cc_library(
         ":MemRefDialect",
         ":Pass",
         ":SCFDialect",
-        ":SCFToStandard",
         ":SCFTransforms",
-        ":SparseTensor",
         ":StandardOps",
         ":StandardOpsTransforms",
-        ":StandardToLLVM",
         ":Support",
         ":TensorDialect",
         ":TransformUtils",
-        ":Transforms",
-        ":TransformsPassIncGen",
         ":VectorOps",
         ":VectorToSCF",
-        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -5687,7 +5646,6 @@ cc_library(
         ":ArmSVETransforms",
         ":ConversionPassIncGen",
         ":DialectUtils",
-        ":EDSC",
         ":IR",
         ":LLVMDialect",
         ":MemRefDialect",
@@ -5717,8 +5675,8 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":AffineUtils",
         ":ConversionPassIncGen",
-        ":EDSC",
         ":IR",
         ":LLVMDialect",
         ":MemRefDialect",
@@ -6122,13 +6080,11 @@ cc_library(
         ],
     ),
     hdrs = [
-        "include/mlir/Dialect/Math/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Math/IR/Math.h",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
     deps = [
-        ":EDSC",
         ":IR",
         ":MathBaseIncGen",
         ":MathOpsIncGen",
@@ -6247,14 +6203,12 @@ cc_library(
         ],
     ),
     hdrs = [
-        "include/mlir/Dialect/MemRef/EDSC/Intrinsics.h",
         "include/mlir/Dialect/MemRef/IR/MemRef.h",
         "include/mlir/Dialect/MemRef/Utils/MemRefUtils.h",
     ],
     includes = ["include"],
     deps = [
         ":CopyOpInterface",
-        ":EDSC",
         ":IR",
         ":InferTypeOpInterface",
         ":MemRefBaseIncGen",

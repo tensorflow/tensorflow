@@ -3147,6 +3147,9 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
     const std::function<StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>& create_sharded_dot) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   auto& lhs = GetPartitionedHlo(hlo->operand(0));
   auto& rhs = GetPartitionedHlo(hlo->operand(1));
   Window conv_window;

@@ -579,7 +579,7 @@ cc_test(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

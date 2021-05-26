@@ -43,6 +43,11 @@ and the following optional parameters:
     there is no delay between subsequent runs.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
+*   `max_profiling_buffer_entries`: `int` (default=1024) \
+    The max number of profiling events that will be stored during each inference
+    run. It is only meaningful when `enable_op_profiling` is set to `true`.
+    Note, the actual value of this parameter will be adjusted if the model has
+    more nodes than the specified value of this parameter.
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`

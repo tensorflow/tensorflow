@@ -2038,6 +2038,9 @@ xla_test(
             "no_oss",
             "notap",
         ],
+        "cpu": [
+            "notsan",
+        ],
     },
     backends = [
         "gpu",
@@ -2740,6 +2743,8 @@ xla_test(
 xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
+    real_hardware_only = True,
+    shard_count = 3,
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
@@ -2755,6 +2760,7 @@ xla_test(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",

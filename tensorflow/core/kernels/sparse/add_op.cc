@@ -264,7 +264,7 @@ REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(
     ADD_VARIANT_BINARY_OP, DEVICE_GPU, CSRSparseMatrix,
     (CSRSparseMatrixBinaryHelper<GPUDevice, CSRSparseMatrixSumFunctor>));
 
-#endif  // GOOGLE_CUDA  || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER
 

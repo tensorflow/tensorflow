@@ -158,7 +158,7 @@ class GPUCombination(combinations_lib.TestCombination):
               the name of the program contains "test_gpu" or "test_xla_gpu".
   """
 
-  GPU_TEST = re.search(r"(test_gpu|test_xla_gpu)$", sys.argv[0])
+  GPU_TEST = re.search(r"(test_2?gpu|test_xla_2?gpu)$", sys.argv[0])
 
   def should_execute_combination(self, kwargs):
     distributions = [
@@ -198,7 +198,8 @@ class GPUCombination(combinations_lib.TestCombination):
       return (True, None)
 
   def parameter_modifiers(self):
-    return [combinations_lib.OptionalParameter("required_gpus")]
+    return [combinations_lib.OptionalParameter("required_gpus"),
+            combinations_lib.OptionalParameter("required_physical_gpus")]
 
 
 class TPUCombination(combinations_lib.TestCombination):

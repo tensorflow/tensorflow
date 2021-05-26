@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -667,6 +668,18 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   // Install profilers if necessary right after interpreter is created so that
   // any memory allocations inside the TFLite runtime could be recorded if the
   // installed profiler profile memory usage information.
+
+  // Adjust "max_profiling_buffer_entries" according to the loaded model.
+  int total_nodes = 0;
+  for (int i = 0; i < interpreter_->subgraphs_size(); ++i) {
+    // subgraph(...) is non-const member method.
+    total_nodes += static_cast<int>(interpreter_->subgraph(i)->nodes_size());
+  }
+  if (total_nodes > params_.Get<int32_t>("max_profiling_buffer_entries")) {
+    constexpr int kProfilingBufferHeadrooms = 512;
+    params_.Set<int32_t>("max_profiling_buffer_entries",
+                         total_nodes + kProfilingBufferHeadrooms);
+  }
   profiling_listener_ = MayCreateProfilingListener();
   if (profiling_listener_) AddListener(profiling_listener_.get());
 

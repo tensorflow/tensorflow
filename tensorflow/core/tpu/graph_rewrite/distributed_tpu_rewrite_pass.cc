@@ -3749,7 +3749,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
 
 /* static */ Status
 DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
-    Graph* g, const FunctionLibraryDefinition& flib_def,
+    Graph* g, FunctionLibraryDefinition& flib_def,
     const TPUReplicateDeviceNamesMapping& tpu_replicate_device_names_mapping) {
   bool modified = false;
   do {
@@ -3812,7 +3812,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
       int num_node_ids = g->num_node_ids();
       bool is_call_node = IsFunctionCall(flib_def, *n);
       if (n->IsWhileNode()) {
-        TF_RETURN_IF_ERROR(RewriteWhileNode(n, g,
+        TF_RETURN_IF_ERROR(RewriteWhileNode(n, g, &flib_def,
                                             /*keep_node_fetchable=*/false));
       } else if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, g, /*keep_node_fetchable=*/false));

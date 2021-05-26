@@ -341,7 +341,7 @@ StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
         lib->GetFunctionLibraryDefinition()->Find(func_.name());
     if (!fdef) {
       return errors::Internal(
-          StrCat("Cann't find FunctionDef for", func_.name()));
+          StrCat("Can't find FunctionDef for ", func_.name()));
     }
     bool ints_on_device =
         fdef->attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&

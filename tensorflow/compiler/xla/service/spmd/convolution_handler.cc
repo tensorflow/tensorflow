@@ -985,6 +985,9 @@ StatusOr<HloInstruction*> PartitionConvolution(
 }
 
 Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   auto dims_info = dot_as_convolution_util::ParseConvolutionDimsInfo(hlo);
   spmd::DotConvDimsMapping mapping;
   for (const auto& dims : dims_info.batch_dims) {

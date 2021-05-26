@@ -842,6 +842,7 @@ filegroup(name="cudnn-include")
             "%{cusparse_version}": "",
             "%{cudnn_version}": "",
             "%{cuda_toolkit_path}": "",
+            "%{cuda_compute_capabilities}": "",
         },
         "cuda/cuda/cuda_config.h",
     )
@@ -1305,6 +1306,10 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cusparse_version}": cuda_config.cusparse_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
             "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
+            "%{cuda_compute_capabilities}": ", ".join([
+                cc.split("_")[1]
+                for cc in cuda_config.compute_capabilities
+            ]),
         },
     )
 

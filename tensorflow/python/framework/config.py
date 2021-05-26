@@ -177,7 +177,8 @@ def set_optimizer_jit(enabled: Union[bool, str]):
     Possible values:
      - `"autoclustering"` (`True` is a deprecated alias): perform
      [autoclustering](https://www.tensorflow.org/xla#auto-clustering)
-     (automatically identify and compile clusters of nodes) on all graphs using
+       (automatically identify and compile clusters of nodes) on all graphs
+       using
      [XLA](https://www.tensorflow.org/xla).
      - `False`: do not automatically compile any graphs.
   """
@@ -211,11 +212,10 @@ def set_optimizer_experimental_options(options):
   Args:
     options: Dictionary of experimental optimizer options to configure.
       Valid keys:
-      - layout_optimizer: Optimize tensor layouts
-        e.g. This will try to use NCHW layout on GPU which is faster.
-      - constant_folding: Fold constants
-        Statically infer the value of tensors when possible, and materialize the
-        result using constants.
+      - layout_optimizer: Optimize tensor layouts e.g. This will try to use NCHW
+        layout on GPU which is faster.
+      - constant_folding: Fold constants Statically infer the value of tensors
+        when possible, and materialize the result using constants.
       - shape_optimization: Simplify computations made on shapes.
       - remapping: Remap subgraphs onto more efficient implementations.
       - arithmetic_optimization: Simplify arithmetic ops with common
@@ -316,14 +316,14 @@ def set_device_policy(device_policy):
     device_policy: A device policy.
       Valid values:
       - None: Switch to a system default.
-      - 'warn': Copies the tensors which are not on the right device and logs
-          a warning.
+      - 'warn': Copies the tensors which are not on the right device and logs a
+        warning.
       - 'explicit': Raises an error if the placement is not as required.
       - 'silent': Silently copies the tensors. Note that this may hide
-          performance problems as there is no notification provided when
-          operations are blocked on the tensor being copied between devices.
+        performance problems as there is no notification provided when
+        operations are blocked on the tensor being copied between devices.
       - 'silent_for_int32': silently copies `int32` tensors, raising errors on
-          the other ones.
+        the other ones.
 
   Raises:
       ValueError: If an invalid `device_policy` is passed.
@@ -382,8 +382,7 @@ def set_synchronous_execution(enable):
 
 @tf_export('config.list_physical_devices',
            'config.experimental.list_physical_devices')
-@deprecation.deprecated_endpoints(
-    'config.experimental.list_physical_devices')
+@deprecation.deprecated_endpoints('config.experimental.list_physical_devices')
 def list_physical_devices(device_type=None):
   """Return a list of physical devices visible to the host runtime.
 
@@ -417,8 +416,7 @@ def list_physical_devices(device_type=None):
 
 @tf_export('config.list_logical_devices',
            'config.experimental.list_logical_devices')
-@deprecation.deprecated_endpoints(
-    'config.experimental.list_logical_devices')
+@deprecation.deprecated_endpoints('config.experimental.list_logical_devices')
 def list_logical_devices(device_type=None):
   """Return a list of logical devices created by runtime.
 
@@ -454,8 +452,7 @@ def list_logical_devices(device_type=None):
 
 @tf_export('config.get_visible_devices',
            'config.experimental.get_visible_devices')
-@deprecation.deprecated_endpoints(
-    'config.experimental.get_visible_devices')
+@deprecation.deprecated_endpoints('config.experimental.get_visible_devices')
 def get_visible_devices(device_type=None):
   """Get the list of visible physical devices.
 
@@ -488,8 +485,7 @@ def get_visible_devices(device_type=None):
 
 @tf_export('config.set_visible_devices',
            'config.experimental.set_visible_devices')
-@deprecation.deprecated_endpoints(
-    'config.experimental.set_visible_devices')
+@deprecation.deprecated_endpoints('config.experimental.set_visible_devices')
 def set_visible_devices(devices, device_type=None):
   """Set the list of visible devices.
 
@@ -553,15 +549,17 @@ def get_memory_info(device):
   Args:
     device: Device string to get the memory information for, e.g. `"GPU:0"`. See
       https://www.tensorflow.org/api_docs/python/tf/device for specifying device
-      strings.
+        strings.
 
   Returns:
     A dict with keys `'current'` and `'peak'`, specifying the current and peak
     memory usage respectively.
 
   Raises:
-    ValueError: Non-existent or CPU device specified.
-
+    ValueError: No device found with the device name, like '"nonexistent"'.
+    ValueError: Invalid device name, like '"GPU"', '"CPU:GPU"', '"CPU:"'.
+    ValueError: Multiple devices matched with the device name.
+    ValueError: Memory statistics not tracked, like '"CPU:0"'.
   """
   return context.context().get_memory_info(device)
 
@@ -597,7 +595,11 @@ def reset_memory_stats(device):
         strings.
 
   Raises:
-    ValueError: Non-existent or CPU device specified.
+    ValueError: No device found with the device name, like '"nonexistent"'.
+    ValueError: Invalid device name, like '"GPU"', '"CPU:GPU"', '"CPU:"'.
+    ValueError: Multiple devices matched with the device name.
+    ValueError: Memory statistics not tracked or clearing memory statistics not
+      supported, like '"CPU:0"'.
   """
   context.context().reset_memory_stats(device)
 

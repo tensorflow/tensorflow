@@ -85,8 +85,11 @@ add_mlir_dialect_library(LmhloGPUDialect
   DEPENDS
   MLIRlhlo_gpu_opsIncGen
 )
-target_link_libraries(LmhloGPUDialect PUBLIC MLIRIR)
-
+target_link_libraries(LmhloGPUDialect
+  PUBLIC
+  MLIRIR
+  HloOpsCommon
+)
 
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc

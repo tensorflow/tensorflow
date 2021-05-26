@@ -228,6 +228,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 // TensorFlow.
 std::unique_ptr<OperationPass<FuncOp>>
 CreatePrepareTpuComputationForTfExportPass();
+
+// Rewrites ops that require quantized inputs or outputs to ops that allow
+// non-quantized inputs and outputs.
+std::unique_ptr<OperationPass<FuncOp>> CreateLowerQuantizedPass();
 }  // namespace TF
 
 namespace tf_executor {
@@ -283,6 +287,13 @@ std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
 // ReadVariableOp, AssignVariableOp and other computations to facilitate
 // transformations like resource op lifting.
 std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeResourceOpsPass();
+
+// A pass that decomposes composite resource operations in device cluster
+// (tf_device.cluster op) into primitive ones like ReadVariableOp,
+// AssignVariableOp and other computations to facilitate transformations like
+// resource op lifting.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateDecomposeResourceOpsInClusterPass();
 
 // Creates a pass that marks TPU cluster input-output pairs reading and writing
 // to same resource variable as aliases.

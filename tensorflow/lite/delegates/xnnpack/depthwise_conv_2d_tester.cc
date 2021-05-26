@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/depthwise_conv_2d_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include <fp16.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -125,6 +127,7 @@ std::vector<char> DepthwiseConv2DTester::CreateTfLiteModel() const {
   std::vector<flatbuffers::Offset<tflite::Buffer>> buffers{
       {CreateBuffer(builder, builder.CreateVector({}))}};
 
+  float filter_scale = 0;
   if (FP16Weights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
@@ -208,27 +211,53 @@ std::vector<char> DepthwiseConv2DTester::CreateTfLiteModel() const {
       }
     }
 
-    buffers.emplace_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(filter_data.data()),
-                     sizeof(float) * filter_data.size())));
+    if (INT8Weights()) {
+      filter_scale = GetInt8QuantizationScale(filter_data);
+      std::vector<int8_t> quantized_filter_data(filter_data.size());
+      std::transform(
+          filter_data.begin(), filter_data.end(), quantized_filter_data.begin(),
+          std::bind(QuantizeInt8, std::placeholders::_1, 0, filter_scale));
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_filter_data.data()),
+              sizeof(int8_t) * quantized_filter_data.size())));
+
+      operator_codes.emplace_back(
+          CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+      const std::array<int32_t, 1> dequantize_filter_inputs{{0}};
+      const std::array<int32_t, 1> dequantize_filter_outputs{{2}};
+      operators.emplace_back(CreateOperator(
+          builder, /*opcode_index=*/1,
+          builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
+                                        dequantize_filter_inputs.size()),
+          builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
+                                        dequantize_filter_outputs.size())));
+    } else {
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(filter_data.data()),
+                       sizeof(float) * filter_data.size())));
+
+      if (SparseWeights()) {
+        operator_codes.emplace_back(
+            CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
+        const std::array<int32_t, 1> densify_filter_inputs{{0}};
+        const std::array<int32_t, 1> densify_filter_outputs{{2}};
+        operators.emplace_back(CreateOperator(
+            builder, /*opcode_index=*/1,
+            builder.CreateVector<int32_t>(densify_filter_inputs.data(),
+                                          densify_filter_inputs.size()),
+            builder.CreateVector<int32_t>(densify_filter_outputs.data(),
+                                          densify_filter_outputs.size())));
+      }
+    }
+
+    // Bias is stored in FP32 even when filter is quantized to INT8
     buffers.emplace_back(CreateBuffer(
         builder,
         builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
                              sizeof(float) * bias_data.size())));
-
-    if (SparseWeights()) {
-      operator_codes.emplace_back(
-          CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
-      const std::array<int32_t, 1> densify_filter_inputs{{0}};
-      const std::array<int32_t, 1> densify_filter_outputs{{2}};
-      operators.emplace_back(CreateOperator(
-          builder, /*opcode_index=*/1,
-          builder.CreateVector<int32_t>(densify_filter_inputs.data(),
-                                        densify_filter_inputs.size()),
-          builder.CreateVector<int32_t>(densify_filter_outputs.data(),
-                                        densify_filter_outputs.size())));
-    }
   }
 
   const std::array<int32_t, 4> input_shape{
@@ -249,6 +278,15 @@ std::vector<char> DepthwiseConv2DTester::CreateTfLiteModel() const {
         builder,
         builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
         TensorType_FLOAT16, /*buffer=*/2));
+  } else if (INT8Weights()) {
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        TensorType_INT8, /*buffer=*/1, /*name=*/0,
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>({filter_scale}),
+            builder.CreateVector<int64_t>({0}))));
   } else if (SparseWeights()) {
     // Sparse tensor in TFLite can be in different formats. Here we choose the
     // simplest configuration that
@@ -280,7 +318,8 @@ std::vector<char> DepthwiseConv2DTester::CreateTfLiteModel() const {
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_FLOAT32, /*buffer=*/FP16Weights() || SparseWeights() ? 0 : 1));
+      TensorType_FLOAT32,
+      /*buffer=*/(FP16Weights() || INT8Weights() || SparseWeights()) ? 0 : 1));
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),

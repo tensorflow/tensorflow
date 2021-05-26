@@ -17,6 +17,7 @@ limitations under the License.
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
 #if !defined(IS_MOBILE_PLATFORM)
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/metrics.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
+#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
@@ -149,8 +151,8 @@ Status ApplyRewrites(OpKernelContext* ctx,
 }  // anonymous namespace
 
 RewriterConfig CreateRewriterConfig(
-    const std::vector<tstring>& optimizations,
-    const std::vector<string>& optimizations_configs) {
+    const absl::flat_hash_set<tstring>& optimizations,
+    const absl::flat_hash_set<tstring>& optimizations_configs) {
   RewriterConfig rewriter_config;
   rewriter_config.add_optimizers(kOptimizerName);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
@@ -159,8 +161,16 @@ RewriterConfig CreateRewriterConfig(
   custom_optimizer->set_name(kOptimizerName);
   auto* custom_optimizations_list =
       (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
-  for (const auto& opt : optimizations) {
-    custom_optimizations_list->add_s(opt.data(), opt.size());
+  const auto& registered_optimizers =
+      grappler::CustomGraphOptimizerRegistry::GetRegisteredOptimizers();
+  for (const auto& optimization : optimizations) {
+    if (std::find(registered_optimizers.begin(), registered_optimizers.end(),
+                  optimization) != registered_optimizers.end()) {
+      custom_optimizations_list->add_s(optimization.data(),
+                                       optimization.size());
+    } else {
+      VLOG(1) << "Optimization " << optimization << " is not registered.";
+    }
   }
   auto* config_list =
       (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]

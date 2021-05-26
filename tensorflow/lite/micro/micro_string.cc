@@ -283,6 +283,14 @@ extern "C" int MicroVsnprintf(char* output, int len, const char* format,
         case '%':
           output[output_index++] = *current++;
           break;
+        case 'c':
+          if (usable_length - output_index < 1) {
+            output[output_index++] = '\0';
+            return output_index;
+          }
+          output[output_index++] = va_arg(args, int32_t);
+          current++;
+          break;
         case 's':
           char* string = va_arg(args, char*);
           int string_idx = 0;

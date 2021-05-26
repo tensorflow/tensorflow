@@ -393,6 +393,8 @@ cc_library(
     hdrs = ["xla_launch_util.h"],
     visibility = [
         ":internal",
+        # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
+        "//learning/brain/tfrt/tf_tpu:__pkg__",
     ],
     deps = [
         ":common",

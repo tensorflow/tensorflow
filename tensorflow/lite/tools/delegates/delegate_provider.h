@@ -58,7 +58,10 @@ class DelegateProvider {
   Flag CreateFlag(const char* name, ToolParams* params,
                   const std::string& usage) const {
     return Flag(
-        name, [params, name](const T& val) { params->Set<T>(name, val); },
+        name,
+        [params, name](const T& val, int argv_position) {
+          params->Set<T>(name, val, argv_position);
+        },
         default_params_.Get<T>(name), usage, Flag::kOptional);
   }
   ToolParams default_params_;

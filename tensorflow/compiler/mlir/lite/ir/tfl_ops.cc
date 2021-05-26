@@ -1511,15 +1511,23 @@ struct ConvertShapeTo1D : public OpRewritePattern<ReshapeOp> {
   }
 };
 
+bool InputOutputHasSameShape(mlir::Type input_type, mlir::Type output_type) {
+  auto input_shaped_type = input_type.dyn_cast_or_null<ShapedType>();
+  if (!input_shaped_type || !input_shaped_type.hasStaticShape()) return false;
+
+  auto output_shaped_type = output_type.dyn_cast_or_null<ShapedType>();
+  if (!output_shaped_type || !output_shaped_type.hasStaticShape()) return false;
+
+  return input_shaped_type == output_shaped_type;
+}
+
 }  // end anonymous namespace
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   // Remove identity reshape with both static result and input shape.
   auto result_type = getType().cast<ShapedType>();
   auto input_type = getOperand(0).getType().cast<ShapedType>();
-  if (result_type.hasStaticShape() && result_type == input_type) {
-    return getOperand(0);
-  }
+  if (InputOutputHasSameShape(input_type, result_type)) return input();
 
   // Constant folding
   if (auto dense_elements = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
@@ -3367,6 +3375,28 @@ int64_t L2NormalizationOp::GetArithmeticCount(Operation *op) {
   }
 
   return -1;
+}
+
+//===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
+  if (InputOutputHasSameShape(input().getType(), output().getType()))
+    return input();
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// PadV2Op
+//===----------------------------------------------------------------------===//
+
+OpFoldResult PadV2Op::fold(ArrayRef<Attribute> operands) {
+  if (InputOutputHasSameShape(input().getType(), output().getType()))
+    return input();
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

@@ -143,7 +143,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ImageClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+metadata for image classifiers using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#image_classifiers).
 
 The compatible image classifier models should meet the following requirements:
 
