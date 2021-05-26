@@ -108,30 +108,37 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteOk;
   }
 
-  switch (op_context.output->type) {
-    case kTfLiteFloat32:
-      TFLiteOperation<float, OpType>(context, node, op_context);
-      break;
-    case kTfLiteUInt8:
-      TFLiteOperation<uint8_t, OpType>(context, node, op_context);
-      break;
-    case kTfLiteInt8:
-      TFLiteOperation<int8_t, OpType>(context, node, op_context);
-      break;
-    case kTfLiteInt32:
-      TFLiteOperation<int32_t, OpType>(context, node, op_context);
-      break;
-    case kTfLiteInt64:
-      TFLiteOperation<int64_t, OpType>(context, node, op_context);
-      break;
-    case kTfLiteInt16:
-      TFLiteOperation<int16_t, OpType>(context, node, op_context);
-      break;
-    default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by Maximum.",
-                           op_context.output->type);
-      return kTfLiteError;
+  if (kernel_type == kReference) {
+    switch (op_context.output->type) {
+      case kTfLiteFloat32:
+        TFLiteOperation<float, OpType>(context, node, op_context);
+        break;
+      case kTfLiteUInt8:
+        TFLiteOperation<uint8_t, OpType>(context, node, op_context);
+        break;
+      case kTfLiteInt8:
+        TFLiteOperation<int8_t, OpType>(context, node, op_context);
+        break;
+      case kTfLiteInt32:
+        TFLiteOperation<int32_t, OpType>(context, node, op_context);
+        break;
+      case kTfLiteInt64:
+        TFLiteOperation<int64_t, OpType>(context, node, op_context);
+        break;
+      case kTfLiteInt16:
+        TFLiteOperation<int16_t, OpType>(context, node, op_context);
+        break;
+      default:
+        context->ReportError(context,
+                             "Type %d is currently not supported by Maximum.",
+                             op_context.output->type);
+        return kTfLiteError;
+    }
+  } else {
+    context->ReportError(context,
+                         "Type %d is currently not supported by Maximum.",
+                         op_context.output->type);
+    return kTfLiteError;
   }
   return kTfLiteOk;
 }
