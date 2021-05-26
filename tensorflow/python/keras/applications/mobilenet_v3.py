@@ -437,7 +437,7 @@ def hard_sigmoid(x):
 
 
 def hard_swish(x):
-  return layers.Multiply()([hard_sigmoid(x), x])
+  return layers.Multiply()([x, hard_sigmoid(x)])
 
 
 # This function is taken from the original tf repo.
