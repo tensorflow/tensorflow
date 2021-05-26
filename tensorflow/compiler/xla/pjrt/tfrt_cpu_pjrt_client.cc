@@ -654,7 +654,7 @@ TfrtCpuBuffer::~TfrtCpuBuffer() {
   }
 }
 
-int64 TfrtCpuBuffer::OnDeviceSizeInBytes() const {
+StatusOr<size_t> TfrtCpuBuffer::GetOnDeviceSizeInBytes() const {
   return ShapeUtil::ByteSizeOf(on_device_shape_);
 }
 

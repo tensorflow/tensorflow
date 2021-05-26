@@ -386,14 +386,16 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 
 Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
   for (size_t i = 0; i < opdef.input_arg_size(); i++) {
-    if (!opdef.input_arg(i).type_list_attr().empty()) {
+    if (!opdef.input_arg(i).type_list_attr().empty() ||
+        !opdef.input_arg(i).number_attr().empty()) {
       return errors::Unimplemented("Input: ", opdef.input_arg(i).name(),
                                    " of op ", opdef.name(),
                                    " is of list type.");
     }
   }
   for (size_t i = 0; i < opdef.output_arg_size(); i++) {
-    if (!opdef.output_arg(i).type_list_attr().empty()) {
+    if (!opdef.output_arg(i).type_list_attr().empty() ||
+        !opdef.output_arg(i).number_attr().empty()) {
       return errors::Unimplemented("Output: ", opdef.output_arg(i).name(),
                                    " of op ", opdef.name(),
                                    " is of list type.");

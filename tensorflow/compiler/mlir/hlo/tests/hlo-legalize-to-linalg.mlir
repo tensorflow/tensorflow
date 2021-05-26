@@ -65,6 +65,19 @@ func @integer_mul(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @complex_mul
+func @complex_mul(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.mul
+  %0 = "mhlo.multiply"(%lhs, %rhs)
+          : (tensor<2x2xcomplex<f32>>, tensor<2x2xcomplex<f32>>)
+          -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_remainder
 func @float_remainder(%lhs: tensor<2x2xf32>,
                       %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -319,6 +332,36 @@ func @int_cmp(%lhs: tensor<2x2xi32>,
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %{{.*}}: i1):
 // CHECK-NEXT:   %[[RESULT:.*]] = cmpi slt, %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @complex_cmp_eq
+func @complex_cmp_eq(%lhs: tensor<2xcomplex<f32>>,
+                     %rhs: tensor<2xcomplex<f32>>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "EQ"}
+          : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> (tensor<2xi1>)
+  return %0 : tensor<2xi1>
+}
+// CHECK: linalg.init_tensor [2] : tensor<2xi1>
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: complex<f32>, %[[RHS_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.eq %[[LHS_IN]], %[[RHS_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @complex_cmp_neq
+func @complex_cmp_neq(%lhs: tensor<2xcomplex<f64>>,
+                      %rhs: tensor<2xcomplex<f64>>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "NE"}
+          : (tensor<2xcomplex<f64>>, tensor<2xcomplex<f64>>) -> (tensor<2xi1>)
+  return %0 : tensor<2xi1>
+}
+// CHECK: linalg.init_tensor [2] : tensor<2xi1>
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: complex<f64>, %[[RHS_IN:.*]]: complex<f64>, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.neq %[[LHS_IN]], %[[RHS_IN]] : complex<f64>
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -2348,6 +2391,17 @@ func @unsigned_divide(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<
   // CHECK: divi_unsigned
   %0 = "mhlo.divide"(%lhs, %rhs) : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xui32>
   return %0 : tensor<2x2xui32>
+}
+
+// -----
+
+// CHECK-LABEL: complex_divide
+func @complex_divide(%lhs: tensor<2xcomplex<f32>>,
+                     %rhs: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.div
+  %0 = "mhlo.divide"(%lhs, %rhs) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
 }
 
 // -----

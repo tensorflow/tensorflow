@@ -29,7 +29,9 @@ import sys
 import types
 import unittest
 
+from absl import app
 import six
+
 
 from tensorflow.python.client import session
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -94,6 +96,7 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       has_chief = strategy.has_chief
       num_workers = strategy.num_workers
       runner = strategy.runner
+      share_gpu = strategy.share_gpu
       if "has_chief" in kwargs and kwargs["has_chief"] != has_chief:
         raise ValueError(
             "both has_chief and strategy specified but are not compatible")
@@ -104,6 +107,7 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       has_chief = kwargs.get("has_chief", False)
       num_workers = kwargs.get("num_workers", 1)
       runner = kwargs.get("runner", None)
+      share_gpu = kwargs.get("share_gpu", True)
 
     # Always set cluster parameters if they're requested. So that generate()
     # works when there's no startegy in the combinations.
@@ -114,6 +118,8 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       update["num_workers"] = num_workers
     if "runner" in requested_parameters:
       update["runner"] = runner
+    if "share_gpu" in requested_parameters:
+      update["share_gpu"] = share_gpu
     return update
 
 
@@ -276,6 +282,7 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
+               share_gpu=True,
                pool_runner_fn=None,
                no_xla=False):
     """Initialize NamedDistribution.
@@ -291,6 +298,7 @@ class NamedDistribution(object):
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
       num_workers: The number of workers that the strategy requires.
+      share_gpu: Whether to share GPUs among workers.
       pool_runner_fn: An optional callable that returns a MultiProcessPoolRunner
         to run the test.
       no_xla: Whether to skip in XLA tests.
@@ -304,6 +312,7 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self.share_gpu = share_gpu
     self._pool_runner_fn = pool_runner_fn
     self.no_xla = no_xla
 
@@ -416,6 +425,9 @@ class TestEnvironment(object):
 
   def __init__(self):
     self.tf_data_service_dispatcher = None
+    # Note that this includes GPUs that may not be visible to the current
+    # worker.
+    self.total_phsyical_gpus = None
 
   def __setattr__(self, name, value):
     if not in_main_process():
@@ -438,6 +450,16 @@ def env():
     a TestEnvironment object.
   """
   return _env
+
+
+def _set_total_phsyical_gpus():
+  if in_main_process():
+    env().total_phsyical_gpus = len(
+        context.context().list_physical_devices("GPU"))
+
+
+# This is needed in case CUDA is lazily loaded.
+app.call_after_init(_set_total_phsyical_gpus)
 
 
 _TestResult = collections.namedtuple("_TestResult", ["status", "message"])
@@ -503,7 +525,7 @@ def _multi_worker_test(test_method):
     arguments.
   """
 
-  def decorator(self, has_chief, num_workers, runner, **kwargs):
+  def decorator(self, has_chief, num_workers, share_gpu, runner, **kwargs):
     if _num_total_workers(has_chief, num_workers) == 1 or _running_in_worker:
       # We're in worker process or the test is for single worker. Either case we
       # execute the test method directly instead of spawning subprocesses.
@@ -543,8 +565,10 @@ def _multi_worker_test(test_method):
           num_workers=num_workers,
           num_ps=0,
           has_eval=False)
-      results = multi_process_runner.run(
-          _test_runner, cluster_spec, args=(test_id, _env)).return_value
+      ephemeral_runner = multi_process_runner.MultiProcessRunner(
+          _test_runner, cluster_spec, share_gpu=share_gpu, args=(test_id, _env))
+      ephemeral_runner.start()
+      results = ephemeral_runner.join().return_value
 
     skip_reason = None
     for result in results:
@@ -561,7 +585,8 @@ def _multi_worker_test(test_method):
       self.skipTest(skip_reason)
 
   argspec = tf_inspect.getfullargspec(test_method)
-  decorator_args = (argspec.args or []) + ["has_chief", "num_workers", "runner"]
+  decorator_args = (argspec.args or
+                    []) + ["has_chief", "num_workers", "share_gpu", "runner"]
   decorator_argspec = argspec._replace(args=decorator_args)
   return tf_decorator.make_decorator(
       test_method, decorator, decorator_argspec=decorator_argspec)

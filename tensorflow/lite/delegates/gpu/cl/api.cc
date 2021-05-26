@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -702,6 +703,9 @@ class InferenceBuilderImpl : public InferenceBuilder {
                           const absl::Span<const uint8_t> serialized_model,
                           std::vector<int64_t>* in_refs = nullptr,
                           std::vector<int64_t>* out_refs = nullptr) {
+    if (in_refs && out_refs) {
+      RETURN_IF_ERROR(GetInOutRefs(serialized_model, in_refs, out_refs));
+    }
     context_ = absl::make_unique<InferenceContext>();
     RETURN_IF_ERROR(
         context_->RestoreDeserialized(serialized_model, environment_));
@@ -721,12 +725,6 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
     inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
     outputs_ = LinkTensors(context_->GetOutputIds(), AccessType::WRITE);
-    if (in_refs) {
-      *in_refs = context_->GetInputRefs();
-    }
-    if (out_refs) {
-      *out_refs = context_->GetOutputRefs();
-    }
     return absl::OkStatus();
   }
 
