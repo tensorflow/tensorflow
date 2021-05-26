@@ -774,6 +774,9 @@ tf_py_test(
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+    ],
     deps = [
         ":distributed_file_utils",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
