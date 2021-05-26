@@ -235,6 +235,20 @@ class FractionalMaxPoolGradOp : public OpKernel {
 
     // Just to make it similar to FractionalMaxPoolOp.
     constexpr int tensor_in_and_out_dims = 4;
+    OP_REQUIRES(
+        context, tensor_in.dims() == tensor_in_and_out_dims,
+        errors::InvalidArgument("orig_input should be a tensor of rank 4, got ",
+                                tensor_in.DebugString()));
+    OP_REQUIRES(context, tensor_in.NumElements() > 0,
+                errors::InvalidArgument("orig_input must not be empty, got ",
+                                        tensor_in.DebugString()));
+    OP_REQUIRES(context, tensor_out.dims() == tensor_in_and_out_dims,
+                errors::InvalidArgument(
+                    "orig_output should be a tensor of rank 4, got ",
+                    tensor_out.DebugString()));
+    OP_REQUIRES(context, tensor_out.NumElements() > 0,
+                errors::InvalidArgument("orig_output must not be empty, got ",
+                                        tensor_out.DebugString()));
     std::vector<int64> input_size(tensor_in_and_out_dims);
     std::vector<int64> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
