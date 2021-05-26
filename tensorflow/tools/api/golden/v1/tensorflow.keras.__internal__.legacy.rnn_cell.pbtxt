@@ -1,0 +1,43 @@
+path: "tensorflow.keras.__internal__.legacy.rnn_cell"
+tf_module {
+  member {
+    name: "BasicLSTMCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BasicRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DeviceWrapper"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DropoutWrapper"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GRUCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LSTMCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LSTMStateTuple"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MultiRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ResidualWrapper"
+    mtype: "<type \'type\'>"
+  }
+}

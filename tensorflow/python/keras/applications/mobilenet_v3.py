@@ -292,6 +292,7 @@ def MobileNetV3(stack_fn,
       axis=channel_axis, epsilon=1e-3,
       momentum=0.999, name='Conv_1/BatchNorm')(x)
   x = activation(x)
+  x = layers.GlobalAveragePooling2D(keepdims=True)(x)
   x = layers.Conv2D(
       last_point_ch,
       kernel_size=1,
@@ -301,11 +302,6 @@ def MobileNetV3(stack_fn,
   x = activation(x)
 
   if include_top:
-    x = layers.GlobalAveragePooling2D()(x)
-    if channel_axis == 1:
-      x = layers.Reshape((last_point_ch, 1, 1))(x)
-    else:
-      x = layers.Reshape((1, 1, last_point_ch))(x)
     if dropout_rate > 0:
       x = layers.Dropout(dropout_rate)(x)
     x = layers.Conv2D(classes, kernel_size=1, padding='same', name='Logits')(x)
@@ -462,12 +458,9 @@ def _depth(v, divisor=8, min_value=None):
 
 
 def _se_block(inputs, filters, se_ratio, prefix):
-  x = layers.GlobalAveragePooling2D(name=prefix + 'squeeze_excite/AvgPool')(
-      inputs)
-  if backend.image_data_format() == 'channels_first':
-    x = layers.Reshape((filters, 1, 1))(x)
-  else:
-    x = layers.Reshape((1, 1, filters))(x)
+  x = layers.GlobalAveragePooling2D(
+      keepdims=True, name=prefix + 'squeeze_excite/AvgPool')(
+          inputs)
   x = layers.Conv2D(
       _depth(filters * se_ratio),
       kernel_size=1,

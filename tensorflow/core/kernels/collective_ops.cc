@@ -480,6 +480,8 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
     OP_REQUIRES_OK(c, c->GetAttr("communication_hint", &communication_hint_));
     OP_REQUIRES_OK(c, c->GetAttr("timeout_seconds", &timeout_seconds_));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("max_subdivs_per_device", &max_subdivs_per_device_));
     // Prepare OpKernels for reduction and final operations.
     // The merge_op takes two inputs
     NodeDef sub_node;
@@ -529,9 +531,8 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
     col_params->instance.data_type = data_type_;
     col_params->instance.impl_details.communication_hint = communication_hint_;
     col_params->instance.impl_details.timeout_seconds = timeout_seconds_;
-    // Add a default value for subdiv offsets, which is the same as the default
-    // value in the V1 op's attribute.
-    col_params->instance.impl_details.subdiv_offsets.push_back(0);
+    col_params->instance.impl_details.max_subdivs_per_device =
+        max_subdivs_per_device_;
     col_params->merge_op = merge_op_.get();
     col_params->final_op = final_op_.get();
     VLOG(1) << "CollectiveReduceV2 group_size " << col_params->group.group_size
@@ -599,6 +600,7 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
   DataType data_type_ = DT_INVALID;
   string communication_hint_;
   float timeout_seconds_ = 0;
+  int max_subdivs_per_device_;
   DeviceType device_type_;
   std::unique_ptr<OpKernel> merge_op_;
   std::unique_ptr<OpKernel> final_op_;

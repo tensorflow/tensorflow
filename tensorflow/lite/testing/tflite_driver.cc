@@ -383,6 +383,8 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
     ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
+    buildinop_resolver_->AddCustom("IRFFT2D",
+                                   tflite::ops::custom::Register_IRFFT2D());
     tflite::ops::custom::AddGradientOps(buildinop_resolver_);
     tflite::ops::custom::AddParseExampleOp(buildinop_resolver_);
     tflite::ops::custom::AddPerceptionOps(buildinop_resolver_);

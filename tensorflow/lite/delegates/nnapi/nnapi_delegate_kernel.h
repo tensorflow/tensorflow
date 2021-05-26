@@ -32,6 +32,9 @@ constexpr int32_t kMinSdkVersionForNNAPI = 27;
 constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
 constexpr int32_t kMinSdkVersionForNNAPI13 = 30;
+// TODO(b/185838597): change the remaining kMinSdkVersionForNNAPI* to
+// kNNAPIRuntimeFeatureLevel*.
+constexpr int32_t kNNAPIRuntimeFeatureLevel5 = 31;
 
 // Track tensor indices to NN API tensor indices mapping.
 class OperandMapping {
@@ -185,6 +188,9 @@ class NNMemory {
   size_t byte_size_ = 0;
   uint8_t* data_ptr_ = nullptr;
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
+#ifndef __ANDROID__
+  std::string shm_region_name_;
+#endif
 };
 
 // LINT.IfChange
@@ -367,7 +373,7 @@ class NNAPIDelegateKernel {
   std::vector<int> nnapi_to_tflite_op_mapping_;
 
   // Fully initialized in NNAPIDelegateKernel::AddOpsAndTensors
-  int target_sdk_version_ = 27;  // kMinSdkVersionForNNAPI13
+  int target_feature_level_ = 27;  // kMinSdkVersionForNNAPI10
 
   void AddDequantizeOperatorsWhereNeeded(
       const TfLiteContext* context, int builtin_code, const TfLiteNode* node,

@@ -81,8 +81,8 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    // Don't apply conversion unless all operands are unranked.
-    if (!llvm::all_of(op.getOperation()->getOperands(), [&](Value operand) {
+    // Only apply conversion if at least one operand is unranked.
+    if (llvm::none_of(op.getOperation()->getOperands(), [&](Value operand) {
           return operand.getType().isa<UnrankedTensorType>();
         })) {
       return failure();
@@ -227,15 +227,21 @@ struct ConvertUnrankedDynamicBroadcastNaryOp
     typename ChloOpTy::Adaptor transformed(operands);
     ValueRange transformed_operands = transformed.getOperands();
     auto num_operands = transformed_operands.size();
-    llvm::SmallVector<UnrankedTensorType, 3> operand_types;
-    operand_types.reserve(num_operands);
+    llvm::SmallVector<Type, 3> operand_element_types;
+    operand_element_types.reserve(num_operands);
+    bool has_unranked_tensor_type = false;
     for (int i = 0; i < num_operands; ++i) {
-      auto type =
-          transformed_operands[i].getType().dyn_cast<UnrankedTensorType>();
-      // Only support unranked operands.
-      if (!type) return failure();
-      operand_types.push_back(type);
+      if (auto type =
+              transformed_operands[i].getType().dyn_cast<TensorType>()) {
+        if (type.isa<UnrankedTensorType>()) {
+          has_unranked_tensor_type = true;
+        }
+        operand_element_types.push_back(type.getElementType());
+      } else {
+        return failure();
+      }
     }
+    if (!has_unranked_tensor_type) return failure();
     auto result_type = op.getResult().getType().template dyn_cast<TensorType>();
 
     llvm::SmallVector<Value> shapes;
@@ -278,7 +284,7 @@ struct ConvertUnrankedDynamicBroadcastNaryOp
           if_at_most_one_non_scalar_builder.create<mhlo::DynamicReshapeOp>(
               loc,
               RankedTensorType::get({RankedTensorType::kDynamicSize},
-                                    operand_types[i].getElementType()),
+                                    operand_element_types[i]),
               transformed_operands[i], size_tensor);
       reshaped_operands.push_back(reshaped);
     }
@@ -557,7 +563,7 @@ struct TransformUnrankedHloPass
     AddLegalOpOnRankedTensor<mhlo::SelectOp>(&target);
     target.addDynamicallyLegalDialect<chlo::HloClientDialect>(
         [](Operation *op) {
-          return !llvm::any_of(op->getOperandTypes(), [](Type type) {
+          return llvm::none_of(op->getOperandTypes(), [](Type type) {
             return type.isa<UnrankedTensorType>();
           });
         });

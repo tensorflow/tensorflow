@@ -50,7 +50,7 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   port::Status status =
       port::Env::Default()->LoadDynamicLibrary(filename.c_str(), &dso_handle);
   if (status.ok()) {
-    LOG(INFO) << "Successfully opened dynamic library " << filename;
+    VLOG(1) << "Successfully opened dynamic library " << filename;
     return dso_handle;
   }
 

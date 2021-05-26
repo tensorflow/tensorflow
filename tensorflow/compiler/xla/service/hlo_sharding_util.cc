@@ -556,10 +556,13 @@ HloSharding GatherIndexSharding(const HloSharding& output_sharding,
 
   const GatherDimensionNumbers& dnums = hlo->gather_dimension_numbers();
   std::vector<int64> index_tile_assignment_dims;
+  // Relevant output dims have shardings passed to the index.
+  std::vector<int64> relevant_output_dims;
   for (int64 i = 0; i < hlo->shape().rank(); ++i) {
     if (!absl::c_binary_search(dnums.offset_dims(), i)) {
       index_tile_assignment_dims.push_back(
           output_sharding.tile_assignment().dim(i));
+      relevant_output_dims.push_back(i);
     }
   }
   int64 index_rank = hlo->operand(1)->shape().rank();
@@ -570,13 +573,19 @@ HloSharding GatherIndexSharding(const HloSharding& output_sharding,
         index_tile_assignment_dims.begin() + dnums.index_vector_dim(), 1);
   }
 
+  if (Product(index_tile_assignment_dims) == 1) {
+    return HloSharding::Replicate(output_sharding.metadata());
+  }
+  HloSharding relevant_output_sharding =
+      PartiallyReplicateTiledShardingOnAllDimsExcept(output_sharding,
+                                                     relevant_output_dims);
   int64 partial_replication_size = 1;
-  if (output_sharding.ReplicateOnLastTileDim()) {
+  if (relevant_output_sharding.ReplicateOnLastTileDim()) {
     partial_replication_size *=
-        output_sharding.tile_assignment().dimensions().back();
+        relevant_output_sharding.tile_assignment().dimensions().back();
   }
 
-  Array<int64> new_tile_assignment = output_sharding.tile_assignment();
+  Array<int64> new_tile_assignment = relevant_output_sharding.tile_assignment();
   const int64 index_tile_elements =
       Product(index_tile_assignment_dims) * partial_replication_size;
   if (new_tile_assignment.num_elements() != index_tile_elements) {
@@ -866,6 +875,8 @@ absl::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
   }
   std::vector<int64> passthrough_tile(operand_shape.rank(), 1);
   int64 collapsed = 0;
+  // Relevant dims have shardings passed to the operand.
+  std::vector<int64> relevant_update_or_gather_dims;
   for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
         absl::c_linear_search(index_map, i)) {
@@ -883,23 +894,25 @@ absl::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
       // Output offsets are transposed, we do not support this case.
       return absl::nullopt;
     }
+    relevant_update_or_gather_dims.push_back(offset_dim);
     passthrough_tile[i] = dim_partitions;
   }
 
-  if (update_or_gather_sharding.ReplicateOnLastTileDim()) {
-    passthrough_tile.push_back(
-        update_or_gather_sharding.tile_assignment().dimensions().back());
-  }
-  Array<int64> tile_assignment = update_or_gather_sharding.tile_assignment();
+  Array<int64> tile_assignment =
+      PartiallyReplicateTiledShardingOnAllDimsExcept(
+          update_or_gather_sharding, relevant_update_or_gather_dims)
+          .tile_assignment();
+  bool is_partial = false;
   if (tile_assignment.num_elements() != Product(passthrough_tile)) {
-    return absl::nullopt;
+    passthrough_tile.push_back(tile_assignment.num_elements() /
+                               Product(passthrough_tile));
+    is_partial = true;
   }
   tile_assignment.Reshape(passthrough_tile);
-  return update_or_gather_sharding.ReplicateOnLastTileDim()
-             ? HloSharding::PartialTile(tile_assignment,
-                                        update_or_gather_sharding.metadata())
-             : HloSharding::Tile(tile_assignment,
-                                 update_or_gather_sharding.metadata());
+  return is_partial ? HloSharding::PartialTile(
+                          tile_assignment, update_or_gather_sharding.metadata())
+                    : HloSharding::Tile(tile_assignment,
+                                        update_or_gather_sharding.metadata());
 }
 
 // Collect data operand sharding for a gather with parallel dimensions from
@@ -918,6 +931,7 @@ absl::optional<HloSharding> GatherParallelDataOperandSharding(
            output_aligned_operand_parallel_dims.size());
   std::vector<int64> operand_tile_assignment(gather.operand(0)->shape().rank(),
                                              1);
+  std::vector<int64> relevant_output_dims;
   for (int i = 0, parallel_idx = 0; i < gather_shape.rank(); ++i) {
     if (parallel_idx >= output_parallel_dims.size() ||
         output_parallel_dims[parallel_idx] != i) {
@@ -927,13 +941,27 @@ absl::optional<HloSharding> GatherParallelDataOperandSharding(
         output_aligned_operand_parallel_dims[parallel_idx++];
     operand_tile_assignment[operand_dim] =
         output_sharding.tile_assignment().dim(i);
+    relevant_output_dims.push_back(i);
   }
+  HloSharding relevant_output_sharding =
+      PartiallyReplicateTiledShardingOnAllDimsExcept(output_sharding,
+                                                     relevant_output_dims);
   int64 partially_replicated_size = 1;
-  if (output_sharding.ReplicateOnLastTileDim()) {
+  if (relevant_output_sharding.ReplicateOnLastTileDim()) {
     partially_replicated_size *=
-        output_sharding.tile_assignment().dimensions().back();
+        relevant_output_sharding.tile_assignment().dimensions().back();
   }
-  Array<int64> tile_assignment = output_sharding.tile_assignment();
+
+  if (relevant_output_sharding.IsTileMaximal()) {
+    partially_replicated_size *=
+        Product(output_sharding.tile_assignment().dimensions());
+  }
+
+  Array<int64> tile_assignment = relevant_output_sharding.tile_assignment();
+  if (relevant_output_sharding.IsTileMaximal()) {
+    Array<int64> replicated_tile_assignment({gather_shape.rank()}, 1L);
+    tile_assignment = replicated_tile_assignment;
+  }
   const int64 operand_tile_elements =
       Product(operand_tile_assignment) * partially_replicated_size;
   if (tile_assignment.num_elements() != operand_tile_elements) {
@@ -983,21 +1011,16 @@ absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
 
   absl::optional<HloSharding> parallel_sharding;
   auto parallel_dims = GetGatherBatchParallelDims(hlo);
-  absl::Span<const int64> operand_parallel_dims;
   if (parallel_dims) {
     // Prioritize parallel sharding first as this is how it is in
     // spmd_partitioner.
     parallel_sharding =
-        GatherParallelDataOperandSharding(hlo.sharding(), hlo, *parallel_dims);
-    operand_parallel_dims = parallel_dims->operand_parallel_dims;
+        GatherParallelDataOperandSharding(output_sharding, hlo, *parallel_dims);
   }
-  HloSharding filtered_output_sharding = PartiallyReplicateTiledShardingOnDims(
-      output_sharding, operand_parallel_dims);
   absl::optional<HloSharding> passthrough_sharding =
       PassthroughGatherOutputOrScatterUpdateToOperand(
-          hlo.operand(0)->shape(), filtered_output_sharding,
-          collapsed_slice_dims, start_index_map, offset_dims,
-          hlo.gather_slice_sizes());
+          hlo.operand(0)->shape(), output_sharding, collapsed_slice_dims,
+          start_index_map, offset_dims, hlo.gather_slice_sizes());
   // Try to merge the two shardings or return the one that is present if only
   // one of the two is.
   if (!passthrough_sharding) {
@@ -1192,6 +1215,26 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
   }
   new_tile.Reshape(new_tile_shape);
   return HloSharding::PartialTile(new_tile, sharding.metadata());
+}
+
+HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
+    const HloSharding& sharding, absl::Span<const int64> dims_to_keep) {
+  if (sharding.IsTileMaximal()) {
+    return sharding;
+  }
+  int64 data_rank = sharding.tile_assignment().num_dimensions();
+  if (sharding.ReplicateOnLastTileDim()) {
+    data_rank -= 1;
+  }
+  std::vector<int64> dims_to_replicate(data_rank);
+  absl::c_iota(dims_to_replicate, 0);
+
+  dims_to_replicate.erase(
+      std::remove_if(
+          dims_to_replicate.begin(), dims_to_replicate.end(),
+          [&](int64 i) { return absl::c_linear_search(dims_to_keep, i); }),
+      dims_to_replicate.end());
+  return PartiallyReplicateTiledShardingOnDims(sharding, dims_to_replicate);
 }
 
 HloSharding RemoveShapeDimensions(const HloSharding& sharding,

@@ -190,7 +190,7 @@ int main(int argc, char **argv) {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
-        output_arrays, &source_mgr, &context);
+        output_arrays, control_output_arrays, &source_mgr, &context);
   }
 
   // If errors occur, the library call in the above already logged the error

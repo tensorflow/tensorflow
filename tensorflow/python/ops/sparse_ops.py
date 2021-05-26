@@ -27,7 +27,6 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -642,12 +641,10 @@ def sparse_cross(inputs, name=None, separator=None):
   Returns:
     A `SparseTensor` of type `string`.
   """
-  if separator is None and not tf_compat.forward_compatible(2020, 6, 14):
-    return _sparse_cross_internal(inputs=inputs, hashed_output=False, name=name)
   if separator is None:
     separator = "_X_"
   separator = ops.convert_to_tensor(separator, dtypes.string)
-  indices, values, shapes, dense_inputs = _sparse_cross_internval_v2(inputs)
+  indices, values, shapes, dense_inputs = _sparse_cross_internal_v2(inputs)
   indices_out, values_out, shape_out = gen_sparse_ops.sparse_cross_v2(
       indices=indices,
       values=values,
@@ -713,7 +710,7 @@ _sparse_cross_hashed = sparse_cross_hashed
 _DEFAULT_HASH_KEY = 0xDECAFCAFFE
 
 
-def _sparse_cross_internval_v2(inputs):
+def _sparse_cross_internal_v2(inputs):
   """See gen_sparse_ops.sparse_cross_v2."""
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")

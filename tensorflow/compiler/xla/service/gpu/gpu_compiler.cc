@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -117,10 +118,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
+#include "tensorflow/compiler/xla/service/sharding_remover.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
-#include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -160,19 +161,20 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
-  const int64 num_partitions = hlo_module->config().num_partitions();
-  const bool use_spmd =
-      hlo_module->config().use_spmd_partitioning() && num_partitions > 1;
-
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<AllToAllDecomposer>();
-    pipeline.AddPass<RealImagExpander>();
 
-    pipeline.AddPass<OperandUpcaster>();
-    pipeline.AddPass<ResultCaster>();
+    OpExpanderPass::PatternExtraFilter upcaster_filter =
+        [&](const HloInstruction* instr) {
+          return !IsVoltaOrLater(*stream_exec) ||
+                 !gpu::IsMatrixMultiplication(*instr);
+        };
+
+    pipeline.AddPass<OperandUpcaster>(upcaster_filter);
+    pipeline.AddPass<ResultCaster>(upcaster_filter);
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
@@ -269,6 +271,7 @@ Status GpuCompiler::OptimizeHloModule(
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
       pass.AddPass<ConditionalSimplifier>();
+      pipeline.AddPass<RealImagExpander>();
     }
 
     pipeline.AddPass<TransposeFolding>(
@@ -293,14 +296,18 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<WhileLoopTripCountAnnotator>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
-
-  if (use_spmd) {
+  if (hlo_module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    spmd_pipeline.AddPass<ShardingPropagation>(true);
-    spmd::SpmdPartitionerOptions default_options;
-    default_options.allow_module_signature_change = true;
-    spmd_pipeline.AddPass<spmd::SpmdPartitioner>(
-        num_partitions, hlo_module->config().replica_count(), default_options);
+    const int64 num_partitions = hlo_module->config().num_partitions();
+    if (num_partitions > 1) {
+      spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+      spmd_pipeline.AddPass<GpuSpmdPartitioner>(
+          num_partitions, hlo_module->config().replica_count());
+    } else {
+      // Remove redudant sharding ops when partition_count == 1.
+      spmd_pipeline.AddPass<ShardingRemover>();
+      spmd_pipeline.AddPass<HloDCE>();
+    }
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   }
 
@@ -352,7 +359,7 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
-    HloPassPipeline horizontal_fusion("horizontal_fusion");
+    HloPassFix<HloPassPipeline> horizontal_fusion("horizontal_fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
     horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
@@ -427,19 +434,6 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   return pipeline.Run(hlo_module).status();
 }
 
-// TODO(cheshire): Duplication with gpu_conv_algorithm picker, figure out a
-// right way to share this.
-static bool RequireDeterminism() {
-  static bool require_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return require_determinism;
-}
-
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -472,9 +466,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
-  if (RequireDeterminism() ||
-      hlo_module->config().debug_options().xla_gpu_deterministic_reductions() ||
-      hlo_module->config().debug_options().xla_gpu_deterministic_ops()) {
+  if (RequireDeterminism(hlo_module->config()) ||
+      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
   }
 
@@ -663,8 +656,6 @@ static Status CompileModuleToLlvmIrImpl(
   TF_RETURN_IF_ERROR(
       GetMlirAllocationInfo(entry_function, &results->allocations,
                             &results->output_info, &results->output_shape));
-
-  CHECK(!results->allocations.empty());
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
@@ -861,6 +852,12 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
             }
             llvm::SMDiagnostic err;
             new_llvm_module = llvm::parseAssemblyString(ir, err, context);
+            if (!new_llvm_module) {
+              std::string err_string;
+              llvm::raw_string_ostream os(err_string);
+              err.print(/*ProgName=*/nullptr, os, /*ShowColors=*/false);
+              LOG(FATAL) << "Failed to parse IR: " << err_string;
+            }
           }
 
           compile_results[i] = compile_single_module(
@@ -1037,16 +1034,10 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape) {
-  std::vector<absl::optional<BufferAllocation>> maybe_allocations;
+  CHECK(allocations->empty());
+  allocations->reserve(func.getNumArguments());
 
   for (int i = 0; i < func.getNumArguments(); i++) {
-    auto allocation_index_attr =
-        func.getArgAttr(i, "lmhlo.alloc").dyn_cast_or_null<mlir::IntegerAttr>();
-    TF_RET_CHECK(allocation_index_attr);
-    int index = allocation_index_attr.getInt();
-    if (index >= maybe_allocations.size()) {
-      maybe_allocations.resize(index + 1);
-    }
     mlir::BlockArgument arg = func.getArgument(i);
 
     TF_RET_CHECK(arg.getType().isa<mlir::ShapedType>());
@@ -1054,22 +1045,12 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
     TF_ASSIGN_OR_RETURN(auto element_type_bytes,
                         GetElementTypeBytes(type.getElementType()));
     size_t size = type.getNumElements() * element_type_bytes;
-    maybe_allocations[index].emplace(index, size, 0);
-  }
-
-  allocations->reserve(maybe_allocations.size());
-  for (auto& maybe_alloc : maybe_allocations) {
-    if (maybe_alloc.has_value()) {
-      allocations->push_back(*maybe_alloc);
-    } else {
-      allocations->push_back(BufferAllocation(allocations->size(), 0, {}));
-    }
+    allocations->emplace_back(i, size, 0);
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
     for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
-      TF_RET_CHECK(attr.first == "lmhlo.alloc" ||
-                   attr.first == "lmhlo.params" ||
+      TF_RET_CHECK(attr.first == "lmhlo.params" ||
                    attr.first == "lmhlo.param_shape_index" ||
                    attr.first == "lmhlo.constant_name" ||
                    attr.first == "lmhlo.must_alias" ||
@@ -1079,8 +1060,6 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
 
   std::vector<std::pair<ShapeIndex, Shape>> sub_shapes;
   for (int i = 0; i < func.getNumArguments(); i++) {
-    auto index =
-        func.getArgAttr(i, "lmhlo.alloc").cast<mlir::IntegerAttr>().getInt();
     if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
       xla::ShapeIndex shape_index;
       if (auto shape_index_attr =
@@ -1090,17 +1069,17 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
           shape_index.push_back(element.getSExtValue());
         }
       }
-      allocations->at(index).set_entry_computation_parameter(
+      allocations->at(i).set_entry_computation_parameter(
           param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
           static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
     }
     // TODO(timshen): this information is redundant. This is here only for
     // smooth migration to LMHLO. Remove it.
     if (func.getArgAttr(i, "lmhlo.constant_name")) {
-      allocations->at(index).set_constant(true);
+      allocations->at(i).set_constant(true);
     }
     if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      allocations->at(index).set_maybe_live_out(true);
+      allocations->at(i).set_maybe_live_out(true);
 
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
@@ -1109,7 +1088,7 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
         shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
-      o.allocation_index = index;
+      o.allocation_index = i;
       if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
         HloInputOutputAliasConfig::AliasKind kind =
             HloInputOutputAliasConfig::kMayAlias;

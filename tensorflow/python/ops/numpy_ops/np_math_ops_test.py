@@ -347,6 +347,13 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(-1, -1000, num=5)
     run_test(-1, -1000, num=5, endpoint=False)
 
+  @parameterized.parameters([
+      'T', 'ndim', 'size', 'data', '__pos__', '__round__', 'tolist',
+      'transpose', 'reshape', 'ravel', 'clip', 'astype', 'max', 'mean', 'min'])
+  def testNumpyMethodsOnTensor(self, np_method):
+    a = ops.convert_to_tensor([1, 2])
+    self.assertTrue(hasattr(a, np_method))
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

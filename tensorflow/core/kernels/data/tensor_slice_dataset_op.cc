@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -32,8 +32,6 @@ namespace data {
 /* static */ constexpr const char* const TensorSliceDatasetOp::kComponents;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kToutputTypes;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kOutputShapes;
-
-constexpr char kCurIndex[] = "i";
 
 class TensorSliceDatasetOp::Dataset : public DatasetBase {
  public:

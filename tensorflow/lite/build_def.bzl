@@ -140,7 +140,8 @@ def tflite_jni_binary(
         testonly = 0,
         deps = [],
         tags = [],
-        srcs = []):
+        srcs = [],
+        visibility = None):  # 'None' means use the default visibility.
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
         clean_dep("//tensorflow:macos"): [
@@ -163,6 +164,7 @@ def tflite_jni_binary(
         tags = tags,
         linkopts = linkopts,
         testonly = testonly,
+        visibility = visibility,
     )
 
 def tflite_cc_shared_object(
@@ -403,8 +405,6 @@ def generated_test_models():
         "transpose",
         "transpose_conv",
         "unfused_gru",
-        "unidirectional_sequence_lstm",
-        "unidirectional_sequence_rnn",
         "unique",
         "unpack",
         "unroll_batch_matmul",
@@ -425,8 +425,12 @@ def generated_test_models_failing(conversion_mode):
       List of failing test models for the conversion mode.
     """
     if conversion_mode == "toco-flex":
+        # These tests mean to fuse multiple TF ops to TFLite fused RNN & LSTM
+        # ops (e.g. LSTM, UnidirectionalSequentceLSTM) with some semantic
+        # changes (becoming stateful). We have no intention to make these
+        # work in Flex.
         return [
-            "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
+            "lstm",
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]

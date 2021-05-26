@@ -322,7 +322,7 @@ def preprocess_weights_for_loading(layer,
     weights = convert_nested_bidirectional(weights)
   if layer.__class__.__name__ == 'TimeDistributed':
     weights = convert_nested_time_distributed(weights)
-  elif layer.__class__.__name__ in ['Model', 'Sequential']:
+  elif layer.__class__.__name__ in ['Model', 'Sequential', 'Functional']:
     weights = convert_nested_model(weights)
 
   if original_keras_version == '1':

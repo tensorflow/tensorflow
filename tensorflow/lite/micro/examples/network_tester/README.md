@@ -8,6 +8,19 @@ input data (input_data.h) and default expected output data
 The default model is a single MaxPool2D operator, with an input shape of {1, 4,
 4, 1} and an output shape of {1, 2, 2, 1}.
 
+When building the FVP target for Ethos-U (CO_PROCESSOR=ethos_u) the person
+detect int8 model is used instead. The downloaded model is optimized for Ethos-U
+with Ethos-U Vela. For more info see the following readmes:
+tensorflow/lite/micro/kernels/ethos_u/README.md
+tensorflow/lite/micro/cortex_m_corstone_300/README.md
+tensorflow/lite/micro/examples/person_detection/README.md The following Vela
+configuration has been used, which is compatible with the FVP build target
+(TARGET=cortex_m_corstone_300).
+
+```
+vela --accelerator-config=ethos-u55-256
+```
+
 In order to use another model, input data, or expected output data, simply
 specify the path to the new header files when running make as seen below.
 

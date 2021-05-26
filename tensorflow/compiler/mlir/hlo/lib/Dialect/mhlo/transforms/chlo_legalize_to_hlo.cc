@@ -1234,17 +1234,16 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
   patterns->insert<ConvertSelectOp>(context);
+  patterns->insert<ConvertConstantLikeOp>(context);
 }
 
-void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
-                                       OwningRewritePatternList *patterns) {
+void PopulateDecomposeChloPatterns(MLIRContext *context,
+                                   OwningRewritePatternList *patterns) {
   populateWithGenerated(*patterns);
-  PopulateChloBroadcastingPatterns(context, patterns);
 
   // Other patterns.
   // clang-format off
-  patterns->insert<ConvertConstantLikeOp,
-                   ConvertDigammaOp,
+  patterns->insert<ConvertDigammaOp,
                    ConvertErfOp,
                    ConvertErfcOp,
                    ConvertLgammaOp,

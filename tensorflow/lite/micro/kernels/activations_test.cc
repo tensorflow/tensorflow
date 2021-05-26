@@ -24,8 +24,8 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestReluFloat(const int* input_dims_data, const float* input_data,
-                   const int* output_dims_data, const float* golden,
+void TestReluFloat(int* input_dims_data, const float* input_data,
+                   int* output_dims_data, const float* golden,
                    float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -57,8 +57,8 @@ void TestReluFloat(const int* input_dims_data, const float* input_data,
   }
 }
 
-void TestRelu6Float(const int* input_dims_data, const float* input_data,
-                    const int* output_dims_data, const float* golden,
+void TestRelu6Float(int* input_dims_data, const float* input_data,
+                    int* output_dims_data, const float* golden,
                     float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -90,10 +90,10 @@ void TestRelu6Float(const int* input_dims_data, const float* input_data,
   }
 }
 
-void TestReluUint8(const int* input_dims_data, const float* input_data,
+void TestReluUint8(int* input_dims_data, const float* input_data,
                    uint8_t* input_data_quantized, const float input_scale,
                    const int input_zero_point, const float* golden,
-                   uint8_t* golden_quantized, const int* output_dims_data,
+                   uint8_t* golden_quantized, int* output_dims_data,
                    const float output_scale, const int output_zero_point,
                    uint8_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -131,10 +131,10 @@ void TestReluUint8(const int* input_dims_data, const float* input_data,
   }
 }
 
-void TestRelu6Uint8(const int* input_dims_data, const float* input_data,
+void TestRelu6Uint8(int* input_dims_data, const float* input_data,
                     uint8_t* input_data_quantized, const float input_scale,
                     const int input_zero_point, const float* golden,
-                    uint8_t* golden_quantized, const int* output_dims_data,
+                    uint8_t* golden_quantized, int* output_dims_data,
                     const float output_scale, const int output_zero_point,
                     uint8_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -172,10 +172,10 @@ void TestRelu6Uint8(const int* input_dims_data, const float* input_data,
   }
 }
 
-void TestReluInt8(const int* input_dims_data, const float* input_data,
+void TestReluInt8(int* input_dims_data, const float* input_data,
                   int8_t* input_data_quantized, const float input_scale,
                   const int input_zero_point, const float* golden,
-                  int8_t* golden_quantized, const int* output_dims_data,
+                  int8_t* golden_quantized, int* output_dims_data,
                   const float output_scale, const int output_zero_point,
                   int8_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -212,10 +212,10 @@ void TestReluInt8(const int* input_dims_data, const float* input_data,
   }
 }
 
-void TestRelu6Int8(const int* input_dims_data, const float* input_data,
+void TestRelu6Int8(int* input_dims_data, const float* input_data,
                    int8_t* input_data_quantized, const float input_scale,
                    const int input_zero_point, const float* golden,
-                   int8_t* golden_quantized, const int* output_dims_data,
+                   int8_t* golden_quantized, int* output_dims_data,
                    const float output_scale, const int output_zero_point,
                    int8_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -260,12 +260,12 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SimpleReluTestFloat) {
   const int output_elements_count = 10;
-  const int input_shape[] = {2, 1, 5};
+  int input_shape[] = {2, 1, 5};
   const float input_data[] = {
       1.0, 2.0, 3.0, 4.0, 5.0, -1.0, -2.0, -3.0, -4.0, -5.0,
   };
   const float golden[] = {1.0, 2.0, 3.0, 4.0, 5.0, 0, 0, 0, 0, 0};
-  const int output_shape[] = {2, 1, 5};
+  int output_shape[] = {2, 1, 5};
   float output_data[output_elements_count];
   tflite::testing::TestReluFloat(input_shape, input_data, output_shape, golden,
                                  output_data);
@@ -274,10 +274,10 @@ TF_LITE_MICRO_TEST(SimpleReluTestFloat) {
 TF_LITE_MICRO_TEST(SimpleRelu6TestFloat) {
   const int output_elements_count = 10;
   float output_data[output_elements_count];
-  const int input_shape[] = {2, 1, 5};
+  int input_shape[] = {2, 1, 5};
   const float input_data[] = {4.0,  5.0,  6.0,  7.0,  8.0,
                               -4.0, -5.0, -6.0, -7.0, -8.0};
-  const int output_shape[] = {2, 1, 5};
+  int output_shape[] = {2, 1, 5};
   const float golden[] = {
       4.0, 5.0, 6.0, 6.0, 6.0, 0.0, 0.0, 0.0, 0.0, 0.0,
   };
@@ -289,10 +289,10 @@ TF_LITE_MICRO_TEST(SimpleRelu6TestFloat) {
 TF_LITE_MICRO_TEST(SimpleReluTestUint8) {
   const int elements_count = 10;
 
-  const int input_shape[] = {2, 1, 5};
+  int input_shape[] = {2, 1, 5};
   const float input_data[] = {1, 2, 3, 4, 5, -1, -2, -3, -4, -5};
   uint8_t input_quantized[elements_count];
-  const int output_shape[] = {2, 1, 5};
+  int output_shape[] = {2, 1, 5};
   const float golden[] = {1, 2, 3, 4, 5, 0, 0, 0, 0, 0};
   uint8_t golden_quantized[elements_count];
   uint8_t output_data[elements_count];
@@ -311,10 +311,10 @@ TF_LITE_MICRO_TEST(SimpleReluTestUint8) {
 TF_LITE_MICRO_TEST(SimpleRelu6TestUint8) {
   const int elements_count = 10;
 
-  const int input_shape[] = {2, 1, 5};
+  int input_shape[] = {2, 1, 5};
   const float input_data[] = {4, 5, 6, 7, 8, -1, -2, -3, -4, -5};
   uint8_t input_quantized[elements_count];
-  const int output_shape[] = {2, 1, 5};
+  int output_shape[] = {2, 1, 5};
   const float golden[] = {4, 5, 6, 6, 6, 0, 0, 0, 0, 0};
   uint8_t golden_quantized[elements_count];
   uint8_t output_data[elements_count];
@@ -333,10 +333,10 @@ TF_LITE_MICRO_TEST(SimpleRelu6TestUint8) {
 TF_LITE_MICRO_TEST(SimpleReluTestInt8) {
   const int elements_count = 10;
 
-  const int input_shape[] = {2, 1, 5};
+  int input_shape[] = {2, 1, 5};
   const float input_data[] = {1, 2, 3, 4, 5, -1, -2, -3, -4, -5};
   int8_t input_quantized[elements_count];
-  const int output_shape[] = {2, 1, 5};
+  int output_shape[] = {2, 1, 5};
   const float golden[] = {1, 2, 3, 4, 5, 0, 0, 0, 0, 0};
   int8_t golden_quantized[elements_count];
   int8_t output_data[elements_count];
@@ -355,10 +355,10 @@ TF_LITE_MICRO_TEST(SimpleReluTestInt8) {
 TF_LITE_MICRO_TEST(SimpleRelu6TestInt8) {
   const int elements_count = 10;
 
-  const int input_shape[] = {2, 1, 5};
+  int input_shape[] = {2, 1, 5};
   const float input_data[] = {4, 5, 6, 7, 8, -1, -2, -3, -4, -5};
   int8_t input_quantized[elements_count];
-  const int output_shape[] = {2, 1, 5};
+  int output_shape[] = {2, 1, 5};
   const float golden[] = {4, 5, 6, 6, 6, 0, 0, 0, 0, 0};
   int8_t golden_quantized[elements_count];
   int8_t output_data[elements_count];

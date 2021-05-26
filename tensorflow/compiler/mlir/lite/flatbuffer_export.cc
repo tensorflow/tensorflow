@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -535,13 +536,10 @@ class Translator {
       const Optional<BufferOffset<tflite::QuantizationParameters>>&
           quant_parameters);
 
-  // TODO(b/137395003): Legalize control flow ops to TFLite dialect, and remove
-  // these 2 functions here.
+  // TODO(b/137395003): Legalize tf.IfOp to TFLite dialect, and change the
+  // following method to handle TFL::IfOp.
   BufferOffset<tflite::Operator> BuildIfOperator(
       mlir::TF::IfOp op, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-  BufferOffset<tflite::Operator> BuildWhileOperator(
-      mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   // Build while operator where cond & body are regions.
@@ -634,6 +632,8 @@ class Translator {
   BufferOffset<tflite::SparsityParameters> BuildSparsityParameters(
       const mlir::TFL::SparsityParameterAttr& s_attr);
 
+  bool EstimateArithmeticCount(int64_t* count);
+
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -675,6 +675,22 @@ class Translator {
   // User's defined ops allowed with Flex.
   const std::unordered_set<std::string> select_user_tf_ops_;
 };
+
+bool Translator::EstimateArithmeticCount(int64_t* count) {
+  int64_t result = 0;
+  bool encounter_undetermined_mac = false;
+  module_->walk([&](mlir::TFL::TflArithmeticCountOpInterface op) {
+    int64_t mac_count = op.GetArithmeticCount(op);
+    if (mac_count < 0) {
+      encounter_undetermined_mac = true;
+      return;
+    }
+    result += mac_count;
+  });
+
+  *count = result;
+  return !encounter_undetermined_mac;
+}
 
 std::string Translator::UniqueName(mlir::Value val) {
   return std::string(name_mapper_.GetUniqueName(val));
@@ -833,9 +849,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   BufferOffset<tflite::QuantizationParameters> q_params;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     q_params = tflite::CreateQuantizationParameters(
-        // TODO(fengliuai): min and max values are not stored in the
-        // quantized type, so both are set to 0. The model couldn't be imported
-        // to TensorFlow because of this.
+        // min and max values are not stored in the quantized type from MLIR, so
+        // both are set to 0 in the flatbuffer when they are exported.
         builder_, /*min=*/0, /*max=*/0,
         builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
         builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
@@ -908,22 +923,6 @@ BufferOffset<tflite::Operator> Translator::BuildCallOnceOperator(
   auto outputs = builder_.CreateVector(results);
   return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
                                 tflite::BuiltinOptions_CallOnceOptions,
-                                builtin_options);
-}
-
-BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
-    mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
-    const std::vector<int32_t>& results) {
-  auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
-  int cond_subgraph_index = subgraph_index_map_.at(op.cond().str());
-  int body_subgraph_index = subgraph_index_map_.at(op.body().str());
-  auto builtin_options = tflite::CreateWhileOptions(
-                             builder_, cond_subgraph_index, body_subgraph_index)
-                             .Union();
-  auto inputs = builder_.CreateVector(operands);
-  auto outputs = builder_.CreateVector(results);
-  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
-                                tflite::BuiltinOptions_WhileOptions,
                                 builtin_options);
 }
 
@@ -1199,8 +1198,6 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
   if (dialect == tf_dialect_) {
     if (auto ifOp = dyn_cast<mlir::TF::IfOp>(inst)) {
       return BuildIfOperator(ifOp, operands, results);
-    } else if (auto whileOp = dyn_cast<mlir::TF::WhileOp>(inst)) {
-      return BuildWhileOperator(whileOp, operands, results);
     }
 
     CustomOptionsOffset custom_options;
@@ -1878,6 +1875,31 @@ Optional<std::string> Translator::TranslateInternal() {
                << "failed while converting: '" << failed_region.first
                << "': " << err,
            llvm::None;
+  }
+
+  // Log MAC count.
+  int64_t ops_count;
+  if (EstimateArithmeticCount(&ops_count)) {
+    const int64_t million = 1e6;
+    const int64_t billion = 1e9;
+    std::string flops_str;
+    std::string mac_str;
+    if (ops_count < 10000) {
+      flops_str = absl::StrFormat("%ld ", ops_count);
+      mac_str = absl::StrFormat("%ld ", ops_count / 2);
+    } else if (ops_count < billion) {
+      flops_str =
+          absl::StrFormat("%.3f M ", static_cast<double>(ops_count) / million);
+      mac_str = absl::StrFormat("%.3f M ",
+                                static_cast<double>(ops_count / 2) / million);
+    } else {
+      flops_str =
+          absl::StrFormat("%.3f G ", static_cast<double>(ops_count) / billion);
+      mac_str = absl::StrFormat("%.3f G ",
+                                static_cast<double>(ops_count / 2) / billion);
+    }
+    LOG(INFO) << "Estimated count of arithmetic ops: " << flops_str
+              << " ops, equivalently " << mac_str << " MACs";
   }
 
   std::string model_description;

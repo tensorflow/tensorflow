@@ -47,6 +47,10 @@ GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Half, Eigen::half, Eigen::half,
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Float, float, float, baseline_add)
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Double, double, double, baseline_add)
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int64, int64, int64, baseline_add)
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_add)
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_add)
 
 /// Test `tf.AddV2`.
 

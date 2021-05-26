@@ -135,6 +135,8 @@ import re
 import numpy as np
 import six
 
+from tensorflow.python.data.experimental.ops import lookup_ops as data_lookup_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import utils as fc_utils
@@ -997,28 +999,28 @@ def numeric_column(key,
   Example:
 
   Assume we have data with two features `a` and `b`.
-  
+
   >>> data = {'a': [15, 9, 17, 19, 21, 18, 25, 30],
   ...    'b': [5.0, 6.4, 10.5, 13.6, 15.7, 19.9, 20.3 , 0.0]}
-  
+
   Let us represent the features `a` and `b` as numerical features.
 
   >>> a = tf.feature_column.numeric_column('a')
   >>> b = tf.feature_column.numeric_column('b')
-  
+
   Feature column describe a set of transformations to the inputs.
 
-  For example, to "bucketize" feature `a`, wrap the `a` column in a 
+  For example, to "bucketize" feature `a`, wrap the `a` column in a
   `feature_column.bucketized_column`.
   Providing `5` bucket boundaries, the bucketized_column api
   will bucket this feature in total of `6` buckets.
-  
+
   >>> a_buckets = tf.feature_column.bucketized_column(a,
   ...    boundaries=[10, 15, 20, 25, 30])
-  
-  Create a `DenseFeatures` layer which will apply the transformations 
+
+  Create a `DenseFeatures` layer which will apply the transformations
   described by the set of `tf.feature_column` objects:
-  
+
   >>> feature_layer = tf.keras.layers.DenseFeatures([a_buckets, b])
   >>> print(feature_layer(data))
   tf.Tensor(
@@ -1030,7 +1032,7 @@ def numeric_column(key,
    [ 0.   0.   1.   0.   0.   0.  19.9]
    [ 0.   0.   0.   0.   1.   0.  20.3]
    [ 0.   0.   0.   0.   0.   1.   0. ]], shape=(8, 7), dtype=float32)
-    
+
   Args:
     key: A unique string identifying the input feature. It is used as the
       column name and the dictionary key for feature parsing configs, feature
@@ -1353,7 +1355,8 @@ def categorical_column_with_vocabulary_file_v2(key,
                                                vocabulary_size=None,
                                                dtype=dtypes.string,
                                                default_value=None,
-                                               num_oov_buckets=0):
+                                               num_oov_buckets=0,
+                                               file_format=None):
   """A `CategoricalColumn` with a vocabulary file.
 
   Use this when your inputs are in string or integer format, and you have a
@@ -1421,6 +1424,9 @@ def categorical_column_with_vocabulary_file_v2(key,
       `[vocabulary_size, vocabulary_size+num_oov_buckets)` based on a hash of
       the input value. A positive `num_oov_buckets` can not be specified with
       `default_value`.
+    file_format: The format of the vocabulary file. The format is 'text' by
+      default unless `vocabulary_file` is a string which ends in 'tfrecord.gz'.
+      Accepted alternative value for `file_format` is 'tfrecord_gzip'.
 
   Returns:
     A `CategoricalColumn` with a vocabulary file.
@@ -1435,18 +1441,27 @@ def categorical_column_with_vocabulary_file_v2(key,
   if not vocabulary_file:
     raise ValueError('Missing vocabulary_file in {}.'.format(key))
 
+  if file_format is None and vocabulary_file.endswith('tfrecord.gz'):
+    file_format = 'tfrecord_gzip'
+
   if vocabulary_size is None:
     if not gfile.Exists(vocabulary_file):
       raise ValueError('vocabulary_file in {} does not exist.'.format(key))
 
-    with gfile.GFile(vocabulary_file, mode='rb') as f:
-      vocabulary_size = sum(1 for _ in f)
+    if file_format == 'tfrecord_gzip':
+      ds = readers.TFRecordDataset(vocabulary_file, 'GZIP')
+      vocabulary_size = ds.reduce(0, lambda x, _: x + 1)
+      if context.executing_eagerly():
+        vocabulary_size = vocabulary_size.numpy()
+    else:
+      with gfile.GFile(vocabulary_file, mode='rb') as f:
+        vocabulary_size = sum(1 for _ in f)
     logging.info(
         'vocabulary_size = %d in %s is inferred from the number of elements '
         'in the vocabulary_file %s.', vocabulary_size, key, vocabulary_file)
 
   # `vocabulary_size` isn't required for lookup, but it is for `_num_buckets`.
-  if vocabulary_size < 1:
+  if not isinstance(vocabulary_size, ops.Tensor) and vocabulary_size < 1:
     raise ValueError('Invalid vocabulary_size in {}.'.format(key))
   if num_oov_buckets:
     if default_value is not None:
@@ -1464,7 +1479,8 @@ def categorical_column_with_vocabulary_file_v2(key,
       vocabulary_size=vocabulary_size,
       num_oov_buckets=0 if num_oov_buckets is None else num_oov_buckets,
       default_value=-1 if default_value is None else default_value,
-      dtype=dtype)
+      dtype=dtype,
+      file_format=file_format)
 
 
 @tf_export('feature_column.categorical_column_with_vocabulary_list')
@@ -3463,10 +3479,29 @@ class HashedCategoricalColumn(
 class VocabularyFileCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
-    collections.namedtuple('VocabularyFileCategoricalColumn',
-                           ('key', 'vocabulary_file', 'vocabulary_size',
-                            'num_oov_buckets', 'dtype', 'default_value'))):
+    collections.namedtuple(
+        'VocabularyFileCategoricalColumn',
+        ('key', 'vocabulary_file', 'vocabulary_size', 'num_oov_buckets',
+         'dtype', 'default_value', 'file_format'))):
   """See `categorical_column_with_vocabulary_file`."""
+
+  def __new__(cls,
+              key,
+              vocabulary_file,
+              vocabulary_size,
+              num_oov_buckets,
+              dtype,
+              default_value,
+              file_format=None):
+    return super(VocabularyFileCategoricalColumn, cls).__new__(
+        cls,
+        key=key,
+        vocabulary_file=vocabulary_file,
+        vocabulary_size=vocabulary_size,
+        num_oov_buckets=num_oov_buckets,
+        dtype=dtype,
+        default_value=default_value,
+        file_format=file_format)
 
   @property
   def _is_v2_column(self):
@@ -3488,6 +3523,43 @@ class VocabularyFileCategoricalColumn(
   def _parse_example_spec(self):
     return self.parse_example_spec
 
+  def _make_table_from_tfrecord_gzip_file(self, key_dtype, name):
+    dataset = readers.TFRecordDataset(
+        self.vocabulary_file, compression_type='GZIP')
+
+    def key_dtype_fn(key):
+      return key if key_dtype is dtypes.string else string_ops.string_to_number(
+          key, out_type=key_dtype)
+
+    return data_lookup_ops.index_table_from_dataset(
+        dataset.map(key_dtype_fn),
+        num_oov_buckets=self.num_oov_buckets,
+        vocab_size=self.vocabulary_size,
+        default_value=self.default_value,
+        key_dtype=key_dtype,
+        name=name)
+
+  def _make_table(self, key_dtype, state_manager):
+    name = '{}_lookup'.format(self.key)
+    if state_manager is None or not state_manager.has_resource(self, name):
+      with ops.init_scope():
+        if self.file_format == 'tfrecord_gzip':
+          table = self._make_table_from_tfrecord_gzip_file(key_dtype, name)
+        else:
+          table = lookup_ops.index_table_from_file(
+              vocabulary_file=self.vocabulary_file,
+              num_oov_buckets=self.num_oov_buckets,
+              vocab_size=self.vocabulary_size,
+              default_value=self.default_value,
+              key_dtype=key_dtype,
+              name=name)
+      if state_manager is not None:
+        state_manager.add_resource(self, name, table)
+    else:
+      # Reuse the table from the previous run.
+      table = state_manager.get_resource(self, name)
+    return table
+
   def _transform_input_tensor(self, input_tensor, state_manager=None):
     """Creates a lookup table for the vocabulary."""
     if self.dtype.is_integer != input_tensor.dtype.is_integer:
@@ -3505,23 +3577,7 @@ class VocabularyFileCategoricalColumn(
       # `index_table_from_file` requires 64-bit integer keys.
       key_dtype = dtypes.int64
       input_tensor = math_ops.cast(input_tensor, dtypes.int64)
-
-    name = '{}_lookup'.format(self.key)
-    if state_manager is None or not state_manager.has_resource(self, name):
-      with ops.init_scope():
-        table = lookup_ops.index_table_from_file(
-            vocabulary_file=self.vocabulary_file,
-            num_oov_buckets=self.num_oov_buckets,
-            vocab_size=self.vocabulary_size,
-            default_value=self.default_value,
-            key_dtype=key_dtype,
-            name=name)
-      if state_manager is not None:
-        state_manager.add_resource(self, name, table)
-    else:
-      # Reuse the table from the previous run.
-      table = state_manager.get_resource(self, name)
-    return table.lookup(input_tensor)
+    return self._make_table(key_dtype, state_manager).lookup(input_tensor)
 
   def transform_feature(self, transformation_cache, state_manager):
     """Creates a lookup table for the vocabulary."""

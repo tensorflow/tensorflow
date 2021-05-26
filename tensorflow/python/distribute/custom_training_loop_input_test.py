@@ -39,6 +39,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.tpu import tpu
 from tensorflow.python.util import nest
 
@@ -723,7 +724,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       # reshape4: [-1, <=3, 2]
       reshape4 = array_ops.reshape(reshape1,
                                    [-1, array_ops.shape(example)[0], 2])
-      return [reshape1, reshape2, reshape3, reshape4]
+      # Reshape1 is duplicated in order to test dynamic dimension on copies.
+      return [reshape1, reshape2, reshape3, reshape4, reshape1]
 
     # This assumes that there are exactly 2 replicas
     outputs = distribution.experimental_local_results(
@@ -732,11 +734,13 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     self.assertAllEqual((3, 3, 2), outputs[0][1].shape)
     self.assertAllEqual((3, 3, 2), outputs[0][2].shape)
     self.assertAllEqual((3, 3, 2), outputs[0][3].shape)
+    self.assertAllEqual((9, 2), outputs[0][4].shape)
 
     self.assertAllEqual((4, 2), outputs[1][0].shape)
     self.assertAllEqual((2, 2, 2), outputs[1][1].shape)
     self.assertAllEqual((2, 2, 2), outputs[1][2].shape)
     self.assertAllEqual((2, 2, 2), outputs[1][3].shape)
+    self.assertAllEqual((4, 2), outputs[1][4].shape)
 
   @combinations.generate(
       combinations.combine(
@@ -1017,6 +1021,28 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         f_train_step(iterator)
 
     self.assertAlmostEqual(26.0, a.numpy())
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]))
+  def testComputeLossWithDynamicShapes(self, distribution):
+    dataset = get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(iterator):
+
+      def computation(x):
+        return losses.compute_weighted_loss(x, weights=array_ops.ones_like(x))
+
+      inputs = next(iterator)
+      outputs = distribution.experimental_local_results(
+          distribution.run(computation, args=(inputs,)))
+      return outputs
+
+    # This assumes that there are exactly 2 replicas
+    self.assertAllEqual([5.5, 7.], run(input_iterator))
 
 
 if __name__ == "__main__":

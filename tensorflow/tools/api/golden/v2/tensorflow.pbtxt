@@ -1037,6 +1037,10 @@ tf_module {
     argspec: "args=[\'input\', \'block_shape\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "sparse_segment_sum_grad"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "split"
     argspec: "args=[\'value\', \'num_or_size_splits\', \'axis\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'split\'], "
   }

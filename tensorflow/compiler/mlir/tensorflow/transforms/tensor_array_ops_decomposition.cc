@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace mlir {
-
 namespace {
 
 namespace cutil = TF::collection_ops_util;
@@ -68,8 +67,8 @@ using std::string;
 // shape.
 //
 struct TensorArrayOpsDecompositionPass
-    : public PassWrapper<TensorArrayOpsDecompositionPass,
-                         OperationPass<ModuleOp>> {
+    : public TF::TensorArrayOpsDecompositionPassBase<
+          TensorArrayOpsDecompositionPass> {
   void runOnOperation() override;
 };
 
@@ -944,13 +943,10 @@ void TensorArrayOpsDecompositionPass::runOnOperation() {
   }
 }
 
-static PassRegistration<TensorArrayOpsDecompositionPass> pass(
-    "tf-tensor-array-ops-decomposition",
-    "Decompose tensor array operations into local variable operations.");
-
 }  // namespace
 
 namespace TF {
+
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass() {
   return std::make_unique<TensorArrayOpsDecompositionPass>();

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
@@ -46,6 +47,8 @@ class HexagonDelegateProvider : public DelegateProvider {
   void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
 
   std::string GetName() const final { return "Hexagon"; }
 };
@@ -100,6 +103,17 @@ TfLiteDelegatePtr HexagonDelegateProvider::CreateTfLiteDelegate(
   }
 #endif
   return delegate;
+}
+
+std::pair<TfLiteDelegatePtr, int>
+HexagonDelegateProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  int rank = 0;
+#if defined(TFLITE_ENABLE_HEXAGON)
+  rank = params.GetPosition<bool>("use_hexagon");
+#endif
+  return std::make_pair(std::move(ptr), rank);
 }
 
 }  // namespace tools

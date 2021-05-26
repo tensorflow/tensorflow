@@ -27,7 +27,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.layers.normalization import batch_normalization_v1
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -59,7 +59,7 @@ class HasList(training.Model):
         data_structures.wrap_or_unwrap(
             list([core.Dense(11)]) + [core.Dense(12)]))
     self.layers_with_updates = data_structures.wrap_or_unwrap(
-        [normalization.BatchNormalization()])
+        [batch_normalization_v1.BatchNormalization()])
 
   def call(self, x):
     aggregation = 0.
@@ -246,9 +246,9 @@ class HasMapping(training.Model):
         [core.Dense(5),
          core.Dense(6, kernel_regularizer=math_ops.reduce_sum)])
     self.layer_dict["norm"].append(
-        normalization.BatchNormalization())
+        batch_normalization_v1.BatchNormalization())
     self.layer_dict["norm"].append(
-        normalization.BatchNormalization())
+        batch_normalization_v1.BatchNormalization())
 
   def call(self, x):
     aggregation = 0.
@@ -397,7 +397,7 @@ class HasTuple(training.Model):
     self.layer_list = (
         core.Dense(3), core.Dense(4),
         core.Dense(5, kernel_regularizer=math_ops.reduce_sum))
-    self.layers_with_updates = (normalization.BatchNormalization(),)
+    self.layers_with_updates = (batch_normalization_v1.BatchNormalization(),)
 
   def call(self, x):
     aggregation = 0.

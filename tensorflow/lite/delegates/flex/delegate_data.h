@@ -60,6 +60,22 @@ class DelegateData {
   std::unordered_map<const TfLiteContext*, BufferMap> buffer_map_;
 };
 
+// Creates a `TFLiteSubgraphResource` for each subgraph (execpt
+// for main subgraph) in the model and adds it in the eager context's resource
+// manager. It also registers FunctionDefs in the function library runtime for
+// subgraphs which are used by a list of flex ops.
+// TODO(b/181352924): For now, the `GetSubgraphs` API will return all the
+// subgraphs in the tflite model, so that it ensures we won't miss any subgraphs
+// during function registration. We need to revisit here when we introduce
+// multi-signature support.
+tensorflow::Status RegisterFunctionDefForSubgraphs(
+    Subgraph& main_subgraph,
+    const std::function<tensorflow::Status(
+        const std::vector<std::unique_ptr<Subgraph>>&,
+        std::set<std::string>* result)>& select_subgraphs_to_register,
+    tensorflow::ResourceMgr* resource_mgr,
+    tensorflow::EagerContext* eager_context);
+
 }  // namespace flex
 }  // namespace tflite
 

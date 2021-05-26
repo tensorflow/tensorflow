@@ -168,8 +168,7 @@ Status MlirFunctionOptimizationPass::Run(
     }
   }
 
-  // TODO(b/176852151): Remove this after dark launch completed.
-  // Capture stats relevant to graph properties used in dark launch.
+  // Capture stats on graph properties analyzed before running the MLIR bridge.
   // We set `uses_uninitialized_resource_args` to false here because function
   // optimization is not affected by uninitialized resource args.
   GetMlirBridgeRolloutPolicy(**graph, flib_def, config_proto,

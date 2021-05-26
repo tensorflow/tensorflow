@@ -112,16 +112,10 @@ class CheckpointInitialValue(ops.Tensor):
       slice_spec = ":".join(
           "%d,%d" % (o, s) for o, s in zip(shard_info.offset, shard_info.shape))
       shape_and_slice = full_shape_str + slice_spec
-      # Override shape here so we set the correct shape below.
-      shape = shard_info.shape
     else:
       shape_and_slice = ""
     self.wrapped_value = checkpoint_position.value_tensors(
         {VARIABLE_VALUE_KEY: shape_and_slice})[VARIABLE_VALUE_KEY]
-    if shape:
-      # We need to set the static shape information on the initializer if
-      # possible so we don't get a variable with an unknown shape.
-      self.wrapped_value.set_shape(shape)
     self._checkpoint_position = checkpoint_position
 
   def __getattr__(self, attr):

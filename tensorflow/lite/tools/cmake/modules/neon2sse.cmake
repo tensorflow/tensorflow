@@ -22,7 +22,8 @@ endif()
 OverridableFetchContent_Declare(
   neon2sse
   GIT_REPOSITORY https://github.com/intel/ARM_NEON_2_x86_SSE
-  GIT_TAG master
+  # Sync with tensorflow/workspace2.bzl
+  GIT_TAG a1652fd5253afbf3e39357b012974f93511f6108
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/neon2sse"

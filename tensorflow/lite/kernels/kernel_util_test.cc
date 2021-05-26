@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
@@ -347,7 +348,6 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -359,7 +359,7 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &context_, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data()));
   EXPECT_THAT(per_channel_multiplier,
@@ -450,7 +450,6 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -462,7 +461,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &context_, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data(), 3));
   // Since the filter scale has a size of one but the number of channels is
@@ -561,7 +560,6 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -573,7 +571,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &context_, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data(), 3));
   EXPECT_THAT(per_channel_multiplier,
@@ -661,7 +659,6 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -673,7 +670,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &context_, &input, &filter, &bias, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data(), 3));
   EXPECT_THAT(per_channel_multiplier,
@@ -744,7 +741,6 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   output.quantization.params = reinterpret_cast<void*>(output_params);
 
   // Create call parameters.
-  TfLiteContext context;
   int32_t multiplier;
   int shift;
   int32_t output_activation_min;
@@ -756,7 +752,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   EXPECT_EQ(
       kTfLiteOk,
       PopulateConvolutionQuantizationParams(
-          &context, &input, &filter, nullptr, &output, kTfLiteActRelu,
+          &context_, &input, &filter, nullptr, &output, kTfLiteActRelu,
           &multiplier, &shift, &output_activation_min, &output_activation_max,
           per_channel_multiplier.data(), per_channel_shift.data(), 3));
   EXPECT_THAT(per_channel_multiplier,
@@ -766,6 +762,44 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   // Release.
   TfLiteTensorFree(&input);
   TfLiteTensorFree(&filter);
+  TfLiteTensorFree(&output);
+}
+
+TEST_F(KernelUtilTest, ActivationRangeQuantizedOverflow) {
+  // Create output.
+  TfLiteTensor output = {};
+  output.type = kTfLiteUInt8;
+  output.allocation_type = kTfLiteArenaRw;
+  output.dims = nullptr;
+  TfLiteQuantizationParams output_quant = {1e-10, -128};
+  output.params = output_quant;
+  output.quantization.type = kTfLiteAffineQuantization;
+  auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  output_params->scale = TfLiteFloatArrayCreate(1);
+  output_params->scale->data[0] = 1;
+  output_params->zero_point = TfLiteIntArrayCreate(1);
+  output_params->zero_point->data[0] = -128;
+  output.quantization.params = reinterpret_cast<void*>(output_params);
+
+  // For bounded activation, a too small scale value may cause overflow.
+  // Make sure overflow error is handled gracefully.
+  int32_t act_min, act_max;
+  ASSERT_EQ(kTfLiteOk,
+            CalculateActivationRangeQuantized(&context_, kTfLiteActRelu,
+                                              &output, &act_min, &act_max));
+  ASSERT_NE(kTfLiteOk,
+            CalculateActivationRangeQuantized(&context_, kTfLiteActRelu6,
+                                              &output, &act_min, &act_max));
+  EXPECT_TRUE(absl::StrContains(
+      context_.error, "no_integer_overflow_from_quantization was not true"));
+  ASSERT_NE(kTfLiteOk,
+            CalculateActivationRangeQuantized(&context_, kTfLiteActReluN1To1,
+                                              &output, &act_min, &act_max));
+  EXPECT_TRUE(absl::StrContains(
+      context_.error, "no_integer_overflow_from_quantization was not true"));
+
+  // Release.
   TfLiteTensorFree(&output);
 }
 
@@ -783,9 +817,3 @@ TEST_F(KernelUtilTest, IsMobilePlatform) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

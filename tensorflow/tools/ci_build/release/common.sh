@@ -145,7 +145,7 @@ function install_ubuntu_16_pip_deps {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   "${PIP_CMD}" install --user --upgrade 'tb-nightly ~= 2.4.0.a'
-  "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.4.0'
+  "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.5.0'
   # Test dependencies
   "${PIP_CMD}" install --user 'grpcio >= 1.37.0, < 2.0'
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
@@ -202,7 +202,7 @@ function install_ubuntu_16_python_pip_deps {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   ${PIP_CMD} install --user --upgrade 'tb-nightly ~= 2.4.0.a'
-  ${PIP_CMD} install --user --upgrade 'tensorflow_estimator ~= 2.4.0'
+  ${PIP_CMD} install --user --upgrade 'tensorflow_estimator ~= 2.5.0'
   # Test dependencies
   ${PIP_CMD} install --user 'grpcio >= 1.37.0, < 2.0'
   ${PIP_CMD} install --user 'portpicker ~= 1.3.1'
@@ -245,7 +245,7 @@ function install_macos_pip_deps {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   ${PIP_CMD} install --upgrade 'tb-nightly ~= 2.4.0.a'
-  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.4.0'
+  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.5.0'
   # Test dependencies
   ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0'
   ${PIP_CMD} install 'portpicker ~= 1.3.1'
@@ -292,7 +292,7 @@ function install_macos_pip_deps_no_venv {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   ${PIP_CMD} install --upgrade 'tb-nightly ~= 2.4.0.a' --user
-  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.4.0' --user
+  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.5.0' --user
   # Test dependencies
   ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0' --user
   ${PIP_CMD} install 'portpicker ~= 1.3.1' --user
@@ -321,7 +321,7 @@ function setup_python_from_pyenv_macos {
     PY_VERSION=$1
   fi
 
-  git clone --branch v1.2.23 https://github.com/pyenv/pyenv.git
+  git clone --branch v1.2.27 https://github.com/pyenv/pyenv.git
 
   PYENV_ROOT="$(pwd)/pyenv"
   export PYENV_ROOT
@@ -438,10 +438,10 @@ function test_xml_summary_exit {
 # CPU size
 MAC_CPU_MAX_WHL_SIZE=190M
 LINUX_CPU_MAX_WHL_SIZE=170M
-WIN_CPU_MAX_WHL_SIZE=140M
+WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-LINUX_GPU_MAX_WHL_SIZE=435M
-WIN_GPU_MAX_WHL_SIZE=252M
+LINUX_GPU_MAX_WHL_SIZE=450M
+WIN_GPU_MAX_WHL_SIZE=345M
 
 function test_tf_whl_size() {
   WHL_PATH=${1}

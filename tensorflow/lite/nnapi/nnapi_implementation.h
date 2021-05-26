@@ -24,6 +24,11 @@ limitations under the License.
 struct NnApi {
   bool nnapi_exists;
   int32_t android_sdk_version;
+  // NNAPI feature level should be used when deciding which NNAPI feature to
+  // use, as feature levels after Android API level 31 have no association with
+  // API level because the NNAPI specification can be updated between Android
+  // API releases.
+  int64_t nnapi_runtime_feature_level;
 
   /**
    * Creates a shared memory object from a file descriptor.
@@ -1734,6 +1739,49 @@ struct NnApi {
    */
   int (*ANeuralNetworksExecution_setReusable)(
       ANeuralNetworksExecution* execution, bool reusable);
+
+  /**
+   * Get the NNAPI runtime feature level.
+   *
+   * Since API level 31 (NNAPI feature level 5), the NNAPI runtime
+   * (libneuralnetworks.so) and its API specification can be updated between
+   * Android API releases.
+   *
+   * On Android devices with API level 31 and newer, for NNAPI runtime feature
+   * discovery, the NNAPI runtime feature level must be used instead of the
+   * Android device API level.
+   *
+   * On Android devices with API level 30 and older, the Android API level of
+   * the Android device must be used for NNAPI runtime feature discovery. Enum
+   * values in
+   * {@link FeatureLevelCode} from feature level 1 to 5 have their corresponding
+   * Android API levels listed in their documentation, and each such enum value
+   * equals the corresponding API level. This allows using the Android API level
+   * as the feature level. This mapping between enum value and Android API level
+   * does not exist for feature levels after NNAPI feature level 5 and API
+   * levels after S (31).
+   *
+   * Example usage:
+   * int device_api_level = android_get_device_api_level();
+   * int64_t runtime_feature_level = (device_api_level < __ANDROID_API_S__) ?
+   *                                  device_api_level :
+   * ANeuralNetworks_getRuntimeFeatureLevel();
+   *
+   * Runtime feature level is closely related to NNAPI device feature level
+   * ({@link ANeuralNetworksDevice_getFeatureLevel}), which indicates an NNAPI
+   * device feature level (the most advanced NNAPI specification and features
+   * that the driver implements). This function expresses NNAPI runtime feature
+   * level, which indicates the most advanced NNAPI specification and features
+   * the runtime implements. An NNAPI device feature level is always less than
+   * or equal to the runtime feature level.
+   *
+   * This function returns a {@link FeatureLevelCode} enum value,
+   * which is the NNAPI specification version that this NNAPI runtime
+   * implements. It is NOT an Android API level.
+   *
+   * Available since NNAPI feature level 5.
+   */
+  int64_t (*ANeuralNetworks_getRuntimeFeatureLevel)();
 };
 
 /**

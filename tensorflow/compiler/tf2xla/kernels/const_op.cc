@@ -25,6 +25,75 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+template <typename DstT, typename SrcT>
+DstT CastTo(SrcT src) {
+  return static_cast<DstT>(src);
+}
+
+template <typename DstT,
+          typename std::enable_if<std::is_same<DstT, Eigen::half>::value ||
+                                  std::is_same<DstT, bfloat16>::value>::type* =
+              nullptr>
+DstT CastTo(int32 src) {
+  return absl::bit_cast<DstT>(static_cast<uint16>(src));
+}
+
+// Returns scalar constant with the value in the tensor, if the given proto has
+// exactly one value but more than one elements. This encoding is used to
+// efficiently serialize tensors that have one value repeated for all the
+// indices.
+xla::XlaOp GetScalarConst(const TensorProto& proto, xla::XlaBuilder* b) {
+  TensorShape shape(proto.tensor_shape());
+  if (shape.num_elements() > 1) {
+    switch (proto.dtype()) {
+#define HANDLE_SPLAT(DTYPE, field_name, xla_type)                             \
+  case DTYPE:                                                                 \
+    if (proto.field_name##_val_size() == 1) {                                 \
+      return xla::ConstantR0(b, CastTo<xla_type>(proto.field_name##_val(0))); \
+    }                                                                         \
+    break;
+
+      HANDLE_SPLAT(DT_BOOL, bool, bool);
+
+      HANDLE_SPLAT(DT_INT8, int, xla::int8);
+      HANDLE_SPLAT(DT_INT16, int, xla::int16);
+      HANDLE_SPLAT(DT_INT32, int, xla::int32);
+      HANDLE_SPLAT(DT_INT64, int64, xla::int64);
+
+      HANDLE_SPLAT(DT_UINT8, int, xla::uint8);
+      HANDLE_SPLAT(DT_UINT16, int, xla::uint16);
+      HANDLE_SPLAT(DT_UINT32, uint32, xla::uint32);
+      HANDLE_SPLAT(DT_UINT64, uint64, xla::uint64);
+
+      HANDLE_SPLAT(DT_FLOAT, float, float);
+      HANDLE_SPLAT(DT_DOUBLE, double, double);
+
+      HANDLE_SPLAT(DT_BFLOAT16, half, bfloat16);
+      HANDLE_SPLAT(DT_HALF, half, Eigen::half);
+
+#undef HANDLE_SPLAT
+
+#define HANDLE_COMPLEX_SPLAT(DTYPE, field_name, xla_type)                     \
+  case DTYPE:                                                                 \
+    if (proto.field_name##_val_size() == 2) {                                 \
+      return xla::ConstantR0<xla_type>(                                       \
+          b, xla_type(proto.field_name##_val(0), proto.field_name##_val(1))); \
+    }                                                                         \
+    break;
+
+      HANDLE_COMPLEX_SPLAT(DT_COMPLEX64, scomplex, xla::complex64);
+      HANDLE_COMPLEX_SPLAT(DT_COMPLEX128, dcomplex, xla::complex128);
+
+#undef HANDLE_COMPLEXSPLAT
+
+      default:
+        break;
+    }
+  }
+
+  return xla::XlaOp();
+}
+
 class ConstOp : public XlaOpKernel {
  public:
   explicit ConstOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -40,82 +109,19 @@ class ConstOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    TensorShape shape(proto_.tensor_shape());
-
     xla::XlaBuilder* b = ctx->builder();
 
     // To avoid blowups for large constants filled with the same value,
     // recognize that case and emit a scalar broadcast instead.
+    TensorShape shape(proto_.tensor_shape());
     if (shape.num_elements() > 1) {
-      switch (proto_.dtype()) {
-        case DT_BOOL:
-          if (proto_.bool_val_size() == 1) {
-            ctx->SetOutput(
-                0, xla::Broadcast(xla::ConstantR0<bool>(b, proto_.bool_val(0)),
-                                  shape.dim_sizes()));
-            return;
-          }
-          break;
-        case DT_FLOAT:
-          if (proto_.float_val_size() == 1) {
-            ctx->SetOutput(0, xla::Broadcast(xla::ConstantR0<float>(
-                                                 b, proto_.float_val(0)),
-                                             shape.dim_sizes()));
-            return;
-          }
-          break;
-        case DT_DOUBLE:
-          if (proto_.double_val_size() == 1) {
-            ctx->SetOutput(0, xla::Broadcast(xla::ConstantR0<double>(
-                                                 b, proto_.double_val(0)),
-                                             shape.dim_sizes()));
-            return;
-          }
-          break;
-        case DT_COMPLEX64:
-          if (proto_.scomplex_val_size() == 2) {
-            ctx->SetOutput(
-                0,
-                xla::Broadcast(xla::ConstantR0<xla::complex64>(
-                                   b, xla::complex64(proto_.scomplex_val(0),
-                                                     proto_.scomplex_val(1))),
-                               shape.dim_sizes()));
-            return;
-          }
-          break;
-        case DT_COMPLEX128:
-          if (proto_.scomplex_val_size() == 2) {
-            ctx->SetOutput(
-                0,
-                xla::Broadcast(xla::ConstantR0<xla::complex128>(
-                                   b, xla::complex128(proto_.dcomplex_val(0),
-                                                      proto_.dcomplex_val(1))),
-                               shape.dim_sizes()));
-            return;
-          }
-          break;
-        case DT_INT32:
-          if (proto_.int_val_size() == 1) {
-            ctx->SetOutput(
-                0, xla::Broadcast(xla::ConstantR0<int32>(b, proto_.int_val(0)),
-                                  shape.dim_sizes()));
-            return;
-          }
-          break;
-        case DT_INT64:
-          if (proto_.int64_val_size() == 1) {
-            ctx->SetOutput(0, xla::Broadcast(xla::ConstantR0<int64>(
-                                                 b, proto_.int64_val(0)),
-                                             shape.dim_sizes()));
-            return;
-          }
-          break;
-        default:
-          break;
+      xla::XlaOp value = GetScalarConst(proto_, b);
+      if (value.valid()) {
+        ctx->SetOutput(0, xla::Broadcast(value, shape.dim_sizes()));
+        return;
       }
     }
 
-    // General case
     Tensor tensor(proto_.dtype());
     OP_REQUIRES(ctx, tensor.FromProto(cpu_allocator(), proto_),
                 errors::InvalidArgument("Cannot parse tensor from proto: ",

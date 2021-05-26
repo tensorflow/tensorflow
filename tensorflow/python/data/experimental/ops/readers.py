@@ -25,7 +25,6 @@ import gzip
 import numpy as np
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -330,7 +329,7 @@ def make_csv_dataset_v2(
     use_quote_delim=True,
     na_value="",
     header=True,
-    num_epochs=None,
+    num_epochs=None,  # TODO(aaudibert): Change default to 1 when graduating.
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
@@ -780,31 +779,18 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     )
     self._element_spec = tuple(
         tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
-    if compat.forward_compatible(2020, 7, 3) or exclude_cols is not None:
-      variant_tensor = gen_experimental_dataset_ops.csv_dataset_v2(
-          filenames=self._filenames,
-          record_defaults=self._record_defaults,
-          buffer_size=self._buffer_size,
-          header=self._header,
-          output_shapes=self._flat_shapes,
-          field_delim=self._field_delim,
-          use_quote_delim=self._use_quote_delim,
-          na_value=self._na_value,
-          select_cols=self._select_cols,
-          exclude_cols=self._exclude_cols,
-          compression_type=self._compression_type)
-    else:
-      variant_tensor = gen_experimental_dataset_ops.csv_dataset(
-          filenames=self._filenames,
-          record_defaults=self._record_defaults,
-          buffer_size=self._buffer_size,
-          header=self._header,
-          output_shapes=self._flat_shapes,
-          field_delim=self._field_delim,
-          use_quote_delim=self._use_quote_delim,
-          na_value=self._na_value,
-          select_cols=self._select_cols,
-          compression_type=self._compression_type)
+    variant_tensor = gen_experimental_dataset_ops.csv_dataset_v2(
+        filenames=self._filenames,
+        record_defaults=self._record_defaults,
+        buffer_size=self._buffer_size,
+        header=self._header,
+        output_shapes=self._flat_shapes,
+        field_delim=self._field_delim,
+        use_quote_delim=self._use_quote_delim,
+        na_value=self._na_value,
+        select_cols=self._select_cols,
+        exclude_cols=self._exclude_cols,
+        compression_type=self._compression_type)
     super(CsvDatasetV2, self).__init__(variant_tensor)
 
   @property

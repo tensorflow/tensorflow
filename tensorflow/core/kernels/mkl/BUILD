@@ -59,12 +59,23 @@ tf_mkl_kernel_library(
     name = "mkl_batch_matmul_op",
     srcs = ["mkl_batch_matmul_op.cc"],
     hdrs = [
+        "mkl_batch_matmul_helper.h",
         "mkl_matmul_ops_common.h",
     ],
     deps = [
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:matmul_op",
     ] + MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_einsum_op",
+    srcs = ["mkl_einsum_op.cc"],
+    hdrs = [
+        "mkl_batch_matmul_helper.h",
+        "mkl_matmul_ops_common.h",
+    ],
+    deps = ["//tensorflow/core/kernels/linalg:einsum_op"] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -344,7 +355,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
-    deps = ["//tensorflow/core/kernels:quantization_utils"] + MKL_DEPS,
+    deps = [
+        "//tensorflow/core/kernels:no_op",
+        "//tensorflow/core/kernels:quantization_utils",
+    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(

@@ -419,14 +419,14 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
               if (old_input.index() == i) {
                 // Regular input
                 new_input = input_to_forward;
-                node_map_->UpdateInput(consumer->name(), old_input.ToString(),
-                                       new_input);
+                node_map_->UpdateInput(consumer->name(),
+                                       string(old_input.node()), new_input);
                 consumer->set_input(j, new_input);
               } else if (old_input.index() == -1) {
                 // Control dependency
                 new_input = AsControlDependency(NodeName(input_to_forward));
-                node_map_->UpdateInput(consumer->name(), old_input.ToString(),
-                                       new_input);
+                node_map_->UpdateInput(consumer->name(),
+                                       string(old_input.node()), new_input);
                 consumer->set_input(j, new_input);
               }
             }

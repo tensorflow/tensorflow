@@ -254,7 +254,7 @@ def _get_end_to_end_test_cases():
               "num_oov_indices": 1,
               "mask_token": 0,
               "oov_token": -1,
-              "output_mode": index_lookup.TFIDF,
+              "output_mode": index_lookup.TF_IDF,
               "dtype": dtypes.int64,
           },
           "expected_output": [[0, 1.098612, 0, 0, 0], [0, 0, 1.252763, 0, 0],
@@ -278,7 +278,7 @@ def _get_end_to_end_test_cases():
               "num_oov_indices": 1,
               "mask_token": "",
               "oov_token": "[OOV]",
-              "output_mode": index_lookup.TFIDF,
+              "output_mode": index_lookup.TF_IDF,
               "dtype": dtypes.string,
           },
           "expected_output": [[0, 1.098612, 0, 0, 0], [0, 0, 1.252763, 0, 0],
@@ -802,7 +802,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.BINARY,
+        output_mode=index_lookup.MULTI_HOT,
         pad_to_max_tokens=True,
         dtype=dtypes.string)
     layer.set_vocabulary(vocab_data)
@@ -827,7 +827,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         num_oov_indices=0,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.BINARY,
+        output_mode=index_lookup.MULTI_HOT,
         pad_to_max_tokens=True,
         dtype=dtypes.string)
     layer.set_vocabulary(vocab_data)
@@ -859,7 +859,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.BINARY,
+        output_mode=index_lookup.MULTI_HOT,
         pad_to_max_tokens=True,
         dtype=dtypes.string)
     int_data = layer(input_data)
@@ -890,7 +890,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.BINARY,
+        output_mode=index_lookup.MULTI_HOT,
         dtype=dtypes.string)
     layer.set_vocabulary(vocab_data)
     binary_data = layer(input_data)
@@ -905,7 +905,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.BINARY,
+        output_mode=index_lookup.MULTI_HOT,
         dtype=dtypes.string)
     binary_data = layer(input_data)
     self.assertAllEqual(binary_data.shape.as_list(), [16, 2])
@@ -989,7 +989,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.TFIDF,
+        output_mode=index_lookup.TF_IDF,
         pad_to_max_tokens=True,
         dtype=dtypes.string)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
@@ -1016,7 +1016,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.TFIDF,
+        output_mode=index_lookup.TF_IDF,
         dtype=dtypes.string)
     layer.set_vocabulary(vocab_data, idf_weights=idf_weights)
     layer_output = layer(input_data)
@@ -1078,7 +1078,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
           num_oov_indices=1,
           mask_token="",
           oov_token="[OOV]",
-          output_mode=index_lookup.BINARY,
+          output_mode=index_lookup.MULTI_HOT,
           dtype=dtypes.string)
       return layer(data)
 
@@ -1476,7 +1476,7 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
         mask_token="",
         oov_token="[OOV]",
         pad_to_max_tokens=False,
-        output_mode=index_lookup.BINARY,
+        output_mode=index_lookup.MULTI_HOT,
         dtype=dtypes.string)
     layer.set_vocabulary(vocab_data)
     # Calling the layer should lock the vocabulary.
@@ -1492,7 +1492,7 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.BINARY,
+        output_mode=index_lookup.MULTI_HOT,
         dtype=dtypes.string)
     with self.assertRaisesRegex(ValueError,
                                 "`idf_weights` should only be set if"):
@@ -1506,7 +1506,7 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.TFIDF,
+        output_mode=index_lookup.TF_IDF,
         dtype=dtypes.string)
     with self.assertRaisesRegex(
         ValueError, "`idf_weights` must be the same length as vocab"):
@@ -1519,10 +1519,10 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
         num_oov_indices=1,
         mask_token="",
         oov_token="[OOV]",
-        output_mode=index_lookup.TFIDF,
+        output_mode=index_lookup.TF_IDF,
         dtype=dtypes.string)
     with self.assertRaisesRegex(
-        ValueError, "`idf_weights` must be set if output_mode is TFIDF"):
+        ValueError, "`idf_weights` must be set if output_mode is TF_IDF"):
       layer.set_vocabulary(vocab_data)
 
   def test_non_unique_int_vocab_fails(self):

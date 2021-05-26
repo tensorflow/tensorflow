@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include <cstddef>
 #include <deque>
 #include <vector>
 
@@ -39,7 +40,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
+class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
  public:
   RandomShuffleQueue(int32 capacity, int32 min_after_dequeue, int64 seed,
                      int64 seed2, const DataTypeVector& component_dtypes,
@@ -74,7 +75,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<PersistentTensor> > {
   static Status GetElementComponentFromBatch(const Tuple& tuple, int64 index,
                                              int component,
                                              OpKernelContext* ctx,
-                                             PersistentTensor* out_tensor);
+                                             Tensor* out_tensor);
 
   const int32 min_after_dequeue_;
   const int64 original_seed_;
@@ -119,7 +120,7 @@ void RandomShuffleQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
   int64 index = generator_() % queues_[0].size();
   (*tuple).reserve(num_components());
   for (int i = 0; i < num_components(); ++i) {
-    (*tuple).push_back(*queues_[i][index].AccessTensor(ctx));
+    (*tuple).push_back(queues_[i][index]);
     queues_[i][index] = queues_[i].back();
     queues_[i].pop_back();
   }
@@ -145,7 +146,7 @@ void RandomShuffleQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
             }
             if (queues_[0].size() < static_cast<size_t>(capacity_)) {
               for (int i = 0; i < num_components(); ++i) {
-                queues_[i].push_back(PersistentTensor(tuple[i]));
+                queues_[i].push_back(tuple[i]);
               }
               return kComplete;
             } else {
@@ -163,16 +164,17 @@ void RandomShuffleQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
 }
 
 /* static */
-Status RandomShuffleQueue::GetElementComponentFromBatch(
-    const Tuple& tuple, int64 index, int component, OpKernelContext* ctx,
-    PersistentTensor* out_tensor) {
+Status RandomShuffleQueue::GetElementComponentFromBatch(const Tuple& tuple,
+                                                        int64 index,
+                                                        int component,
+                                                        OpKernelContext* ctx,
+                                                        Tensor* out_tensor) {
   TensorShape element_shape(tuple[component].shape());
   element_shape.RemoveDim(0);
-  Tensor* element_access = nullptr;
-  TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-      tuple[component].dtype(), element_shape, out_tensor, &element_access));
   TF_RETURN_IF_ERROR(
-      batch_util::CopySliceToElement(tuple[component], element_access, index));
+      ctx->allocate_temp(tuple[component].dtype(), element_shape, out_tensor));
+  TF_RETURN_IF_ERROR(
+      batch_util::CopySliceToElement(tuple[component], out_tensor, index));
   return Status::OK();
 }
 
@@ -207,7 +209,7 @@ void RandomShuffleQueue::TryEnqueueMany(const Tuple& tuple,
               const int index =
                   tuple[0].dim_size(0) - attempt->elements_requested;
               for (int i = 0; i < num_components(); ++i) {
-                PersistentTensor element;
+                Tensor element;
                 attempt->context->SetStatus(GetElementComponentFromBatch(
                     tuple, index, i, attempt->context, &element));
                 if (!attempt->context->status().ok()) return kComplete;
@@ -347,7 +349,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                                attempt->elements_requested - 1;
                      i >= 0; --i) {
                   for (int j = 0; j < num_components(); ++j) {
-                    PersistentTensor element;
+                    Tensor element;
                     Status s = GetElementComponentFromBatch(
                         attempt->tuple, i, j, attempt->context, &element);
                     if (!s.ok()) {

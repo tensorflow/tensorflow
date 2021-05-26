@@ -139,7 +139,7 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
       /*replace_all=*/false);
   std::string transfer_address = worker_address;
   std::string transfer_protocol = config_.data_transfer_protocol();
-  if (!transfer_protocol.empty()) {
+  if (!transfer_protocol.empty() && transfer_protocol != "grpc") {
     TF_RETURN_IF_ERROR(DataTransferServer::Build(
         transfer_protocol, service_->get_element_getter(), &transfer_server_));
     TF_RETURN_IF_ERROR(transfer_server_->Start());

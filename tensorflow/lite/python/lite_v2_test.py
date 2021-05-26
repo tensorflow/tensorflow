@@ -261,7 +261,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     if is_int_only:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
         ]
       else:
@@ -271,7 +271,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     else:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -306,7 +306,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.representative_dataset = calibration_gen
     if is_int16_quantize:
       quantized_converter.target_spec.supported_ops = [
-          lite.OpsSet.\
+          lite.OpsSet.
           EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
           lite.OpsSet.TFLITE_BUILTINS
       ]
@@ -552,7 +552,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     if is_int_only:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.SELECT_TF_OPS
         ]
@@ -563,7 +563,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     else:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS,
             lite.OpsSet.SELECT_TF_OPS
@@ -641,7 +641,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     if is_int_only:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -652,7 +652,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     else:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -1959,8 +1959,8 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
 
   @test_util.run_v2_only
   def testMatMulCalibrateAndQuantize(self):
-    concrete_func, calibration_gen = \
-        self._getIntegerQuantizeModelWithUnknownShapes()
+    concrete_func, calibration_gen = (
+        self._getIntegerQuantizeModelWithUnknownShapes())
     float_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
     float_tflite_model = float_converter.convert()
@@ -2576,10 +2576,18 @@ class IntermediatesTest(lite_v2_test_util.ModelTest):
                            input_data)
     interpreter.invoke()
     out = interpreter.get_tensor(interpreter.get_output_details()[0]['index'])
-    tensors = {
-        t['name']: interpreter.get_tensor(t['index'])
-        for t in interpreter.get_tensor_details()
-    }
+    tensors = {}
+    for t in interpreter.get_tensor_details():
+      # With Tensorflow Lite default delegate applied to the model graph, the
+      # access to original tensors of a delegated op could cause a ValueError
+      # (i.e. 'Tensor data is null. Run allocate_tensors() first') to be thrown
+      # out because the tensor memory isn't allocated at all.
+      val = None
+      try:
+        val = interpreter.get_tensor(t['index'])
+      except ValueError:
+        pass
+      tensors.update({t['name']: val})
     return (tensors, out)
 
   def testPreserve(self):
@@ -2597,6 +2605,36 @@ class IntermediatesTest(lite_v2_test_util.ModelTest):
     self.assertAllClose(tensors['x'], 2.0)
     self.assertTrue(tensors['y'] != 4.0 or tensors['z'] != 8.0)
     self.assertAllClose(result, 16.0)
+
+
+class DatasetOpsTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testReduceDataset(self):
+
+    @tf.function
+    def model():
+      dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3, 4])
+      output = dataset.reduce(np.int32(0), lambda x, y: x + y)
+      return output
+
+    concrete_func = model.get_concrete_function()
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(10, actual_value)
 
 
 if __name__ == '__main__':

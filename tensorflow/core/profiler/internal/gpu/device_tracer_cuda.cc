@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
@@ -157,7 +156,6 @@ Status GpuTracer::DoStart() {
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
-  AnnotationStack::Enable(true);
   cupti_tracer_->Enable(options_, cupti_collector_.get());
   return Status::OK();
 }
@@ -175,7 +173,6 @@ Status GpuTracer::Start() {
 
 Status GpuTracer::DoStop() {
   cupti_tracer_->Disable();
-  AnnotationStack::Enable(false);
   return Status::OK();
 }
 

@@ -65,13 +65,6 @@ Status InitializeTableFromTextFile(
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table);
 
-// Initializes `table` from `dataset` by iterating over it. Caller retains
-// ownership of `dataset`.
-void InitializeTableFromDataset(OpKernelContext* ctx,
-                                data::DatasetBase* dataset,
-                                InitializableLookupTable* table,
-                                AsyncOpKernel::DoneCallback done);
-
 }  // namespace lookup
 }  // namespace tensorflow
 

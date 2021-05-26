@@ -24,12 +24,14 @@ import re
 import numpy as np
 
 from google.protobuf import text_format
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -41,6 +43,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
@@ -53,11 +56,14 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
 
@@ -1180,6 +1186,67 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
 
                 node_def {name: "ReadVariableOp" op: "Identity"
                   input: "readvariableop_z"}}}""")
+
+  def _addNoinlineAttributeToFunction(self, saved_model_dir, func_name):
+    saved_model_proto = loader_impl.parse_saved_model(saved_model_dir)
+    new_saved_model = saved_model_pb2.SavedModel()
+    new_saved_model.CopyFrom(saved_model_proto)
+    new_meta_graph_def = new_saved_model.meta_graphs[0]
+    prefix_len = len("__inference_")
+    for func_def in new_meta_graph_def.graph_def.library.function:
+      func_name_without_prefix = func_def.signature.name[prefix_len:]
+      if func_name_without_prefix.startswith(func_name):
+        func_def.attr["_noinline"].CopyFrom(attr_value_pb2.AttrValue(b=True))
+    old_saved_model_file = os.path.join(saved_model_dir,
+                                        constants.SAVED_MODEL_FILENAME_PB)
+    if os.path.exists(old_saved_model_file):
+      os.remove(old_saved_model_file)
+    path = os.path.join(
+        compat.as_bytes(saved_model_dir),
+        compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+    file_io.write_string_to_file(
+        path, new_saved_model.SerializeToString(deterministic=True))
+
+  @test_util.run_v2_only
+  def testVariableModelWithFunctionAndFunctionInliningDisabled(self):
+    """Test a model with Variables and disable function inlining."""
+
+    class BasicModel:
+
+      def __init__(self):
+        self.v1 = None
+        self.v2 = variables.Variable(2.)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1], dtype=dtypes.float32)
+      ])
+      def add_all(self, x):
+        if self.v1 is None:
+          self.v1 = variables.Variable(3.)
+        return x + self.v1 + self.v2
+
+      def run(self, x):
+        y = self.add_all(x)
+        return y
+
+    save_dir = os.path.join(self.get_temp_dir(), "frozen_saved_model")
+    with ops.Graph().as_default():
+      model = BasicModel()
+      a = array_ops.placeholder(dtypes.float32, shape=[1])
+      b = model.run(a)
+      with session_lib.Session() as sess:
+        sess.run(variables.global_variables_initializer())
+        simple_save.simple_save(sess, save_dir, {"myinput": a}, {"myoutput": b})
+
+    # Add _noinline to the SavedModel.
+    self._addNoinlineAttributeToFunction(saved_model_dir=save_dir,
+                                         func_name="add_all")
+
+    saved_model = load(save_dir)
+    func = saved_model.signatures["serving_default"]
+    frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
+    constant_graph_def = frozen_func.graph.as_graph_def()
+    self._ensure_no_variables_in_graph(constant_graph_def)
 
 
 if __name__ == "__main__":

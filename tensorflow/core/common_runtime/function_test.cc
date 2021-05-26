@@ -176,19 +176,12 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
              FunctionLibraryRuntime::Options opts,
-             const std::vector<Tensor>& args, std::vector<Tensor*> rets,
-             bool add_runner = true) {
-    std::atomic<int32> call_count(0);
+             const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     std::function<void(std::function<void()>)> runner =
-        [&call_count](std::function<void()> fn) {
-          ++call_count;
+        [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
         };
-    if (add_runner) {
-      opts.runner = &runner;
-    } else {
-      opts.runner = nullptr;
-    }
+    opts.runner = &runner;
     Notification done;
     std::vector<Tensor> out;
     Status status;
@@ -204,11 +197,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-
-    if (add_runner) {
-      EXPECT_GE(call_count, 1);  // Test runner is used.
-    }
-
     return Status::OK();
   }
 
@@ -228,25 +216,24 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   Status InstantiateAndRun(FunctionLibraryRuntime* flr, const string& name,
                            test::function::Attrs attrs,
                            const std::vector<Tensor>& args,
-                           std::vector<Tensor*> rets, bool add_runner = true) {
+                           std::vector<Tensor*> rets) {
     return InstantiateAndRun(flr, name, attrs,
                              FunctionLibraryRuntime::InstantiateOptions(), args,
-                             std::move(rets), add_runner);
+                             std::move(rets));
   }
 
   Status InstantiateAndRun(
       FunctionLibraryRuntime* flr, const string& name,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
-      const std::vector<Tensor>& args, std::vector<Tensor*> rets,
-      bool add_runner = true) {
+      const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::Handle handle;
     Status status = flr->Instantiate(name, attrs, options, &handle);
     if (!status.ok()) {
       return status;
     }
     FunctionLibraryRuntime::Options opts;
-    status = Run(flr, handle, opts, args, rets, add_runner);
+    status = Run(flr, handle, opts, args, rets);
     if (!status.ok()) return status;
 
     // Release the handle and try running again. It should not succeed.
@@ -263,19 +250,12 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
-             FunctionLibraryRuntime::Options opts, CallFrameInterface* frame,
-             bool add_runner = true) {
-    std::atomic<int32> call_count(0);
+             FunctionLibraryRuntime::Options opts, CallFrameInterface* frame) {
     std::function<void(std::function<void()>)> runner =
-        [&call_count](std::function<void()> fn) {
-          ++call_count;
+        [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
         };
-    if (add_runner) {
-      opts.runner = &runner;
-    } else {
-      opts.runner = nullptr;
-    }
+    opts.runner = &runner;
     Notification done;
     Status status;
     flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
@@ -285,10 +265,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     done.WaitForNotification();
     if (!status.ok()) {
       return status;
-    }
-
-    if (add_runner) {
-      EXPECT_GE(call_count, 1);  // Test runner is used.
     }
 
     return Status::OK();
@@ -505,7 +481,7 @@ TEST_F(FunctionLibraryRuntimeTest,
   ConsumeArgumentCallFrame frame(&x, &y);
 
   FunctionLibraryRuntime::Options opts;
-  TF_CHECK_OK(Run(flr0_, handle, opts, &frame, /* add_runner= */ false));
+  TF_CHECK_OK(Run(flr0_, handle, opts, &frame));
 
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 
@@ -652,7 +628,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
   {
     // Simple case: instantiating with no state_handle.
     for (int32 expected : {6, 4}) {
-      TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}, true));
+      TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
   }
@@ -665,7 +641,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
         Instantiate(flr0_, "RandomUniformWrapper", {}, &handle_non_isolated));
     EXPECT_EQ(handle, handle_non_isolated);
     for (int32 expected : {0, 1}) {
-      TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}, true));
+      TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
   }
@@ -680,7 +656,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
                             &handle_isolated));
     EXPECT_NE(handle, handle_isolated);
     for (int32 expected : {6, 4, 0, 1}) {
-      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
   }
@@ -695,7 +671,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
                             &handle_isolated));
     EXPECT_NE(handle, handle_isolated);
     for (int32 expected : {6, 4, 0, 1}) {
-      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
   }
@@ -712,7 +688,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
                               &handle_isolated));
       EXPECT_NE(handle, handle_isolated);
       for (int32 expected : {6, 4, 0, 1}) {
-        TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
+        TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
         test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
       }
       TF_CHECK_OK(flr0_->ReleaseHandle(handle_isolated));
@@ -1984,14 +1960,14 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   opts.rendezvous = &rendezvous;
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
-  TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
+  TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}));
   test::ExpectTensorEqual<tstring>(
       y,
       test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
                               TensorShape({})));
   opts.remote_execution = true;
   opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
-  TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}, true));
+  TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}));
   test::ExpectTensorEqual<tstring>(
       y,
       test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
@@ -2054,7 +2030,7 @@ TEST_F(FunctionLibraryRuntimeTest, RunAllKernelsInline) {
     FunctionLibraryRuntime::Options opts;
     opts.run_all_kernels_inline = inline_option;
     Tensor result;
-    TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&result}, true));
+    TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&result}));
     EXPECT_EQ(result.scalar<bool>()(), inline_option);
   }
 }

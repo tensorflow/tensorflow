@@ -49,8 +49,9 @@ cc_library(
     copts = micro_copts(),
     deps = [
         ":memory_planner",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_compatibility",
+        "//tensorflow/lite/micro:micro_error_reporter",
+        "//tensorflow/lite/micro:micro_string",
     ],
 )
 

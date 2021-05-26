@@ -564,6 +564,15 @@ HloInstruction* BroadcastOnes(HloComputation* computation,
                           /*result_shape_bounds=*/broadcast_dimensions);
 }
 
+StatusOr<HloInstruction*> MakeFusionInstruction(
+    HloInstruction* fused, HloInstruction::FusionKind kind) {
+  HloComputation* comp = fused->parent();
+  HloInstruction* fusion_instruction = comp->AddInstruction(
+      HloInstruction::CreateFusion(fused->shape(), kind, fused));
+  TF_RETURN_IF_ERROR(comp->ReplaceInstruction(fused, fusion_instruction));
+  return fusion_instruction;
+}
+
 // Recursively creates a dummy op given a shape. Leaf nodes are broadcasted zero
 // while internal nodes are tuples.
 HloInstruction* CreateDummyOp(HloComputation::Builder* b, const Shape& shape) {

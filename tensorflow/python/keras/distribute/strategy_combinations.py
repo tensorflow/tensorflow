@@ -61,4 +61,14 @@ tpu_strategies = [
     strategy_combinations.tpu_strategy,
 ]
 
+parameter_server_strategies_single_worker = [
+    strategy_combinations.parameter_server_strategy_1worker_2ps_cpu,
+    strategy_combinations.parameter_server_strategy_1worker_2ps_1gpu,
+]
+
+parameter_server_strategies_multi_worker = [
+    strategy_combinations.parameter_server_strategy_3worker_2ps_cpu,
+    strategy_combinations.parameter_server_strategy_3worker_2ps_1gpu,
+]
+
 all_strategies = strategies_minus_tpu + tpu_strategies

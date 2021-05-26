@@ -319,11 +319,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "gpu_cast_op",
-    srcs = if_mlir_generated_experimental_kernels_enabled([
+    srcs = if_mlir_generated_gpu_kernels_enabled([
         "gpu_op_cast.cc",
     ]),
     tags = ["manual"],
-    deps = if_mlir_generated_experimental_kernels_enabled([
+    deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_cast_kernels",
         "//third_party/eigen3",
@@ -336,6 +336,28 @@ tf_kernel_library(
     deps = [
     ] + if_cuda_or_rocm([
         ":gpu_cast_op",
+    ]),
+)
+
+tf_kernel_library(
+    name = "gpu_relu_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_relu.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_relu_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "relu_op",
+    srcs = [],
+    deps = [
+    ] + if_cuda_or_rocm([
+        ":gpu_relu_op",
     ]),
 )
 
@@ -673,8 +695,8 @@ gpu_kernel_library(
     tile_size = "256",
     types = [
         # TODO(b/162572921): Enable when it works for complex types.
-        # "c64",
-        # "c128",
+        "c64",
+        "c128",
         "f16",
         "f32",
         "f64",
@@ -757,8 +779,27 @@ gpu_kernel_library(
     )
     for op in [
         "square",
-        "add_v2",
         "squared_difference",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels",
+        op = op,
+        tile_size = "1024",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i64",
+            "c64",
+            "c128",
+        ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "add_v2",
         "sub",
     ]
 ]
@@ -1003,6 +1044,8 @@ gpu_kernel_library(
         "floor",
         "log",
         "log1p",
+        # TODO(akuegel): Re-enable once relu_grad codegen supports unranked.
+        #"relu_grad",
         "rsqrt",
         "sqrt",
         "tanh",
@@ -1068,8 +1111,8 @@ gpu_kernel_library(
         "f64",
     ] * 8,
     tile_size = "256",
-    types = ["i1"] * 8 + ["i8"] * 8 + ["i16"] * 8 + ["i32"] * 8 + ["i64"] * 8 + ["f16"] * 8 + ["f32"] * 8 + ["f64"] * 8,
-    unroll_factors = "4",
+    types = ["i1"] * 8 + ["i8"] * 8 + ["i16"] * 8 + ["i32"] * 8 + ["i64"] * 8 +
+            ["f16"] * 8 + ["f32"] * 8 + ["f64"] * 8,
 )
 
 gpu_kernel_library(

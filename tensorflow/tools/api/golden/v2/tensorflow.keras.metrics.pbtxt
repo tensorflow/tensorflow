@@ -69,6 +69,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "MeanMetricWrapper"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MeanRelativeError"
     mtype: "<type \'type\'>"
   }

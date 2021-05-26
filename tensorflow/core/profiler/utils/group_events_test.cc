@@ -579,22 +579,13 @@ TEST(GroupEventsTest, WorkerTest) {
       });
 }
 
-absl::flat_hash_set<int64> ParseGroupIds(absl::string_view selected_group_ids) {
-  absl::flat_hash_set<int64> group_ids;
-  std::vector<absl::string_view> strs = absl::StrSplit(selected_group_ids, '=');
-  std::vector<absl::string_view> group_id_strs = absl::StrSplit(strs[1], ',');
-  for (absl::string_view group_id_str : group_id_strs) {
-    int64 group_id;
-    if (absl::SimpleAtoi(group_id_str, &group_id)) group_ids.insert(group_id);
-  }
-  return group_ids;
-}
-
 TEST(GroupEventsTest, BatchingSessionTest) {
   constexpr absl::string_view kSchedule = "Schedule";
   constexpr int64 kBatchContextType =
       static_cast<int64>(ContextType::kSharedBatchScheduler);
   constexpr int64 kBatchContextId = 123;
+  constexpr int64 kBatchingSessionRunRootLevel = 1;
+  constexpr int64 kProcessBatchRootLevel = 2;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
@@ -603,20 +594,21 @@ TEST(GroupEventsTest, BatchingSessionTest) {
   auto request_thread = plane.GetOrCreateLine(0);
   // First request.
   CreateXEvent(&plane, &request_thread, HostEventType::kBatchingSessionRun, 0,
-               100);
+               100, {{StatType::kIsRoot, kBatchingSessionRunRootLevel}});
   CreateXEvent(&plane, &request_thread, kSchedule, 0, 100,
                {{StatType::kProducerType, kBatchContextType},
                 {StatType::kProducerId, kBatchContextId}});
   // Second request.
   CreateXEvent(&plane, &request_thread, HostEventType::kBatchingSessionRun, 200,
-               100);
+               100, {{StatType::kIsRoot, kBatchingSessionRunRootLevel}});
   CreateXEvent(&plane, &request_thread, kSchedule, 200, 100,
                {{StatType::kProducerType, kBatchContextType},
                 {StatType::kProducerId, kBatchContextId}});
   auto batch_thread = plane.GetOrCreateLine(1);
   CreateXEvent(&plane, &batch_thread, HostEventType::kProcessBatch, 200, 100,
                {{StatType::kConsumerType, kBatchContextType},
-                {StatType::kConsumerId, kBatchContextId}});
+                {StatType::kConsumerId, kBatchContextId},
+                {StatType::kIsRoot, kProcessBatchRootLevel}});
 
   EventForest event_forest;
   GroupTfEvents(&raw_space, &event_forest);
@@ -642,20 +634,11 @@ TEST(GroupEventsTest, BatchingSessionTest) {
                 group_id = stat->IntValue();
               }
               EXPECT_TRUE(group_id.has_value());
-              absl::string_view selected_group_ids;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kSelectedGroupIds)) {
-                selected_group_ids = stat->StrOrRefValue();
-              }
-              if (line.Id() == 0) {
-                if (event.Type() == HostEventType::kBatchingSessionRun) {
-                  EXPECT_THAT(ParseGroupIds(selected_group_ids),
-                              UnorderedElementsAre(*group_id, 0));
-                  ++num_checked;
-                }
-              } else if (line.Id() == 1) {
-                EXPECT_THAT(ParseGroupIds(selected_group_ids),
-                            UnorderedElementsAre(0, 1, 2));
+              if (line.Id() == 0 &&
+                  event.Type() == HostEventType::kBatchingSessionRun) {
+                ++num_checked;
+              } else if (line.Id() == 1 &&
+                         event.Type() == HostEventType::kProcessBatch) {
                 ++num_checked;
               }
             });

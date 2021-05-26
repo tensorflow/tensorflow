@@ -102,3 +102,12 @@ func @broadcast_batch_matmul_v2_failed(%arg0: tensor<17x17x1xf32>, %arg1: tensor
   // CHECK: %[[V0:.*]] = "tf.BroadcastTo"
   // CHECK: "tf.BatchMatMulV2"(%[[V0]], %arg1)
 }
+
+// CHECK-LABEL: @broadcast_splat_operand
+func @broadcast_splat_operand() -> tensor<5x5xi64> {
+  %cst = constant dense<5> : tensor<2xi64>
+  %0 = "tf.BroadcastTo"(%cst, %cst) : (tensor<2xi64>, tensor<2xi64>) -> tensor<5x5xi64>
+  return %0 : tensor<5x5xi64>
+  // CHECK: %[[V0:.*]] = "tf.Const"() {value = dense<5> : tensor<5x5xi64>} : () -> tensor<5x5xi64>
+  // CHECK: %[[V0]] : tensor<5x5xi64>
+}

@@ -1206,6 +1206,34 @@ ENTRY %CustomCallWithLayoutConstraints (p0: f32[4,4], p1: f32[2,3]) -> f32[1,2,3
   ExpectLayoutIs(custom_call->operand(1)->shape(), {1, 0});
 }
 
+TEST_F(LayoutAssignmentTest, CustomCallLayoutConstrainedAliasedOutput) {
+  const char* module_str = R"(
+HloModule customcall.4
+
+ENTRY %customcall.4 (parameter.1: f32[8,128], parameter.2: f32[8,128]) -> f32[8,128] {
+  %parameter.1 = f32[8,128]{1,0} parameter(0)
+  %parameter.2 = f32[8,128]{1,0} parameter(1)
+  ROOT %custom-call.3 = f32[8,128]{1,0} custom-call(f32[8,128]{1,0} %parameter.1, f32[8,128]{1,0} %parameter.2), custom_call_target="gpu_example_custom_call", operand_layout_constraints={f32[8,128]{1,0}, f32[8,128]{1,0}}, custom_call_has_side_effect=true, output_to_operand_aliasing={{}: (0, {})}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {8, 128}, {1, 0}));
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {8, 128}, {1, 0}));
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {8, 128}, {1, 0}));
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* custom_call =
+      m->entry_computation()->root_instruction();
+  ExpectLayoutIs(custom_call->shape(), {1, 0});
+  ExpectLayoutIs(custom_call->operand(0)->shape(), {1, 0});
+  ExpectLayoutIs(custom_call->operand(1)->shape(), {1, 0});
+}
+
 TEST_F(LayoutAssignmentTest, CustomCallLayoutConstrainedZeroOperands) {
   const char* module_str = R"(
 HloModule CustomCallLayoutConstrainedZeroOperands

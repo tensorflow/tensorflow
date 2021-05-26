@@ -1,11 +1,12 @@
 # Description:
 # TensorFlow Lite Java API.
 
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
-load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
+load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -19,6 +20,7 @@ exports_files([
     "src/testdata/mul_add_signature_def.bin",
     "src/testdata/tile_with_bool_input.bin",
     "AndroidManifest.xml",
+    "AndroidManifestGpu.xml",
     "proguard.flags",
     "tflite_version_script.lds",
 ])
@@ -67,13 +69,15 @@ aar_with_jni(
     ],
 )
 
-android_library(
+android_library_with_tflite(
     name = "tensorflowlite",
     srcs = [":java_srcs"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
-    deps = [
+    tflite_deps = [
         ":tensorflowlite_native",
+    ],
+    deps = [
         "@org_checkerframework_qual",
     ],
 )
@@ -100,9 +104,11 @@ tflite_flex_android_library(
 # EXPERIMENTAL: Android target for GPU acceleration. Note that this library
 # contains *only* the GPU delegate and its Java wrapper; clients must also
 # include the core `tensorflowlite` runtime.
+# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
+    exports_manifest = 1,
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     deps = [
@@ -245,8 +251,6 @@ java_test(
     javacopts = JAVACOPTS,
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-        # TODO(b/121204962): Re-enable test after fixing leaks when constructor exception thrown.
-        "noasan",
     ],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     visibility = ["//visibility:private"],
@@ -324,9 +328,7 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        # TODO(b/121204962): Re-enable test after fixing memory leaks.
-        "noasan",
-        "notsan",  # TODO(b/158651814) Re-enable after fixing racing condition.
+        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
@@ -449,9 +451,9 @@ alias(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "tensorflowlite_native",
-    srcs = ["libtensorflowlite_jni.so"],
+    tflite_jni_binaries = ["libtensorflowlite_jni.so"],
 )
 
 cc_library(
@@ -460,9 +462,12 @@ cc_library(
     visibility = ["//visibility:private"],
 )
 
-tflite_jni_binary(
+jni_binary_with_tflite(
     name = "libtensorflowlite_jni.so",
     linkscript = ":tflite_version_script.lds",
+    tflite_deps = [
+        "//tensorflow/lite/java/src/main/native",
+    ],
     deps = [
         # Note that we explicitly include the C API here for convenience, as it
         # allows bundling of the C lib w/ AAR distribution.
@@ -470,7 +475,6 @@ tflite_jni_binary(
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//tensorflow/lite/java/src/main/native",
     ],
 )
 

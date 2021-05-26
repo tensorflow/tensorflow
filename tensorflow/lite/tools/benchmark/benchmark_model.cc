@@ -261,7 +261,11 @@ TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
       Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
-  if (!parse_result || params_.Get<bool>("help")) {
+  // "--help" flag is added in tools/delegates/default_execution_provider.cc. As
+  // this is an optional dependency, we need to check whether "--help" exists or
+  // not first.
+  if (!parse_result ||
+      (params_.HasParam("help") && params_.Get<bool>("help"))) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
     // Returning kTfLiteError intentionally when "--help=true" is specified so

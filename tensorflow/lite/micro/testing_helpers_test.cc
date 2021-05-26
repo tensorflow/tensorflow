@@ -75,7 +75,7 @@ TF_LITE_MICRO_TEST(CreatePerChannelQuantizedBiasTensor) {
 TF_LITE_MICRO_TEST(CreateSymmetricPerChannelQuantizedTensor) {
   const int tensor_size = 12;
   constexpr int channels = 2;
-  const int dims_arr[] = {4, channels, 3, 2, 1};
+  int dims_arr[] = {4, channels, 3, 2, 1};
   int8_t quantized[12];
   const float pre_quantized[] = {-127, -55, -4, -3, -2, -1,
                                  0,    1,   2,  3,  4,  63.5};

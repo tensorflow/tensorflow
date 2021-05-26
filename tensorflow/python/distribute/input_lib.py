@@ -599,6 +599,12 @@ def _get_next_as_optional(iterator, strategy, return_per_replica=False):
   replicas = []
   worker_has_values = []
   worker_devices = []
+  with distribution_strategy_context.enter_or_assert_strategy(strategy):
+    if distribution_strategy_context.get_replica_context() is not None:
+      raise ValueError("next(iterator) should be called from outside of "
+                       "replica_fn. e.g. strategy.run(replica_fn, "
+                       "args=(next(iterator),))")
+
   for i, worker in enumerate(iterator._input_workers.worker_devices):  # pylint: disable=protected-access
     with ops.device(worker):
       worker_has_value, next_element = (
@@ -705,6 +711,13 @@ class DistributedIteratorBase(DistributedIteratorInterface):
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
     if not self._enable_get_next_as_optional:
+      with distribution_strategy_context.enter_or_assert_strategy(
+          self._strategy):
+        if distribution_strategy_context.get_replica_context() is not None:
+          raise ValueError("next(iterator) should be called from outside of "
+                           "replica_fn. e.g. strategy.run(replica_fn, "
+                           "args=(next(iterator),))")
+
       replicas = []
       for i, worker in enumerate(self._input_workers.worker_devices):
         if name is not None:
@@ -1230,7 +1243,6 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
       for i, worker in enumerate(input_workers.worker_devices):
         with ops.device(worker):
           cloned_dataset = replicated_ds[worker]
-          cloned_dataset = cloned_dataset.with_options(dataset.options())
           if rebatch_fn is not None:
             cloned_dataset = rebatch_fn(cloned_dataset, i)
           cloned_dataset = input_ops.auto_shard_dataset(
@@ -1789,6 +1801,17 @@ def _dummy_tensor_fn(value_structure):
 
   def create_dummy_tensor(spec):
     """Create a dummy tensor with possible batch dimensions set to 0."""
+    if hasattr(spec, "_create_empty_value"):
+      # Type spec may overwrite default dummy values behavior by declaring the
+      # `_create_empty_value(self)` method. This method must return a value
+      # compatible with the type spec with batch dimensions set to 0 or fail if
+      # such a value does not exist. This allows a composite tensor to customize
+      # dummy values creation as, in general, its dummy value is not composed
+      # from dummy components (e.g. `row_splits` tensor of a RaggedTensor is
+      # never allowed to be empty). See b/183969859 for more discussions.
+      # TODO(b/186079336): reconsider CompositeTensor support.
+      return spec._create_empty_value()  # pylint: disable=protected-access
+
     if isinstance(spec, ragged_tensor.RaggedTensorSpec):
       # Splice out the ragged dimensions.
       # pylint: disable=protected-access

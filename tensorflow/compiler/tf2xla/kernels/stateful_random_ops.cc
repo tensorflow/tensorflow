@@ -112,7 +112,7 @@ xla::RngOutput StatefulRngUniformFullInt(Algorithm alg, xla::XlaOp key,
   }
 }
 
-using SamplerReturnType = xla::StatusOr<xla::RngOutput>;
+using SamplerReturnType = StatusOr<xla::RngOutput>;
 
 int64 GetMinStateSize(Algorithm alg) {
   if (alg == RNG_ALG_PHILOX) {

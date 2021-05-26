@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -55,9 +57,21 @@ TEST(DelegateDataTest, Basic) {
 }
 
 TEST(DelegateDataTest, CheckFunctionDef) {
-  DelegateData data;
-  tensorflow::SessionOptions session_options;
-  session_options.config.set_intra_op_parallelism_threads(2);
+  tensorflow::StaticDeviceMgr device_mgr(tensorflow::DeviceFactory::NewDevice(
+      "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  tensorflow::EagerContext* eager_context = new tensorflow::EagerContext(
+      tensorflow::SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /*async=*/false, &device_mgr, /*device_mgr_owned*/ false, nullptr,
+      nullptr);
+
+  auto select_subgraphs_to_register =
+      [](const std::vector<std::unique_ptr<Subgraph>>& subgraphs,
+         std::set<std::string>* result) {
+        result->insert("add_subgraph");
+        result->insert("mul_subgraph");
+        return tensorflow::Status::OK();
+      };
 
   // Builds a TF Lite primary graph with two subgraphs.
   subgraph_test_util::SubgraphBuilder builder;
@@ -78,17 +92,9 @@ TEST(DelegateDataTest, CheckFunctionDef) {
   subgraphs.push_back(std::move(mul_subgraph));
   Subgraph main_subgraph(error_reporter.get(), nullptr, &subgraphs, nullptr);
   main_subgraph.SetName("main");
-
-  ASSERT_TRUE(data.Prepare(session_options, &main_subgraph).ok());
-
-  TfLiteContext dummy_context1 = {};
-  TfLiteContext dummy_context2 = {};
-  ASSERT_NE(data.GetEagerContext(), nullptr);
-  EXPECT_NE(data.GetBufferMap(&dummy_context1), nullptr);
-  EXPECT_NE(data.GetBufferMap(&dummy_context1),
-            data.GetBufferMap(&dummy_context2));
-
-  tensorflow::EagerContext* eager_context = data.GetEagerContext();
+  TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
+      main_subgraph, select_subgraphs_to_register,
+      eager_context->HostCPU()->resource_manager(), eager_context));
 
   const string add_fdef_txt = R"pb(
     signature {
@@ -186,14 +192,43 @@ TEST(DelegateDataTest, CheckFunctionDef) {
       *(eager_context->GetFunctionDef("add_subgraph")), add_fdef));
   EXPECT_TRUE(MessageDifferencer::Equals(
       *(eager_context->GetFunctionDef("mul_subgraph")), mul_fdef));
+
+  eager_context->Unref();
+}
+
+TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
+  tensorflow::StaticDeviceMgr device_mgr(tensorflow::DeviceFactory::NewDevice(
+      "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  tensorflow::EagerContext* eager_context = new tensorflow::EagerContext(
+      tensorflow::SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /*async=*/false, &device_mgr, /*device_mgr_owned*/ false, nullptr,
+      nullptr);
+
+  auto select_subgraphs_to_register =
+      [](const std::vector<std::unique_ptr<Subgraph>>& subgraphs,
+         std::set<std::string>* result) {
+        result->insert("add_subgraph");
+        result->insert("mul_subgraph");
+        return tensorflow::Status::OK();
+      };
+
+  // Builds a TF Lite primary graph with two subgraphs.
+  subgraph_test_util::SubgraphBuilder builder;
+  std::unique_ptr<ErrorReporter> error_reporter =
+      absl::make_unique<TestErrorReporter>();
+  Subgraph main_subgraph(error_reporter.get(), /*external_contexts=*/nullptr,
+                         /*subgraphs=*/nullptr, /*resources=*/nullptr);
+  main_subgraph.SetName("main");
+  TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
+      main_subgraph, select_subgraphs_to_register,
+      eager_context->HostCPU()->resource_manager(), eager_context));
+
+  EXPECT_EQ(eager_context->GetFunctionDef("main"), nullptr);
+
+  eager_context->Unref();
 }
 
 }  // namespace
 }  // namespace flex
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

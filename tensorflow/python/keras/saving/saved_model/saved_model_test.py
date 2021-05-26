@@ -1293,26 +1293,22 @@ class MetricTest(test.TestCase, parameterized.TestCase):
       del y_true, y_pred
       return 0
 
-    with self.cached_session():
-      custom_metric = CustomMetric()
-      model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-      model.compile(loss='mse', optimizer='SGD',
-                    metrics=[custom_metric, zero_metric])
-      self.evaluate(variables.global_variables_initializer())
-      self.evaluate([v.initializer for v in custom_metric.variables])
-      model.fit(x, y)
-      saved_model_dir = self._save_model_dir()
-      tf_save.save(model, saved_model_dir)
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.compile(loss='mse', optimizer='SGD',
+                  metrics=[CustomMetric(), zero_metric])
+    model.fit(x, y)
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
 
-      with self.assertRaisesRegex(ValueError, 'custom_objects'):
-        keras_load.load(saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'custom_objects'):
+      keras_load.load(saved_model_dir)
 
-      with generic_utils.CustomObjectScope(
-          {'CustomMetric': CustomMetric, 'zero_metric': zero_metric}):
-        loaded = keras_load.load(saved_model_dir)
+    with generic_utils.CustomObjectScope(
+        {'CustomMetric': CustomMetric, 'zero_metric': zero_metric}):
+      loaded = keras_load.load(saved_model_dir)
 
-      self.evaluate([v.initializer for v in loaded.variables])
-      loaded.fit(x, y)
+    self.evaluate([v.initializer for v in loaded.variables])
+    loaded.fit(x, y)
 
 if __name__ == '__main__':
   test.main()

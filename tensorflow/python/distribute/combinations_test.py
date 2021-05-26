@@ -197,5 +197,35 @@ class TfFunctionTest(test.TestCase, parameterized.TestCase):
     bar()
 
 
+class ShareGPUTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    if combinations.in_main_process():
+      num_gpus = combinations.env().total_phsyical_gpus
+      if num_gpus != 2 and num_gpus != 4:
+        self.skipTest("requires 2 or 4 GPUs")
+
+  # Test cases are annotated with required_gpus only for them to run in gpu
+  # targets, otherwise they will be skipped.
+
+  @combinations.generate(
+      combinations.combine(num_workers=2, required_gpus=1, share_gpu=True))
+  def testShareGPU(self):
+    self.assertLen(context.context().list_physical_devices("GPU"),
+                   combinations.env().total_phsyical_gpus)
+
+  @combinations.generate(combinations.combine(num_workers=2, required_gpus=1))
+  def testShareGPUByDefault(self):
+    self.assertLen(context.context().list_physical_devices("GPU"),
+                   combinations.env().total_phsyical_gpus)
+
+  @combinations.generate(
+      combinations.combine(num_workers=2, required_gpus=1, share_gpu=False))
+  def testNotShareGPU(self):
+    self.assertLen(context.context().list_physical_devices("GPU"),
+                   combinations.env().total_phsyical_gpus / 2)
+
+
 if __name__ == "__main__":
   test_util.main()

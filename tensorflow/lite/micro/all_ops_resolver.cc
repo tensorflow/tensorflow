@@ -73,6 +73,7 @@ AllOpsResolver::AllOpsResolver() {
   AddRelu();
   AddRelu6();
   AddReshape();
+  AddResizeBilinear();
   AddResizeNearestNeighbor();
   AddRound();
   AddRsqrt();
@@ -90,6 +91,7 @@ AllOpsResolver::AllOpsResolver() {
   AddSvdf();
   AddTanh();
   AddTransposeConv();
+  AddTranspose();
   AddUnpack();
 }
 

@@ -199,12 +199,6 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
       ds = dataset_ops.PrefetchDataset(ds, prefetch_buffer_size, slack_period=1)
     else:
       ds = ds.prefetch(prefetch_buffer_size)
-  # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
-  # non-CPU devices.
-  options = dataset_ops.Options()
-  options.experimental_optimization.apply_default_optimizations = False
-  options.experimental_optimization.autotune = False
-  ds = ds.with_options(options)
   return ds
 
 
@@ -232,7 +226,7 @@ class MultiDeviceIterator(object):
     options = dataset_ops.Options()
     options.experimental_distribute.num_devices = len(devices)
     dataset = dataset.with_options(options)
-    self._dataset = dataset._apply_options()  # pylint: disable=protected-access
+    self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
     self._experimental_slack = dataset.options().experimental_slack
     self._devices = devices
     self._source_device = source_device
@@ -311,12 +305,6 @@ class MultiDeviceIterator(object):
             ds, self._prefetch_buffer_size, slack_period=1)
       else:
         ds = ds.prefetch(self._prefetch_buffer_size)
-    # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
-    # non-CPU devices.
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = False
-    ds = ds.with_options(options)
     return ds
 
   def get_next(self, device=None):
@@ -520,7 +508,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       options = dataset_ops.Options()
       options.experimental_distribute.num_devices = len(devices)
       dataset = dataset.with_options(options)
-      dataset = dataset._apply_options()  # pylint: disable=protected-access
+      dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
       self._element_spec = dataset.element_spec
       experimental_slack = dataset.options().experimental_slack
       self._devices = devices

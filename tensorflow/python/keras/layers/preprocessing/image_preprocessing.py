@@ -18,7 +18,6 @@
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -674,18 +673,10 @@ def transform(images,
     fill_value = ops.convert_to_tensor_v2_with_dispatch(
         fill_value, dtypes.float32, name='fill_value')
 
-    if compat.forward_compatible(2020, 8, 5):
-      return gen_image_ops.ImageProjectiveTransformV3(
-          images=images,
-          output_shape=output_shape,
-          fill_value=fill_value,
-          transforms=transforms,
-          fill_mode=fill_mode.upper(),
-          interpolation=interpolation.upper())
-
-    return gen_image_ops.ImageProjectiveTransformV2(
+    return gen_image_ops.ImageProjectiveTransformV3(
         images=images,
         output_shape=output_shape,
+        fill_value=fill_value,
         transforms=transforms,
         fill_mode=fill_mode.upper(),
         interpolation=interpolation.upper())

@@ -19,12 +19,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 
 namespace xla {
 
 namespace py = pybind11;
 
 PYBIND11_MODULE(tpu_client_extension, m) {
+  CHECK(tensorflow::RegisterNumpyBfloat16());
+
   py::class_<PyTpuClient, std::shared_ptr<PyTpuClient>>(m, "TpuClient")
       .def_static("Get", &PyTpuClient::Get, py::arg("worker"))
       .def_property_readonly("platform", &PyTpuClient::platform_name)
@@ -204,11 +207,17 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       // TODO(phawkins): implement traceback support.
       .def_property_readonly("traceback",
+                             [](PyTpuExecutable*) { return py::none(); })
+      .def_property_readonly("fingerprint",
                              [](PyTpuExecutable*) { return py::none(); });
 
   py::class_<TpuDevice, PjRtDevice, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
       .def_property_readonly("coords", &TpuDevice::coords)
       .def_property_readonly("core_on_chip", &TpuDevice::core_on_chip)
+      .def_property_readonly("client",
+                             [](TpuDevice* device) {
+                               return device->tpu_client()->shared_from_this();
+                             })
       // TODO(skye): this is a horrible hack because falling back to
       // PjRtDevice::platform_name() segfaults, due to TpuDevice::client_ being
       // uninitialized. This can be removed when PyTpuClient subclasses

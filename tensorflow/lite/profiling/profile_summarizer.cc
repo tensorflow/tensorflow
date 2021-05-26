@@ -168,7 +168,7 @@ void ProfileSummarizer::ProcessProfiles(
           node_name_in_stats, "DelegateOpInvoke", node_num, start_us,
           node_exec_time, 0 /*memory */);
     } else {
-      // TODO(b/139812778) consider use a different stats_calculator to record
+      // Note: a different stats_calculator could be used to record
       // non-op-invoke events so that these could be separated from
       // op-invoke-events in the final profiling stats report.
       const memory::MemoryUsage node_mem_usage =

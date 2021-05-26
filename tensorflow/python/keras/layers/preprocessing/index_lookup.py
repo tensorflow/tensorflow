@@ -39,9 +39,9 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 INT = "int"
-BINARY = "binary"
+MULTI_HOT = "multi_hot"
 COUNT = "count"
-TFIDF = "tf-idf"
+TF_IDF = "tf_idf"
 
 _VOCAB_NAME = "vocab"
 _IDF_WEIGHTS_NAME = "idf_weights"
@@ -99,38 +99,38 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       includes the OOV and mask tokens.
     num_oov_indices: The number of out-of-vocabulary tokens to use. If this
       value is more than 1, OOV inputs are hashed to determine their OOV value.
-      If this value is 0, OOV inputs will map to -1 when `output_mode` is "int"
-      and are dropped otherwise.
+      If this value is 0, OOV inputs will map to -1 when `output_mode` is
+      `"int"` and are dropped otherwise.
     mask_token: A token that represents masked inputs. When `output_mode` is
-      "int", the token is included in vocabulary and mapped to index 0. In other
-      output modes, the token will not appear in the vocabulary and instances
-      of the mask token in the input will be dropped. If set to None, no mask
-      term will be added.
+      `"int"`, the token is included in vocabulary and mapped to index 0. In
+      other output modes, the token will not appear in the vocabulary and
+      instances of the mask token in the input will be dropped. If set to None,
+      no mask term will be added.
     oov_token: Only used when `invert` is True. The token to return for OOV
       indices.
     vocabulary: An optional list of vocabulary terms. If the list contains the
       same token multiple times, an error will be thrown.
-    invert: Only valid when `output_mode` is "int". If True, this layer will map
-      indices to vocabulary items instead of mapping vocabulary items to
+    invert: Only valid when `output_mode` is `"int"`. If True, this layer will
+      map indices to vocabulary items instead of mapping vocabulary items to
       indices. Default to False.
-    output_mode: Specification for the output of the layer. Defaults to "int".
-      Values can be "int", "binary", "count", or "tf-idf" configuring the layer
-      as follows:
-        "int": Return the raw integer indices of the input tokens.
-        "binary": Outputs a single int array per sample, of either vocab_size or
-          max_tokens size, containing 1s in all elements where the token mapped
-          to that index exists at least once in the sample.
-        "count": Like "binary", but the int array contains a count of the number
-          of times the token at that index appeared in the sample.
-        "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
-          value in each token slot.
-    pad_to_max_tokens: Only valid when `output_mode` is "binary", "count", or
-      "tf-idf". If True, the output will have its feature axis padded to
-      `max_tokens` even if the number of unique tokens in the vocabulary is less
-      than max_tokens, resulting in a tensor of shape [batch_size, max_tokens]
-      regardless of vocabulary size. Defaults to False.
-    sparse: Boolean. Only applicable to "binary" and "count" output modes.
-      If True, returns a `SparseTensor` instead of a dense `Tensor`.
+    output_mode: Specification for the output of the layer. Defaults to `"int"`.
+      Values can be `"int"`, `"multi_hot"`, `"count"`, or `"tf_idf"` configuring
+      the layer as follows:
+        - `"int"`: Return the raw integer indices of the input tokens.
+        - `"multi_hot"`: Outputs a single int array per sample, of either
+          vocab_size or max_tokens size, containing 1s in all elements where the
+          token mapped to that index exists at least once in the sample.
+        - `"count"`: As `"multi_hot"`, but the int array contains a count of the
+          number of times the token at that index appeared in the sample.
+        - `"tf_idf"`: As `"multi_hot"`, but the TF-IDF algorithm is applied to
+          find the value in each token slot.
+    pad_to_max_tokens: Only valid when `output_mode` is `"multi_hot"`,
+      `"count"`, or `"tf_idf"`. If True, the output will have its feature axis
+      padded to `max_tokens` even if the number of unique tokens in the
+      vocabulary is less than max_tokens, resulting in a tensor of shape
+      [batch_size, max_tokens] regardless of vocabulary size. Defaults to False.
+    sparse: Boolean. Only applicable to `"multi_hot"` and `"count"` output
+      modes. If True, returns a `SparseTensor` instead of a dense `Tensor`.
       Defaults to False.
   """
 
@@ -155,10 +155,15 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("`num_oov_indices` must be greater than or equal to 0. "
                        "You passed {}".format(num_oov_indices))
 
-    # 'output_mode' must be one of (INT, BINARY, COUNT, TFIDF)
+    # Support deprecated names for output_modes.
+    if output_mode == "binary":
+      output_mode = MULTI_HOT
+    if output_mode == "tf-idf":
+      output_mode = TF_IDF
+    # 'output_mode' must be one of (INT, MULTI_HOT, COUNT, TF_IDF)
     layer_utils.validate_string_arg(
         output_mode,
-        allowable_strings=(INT, BINARY, COUNT, TFIDF),
+        allowable_strings=(INT, MULTI_HOT, COUNT, TF_IDF),
         layer_name=self.__class__.__name__,
         arg_name="output_mode")
 
@@ -169,7 +174,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.invert = invert
     self.max_tokens = max_tokens
     self.num_oov_indices = num_oov_indices
-    self.oov_token = oov_token
     self.output_mode = output_mode
     self.sparse = sparse
     self.pad_to_max_tokens = pad_to_max_tokens
@@ -191,15 +195,17 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     restore_from_static_table = kwargs.pop("has_static_table", False)
 
-    # Make sure the mask token is truly of the dtype we want. We can ignore
-    # strings here, because they have only one dtype.
-    if mask_token is not None:
-      dtype = kwargs["dtype"]
-      if dtype == dtypes.int32:
-        mask_token = np.int32(mask_token)
-      elif dtype == dtypes.int64:
-        mask_token = np.int64(mask_token)
+    # Make sure the mask token and oov token are truly of the dtype we want. We
+    # can ignore strings here, because they have only one dtype.
+    dtype = kwargs["dtype"]
+    if dtype == dtypes.int32:
+      mask_token = None if mask_token is None else np.int32(mask_token)
+      oov_token = None if oov_token is None else np.int32(oov_token)
+    elif dtype == dtypes.int64:
+      mask_token = None if mask_token is None else np.int64(mask_token)
+      oov_token = None if oov_token is None else np.int64(oov_token)
     self.mask_token = mask_token
+    self.oov_token = oov_token
 
     if max_tokens is not None:
       available_vocab_size = max_tokens - self._token_start_index()
@@ -211,7 +217,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
             vocab_size=available_vocab_size,
             mask_value=mask_token,
             oov_value=oov_token,
-            compute_idf=(output_mode == TFIDF)),
+            compute_idf=(output_mode == TF_IDF)),
         **kwargs)
 
     # We need to save the key dtype so that we know if we're expecting int64
@@ -284,7 +290,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           initializer, default_value=default_value)
       self._table_handler = table_utils.TableHandler(
           table=self._table,
-          mask_token=self._mask_key,
+          mask_token=self._mask_key if self.mask_token is not None else None,
           mask_value=self._mask_value,
           oov_tokens=oov_indices)
 
@@ -304,7 +310,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         self.set_vocabulary(vocabulary)
       tracked_table = self._add_trackable(self._table, trainable=False)
 
-    if self.output_mode == TFIDF:
+    if self.output_mode == TF_IDF:
       # The TF-IDF weight may have a (None,) tensorshape. This creates
       # a 1D variable with arbitrary shape, which we can assign any weight to
       # so long as it has 1 dimension. In order to properly initialize this
@@ -427,7 +433,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     """Sets vocabulary (and optionally document frequency) data for this layer.
 
     This method sets the vocabulary and idf weights for this layer directly,
-    instead of analyzing a dataset through 'adapt'. It should be used whenever
+    instead of analyzing a dataset through `adapt`. It should be used whenever
     the vocab (and optionally document frequency) information is already known.
     If vocabulary data is already present in the layer, this method will replace
     it.
@@ -435,14 +441,14 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     Args:
       vocabulary: An array of hashable tokens.
       idf_weights: An array of inverse document frequency weights with equal
-        length to vocab. Only necessary if the layer output_mode is TFIDF.
+        length to vocab. Only necessary if the layer output_mode is TF_IDF.
 
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or
         input data is missing.
       RuntimeError: If the vocabulary cannot be set when this function is
-        called. This happens when "binary", "count", and "tfidf" modes,
-        if "pad_to_max_tokens" is False and the layer itself has already been
+        called. This happens when `"multi_hot"`, `"count"`, and `"tfidf"` modes,
+        if `pad_to_max_tokens` is False and the layer itself has already been
         called.
     """
     if self._has_static_table:
@@ -452,11 +458,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                          "do not support changing the vocabulary after "
                          "creation.".format(self.name))
 
-    if self.output_mode != TFIDF and idf_weights is not None:
+    if self.output_mode != TF_IDF and idf_weights is not None:
       raise ValueError("`idf_weights` should only be set if output_mode is "
-                       "TFIDF. output_mode is {}.".format(self.output_mode))
+                       "TF_IDF. output_mode is {}.".format(self.output_mode))
 
-    if (self.output_mode in [BINARY, COUNT, TFIDF] and self._called and
+    if (self.output_mode in [MULTI_HOT, COUNT, TF_IDF] and self._called and
         not self.pad_to_max_tokens):
       raise RuntimeError("When using {} mode and `pad_to_max_tokens` is "
                          "False, the vocabulary cannot be changed after the "
@@ -538,9 +544,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           "Passed vocab size is {}, max vocab size is {}.".format(
               self._vocab_size, self.max_tokens))
 
-    if self.output_mode == TFIDF:
+    if self.output_mode == TF_IDF:
       if idf_weights is None:
-        raise ValueError("`idf_weights` must be set if output_mode is TFIDF")
+        raise ValueError("`idf_weights` must be set if output_mode is TF_IDF")
       if len(vocabulary) != len(idf_weights):
         raise ValueError("`idf_weights` must be the same length as vocabulary. "
                          "len(idf_weights) is {}, len(vocabulary) is {}".format(
@@ -563,7 +569,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if self.mask_token is not None:
       self._table_handler.insert([self._mask_key], [self._mask_value])
 
-    if self.output_mode == TFIDF:
+    if self.output_mode == TF_IDF:
       # If the passed vocabulary has no special tokens, we need to pad the front
       # of idf_weights. We don't have real document frequencies for these tokens
       # so we will use an average of all idf_weights passed in as a reasonable
@@ -606,19 +612,19 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if self.output_mode == INT:
       return lookup_result
 
-    binary_output = (self.output_mode == BINARY)
+    multi_hot_output = (self.output_mode == MULTI_HOT)
     if self._vocab_size and not self.pad_to_max_tokens:
       out_depth = self._vocab_size
     else:
       out_depth = self.max_tokens
     if self.sparse:
       bincounts = category_encoding.sparse_bincount(lookup_result, out_depth,
-                                                    binary_output)
+                                                    multi_hot_output)
     else:
       bincounts = category_encoding.dense_bincount(lookup_result, out_depth,
-                                                   binary_output)
+                                                   multi_hot_output)
 
-    if self.output_mode == TFIDF:
+    if self.output_mode == TF_IDF:
       return math_ops.multiply(bincounts, self.tf_idf_weights)
 
     return bincounts
@@ -815,7 +821,7 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
     return _IndexLookupAccumulator(data, count_dict, per_doc_count_dict)
 
   def _inverse_document_frequency(self, document_counts, num_documents):
-    """Computes the inverse-document-frequency (IDF) component of TFIDF.
+    """Computes the inverse-document-frequency (IDF) component of TF-IDF.
 
     Uses the default weighting scheme described in
     https://en.wikipedia.org/wiki/Tf%E2%80%93idf.

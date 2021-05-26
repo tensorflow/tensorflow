@@ -179,7 +179,7 @@ cc_test(
     ],
     deps = [
         ":gen_op_registration",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -221,7 +221,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -266,6 +266,7 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",
+        ":tool_params",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -353,7 +354,7 @@ tf_cc_test(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )

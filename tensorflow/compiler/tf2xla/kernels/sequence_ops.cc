@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -33,10 +34,10 @@ namespace {
 
 // The type-specific part of the implementation of Range.
 template <typename T>
-xla::StatusOr<xla::XlaOp> CreateRangeTensor(
-    const xla::LiteralSlice& start_literal,
-    const xla::LiteralSlice& limit_literal,
-    const xla::LiteralSlice& delta_literal, xla::XlaBuilder* builder) {
+StatusOr<xla::XlaOp> CreateRangeTensor(const xla::LiteralSlice& start_literal,
+                                       const xla::LiteralSlice& limit_literal,
+                                       const xla::LiteralSlice& delta_literal,
+                                       xla::XlaBuilder* builder) {
   T start = start_literal.Get<T>({});
   T limit = limit_literal.Get<T>({});
   T delta = delta_literal.Get<T>({});
@@ -91,7 +92,7 @@ class RangeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(2, &delta));
 
     DataType type = input_type(0);
-    xla::StatusOr<xla::XlaOp> output;
+    StatusOr<xla::XlaOp> output;
     switch (type) {
       case DT_INT32:
         output = CreateRangeTensor<int32>(start, limit, delta, ctx->builder());
@@ -122,13 +123,14 @@ class RangeOp : public XlaOpKernel {
       xla::XlaOp limit = ctx->Input(1);
       xla::XlaOp start = ctx->Input(0);
       if (type == DT_INT32 || type == DT_INT64) {
-        auto dynamic_size =
-            ((xla::Abs(limit - start) + xla::Abs(delta) -
-              xla::One(ctx->builder(), ctx->input_xla_type(0))) /
-             xla::Abs(delta));
+        auto dynamic_size = (xla::Abs(limit - start) + xla::Abs(delta) -
+                             xla::One(ctx->builder(), ctx->input_xla_type(0))) /
+                            xla::Abs(delta);
+        dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
         output = xla::SetDimensionSize(output.ValueOrDie(), dynamic_size, 0);
       } else {
         auto dynamic_size = (xla::Ceil(xla::Abs((limit - start) / delta)));
+        dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
         output = xla::SetDimensionSize(output.ValueOrDie(), dynamic_size, 0);
       }
     }

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
@@ -273,15 +274,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                   output->template flat<T>().size());
 
       auto no_transpose = se::blas::Transpose::kNoTranspose;
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
+      OP_REQUIRES_OK(
+          ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr,
+                                    n, a_ptr, k, &c_ptr, n));
       return;
     } else if (!is_grouped_convolution && filter_planes == in_planes &&
                filter_rows == in_rows && filter_cols == in_cols &&
@@ -300,15 +295,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                   output->template flat<T>().size());
 
       auto no_transpose = se::blas::Transpose::kNoTranspose;
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
+      OP_REQUIRES_OK(
+          ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr,
+                                    n, a_ptr, k, &c_ptr, n));
       return;
     }
 
@@ -514,6 +503,8 @@ struct LaunchConvOp<GPUDevice, T> {
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
+      profiler::ScopedAnnotation trace("cudnn_autotuning");
+
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;

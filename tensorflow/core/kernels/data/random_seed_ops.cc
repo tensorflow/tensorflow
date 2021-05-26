@@ -27,8 +27,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-const char kAnonymousRandomSeedGenerator[] = "AnonymousRandomSeedGenerator";
-const char kNumRandomSamples[] = "num_random_samples";
 const char kSeedGenerator[] = "SeedGenerator";
 const char kSeed[] = "seed";
 const char kSeed2[] = "seed2";

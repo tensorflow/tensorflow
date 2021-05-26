@@ -173,6 +173,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Resize output tensor.
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_rank);
+  TF_LITE_ENSURE(context, output_shape != nullptr);
   int k = 0;
   int embedding_size = 1;
   int lookup_size = 1;

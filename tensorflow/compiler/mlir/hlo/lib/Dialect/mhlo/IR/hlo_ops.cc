@@ -1002,8 +1002,10 @@ LogicalResult DynamicBroadcastInDimOp::inferReturnTypeComponents(
 }
 
 LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
-    OpBuilder&, SmallVectorImpl<Value>& reifiedReturnShapes) {
-  reifiedReturnShapes.push_back(output_dimensions());
+    OpBuilder&, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  DynamicBroadcastInDimOp::Adaptor adaptor(operands);
+  reifiedReturnShapes.push_back(adaptor.output_dimensions());
   return success();
 }
 
@@ -1548,6 +1550,41 @@ static LogicalResult Verify(DynamicSliceOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// RealDynamicSliceOp
+//===----------------------------------------------------------------------===//
+// Verifies that operand rank matches start_indices/limit_indices/strides size
+static LogicalResult Verify(RealDynamicSliceOp op) {
+  auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
+  // If operand is unranked, there is very little to verify statically.
+  if (!input_type) return success();
+  int input_rank = input_type.getRank();
+
+  auto start_type = op.start_indices().getType().cast<RankedTensorType>();
+  auto limit_type = op.limit_indices().getType().cast<RankedTensorType>();
+  auto strides_type = op.strides().getType().cast<RankedTensorType>();
+
+  if (input_rank != start_type.getNumElements()) {
+    return op.emitOpError() << "has mismatched number of operand rank ("
+                            << input_rank << ") and start_indices size ("
+                            << start_type.getNumElements() << ")";
+  }
+
+  if (input_rank != limit_type.getNumElements()) {
+    return op.emitOpError() << "has mismatched number of operand rank ("
+                            << input_rank << ") and limit_indices size ("
+                            << limit_type.getNumElements() << ")";
+  }
+
+  if (input_rank != strides_type.getNumElements()) {
+    return op.emitOpError()
+           << "has mismatched number of operand rank (" << input_rank
+           << ") and strides size (" << strides_type.getNumElements() << ")";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // InfeedOp
 //===----------------------------------------------------------------------===//
 
@@ -1917,9 +1954,82 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
     }
     return success();
   }
+
+  // If all returned values in the ReduceOp region exists outside
+  // the region replace the ReduceOp with those values.
+  mlir::Block& bb = this->body().front();
+  SmallVector<Value> replaced_results;
+  if (auto ret_op = mlir::dyn_cast<ReturnOp>(bb.back())) {
+    for (Value result : ret_op.results()) {
+      if (result.getParentRegion() == ret_op->getParentRegion())
+        return failure();
+      replaced_results.push_back(result);
+    }
+
+    results.insert(results.end(), replaced_results.begin(),
+                   replaced_results.end());
+    return success();
+  }
+
   return failure();
 }
 
+// Enable constant folding to occur within the region of the ReduceOp
+// by replacing block argument uses with constants if:
+//  1. All the ReduceOp operands are splat constants.
+//  2. The ReduceOp region consists of a single logical AND or logical OR.
+// The pattern leverages the idempotent property of the AND and OR operators
+// to determine the value of a reduction on splat constants. Other boolean
+// operators do not have this property, and need separate patterns to resolve
+// reductions of their splat constants.
+struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
+  using OpRewritePattern<ReduceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ReduceOp op,
+                                PatternRewriter& rewriter) const override {
+    mlir::Block& bb = op.body().front();
+
+    // Ensure only a compute op and return op exist and the
+    // compute op is an AND or OR op.
+    if (bb.getOperations().size() != 2) return failure();
+    if (!mlir::isa<mhlo::AndOp, mhlo::OrOp>(bb.front())) return failure();
+
+    // Ensure all operands are splat constants.
+    SmallVector<DenseElementsAttr, 4> barg_cst_attrs;
+    for (auto inp_and_barg : llvm::zip(op.getOperands(), bb.getArguments())) {
+      Value inp = std::get<0>(inp_and_barg);
+      BlockArgument barg = std::get<1>(inp_and_barg);
+      ConstOp cst = inp.getDefiningOp<ConstOp>();
+      if (!cst) return failure();
+
+      auto cst_attr = cst.value().dyn_cast_or_null<DenseElementsAttr>();
+      if (!cst_attr.isSplat()) {
+        return rewriter.notifyMatchFailure(op, "Must be splat constant.");
+      }
+
+      auto barg_shaped_type = barg.getType().dyn_cast<ShapedType>();
+      if (!barg_shaped_type) return failure();
+
+      auto barg_cst_attr =
+          DenseElementsAttr::get(barg_shaped_type, cst_attr.getSplatValue());
+      barg_cst_attrs.push_back(barg_cst_attr);
+    }
+
+    // Create new splat constants to replace block arguments.
+    for (BlockArgument barg : bb.getArguments()) {
+      int arg_idx = barg.getArgNumber();
+      mhlo::ConstOp new_cst = rewriter.create<mhlo::ConstOp>(
+          bb.front().getLoc(), barg.getType(), barg_cst_attrs[arg_idx]);
+      barg.replaceAllUsesWith(new_cst);
+    }
+    return success();
+  }
+};
+
+void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                           MLIRContext* context) {
+  results.insert<LowerBoolSplatConstantsIntoRegion>(context);
+}
 //===----------------------------------------------------------------------===//
 // RngNormalOp
 //===----------------------------------------------------------------------===//
@@ -2027,8 +2137,9 @@ LogicalResult SelectOp::inferReturnTypeComponents(
 }
 
 LogicalResult SelectOp::reifyReturnTypeShapes(
-    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return deriveShapeFromFirstOperand(&builder, getOperation(),
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromFirstOperand(&builder, getOperation(), operands,
                                      &reifiedReturnShapes);
 }
 
@@ -2178,6 +2289,63 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
     next_index(index, input.getType().getShape());
   }
   return DenseElementsAttr::get(return_type, result);
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicPadOp
+//===----------------------------------------------------------------------===//
+
+void DynamicPadOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DPadToPad>(context);
+}
+
+static LogicalResult Verify(DynamicPadOp op) {
+  auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
+  // If operand is unranked, there is very little to verify statically.
+  if (!input_type) return success();
+  int input_rank = input_type.getRank();
+
+  auto pad_type = op.padding_value().getType().cast<RankedTensorType>();
+  if (pad_type.getRank() != 0) {
+    return op.emitOpError() << "padding value type should be a rank-0";
+  }
+
+  auto padding_low_type =
+      op.edge_padding_low().getType().cast<RankedTensorType>();
+  if (padding_low_type.getNumElements() != input_rank) {
+    return op.emitOpError()
+           << "edge_padding_low length(" << padding_low_type.getNumElements()
+           << ") must match operand rank(" << input_rank << ").";
+  }
+
+  auto padding_high_type =
+      op.edge_padding_high().getType().cast<RankedTensorType>();
+  if (padding_high_type.getNumElements() != input_rank) {
+    return op.emitOpError()
+           << "edge_padding_high length(" << padding_high_type.getNumElements()
+           << ") must match operand rank(" << input_rank << ").";
+  }
+
+  auto interior_padding_type =
+      op.interior_padding().getType().cast<RankedTensorType>();
+  if (interior_padding_type.getNumElements() != input_rank) {
+    return op.emitOpError()
+           << "edge_padding_interior length("
+           << interior_padding_type.getNumElements()
+           << ") must match operand rank(" << input_rank << ").";
+  }
+
+  auto output_type = op.getResult().getType().dyn_cast<RankedTensorType>();
+  // If result is unranked, there is very little to verify statically.
+  if (!output_type) return success();
+  int output_rank = output_type.getRank();
+  if (input_rank != output_rank) {
+    return op.emitOpError() << "operand rank(" << input_rank
+                            << ") must match result(" << output_rank << ").";
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2425,6 +2593,29 @@ struct logical_not {
   }
 };
 
+template <typename FloatOrInt>
+struct sign {
+  APFloat compute(const APFloat& f) {
+    if (f.isZero() || f.isNaN()) return f;
+    double value = f.isNegative() ? -1.0 : 1.0;
+    APFloat val(value);
+    bool unused;
+    val.convert(f.getSemantics(), APFloat::rmNearestTiesToEven, &unused);
+    return val;
+  }
+
+  APInt compute(const APInt& i) {
+    APInt r = i;
+    if (r == 0) return r;
+    if (r.isNegative()) {
+      return APInt(r.getBitWidth(), -1, /*isSigned=*/true);
+    }
+    return APInt(r.getBitWidth(), 1, /*isSigned=*/true);
+  }
+
+  FloatOrInt operator()(const FloatOrInt& fi) { return compute(fi); }
+};
+
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
@@ -2449,6 +2640,7 @@ struct logical_not {
   }
 
 UNARY_FOLDER(NegOp, std::negate);
+UNARY_FOLDER(SignOp, sign);
 UNARY_FOLDER_INT(NotOp, logical_not);
 UNARY_FOLDER_FLOAT(RoundOp, round);
 
@@ -3086,8 +3278,9 @@ LogicalResult CompareOp::inferReturnTypeComponents(
 }
 
 LogicalResult CompareOp::reifyReturnTypeShapes(
-    OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return deriveShapeFromFirstOperand(&builder, getOperation(),
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return deriveShapeFromFirstOperand(&builder, getOperation(), operands,
                                      &reifiedReturnShapes);
 }
 
@@ -3162,6 +3355,39 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
       return DenseIntElementsAttr::get(result_ty, {true});
     }
     return DenseIntElementsAttr::get(result_ty, {false});
+  }
+
+  auto op_el_type = lhs().getType().cast<ShapedType>().getElementType();
+  // Fold tensor<*xi1> != false to just return tensor<*xi1>
+  if (direction == "NE" && op_el_type.isInteger(1)) {
+    DenseIntElementsAttr cst_attr;
+    if (matchPattern(lhs(), m_Constant(&cst_attr))) {
+      if (cst_attr.isSplat() && !cst_attr.getSplatValue<bool>()) {
+        return rhs();
+      }
+    }
+
+    if (matchPattern(rhs(), m_Constant(&cst_attr))) {
+      if (cst_attr.isSplat() && !cst_attr.getSplatValue<bool>()) {
+        return lhs();
+      }
+    }
+  }
+
+  // Fold tensor<*xi1> == True to just return tensor<*xi1>
+  if (direction == "EQ" && op_el_type.isInteger(1)) {
+    DenseIntElementsAttr cst_attr;
+    if (matchPattern(lhs(), m_Constant(&cst_attr))) {
+      if (cst_attr.isSplat() && cst_attr.getSplatValue<bool>()) {
+        return rhs();
+      }
+    }
+
+    if (matchPattern(rhs(), m_Constant(&cst_attr))) {
+      if (cst_attr.isSplat() && cst_attr.getSplatValue<bool>()) {
+        return lhs();
+      }
+    }
   }
 
   if (!operands[0] || !operands[1]) {
@@ -3328,6 +3554,9 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   return DenseElementsAttr::get(base_type, results);
 }
 
+using mlir::hlo::parseWindowAttributes;
+using mlir::hlo::printWindowAttributes;
+
 }  // namespace mhlo
 }  // namespace mlir
 
@@ -3402,9 +3631,9 @@ void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
 //===----------------------------------------------------------------------===//
 
 LogicalResult deriveShapeFromFirstOperand(
-    OpBuilder* builder, Operation* op,
+    OpBuilder* builder, Operation* op, ValueRange operands,
     SmallVectorImpl<Value>* reifiedReturnShapes) {
-  Value operand = op->getOperand(0);
+  Value operand = operands.front();
   ShapedType operand_type = operand.getType().dyn_cast<ShapedType>();
   if (!operand_type) {
     op->emitOpError() << "first operand is not a shaped type";

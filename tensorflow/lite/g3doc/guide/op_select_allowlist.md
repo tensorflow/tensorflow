@@ -133,6 +133,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.DecodeGif`
 *   `raw_ops.DecodeImage`
 *   `raw_ops.DecodeJpeg`
+*   `raw_ops.DecodePaddedRaw`
 *   `raw_ops.DecodePng`
 *   `raw_ops.DecodeRaw`
 *   `raw_ops.DecodeWav`
@@ -189,7 +190,9 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.FIFOQueue`
 *   `raw_ops.FIFOQueueV2`
 *   `raw_ops.Fill`
+*   `raw_ops.FinalizeDataset`
 *   `raw_ops.Fingerprint`
+*   `raw_ops.FlatMapDataset`
 *   `raw_ops.Floor`
 *   `raw_ops.FloorDiv`
 *   `raw_ops.FloorMod`
@@ -520,6 +523,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Selu`
 *   `raw_ops.SeluGrad`
 *   `raw_ops.Send`
+*   `raw_ops.SerializeTensor`
 *   `raw_ops.Shape`
 *   `raw_ops.ShapeN`
 *   `raw_ops.ShardedFilename`
@@ -540,6 +544,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SpaceToBatch`
 *   `raw_ops.SpaceToBatchND`
 *   `raw_ops.SpaceToDepth`
+*   `raw_ops.SparseAdd`
 *   `raw_ops.SparseApplyAdadelta`
 *   `raw_ops.SparseApplyAdagrad`
 *   `raw_ops.SparseApplyAdagradDA`
@@ -557,6 +562,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseCrossV2`
 *   `raw_ops.SparseFillEmptyRows`
 *   `raw_ops.SparseFillEmptyRowsGrad`
+*   `raw_ops.SparseReduceSum`
 *   `raw_ops.SparseReshape`
 *   `raw_ops.SparseSegmentMean`
 *   `raw_ops.SparseSegmentMeanGrad`
@@ -565,6 +571,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseSegmentSqrtNGrad`
 *   `raw_ops.SparseSegmentSqrtNWithNumSegments`
 *   `raw_ops.SparseSegmentSum`
+*   `raw_ops.SparseSegmentSumGrad`
 *   `raw_ops.SparseSegmentSumWithNumSegments`
 *   `raw_ops.SparseSoftmaxCrossEntropyWithLogits`
 *   `raw_ops.SparseToDense`
@@ -623,6 +630,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Sum`
 *   `raw_ops.Switch`
 *   `raw_ops.SymbolicGradient`
+*   `raw_ops.TakeDataset`
 *   `raw_ops.Tan`
 *   `raw_ops.Tanh`
 *   `raw_ops.TanhGrad`

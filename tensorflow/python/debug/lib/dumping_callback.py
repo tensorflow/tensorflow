@@ -30,7 +30,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils
@@ -377,12 +376,9 @@ class _DumpingCallback(object):
           "tensor_debug_mode": self._tensor_debug_mode,
           "debug_urls": debug_urls,
           "name": debug_identity_name,
+          "circular_buffer_size": self._circular_buffer_size,
+          "tfdbg_run_id": self._tfdbg_run_id,
       }
-      if tf_compat.forward_compatible(2020, 6, 24):
-        debug_identity_op_kwargs[
-            "circular_buffer_size"] = self._circular_buffer_size
-      if tf_compat.forward_compatible(2020, 7, 1):
-        debug_identity_op_kwargs["tfdbg_run_id"] = self._tfdbg_run_id
       if tensor_debug_mode == debug_event_pb2.TensorDebugMode.NO_TENSOR:
         if (not self._should_dump_tensor(op_type, tensor.dtype) or
             not tensor.dtype.is_numpy_compatible):

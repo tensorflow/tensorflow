@@ -2515,6 +2515,24 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   return %0#0 : tensor<i32>
 }
 
+func @if_then_else(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tfl.if"(%arg0) ( {
+    "tfl.yield"(%arg1) : (tensor<1xf32>) -> ()
+  },  {
+    %1 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    "tfl.yield"(%1) : (tensor<1xf32>) -> ()
+  }) : (tensor<i1>) -> (tensor<1xf32>)
+  return %0 : tensor<1xf32>
+}
+
+func @if_then(%arg0: tensor<i1>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tfl.if"(%arg0) ( {
+    %1 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    "tfl.yield"(%1) : (tensor<1xf32>) -> ()
+  }) : (tensor<i1>) -> (tensor<1xf32>)
+  return %0 : tensor<1xf32>
+}
+
 // -----
 
 // CHECK-LABEL: valid_unranked_inputs_on_reshape

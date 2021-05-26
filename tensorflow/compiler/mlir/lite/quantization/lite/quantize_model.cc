@@ -97,6 +97,7 @@ TfLiteStatus QuantizeModel(
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
   pm.addPass(TFL::CreateQuantizePass(verify_numeric, legacy_float_scale));
   pm.addPass(TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
+  pm.addPass(TFL::CreateOptimizeOpOrderPass());
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
 
   if (failed(pm.run(module.get()))) {

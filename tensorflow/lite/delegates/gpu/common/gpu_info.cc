@@ -51,6 +51,7 @@ AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
       {"685", AdrenoGpu::kAdreno685},
       {"680", AdrenoGpu::kAdreno680},
       {"675", AdrenoGpu::kAdreno675},
+      {"660", AdrenoGpu::kAdreno660},
       {"650", AdrenoGpu::kAdreno650},
       {"640", AdrenoGpu::kAdreno640},
       {"630", AdrenoGpu::kAdreno630},
@@ -181,6 +182,7 @@ bool AdrenoInfo::IsAdreno6xx() const {
          adreno_gpu == AdrenoGpu::kAdreno630 ||
          adreno_gpu == AdrenoGpu::kAdreno640 ||
          adreno_gpu == AdrenoGpu::kAdreno650 ||
+         adreno_gpu == AdrenoGpu::kAdreno660 ||
          adreno_gpu == AdrenoGpu::kAdreno675 ||
          adreno_gpu == AdrenoGpu::kAdreno680 ||
          adreno_gpu == AdrenoGpu::kAdreno685;
@@ -207,8 +209,9 @@ int AdrenoInfo::GetRegisterMemorySizePerComputeUnit() const {
   if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
       return 128 * 144 * 16;
-    } else if (adreno_gpu == AdrenoGpu::kAdreno650 ||
-               adreno_gpu == AdrenoGpu::kAdreno620) {
+    } else if (adreno_gpu == AdrenoGpu::kAdreno620 ||
+               adreno_gpu == AdrenoGpu::kAdreno650 ||
+               adreno_gpu == AdrenoGpu::kAdreno660) {
       return 128 * 64 * 16;
     } else {
       return 128 * 96 * 16;
@@ -380,6 +383,23 @@ std::string OpenClVersionToString(OpenClVersion version) {
     default:
       return "Unknown OpenCL version";
   }
+}
+
+bool OpenClInfo::IsImage2dFromBufferSupported() const {
+  if (image_pitch_alignment == 0) {
+    return false;
+  }
+  if (cl_version == OpenClVersion::kCl2_0 ||
+      cl_version == OpenClVersion::kCl2_1 ||
+      cl_version == OpenClVersion::kCl2_2) {
+    return true;
+  }
+  for (const auto& ext : extensions) {
+    if (ext == "cl_khr_image2d_from_buffer") {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool GpuInfo::IsAdreno() const { return vendor == GpuVendor::kQualcomm; }

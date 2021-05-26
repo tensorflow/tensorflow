@@ -69,14 +69,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "StatsAggregator"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "StatsOptions"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Structure"
     mtype: "<type \'type\'>"
   }
@@ -123,10 +115,6 @@ tf_module {
   member_method {
     name: "bucket_by_sequence_length"
     argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
-  }
-  member_method {
-    name: "bytes_produced_stats"
-    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "cardinality"
@@ -187,10 +175,6 @@ tf_module {
   member_method {
     name: "index_table_from_dataset"
     argspec: "args=[\'dataset\', \'num_oov_buckets\', \'vocab_size\', \'default_value\', \'hasher_spec\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'-1\', \"HasherSpec(hasher=\'fasthash\', key=None)\", \"<dtype: \'string\'>\", \'None\'], "
-  }
-  member_method {
-    name: "latency_stats"
-    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "make_batched_features_dataset"

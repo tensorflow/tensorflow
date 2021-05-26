@@ -33,6 +33,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
 
@@ -238,6 +239,21 @@ class MathTest(PForTestCase, parameterized.TestCase):
       x1 = array_ops.gather(x, i)
       y1 = array_ops.gather(y, i)
       return math_ops.approximate_equal(x1, y1)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_abs_complex(self):
+    r = pfor_control_flow_ops.vectorized_map(
+        math_ops.abs, math_ops.cast([0, -1], dtype=dtypes.complex128))
+    self.assertAllEqual(self.evaluate(r), [0, 1])
+
+  def test_colocate_with(self):
+    a = random_ops.random_uniform([3, 5])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(a, i)
+      with framework_ops.colocate_with(x1):
+        return x1 * 2
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -545,7 +561,8 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
-  @parameterized.parameters(math_ops.sparse_segment_mean_grad,
+  @parameterized.parameters(math_ops.sparse_segment_sum_grad,
+                            math_ops.sparse_segment_mean_grad,
                             math_ops.sparse_segment_sqrt_n_grad)
   def test_sparse_segment_grad(self, op_func):
     grad = random_ops.random_uniform([3, 3, 2])

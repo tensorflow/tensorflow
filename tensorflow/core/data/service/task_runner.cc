@@ -49,7 +49,6 @@ int64 StandaloneTaskIterator::Cardinality() const {
 
 Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
                           const TaskDef& task_def,
-                          CancellationManager& cancellation_manager,
                           std::unique_ptr<TaskIterator> iterator,
                           std::unique_ptr<TaskRunner>& out) {
   if (task_def.optional_num_consumers_case() == TaskDef::kNumConsumers) {
@@ -62,9 +61,9 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
           cardinality,
           ". Consider adding a `.repeat()` transformation to the dataset.");
     }
-    out = absl::make_unique<RoundRobinTaskRunner>(
-        std::move(iterator), task_def.num_consumers(),
-        task_def.worker_address(), cancellation_manager);
+    out = absl::make_unique<RoundRobinTaskRunner>(std::move(iterator),
+                                                  task_def.num_consumers(),
+                                                  task_def.worker_address());
   } else {
     out =
         absl::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
@@ -93,32 +92,19 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
   return Status::OK();
 }
 
+void FirstComeFirstServedTaskRunner::Cancel() {
+  // Nothing to cancel.
+}
+
 RoundRobinTaskRunner::RoundRobinTaskRunner(
     std::unique_ptr<TaskIterator> iterator, int64 num_consumers,
-    string worker_address, CancellationManager& cancellation_manager)
+    string worker_address)
     : num_consumers_(num_consumers),
       worker_address_(worker_address),
       buffer_(num_consumers_),
       prefetch_thread_(std::move(iterator), num_consumers_) {
   VLOG(1) << "Creating task runner for distributing data round-robin to "
           << num_consumers << " consumers";
-  Status s = RegisterCancellationCallback(
-      &cancellation_manager,
-      [&] {
-        mutex_lock l(mu_);
-        LOG(INFO) << "Cancelling task runner";
-        cancelled_ = true;
-        new_round_cv_.notify_all();
-      },
-      &deregister_cancel_callback_);
-  if (!s.ok()) {
-    mutex_lock l(mu_);
-    cancelled_ = true;
-  }
-}
-
-RoundRobinTaskRunner::~RoundRobinTaskRunner() {
-  if (deregister_cancel_callback_) deregister_cancel_callback_();
 }
 
 Status RoundRobinTaskRunner::ValidateRequest(const GetElementRequest& req) {
@@ -235,6 +221,12 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
   }
   result.components = std::move(element);
   return Status::OK();
+}
+
+void RoundRobinTaskRunner::Cancel() {
+  mutex_lock l(mu_);
+  cancelled_ = true;
+  new_round_cv_.notify_all();
 }
 
 PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,

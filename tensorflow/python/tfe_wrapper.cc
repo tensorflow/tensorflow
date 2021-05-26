@@ -224,6 +224,49 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
   return output_tensor_handles;
 }
 
+tensorflow::Device* GetMatchedDevice(py::handle& ctx, const char* device_name) {
+  auto* context = reinterpret_cast<tensorflow::ImmediateExecutionContext*>(
+      tensorflow::InputTFE_Context(ctx));
+
+  tensorflow::DeviceNameUtils::ParsedName input_device_name;
+  if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_name,
+                                                         &input_device_name)) {
+    tensorflow::ThrowValueError(
+        absl::StrFormat("Failed parsing device name: '%s'. Note a valid device "
+                        "string should at least contain a device type and a "
+                        "device index, like \"GPU:0\".",
+                        device_name)
+            .c_str());
+  }
+
+  std::vector<tensorflow::Device*> devices = context->ListLocalTfDevices();
+
+  tensorflow::Device* matched_device = nullptr;
+  for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
+    tensorflow::Device* device = devices[device_idx];
+
+    if (tensorflow::DeviceNameUtils::AreCompatibleDevNames(
+            input_device_name, device->parsed_name())) {
+      if (matched_device != nullptr) {
+        tensorflow::ThrowValueError(
+            absl::StrFormat("Multiple devices match the provided string "
+                            "'%s': '%s' and '%s'.",
+                            device_name, matched_device->name(), device->name())
+                .c_str());
+      }
+      matched_device = device;
+    }
+  }
+
+  if (matched_device == nullptr) {
+    tensorflow::ThrowValueError(
+        absl::StrFormat("No matching devices found for '%s'", device_name)
+            .c_str());
+  }
+
+  return matched_device;
+}
+
 // Packs multiple `EagerTensor`s of the same dtype and shape into one
 // `EagerTensor`.
 py::object TFE_Py_PackEagerTensors_wrapper(const py::handle& context,
@@ -335,7 +378,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
     } else {
       ThrowValueError(
           absl::StrFormat("Invalid stage selected: '%s'. Valid values are: "
-                          "'hlo', 'optimized_hlo', 'optimized_hlo_dot'",
+                          "'hlo', 'hlo_serialized', 'optimized_hlo', "
+                          "'optimized_hlo_serialized', 'optimized_hlo_dot'",
                           s_stage)
               .c_str());
     }
@@ -412,26 +456,26 @@ class EagerContextThreadLocalDataWrapper {
     GetData()->invoking_op_callbacks = v;
   }
 
-  py::handle get_device_name() const {
+  py::object get_device_name() const {
     return GetPyObject(&GetData()->device_name);
   }
   void set_device_name(py::handle v) {
     SetPyObject(v, &GetData()->device_name);
   }
 
-  py::handle get_scope_name() const {
+  py::object get_scope_name() const {
     return GetPyObject(&GetData()->scope_name);
   }
   void set_scope_name(py::handle v) { SetPyObject(v, &GetData()->scope_name); }
 
-  py::handle get_device_spec() const {
+  py::object get_device_spec() const {
     return GetPyObject(&GetData()->device_spec);
   }
   void set_device_spec(py::handle v) {
     SetPyObject(v, &GetData()->device_spec);
   }
 
-  py::handle get_function_call_options() const {
+  py::object get_function_call_options() const {
     return GetPyObject(&GetData()->function_call_options);
   }
   void set_function_call_options(py::handle v) {
@@ -441,7 +485,7 @@ class EagerContextThreadLocalDataWrapper {
   py::handle get_executor() const { return GetPyObject(&GetData()->executor); }
   void set_executor(py::handle v) { SetPyObject(v, &GetData()->executor); }
 
-  py::handle get_op_callbacks() const {
+  py::object get_op_callbacks() const {
     return GetPyObject(&GetData()->op_callbacks);
   }
   void set_op_callbacks(py::handle v) {
@@ -458,9 +502,8 @@ class EagerContextThreadLocalDataWrapper {
     return result;
   }
 
-  py::handle GetPyObject(tensorflow::Safe_PyObjectPtr* obj) const {
-    Py_INCREF(obj->get());
-    return obj->get();
+  py::object GetPyObject(tensorflow::Safe_PyObjectPtr* obj) const {
+    return pybind11::reinterpret_borrow<py::object>(obj->get());
   }
 
   void SetPyObject(py::handle value, tensorflow::Safe_PyObjectPtr* ptr) {
@@ -540,48 +583,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
 
   m.def("TFE_GetMemoryInfo", [](py::handle& ctx, const char* device_name) {
-    auto* context = reinterpret_cast<tensorflow::ImmediateExecutionContext*>(
-        tensorflow::InputTFE_Context(ctx));
-
-    tensorflow::DeviceNameUtils::ParsedName input_device_name;
-    if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(
-            device_name, &input_device_name)) {
-      tensorflow::ThrowValueError(
-          absl::StrFormat("Failed parsing device name: '%s'", device_name)
-              .c_str());
-    }
-
-    std::vector<tensorflow::Device*> devices = context->ListLocalTfDevices();
-
-    tensorflow::Device* matched_device = nullptr;
-    for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
-      tensorflow::Device* device = devices[device_idx];
-
-      if (tensorflow::DeviceNameUtils::AreCompatibleDevNames(
-              input_device_name, device->parsed_name())) {
-        if (device->device_type() == tensorflow::DEVICE_CPU) {
-          tensorflow::ThrowValueError(
-              "CPU does not support getting allocator information");
-        }
-
-        if (matched_device != nullptr) {
-          tensorflow::ThrowValueError(
-              absl::StrFormat("Multiple devices matching the provided string "
-                              "'%s': '%s' and "
-                              "'%s' ",
-                              device_name, matched_device->name(),
-                              device->name())
-                  .c_str());
-        }
-        matched_device = device;
-      }
-    }
-
-    if (matched_device == nullptr) {
-      tensorflow::ThrowValueError(
-          absl::StrFormat("No matching devices found for '%s'", device_name)
-              .c_str());
-    }
+    tensorflow::Device* matched_device =
+        tensorflow::GetMatchedDevice(ctx, device_name);
 
     tensorflow::AllocatorAttributes attrs;
     tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
@@ -592,10 +595,25 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                                             {"peak", stats->peak_bytes_in_use}};
     }
 
-    tensorflow::ThrowTypeError(
+    tensorflow::ThrowValueError(
         absl::StrFormat("Allocator stats not available for device '%s'",
-                        matched_device->name())
+                        device_name)
             .c_str());
+  });
+
+  m.def("TFE_ResetMemoryStats", [](py::handle& ctx, const char* device_name) {
+    tensorflow::Device* matched_device =
+        tensorflow::GetMatchedDevice(ctx, device_name);
+
+    tensorflow::AllocatorAttributes attrs;
+    tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
+
+    if (!allocator->ClearStats()) {
+      tensorflow::ThrowValueError(
+          absl::StrFormat("Cannot reset memory stats for device '%s'",
+                          device_name)
+              .c_str());
+    }
   });
 
   // XLA Eager Logic
@@ -1049,6 +1067,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextOptionsSetDevicePlacementPolicy",
         &TFE_ContextOptionsSetDevicePlacementPolicy);
   m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
+  m.def("TFE_ContextOptionsSetTfrtDistributedRuntime",
+        &TFE_ContextOptionsSetTfrtDistributedRuntime);
   // Experimental feature, intentionally not exposed as a C API yet.
   m.def("TFE_ContextOptionsSetRunEagerOpAsFunction",
         [](TFE_ContextOptions* options, bool run_eager_op_as_function) {

@@ -1025,6 +1025,9 @@ class Progbar(object):
     else:
       return 0
 
+  def _update_stateful_metrics(self, stateful_metrics):
+    self.stateful_metrics = self.stateful_metrics.union(stateful_metrics)
+
 
 def make_batches(size, batch_size):
   """Returns a list of batch indices (tuples of indices).

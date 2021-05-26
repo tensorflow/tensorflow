@@ -65,21 +65,15 @@ void* LoadFunction(void* handle, const char* name, bool optional) {
 
 #ifndef __ANDROID__
 // Add /dev/shm implementation of shared memory for non-Android platforms
-int ASharedMemory_create(const char* /* name */, size_t size) {
+int ASharedMemory_create(const char* name, size_t size) {
   // Each call to ASharedMemory_create produces a unique memory space, hence
-  // name should not be used to create the shared memory file, otherwise
-  // two calls to create memory regions using the same 'name', will collide.
-  char shm_name_buffer[L_tmpnam];
-  if (tmpnam(shm_name_buffer) == nullptr) {
-    return -1;
-  }
+  // name should be unique, otherwise two calls to create memory regions using
+  // the same 'name', will collide.
+  // Caller is responsible to provide a unique name.
 
-  // tmpnam will produce a string containing with slashes, but shm_open
-  // won't like that.
-  std::string shm_region_name = std::string(shm_name_buffer);
-  std::replace(shm_region_name.begin(), shm_region_name.end(), '/', '-');
-
-  int fd = shm_open(shm_region_name.c_str(), O_RDWR | O_CREAT, 0644);
+  // Make sure new shared memory region is created: shm_open return an error if
+  // shm object with given name already exists (O_CREAT | O_EXCL)
+  int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0644);
   if (fd < 0) {
     return fd;
   }
@@ -99,8 +93,7 @@ uint32_t CalculateAndroidSdkVersion(NnApi const& nnapi) {
       nnapi.ANeuralNetworksModel_relaxComputationFloat32toFloat16 != nullptr;
   bool has_12 = nnapi.ANeuralNetworks_getDeviceCount != nullptr;
   bool has_13 = nnapi.ANeuralNetworksCompilation_setTimeout != nullptr;
-  bool has_14 =
-      nnapi.ANeuralNetworksExecution_enableInputAndOutputPadding != nullptr;
+  bool has_14 = nnapi.ANeuralNetworks_getRuntimeFeatureLevel != nullptr;
 
   uint32_t sdk_version = 0;
   if (has_10) {
@@ -302,6 +295,8 @@ const NnApi LoadNnApi() {
 
   // API 31 methods
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworks_getRuntimeFeatureLevel);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_enableInputAndOutputPadding);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksExecution_setReusable);
@@ -313,6 +308,13 @@ const NnApi LoadNnApi() {
     nnapi.android_sdk_version = CalculateAndroidSdkVersion(nnapi);
   }
 #endif  // __ANDROID__
+  // Determin NNAPI Runtime feature level.
+  if (nnapi.ANeuralNetworks_getRuntimeFeatureLevel) {
+    nnapi.nnapi_runtime_feature_level =
+        nnapi.ANeuralNetworks_getRuntimeFeatureLevel();
+  } else {
+    nnapi.nnapi_runtime_feature_level = nnapi.android_sdk_version;
+  }
 
   return nnapi;
 }

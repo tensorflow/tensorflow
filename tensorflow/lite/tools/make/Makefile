@@ -173,6 +173,7 @@ $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.c) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*test*.cc) \
+$(wildcard tensorflow/lite/*/*_ops_wrapper.cc) \
 $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
 $(wildcard tensorflow/lite/*/*/test*.cc) \

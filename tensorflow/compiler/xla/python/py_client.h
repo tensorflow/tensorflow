@@ -100,6 +100,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   absl::string_view platform_version() const {
     return pjrt_client_->platform_version();
   }
+  absl::string_view runtime_type() const {
+    return PjRtRuntimeTypeString(pjrt_client_->runtime_type());
+  }
   int addressable_device_count() const {
     return pjrt_client_->addressable_device_count();
   }
@@ -141,7 +144,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
-  pybind11::bytes HeapProfile();
+  StatusOr<pybind11::bytes> HeapProfile();
 
  private:
   friend class PyBuffer;
