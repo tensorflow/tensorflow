@@ -59,8 +59,8 @@ class StringLookup(index_lookup.IndexLookup):
       includes the OOV and mask tokens. Default to None.
     num_oov_indices: The number of out-of-vocabulary tokens to use. If this
       value is more than 1, OOV inputs are hashed to determine their OOV value.
-      If this value is 0, OOV inputs will map to -1 when `output_mode` is
-      `"int"` and are dropped otherwise. Defaults to 1.
+      If this value is 0, OOV inputs will cause an error when calling the layer.
+      Defaults to 1.
     mask_token: A token that represents masked inputs. When `output_mode` is
       `"int"`, the token is included in vocabulary and mapped to index 0. In
       other output modes, the token will not appear in the vocabulary and

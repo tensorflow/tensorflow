@@ -27,6 +27,7 @@ from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -315,6 +316,23 @@ class IntegerLookupOutputTest(keras_parameterized.TestCase,
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
+
+  def test_int_output_no_oov(self):
+    vocab_data = [42, 1138, 725, 1729]
+    valid_input = np.array([[42, 1138, 725, 1729], [1729, 725, 42, 0]])
+    invalid_input = np.array([[42, 1138, 725, 203], [1729, 725, 42, 203]])
+    expected_output = [[1, 2, 3, 4], [4, 3, 1, 0]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = integer_lookup.IntegerLookup(
+        vocabulary=vocab_data, mask_token=0, num_oov_indices=0)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(valid_input)
+    self.assertAllEqual(expected_output, output_data)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "found OOV values.*203"):
+      _ = model.predict(invalid_input)
 
   def test_inverse_output(self):
     vocab_data = [-1, 42, 1138, 725, 1729]
