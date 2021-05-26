@@ -1098,10 +1098,10 @@ cc_library(
         ":lhlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
