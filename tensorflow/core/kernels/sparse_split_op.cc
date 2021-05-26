@@ -63,11 +63,18 @@ class SparseSplitOp : public OpKernel {
                                         input_shape.vec<int64>()(axis),
                                         "), got ", num_split_));
 
+    // Prevent overflow by constructing the dense shape separately
+    TensorShape dense_shape;
+    const auto input_shape_flat = input_shape.flat<int64>();
+    for (int i = 0; i < input_shape.NumElements(); i++) {
+      OP_REQUIRES_OK(context,
+                     dense_shape.AddDimWithStatus(input_shape_flat(i)));
+    }
+
     sparse::SparseTensor sparse_tensor;
     OP_REQUIRES_OK(context,
-                   sparse::SparseTensor::Create(
-                       input_indices, input_values,
-                       TensorShape(input_shape.vec<int64>()), &sparse_tensor));
+                   sparse::SparseTensor::Create(input_indices, input_values,
+                                                dense_shape, &sparse_tensor));
 
     std::vector<sparse::SparseTensor> outputs;
     OP_REQUIRES_OK(context, sparse::SparseTensor::Split<T>(
