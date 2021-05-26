@@ -337,7 +337,7 @@ TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName(
 // compute function.
 TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int index, TF_DataType dtype,
-                                            int64_t* dims, int num_dims,
+                                            const int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
 
 // Tries to forward one of the inputs given in input_indices to
