@@ -337,7 +337,7 @@ TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName(
 // compute function.
 TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int index, TF_DataType dtype,
-                                            int64_t* dims, int num_dims,
+                                            const int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
 
 // Tries to forward one of the inputs given in input_indices to
@@ -348,8 +348,9 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
 // -1.
 TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
     TF_OpKernelContext* context, int* candidate_input_indices,
-    int num_candidate_input_indices, int output_index, int64_t* output_dims,
-    int output_num_dims, int* forwarded_input, TF_Status* status);
+    int num_candidate_input_indices, int output_index,
+    const int64_t* output_dims, int output_num_dims, int* forwarded_input,
+    TF_Status* status);
 
 // Allocates a temporary Tensor of the specified type and shape. The
 // Tensor must not be used after kernel construction is
@@ -357,8 +358,8 @@ TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
 //
 // num_dims must equal the size of array dims
 TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(
-    TF_OpKernelContext* context, TF_DataType dtype, int64_t* dims, int num_dims,
-    TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
+    TF_OpKernelContext* context, TF_DataType dtype, const int64_t* dims,
+    int num_dims, TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */
