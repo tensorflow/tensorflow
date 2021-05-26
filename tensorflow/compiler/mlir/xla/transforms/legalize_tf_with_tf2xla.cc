@@ -280,10 +280,10 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   return ops.count(abstractOp->typeID);
 }
 
-// List ops that should use MLIR legalization in the case of prefer_tf2xla. All
-// other ops not in this list should use the old bridge's XlaOpKernel
-// legalization.
-const llvm::DenseSet<mlir::TypeID>& MlirLegalizedUnderPreferTf2XlaSet() {
+/// List of ops that should use XlaOpKernel legalization only in the case of
+/// prefer_tf2xla. All other ops not in this list should use MLIR legalization
+/// only or not be legalized by the new bridge.
+const llvm::DenseSet<mlir::TypeID>& Tf2XlaPreferredOps() {
   // The static variable is a pointer in order to avoid destruction upon thread
   // termination.
 
@@ -291,17 +291,17 @@ const llvm::DenseSet<mlir::TypeID>& MlirLegalizedUnderPreferTf2XlaSet() {
   static const llvm::DenseSet<mlir::TypeID>* ops =
       new llvm::DenseSet<mlir::TypeID>{
     // Ops that are legalized in the old bridge using MlirXlaOpKernel
-    TypeID::get<TF::AbsOp>(),
+    TypeID::get<TF::AcosOp>(),
   };
   // clang-format on
   return *ops;
 }
 
-bool IsOpMlirLegalizedUnderPreferTf2Xla(Operation* op) {
-  auto mlir_ops = MlirLegalizedUnderPreferTf2XlaSet();
+bool IsOpAllowedTf2XlaPreferred(Operation* op) {
+  auto ops = Tf2XlaPreferredOps();
   auto* abstractOp = op->getAbstractOperation();
   if (!abstractOp) return false;
-  return mlir_ops.count(abstractOp->typeID);
+  return ops.count(abstractOp->typeID);
 }
 
 namespace {
@@ -604,7 +604,8 @@ class Tf2XlaRewritePattern : public RewritePattern {
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
     if (prefer_tf2xla_) {
-      if (IsOpMlirLegalizedUnderPreferTf2Xla(op)) return failure();
+      if (!IsOpAllowedTf2XlaPreferred(op) && !IsOpAllowedTf2XlaFallback(op))
+        return failure();
     } else {
       if (!IsOpAllowedTf2XlaFallback(op)) return failure();
     }
