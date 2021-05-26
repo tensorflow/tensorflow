@@ -1,0 +1,53 @@
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "mlir-hlo/Dialect/disc/IR/memref_disc.h",
+
+using namespace mlir;
+using namespace mlir::memref_disc;
+
+//===----------------------------------------------------------------------===//
+// LoadLinIdxOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(LoadLinIdxOp op) {
+  if ((op.getNumIndices() != op.getMemRefType().getRank()) &&
+      (!op.hasLinearIndex())) {
+    return op.emitOpError(
+        "either multidim or linear index must be provided for load");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// StoreLinIdxOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(StoreLinIdxOp op) {
+  if ((op.getNumOperands() != op.getMemRefType().getRank()) &&
+      (!op.hasLinearIndex())) {
+    return op.emitOpError("either multidim/linear index must be provided");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TableGen'd op method definitions
+//===----------------------------------------------------------------------===//
+
+#define GET_OP_CLASSES
+#include "mlir-hlo/Dialect/disc/IR/memref_disc_ops.cc.inc"

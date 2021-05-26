@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/disc/IR/memref_disc.h"
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
@@ -24,6 +25,7 @@ void mlir::mhlo::registerAllMhloDialects(mlir::DialectRegistry &registry) {
   registry.insert<mlir::chlo::HloClientDialect,
                   mlir::mhlo::MhloDialect,
                   mlir::lmhlo::LmhloDialect,
-                  mlir::lmhlo_gpu::LmhloGpuDialect>();
+                  mlir::lmhlo_gpu::LmhloGpuDialect,
+                  mlir::memref_disc::MemRefDiscDialect>();
   // clang-format on
 }

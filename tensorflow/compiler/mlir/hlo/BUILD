@@ -610,6 +610,7 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":lhlo_gpu",
+        ":memref_disc_dialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -697,6 +698,71 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+td_library(
+    name = "memref_disc_ops_td_files",
+    srcs = [
+        "include/mlir-hlo/Dialect/disc/IR/memref_disc_base.td",
+        "include/mlir-hlo/Dialect/disc/IR/memref_disc_ops.td",
+    ],
+    includes = ["include"],
+)
+
+gentbl_cc_library(
+    name = "memref_disc_base_inc_gen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=memref_disc",
+            ],
+            "include/mlir-hlo/Dialect/disc/IR/memref_disc_ops_dialect.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/disc/IR/memref_disc_base.td",
+    deps = [":memref_disc_ops_td_files"],
+)
+
+gentbl_cc_library(
+    name = "memref_disc_ops_inc_gen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/disc/IR/memref_disc_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/disc/IR/memref_disc_ops.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/disc/IR/memref_disc_ops.td",
+    deps = [":memref_disc_ops_td_files"],
+)
+
+cc_library(
+    name = "memref_disc_dialect",
+    srcs = glob(
+        [
+            "lib/Dialect/disc/IR/*.cc",
+        ],
+    ),
+    hdrs = [
+        "include/mlir-hlo/Dialect/disc/IR/memref_disc.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":memref_disc_base_inc_gen",
+        ":memref_disc_ops_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,
 )
