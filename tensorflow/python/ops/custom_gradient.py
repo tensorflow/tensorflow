@@ -177,30 +177,23 @@ def custom_gradient(f=None):
   ...   # Creating polynomial
   ...   poly = weights[1] * x + weights[0]
   ...
-  ...   def grad_fn(dpoly, variables=None):
+  ...   def grad_fn(dpoly, variables):
   ...     # dy/dx = weights[1] and we need to left multiply dpoly
   ...     grad_xs = dpoly * weights[1]  # Scalar gradient
   ...
-  ...     input_shape = len(x.shape)  # x contains how many dimensions
   ...     grad_vars = []  # To store gradients of passed variables
-  ...     if variables is not None:
-  ...       for v in variables:
-  ...         if v is weights:
-  ...           # Manually computing dy/dweights
-  ...           dy_dw = tf.stack([x ** 1, x ** 0])
-  ...           if input_shape > 0:
-  ...             # Note here that reduce operation is performed
-  ...             # in axis so that it computes gradient of specific
-  ...             # example in batch and it doesn't reduce the entire batch
-  ...             # that is why we are only reducing on axis 1.
-  ...             grad_vars.append(
-  ...                 tf.reduce_sum(dy_dw, axis=1)
-  ...             )
-  ...           else:
-  ...             # No need to reduce if x is scalar
-  ...             grad_vars.append(dy_dw)
-  ...         else:  # Create elif if you have more variables
-  ...           grad_vars.append(None)
+  ...     assert variables is not None
+  ...     assert len(variables) == 1
+  ...     assert variables[0] is weights
+  ...     # Manually computing dy/dweights
+  ...     dy_dw = dpoly * tf.stack([x ** 1, x ** 0])
+  ...     # Note here that reduce operation is performed
+  ...     # in axis so that it computes gradient of specific
+  ...     # example in batch and it doesn't reduce the entire batch
+  ...     # that is why we are only reducing on axis 1.
+  ...     grad_vars.append(
+  ...         tf.reduce_sum(tf.reshape(dy_dw, [2, -1]), axis=1)
+  ...     )
   ...     return grad_xs, grad_vars
   ...   return poly, grad_fn
   >>> x = tf.constant([1., 2., 3.])
@@ -221,13 +214,10 @@ def custom_gradient(f=None):
     numpy=array([6., 3.], dtype=float32)>
   ```
 
-  Above example illustrates two things:
-  - Usage of trainable variable `weights`.
-  - Computing its gradient.
-
+  Above example illustrates usage of trainable variable `weights`.
   In the example, the inner `grad_fn` accepts an extra `variables` input
   parameter and also returns an extra `grad_vars` output. That extra argument
-  is passed if you have any trainable parameters in your model. You need to
+  is passed if the forward function reads any variables. You need to
   compute the gradient w.r.t. each of those `variables` and output it as a list
   of `grad_vars`. Note here that default value of `variables` is set to `None`
   when no variables are used in the forward function.
