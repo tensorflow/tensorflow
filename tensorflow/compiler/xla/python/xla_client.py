@@ -724,7 +724,7 @@ def tracebacks(enabled=True):
     Traceback.enabled = saved
 
 
-def heap_profile(client: Client) -> str:
+def heap_profile(client: Client) -> bytes:
   """Returns a gzipped pprof protocol buffer containing a heap profile."""
   return gzip.compress(client.heap_profile())
 
