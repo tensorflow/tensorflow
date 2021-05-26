@@ -42,10 +42,10 @@ class XentOpTestBase(test.TestCase):
 
   def _opDeterminismEnabled(self):
     deterministic_ops = os.getenv('TF_DETERMINISTIC_OPS', '0')
-    return deterministic_ops == '1' or deterministic_ops == 'true'
+    return deterministic_ops in ('1', 'true')
 
   def _opFwdBwd(self, labels, logits, axis=-1):
-    """ Runs the op-under-test forward and backwards."""
+    """ Runs the op-under-test both forwards and backwards."""
     logits = ops.convert_to_tensor(logits) # needed for the gradient tape
     with backprop.GradientTape() as tape:
       tape.watch(logits)
@@ -71,44 +71,41 @@ class XentOpTestBase(test.TestCase):
                   np_labels,
                   np_logits,
                   with_placeholders=False,
-                  test_backprop=True):
-    np_loss, np_backprop = self._npXent(labels=np_labels, logits=np_logits)
-    with self.cached_session(use_gpu=True) as sess:
+                  expected_gradient=None):
+    np_loss, np_gradient = self._npXent(labels=np_labels, logits=np_logits)
+    if expected_gradient is not None:
+      np_gradient = expected_gradient
+    with self.cached_session() as sess:
       if with_placeholders:
         logits_placeholder = array_ops.placeholder(np_logits.dtype)
         labels_placeholder = array_ops.placeholder(np_labels.dtype)
-        loss, backprop = self._opFwdBwd(
+        loss, gradient = self._opFwdBwd(
             labels_placeholder, logits_placeholder)
-        tf_loss, tf_backprop = sess.run([loss, backprop],
+        tf_loss, tf_gradient = sess.run([loss, gradient],
                                         feed_dict={
                                             labels_placeholder: np_labels,
                                             logits_placeholder: np_logits
                                         })
       else:
-        loss, backprop = self._opFwdBwd(np_labels, np_logits)
-        tf_loss, tf_backprop = self.evaluate([loss, backprop])
+        loss, gradient = self._opFwdBwd(np_labels, np_logits)
+        tf_loss, tf_gradient = self.evaluate([loss, gradient])
     self.assertAllCloseAccordingToType(np_loss, tf_loss, half_rtol=1e-2)
-    if test_backprop:
-      self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
+    self.assertAllCloseAccordingToType(np_gradient, tf_gradient)
 
   def _testXentND(self, np_labels, np_logits, dim=-1):
     np_loss, _ = self._npXent(np_labels, np_logits, dim=dim)
-    with test_util.device(use_gpu=True):
-      loss = nn_ops.softmax_cross_entropy_with_logits(
-          labels=np_labels, logits=np_logits, dim=dim)
-      tf_loss = self.evaluate(loss)
+    loss = nn_ops.softmax_cross_entropy_with_logits(
+        labels=np_labels, logits=np_logits, dim=dim)
+    tf_loss = self.evaluate(loss)
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
 
-  def _testSingleClass(self, test_backprop=True):
+  def _testSingleClass(self, expected_gradient=[[2.0], [1.0], [0.0], [0.0]]):
     for dtype in np.float16, np.float32:
-      with test_util.device(use_gpu=True):
-        loss, backprop = self._opFwdBwd(
-            labels=np.array([[-1.], [0.], [1.]]).astype(dtype),
-            logits=np.array([[1.], [-1.], [0.]]).astype(dtype))
-        tf_loss, tf_backprop = self.evaluate([loss, backprop])
-      self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
-      if test_backprop:
-        self.assertAllClose([[2.0], [1.0], [0.0]], tf_backprop)
+      loss, gradient = self._opFwdBwd(
+          labels=np.array([[-1.], [0.], [1.], [1.]]).astype(dtype),
+          logits=np.array([[1.], [-1.], [0.], [1.]]).astype(dtype))
+      self.assertAllClose([0.0, 0.0, 0.0, 0.0], loss)
+      self.assertAllClose(expected_gradient, gradient)
 
   def testSingleClass(self):
     """This method is structured to be easily overridden by a child class."""
@@ -122,7 +119,7 @@ class XentOpTestBase(test.TestCase):
     labels = [[0., 0., 0., 1.], [0., .5, .5, 0.]]
 
     # For batch 0, we expect the uniform distribution: 0.25, 0.25, 0.25, 0.25
-    # With a hard target 3, the backprop is [0.25, 0.25, 0.25, -0.75]
+    # With a hard target 3, the gradient is [0.25, 0.25, 0.25, -0.75]
     # The loss for this batch is -log(0.25) = 1.386
     #
     # For batch 1, we have:
@@ -136,15 +133,15 @@ class XentOpTestBase(test.TestCase):
     # exp(1) / SUM = 0.087
     # exp(2) / SUM = 0.237
     # exp(3) / SUM = 0.644
-    # With a soft target (1, 2), the backprop is
+    # With a soft target (1, 2), the gradient is
     # [0.032, 0.087 - 0.5 = -0.413, 0.237 - 0.5 = -0.263, 0.644]
     # The loss for this batch is [0.5 * -log(0.087), 0.5 * -log(0.237)]
     # = [1.3862, 1.9401]
-    np_loss, np_backprop = self._npXent(np.array(labels), np.array(logits))
+    np_loss, np_gradient = self._npXent(np.array(labels), np.array(logits))
     self.assertAllClose(
         np.array([[0.25, 0.25, 0.25, -0.75], [0.0321, -0.4129, -0.2632,
                                               0.6439]]),
-        np_backprop,
+        np_gradient,
         rtol=1.e-3,
         atol=1.e-3)
     self.assertAllClose(
@@ -153,19 +150,22 @@ class XentOpTestBase(test.TestCase):
   # TODO(b/123860949): The values are constant folded for XLA, so placeholders
   # are needed.
   @test_util.run_deprecated_v1
-  def _testLabelsBroadcast(self, test_backprop=True):
+  def _testLabelsBroadcast(self, uniform_labels_gradient):
     labels = np.array([[0., 0., 0., 1.]]).astype(np.float16)
     logits = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16)
+    self._testXent2D(labels, logits, with_placeholders=True)
+    labels = np.array([[0.], [2.], [0.25]]).astype(np.float16)
+    logits = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.],
+                       [1., 2., 3., 4.]]).astype(np.float16)
     self._testXent2D(labels, logits, with_placeholders=True,
-                     test_backprop=test_backprop)
-    labels = np.array([[0.], [2.]]).astype(np.float16)
-    logits = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16)
-    self._testXent2D(labels, logits, with_placeholders=True,
-                     test_backprop=test_backprop)
+                     expected_gradient=uniform_labels_gradient)
 
   def testLabelsBroadcast(self):
     """This method is structured to be easily overridden by a child class."""
-    self._testLabelsBroadcast()
+    self._testLabelsBroadcast(
+        uniform_labels_gradient=[[ 0.25 ,  0.25 ,  0.25 ,  0.25 ],
+                                 [-1.968, -1.913, -1.763, -1.355],
+                                 [-0.218, -0.163, -0.013,  0.394]])
 
   @test_util.run_deprecated_v1
   def testShapeMismatch(self):
@@ -191,7 +191,7 @@ class XentOpTestBase(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       labels = constant_op.constant(
           [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
           shape=[3, 4],
@@ -220,7 +220,7 @@ class XentOpTestBase(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientLabelWithV2(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       labels = constant_op.constant(
           [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
           shape=[3, 4],
@@ -239,7 +239,7 @@ class XentOpTestBase(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSecondGradient(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       labels = constant_op.constant(
           [
               0.0, 0.0, 1.0 / 3, 0.0, 1.0 / 3, 0.0, 0.0, 0.0, 0.0, 0.5 / 3,

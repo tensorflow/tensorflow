@@ -38,9 +38,9 @@ from tensorflow.python.platform import test
 class XentOpDeterminismExceptionsTest(test.TestCase):
   """Test d9m-unimplemented exceptions from SoftmaxCrossEntropyWithLogits.
 
-  Test that tf.errors.UnimplementedError is thrown or not thrown, as
-  appropriate, by the GPU code-paths for SoftmaxCrossEntropyWithLogits when
-  deterministic ops are enabled.
+  Test that tf.errors.UnimplementedError is thrown, as appropriate, by the GPU
+  code-paths for SoftmaxCrossEntropyWithLogits when deterministic ops are
+  enabled.
 
   This test assumes that xent_op_test.py runs equivalent test cases when
   deterministic ops are not enabled and will therefore detect erroneous
@@ -104,7 +104,7 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
 
   @test_util.run_in_graph_and_eager_modes
   def testForward(self):
-    with self.cached_session(), test_util.device(use_gpu=True):
+    with self.cached_session():
       for dtype in [np.float16, np.float32, np.float64]:
         for trial in range(5):
           seed = 123 + trial
@@ -118,7 +118,7 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBackward(self):
-    with self.cached_session(), test_util.device(use_gpu=True):
+    with self.cached_session():
       for dtype in [np.float16, np.float32, np.float64]:
         labels, logits = self._generateInputs(dtype, seed=456)
         output_shape = labels.shape[0]
@@ -144,26 +144,61 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
   # Modifications to the parent class (xent_op_test_base.XentOpTestBase) follow
 
   def testSingleClass(self):
-    """Disable testing of backprop for single-class case.
+    """Modify testing of gradient for single-class case.
 
     The deterministic implementation does not produce the gradients expected by
-    the test.
+    the original test (for the nondeterministic functionality) when the labels
+    vector is not a valid probability distribution.
 
-    TODO(duncanriach): Identify the source of the difference in gradients for
-                       this case.
+    labels: [[-1.], [0.], [1.], [1.]]
+    logits: [[1.], [-1.], [0.], [1.]]
+
+                   nondeterministic               deterministic
+    dloss/dlogits: [[2.0], [1.0], [0.0], [0.0]]   [[0.0], [0.0], [0.0], [0.0]]
+
+    Note that only the second two label vectors are a valid probability
+    distributions (as required by the API) and that the gradient matches for
+    those cases.
+
+    TODO(duncanriach): Further investigate the source of the difference in
+                       the gradients for this case.
     """
-    self._testSingleClass(test_backprop=False)
+    self._testSingleClass(expected_gradient=[[0.0], [0.0], [0.0], [0.0]])
 
   def testLabelsBroadcast(self):
-    """Disable testing of backprop for labels-broadcast case.
+    """Modify testing of gradient for labels-broadcast case.
 
     The deterministic implementation does not produce the gradients expected by
-    the test.
+    the original test (for the nondeterministic functionality) when the labels
+    vector (after broadcasting) is not a valid probability distribution.
 
-    TODO(duncanriach): Identify the source of the difference in gradients for
-                       this case.
+    labels: [[0.], [2.], [0.25]]
+    logits: [[1., 1., 1., 1.],
+             [1., 2., 3., 4.],
+             [1., 2., 3., 4.]]
+
+    dloss/dlogits (nondeterministic):
+        [[ 0.25 ,  0.25 ,  0.25 ,  0.25 ],
+         [-1.968, -1.913, -1.763, -1.355],
+         [-0.218, -0.163, -0.013,  0.394]]
+
+    dloss/dlogits (determinsitic):
+        [[ 0.   ,  0.   ,  0.   ,  0.   ],
+         [-1.743, -1.303, -0.105,  3.150],
+         [-0.218, -0.163, -0.013, 0.394]]
+
+    Note that neither of the first two broadcast label vectors is a valid
+    probability distribution (as required by the API) and that these are the
+    cases that yield different gradients for nondeterministic vs determinsitic
+    implementations.
+
+    TODO(duncanriach): Further investigate the source the difference in
+                       the gradient for this case.
     """
-    self._testLabelsBroadcast(test_backprop=False)
+    self._testLabelsBroadcast(
+        uniform_labels_gradient=[[ 0.   ,  0.   ,  0.   , 0.   ],
+                                 [-1.743, -1.303, -0.105, 3.150],
+                                 [-0.218, -0.163, -0.013, 0.394]])
 
 
 if __name__ == "__main__":

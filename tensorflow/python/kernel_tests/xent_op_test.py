@@ -53,17 +53,15 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
                      [1., 2., 3., 4.]]).astype(np.float32)
     np_l = np.array([[0., 0., 0., 1.],
                      [0., .5, .5, 0.]]).astype(np.float32)
-    np_loss, np_backprop = self._npXent(labels=np_l, logits=np_f)
+    np_loss, np_gradient = self._npXent(labels=np_l, logits=np_f)
     tf_f = constant_op.constant(
         np.array([[1., 2., 3., 4.]]).astype(np.float32))
     tf_l = constant_op.constant(
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
-    with test_util.device(use_gpu=True):
-      loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
-          tf_f, tf_l)
-      tf_loss, tf_backprop = self.evaluate([loss, backprop])
+    tf_loss, tf_gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
+        tf_f, tf_l)
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
-    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
+    self.assertAllCloseAccordingToType(np_gradient, tf_gradient)
 
   @test_util.run_deprecated_v1
   def testNotMatrix(self):
