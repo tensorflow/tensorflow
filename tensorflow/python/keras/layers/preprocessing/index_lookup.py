@@ -174,7 +174,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.invert = invert
     self.max_tokens = max_tokens
     self.num_oov_indices = num_oov_indices
-    self.oov_token = oov_token
     self.output_mode = output_mode
     self.sparse = sparse
     self.pad_to_max_tokens = pad_to_max_tokens
@@ -196,15 +195,17 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     restore_from_static_table = kwargs.pop("has_static_table", False)
 
-    # Make sure the mask token is truly of the dtype we want. We can ignore
-    # strings here, because they have only one dtype.
-    if mask_token is not None:
-      dtype = kwargs["dtype"]
-      if dtype == dtypes.int32:
-        mask_token = np.int32(mask_token)
-      elif dtype == dtypes.int64:
-        mask_token = np.int64(mask_token)
+    # Make sure the mask token and oov token are truly of the dtype we want. We
+    # can ignore strings here, because they have only one dtype.
+    dtype = kwargs["dtype"]
+    if dtype == dtypes.int32:
+      mask_token = None if mask_token is None else np.int32(mask_token)
+      oov_token = None if oov_token is None else np.int32(oov_token)
+    elif dtype == dtypes.int64:
+      mask_token = None if mask_token is None else np.int64(mask_token)
+      oov_token = None if oov_token is None else np.int64(oov_token)
     self.mask_token = mask_token
+    self.oov_token = oov_token
 
     if max_tokens is not None:
       available_vocab_size = max_tokens - self._token_start_index()
@@ -289,7 +290,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           initializer, default_value=default_value)
       self._table_handler = table_utils.TableHandler(
           table=self._table,
-          mask_token=self._mask_key,
+          mask_token=self._mask_key if self.mask_token is not None else None,
           mask_value=self._mask_value,
           oov_tokens=oov_indices)
 

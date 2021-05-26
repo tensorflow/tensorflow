@@ -84,7 +84,7 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   return Status::OK();
 }
 
-xla::StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
+StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
     const Node& node, absl::string_view attr_name,
     absl::string_view call_name) {
   std::vector<NameAttrList> attr_lists;
@@ -229,7 +229,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCase(
     NameAttrList* encapsulating_function,
     RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
     const {
-  xla::StatusOr<std::vector<NodeDef>> calls =
+  StatusOr<std::vector<NodeDef>> calls =
       MakeCallNodesFromAttribute(case_node, "branches", "branch");
   if (!calls.ok()) {
     VLOG(2) << "Rejecting node " << case_node.name() << ": "

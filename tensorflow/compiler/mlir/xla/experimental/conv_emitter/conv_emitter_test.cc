@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project

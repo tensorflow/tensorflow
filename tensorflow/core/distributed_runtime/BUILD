@@ -659,12 +659,7 @@ tf_cuda_cc_test(
         "master_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [
-        "manual",  # TODO(b/27683709): Re-enable when not flaky.
-        "notap",  # TODO(b/27683709): Re-enable when not flaky.
-        "noguitar",  # TODO(b/27683709): Re-enable when not flaky.
-        "no_oss",  # TODO(b/27683709): Re-enable when not flaky.
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
         ":remote_device",

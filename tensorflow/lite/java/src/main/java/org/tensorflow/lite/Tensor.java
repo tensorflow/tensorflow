@@ -22,6 +22,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
 import java.util.Arrays;
 
 /**
@@ -266,6 +267,13 @@ public final class Tensor {
       } else {
         buffer().asIntBuffer().put(srcBuffer);
       }
+    } else if (src instanceof ShortBuffer) {
+      ShortBuffer srcBuffer = (ShortBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asShortBuffer().put(srcBuffer);
+      }
     } else {
       throw new IllegalArgumentException("Unexpected input buffer type: " + src);
     }
@@ -310,6 +318,8 @@ public final class Tensor {
       ((LongBuffer) dst).put(buffer().asLongBuffer());
     } else if (dst instanceof IntBuffer) {
       ((IntBuffer) dst).put(buffer().asIntBuffer());
+    } else if (dst instanceof ShortBuffer) {
+      ((ShortBuffer) dst).put(buffer().asShortBuffer());
     } else {
       throw new IllegalArgumentException("Unexpected output buffer type: " + dst);
     }
@@ -357,6 +367,8 @@ public final class Tensor {
           return DataType.FLOAT32;
         } else if (int.class.equals(c)) {
           return DataType.INT32;
+        } else if (short.class.equals(c)) {
+          return DataType.INT16;
         } else if (byte.class.equals(c)) {
           // Byte array can be used for storing string tensors, especially for ParseExample op.
           if (dtype == DataType.STRING) {
@@ -376,6 +388,8 @@ public final class Tensor {
           return DataType.FLOAT32;
         } else if (Integer.class.equals(c) || o instanceof IntBuffer) {
           return DataType.INT32;
+        } else if (Short.class.equals(c) || o instanceof ShortBuffer) {
+          return DataType.INT16;
         } else if (Byte.class.equals(c)) {
           // Note that we don't check for ByteBuffer here; ByteBuffer payloads
           // are allowed to map to any type, and should be handled earlier

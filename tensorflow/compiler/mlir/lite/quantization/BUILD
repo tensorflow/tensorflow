@@ -11,7 +11,7 @@ load(
 )
 load(
     "//third_party/mlir:tblgen.bzl",
-    "gentbl",
+    "gentbl_cc_library",
 )
 
 package(
@@ -42,16 +42,16 @@ filegroup(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "quantization_interfaces_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-op-interface-decls",
+            ["-gen-op-interface-decls"],
             "quantization_interface.h.inc",
         ),
         (
-            "-gen-op-interface-defs",
+            ["-gen-op-interface-defs"],
             "quantization_interface.cc.inc",
         ),
     ],

@@ -18,6 +18,9 @@ and next app recommendation. If you are interested in providing personalized
 recommendations in your application while respecting user privacy, we recommend
 exploring the following example and toolkit.
 
+Note: To customize a model, try
+[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/guide/model_maker).
+
 ## Get started
 
 <img src="images/screenshot.gif" class="attempt-right" style="max-width: 300px">

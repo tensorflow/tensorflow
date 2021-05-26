@@ -65,9 +65,9 @@ REGISTER_XLA_OP(Name("Cos"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
 XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
 REGISTER_XLA_OP(Name("Exp"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Expm1, xla::Expm1(x));
+REGISTER_XLA_OP(Name("Expm1"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Floor"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(IsFinite, xla::IsFinite(x));
+REGISTER_XLA_OP(Name("IsFinite"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsInf"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsNan"), MlirXlaOpKernel);
 // Return 1/x
@@ -94,7 +94,7 @@ REGISTER_XLA_OP(Name("Sign"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
 
 static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {
-  return b->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(features));
     xla::XlaOp threshold =
         Log(xla::Epsilon(b, shape.element_type())) + ScalarLike(features, 2.0);

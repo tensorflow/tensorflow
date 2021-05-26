@@ -75,7 +75,7 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
  protected:
-  xla::StatusOr<std::vector<int64>> GetKernelSize(XlaOpKernelContext* ctx) {
+  StatusOr<std::vector<int64>> GetKernelSize(XlaOpKernelContext* ctx) {
     if (ctx->num_inputs() == 1) {
       return ksize_;
     }
@@ -99,7 +99,7 @@ class PoolingOp : public XlaOpKernel {
     return ksize;
   }
 
-  xla::StatusOr<std::vector<int64>> GetStride(XlaOpKernelContext* ctx) {
+  StatusOr<std::vector<int64>> GetStride(XlaOpKernelContext* ctx) {
     if (ctx->num_inputs() == 1) {
       return stride_;
     }

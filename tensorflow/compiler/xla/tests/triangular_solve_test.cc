@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -484,9 +485,9 @@ XLA_TEST_P(TriangularSolveParametricTest, Random) {
   a_tri = MaybeTransposeInMinorDims(
       a_tri, spec.transpose_a != TriangularSolveOptions::NO_TRANSPOSE);
   if (spec.left_side) {
-    BatchDot(a_tri, x);
+    BatchDot(a_tri, x, xla::PrecisionConfig::HIGHEST);
   } else {
-    BatchDot(x, a_tri);
+    BatchDot(x, a_tri, xla::PrecisionConfig::HIGHEST);
   }
 
   ComputeAndCompare<float>(&builder, bvals, {a_data.get(), b_data.get()},
@@ -496,7 +497,9 @@ XLA_TEST_P(TriangularSolveParametricTest, Random) {
 std::vector<TriangularSolveTestSpec> TriangularSolveTests() {
   std::vector<TriangularSolveTestSpec> specs;
   for (auto batch :
-       {std::initializer_list<int64>{}, std::initializer_list<int64>{5}}) {
+       {std::initializer_list<int64>{}, std::initializer_list<int64>{1},
+        std::initializer_list<int64>{5}, std::initializer_list<int64>{65},
+        std::initializer_list<int64>{129}}) {
     for (int m : {5, 10, 150}) {
       for (int n : {5, 150}) {
         for (bool left_side : {false, true}) {

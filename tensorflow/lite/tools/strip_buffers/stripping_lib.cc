@@ -211,6 +211,26 @@ string StripWeightsFromFlatbuffer(const absl::string_view input_flatbuffer) {
                 builder.GetSize());
 }
 
+bool FlatbufferHasStrippedWeights(const Model* input_model) {
+  if (input_model->subgraphs()->size() != 1) {
+    VLOG(0) << "Only 1 subgraph supported for now";
+    return false;
+  }
+  const SubGraph* input_subgraph = (*input_model->subgraphs())[0];
+  std::unique_ptr<SubGraphT> mutable_subgraph(input_subgraph->UnPack());
+
+  // For all tensors that have buffer > num_buffers + 1 (set to be so in
+  // strip_buffers_from_fb), create a buffer with random data & assign to them.
+  // For others, just copy over the original buffer from source model.
+  const int num_buffers = input_model->buffers()->size();
+  for (auto& tensor : mutable_subgraph->tensors) {
+    if (tensor->buffer > num_buffers + 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
 TfLiteStatus ReconstituteConstantTensorsIntoFlatbuffer(
     const Model* input_model,
     flatbuffers::FlatBufferBuilder* new_model_builder) {

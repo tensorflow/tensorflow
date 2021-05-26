@@ -1029,25 +1029,21 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
 
 @keras_export("keras.optimizers.schedules.serialize")
 def serialize(learning_rate_schedule):
-  """Serialize a `LearningRateSchedule` object
-  into a JSON-compatible representation.
+  """Serialize a `LearningRateSchedule` object into a JSON-compatible representation.
   
   Args:
     learning_rate_schedule: The `LearningRateSchedule` object to serialize.
 
   Returns:
-    A dict-like, JSON-compatible representation of the object's config.
+    A JSON-serializable dict representing the object's config.
 
   Example:
-  ```python
-  lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-    0.1,
-    decay_steps=100000,
-    decay_rate=0.96,
-    staircase=True)
 
-  config = tf.keras.optimizers.schedules.serialize(lr_schedule)
-  config
+  ```python
+  >>> lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+  ...   0.1, decay_steps=100000, decay_rate=0.96, staircase=True)
+
+  >>> tf.keras.optimizers.schedules.serialize(lr_schedule)
   {'class_name': 'ExponentialDecay',
    'config': {'decay_rate': 0.96,
       'decay_steps': 100000,
@@ -1061,8 +1057,7 @@ def serialize(learning_rate_schedule):
 
 @keras_export("keras.optimizers.schedules.deserialize")
 def deserialize(config, custom_objects=None):
-  """Instantiates a `LearningRateSchedule` object
-  from a serialized form.
+  """Instantiates a `LearningRateSchedule` object from a serialized form.
 
   Args:
     config: The serialized form of the `LearningRateSchedule`.
@@ -1074,7 +1069,9 @@ def deserialize(config, custom_objects=None):
     A `LearningRateSchedule` object.
 
   Example:
+
   ```python
+  # Configuration for PolynomialDecay
   config = {
     'class_name': 'PolynomialDecay',
     'config': {'cycle': False,

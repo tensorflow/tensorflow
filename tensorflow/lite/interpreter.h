@@ -52,7 +52,7 @@ namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
 
 namespace test_utils {
-class TestDelegate;  // Class for friend declarations.
+class TestDelegation;  // Class for friend declarations.
 }  // namespace test_utils
 }  // namespace delegates
 
@@ -124,11 +124,6 @@ class Interpreter {
   /// Each index is bound check and this modifies the consistent_ flag of the
   /// interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
-
-  /// Ensure the internal node storage memory allocates at least `count`
-  /// spots for node. NOTE, this doesn't actually add operators. This is an
-  /// efficiency optimization that is subject to change.
-  void ReserveNodes(int count);
 
   /// Adds a node with the given parameters and returns the index of the new
   /// node in `node_index` (optionally). Interpreter will take ownership of
@@ -241,12 +236,6 @@ class Interpreter {
   const std::vector<int>& execution_plan() const {
     return primary_subgraph().execution_plan();
   }
-
-#ifndef DOXYGEN_
-  /// WARNING: Experimental interface, subject to change
-  /// Overrides execution plan. This bounds checks indices sent in.
-  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
-#endif  // DOXYGEN_SKIP
 
   /// Get a mutable tensor data structure.
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
@@ -645,11 +634,18 @@ class Interpreter {
 
   /// Get a pointer to a subgraph if in bounds.
   /// WARNING: This is an experimental API and subject to change.
-  Subgraph* subgraph(int subgraph_index) {
+  const Subgraph* subgraph(int subgraph_index) const {
     if (subgraph_index < 0 ||
-        static_cast<size_t>(subgraph_index) >= subgraphs_size())
+        static_cast<size_t>(subgraph_index) >= subgraphs_size()) {
       return nullptr;
-    return &*subgraphs_[subgraph_index];
+    }
+    return subgraphs_[subgraph_index].get();
+  }
+
+  /// WARNING: This is an experimental API and subject to change.
+  Subgraph* subgraph(int subgraph_index) {
+    return const_cast<Subgraph*>(
+        static_cast<const Interpreter*>(this)->subgraph(subgraph_index));
   }
 
   /// WARNING: Experimental interface, subject to change
@@ -683,7 +679,7 @@ class Interpreter {
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
-  friend class tflite::delegates::test_utils::TestDelegate;
+  friend class tflite::delegates::test_utils::TestDelegation;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -709,6 +705,10 @@ class Interpreter {
     }
     return -1;
   }
+
+  // Overrides execution plan. This bounds checks indices sent in.
+  // Note: Only used during initialization.
+  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Sets the profiler to all subgraphs.
   void SetSubgraphProfiler();

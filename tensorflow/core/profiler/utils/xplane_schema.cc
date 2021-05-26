@@ -121,6 +121,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
       {"ScheduleWithSplit", kScheduleWithSplit},
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
+      // TFRT related.
+      {"TfrtModelRun", kTfrtModelRun},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.

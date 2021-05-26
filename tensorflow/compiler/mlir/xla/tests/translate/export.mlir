@@ -2,6 +2,18 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text-via-builder %s | FileCheck %s
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<2xi1>) -> tensor<2xi1> {
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  return %0 : tensor<2xi1>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG:.*]] = pred[2] parameter(0)
+// CHECK:  ROOT %[[RESULT:.*]] = pred[2] xor(pred[2] %[[ARG]], pred[2] %[[ARG]])
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.after_all"(%arg0, %arg1) : (!mhlo.token, !mhlo.token) -> !mhlo.token
   return %0 : !mhlo.token

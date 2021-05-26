@@ -1375,6 +1375,30 @@ TfLiteStatus ParseHardSwish(const Operator*, ErrorReporter*,
   return kTfLiteOk;
 }
 
+TfLiteStatus ParseIf(const Operator* op, ErrorReporter* error_reporter,
+                     BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteIfParams, SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteIfParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const IfOptions* schema_params = op->builtin_options_as_IfOptions();
+
+  if (schema_params != nullptr) {
+    params->then_subgraph_index = schema_params->then_subgraph_index();
+    params->else_subgraph_index = schema_params->else_subgraph_index();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
 TfLiteStatus ParseL2Normalization(const Operator* op,
                                   ErrorReporter* error_reporter,
                                   BuiltinDataAllocator* allocator,

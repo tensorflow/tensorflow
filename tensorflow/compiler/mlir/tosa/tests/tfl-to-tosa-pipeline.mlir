@@ -505,8 +505,7 @@ func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: 
 
 // CHECK-LABEL: test_unstack
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [1, 32, 32, 8], start = [0, 0, 0, 0]}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [32, 32, 8]}
-// CHECK: %[[VAR2:.*]] = "tosa.identityn"(%[[VAR1]])
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [32, 32, 8]}
 func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
   %0 = "tfl.unpack"(%arg0)  {axis = 0 : i32, num = 1 : i32}  : (tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32>
   return %0 : tensor<32x32x8xf32>
@@ -515,12 +514,12 @@ func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<32x32x8xf32> {
 // -----
 
 // CHECK-LABEL: test_pad
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0> : tensor<3x2xi32>}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{\[\[}}1, 1], {{\[}}2, 2]]> : tensor<2x2xi32>}
 // CHECK: %[[VAR1:.*]] = "tosa.pad"(%arg0, %[[VAR0]])
-func @test_pad(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %cst = constant dense<0> : tensor<3x2xi32>
-  %0 = "tfl.pad"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<13x21x3xf32>
-  return %0 : tensor<13x21x3xf32>
+func @test_pad(%arg0: tensor<2x3xf32>) -> tensor<4x7xf32> {
+  %cst = constant dense<[[1, 1], [2, 2]]> : tensor<2x2xi32>
+  %0 = "tfl.pad"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2x2xi32>) -> tensor<4x7xf32>
+  return %0 : tensor<4x7xf32>
 }
 
 // -----
@@ -639,8 +638,7 @@ func @test_add_1d(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> ten
 // CHECK-LABEL: test_split
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 0, 0]}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 7, 0]}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 14, 0]}
-// CHECK: %[[VAR3:.*]] = "tosa.identityn"(%[[VAR0]], %[[VAR1]], %[[VAR2]])
+// CHECK: %[[VAR2:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 14, 0]}
 func @test_split(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>) {
   %cst_0 = constant dense<1> : tensor<i32>
   %0:3 = "tfl.split"(%cst_0, %arg0)  {num_splits = 3 : i32}  : (tensor<i32>, tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>)

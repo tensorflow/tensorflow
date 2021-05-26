@@ -207,6 +207,8 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       // TODO(phawkins): implement traceback support.
       .def_property_readonly("traceback",
+                             [](PyTpuExecutable*) { return py::none(); })
+      .def_property_readonly("fingerprint",
                              [](PyTpuExecutable*) { return py::none(); });
 
   py::class_<TpuDevice, PjRtDevice, std::shared_ptr<TpuDevice>>(m, "TpuDevice")

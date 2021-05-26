@@ -533,6 +533,21 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(from_dataset_id_ds, list(range(num_elements)))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testRegisteringDatasetAsTfFunction(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+    register_func = def_function.function(data_service_ops.register_dataset)
+    dataset_id = register_func(
+        (constant_op.constant("grpc"),
+         constant_op.constant(cluster.dispatcher_address())), ds)
+    from_dataset_id_ds = data_service_ops.from_dataset_id(
+        "parallel_epochs", cluster.dispatcher_address(), dataset_id,
+        ds.element_spec)
+    self.assertDatasetProduces(from_dataset_id_ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFromDatasetIdMultipleComponents(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
 

@@ -287,10 +287,10 @@ TF_LITE_MICRO_TEST(InterpreterWithProfilerShouldProfileOps) {
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 0);
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   TF_LITE_MICRO_EXPECT_EQ(interpreter.Invoke(), kTfLiteOk);
-#ifndef NDEBUG
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_starts(), 3);
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 3);
-#else  // Profile events will not occur on release builds.
+#else
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_starts(), 0);
   TF_LITE_MICRO_EXPECT_EQ(profiler.event_ends(), 0);
 #endif
@@ -302,7 +302,7 @@ TF_LITE_MICRO_TEST(TestIncompleteInitializationAllocationsWithSmallArena) {
 
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
 
-  constexpr size_t allocator_buffer_size = 512;
+  constexpr size_t allocator_buffer_size = 528;
   uint8_t allocator_buffer[allocator_buffer_size];
 
   tflite::RecordingMicroAllocator* allocator =

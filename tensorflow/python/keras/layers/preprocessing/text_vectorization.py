@@ -29,7 +29,6 @@ from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
@@ -323,6 +322,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         max_tokens=max_tokens,
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
+        mask_token="",
         output_mode=output_mode if output_mode is not None else INT,
         vocabulary_size=vocabulary_size)
 
@@ -336,13 +336,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       return tensor_shape.TensorShape([input_shape[0], self._max_tokens])
 
     if self._output_mode == INT and self._split is None:
-      if len(input_shape) == 1:
+      if len(input_shape) <= 1:
         input_shape = tuple(input_shape) + (1,)
       return tensor_shape.TensorShape(input_shape)
 
     if self._output_mode == INT and self._split is not None:
       input_shape = list(input_shape)
-      if len(input_shape) == 1:
+      if len(input_shape) <= 1:
         input_shape = input_shape + [self._output_sequence_length]
       else:
         input_shape[1] = self._output_sequence_length
@@ -542,31 +542,25 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # If we're not doing any output processing, return right away.
     if self._output_mode is None:
       return inputs
+
     lookup_data = self._index_lookup_layer(inputs)
     if self._output_mode == INT:
-      # Once we have the dense tensor, we can return it if we weren't given a
-      # fixed output sequence length. If we were, though, we have to dynamically
-      # choose whether to pad or trim it based on each tensor.
 
-      # We need to convert to dense if we have a ragged tensor.
-      if tf_utils.is_ragged(lookup_data):
-        dense_data = lookup_data.to_tensor(default_value=0)
-      else:
-        dense_data = lookup_data
+      # Maybe trim the output (NOOP if self._output_sequence_length is None).
+      output_tensor = lookup_data[..., :self._output_sequence_length]
+
+      output_shape = output_tensor.shape.as_list()
+      output_shape[-1] = self._output_sequence_length
+
+      # If it is a ragged tensor, convert it to dense with correct shape.
+      if tf_utils.is_ragged(output_tensor):
+        return output_tensor.to_tensor(default_value=0, shape=output_shape)
 
       if self._output_sequence_length is None:
-        return dense_data
-      else:
-        sequence_len = backend.shape(dense_data)[1]
-        pad_amt = self._output_sequence_length - sequence_len
-        pad_fn = lambda: array_ops.pad(dense_data, [[0, 0], [0, pad_amt]])
-        slice_fn = lambda: dense_data[:, :self._output_sequence_length]
-        output_tensor = control_flow_ops.cond(
-            sequence_len < self._output_sequence_length,
-            true_fn=pad_fn,
-            false_fn=slice_fn)
-        output_shape = output_tensor.shape.as_list()
-        output_shape[-1] = self._output_sequence_length
-        output_tensor.set_shape(tensor_shape.TensorShape(output_shape))
         return output_tensor
+
+      padding, _ = array_ops.required_space_to_batch_paddings(
+          output_tensor.shape, output_shape)
+      return array_ops.pad(output_tensor, padding)
+
     return lookup_data

@@ -58,6 +58,10 @@ dependencies {
 }
 ```
 
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
+
 ### Step 2: Run inference using the API
 
 ```java
@@ -107,10 +111,6 @@ for more details.
 
 ## Run inference in C++
 
-Note: We are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
-
 ```c++
 // Initialization
 std::unique_ptr<NLClassifier> classifier = NLClassifier::CreateFromFileAndOptions(
@@ -149,7 +149,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 Depending on the use case, the `NLClassifier` API can load a TFLite model with
-or without [TFLite Model Metadata](../../convert/metadata.md).
+or without [TFLite Model Metadata](../../convert/metadata.md). See examples of
+creating metadata for natural language classifiers using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#nl_classifiers).
 
 The compatible models should meet the following requirements:
 

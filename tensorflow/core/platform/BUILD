@@ -573,6 +573,20 @@ cc_library(
     deps = [],
 )
 
+tf_cc_test(
+    name = "intrusive_ptr_test",
+    size = "small",
+    srcs = [
+        "intrusive_ptr_test.cc",
+    ],
+    deps = [
+        ":intrusive_ptr",
+        ":refcount",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],

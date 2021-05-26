@@ -409,7 +409,7 @@ tf_py_test(
     name = "interleave_test",
     size = "small",
     srcs = ["interleave_test.py"],
-    shard_count = 4,
+    shard_count = 24,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -569,7 +569,7 @@ cuda_py_test(
     name = "memory_cleanup_test",
     size = "small",
     srcs = ["memory_cleanup_test.py"],
-    shard_count = 2,
+    shard_count = 12,
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
         "notsan",  # TODO(b/144706539)
@@ -978,6 +978,7 @@ tf_py_test(
     name = "zip_test",
     size = "small",
     srcs = ["zip_test.py"],
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

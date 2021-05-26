@@ -34,35 +34,37 @@ __all__ = ["LinearOperatorBlockDiag"]
 
 
 @tf_export("linalg.LinearOperatorBlockDiag")
+@linear_operator.make_composite_tensor
 class LinearOperatorBlockDiag(linear_operator.LinearOperator):
   """Combines one or more `LinearOperators` in to a Block Diagonal matrix.
 
   This operator combines one or more linear operators `[op1,...,opJ]`,
-  building a new `LinearOperator`, whose underlying matrix representation is
-  square and has each operator `opi` on the main diagonal, and zero's elsewhere.
+  building a new `LinearOperator`, whose underlying matrix representation
+  has each operator `opi` on the main diagonal, and zero's elsewhere.
 
   #### Shape compatibility
 
-  If `opj` acts like a [batch] square matrix `Aj`, then `op_combined` acts like
-  the [batch] square matrix formed by having each matrix `Aj` on the main
+  If `opj` acts like a [batch] matrix `Aj`, then `op_combined` acts like
+  the [batch] matrix formed by having each matrix `Aj` on the main
   diagonal.
 
-  Each `opj` is required to represent a square matrix, and hence will have
-  shape `batch_shape_j + [M_j, M_j]`.
+  Each `opj` is required to represent a matrix, and hence will have
+  shape `batch_shape_j + [M_j, N_j]`.
 
-  If `opj` has shape `batch_shape_j + [M_j, M_j]`, then the combined operator
-  has shape `broadcast_batch_shape + [sum M_j, sum M_j]`, where
+  If `opj` has shape `batch_shape_j + [M_j, N_j]`, then the combined operator
+  has shape `broadcast_batch_shape + [sum M_j, sum N_j]`, where
   `broadcast_batch_shape` is the mutual broadcast of `batch_shape_j`,
   `j = 1,...,J`, assuming the intermediate batch shapes broadcast.
-  Even if the combined shape is well defined, the combined operator's
-  methods may fail due to lack of broadcasting ability in the defining
-  operators' methods.
 
   Arguments to `matmul`, `matvec`, `solve`, and `solvevec` may either be single
   `Tensor`s or lists of `Tensor`s that are interpreted as blocks. The `j`th
   element of a blockwise list of `Tensor`s must have dimensions that match
   `opj` for the given method. If a list of blocks is input, then a list of
   blocks is returned as well.
+
+  When the `opj` are not guaranteed to be square, this operator's methods might
+  fail due to the combined operator not being square and/or lack of efficient
+  methods.
 
   ```python
   # Create a 4 x 4 linear operator combined of two 2 x 2 operators.
@@ -87,6 +89,23 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
   x = tf.concat([x1, x2], 0)  # Shape [2, 4] Tensor
   operator.matmul(x)
   ==> tf.concat([operator_1.matmul(x1), operator_2.matmul(x2)])
+
+  # Create a 5 x 4 linear operator combining three blocks.
+  operator_1 = LinearOperatorFullMatrix([[1.], [3.]])
+  operator_2 = LinearOperatorFullMatrix([[1., 6.]])
+  operator_3 = LinearOperatorFullMatrix([[2.], [7.]])
+  operator = LinearOperatorBlockDiag([operator_1, operator_2, operator_3])
+
+  operator.to_dense()
+  ==> [[1., 0., 0., 0.],
+       [3., 0., 0., 0.],
+       [0., 1., 6., 0.],
+       [0., 0., 0., 2.]]
+       [0., 0., 0., 7.]]
+
+  operator.shape
+  ==> [5, 4]
+
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
   matrix_44 = tf.random.normal(shape=[2, 3, 4, 4])
@@ -213,10 +232,6 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
             "positive definite.")
       is_positive_definite = True
 
-    if not (is_square and all(operator.is_square for operator in operators)):
-      raise ValueError(
-          "Can only represent a block diagonal of square matrices.")
-
     # Initialization.
     graph_parents = []
     for operator in operators:
@@ -231,7 +246,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
-          is_square=True,
+          is_square=is_square,
           parameters=parameters,
           name=name)
 
@@ -258,7 +273,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     # Get final matrix shape.
     domain_dimension = sum(self._block_domain_dimensions())
     range_dimension = sum(self._block_range_dimensions())
-    matrix_shape = tensor_shape.TensorShape([domain_dimension, range_dimension])
+    matrix_shape = tensor_shape.TensorShape([range_dimension, domain_dimension])
 
     # Get broadcast batch shape.
     # broadcast_shape checks for compatibility.
@@ -277,7 +292,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
 
     domain_dimension = sum(self._block_domain_dimension_tensors())
     range_dimension = sum(self._block_range_dimension_tensors())
-    matrix_shape = array_ops.stack([domain_dimension, range_dimension])
+    matrix_shape = array_ops.stack([range_dimension, domain_dimension])
 
     # Dummy Tensor of zeros.  Will never be materialized.
     zeros = array_ops.zeros(shape=self.operators[0].batch_shape_tensor())
@@ -286,6 +301,9 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     batch_shape = array_ops.shape(zeros)
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
+
+  # TODO(b/188080761): Add a more efficient implementation of `cond` that
+  # constructs the condition number from the blockwise singular values.
 
   def matmul(self, x, adjoint=False, adjoint_arg=False, name="matmul"):
     """Transform [batch] matrix `x` with left multiplication:  `x --> Ax`.
@@ -355,17 +373,19 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     arg_dim = -1 if adjoint_arg else -2
     block_dimensions = (self._block_range_dimensions() if adjoint
                         else self._block_domain_dimensions())
+    block_dimensions_fn = (
+        self._block_range_dimension_tensors if adjoint
+        else self._block_domain_dimension_tensors)
     blockwise_arg = linear_operator_util.arg_is_blockwise(
         block_dimensions, x, arg_dim)
     if blockwise_arg:
       split_x = x
+
     else:
       split_dim = -1 if adjoint_arg else -2
       # Split input by rows normally, and otherwise columns.
       split_x = linear_operator_util.split_arg_into_blocks(
-          self._block_domain_dimensions(),
-          self._block_domain_dimension_tensors,
-          x, axis=split_dim)
+          block_dimensions, block_dimensions_fn, x, axis=split_dim)
 
     result_list = []
     for index, operator in enumerate(self.operators):
@@ -492,6 +512,11 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
       raise NotImplementedError(
           "Exact solve not implemented for an operator that is expected to "
           "not be square.")
+    if not all(operator.is_square for operator in self.operators):
+      raise NotImplementedError(
+          "Exact solve not implemented for an operator whose blocks are not "
+          "square.")
+
     if isinstance(rhs, linear_operator.LinearOperator):
       left_operator = self.adjoint() if adjoint else self
       right_operator = rhs.adjoint() if adjoint_arg else rhs
@@ -610,6 +635,10 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
       return array_ops.squeeze(solution_mat, axis=-1)
 
   def _diag_part(self):
+    if not all(operator.is_square for operator in self.operators):
+      raise NotImplementedError(
+          "`diag_part` not implemented for an operator whose blocks are not "
+          "square.")
     diag_list = []
     for operator in self.operators:
       # Extend the axis for broadcasting.
@@ -619,6 +648,10 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     return array_ops.squeeze(diagonal, axis=-1)
 
   def _trace(self):
+    if not all(operator.is_square for operator in self.operators):
+      raise NotImplementedError(
+          "`trace` not implemented for an operator whose blocks are not "
+          "square.")
     result = self.operators[0].trace()
     for operator in self.operators[1:]:
       result += operator.trace()
@@ -664,6 +697,10 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
         operator.assert_positive_definite() for operator in self.operators])
 
   def _eigvals(self):
+    if not all(operator.is_square for operator in self.operators):
+      raise NotImplementedError(
+          "`eigvals` not implemented for an operator whose blocks are not "
+          "square.")
     eig_list = []
     for operator in self.operators:
       # Extend the axis for broadcasting.
@@ -671,3 +708,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     eig_list = linear_operator_util.broadcast_matrix_batch_dims(eig_list)
     eigs = array_ops.concat(eig_list, axis=-2)
     return array_ops.squeeze(eigs, axis=-1)
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("operators",)

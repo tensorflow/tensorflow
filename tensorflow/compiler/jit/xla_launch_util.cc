@@ -231,7 +231,7 @@ static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
   }
 }
 
-xla::StatusOr<std::vector<xla::ExecutionInput>>
+StatusOr<std::vector<xla::ExecutionInput>>
 XlaComputationLaunchContext::PopulateInputs(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult* compilation_result,
@@ -315,7 +315,7 @@ static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
 // Get aliased tensor from output, or make a new one for the corresponding
 // output operation. Transfers ownership of the buffer from output to the
 // returned tensor.
-static xla::StatusOr<Tensor> GetOrCreateTensorForOutput(
+static StatusOr<Tensor> GetOrCreateTensorForOutput(
     xla::ScopedShapedBuffer& output, int output_num, OpKernelContext* ctx,
     int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
@@ -416,7 +416,7 @@ static Status SetOutputForConstant(
   return Status::OK();
 }
 
-static xla::StatusOr<Var*> GetOrCreateResourceVar(
+static StatusOr<Var*> GetOrCreateResourceVar(
     OpKernelContext* ctx, const ResourceHandle& handle,
     const XlaCompiler::ResourceUpdate& write) {
   Var* variable = nullptr;
@@ -428,7 +428,7 @@ static xla::StatusOr<Var*> GetOrCreateResourceVar(
   return variable;
 }
 
-xla::StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
+StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult& compilation_result,
     int missing_ctx_input_prefix) {
@@ -601,7 +601,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   return Status::OK();
 }
 
-xla::StatusOr<std::vector<XlaCompiler::Argument>>
+StatusOr<std::vector<XlaCompiler::Argument>>
 XlaComputationLaunchContext::BuildXlaCompilerArguments(
     absl::Span<int const> must_be_constant_idxs,
     absl::Span<const Tensor* const> inputs,

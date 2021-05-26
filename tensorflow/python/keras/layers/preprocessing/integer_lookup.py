@@ -68,7 +68,7 @@ class IntegerLookup(index_lookup.IndexLookup):
       `output_mode` is `"int"`, the token is included in vocabulary and mapped
       to index 0. In other output modes, the token will not appear in the
       vocabulary and instances of the mask token in the input will be dropped.
-      If set to None, no mask term will be added. Defaults to 0.
+      If set to None, no mask term will be added. Defaults to None.
     oov_token: Only used when `invert` is True. The token to return for OOV
       indices. Defaults to -1.
     vocabulary: An optional list of integer tokens, or a path to a text file
@@ -110,8 +110,8 @@ class IntegerLookup(index_lookup.IndexLookup):
   >>> layer = IntegerLookup(vocabulary=vocab)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[2, 4, 5],
-         [5, 1, 3]])>
+  array([[1, 3, 4],
+         [4, 0, 2]])>
 
   **Creating a lookup layer with an adapted vocabulary**
 
@@ -122,19 +122,19 @@ class IntegerLookup(index_lookup.IndexLookup):
   >>> layer = IntegerLookup()
   >>> layer.adapt(data)
   >>> layer.get_vocabulary()
-  [0, -1, 42, 1138, 1000, 36, 12]
+  [-1, 42, 1138, 1000, 36, 12]
 
-  Note how the mask token 0 and the OOV token -1 have been added to the
-  vocabulary. The remaining tokens are sorted by frequency (1138, which has
-  2 occurrences, is first) then by inverse sort order.
+  Note that the OOV token -1 have been added to the vocabulary. The remaining
+  tokens are sorted by frequency (42, which has 2 occurrences, is first) then
+  by inverse sort order.
 
   >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])
   >>> layer = IntegerLookup()
   >>> layer.adapt(data)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[6, 3, 2],
-         [2, 4, 5]])>
+  array([[5, 2, 1],
+         [1, 3, 4]])>
 
 
   **Lookups with multiple OOV indices**
@@ -149,12 +149,12 @@ class IntegerLookup(index_lookup.IndexLookup):
   >>> layer = IntegerLookup(vocabulary=vocab, num_oov_indices=2)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[3, 5, 6],
-         [2, 1, 4]])>
+  array([[2, 4, 5],
+         [1, 0, 3]])>
 
-  Note that the output for OOV token 37 is 2, while the output for OOV token
-  1000 is 1. The in-vocab terms have their output index increased by 1 from
-  earlier examples (12 maps to 3, etc) in order to make space for the extra OOV
+  Note that the output for OOV token 37 is 1, while the output for OOV token
+  1000 is 0. The in-vocab terms have their output index increased by 1 from
+  earlier examples (12 maps to 2, etc) in order to make space for the extra OOV
   token.
 
   **Multi-hot output**
@@ -227,16 +227,14 @@ class IntegerLookup(index_lookup.IndexLookup):
   vocab in this example.)
 
   >>> vocab = [12, 36, 1138, 42]
-  >>> data = tf.constant([[2, 4, 5], [5, 1, 3]])
+  >>> data = tf.constant([[1, 3, 4], [4, 0, 2]])
   >>> layer = IntegerLookup(vocabulary=vocab, invert=True)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
   array([[  12, 1138,   42],
          [  42,   -1,   36]])>
 
-  Note that the first two indices correspond to the mask and oov token by
-  default. This behavior can be disabled by setting `mask_token=None` and
-  `num_oov_indices=0`.
+  Note that the first index correspond to the oov token by default.
 
 
   **Forward and inverse lookup pairs**
@@ -258,13 +256,13 @@ class IntegerLookup(index_lookup.IndexLookup):
   1000 was not in the vocabulary - it got represented as an OOV, and all OOV
   tokens are returned as -1 in the inverse layer. Also, note that for the
   inverse to work, you must have already set the forward layer vocabulary
-  either directly or via `fit()` before calling `get_vocabulary()`.
+  either directly or via `adapt()` before calling `get_vocabulary()`.
   """
 
   def __init__(self,
                max_tokens=None,
                num_oov_indices=1,
-               mask_token=0,
+               mask_token=None,
                oov_token=-1,
                vocabulary=None,
                invert=False,

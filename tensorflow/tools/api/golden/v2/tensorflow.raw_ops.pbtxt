@@ -690,7 +690,7 @@ tf_module {
   }
   member_method {
     name: "CTCGreedyDecoder"
-    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\', \'blank_index\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "CTCLoss"
@@ -4415,6 +4415,10 @@ tf_module {
   member_method {
     name: "SparseSegmentSum"
     argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseSegmentSumGrad"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "SparseSegmentSumWithNumSegments"

@@ -23,28 +23,12 @@ limitations under the License.
 
 namespace tflite {
 
+using ops::builtin::BuiltinOpResolver;
+
 namespace {
 
-// Similar to BuiltinOpResolver, but immutable, so
-// MayContainUserDefineOps can safely return false.
-class ImmutableBuiltinOpResolver : public OpResolver {
- public:
-  const TfLiteRegistration *FindOp(BuiltinOperator op,
-                                   int version) const override {
-    return builtin_op_resolver_.FindOp(op, version);
-  }
-  const TfLiteRegistration *FindOp(const char *custom_op,
-                                   int version) const override {
-    return builtin_op_resolver_.FindOp(custom_op, version);
-  }
-
- private:
-  bool MayContainUserDefinedOps() const override { return false; }
-  ops::builtin::BuiltinOpResolver builtin_op_resolver_;
-};
-
-TEST(OpResolverInternal, ImmutableBuiltinOpResolverContainsOnlyPredefinedOps) {
-  ImmutableBuiltinOpResolver builtin_op_resolver;
+TEST(OpResolverInternal, BuiltinOpResolverContainsOnlyPredefinedOps) {
+  BuiltinOpResolver builtin_op_resolver;
   EXPECT_EQ(OpResolverInternal::MayContainUserDefinedOps(builtin_op_resolver),
             false);
 }
@@ -89,7 +73,7 @@ class ChainableOpResolver : public MutableOpResolver {
 };
 
 TEST(OpResolverInternal, ChainedBuiltinOpResolverContainOnlyPredefinedOps) {
-  ImmutableBuiltinOpResolver builtin_op_resolver;
+  BuiltinOpResolver builtin_op_resolver;
   ChainableOpResolver chainable_op_resolver;
   chainable_op_resolver.ChainOpResolver(&builtin_op_resolver);
   EXPECT_EQ(OpResolverInternal::MayContainUserDefinedOps(chainable_op_resolver),

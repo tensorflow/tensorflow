@@ -56,27 +56,6 @@ constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
-// A pass that finds on-device resource variable reads/assigns surrounding a
-// tf.TPUExecute op, and merges them into a tf.TPUExecuteAndUpdateVariables.
-// This allows the TPU execution to perform in-place variable updates.
-//
-// For example,
-//
-//   %0 = "tf.ReadVariableOp"(%arg0)
-//   %1 = "tf.ReadVariableOp"(%arg1)
-//   %2 = "tf.TPUExecute"(%0, %1, %compile)
-//   %3 = "tf.AssignVariableOp"(%arg0, %2)
-//
-// will be transformed into
-//
-//   %2 = "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %compile)
-//     { device_var_reads_indices = [0, 1],
-//       device_var_updates_indices = [0, -1] }
-//
-// The transformation happens only for on-device variables. The above
-// transformation requires %arg0, %arg1 to have the same device assignment as
-// the TPUExecute op.
-
 struct TPUMergeVariablesWithExecutePass
     : public PassWrapper<TPUMergeVariablesWithExecutePass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -564,10 +543,6 @@ std::unique_ptr<OperationPass<FuncOp>>
 CreateTPUMergeVariablesWithExecutePass() {
   return std::make_unique<TPUMergeVariablesWithExecutePass>();
 }
-
-static PassRegistration<TPUMergeVariablesWithExecutePass> pass(
-    "tf-tpu-merge-variables-with-execute",
-    "Merges device variable reads/updates into tpu execute nodes");
 
 }  // namespace TFTPU
 }  // namespace mlir

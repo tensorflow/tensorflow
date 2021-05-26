@@ -260,7 +260,15 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kAbs:
       return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
-      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+      // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
+      // AddOps on i1 are just addition with overflow; so, we have to implement
+      // the special behavior of HLO add ops on PRED here by creating an OrOp
+      // instead.
+      if (instr->shape().element_type() == xla::PRED) {
+        return CreateOpWithoutAttrs<lmhlo::OrOp>(instr);
+      } else {
+        return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+      }
     case HloOpcode::kAddDependency:
       return nullptr;
     case HloOpcode::kAfterAll:
@@ -1020,7 +1028,11 @@ StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     // the allocated buffer slice for this constant if need be.
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         assignment_.GetUniqueTopLevelSlice(instr));
-    global_var->setAttr("lmhlo.alloc", builder_.getIndexAttr(slice.index()));
+    global_var->setAttr(
+        "lmhlo.alloc",
+        builder_.getIndexAttr(allocations_.find(slice.allocation())
+                                  ->second.cast<BlockArgument>()
+                                  .getArgNumber()));
     TF_RET_CHECK(slice.offset() == 0)
         << "Each constant should have its own allocation from BufferAssignment";
     TF_RET_CHECK(slice.allocation()->size() == slice.size())
@@ -1683,8 +1695,9 @@ Status LhloDialectEmitter::Initialize() {
                      allocation_comparator);
   }
 
-  absl::flat_hash_map<const BufferAllocation*, xla::ShapeIndex>
-      allocation_to_output_index;
+  absl::flat_hash_map<const BufferAllocation*,
+                      std::pair<const Shape*, xla::ShapeIndex>>
+      allocation_to_output_info;
   TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
       computation_.root_instruction()->shape(),
       [&](const Shape& sub_shape, xla::ShapeIndex index) -> Status {
@@ -1694,7 +1707,7 @@ Status LhloDialectEmitter::Initialize() {
         const BufferAllocation* alloc = slice.allocation();
         TF_RET_CHECK(slice.offset() == 0);
         TF_RET_CHECK(slice.size() == alloc->size());
-        allocation_to_output_index[alloc] = index;
+        allocation_to_output_info[alloc] = std::make_pair(&sub_shape, index);
         return Status::OK();
       }));
 
@@ -1733,9 +1746,7 @@ Status LhloDialectEmitter::Initialize() {
     } else {
       arg_type = MemRefType::get({alloc->size()}, i8_type_);
     }
-    block->addArgument(arg_type);
-    allocations_[alloc] = block->getArguments().back();
-    arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
+
     if (alloc->is_entry_computation_parameter()) {
       arg_attr_list.set("lmhlo.params",
                         builder_.getIndexAttr(alloc->parameter_number()));
@@ -1756,19 +1767,26 @@ Status LhloDialectEmitter::Initialize() {
           builder_.getStringAttr(
               xla::llvm_ir::ConstantBufferAllocationToGlobalName(*alloc)));
     }
-    auto iter = allocation_to_output_index.find(alloc);
-    if (iter != allocation_to_output_index.end()) {
+    auto iter = allocation_to_output_info.find(alloc);
+    if (iter != allocation_to_output_info.end()) {
+      const Shape* sub_shape = iter->second.first;
+      const xla::ShapeIndex& shape_index = iter->second.second;
+      if (!sub_shape->IsArray()) {
+        continue;
+      }
       arg_attr_list.set("lmhlo.output_index",
                         builder_.getI64TensorAttr(llvm::makeArrayRef(
-                            iter->second.begin(), iter->second.end())));
+                            shape_index.begin(), shape_index.end())));
       if (auto alias = computation_.parent()
                            ->input_output_alias_config()
-                           .GetAliasedParameter(iter->second)) {
+                           .GetAliasedParameter(shape_index)) {
         if (alias->must_alias()) {
           arg_attr_list.set("lmhlo.must_alias", builder_.getUnitAttr());
         }
       }
     }
+    block->addArgument(arg_type);
+    allocations_[alloc] = block->getArguments().back();
     args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
   }
 

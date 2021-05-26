@@ -68,8 +68,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
                           absl::Span<std::string> exported_names,
-                          mlir::MLIRContext* context,
-                          MLIRImportOptions options);
+                          mlir::MLIRContext* context, MLIRImportOptions options,
+                          bool lift_variables = true);
 
 // Given a V1 SavedModel, returns a MLIR module containing the functions,
 // expressed with tf_executor dialect. It does not require a session to be

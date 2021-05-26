@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
@@ -36,6 +37,9 @@ class DefaultExecutionProvider : public DelegateProvider {
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
   void LogParams(const ToolParams& params, bool verbose) const final;
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
+
   std::string GetName() const final { return "Default-NoDelegate"; }
 };
 REGISTER_DELEGATE_PROVIDER(DefaultExecutionProvider);
@@ -72,6 +76,13 @@ void DefaultExecutionProvider::LogParams(const ToolParams& params,
 TfLiteDelegatePtr DefaultExecutionProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
   return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
+std::pair<TfLiteDelegatePtr, int>
+DefaultExecutionProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  return std::make_pair(std::move(ptr), 0);
 }
 
 }  // namespace tools

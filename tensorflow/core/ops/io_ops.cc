@@ -100,6 +100,11 @@ REGISTER_OP("RestoreV2")
       // Attempt to infer output shapes from its shape_and_slice input.
       const Tensor* shape_and_slices_tensor = c->input_tensor(2);
       if (shape_and_slices_tensor) {
+        if (shape_and_slices_tensor->dtype() != DT_STRING) {
+          return errors::InvalidArgument(
+              "Expected an input tensor of type string.");
+        }
+
         const auto& shape_and_slices_flat =
             shape_and_slices_tensor->flat<tstring>();
         if (shape_and_slices_flat.size() != c->num_outputs()) {

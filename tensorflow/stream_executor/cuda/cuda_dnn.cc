@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
@@ -571,14 +572,22 @@ class CudnnTensorDescriptor {
         CHECK_CUDNN_OK(cudnnSetTensorNdDescriptor(handle_.get(), elem_type, nd,
                                                   dims.data(), strides.data()))
             << "batch_descriptor: " << batch_descriptor.ToString();
-      } break;
-      case dnn::DataLayout::kBatchDepthYX4: {
+        break;
+      }
+      case dnn::DataLayout::kBatchDepthYX4:
+      case dnn::DataLayout::kBatchDepthYX32: {
+        auto expected_elem_ty =
+            batch_descriptor.layout() == dnn::DataLayout::kBatchDepthYX4
+                ? CUDNN_DATA_INT8x4
+                : CUDNN_DATA_INT8x32;
+        CHECK_EQ(elem_type, expected_elem_ty);
         CHECK_CUDNN_OK(cudnnSetTensor4dDescriptor(
             handle_.get(), CUDNN_TENSOR_NCHW_VECT_C, elem_type,
             batch_descriptor.count(), batch_descriptor.feature_map_count(),
             batch_descriptor.height(), batch_descriptor.width()))
             << "batch_descriptor: " << batch_descriptor.ToString();
-      } break;
+        break;
+      }
       default:
         LOG(FATAL) << "Unsupported tensor format "
                    << DataLayoutString(batch_descriptor.layout());
@@ -614,8 +623,15 @@ class CudnnFilterDescriptor {
         format = CUDNN_TENSOR_NHWC;
         break;
       case dnn::FilterLayout::kOutputInputYX4:
+      case dnn::FilterLayout::kOutputInputYX32: {
+        auto expected_elem_ty =
+            filter_descriptor.layout() == dnn::FilterLayout::kOutputInputYX4
+                ? CUDNN_DATA_INT8x4
+                : CUDNN_DATA_INT8x32;
+        CHECK_EQ(elem_type, expected_elem_ty);
         format = CUDNN_TENSOR_NCHW_VECT_C;
         break;
+      }
       default:
         LOG(FATAL) << "Unsupported filter format "
                    << FilterLayoutString(filter_descriptor.layout());
@@ -945,8 +961,14 @@ cudnnDataType_t ToCudnnDataType(
     case dnn::DataType::kHalf:
       return CUDNN_DATA_HALF;
     case dnn::DataType::kInt8:
-      return data_layout == dnn::DataLayout::kBatchDepthYX4 ? CUDNN_DATA_INT8x4
-                                                            : CUDNN_DATA_INT8;
+      switch (data_layout) {
+        case dnn::DataLayout::kBatchDepthYX4:
+          return CUDNN_DATA_INT8x4;
+        case dnn::DataLayout::kBatchDepthYX32:
+          return CUDNN_DATA_INT8x32;
+        default:
+          return CUDNN_DATA_INT8;
+      }
     case dnn::DataType::kInt32:
       return CUDNN_DATA_INT32;
     default:
@@ -959,6 +981,10 @@ cudnnDataType_t ToCudnnDataType(dnn::DataType data_type,
   if (data_type == dnn::DataType::kInt8 &&
       filter_layout == dnn::FilterLayout::kOutputInputYX4) {
     return CUDNN_DATA_INT8x4;
+  }
+  if (data_type == dnn::DataType::kInt8 &&
+      filter_layout == dnn::FilterLayout::kOutputInputYX4) {
+    return CUDNN_DATA_INT8x32;
   }
   return ToCudnnDataType(data_type);
 }
@@ -3334,6 +3360,10 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
       format = CUDNN_TENSOR_NCHW_VECT_C;
       tensor_format = dnn::DataLayout::kBatchDepthYX4;
       break;
+    case dnn::FilterLayout::kOutputInputYX32:
+      format = CUDNN_TENSOR_NCHW_VECT_C;
+      tensor_format = dnn::DataLayout::kBatchDepthYX32;
+      break;
     default:
       LOG(FATAL) << "Unsupported filter format "
                  << FilterLayoutString(filter_descriptor.layout());
@@ -3506,6 +3536,10 @@ GetCudnnFusedOperationGraph(
     case dnn::FilterLayout::kOutputInputYX4:
       format = CUDNN_TENSOR_NCHW_VECT_C;
       tensor_format = dnn::DataLayout::kBatchDepthYX4;
+      break;
+    case dnn::FilterLayout::kOutputInputYX32:
+      format = CUDNN_TENSOR_NCHW_VECT_C;
+      tensor_format = dnn::DataLayout::kBatchDepthYX32;
       break;
     default:
       LOG(FATAL) << "Unsupported filter format "
@@ -5316,9 +5350,13 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     const int64 m = output_dimensions.NodesAcrossFeatureMaps();
     const int64 n = input_dimensions.count();
     const int64 k = input_dimensions.NodesAcrossFeatureMaps();
-    stream->ThenBlasGemm(blas::Transpose::kNoTranspose,
-                         blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                         input_data, k, output_data, m);
+    if (!stream
+             ->ThenBlasGemm(blas::Transpose::kNoTranspose,
+                            blas::Transpose::kNoTranspose, m, n, k, weights, m,
+                            input_data, k, output_data, m)
+             .ok()) {
+      return false;
+    }
   } else {
     // This is a slower and more complex path that supports output
     // width() * height() > 1, though it only supports the

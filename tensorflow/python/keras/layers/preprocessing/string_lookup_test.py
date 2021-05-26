@@ -49,7 +49,7 @@ def _get_end_to_end_test_cases():
           "kwargs": {
               "max_tokens": None,
           },
-          "expected_output": [[2], [3], [4], [5], [5], [4], [2], [1]],
+          "expected_output": [[1], [2], [3], [4], [4], [3], [1], [0]],
           "input_dtype":
               dtypes.string
       },
@@ -129,7 +129,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
-    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+    expected_output = [[1, 2, 3, 4], [4, 3, 1, 0]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = string_lookup.StringLookup(vocabulary=vocab_data)
@@ -145,7 +145,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = string_lookup.StringLookup(vocabulary=vocab_data)
+    layer = string_lookup.StringLookup(vocabulary=vocab_data, mask_token="")
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_data = model.predict(input_array)
@@ -196,7 +196,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
   def test_get_vocab_returns_str(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    expected_vocab = ["", "[UNK]", "earth", "wind", "and", "fire"]
+    expected_vocab = ["[UNK]", "earth", "wind", "and", "fire"]
     layer = string_lookup.StringLookup(vocabulary=vocab_data)
     layer_vocab = layer.get_vocabulary()
     self.assertAllEqual(expected_vocab, layer_vocab)
@@ -214,7 +214,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
-    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+    expected_output = [[1, 2, 3, 4], [4, 3, 1, 0]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = string_lookup.StringLookup(vocabulary=vocab_path)
@@ -229,7 +229,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
-    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+    expected_output = [[1, 2, 3, 4], [4, 3, 1, 0]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = string_lookup.StringLookup()
@@ -259,7 +259,8 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
                                 ["fire", "and", "earth", ""]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
-    layer = string_lookup.StringLookup(vocabulary=vocab_data, invert=True)
+    layer = string_lookup.StringLookup(
+        vocabulary=vocab_data, invert=True, mask_token="")
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_data = model.predict(input_array)
@@ -267,7 +268,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
   def test_inverse_layer_from_file(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 1]])
+    input_array = np.array([[1, 2, 3, 4], [4, 3, 1, 0]])
     expected_output = np.array([["earth", "wind", "and", "fire"],
                                 ["fire", "and", "earth", "[UNK]"]])
     vocab_path = self._write_to_temp_file("vocab_file", vocab_data)
@@ -279,7 +280,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     output_data = model.predict(input_array)
     self.assertAllEqual(expected_output, output_data)
 
-  def test_inverse_layer_from_file_with_non_default_msk(self):
+  def test_inverse_layer_from_file_with_mask(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 0]])
     expected_output = np.array([["earth", "wind", "and", "fire"],
@@ -334,7 +335,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     input_array = ragged_factory_ops.constant([["earth", "wind", "fire"],
                                                ["fire", "and", "earth",
                                                 "ohio"]])
-    expected_output = [[3, 4, 6], [6, 5, 3, 2]]
+    expected_output = [[2, 3, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string, ragged=True)
     layer = string_lookup.StringLookup(num_oov_indices=2)

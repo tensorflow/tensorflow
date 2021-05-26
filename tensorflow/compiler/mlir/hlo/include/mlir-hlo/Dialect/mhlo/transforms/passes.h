@@ -46,7 +46,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
-    bool broadcast_only = false);
+    bool legalize_broadcasts = true, bool expand_compositions = true);
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
@@ -69,10 +69,12 @@ createLegalizeTrigonometricToApproximationPass();
 
 std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass();
 
-/// Rank specialization passes.
+/// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank
-///     specialization region.
+///     specialization cluster.
+///   - Lower rank specialization clusters to SCF and ranked operations.
 std::unique_ptr<FunctionPass> createRankSpecializationClusterPass();
+std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass();
 
 std::unique_ptr<FunctionPass> createOptimizeMhloPass();
 std::unique_ptr<FunctionPass> createLowerComplexPass();

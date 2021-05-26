@@ -124,6 +124,14 @@ class AdaptiveSharedBatchScheduler
     // numbers will give less noisy latency measurements, but will be less
     // responsive to changes in workload.
     int64 batches_to_average_over = 1000;
+
+    // If true, schedule batches using FIFO policy.
+    // Requires that `full_batch_scheduling_boost_micros` is zero.
+    // NOTE:
+    // A new parameter is introduced (not re-using
+    // full_batch_scheduling_boost_micros==zero) for backward compatibility of
+    // API.
+    bool fifo_scheduling = false;
   };
 
   // Ownership is shared between the caller of Create() and any queues created
@@ -185,6 +193,9 @@ class AdaptiveSharedBatchScheduler
   // Schedules batch if in_flight_batches_limit_ is not met.
   void MaybeScheduleNextBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Schedules batch using FIFO policy if in_flight_batches_limit_ is not met.
+  void MaybeScheduleNextBatchFIFO() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Schedules all closed batches in batches_ for which an idle thread is
   // available in batch_thread_pool_.
   // Batches scheduled this way are called express batches.
@@ -193,6 +204,8 @@ class AdaptiveSharedBatchScheduler
   void MaybeScheduleClosedBatches();
 
   void MaybeScheduleClosedBatchesLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  void MaybeScheduleClosedBatchesLockedFIFO() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Notifies scheduler of non-empty batch which is eligible for processing.
   void AddBatch(const internal::ASBSBatch<TaskType>* batch);
@@ -207,6 +220,11 @@ class AdaptiveSharedBatchScheduler
   // Collection of batches added by AddBatch, ordered by age. Owned by scheduler
   // until they are released for processing.
   std::vector<const internal::ASBSBatch<TaskType>*> batches_ TF_GUARDED_BY(mu_);
+
+  // Collection of batches added by AddBatch, ordered by age. Owned by
+  // scheduler until they are released for processing.
+  std::deque<const internal::ASBSBatch<TaskType>*> fifo_batches_
+      TF_GUARDED_BY(mu_);
 
   // Unowned queues and callbacks added by AddQueue.
   std::unordered_map<const internal::ASBSQueue<TaskType>*, BatchProcessor>
@@ -443,7 +461,11 @@ template <typename TaskType>
 void AdaptiveSharedBatchScheduler<TaskType>::AddBatch(
     const internal::ASBSBatch<TaskType>* batch) {
   mutex_lock l(mu_);
-  batches_.push_back(batch);
+  if (options_.fifo_scheduling) {
+    fifo_batches_.push_back(batch);
+  } else {
+    batches_.push_back(batch);
+  }
   int64 delay_micros = batch->schedulable_time_micros() - GetEnv()->NowMicros();
   if (delay_micros <= 0) {
     MaybeScheduleNextBatch();
@@ -469,15 +491,61 @@ void AdaptiveSharedBatchScheduler<TaskType>::RemoveQueue(
 }
 
 template <typename TaskType>
+void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatchFIFO() {
+  const internal::ASBSBatch<TaskType>* batch = *fifo_batches_.begin();
+  fifo_batches_.pop_front();
+  // Queue may destroy itself after ReleaseBatch is called.
+  batch->queue()->ReleaseBatch(batch);
+  batch_thread_pool_->Schedule(std::bind(
+      &AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper, this, batch,
+      queues_and_callbacks_[batch->queue()], false /* is express */));
+  in_flight_batches_++;
+}
+
+template <typename TaskType>
+void AdaptiveSharedBatchScheduler<
+    TaskType>::MaybeScheduleClosedBatchesLockedFIFO() {
+  // Only schedule closed batches if we have spare capacity.
+  int available_threads =
+      static_cast<int>(options_.num_batch_threads - in_flight_batches_ -
+                       in_flight_express_batches_);
+  for (auto it = fifo_batches_.begin();
+       it != fifo_batches_.end() && available_threads > 0;
+       it = fifo_batches_.begin()) {
+    if ((*it)->IsClosed()) {
+      const internal::ASBSBatch<TaskType>* batch = *it;
+      fifo_batches_.pop_front();
+      batch->queue()->ReleaseBatch(batch);
+      batch_thread_pool_->Schedule(
+          std::bind(&AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper,
+                    this, batch, queues_and_callbacks_[batch->queue()], true));
+      in_flight_express_batches_++;
+      available_threads--;
+    } else {
+      // Batches are FIFO, so stop iteration after finding the first non-closed
+      // batches.
+      break;
+    }
+  }
+}
+
+template <typename TaskType>
 void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatch() {
-  if (batches_.empty() || in_flight_batches_ >= in_flight_batches_limit_)
-    return;
+  bool batch_empty =
+      options_.fifo_scheduling ? fifo_batches_.empty() : batches_.empty();
+  if (batch_empty || in_flight_batches_ >= in_flight_batches_limit_) return;
   // Non-integer limit handled probabilistically.
   if (in_flight_batches_limit_ - in_flight_batches_ < 1 &&
       rand_double_(rand_engine_) >
           in_flight_batches_limit_ - in_flight_batches_) {
     return;
   }
+
+  if (options_.fifo_scheduling) {
+    MaybeScheduleNextBatchFIFO();
+    return;
+  }
+
   auto best_it = batches_.end();
   double best_score = (std::numeric_limits<double>::max)();
   int64 now_micros = GetEnv()->NowMicros();
@@ -513,6 +581,10 @@ void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleClosedBatches() {
 template <typename TaskType>
 void AdaptiveSharedBatchScheduler<
     TaskType>::MaybeScheduleClosedBatchesLocked() {
+  if (options_.fifo_scheduling) {
+    MaybeScheduleClosedBatchesLockedFIFO();
+    return;
+  }
   // Only schedule closed batches if we have spare capacity.
   int available_threads =
       static_cast<int>(options_.num_batch_threads - in_flight_batches_ -

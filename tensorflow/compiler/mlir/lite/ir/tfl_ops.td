@@ -573,7 +573,8 @@ def TFL_AddNOp : TFL_Op<"add_n", [
     Commutative,
     NoSideEffect,
     SameOperandsAndResultsScale,
-    NoQuantizableResult]> {
+    NoQuantizableResult,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "add_n operator";
 
   let description = [{
@@ -656,7 +657,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
     AccumulatorUniformScale<3, 1, 2>,
     AffineQuantizedOpInterface, AffineOpCoefficient<0, 1>,
-    TFL_SparseOp]> {
+    TFL_SparseOp,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
@@ -693,7 +695,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d",
            [NoSideEffect,
-            SameOperandsAndResultsScale]> {
+            SameOperandsAndResultsScale,
+            DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Average_pool_2d operator";
 
   let description = [{
@@ -1774,7 +1777,8 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "L2 Normalize Operator";
 
   let description = [{
@@ -1913,7 +1917,8 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultShape,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Logistic operator";
 
   let description = [{
@@ -1971,7 +1976,8 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     SameOperandsAndResultShape,
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Log softmax operator";
 
   let description = [{
@@ -2018,7 +2024,8 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     NoSideEffect,
     MaxPoolOperandAndResultConstraints,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Max Pool 2D op";
 
   let description = [{
@@ -2450,6 +2457,8 @@ def TFL_PadOp : TFL_Op<"pad", [
   let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_PadV2Op : TFL_Op<"padv2", [
@@ -2503,6 +2512,8 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let results = (outs TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_PowOp : TFL_Op<"pow", [
@@ -2906,7 +2917,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRankRange<0, 1, 4>,
     SameOperandsAndResultShape,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Softmax operator";
 
   let description = [{
@@ -3037,7 +3049,8 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     SameOperandsAndResultShape,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    FixedOutputRangeInterface]> {
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Hyperbolic tangent operator";
 
   let description = [{
@@ -3517,6 +3530,8 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 // If there is a change in supporting more types in the TFLite cast op kernel,
@@ -4454,7 +4469,7 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
-def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
+def TFL_YieldOp : Op<TFL_Dialect, "yield", [NoSideEffect, Terminator]> {
   let summary = "Yield operation";
   let description = [{
     The "yield" operation represents a return operation within the conditional
@@ -4613,9 +4628,7 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
 }
 
 def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
-  // Currently the custom ops have no side effect
-  // TODO(karimnosseir): Revisit if this needs updating.
-  NoSideEffect,
+  RecursiveSideEffects,
   NoQuantizableResult,
   IsolatedFromAbove,
   SingleBlockImplicitTerminator<"YieldOp">,

@@ -568,6 +568,7 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:rewrite_utils",
         "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

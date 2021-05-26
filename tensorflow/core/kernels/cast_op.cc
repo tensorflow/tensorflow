@@ -230,7 +230,7 @@ REGISTER_KERNEL_BUILDER(Name("Cast").Device(DEVICE_CPU), CpuCastOp);
                               .Device(DEVICE_GPU),             \
                           GpuCastOp)
 
-#if !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 CURRY_TYPES2(REGISTER_CAST_GPU, bool);
 CURRY_TYPES2(REGISTER_CAST_GPU, int8);
 CURRY_TYPES2(REGISTER_CAST_GPU, int16);

@@ -115,6 +115,8 @@ enum HostEventType {
   kScheduleWithoutSplit,
   kScheduleWithSplit,
   kASBSQueueSchedule,
+  // TFRT related.
+  kTfrtModelRun,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.

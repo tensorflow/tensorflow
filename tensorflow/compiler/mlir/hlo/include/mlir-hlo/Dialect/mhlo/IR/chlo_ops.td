@@ -422,13 +422,27 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 
 class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
-    traits # [InferFusibilityOpInterface, NoSideEffect,
-    SameOperandsAndResultShape]> {
+    traits # [InferFusibilityOpInterface, NoSideEffect, Elementwise,
+    SameOperandsAndResultShape, InferShapedTypeOpInterface]> {
   let arguments = (ins ArgTensorType:$operand);
   let results = (outs ResultTensorType:$result);
 
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand) `->` type($result)
+  }];
+
+  let extraClassDeclaration = [{
+    static LogicalResult inferReturnTypeComponents(MLIRContext* context,
+        Optional<Location> location, ValueRange operands,
+        DictionaryAttr attributes, RegionRange regions,
+        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+      return failure();
+    }
+    LogicalResult reifyReturnTypeShapes(OpBuilder& builder, ValueRange operands,
+        SmallVectorImpl<Value>& reifiedReturnShapes) {
+      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+          operands, &reifiedReturnShapes);
+    }
   }];
 }
 
@@ -694,11 +708,12 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
 // Broadcasting select op
 //===----------------------------------------------------------------------===//
 
-def HLOClient_BroadcastSelectOp : HLOClient_Op<
-    "broadcast_select",
-    [NoSideEffect,
-     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-         ["inferReturnTypeComponents"]>]> {
+def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
+    NoSideEffect,
+    HLOClient_Broadcasting,
+    HLOClient_BroadcastingElementwise,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
+    "inferReturnTypeComponents"]>]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{

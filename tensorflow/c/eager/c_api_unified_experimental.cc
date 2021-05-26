@@ -236,7 +236,7 @@ void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,
 }
 
 void TF_DeleteAbstractFunction(TF_AbstractFunction* func) {
-  delete unwrap(func);
+  unwrap(func)->Unref();
 }
 
 void TF_ExecutionContextRegisterFunction(TF_ExecutionContext* ctx,

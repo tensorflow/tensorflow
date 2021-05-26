@@ -144,16 +144,16 @@ def populate_deserializable_objects():
 
 @keras_export('keras.layers.serialize')
 def serialize(layer):
-  """
-  Serialize a `Layer` object into a JSON-compatible representation.
+  """Serialize a `Layer` object into a JSON-compatible representation.
   
   Args:
     layer: The `Layer` object to serialize.
 
   Returns:
-    A dict-like, JSON-compatible representation of the object's config.
+    A JSON-serializable dict representing the object's config.
 
   Example:
+
   ```python
   from pprint import pprint
   model = tf.keras.models.Sequential()
@@ -161,47 +161,7 @@ def serialize(layer):
   model.add(tf.keras.layers.Dense(32, activation='relu'))
 
   pprint(tf.keras.layers.serialize(model))
-  {
-    'class_name': 'Sequential',
-    'config': {
-      'layers': [
-        {
-          'class_name': 'InputLayer',
-          'config': {
-            'batch_input_shape': (None, 16),
-            'dtype': 'float32',
-            'name': 'input_1',
-            'ragged': False,
-            'sparse': False
-          }
-        },{
-          'class_name': 'Dense',
-          'config': {
-            'activation': 'relu',
-            'activity_regularizer': None,
-            'bias_constraint': None,
-            'bias_initializer': {
-              'class_name': 'Zeros',
-              'config': {}
-            },
-            'bias_regularizer': None,
-            'dtype': 'float32',
-            'kernel_constraint': None,
-            'kernel_initializer': {
-              'class_name': 'GlorotUniform',
-              'config': {'seed': None}
-            },
-            'kernel_regularizer': None,
-            'name': 'dense',
-            'trainable': True,
-            'units': 32,
-            'use_bias': True
-          }
-        }
-      ],
-      'name': 'sequential'
-    }
-  }
+  # prints the configuration of the model, as a dict.
   """
   return generic_utils.serialize_keras_object(layer)
 
@@ -219,49 +179,28 @@ def deserialize(config, custom_objects=None):
       Layer instance (may be Model, Sequential, Network, Layer...)
 
   Example:
+
   ```python
+  # Configuration of Dense(32, activation='relu')
   config = {
-    'class_name': 'Sequential',
+    'class_name': 'Dense',
     'config': {
-      'layers': [
-        {
-          'class_name': 'InputLayer',
-          'config': {
-            'batch_input_shape': (None, 16),
-            'dtype': 'float32',
-            'name': 'input_1',
-            'ragged': False,
-            'sparse': False
-          }
-        },{
-          'class_name': 'Dense',
-          'config': {
-            'activation': 'relu',
-            'activity_regularizer': None,
-            'bias_constraint': None,
-            'bias_initializer': {
-              'class_name': 'Zeros',
-              'config': {}
-            },
-            'bias_regularizer': None,
-            'dtype': 'float32',
-            'kernel_constraint': None,
-            'kernel_initializer': {
-              'class_name': 'GlorotUniform',
-              'config': {'seed': None}
-            },
-            'kernel_regularizer': None,
-            'name': 'dense',
-            'trainable': True,
-            'units': 32,
-            'use_bias': True
-          }
-        }
-      ],
-      'name': 'sequential'
+      'activation': 'relu',
+      'activity_regularizer': None,
+      'bias_constraint': None,
+      'bias_initializer': {'class_name': 'Zeros', 'config': {}},
+      'bias_regularizer': None,
+      'dtype': 'float32',
+      'kernel_constraint': None,
+      'kernel_initializer': {'class_name': 'GlorotUniform', 'config': {'seed': None}},
+      'kernel_regularizer': None,
+      'name': 'dense',
+      'trainable': True,
+      'units': 32,
+      'use_bias': True
     }
   }
-  model = tf.keras.layers.deserialize(config)
+  dense_layer = tf.keras.layers.deserialize(config)
   ```
   """
   populate_deserializable_objects()
