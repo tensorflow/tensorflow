@@ -214,6 +214,8 @@ def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
         cmd = "%s/bin/rocm_agent_enumerator" % rocm_toolkit_path
         result = execute(repository_ctx, [bash_bin, "-c", cmd])
         targets = [target for target in result.stdout.strip().split("\n") if target != "gfx000"]
+        targets = {x : None for x in targets}
+        targets = list(targets.keys())
         amdgpu_targets_str = ",".join(targets)
     amdgpu_targets = amdgpu_targets_str.split(",")
     for amdgpu_target in amdgpu_targets:
