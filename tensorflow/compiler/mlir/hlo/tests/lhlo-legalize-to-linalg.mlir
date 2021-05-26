@@ -276,9 +276,10 @@ func @iota(%out: memref<7x10xf32>) {
   "lmhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xf32>) -> ()
   return
 }
-// CHECK: linalg.indexed_generic
+// CHECK: linalg.generic
 // CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
-// CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index, %[[RESULT:.*]]: f32):
+// CHECK-NEXT: ^bb0(%[[RESULT:.*]]: f32):
+// CHECK-NEXT:   %[[D1:.+]] = linalg.index 1
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
