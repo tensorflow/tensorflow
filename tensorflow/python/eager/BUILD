@@ -960,6 +960,7 @@ tf_xla_py_test(
 tf_xla_py_test(
     name = "def_function_xla_test",
     srcs = ["def_function_xla_test.py"],
+    enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
         "no_pip",
