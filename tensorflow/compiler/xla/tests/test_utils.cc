@@ -93,7 +93,8 @@ void PopulateWithIntNext<half>(Literal* literal) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
     uint16 exponent_msb = next_value & 0x4000;
-    value.x = (next_value & 0xBFFF) | (exponent_msb << 1);
+    value = Eigen::numext::bit_cast<half, uint16>((next_value & 0xBFFF) |
+                                                  (exponent_msb << 1));
     next_value++;
   }
 }
@@ -107,7 +108,8 @@ void PopulateWithIntNext<bfloat16>(Literal* literal) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
     uint16 exponent_msb = next_value & 0x4000;
-    value.value = (next_value & 0xBFFF) | (exponent_msb << 1);
+    value = Eigen::numext::bit_cast<bfloat16, uint16>((next_value & 0xBFFF) |
+                                                      (exponent_msb << 1));
     next_value++;
   }
 }
