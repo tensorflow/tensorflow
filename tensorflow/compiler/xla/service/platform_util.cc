@@ -112,7 +112,7 @@ PlatformUtil::GetSupportedPlatforms() {
       [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "must specify platform because more than one platform (except for the "
-      "interpreter platform) found: %s",
+      "interpreter platform) found: %s.",
       platforms_string);
 }
 

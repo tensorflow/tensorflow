@@ -1115,6 +1115,31 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "fusion_bitcast_lift",
+    srcs = ["fusion_bitcast_lift.cc"],
+    hdrs = ["fusion_bitcast_lift.h"],
+    deps = [
+        ":gpu_fusible",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "fusion_bitcast_lift_test",
+    srcs = ["fusion_bitcast_lift_test.cc"],
+    tags = ["no_pip"],
+    deps = [
+        ":fusion_bitcast_lift",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "fusion_merger",
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
@@ -1342,6 +1367,7 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
+        ":fusion_bitcast_lift",
         ":fusion_merger",
         ":gemm_rewriter",
         ":gpu_constants",
