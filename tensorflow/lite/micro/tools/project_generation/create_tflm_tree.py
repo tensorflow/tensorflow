@@ -58,10 +58,10 @@ def _get_file_list(key, makefile_options):
   return [bytepath.decode() for bytepath in stdout.split()]
 
 
-def _add_third_party_code(prefix_dir, makefile_options):
-  files = []
-  files.extend(_get_file_list("list_third_party_sources", makefile_options))
-  files.extend(_get_file_list("list_third_party_headers", makefile_options))
+def _third_party_src_and_dest_files(prefix_dir, makefile_options):
+  src_files = []
+  src_files.extend(_get_file_list("list_third_party_sources", makefile_options))
+  src_files.extend(_get_file_list("list_third_party_headers", makefile_options))
 
   # The list_third_party_* rules give path relative to the root of the git repo.
   # However, in the output tree, we would like for the third_party code to be a tree
@@ -70,32 +70,39 @@ def _add_third_party_code(prefix_dir, makefile_options):
   # directory prefix, and adds the third_party prefix to create a list of
   # destination directories for each of the third party files.
   tflm_download_path = "tensorflow/lite/micro/tools/make/downloads"
-  dest_dir_list = [
+  dest_files = [
       os.path.join(prefix_dir, "third_party",
-                   os.path.relpath(os.path.dirname(f), tflm_download_path))
-      for f in files
+                   os.path.relpath(f, tflm_download_path)) for f in src_files
   ]
 
-  for dest_dir, filepath in zip(dest_dir_list, files):
-    os.makedirs(dest_dir, exist_ok=True)
-    shutil.copy(filepath, dest_dir)
+  return src_files, dest_files
 
 
-def _add_tflm_code(prefix_dir, makefile_options):
-  files = []
-  files.extend(_get_file_list("list_library_sources", makefile_options))
-  files.extend(_get_file_list("list_library_headers", makefile_options))
-
-  for dirname in _get_dirs(files):
-    os.makedirs(os.path.join(prefix_dir, dirname), exist_ok=True)
-
-  for filepath in files:
-    shutil.copy(filepath, os.path.join(prefix_dir, os.path.dirname(filepath)))
+def _tflm_src_and_dest_files(prefix_dir, makefile_options):
+  src_files = []
+  src_files.extend(_get_file_list("list_library_sources", makefile_options))
+  src_files.extend(_get_file_list("list_library_headers", makefile_options))
+  dest_files = [os.path.join(prefix_dir, src) for src in src_files]
+  return src_files, dest_files
 
 
-def _create_tflm_tree(prefix_dir, makefile_options):
-  _add_tflm_code(prefix_dir, makefile_options)
-  _add_third_party_code(prefix_dir, makefile_options)
+def _get_src_and_dest_files(prefix_dir, makefile_options):
+  tflm_src_files, tflm_dest_files = _tflm_src_and_dest_files(
+      prefix_dir, makefile_options)
+  third_party_srcs, third_party_dests = _third_party_src_and_dest_files(
+      prefix_dir, makefile_options)
+
+  all_src_files = tflm_src_files + third_party_srcs
+  all_dest_files = tflm_dest_files + third_party_dests
+  return all_src_files, all_dest_files
+
+
+def _copy(src_files, dest_files):
+  for dirname in _get_dirs(dest_files):
+    os.makedirs(dirname, exist_ok=True)
+
+  for src, dst in zip(src_files, dest_files):
+    shutil.copy(src, dst)
 
 
 # For examples, we are explicitly making a deicision to not have any source
@@ -147,6 +154,18 @@ if __name__ == "__main__":
   parser.add_argument(
       "output_dir", help="Output directory for generated TFLM tree")
   parser.add_argument(
+      "--no_copy",
+      action="store_true",
+      help="Do not copy files to output directory")
+  parser.add_argument(
+      "--print_src_files",
+      action="store_true",
+      help="Print the src files (i.e. files in the TFLM tree)")
+  parser.add_argument(
+      "--print_dest_files",
+      action="store_true",
+      help="Print the dest files (i.e. files in the output tree)")
+  parser.add_argument(
       "--makefile_options",
       default="",
       help="Additional TFLM Makefile options. For example: "
@@ -161,7 +180,17 @@ if __name__ == "__main__":
       "-e hello_world -e micro_speech")
   args = parser.parse_args()
 
-  _create_tflm_tree(args.output_dir, args.makefile_options)
+  src_files, dest_files = _get_src_and_dest_files(args.output_dir,
+                                                  args.makefile_options)
+
+  if args.print_src_files:
+    print(" ".join(src_files))
+
+  if args.print_dest_files:
+    print(" ".join(dest_files))
+
+  if args.no_copy is False:
+    _copy(src_files, dest_files)
 
   if args.examples is not None:
     _create_examples_tree(args.output_dir, args.examples)
