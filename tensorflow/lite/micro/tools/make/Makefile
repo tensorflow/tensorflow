@@ -116,7 +116,6 @@ endif
 OPTIMIZATION_LEVEL := -O3
 
 CC_WARNINGS := \
-  -Werror \
   -Wsign-compare \
   -Wdouble-promotion \
   -Wshadow \
@@ -131,6 +130,7 @@ CC_WARNINGS := \
   -Wno-unused-parameter
 
 COMMON_FLAGS := \
+  -Werror \
   -fno-unwind-tables \
   -ffunction-sections \
   -fdata-sections \
@@ -155,6 +155,7 @@ CXXFLAGS := \
   $(COMMON_FLAGS)
 
 CCFLAGS := \
+  -Wimplicit-function-declaration \
   -std=c11 \
   $(COMMON_FLAGS)
 
