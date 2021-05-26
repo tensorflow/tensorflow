@@ -587,20 +587,21 @@ class DeviceTest(test.TestCase):
     for gpu in gpus:
       config.set_memory_growth(gpu, True)
 
-  @test_util.run_gpu_only
+  @test_util.run_gpu_or_tpu
   @reset_eager
-  def testGetMemoryInfoBasic(self):
-    device = array_ops.zeros([]).backing_device
+  def testGetMemoryInfoBasic(self, device_type):
+    with ops.device(f'{device_type}:0'):
+      device = array_ops.zeros([]).backing_device
     info = config.get_memory_info(device)
     self.assertGreater(info['current'], 0)
     self.assertGreater(info['peak'], 0)
     self.assertEqual(info.keys(), {'current', 'peak'})
     self.assertEqual(config.get_memory_usage(device), info['current'])
 
-  @test_util.run_gpu_only
+  @test_util.run_gpu_or_tpu
   @reset_eager
-  def testGetMemoryUsageSubstring(self):
-    info = config.get_memory_info('GPU:0')
+  def testGetMemoryUsageSubstring(self, device_type):
+    info = config.get_memory_info(f'{device_type}:0')
     self.assertGreater(info['current'], 0)
 
   @reset_eager
@@ -626,19 +627,22 @@ class DeviceTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
       context.context().get_memory_info('GPU:CPU')
 
-  @test_util.run_gpu_only
+  @test_util.run_gpu_or_tpu
   @reset_eager
-  def testPeakMemoryUsage(self):
-    x1 = array_ops.zeros((1000, 1000))
-    peak1 = config.get_memory_info('GPU:0')['peak']
+  def testPeakMemoryUsage(self, device_type):
+    device = f'{device_type}:0'
+    with ops.device(device):
+      x1 = array_ops.zeros((1000, 1000))
+    peak1 = config.get_memory_info(device)['peak']
     self.assertGreaterEqual(peak1, 4 * 1000 * 1000)
-    x2 = array_ops.ones((1000, 1000))
-    peak2 = config.get_memory_info('GPU:0')['peak']
+    with ops.device(device):
+      x2 = array_ops.ones((1000, 1000))
+    peak2 = config.get_memory_info(device)['peak']
     self.assertGreaterEqual(peak2, peak1 + 4 * 1000 * 1000)
     del x1, x2  # With CPython, causes tensor memory to be immediately freed
-    peak3 = config.get_memory_info('GPU:0')['peak']
+    peak3 = config.get_memory_info(device)['peak']
     self.assertGreaterEqual(peak3, peak2)
-    self.assertGreaterEqual(peak3, config.get_memory_info('GPU:0')['current'])
+    self.assertGreaterEqual(peak3, config.get_memory_info(device)['current'])
 
   @test_util.run_gpu_only
   @reset_eager
