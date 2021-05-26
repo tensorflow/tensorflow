@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/env.h"
@@ -1102,13 +1103,15 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   result = tensorflow::wrap::hipGetDeviceProperties(&props, dev);
   if (result == hipSuccess) {
     std::string gcnArchName = props.gcnArchName;
-    VLOG(1) << "GCN arch name " << gcnArchName;
+    VLOG(3) << "GCN arch name " << gcnArchName;
     auto pos = gcnArchName.find(":");
     if (pos != string::npos) gcnArchName = gcnArchName.substr(0, pos);
     pos = gcnArchName.find("gfx");
     if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
-    VLOG(1) << "GCN arch name (stripped) " << gcnArchName;
-    return ((gcnArchName == "908") || (gcnArchName == "909"));
+    VLOG(3) << "GCN arch name (stripped) " << gcnArchName;
+    return ((gcnArchName == "908") ||
+            (gcnArchName == "90a") || (gcnArchName == "910"));
+
   }
   return port::Status{
       port::error::INTERNAL,
@@ -1243,6 +1246,28 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return true;
 }
 
+static uint64 GetReservedMemory() {
+  uint64 reserve = 0;
+  hipDeviceProp_t props;
+  hipDevice_t dev;
+  hipError_t res = tensorflow::wrap::hipGetDevice(&dev);
+  if(res == hipSuccess) {
+    res = tensorflow::wrap::hipGetDeviceProperties(&props, dev);
+    if (res == hipSuccess) {
+      std::string gcnArchName = props.gcnArchName;
+  // On gfx90a, we hide 1 GB of GPU memory from TF, to allow for late
+  // allocations by internal ROCm libraries (e.g. rocBLAS alone needs
+  // ~200 MB to put its kernels as of ROCm 4.1)
+      if (gcnArchName.substr(0,6)=="gfx908")
+        reserve = 1048576*512;
+      else if (gcnArchName.substr(0,6)=="gfx90a"
+          || gcnArchName.substr(0,6)=="gfx910")
+        reserve = 1048576*1024;
+    }
+  }
+  return reserve;
+}
+
 /* static */ bool GpuDriver::GetDeviceMemoryInfo(GpuContext* context,
                                                  int64* free_out,
                                                  int64* total_out) {
@@ -1254,9 +1279,12 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
     LOG(ERROR) << "failed to query device memory info: " << ToString(res);
     return false;
   }
-
-  *free_out = free;
-  *total_out = total;
+  uint64 reserve = GetReservedMemory();
+  VLOG(1) << "Device memory: " << total/1048576 << " MB total, "
+          << free/1048576 << " MB free, reserving " 
+          << reserve/1048576 << " MB";
+  *free_out = free>=reserve ? free-reserve : 0;
+  *total_out = total-reserve;
   return true;
 }
 
@@ -1268,8 +1296,8 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
     LOG(ERROR) << "failed to query total available memory: " << ToString(res);
     return false;
   }
-
-  *result = value;
+  uint64 reserve = GetReservedMemory();
+  *result = value-reserve;
   return true;
 }
 
