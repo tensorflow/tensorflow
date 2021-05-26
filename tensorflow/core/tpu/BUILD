@@ -317,8 +317,8 @@ cc_library(
         ":tpu_compile_interface",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/strings:proto_serialization",
     ],
 )
 
