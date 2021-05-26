@@ -70,10 +70,10 @@ class EagerOpRewriteRegistry {
 
  private:
   static constexpr int32 kNumPhases = 2;
-  // Holds all the registered Eager op rewrites.
-  std::array<std::list<std::unique_ptr<EagerOpRewrite>>, kNumPhases> rewrites_;
-  // Holds the ordinals of the registered op rewrites.
-  std::array<std::list<int32>, kNumPhases> ordinals_;
+  // Holds all the registered Eager op rewrites and their ordinal numbers.
+  std::array<std::list<std::pair<std::unique_ptr<EagerOpRewrite>, int32>>,
+             kNumPhases>
+      rewrites_;
 };
 
 namespace eager_rewrite_registration {

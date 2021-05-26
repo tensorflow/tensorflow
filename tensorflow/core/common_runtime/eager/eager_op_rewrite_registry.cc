@@ -24,23 +24,21 @@ EagerOpRewriteRegistry* EagerOpRewriteRegistry::Global() {
 
 void EagerOpRewriteRegistry::Register(Phase phase, int32 ordinal,
                                       std::unique_ptr<EagerOpRewrite> pass) {
-  std::list<int32>::const_iterator it_ordinals = ordinals_[phase].cbegin();
-  std::list<std::unique_ptr<EagerOpRewrite>>::const_iterator it_rewrites =
-      rewrites_[phase].cbegin();
-  for (; it_ordinals != ordinals_[phase].cend(); ++it_ordinals, ++it_rewrites) {
-    if (*it_ordinals == ordinal) {
+  auto it_rewrites = rewrites_[phase].cbegin();
+  for (; it_rewrites != rewrites_[phase].cend(); ++it_rewrites) {
+    if (it_rewrites->second == ordinal) {
       TF_CHECK_OK(errors::AlreadyExists(
           "Attempting to register Eager Rewriter ", pass->GetDebugInfo().name,
           " for phase ", phase, " using ordinal ", ordinal,
           " already occupied by Rewriter ",
-          (*it_rewrites)->GetDebugInfo().name));
+          it_rewrites->first->GetDebugInfo().name));
     }
-    if (*it_ordinals > ordinal) {
+    if (it_rewrites->second > ordinal) {
       break;
     }
   }
-  ordinals_[phase].emplace(it_ordinals, ordinal);
-  rewrites_[phase].emplace(it_rewrites, std::move(pass));
+  rewrites_[phase].emplace(it_rewrites,
+                           std::make_pair(std::move(pass), ordinal));
 }
 
 Status EagerOpRewriteRegistry::RunRewrite(
@@ -48,10 +46,9 @@ Status EagerOpRewriteRegistry::RunRewrite(
     std::unique_ptr<EagerOperation>* out_op) {
   EagerOperation* pre_op = orig_op;
   std::unique_ptr<EagerOperation>* post_op = out_op;
-  for (std::list<std::unique_ptr<EagerOpRewrite>>::const_iterator it_rewrites =
-           rewrites_[phase].cbegin();
+  for (auto it_rewrites = rewrites_[phase].cbegin();
        it_rewrites != rewrites_[phase].cend(); ++it_rewrites) {
-    TF_RETURN_IF_ERROR((*it_rewrites)->Run(pre_op, post_op));
+    TF_RETURN_IF_ERROR(it_rewrites->first->Run(pre_op, post_op));
     if (*post_op != nullptr) {
       pre_op = post_op->release();
       out_op->reset(pre_op);
