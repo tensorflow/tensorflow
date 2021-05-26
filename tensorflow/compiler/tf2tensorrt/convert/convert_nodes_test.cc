@@ -413,7 +413,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
         } else {
           EXPECT_EQ(1, ptr->batch_size());
         }
-        EXPECT_EQ(itensor->fake_tensor(), ptr->tensor()->fake_tensor());
+        EXPECT_EQ(itensor->simple_tensor(), ptr->tensor()->simple_tensor());
         ExpectTrtDimsEqualsArray({1}, ptr->GetTrtDims());
       }
     }
@@ -747,12 +747,12 @@ TEST_F(ConverterTest, ConvertNode) {
 
   TRT_TensorOrWeights actual_output_1;
   TF_EXPECT_OK(GetTensorOrWeights("my_op", &actual_output_1));
-  EXPECT_EQ(output_tensors[0]->fake_tensor(), actual_output_1.tensor()->fake_tensor());
+  EXPECT_EQ(output_tensors[0]->simple_tensor(), actual_output_1.tensor()->simple_tensor());
   EXPECT_EQ(124, actual_output_1.tensor()->getDimensions().d[0]);
 
   TRT_TensorOrWeights actual_output_2;
   TF_EXPECT_OK(GetTensorOrWeights("my_op:1", &actual_output_2));
-  EXPECT_EQ(output_tensors[1]->fake_tensor(), actual_output_2.tensor()->fake_tensor());
+  EXPECT_EQ(output_tensors[1]->simple_tensor(), actual_output_2.tensor()->simple_tensor());
   EXPECT_EQ(125, actual_output_2.tensor()->getDimensions().d[0]);
 
   VerifyTrtLayerNameNotEmpty(converter_->network());
@@ -777,7 +777,7 @@ TEST_F(ConverterTest, AddAndGetInputs) {
   TF_EXPECT_OK(GetInputs(node_def, &inputs));
 
   EXPECT_EQ(4, inputs.size());
-  EXPECT_EQ(inputs[0].tensor()->fake_tensor(), inputs[1].tensor()->fake_tensor());
+  EXPECT_EQ(inputs[0].tensor()->simple_tensor(), inputs[1].tensor()->simple_tensor());
 
   EXPECT_EQ(nvinfer1::DataType::kFLOAT, inputs[0].tensor()->getType());
   EXPECT_EQ(nvinfer1::DataType::kINT32, inputs[2].tensor()->getType());
@@ -964,8 +964,8 @@ TEST_F(ConverterTest, MaybeUpdateBatchSize) {
 
 TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
   // Add a tensor.
-  ITensorProxyPtr fake_tensor;
-  TRT_TensorOrWeights tensor(fake_tensor);
+  ITensorProxyPtr simple_tensor;
+  TRT_TensorOrWeights tensor(simple_tensor);
   EXPECT_EQ(-1, tensor.batch_size());
   TF_EXPECT_OK(MaybeUpdateBatchSize(123));
   TF_EXPECT_OK(AddTensorOrWeights("my_tensor", tensor));
@@ -1003,19 +1003,19 @@ TEST_F(ConverterTest, GetWeightRange) {
 }
 
 TEST_F(ConverterTest, ProvideQuantizationRange) {
-  ITensorProxyPtr fake_tensor;
+  ITensorProxyPtr simple_tensor;
   // Asymmetric range
-  converter_->ProvideQuantizationRange(&fake_tensor, 0.0f, 6.0f);
-  EXPECT_EQ(6.0f, quantization_ranges_proxy()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, 1.0f, 6.0f);
-  EXPECT_EQ(6.0f, quantization_ranges_proxy()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, -8.0f, 6.0f);
-  EXPECT_EQ(8.0f, quantization_ranges_proxy()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, -8.123f, -6.123f);
-  EXPECT_EQ(8.123f, quantization_ranges_proxy()[&fake_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, 0.0f, 6.0f);
+  EXPECT_EQ(6.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, 1.0f, 6.0f);
+  EXPECT_EQ(6.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -8.0f, 6.0f);
+  EXPECT_EQ(8.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -8.123f, -6.123f);
+  EXPECT_EQ(8.123f, quantization_ranges_proxy()[&simple_tensor]);
   // Symmetric range
-  converter_->ProvideQuantizationRange(&fake_tensor, -6.123f, 6.123f);
-  EXPECT_EQ(6.123f, quantization_ranges_proxy()[&fake_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -6.123f, 6.123f);
+  EXPECT_EQ(6.123f, quantization_ranges_proxy()[&simple_tensor]);
 
   VerifyTrtLayerNameNotEmpty(converter_->network());
 }
@@ -7627,7 +7627,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
     TF_EXPECT_OK(GetTensorOrWeights("input", &input));
     TF_EXPECT_OK(GetTensorOrWeights("my_pad", &output));
     ITensorProxyPtr input_tensor = input.tensor();
-    converter_->ProvideQuantizationRange(&input.tensor(), -5.0f, 5.0f);
+    converter_->ProvideQuantizationRange(&input_tensor, -5.0f, 5.0f);
     // Input range should be inferred across pad.
     PropagateQuantizationRanges();
     auto ranges = quantization_ranges();

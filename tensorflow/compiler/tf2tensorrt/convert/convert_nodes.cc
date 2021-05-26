@@ -1839,7 +1839,7 @@ void Converter::MarkQuantizationRangesAsInferrable(ITensorProxyPtr* input,
     quantization_infer_.push_back({(*input)->trt_tensor(), (*output)->trt_tensor()});
     quantization_infer_.push_back({(*output)->trt_tensor(), (*input)->trt_tensor()});
   }
-  else if ((*input)->is_fake_tensor())
+  else if ((*input)->is_simple_tensor())
   {
     quantization_infer_proxy_.push_back({input, output});
     quantization_infer_proxy_.push_back({output, input});
@@ -1853,7 +1853,7 @@ void Converter::ProvideQuantizationRange(ITensorProxyPtr* tensor,
   {
     quantization_ranges_[(*tensor)->trt_tensor()] = symmetric_range;
   }
-  else if ((*tensor)->is_fake_tensor())
+  else if ((*tensor)->is_simple_tensor())
   {
     quantization_ranges_proxy_[tensor] = symmetric_range;
   }
