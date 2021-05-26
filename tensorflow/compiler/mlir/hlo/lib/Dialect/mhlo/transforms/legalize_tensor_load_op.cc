@@ -83,10 +83,12 @@ struct ForwardExtractOp : public OpRewritePattern<ExtractOp> {
 };
 
 void LegalizeTensorLoadOpPass::runOnFunction() {
+  auto func = getFunction();
   auto context = &getContext();
   OwningRewritePatternList patterns(context);
   patterns.insert<ForwardShapeOfOp, ForwardExtractOp>(context);
-  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+    return signalPassFailure();
 }
 }  // namespace
 

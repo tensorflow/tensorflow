@@ -2,15 +2,17 @@
 
 // test: `memref -> memref.tensor_load -> tensor.extract` -> `memref -> memref.load`
 // CHECK-LABEL: forward_extract_op
+// CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<3xindex>)
 func @forward_extract_op(%arg0: memref<?x?xf32>, %arg1: memref<3xindex>) -> memref<?x?x?xf32> {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %c2 = constant 2 : index
   // CHECK-NOT: memref.tensor_load
   // CHECK-NOT: tensor.extract
-  // CHECK: memref.load
-  // CHECK: memref.load
-  // CHECK: memref.load
+  // CHECK: %[[DIM0:.*]] = memref.load %[[ARG1]][%c0]
+  // CHECK: %[[DIM1:.*]] = memref.load %[[ARG1]][%c1]
+  // CHECK: %[[DIM2:.*]] = memref.load %[[ARG1]][%c2]
+  // CHECK: memref.alloc(%[[DIM0]], %[[DIM1]], %[[DIM2]])
   %0 = memref.tensor_load %arg1 : memref<3xindex>
   %1 = tensor.extract %0[%c0] : tensor<3xindex>
   %2 = tensor.extract %0[%c1] : tensor<3xindex>
