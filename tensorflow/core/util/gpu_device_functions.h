@@ -729,6 +729,15 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
 }
 #endif
 
+#if __gfx908__ || __gfx90a__
+
+#define ADDRSP1 __attribute__((address_space(1)))
+__device__ float
+__llvm_amdgcn_global_atomic_add_f32(ADDRSP1 float* dst, float val) __asm("llvm.amdgcn.global.atomic.fadd.f32.p1f32.f32");
+#endif
+
+
+
 // GpuAtomicAdd
 // Specializations of GpuAtomicAdd for complex types, which GpuAtomicAdd does
 // not support. We treat a std::complex<T>* as a T* (the C++ standard section
@@ -915,6 +924,29 @@ __device__ inline int64 GpuAtomicMin(int64* ptr, int64 value) {
                                     [value](int64 a) { return min(a, value); });
 }
 #endif
+
+#if __gfx908__ || __gfx90a__
+// Low level instructions don't return. For now, assume that return value
+// is always unused.
+__device__ float GpuAtomicAdd(float* dst, float val) {
+  ADDRSP1 float* p = (ADDRSP1 float*) dst;
+  __llvm_amdgcn_global_atomic_add_f32(p, val);
+  return val;
+}
+#endif
+
+template <typename T>
+__device__ inline T GpuAtomicAddShared(T* ptr, T value) {
+  return GpuAtomicAdd(ptr, value);
+}
+
+#if __gfx908__ || __gfx90a__
+__device__ float GpuAtomicAddShared(float* dst, float val) {
+  atomicAdd(dst, val);
+  return val;
+}
+#endif
+
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);
 
 // GpuAtomicMul
