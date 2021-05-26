@@ -133,7 +133,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     context->ReportError(context,
                          "Type %d is currently not supported by Maximum.",
                          op_context.output->type);
-    return kTfLiteError;  
+    return kTfLiteError;
   }
   return kTfLiteOk;
 }
