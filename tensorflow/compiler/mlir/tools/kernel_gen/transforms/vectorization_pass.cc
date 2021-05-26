@@ -255,11 +255,11 @@ void RemoveDeadMemrefCode(FuncOp func) {
 
   // Gather all operations interacting with memrefs guaranteed to never be read
   // from.
-  func->walk([&](memref::AllocOp op) {
+  func->walk([&](memref::AllocaOp op) {
     llvm::SmallVector<Operation *> maybe_to_remove;
     for (auto &alias : baa.resolve(op.getResult())) {
       for (auto user : alias.getUsers()) {
-        if (!(isa<ViewLikeOpInterface>(user) || isa<memref::DeallocOp>(user) ||
+        if (!(isa<ViewLikeOpInterface>(user) ||
               (isa<linalg::CopyOp>(user) &&
                alias == cast<linalg::CopyOp>(user).output()) ||
               (isa<linalg::FillOp>(user) &&
@@ -428,7 +428,7 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
             mlir::linalg::LinalgPromotionOptions()
                 .setAlignment(alignment)
                 .setUseFullTileBuffersByDefault(true)
-                .setUseAlloca(false))
+                .setUseAlloca(true))
         .transform(f);
 
     // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
