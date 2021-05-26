@@ -13,25 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_to_mlir.h"
-#include "tensorflow/lite/python/analyzer_wrapper/model_analyzer.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TO_MLIR_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TO_MLIR_H_
 
-PYBIND11_MODULE(_pywrap_analyzer_wrapper, m) {
-  m.def(
-      "ModelAnalyzer",
-      [](const std::string& model_path) {
-        return ::tflite::model_analyzer(model_path);
-      },
-      R"pbdoc(
-    Returns txt dump of the given TFLite file.
-  )pbdoc");
-  m.def(
-      "FlatBufferToMlir",
-      [](const std::string& model_path) {
-        return ::mlir::TFL::FlatBufferFileToMlir(model_path);
-      },
-      R"pbdoc(
-      Returns MLIR dump of the given TFLite file.
-    )pbdoc");
-}
+#include <string>
+
+namespace mlir {
+namespace TFL {
+
+// Translates the given FlatBuffer into MLIR and returns translated MLIR
+// as string.
+std::string FlatBufferFileToMlir(const std::string& inputFilename);
+
+}  // namespace TFL
+}  // namespace mlir
+
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TO_MLIR_H_
