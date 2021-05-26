@@ -37604,6 +37604,46 @@ func ExperimentalUniqueDataset(scope *Scope, input_dataset tf.Output, output_typ
 	return op.Output(0)
 }
 
+// Decodes a `variant` scalar Tensor into an `ExtensionType` value.
+//
+// Returns the Tensor components encoded in a `CompositeTensorVariant`.
+//
+// Raises an error if `type_spec_proto` doesn't match the TypeSpec
+// in `encoded`.
+//
+// Arguments:
+//	encoded: A scalar `variant` Tensor containing an encoded ExtensionType value.
+//	metadata: String serialization for the TypeSpec.  Must be compatible with the
+// `TypeSpec` contained in `encoded`.  (Note: the encoding for the TypeSpec
+// may change in future versions of TensorFlow.)
+//	Tcomponents: Expected dtypes for components.
+//
+// Returns The component tensors for the ExtensionType value in `encoded`.
+func CompositeTensorVariantToComponents(scope *Scope, encoded tf.Output, metadata string, Tcomponents []tf.DataType) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"metadata": metadata, "Tcomponents": Tcomponents}
+	opspec := tf.OpSpec{
+		Type: "CompositeTensorVariantToComponents",
+		Input: []tf.Input{
+			encoded,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("CompositeTensorVariantToComponents", err)
+		return
+	}
+	return components
+}
+
 // StringFormatAttr is an optional argument to StringFormat.
 type StringFormatAttr func(optionalAttr)
 
@@ -50694,6 +50734,33 @@ func BoostedTreesCreateEnsemble(scope *Scope, tree_ensemble_handle tf.Output, st
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Encodes an `ExtensionType` value into a `variant` scalar Tensor.
+//
+// Returns a scalar variant tensor containing a single `CompositeTensorVariant`
+// with the specified Tensor components and TypeSpec.
+//
+// Arguments:
+//	components: The component tensors for the extension type value.
+//	metadata: String serialization for the TypeSpec.  (Note: the encoding for the TypeSpec
+// may change in future versions of TensorFlow.)
+//
+// Returns A `variant` Tensor that containing the encoded value.
+func CompositeTensorVariantFromComponents(scope *Scope, components []tf.Output, metadata string) (encoded tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"metadata": metadata}
+	opspec := tf.OpSpec{
+		Type: "CompositeTensorVariantFromComponents",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Calculates the softmax of a CSRSparseMatrix.
