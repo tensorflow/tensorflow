@@ -208,15 +208,15 @@ message GPUOptions {
     // size exceeds the requested memory by 5% of the total virtual device/gpu
     // memory size.
     double internal_fragmentation_fraction = 10;
+
+    // When true, use CUDA cudaMallocAsync API instead of TF gpu allocator.
+    bool use_cuda_malloc_async = 11;
   }
 
   // Everything inside experimental is subject to change and is not subject
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
   Experimental experimental = 9;
-
-  // When true, use CUDA cudaMallocAsync API instead of TF gpu allocator.
-  bool use_cuda_malloc_async = 10;
 }
 
 // Options passed to the graph optimizer

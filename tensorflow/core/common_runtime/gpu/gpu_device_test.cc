@@ -80,7 +80,7 @@ class GPUDeviceTest : public ::testing::Test {
     gpu_options->set_visible_device_list(visible_device_list);
     gpu_options->set_per_process_gpu_memory_fraction(
         per_process_gpu_memory_fraction);
-    gpu_options->set_use_cuda_malloc_async(use_cuda_malloc_async);
+    gpu_options->mutable_experimental()->set_use_cuda_malloc_async(use_cuda_malloc_async);
     for (int i = 0; i < memory_limit_mb.size(); ++i) {
       auto virtual_devices =
           gpu_options->mutable_experimental()->add_virtual_devices();
