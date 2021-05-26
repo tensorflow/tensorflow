@@ -1884,6 +1884,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core/platform:logging",
     "//tensorflow/core/tpu:tpu_defs",
     "//tensorflow/stream_executor/lib",
+    "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary
