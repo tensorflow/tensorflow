@@ -203,9 +203,9 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
+      owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
       process_index_(process_index),
-      owned_allocator_(std::move(allocator)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
