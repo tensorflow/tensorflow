@@ -88,7 +88,7 @@ void LegalizeTensorLoadOpPass::runOnFunction() {
   OwningRewritePatternList patterns(context);
   patterns.insert<ForwardShapeOfOp, ForwardExtractOp>(context);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
-    return signalPassFailure();
+    signalPassFailure();
 }
 }  // namespace
 
