@@ -1316,6 +1316,72 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
   }
 };
 
+class DynamicUpdateSliceConverter
+    : public OpConversionPattern<mhlo::DynamicUpdateSliceOp> {
+ public:
+  using OpConversionPattern<mhlo::DynamicUpdateSliceOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicUpdateSliceOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    mhlo::DynamicUpdateSliceOp::Adaptor adaptor(args);
+    auto operand_type =
+        adaptor.operand().getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || !operand_type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require static ranked type for operand");
+    }
+
+    auto update_type = adaptor.update().getType().dyn_cast<RankedTensorType>();
+    if (!update_type || !update_type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require static ranked type for operand");
+    }
+
+    // We do not have to clamp sizes because the semantic of `update`
+    // guarantees that it is always in the bounds. See
+    // https://www.tensorflow.org/xla/operation_semantics#dynamicupdateslice
+    SmallVector<OpFoldResult, 3> sizes;
+    for (auto size : update_type.getShape()) {
+      sizes.push_back(rewriter.getIndexAttr(size));
+    }
+
+    auto index_type = rewriter.getIndexType();
+    SmallVector<OpFoldResult, 3> start_indices;
+    Value zero = rewriter.create<ConstantOp>(
+        loc, rewriter.getZeroAttr(operand_type.getElementType()));
+    for (auto en : llvm::enumerate(adaptor.start_indices())) {
+      // By mhlo.DynamicUpdateSlice definition:
+      //   `start_indices[i] = clamp(start_indices[i],
+      //       0, operand.dimension_size[i] - update.dimension_size[i])`
+      Value start_index = rewriter.create<tensor::ExtractOp>(loc, en.value());
+      Value ub = rewriter.create<ConstantOp>(
+          loc, rewriter.getIntegerAttr(operand_type.getElementType(),
+                                       operand_type.getDimSize(en.index()) -
+                                           update_type.getDimSize(en.index())));
+      // TODO(hanchung): This is a workaround to use the method because only
+      // lmhlo version is defined. The implementation in
+      // map_lmhlo_to_scalar_op.h requires to pass a mhlo op. It will convert it
+      // to an lmhlo op and call the lmhlo implementation.
+      start_index = lmhlo::HloOpToStdScalarOp::map<lmhlo::ClampOp>(
+          loc, start_index.getType(),
+          ArrayRef<Type>{start_index.getType(), start_index.getType(),
+                         start_index.getType()},
+          ArrayRef<Value>{zero, start_index, ub}, &rewriter);
+      start_indices.push_back(
+          rewriter.create<IndexCastOp>(loc, index_type, start_index)
+              .getResult());
+    }
+
+    int64_t rank = operand_type.getRank();
+    SmallVector<OpFoldResult, 3> strides(rank, rewriter.getI64IntegerAttr(1));
+    rewriter.replaceOpWithNewOp<SubTensorInsertOp>(
+        op, adaptor.update(), adaptor.operand(), start_indices, sizes, strides);
+    return success();
+  }
+};
+
 enum class DotOperationType {
   kVectorDot = 0,
   kMatrixVector = 1,
@@ -2440,6 +2506,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       ReverseConverter<mhlo::ReverseOp, false>,
       SliceConverter<mhlo::SliceOp, false>,
       DynamicSliceConverter,
+      DynamicUpdateSliceConverter,
       TransposeConverter<mhlo::TransposeOp, false>,
       DotOpOnTensorsConversion<DotOperationType::kMatrixMatrix,
                                linalg::MatmulOp>,

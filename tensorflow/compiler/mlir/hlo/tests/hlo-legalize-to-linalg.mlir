@@ -1708,6 +1708,73 @@ func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, %star
 // CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i64 to index
 // CHECK:           subtensor %[[SIGNLESS_ARG0]][%[[START1]], %[[START2]]] [1, 4] [1, 1]
 
+// -----
+
+func @dynamic_update_slice(%target: tensor<3x3xi32>, %update: tensor<2x2xi32>, %c0: tensor<i32>) -> tensor<3x3xi32> {
+  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+    : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<i32>, tensor<i32>) -> tensor<3x3xi32>
+  return %0 : tensor<3x3xi32>
+}
+// CHECK-LABEL: func @dynamic_update_slice(
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
+// CHECK:         %[[C0:.*]] = constant 0 : i32
+// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[UB1:.*]] = constant 1 : i32
+// CHECK:         %[[COND1:.*]] = cmpi slt, %[[SCALAR1]], %[[UB1]] : i32
+// CHECK:         %[[T1:.*]] = select %[[COND1]], %[[SCALAR1]], %[[UB1]] : i32
+// CHECK:         %[[COND2:.*]] = cmpi sgt, %[[T1]], %[[C0]] : i32
+// CHECK:         %[[CLAMPED1:.*]] = select %[[COND2]], %[[T1]], %[[C0]] : i32
+// CHECK:         %[[START1:.*]] = index_cast %[[CLAMPED1]] : i32 to index
+// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[UB2:.*]] = constant 1 : i32
+// CHECK:         %[[COND3:.*]] = cmpi slt, %[[SCALAR2]], %[[UB2]] : i32
+// CHECK:         %[[T2:.*]] = select %[[COND3]], %[[SCALAR2]], %[[UB2]] : i32
+// CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i32
+// CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i32
+// CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i32 to index
+// CHECK:         %[[RES:.*]] = subtensor_insert %[[ARG1]] into %[[ARG0]]
+// CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
+// CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
+// CHECK:         return %[[RES]] : tensor<3x3xi32>
+
+// -----
+
+func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: tensor<2x2xui32>, %c0: tensor<i32>) -> tensor<3x3xui32> {
+  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+    : (tensor<3x3xui32>, tensor<2x2xui32>, tensor<i32>, tensor<i32>) -> tensor<3x3xui32>
+  return %0 : tensor<3x3xui32>
+}
+// CHECK-LABEL: func @dynamic_update_slice_unsigned(
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
+// CHECK:         %[[SIGNLESS_TARGET:.*]] = unrealized_conversion_cast %[[ARG0]] : tensor<3x3xui32> to tensor<3x3xi32>
+// CHECK:         %[[SIGNLESS_UPDATE:.*]] = unrealized_conversion_cast %[[ARG1]] : tensor<2x2xui32> to tensor<2x2xi32>
+// CHECK:         %[[C0:.*]] = constant 0 : i32
+// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[UB1:.*]] = constant 1 : i32
+// CHECK:         %[[COND1:.*]] = cmpi slt, %[[SCALAR1]], %[[UB1]] : i32
+// CHECK:         %[[T1:.*]] = select %[[COND1]], %[[SCALAR1]], %[[UB1]] : i32
+// CHECK:         %[[COND2:.*]] = cmpi sgt, %[[T1]], %[[C0]] : i32
+// CHECK:         %[[CLAMPED1:.*]] = select %[[COND2]], %[[T1]], %[[C0]] : i32
+// CHECK:         %[[START1:.*]] = index_cast %[[CLAMPED1]] : i32 to index
+// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[UB2:.*]] = constant 1 : i32
+// CHECK:         %[[COND3:.*]] = cmpi slt, %[[SCALAR2]], %[[UB2]] : i32
+// CHECK:         %[[T2:.*]] = select %[[COND3]], %[[SCALAR2]], %[[UB2]] : i32
+// CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i32
+// CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i32
+// CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i32 to index
+// CHECK:         %[[SIGNLESS_RES:.*]] = subtensor_insert %[[SIGNLESS_UPDATE]] into %[[SIGNLESS_TARGET]]
+// CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
+// CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
+// CHECK:         %[[RES:.*]] = unrealized_conversion_cast %[[SIGNLESS_RES]] : tensor<3x3xi32> to tensor<3x3xui32>
+// CHECK:         return %[[RES]] : tensor<3x3xui32>
+
+// -----
+
 func @pad_cst(%arg0: tensor<12x4xf32>) -> tensor<18x12xf32> {
   %0 = constant dense<0.0> : tensor<f32>
   %1 = "mhlo.pad"(%arg0, %0) {
