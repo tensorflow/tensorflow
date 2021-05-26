@@ -856,10 +856,11 @@ py_library(
     ],
 )
 
-py_test(
+distribute_py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
+    tags = ["multi_gpu"],
     deps = [
         ":combinations",
         ":test_util",
