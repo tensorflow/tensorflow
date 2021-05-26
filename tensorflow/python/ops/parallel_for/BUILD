@@ -61,6 +61,7 @@ py_library(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:manip_ops",
         "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
