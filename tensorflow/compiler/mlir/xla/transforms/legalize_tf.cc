@@ -6521,8 +6521,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   }
 
   // Set patterns to legalize_lower_patters, where in the prefer_tf2xla case
-  // only patterns whose ops are in the set MlirPreferredOps
-  // are kept.
+  // only patterns whose ops are in the set MlirPreferredOps are kept.
   OwningRewritePatternList patterns =
       (tf2xla_fallback_device_type && prefer_tf2xla)
           ? PatternsIncludeOps(legalize_lower_patterns, MlirPreferredOps())
