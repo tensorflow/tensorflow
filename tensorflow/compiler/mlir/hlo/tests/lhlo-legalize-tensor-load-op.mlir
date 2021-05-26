@@ -7,7 +7,7 @@ func @forward_extract_op(%arg0: memref<?x?xf32>, %arg1: memref<3xindex>) -> memr
   %c1 = constant 1 : index
   %c2 = constant 2 : index
   // CHECK-NOT: memref.tensor_load
-  // CHECK-NOT: tesnor.extract
+  // CHECK-NOT: tensor.extract
   // CHECK: memref.load
   // CHECK: memref.load
   // CHECK: memref.load
