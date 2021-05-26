@@ -157,35 +157,37 @@ template <KernelType kernel_type, typename OpType>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
 
-    switch (op_context.output->type) {
-      case kTfLiteFloat32:
-        TFLiteOperation<kernel_type, float, OpType>(context, node, op_context);
-        break;
-      case kTfLiteUInt8:
-        TFLiteOperation<kernel_type, uint8_t, OpType>(context, node,
-                                                      op_context);
-        break;
-      case kTfLiteInt8:
-        TFLiteOperation<kernel_type, int8_t, OpType>(context, node, op_context);
-        break;
-      case kTfLiteInt32:
-        TFLiteOperation<kernel_type, int32_t, OpType>(context, node,
-                                                      op_context);
-        break;
-      case kTfLiteInt64:
-        TFLiteOperation<kernel_type, int64_t, OpType>(context, node,
-                                                      op_context);
-        break;
-      case kTfLiteInt16:
-        TFLiteOperation<kernel_type, int16_t, OpType>(context, node,
-                                                      op_context);
-        break;
-      default:
-        context->ReportError(context,
-                             "Type %d is currently not supported by Maximum.",
-                             op_context.output->type);
-        return kTfLiteError;
-    }
+  // If inputs have no element, shortcircuit.
+  if (NumElements(op_context.input1) == 0 ||
+      NumElements(op_context.input2) == 0) {
+    return kTfLiteOk;
+  }
+
+  switch (op_context.output->type) {
+    case kTfLiteFloat32:
+      TFLiteOperation<kernel_type, float, OpType>(context, node, op_context);
+      break;
+    case kTfLiteUInt8:
+      TFLiteOperation<kernel_type, uint8_t, OpType>(context, node, op_context);
+      break;
+    case kTfLiteInt8:
+      TFLiteOperation<kernel_type, int8_t, OpType>(context, node, op_context);
+      break;
+    case kTfLiteInt32:
+      TFLiteOperation<kernel_type, int32_t, OpType>(context, node, op_context);
+      break;
+    case kTfLiteInt64:
+      TFLiteOperation<kernel_type, int64_t, OpType>(context, node, op_context);
+      break;
+    case kTfLiteInt16:
+      TFLiteOperation<kernel_type, int16_t, OpType>(context, node, op_context);
+      break;
+    default:
+      context->ReportError(context,
+                           "Type %d is currently not supported by Maximum.",
+                           op_context.output->type);
+      return kTfLiteError;
+  }
   return kTfLiteOk;
 }
 
