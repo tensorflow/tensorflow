@@ -59,6 +59,24 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie()) << "Full IR: " << ir_;
 }
 
+void LlvmIrGenTestBase::CompileAndVerifyIr(
+    std::unique_ptr<HloModule> hlo_module, const std::vector<string>& patterns,
+    bool match_optimized_ir) {
+  SetIrHook(match_optimized_ir);
+  Status status = CompileToExecutable(std::move(hlo_module)).status();
+  ResetIrHook();
+  TF_ASSERT_OK(status);
+  bool any_pass = false;
+  for(auto& pattern: patterns) {
+    StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
+    TF_ASSERT_OK(filecheck_result.status());
+    any_pass = any_pass || filecheck_result.ValueOrDie();
+  }
+  EXPECT_TRUE(any_pass) << "Full IR: " << ir_;
+}
+
+
+
 void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
                                            const string& expected_llvm_ir,
                                            bool match_optimized_ir) {

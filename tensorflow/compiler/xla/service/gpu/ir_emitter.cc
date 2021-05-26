@@ -300,7 +300,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
       CHECK_NE(output_address_type, nullptr);
 
       // todo: implement for F16 via global_atomic_fadd_pk2f16
-      bool atomic_add_supported = isGfx908Plus && (element_type == F32);
+      bool atomic_add_supported = (element_type == F32);
       if (atomic_add_supported) {
         if (output_address_type->getPointerAddressSpace() != 3) {
           // the compiler will only generate a global_atomic_fadd if the pointer

@@ -2990,8 +2990,8 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
              "error";
-      return port::InternalError(absl::StrCat(
-          "Failed to allocate scratch memory of size: ", scratch_memory_size));
+      return port::Status{port::error::RESOURCE_EXHAUSTED, absl::StrCat(
+          "Failed to allocate scratch memory of size: ", scratch_memory_size)};
     }
   }
 
