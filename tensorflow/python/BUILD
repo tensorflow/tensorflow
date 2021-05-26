@@ -4288,7 +4288,7 @@ alias(
 alias(
     name = "is_mlir_bridge_test_true",
     actual = "//tensorflow/python/framework:is_mlir_bridge_test_true",
-    visibility = visibility,
+    visibility = visibility + ["//tensorflow/compiler/tests:friends"],
 )
 
 alias(
@@ -4349,7 +4349,7 @@ alias(
 alias(
     name = "is_mlir_bridge_test_false",
     actual = "//tensorflow/python/framework:is_mlir_bridge_test_false",
-    visibility = visibility,
+    visibility = visibility + ["//tensorflow/compiler/tests:friends"],
 )
 
 alias(
