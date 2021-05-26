@@ -37,6 +37,20 @@ cc_library(
 )
 
 cc_library(
+    name = "batch_matmul_test_util",
+    hdrs = ["batch_matmul_test_util.h"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_library(
     name = "circular_buffer_flexbuffers_generated_data",
     srcs = [
         "circular_buffer_flexbuffers_generated_data.cc",
@@ -463,6 +477,7 @@ cc_test(
         "batch_matmul_test.cc",
     ],
     deps = [
+        ":batch_matmul_test_util",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:debug_log",

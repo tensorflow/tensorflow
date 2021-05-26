@@ -257,8 +257,6 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
       num_weights_matrices *= rhs->dims->data[i];
     }
 
-    op_data->hybrid->compute_row_sums = true;
-
     const size_t input_quantized_size = static_cast<size_t>(
         NumElements(lhs->dims) * TfLiteTypeGetSize(rhs->type));
     TF_LITE_ENSURE_OK(context, context->RequestScratchBufferInArena(
@@ -283,6 +281,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
         context->AllocatePersistentBuffer(context, row_sums_size));
     TF_LITE_ENSURE(context, op_data->hybrid->row_sums_buffer != nullptr);
 
+    op_data->hybrid->compute_row_sums = true;
     op_data->hybrid->filter_scale = rhs->params.scale;
   }
 
