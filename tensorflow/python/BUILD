@@ -135,6 +135,7 @@ py_library(
         ":client_testlib",
         ":clustering_ops",
         ":collective_ops",
+        ":composite_tensor_ops",
         ":cond_v2",
         ":confusion_matrix",
         ":control_flow_ops",
@@ -908,6 +909,11 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//tensorflow/python/training:__pkg__",
     ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "composite_tensor_ops_gen",
+    visibility = [],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -2586,6 +2592,13 @@ py_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:tf_should_use",
     ],
+)
+
+py_library(
+    name = "composite_tensor_ops",
+    srcs = ["ops/composite_tensor_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = ["composite_tensor_ops_gen"],
 )
 
 py_library(

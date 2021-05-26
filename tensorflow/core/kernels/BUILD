@@ -1328,6 +1328,43 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "composite_tensor_variant",
+    srcs = ["composite_tensor_variant.cc"],
+    hdrs = ["composite_tensor_variant.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "composite_tensor_variant_test",
+    size = "small",
+    srcs = ["composite_tensor_variant_test.cc"],
+    deps = [
+        ":composite_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "composite_tensor_ops",
+    srcs = ["composite_tensor_ops.cc"],
+    deps = [
+        ":composite_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_cross_op",

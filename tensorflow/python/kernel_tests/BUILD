@@ -550,6 +550,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "composite_tensor_ops_test",
+    size = "small",
+    srcs = ["composite_tensor_ops_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:composite_tensor_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
     name = "fifo_queue_test",
     size = "small",
     srcs = ["fifo_queue_test.py"],
