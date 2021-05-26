@@ -48,6 +48,11 @@ class RandomAlgorithm(enum.IntEnum):
   RNG_THREE_FRY: int
   RNG_PHILOX: int
 
+class CustomCallSchedule(enum.IntEnum):
+  SCHEDULE_NONE: int
+  SCHEDULE_LATEST: int
+  SCHEDULE_EARLIEST: int
+
 def AfterAll(builder: XlaBuilder, tokens: Sequence[XlaOp]) -> XlaOp: ...
 def AllGather(
     operand: XlaOp,
@@ -127,7 +132,8 @@ def CustomCall(
     operands: Sequence[XlaOp],
     shape: Shape,
     opaque: bytes = ...,
-    has_side_effects: bool = ...) -> XlaOp: ...
+    has_side_effects: bool = ...,
+    schedule: CustomCallSchedule = ...) -> XlaOp: ...
 def CustomCallWithLayout(
     builder: XlaBuilder,
     call_target_name: bytes,
@@ -135,7 +141,8 @@ def CustomCallWithLayout(
     shape_with_layout: Shape,
     operand_shapes_with_layout: Sequence[Shape],
     opaque: bytes = ...,
-    has_side_effects: bool = ...) -> XlaOp: ...
+    has_side_effects: bool = ...,
+    schedule: CustomCallSchedule = ...) -> XlaOp: ...
 def CustomCallWithAliasing(
     builder: XlaBuilder,
     call_target_name: bytes,
@@ -145,7 +152,8 @@ def CustomCallWithAliasing(
     opaque: bytes = ...,
     has_side_effects: bool = ...,
     output_operand_aliasing: Sequence[Tuple[ShapeIndex, Tuple[int, ShapeIndex]]] = ...,
-    literal: _LiteralSlice = ...) -> XlaOp: ...
+    literal: _LiteralSlice = ...,
+    schedule: CustomCallSchedule = ...) -> XlaOp: ...
 def Dot(
     lhs: XlaOp,
     rhs: XlaOp,
