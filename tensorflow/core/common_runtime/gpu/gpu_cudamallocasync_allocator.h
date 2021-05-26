@@ -89,6 +89,10 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 #endif
   }
 
+  static int NbInstantiated() {
+    return nb_instanciated_;
+  }
+
  private:
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   se::StreamExecutor* stream_exec_;  // Not owned.
@@ -105,6 +109,10 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   // will return an error.
   CUmemoryPool pool_;
 #endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
+
+  // Just a counter for the number of time this class is instanciated.
+  // Only useful for tests.
+  static int nb_instanciated_;
 
   string name_;
 

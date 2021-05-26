@@ -41,10 +41,13 @@ static std::string GetCudaErrorMessage(CUresult result) {
 }
 #endif  // GOOGLE_CUDA
 
+int GpuCudaMallocAsyncAllocator::nb_instanciated_ = 0;
+
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     PlatformDeviceId platform_device_id, size_t pool_size, bool reserve_memory,
     bool compute_stats)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())) {
+  ++nb_instanciated_;
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)

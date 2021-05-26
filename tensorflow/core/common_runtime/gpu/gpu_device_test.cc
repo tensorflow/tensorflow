@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -121,6 +122,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
                                            /*use_cuda_malloc_async=*/true);
   std::vector<std::unique_ptr<Device>> devices;
   Status status;
+  int nb_instantiated = GpuCudaMallocAsyncAllocator::NbInstantiated();
   { // The new scope is to trigger the destruction of the object.
     status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
@@ -138,6 +140,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
     EXPECT_NE(ptr, nullptr);
     allocator->DeallocateRaw(ptr);
   }
+  EXPECT_EQ(nb_instantiated + 1 , GpuCudaMallocAsyncAllocator::NbInstantiated());
   EXPECT_EQ(status.code(), error::OK);
 }
 
