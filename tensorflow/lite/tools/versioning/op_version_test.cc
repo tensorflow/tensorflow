@@ -348,6 +348,26 @@ TEST(OpVersionTest, VersioningReduceMaxTest) {
   SimpleVersioningTestExtended(BuiltinOperator_REDUCE_MAX);
 }
 
+TEST(OpVersionTest, VersioningReduceProdTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_REDUCE_PROD,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_REDUCE_PROD,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_REDUCE_PROD,
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+}
+
 TEST(OpVersionTest, VersioningAddTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_ADD,
