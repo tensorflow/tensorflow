@@ -102,6 +102,12 @@ template <KernelType kernel_type, typename OpType>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
 
+  // If inputs have no element, shortcircuit.
+  if (NumElements(op_context.input1) == 0 ||
+      NumElements(op_context.input2) == 0) {
+    return kTfLiteOk;
+  }
+
   if (kernel_type == kReference) {
     switch (op_context.output->type) {
       case kTfLiteFloat32:
