@@ -211,7 +211,8 @@ Allocator* GPUProcessState::GetGPUAllocator(
       gpu_bfc_allocator = nullptr;
       sub_allocator = nullptr;
       gpu_allocator = new GPUcudaMallocAllocator(platform_device_id);
-    } else if (UseCudaMallocAsyncAllocator()) {
+    } else if (UseCudaMallocAsyncAllocator() ||
+               options.experimental().use_cuda_malloc_async()) {
       LOG(INFO) << "Using CUDA malloc Async allocator for GPU: "
                 << platform_device_id;
       // If true, passes all allocation requests through to cudaMallocAsync
