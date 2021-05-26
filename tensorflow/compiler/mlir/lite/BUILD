@@ -27,6 +27,7 @@ package_group(
         "//learning/brain/mlir/...",
         "//third_party/iree/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/lite/python/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
     ],
@@ -1092,5 +1093,25 @@ cc_library(
     ],
     deps = [
         "@llvm-project//llvm:Support",
+    ],
+)
+
+# Smaller version of flatbuffer_translate which only converts flatbuffer to MLIR.
+cc_library(
+    name = "flatbuffer_to_mlir",
+    srcs = [
+        "flatbuffer_to_mlir.cc",
+    ],
+    hdrs = [
+        "flatbuffer_to_mlir.h",
+    ],
+    deps = [
+        ":flatbuffer_import",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Translation",
     ],
 )

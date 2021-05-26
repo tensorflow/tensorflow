@@ -255,11 +255,11 @@ void RemoveDeadMemrefCode(FuncOp func) {
 
   // Gather all operations interacting with memrefs guaranteed to never be read
   // from.
-  func->walk([&](memref::AllocOp op) {
+  func->walk([&](memref::AllocaOp op) {
     llvm::SmallVector<Operation *> maybe_to_remove;
     for (auto &alias : baa.resolve(op.getResult())) {
       for (auto user : alias.getUsers()) {
-        if (!(isa<ViewLikeOpInterface>(user) || isa<memref::DeallocOp>(user) ||
+        if (!(isa<ViewLikeOpInterface>(user) ||
               (isa<linalg::CopyOp>(user) &&
                alias == cast<linalg::CopyOp>(user).output()) ||
               (isa<linalg::FillOp>(user) &&
@@ -280,123 +280,6 @@ void RemoveDeadMemrefCode(FuncOp func) {
   }
 }
 
-// A pattern to remove extent 1 dimensions from linalg.generic inputs. This is
-// used to create vectorized operations of the correct rank.
-//
-// For example:
-// linalg.generic {indexing_maps =
-//   [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>,
-//    affine_map<(d0, d1) -> (d0, d1)>],
-//   iterator_types = ["parallel", "parallel"]}
-//  ins(%lhs, %rhs
-//   : memref<1x4xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
-//   memref<1x4xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>)
-//  outs(%out : memref<1x4xf64>) {
-// ^bb0(%arg2: f64, %arg3: f64, %arg4: f64):  // no predecessors
-//   %65 = addf %arg2, %arg3 : f64
-//   linalg.yield %65 : f64
-// }
-//
-// Becomes:
-// %newLhs = memref.reshape %lhs : 2d -> 1d
-// %newRhs = memref.reshape %lhs : 2d -> 1d
-// %newOut = memref.reshape %lhs : 2d -> 1d
-// linalg.generic {indexing_maps =
-//   [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>,
-//    affine_map<(d0) -> (d0)>],
-//   iterator_types = ["parallel", "parallel"]}
-//  ins(%newLhs, %newRhs
-//   : memref<4xf64, affine_map<(d0)[s0] -> (d0 * s0)>>,
-//   memref<4xf64, affine_map<(d0)[s0] -> (d0 * s0)>>)
-//  outs(%newOut : memref<4xf64>) {
-// ^bb0(%arg2: f64, %arg3: f64, %arg4: f64):  // no predecessors
-//   %65 = addf %arg2, %arg3 : f64
-//   linalg.yield %65 : f64
-// }
-struct RemoveExtent1DimsPattern : public OpRewritePattern<linalg::GenericOp> {
-  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(linalg::GenericOp op,
-                                PatternRewriter &b) const override {
-    if (!op.hasBufferSemantics()) return failure();
-    if (op.getNumOutputBuffers() != 1) return failure();
-    if (!llvm::all_of(op.getIndexingMaps(),
-                      [](auto map) { return map.isIdentity(); }))
-      return failure();
-    if (op.getNumReductionLoops()) return failure();
-
-    auto trim_and_reshape_or_null = [&](Value buffer) -> Value {
-      auto type = buffer.getType().dyn_cast<MemRefType>();
-      if (!(type && type.hasRank() && type.getNumDynamicDims() == 0 &&
-            type.getAffineMaps().empty()))
-        return nullptr;
-
-      SmallVector<int64_t> new_shape;
-      llvm::copy_if(type.getShape(), std::back_inserter(new_shape),
-                    [](auto el) { return el != 1; });
-
-      // If nothing would be changed, don't execute the reinterpret_cast
-      if (new_shape.size() == type.getShape().size()) {
-        return buffer;
-      }
-
-      auto loc = op.getLoc();
-      auto extent_memref_type = MemRefType::get(
-          llvm::makeArrayRef(static_cast<int64_t>(new_shape.size())),
-          b.getIndexType());
-      Value shape_tensor =
-          b.create<ConstantOp>(loc, b.getIndexTensorAttr(new_shape));
-      Value constant_shape =
-          b.create<memref::BufferCastOp>(loc, extent_memref_type, shape_tensor);
-      auto new_type = MemRefType::get(new_shape, type.getElementType());
-      return b.create<memref::ReshapeOp>(loc, new_type, buffer, constant_shape)
-          .result();
-    };
-
-    // Gather the buffers for the new operations
-    SmallVector<Value> new_inputs, new_outputs;
-    for (auto &in : op.getInputBuffers()) {
-      if (auto buffer = trim_and_reshape_or_null(in)) {
-        new_inputs.push_back(buffer);
-      } else {
-        return failure();
-      }
-    }
-    for (auto &out : op.getOutputBuffers()) {
-      if (auto buffer = trim_and_reshape_or_null(out)) {
-        new_outputs.push_back(buffer);
-      } else {
-        return failure();
-      }
-    }
-
-    // Quit if nothing was changed
-    auto changed_operand = [&](auto pair) {
-      return std::get<0>(pair) != std::get<1>(pair);
-    };
-    if (llvm::none_of(llvm::zip(new_inputs, op.getInputBuffers()),
-                      changed_operand) &&
-        llvm::none_of(llvm::zip(new_outputs, op.getOutputBuffers()),
-                      changed_operand))
-      return failure();
-
-    auto num_loops = new_outputs.front().getType().cast<MemRefType>().getRank();
-
-    // Replace with the simplified op
-    auto indexing_maps = llvm::SmallVector<AffineMap>(
-        op->getNumOperands(),
-        AffineMap::getMultiDimIdentityMap(num_loops, b.getContext()));
-    auto iterator_types = llvm::SmallVector<StringRef>(num_loops, "parallel");
-    auto new_op = b.create<linalg::GenericOp>(
-        op.getLoc(), new_inputs, new_outputs, indexing_maps, iterator_types);
-    b.inlineRegionBefore(op.getRegion(), new_op.getRegion(),
-                         new_op.getRegion().end());
-    b.replaceOp(op, new_op->getResults());
-
-    return success();
-  }
-};
-
 struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<vector::VectorDialect, memref::MemRefDialect,
@@ -404,14 +287,13 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
   }
 
   void runOnFunction() override {
-    // This functions in 3 passes:
-    // 1. Tile and promote to create generic operations on <1x1x*x4xty> memrefs
-    // 2. cast <1x1x*x4xty> memrefs to <4xty>
-    // 2. vectorize the new <4xty> generics to 1d vector operations.
+    // This functions in 2 passes:
+    // 1. Tile, promote, and vectorize to create elementwise operations on
+    //    <(1x)*4xty> memrefs
+    // 2. cast <(1x)*4xty> memrefs to <4xty>
     auto f = getFunction();
-    auto ctx = f.getContext();
 
-    // Stage 1: Tile and Promote to form static shaped computations
+    // Stage 1: Vectorize to form static shaped computations
     auto tiling_options =
         linalg::LinalgTilingOptions().setTileSizeComputationFunction(
             [](OpBuilder b, Operation *op) {
@@ -428,16 +310,7 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
             mlir::linalg::LinalgPromotionOptions()
                 .setAlignment(alignment)
                 .setUseFullTileBuffersByDefault(true)
-                .setUseAlloca(false))
-        .transform(f);
-
-    // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
-    OwningRewritePatternList patterns(ctx);
-    patterns.insert<RemoveExtent1DimsPattern>(ctx);
-    (void)applyPatternsAndFoldGreedily(f, std::move(patterns));
-
-    // Stage 3: Vectorize the simplified linalg.generic ops
-    mlir::linalg::CodegenStrategy()
+                .setUseAlloca(true))
         .vectorize<mlir::linalg::GenericOp>()
         .setVectorTransformsOptions(
             mlir::vector::VectorTransformsOptions().setVectorTransferSplit(
@@ -445,6 +318,12 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
         .setVectorTransferToSCFOptions(
             mlir::VectorTransferToSCFOptions().setUnroll(true))
         .transform(f);
+
+    // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
+    auto ctx = f.getContext();
+    OwningRewritePatternList patterns(ctx);
+    mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
+    (void)applyPatternsAndFoldGreedily(f, std::move(patterns));
   }
 };
 

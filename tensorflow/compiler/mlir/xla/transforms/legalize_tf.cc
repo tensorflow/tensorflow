@@ -887,11 +887,13 @@ static DenseElementsAttr GetEpsilonValue(Type ty) {
   auto element_ty = ty.cast<TensorType>().getElementType();
   auto scalar_ty = RankedTensorType::get({}, element_ty);
   if (element_ty.isF16()) {
-    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::half>::epsilon().x;
+    uint16_t raw_epsilon = Eigen::numext::bit_cast<uint16_t>(
+        Eigen::NumTraits<Eigen::half>::epsilon());
     auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isBF16()) {
-    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::bfloat16>::epsilon().value;
+    uint16_t raw_epsilon = Eigen::numext::bit_cast<uint16_t>(
+        Eigen::NumTraits<Eigen::bfloat16>::epsilon());
     auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isF32()) {
