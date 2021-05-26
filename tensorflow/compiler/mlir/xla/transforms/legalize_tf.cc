@@ -1300,23 +1300,21 @@ using ConvertDepthConv2DOp =
     ConvertConvOp<TF::DepthwiseConv2dNativeOp, /*num_spatial_dims=*/2,
                   /*depthwise_conv=*/true>;
 
-class ConvertPadOpStaticDynamic : public OpRewritePattern<TF::PadV2Op> {
+class ConvertPadOpDynamic : public OpRewritePattern<TF::PadV2Op> {
  public:
   using OpRewritePattern::OpRewritePattern;
-  // Converts a tf.PadV2Op to mhlo.PadOp when input has static shape and
-  // padding values are const. Otherwise, converts the tf.PadV2Op to
-  // mhlo.DynamicPadOp.
+  // Converts a tf.PadV2Op to mhlo.DynamicPadOp if paddings_type is 
+  // dynamic shape (but static rank). 
+  // TODO: convert static tf.PadV2 to mhlo.DynamicPadOp and then canonicalize to mhlo.PadOp.
   LogicalResult matchAndRewrite(TF::PadV2Op op,
                                 PatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
     auto input = op.input();
     auto paddings = op.paddings();
     auto constant_values = op.constant_values();
-    auto input_type = input.getType().dyn_cast<RankedTensorType>();
-    auto paddings_type = paddings.getType().dyn_cast<RankedTensorType>();
-    if (!input_type || !paddings_type || !paddings_type.hasStaticShape()) {
-      return failure();
-    }
+    auto input_type = input.getType().cast<RankedTensorType>();
+    auto paddings_type = paddings.getType().cast<RankedTensorType>();
+    if (!paddings_type.hasStaticShape()) return failure();
 
     int input_rank = input_type.getRank();
     // interior padding
@@ -1395,11 +1393,9 @@ class ConvertGatherNdOpStaticDynamic : public OpRewritePattern<TF::GatherNdOp> {
                                 PatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
     auto params = op.params();
-    auto params_ty = params.getType().dyn_cast<RankedTensorType>();
+    auto params_ty = params.getType().cast<RankedTensorType>();
     auto indices = op.indices();
-    auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
-    assert((params_ty && indices_ty) &&
-           "params and indices of GatherNdOp must be ranked");
+    auto indices_ty = indices.getType().cast<RankedTensorType>();
     auto params_rank = params_ty.getRank();
     auto indices_rank = indices_ty.getRank();
     int64_t num_index_dims = indices_ty.getDimSize(indices_rank - 1);
@@ -6731,7 +6727,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,
-    ConvertPadOpStaticDynamic,
+    ConvertPadOpDynamic,
     ConvertGatherNdOpStaticDynamic>(context);
   // clang-format on
 }
