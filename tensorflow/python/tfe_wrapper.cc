@@ -232,7 +232,10 @@ tensorflow::Device* GetMatchedDevice(py::handle& ctx, const char* device_name) {
   if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_name,
                                                          &input_device_name)) {
     tensorflow::ThrowValueError(
-        absl::StrFormat("Failed parsing device name: '%s'", device_name)
+        absl::StrFormat("Failed parsing device name: '%s'. Note a valid device "
+                        "string should at least contain a device type and a "
+                        "device index, like \"GPU:0\".",
+                        device_name)
             .c_str());
   }
 
@@ -247,8 +250,7 @@ tensorflow::Device* GetMatchedDevice(py::handle& ctx, const char* device_name) {
       if (matched_device != nullptr) {
         tensorflow::ThrowValueError(
             absl::StrFormat("Multiple devices match the provided string "
-                            "'%s': '%s' and "
-                            "'%s' ",
+                            "'%s': '%s' and '%s'.",
                             device_name, matched_device->name(), device->name())
                 .c_str());
       }

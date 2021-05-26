@@ -500,8 +500,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
            on_device_shape_.tuple_shapes_size() == 0;
   }
 
-  int64 OnDeviceSizeInBytes() const override;
-
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 

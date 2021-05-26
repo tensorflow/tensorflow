@@ -4302,6 +4302,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   // name.
   const auto stop = [](const string& result) { return !result.empty(); };
   GraphOptimizerStagePipeline<string> pipeline(stop);
+  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
 
   if (options_.combine_add_to_addn && can_use_shapes)
     pipeline.AddStage<AddOpsRewriteStage>(ctx, ctx_ext);
@@ -4311,7 +4312,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<FoldMultiplyIntoConv>(ctx, ctx_ext);
   if (options_.fold_transpose_into_matmul)
     pipeline.AddStage<FoldTransposeIntoMatMul>(ctx, ctx_ext);
-  if (options_.hoist_common_factor_out_of_aggregation && can_use_shapes)
+  if (is_aggressive && options_.hoist_common_factor_out_of_aggregation &&
+      can_use_shapes)
     pipeline.AddStage<HoistCommonFactorOutOfAggregation>(ctx, ctx_ext);
   if (options_.minimize_broadcasts && can_use_shapes)
     pipeline.AddStage<MinimizeBroadcasts>(ctx, ctx_ext);

@@ -423,14 +423,14 @@ Value RecusivelyMaterializeTargetRankSpecializationCases(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
     const SmallVector<Value, 8> &shapes, Value max_rank,
     int64_t min_target_rank, int64_t max_target_rank) {
-  Value min_target_rank_predicate =
-      b.create<CmpIOp>(loc, CmpIPredicate::eq, max_rank,
+  Value condition =
+      b.create<CmpIOp>(loc, CmpIPredicate::ule, max_rank,
                        b.create<ConstantIndexOp>(loc, min_target_rank));
 
   // If only a unique target rank is left, we can lower to an assert instead
   // of the usual if operation.
   if (min_target_rank == max_target_rank) {
-    b.create<AssertOp>(loc, min_target_rank_predicate,
+    b.create<AssertOp>(loc, condition,
                        "Input for dynamic binary or n-ary op lowering was of "
                        "a rank greater than " +
                            std::to_string(max_target_rank));
@@ -439,9 +439,8 @@ Value RecusivelyMaterializeTargetRankSpecializationCases(
   }
 
   // Materialize IR for the smallest considered target rank.
-  auto if_op =
-      b.create<scf::IfOp>(loc, op->getResultTypes(), min_target_rank_predicate,
-                          /*withElseRegion=*/true);
+  auto if_op = b.create<scf::IfOp>(loc, op->getResultTypes(), condition,
+                                   /*withElseRegion=*/true);
   auto then_builder = if_op.getThenBodyBuilder();
   then_builder.create<scf::YieldOp>(
       loc, MaterializeTargetRankSpecializationCase(then_builder, loc, op,

@@ -503,6 +503,7 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.where_v2, ragged_where_op.where_v2, ['condition', 'x', 'y']),
     (data_flow_ops.dynamic_partition, _ragged_dynamic_partition,
      ['data', 'partitions']),
+    (math_ops.matmul, ragged_math_ops.matmul, ['a', 'b']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,
      ['data', 'segment_ids']),
     (math_ops.unsorted_segment_prod, ragged_math_ops.segment_prod,

@@ -1044,13 +1044,6 @@ PjRtStreamExecutorBuffer::~PjRtStreamExecutorBuffer() {
   }
 }
 
-int64 PjRtStreamExecutorBuffer::OnDeviceSizeInBytes() const {
-  return client_->client()
-      ->backend()
-      .transfer_manager()
-      ->GetByteSizeRequirement(on_device_shape_);
-}
-
 void PjRtStreamExecutorBuffer::WaitForOutstandingUsageHolds() {
   auto not_in_usage_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return holds_[ScopedHold::kUsage] == 0;
