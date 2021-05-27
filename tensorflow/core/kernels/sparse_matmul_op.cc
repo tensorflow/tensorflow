@@ -1039,6 +1039,10 @@ class SparseMatMulOp : public OpKernel {
     if (transpose_b) {
       // TODO(agarwal): avoid transposing the matrix here and directly handle
       // transpose in CreateDenseSlices.
+      OP_REQUIRES(ctx, right->dim_size(0) != 0,
+                  errors::InvalidArgument("b has an entry 0 in it's shape."));
+      OP_REQUIRES(ctx, right->dim_size(1) != 0,
+                  errors::InvalidArgument("b has an entry 0 in it's shape."));
       right_tr.reset(
           new Tensor(right->dtype(),
                      TensorShape({right->dim_size(1), right->dim_size(0)})));
