@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -125,13 +127,23 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
 
 // TODO(hanbinyoon): Pass in ExecutionContext at construction time when TF/XLA
 // can depend on TFRT in OSS.
-static const tfrt::ExecutionContext* bef_thunk_exec_ctx = nullptr;
-void SetExecutionContext(const tfrt::ExecutionContext* exec_ctx) {
-  bef_thunk_exec_ctx = exec_ctx;
-}
-static StatusOr<const tfrt::ExecutionContext*> GetExecutionContext() {
-  if (bef_thunk_exec_ctx != nullptr) return bef_thunk_exec_ctx;
-  return FailedPrecondition("BefThunk ExecutionContext has not been set");
+static tfrt::ExecutionContext& GetExecutionContext() {
+  static auto* runtime = tensorflow::tfrt_stub::Runtime::Create().release();
+  static tfrt::ExecutionContext* exec_ctx = [&] {
+    // Create request context and prepare deadline tracker.
+    tfrt::RequestContextBuilder request_context_builder(
+        runtime->core_runtime()->GetHostContext(),
+        /*resource_context=*/nullptr);
+    tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
+    DCHECK(
+        runtime->work_queue()
+            ->InitializeRequest(&request_context_builder, &intra_op_threadpool)
+            .ok());
+    auto req_ctx = std::move(request_context_builder).build();
+    DCHECK(req_ctx);
+    return new tfrt::ExecutionContext(std::move(*req_ctx));
+  }();
+  return *exec_ctx;
 }
 
 StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
@@ -142,8 +154,7 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
   auto module = CreateModule(op);
   TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef_buffer, ConvertToBef(*module));
 
-  TF_ASSIGN_OR_RETURN(const auto* exec_ctx, GetExecutionContext());
-  tfrt::HostContext* host = exec_ctx->host();
+  tfrt::HostContext* host = GetExecutionContext().host();
   auto bef_file = tfrt::BEFFile::Open(bef_buffer, host->GetKernelRegistry(),
                                       host->diag_handler(), host->allocator());
   if (!bef_file)
@@ -195,13 +206,11 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
                                         "' function.");
   }
 
-  TF_ASSIGN_OR_RETURN(const auto* exec_ctx, GetExecutionContext());
-
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain =
-      tfrt::GetReadyChain(exec_ctx->host());
+      tfrt::GetReadyChain(GetExecutionContext().host());
   args.push_back(chain.GetAsyncValue());
   tfrt::gpu::BorrowedGpuStream stream = CreateGpuStream(params);
   args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
@@ -225,10 +234,10 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
     return tensorflow::errors::Internal("Unexpected result count.");
 
   // Execute the function.
-  function->Execute(*exec_ctx, args, {result});
+  function->Execute(GetExecutionContext(), args, {result});
 
   // Wait for async execution to complete.
-  tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
+  tfrt::Await(GetExecutionContext(), llvm::makeArrayRef(result));
 
   // Report error if any.
   if (auto* error = result->GetErrorIfPresent())
@@ -243,8 +252,6 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
 namespace xla {
 
 bool gpu::IsBefThunkEnabled() { return false; }
-
-void gpu::SetExecutionContext(const tfrt::ExecutionContext*) {}
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefThunk(
     Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,

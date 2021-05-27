@@ -93,28 +93,6 @@ tf_cc_test(
     ],
 )
 
-# Target that injects a tfrt::ExecutionContext to execute BefThunks.
-cc_library(
-    name = "tfrt_exec_ctx_injector",
-    testonly = True,
-    srcs = ["tfrt_exec_ctx_injector.cc"],
-    deps = [
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
-        # copybara:uncomment_begin(target not open-sourced yet)
-        # "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
-        # copybara:uncomment_end
-        "@tf_runtime//:basic_kernels_alwayslink",
-        "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
-        "@com_google_googletest//:gtest",
-    ] + if_cuda_is_configured([
-        # copybara:uncomment_begin(breaks bazel query)
-        # "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-        # copybara:uncomment_end
-    ]),
-    alwayslink = True,
-)
-
 tf_cc_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
@@ -124,12 +102,7 @@ tf_cc_test(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ] + select({
-        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
-            ":tfrt_exec_ctx_injector",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 tf_cc_test(
