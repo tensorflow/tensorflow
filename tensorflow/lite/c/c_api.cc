@@ -275,8 +275,16 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
                                      error_reporter);
 
   std::unique_ptr<tflite::Interpreter> interpreter;
-  if (builder(&interpreter) != kTfLiteOk) {
-    return nullptr;
+  if (optional_options && optional_options->num_threads !=
+      TfLiteInterpreterOptions::kDefaultNumThreads) {
+    if (builder(&interpreter, optional_options->num_threads) !=
+        kTfLiteOk) {
+      return nullptr;
+    }
+  } else {
+    if (builder(&interpreter) != kTfLiteOk) {
+      return nullptr;
+    }
   }
 
   if (optional_options) {
