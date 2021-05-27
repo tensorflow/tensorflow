@@ -57,7 +57,7 @@ try:
   try:
     ModuleNotFoundError
   except NameError:
-    ModuleNotFoundError = ImportError
+    ModuleNotFoundError = ImportError  # pylint: disable=redefined-builtin
 
   # pylint: disable=wildcard-import,g-import-not-at-top,line-too-long,undefined-variable
   try:

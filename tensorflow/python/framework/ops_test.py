@@ -447,6 +447,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
   def testBitwiseNotNumeric(self):
     x = constant_op.constant([0, dtypes.int32.min, 1])
 
+    # pylint: disable=invalid-unary-operand-type
     y = ~x
 
     self.assertAllEqual(y, [-1, dtypes.int32.max, -2])
@@ -455,6 +456,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
   def testBitwiseNotBool(self):
     x = constant_op.constant([False, True])
 
+    # pylint: disable=invalid-unary-operand-type
     y = ~x
 
     self.assertAllEqual(y, [True, False])
@@ -466,6 +468,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     else:
       expected_errtype = TypeError
 
+    # pylint: disable=invalid-unary-operand-type
     with self.assertRaises(expected_errtype):
       _ = ~constant_op.constant("a")
 

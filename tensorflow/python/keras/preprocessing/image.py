@@ -302,7 +302,7 @@ class Iterator(image.Iterator, data_utils.Sequence):
 
 
 @keras_export('keras.preprocessing.image.DirectoryIterator')
-class DirectoryIterator(image.DirectoryIterator, Iterator):
+class DirectoryIterator(image.DirectoryIterator, Iterator):  # pylint: disable=inconsistent-mro
   """Iterator capable of reading images from a directory on disk.
 
   Args:
@@ -456,7 +456,7 @@ class NumpyArrayIterator(image.NumpyArrayIterator, Iterator):
         **kwargs)
 
 
-class DataFrameIterator(image.DataFrameIterator, Iterator):
+class DataFrameIterator(image.DataFrameIterator, Iterator):  # pylint: disable=inconsistent-mro
   """Iterator capable of reading images from a directory on disk as a dataframe.
 
   Args:
