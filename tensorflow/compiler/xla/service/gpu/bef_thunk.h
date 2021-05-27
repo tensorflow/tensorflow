@@ -21,11 +21,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/core/platform/statusor.h"
 
+namespace tfrt {
+class ExecutionContext;
+}
+
 namespace xla {
 namespace gpu {
 
 // Return whether --//...:enable_bef_thunk was specified on the command line.
 bool IsBefThunkEnabled();
+
+// Sets the context to use when executing BEF thunks.
+void SetExecutionContext(const tfrt::ExecutionContext* exec_ctx);
 
 // Creates a Thunk that uses TFRT BEF execution to perform the work of various
 // Thunk types. A BefThunk is not restricted to a particular op function, unlike
