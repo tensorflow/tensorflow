@@ -106,7 +106,19 @@ Status RunGpuConvForwardActivation(GpuConvParams params,
       .set_width(1)
       .set_feature_map_count(
           params.config.output_descriptor.feature_map_count())
-      .set_layout(params.config.output_descriptor.layout());
+      .set_layout([&] {
+        // Normalize NCHW_VECT_C to NCHW for layout of `bias`, even though it's
+        // actually the same (because `bias` only has one dimension):  cudnn
+        // does not accept NCHW_VECT_C for `bias`.
+        DataLayout layout = params.config.output_descriptor.layout();
+        switch (layout) {
+          case DataLayout::kBatchDepthYX4:
+          case DataLayout::kBatchDepthYX32:
+            return DataLayout::kBatchDepthYX;
+          default:
+            return layout;
+        }
+      }());
 
   se::DeviceMemory<OutputType> side_input(params.fusion->side_input_buf);
   // If there is no side input, use output as the side input.
@@ -253,6 +265,28 @@ Status RunGpuConvImpl(const GpuConvParams& params,
   return Status::OK();
 }
 
+int64 GetVectCSize(DataLayout layout) {
+  switch (layout) {
+    case DataLayout::kBatchDepthYX4:
+      return 4;
+    case DataLayout::kBatchDepthYX32:
+      return 32;
+    default:
+      return 1;
+  }
+}
+
+int64 GetVectCSize(FilterLayout layout) {
+  switch (layout) {
+    case FilterLayout::kOutputInputYX4:
+      return 4;
+    case FilterLayout::kOutputInputYX32:
+      return 32;
+    default:
+      return 1;
+  }
+}
+
 }  // anonymous namespace
 
 StatusOr<GpuConvConfig> GetGpuConvConfig(
@@ -367,14 +401,14 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   const Shape& output_shape = config.output_shape;
 
   TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
-                      XlaConvLayoutsToStreamExecutorLayouts(
-                          dnums, input_shape.layout(), filter_shape.layout(),
-                          output_shape.layout()));
+                      XlaConvShapesToStreamExecutorLayouts(
+                          dnums, input_shape, filter_shape, output_shape));
 
   BatchDescriptor& input_descriptor = config.input_descriptor;
   input_descriptor = BatchDescriptor(effective_num_dimensions);
   input_descriptor.set_layout(input_dl)
       .set_feature_map_count(
+          GetVectCSize(input_dl) *
           input_shape.dimensions(dnums.input_feature_dimension()))
       .set_count(input_shape.dimensions(dnums.input_batch_dimension()));
   for (int dim = 0; dim < num_dimensions; ++dim) {
@@ -388,6 +422,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   filter_descriptor = FilterDescriptor(effective_num_dimensions);
   filter_descriptor.set_layout(filter_dl)
       .set_input_feature_map_count(
+          GetVectCSize(filter_dl) *
           filter_shape.dimensions(dnums.kernel_input_feature_dimension()))
       .set_output_feature_map_count(
           filter_shape.dimensions(dnums.kernel_output_feature_dimension()));
@@ -417,6 +452,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   output_descriptor = BatchDescriptor(effective_num_dimensions);
   output_descriptor.set_layout(output_dl)
       .set_feature_map_count(
+          GetVectCSize(output_dl) *
           output_shape.dimensions(dnums.output_feature_dimension()))
       .set_count(output_shape.dimensions(dnums.output_batch_dimension()));
   for (int dim = 0; dim < num_dimensions; ++dim) {

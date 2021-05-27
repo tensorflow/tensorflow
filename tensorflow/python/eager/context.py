@@ -143,12 +143,11 @@ class FunctionCallOptions(object):
       executor_type: (optional) name of the executor to be used to execute the
         eager function. If None or an empty string, the default Tensorflow
         executor will be used.
-      config_proto: (optional) a `config_pb2.ConfigProto` proto or
-        a serialized string of that proto.
-        The config used by Grappler when optimizing the function graph.
-        Each concrete function is optimized the first time is called. Changing
-        config_proto after the first call has no effect.
-        If config_proto is None, an empty RewriterConfig will be used.
+      config_proto: (optional) a `config_pb2.ConfigProto` proto or a serialized
+        string of that proto. The config used by Grappler when optimizing the
+        function graph. Each concrete function is optimized the first time is
+        called. Changing config_proto after the first call has no effect. If
+        config_proto is None, an empty RewriterConfig will be used.
     """
     self.config_proto_serialized = config_proto
     self.executor_type = executor_type
@@ -211,8 +210,8 @@ class _TensorCaches(threading.local):
 
 
 ContextSwitch = collections.namedtuple(
-    "ContextSwitch", ["is_building_function", "enter_context_fn",
-                      "device_stack"])
+    "ContextSwitch",
+    ["is_building_function", "enter_context_fn", "device_stack"])
 
 
 # `_ContextSwitchStack` is a `threading.local` to match the semantics of
@@ -229,8 +228,10 @@ class _ContextSwitchStack(threading.local):
       # across threads, since (1) `enable_eager_execution` modifies a
       # process-level flag (`default_execution_mode`) and (2) `__init__` is
       # called each time a threading.local object is used in a separate thread.
-      self.push(is_building_function=False, enter_context_fn=eager_mode,
-                device_stack=None)
+      self.push(
+          is_building_function=False,
+          enter_context_fn=eager_mode,
+          device_stack=None)
 
   def push(self, is_building_function, enter_context_fn, device_stack):
     """Push metadata about a context switch onto the stack.
@@ -243,10 +244,10 @@ class _ContextSwitchStack(threading.local):
       is_building_function: (bool.) Whether the context is building a function.
       enter_context_fn: (function.) A callable that executes the context switch.
         For example, `graph.as_default` or `eager_mode`.
-      device_stack: If applicable, the device function stack for this
-        graph. When breaking out of graphs in init_scope, the innermost nonempty
-        device stack is used. Eager contexts put `None` here and the value is
-        never used.
+      device_stack: If applicable, the device function stack for this graph.
+        When breaking out of graphs in init_scope, the innermost nonempty device
+        stack is used. Eager contexts put `None` here and the value is never
+        used.
     """
 
     self.stack.append(
@@ -381,18 +382,17 @@ class Context(object):
         options for the Context. Note that a lot of these options may be
         currently unimplemented or irrelevant when eager execution is enabled.
       device_policy: (Optional.) What policy to use when trying to run an
-        operation on a device with inputs which are not on that device.
-        When set to None, an appropriate value will be picked automatically.
-        The value picked may change between TensorFlow releases.
-
-        Defaults to DEVICE_PLACEMENT_SILENT.
+        operation on a device with inputs which are not on that device. When set
+        to None, an appropriate value will be picked automatically. The value
+        picked may change between TensorFlow releases.  Defaults to
+        DEVICE_PLACEMENT_SILENT.
         Valid values:
-        - DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is
-          not correct.
-        - DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
-          right device but raises a warning.
-        - DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
-          hide performance problems.
+        - DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
+          correct.
+        - DEVICE_PLACEMENT_WARN: copies the tensors which are not on the right
+          device but raises a warning.
+        - DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might hide
+          performance problems.
         - DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
           raising errors on the other ones.
       execution_mode: (Optional.) Policy controlling how operations dispatched
@@ -401,13 +401,13 @@ class Context(object):
         releases.
         Valid values:
         - SYNC: executes each operation synchronously.
-        - ASYNC: executes each operation asynchronously. These
-          operations may return "non-ready" handles.
-      server_def: (Optional.) A tensorflow::ServerDef proto.
-        Enables execution on remote devices. GrpcServers need to be started by
-        creating an identical server_def to this, and setting the appropriate
-        task_indexes, so that the servers can communicate. It will then be
-        possible to execute operations on remote devices.
+        - ASYNC: executes each operation asynchronously. These operations may
+          return "non-ready" handles.
+      server_def: (Optional.) A tensorflow::ServerDef proto. Enables execution
+        on remote devices. GrpcServers need to be started by creating an
+        identical server_def to this, and setting the appropriate task_indexes,
+        so that the servers can communicate. It will then be possible to execute
+        operations on remote devices.
 
     Raises:
      ValueError: If execution_mode is not valid.
@@ -434,8 +434,8 @@ class Context(object):
     self._device_policy = device_policy
     self._mirroring_policy = None
     if execution_mode not in (None, SYNC, ASYNC):
-      raise ValueError(
-          "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
+      raise ValueError("execution_mode should be None/SYNC/ASYNC. Got %s" %
+                       execution_mode)
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
@@ -466,6 +466,7 @@ class Context(object):
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
+
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -585,13 +586,13 @@ class Context(object):
     to a tensor on the remote device, it will raise an error.
 
     Args:
-      server_def: A tensorflow::ServerDef proto.
-        Enables execution on remote devices.
-      keep_alive_secs: Num. seconds after which the remote end will hang up.
-        As long as the client is still alive, the server state for the context
-        will be kept alive. If the client is killed (or there is some failure),
-        the server will clean up its context keep_alive_secs after the final RPC
-        it receives.
+      server_def: A tensorflow::ServerDef proto. Enables execution on remote
+        devices.
+      keep_alive_secs: Num. seconds after which the remote end will hang up. As
+        long as the client is still alive, the server state for the context will
+        be kept alive. If the client is killed (or there is some failure), the
+        server will clean up its context keep_alive_secs after the final RPC it
+        receives.
 
     Raises:
       ValueError: if server_def is None.
@@ -691,8 +692,7 @@ class Context(object):
       raise ValueError("Context is not initialized.")
 
   def clear_kernel_cache(self):
-    """Clear kernel cache and reset all stateful kernels.
-    """
+    """Clear kernel cache and reset all stateful kernels."""
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
 
@@ -922,8 +922,8 @@ class Context(object):
   def execution_mode(self, mode):
     """Sets execution mode for current thread."""
     if mode not in (None, SYNC, ASYNC):
-      raise ValueError(
-          "Execution mode should be None/SYNC/ASYNC. Got %s" % mode)
+      raise ValueError("Execution mode should be None/SYNC/ASYNC. Got %s" %
+                       mode)
 
     if mode is None:
       mode = SYNC
@@ -999,8 +999,7 @@ class Context(object):
       if toggle is None:
         return
 
-      setattr(config.graph_options.rewrite_options,
-              option,
+      setattr(config.graph_options.rewrite_options, option,
               (rewriter_config_pb2.RewriterConfig.ON
                if toggle else rewriter_config_pb2.RewriterConfig.OFF))
 
@@ -1009,9 +1008,7 @@ class Context(object):
       if toggle is None:
         return
 
-      setattr(config.graph_options.rewrite_options,
-              option,
-              toggle)
+      setattr(config.graph_options.rewrite_options, option, toggle)
 
     rewriter_toggle("layout_optimizer")
     rewriter_toggle("constant_folding")
@@ -1246,10 +1243,9 @@ class Context(object):
     the order in which they are added.
 
     Args:
-      callback: a callable of the signature
-        `f(op_type, inputs, attrs, outputs, op_name=None, graph=None)`.
-        See doc strings in `op_callbacks.py` for details on the function
-        signature and its semantics.
+      callback: a callable of the signature `f(op_type, inputs, attrs, outputs,
+        op_name=None, graph=None)`. See doc strings in `op_callbacks.py` for
+        details on the function signature and its semantics.
     """
     if callback not in self._thread_local_data.op_callbacks:
       self._thread_local_data.op_callbacks.append(callback)
@@ -1264,9 +1260,8 @@ class Context(object):
       KeyError: If `callback` is not already registered.
     """
     if callback not in self._thread_local_data.op_callbacks:
-      raise KeyError(
-          "The specified op callback has not been registered, "
-          "and hence cannot be removed.")
+      raise KeyError("The specified op callback has not been registered, "
+                     "and hence cannot be removed.")
     del self._thread_local_data.op_callbacks[
         self._thread_local_data.op_callbacks.index(callback)]
 
@@ -1297,8 +1292,9 @@ class Context(object):
 
       devs = pywrap_tfe.TF_ListPhysicalDevices()
       self._physical_devices = [
-          PhysicalDevice(name=d.decode(),
-                         device_type=d.decode().split(":")[1]) for d in devs]
+          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
+          for d in devs
+      ]
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
@@ -1469,10 +1465,11 @@ class Context(object):
     self.ensure_initialized()
     return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
 
-  # TODO(reedwm): Remove this function
-  def get_total_memory_usage(self, dev):
-    """Returns total memory usage in bytes for the current device."""
-    return self.get_memory_info(dev)["current"]
+  def reset_memory_stats(self, dev):
+    """Resets the tracked memory stats for the device."""
+    self._initialize_physical_devices()
+    self.ensure_initialized()
+    pywrap_tfe.TFE_ResetMemoryStats(self._context_handle, dev)
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
@@ -1836,6 +1833,8 @@ class _EagerDeviceContext(object):
     self._ctx = ctx
     self._stack = []
 
+  # TODO(b/189233748): Consolidate the device string parsing logic with
+  # tensorflow/core/util/device_name_utils.cc.
   def __enter__(self):
     ctx = self._ctx
     old_device_name = ctx.device_name
@@ -1874,8 +1873,7 @@ class _EagerDeviceContext(object):
     ctx = self._ctx
     old_device_name, old_device_spec, new_device_spec = self._stack[-1]
     if ctx.device_spec is not new_device_spec:
-      raise RuntimeError(
-          "Exiting device scope without proper scope nesting")
+      raise RuntimeError("Exiting device scope without proper scope nesting")
     del self._stack[-1]
     ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
@@ -2137,8 +2135,8 @@ def device(name):
   operation runs on GPU 0.
 
   Args:
-    name: Name of the device (see context().devices()), or None to
-      perform automatic placement.
+    name: Name of the device (see context().devices()), or None to perform
+      automatic placement.
 
   Returns:
     Context manager for setting the device.
@@ -2389,6 +2387,7 @@ def collect_graphs(optimized=True):
 
   Args:
     optimized: whether to collect optimized graphs or non-optimized graphs
+
   Yields:
     A list of GraphDefs, populated when the context manager exits.
   """

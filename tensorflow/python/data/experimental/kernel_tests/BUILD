@@ -170,7 +170,7 @@ tf_py_test(
 
 tf_py_test(
     name = "directed_interleave_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["directed_interleave_dataset_test.py"],
     shard_count = 24,
     deps = [
@@ -195,6 +195,7 @@ tf_py_test(
     name = "group_by_reducer_test",
     size = "small",
     srcs = ["group_by_reducer_test.py"],
+    shard_count = 12,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -519,9 +520,9 @@ tf_py_test(
 
 tf_py_test(
     name = "rejection_resample_test",
-    size = "small",
+    size = "medium",
     srcs = ["rejection_resample_test.py"],
-    shard_count = 5,
+    shard_count = 10,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",

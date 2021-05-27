@@ -85,6 +85,11 @@ class GPUProcessState {
       const GPUOptions& options, TfDeviceId tf_device_id, size_t total_bytes,
       const std::vector<TfDeviceId>& peer_gpu_ids);
 
+  Allocator* GetGPUAllocator(TfDeviceId tf_device_id) {
+    return GetGPUAllocator(/*options=*/{}, tf_device_id, /*total_bytes=*/0,
+                           /*peer_gpu_ids=*/{});
+  }
+
   int NumGPUAllocators() {
     mutex_lock l(mu_);
     return gpu_allocators_.size();

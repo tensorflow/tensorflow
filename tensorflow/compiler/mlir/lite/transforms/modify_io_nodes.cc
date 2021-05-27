@@ -135,7 +135,11 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
         quantize_op.erase();
       }
     } else {
+      // `arg` has multiple uses or the user isn't a quantiz op (so we couldn't
+      // rewrite it to a different type. Make a copy of the `arg` and replace
+      // its use.
       new_arg = block.addArgument(arg_type);
+      arg.replaceAllUsesWith(new_arg);
     }
     block.eraseArgument(0);
   }

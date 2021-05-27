@@ -1,4 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
@@ -120,7 +120,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -233,6 +233,7 @@ cc_library(
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
+        "//tensorflow/lite/tools/delegates:delegate_provider_lib",
     ],
 )
 
@@ -282,7 +283,7 @@ cc_test(
         ":eigen_support",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -397,7 +398,7 @@ cc_test(
     deps = [
         ":cpu_backend_context",
         ":cpu_backend_threadpool",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -447,7 +448,7 @@ cc_test(
     deps = [
         ":cpu_backend_context",
         ":cpu_backend_gemm",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@ruy//ruy:matrix",
         # ruy:reference_mul provides the reference implementation
         # that this test compares against.
@@ -496,7 +497,7 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -507,7 +508,7 @@ cc_test(
     deps = [
         ":test_util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -774,9 +775,12 @@ cc_library(
 cc_library(
     name = "custom_ops",
     srcs = [
+        "atan2.cc",
+        "irfft2d.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
         "random_uniform.cc",
+        "sign.cc",
         "unidirectional_sequence_gru.cc",
     ],
     hdrs = ["custom_ops_register.h"],
@@ -789,6 +793,8 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -1469,6 +1475,20 @@ cc_test(
 )
 
 cc_test(
+    name = "atan2_test",
+    size = "small",
+    srcs = ["atan2_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "multinomial_test",
     size = "small",
     srcs = ["multinomial_test.cc"],
@@ -1515,6 +1535,20 @@ cc_test(
     name = "random_uniform_test",
     size = "small",
     srcs = ["random_uniform_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "sign_test",
+    size = "small",
+    srcs = ["sign_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",
@@ -2315,6 +2349,22 @@ cc_test(
 )
 
 cc_test(
+    name = "irfft2d_test",
+    size = "small",
+    srcs = ["irfft2d_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "non_max_suppression_test",
     size = "small",
     srcs = ["non_max_suppression_test.cc"],
@@ -2376,7 +2426,7 @@ cc_test(
         ":subgraph_test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2524,8 +2574,14 @@ cc_test(
         ":custom_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})
+
+# Note this is created mainly for validating external delegates in OSS.
+tflite_combine_cc_tests(
+    name = "combined_all_kernel_tests",
+    deps_conditions = [":test_main"],
+)

@@ -122,8 +122,10 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
     c += "  FLT4 r2 = v2;\n";
     c += "  FLT4 r3 = v3;\n";
   }
-  if (conv_weights_desc.layout == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4 ||
-      conv_weights_desc.layout == WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
+  if (conv_weights_desc.layout ==
+          WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
+      conv_weights_desc.layout ==
+          WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
     // Writing to 4X Textures 2D
     AddDstTensor("dst_tensor0", op_def.dst_tensors[0]);
     AddDstTensor("dst_tensor1", op_def.dst_tensors[1]);
@@ -150,8 +152,10 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
           "((d_index * args.src_tensor.Slices() + I) * "
           "args.src_tensor.Height() "
           "+ H) * args.src_tensor.Width() + W";
-    } else if (conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4 ||
-               conv_weights_desc.layout == WeightsLayout::kOHWIOGroupO4I4) {
+    } else if (conv_weights_desc.layout ==
+                   WeightsLayout::kOSpatialIOGroupI4O4 ||
+               conv_weights_desc.layout ==
+                   WeightsLayout::kOSpatialIOGroupO4I4) {
       index =
           "((d_index * args.src_tensor.Height() + H) * args.src_tensor.Width() "
           "+ "

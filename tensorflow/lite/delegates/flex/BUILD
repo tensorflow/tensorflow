@@ -28,9 +28,32 @@ cc_library(
     hdrs = ["buffer_map.h"],
     copts = tf_opts_nortti_if_lite_protos(),
     deps = [
-        ":util",
+        ":buffer_map_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/c:c_api_internal",
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
+cc_library(
+    name = "buffer_map_util",
+    srcs = ["buffer_map_util.cc"],
+    hdrs = ["buffer_map_util.h"],
+    copts = tf_opts_nortti_if_lite_protos(),
+    deps = [
+        ":util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:string_util",
     ] + select({
         "//tensorflow:android": [
@@ -43,6 +66,7 @@ cc_library(
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:status",
         ],
     }),
 )
@@ -57,7 +81,7 @@ tf_cc_test(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -148,7 +172,7 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -202,7 +226,7 @@ tf_cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -234,7 +258,7 @@ tf_cc_test(
         ":delegate",
         ":delegate_data",
         ":test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -282,7 +306,7 @@ tf_cc_test(
         ":util",
         "//tensorflow/lite:string",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -319,7 +343,7 @@ tf_cc_test(
     deps = [
         ":delegate",
         ":allowlisted_flex_ops_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -350,6 +374,7 @@ cc_library(
     srcs = ["tflite_subgraph_execute.cc"],
     copts = tf_opts_nortti_if_android(),
     deps = [
+        ":buffer_map_util",
         ":subgraph_resource",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:string_util",

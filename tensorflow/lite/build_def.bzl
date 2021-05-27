@@ -10,6 +10,7 @@ load(
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
@@ -140,7 +141,8 @@ def tflite_jni_binary(
         testonly = 0,
         deps = [],
         tags = [],
-        srcs = []):
+        srcs = [],
+        visibility = None):  # 'None' means use the default visibility.
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
         clean_dep("//tensorflow:macos"): [
@@ -163,6 +165,7 @@ def tflite_jni_binary(
         tags = tags,
         linkopts = linkopts,
         testonly = testonly,
+        visibility = visibility,
     )
 
 def tflite_cc_shared_object(
@@ -976,3 +979,63 @@ def tflite_custom_c_library(
         ],
         **kwargs
     )
+
+def tflite_combine_cc_tests(
+        name,
+        deps_conditions,
+        extra_cc_test_tags = [],
+        extra_build_test_tags = [],
+        **kwargs):
+    """Combine all certain cc_tests into a single cc_test and a build_test.
+
+    Args:
+      name: the name of the combined cc_test.
+      deps_conditions: the list of deps that those cc_tests need to have in
+          order to be combined.
+      extra_cc_test_tags: the list of extra tags appended to the created
+          combined cc_test.
+      extra_build_test_tags: the list of extra tags appended to the created
+          corresponding build_test for the combined cc_test.
+      **kwargs: kwargs to pass to the cc_test rule of the test suite.
+    """
+    combined_test_srcs = {}
+    combined_test_deps = {}
+    for r in native.existing_rules().values():
+        # We only include cc_test.
+        if not r["kind"] == "cc_test":
+            continue
+
+        # Tests with data, args or special build option are not counted.
+        if r["data"] or r["args"] or r["copts"] or r["defines"] or \
+           r["includes"] or r["linkopts"] or r["additional_linker_inputs"]:
+            continue
+
+        dep_attr = r["deps"]
+        if type(dep_attr) != type(()) and type(dep_attr) != type([]):
+            # Attributes based on select() is not supported for simplicity.
+            continue
+
+        # The test has to depend on :test_main
+        if not any([v in deps_conditions for v in dep_attr]):
+            continue
+
+        combined_test_srcs.update({s: True for s in r["srcs"]})
+        combined_test_deps.update({d: True for d in r["deps"]})
+
+    if combined_test_srcs:
+        native.cc_test(
+            name = name,
+            size = "large",
+            srcs = list(combined_test_srcs),
+            tags = ["manual", "notap"] + extra_cc_test_tags,
+            deps = list(combined_test_deps),
+            **kwargs
+        )
+        build_test(
+            name = "%s_build_test" % name,
+            targets = [":%s" % name],
+            tags = [
+                "manual",
+                "tflite_portable_build_test",
+            ] + extra_build_test_tags,
+        )

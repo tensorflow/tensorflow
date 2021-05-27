@@ -262,7 +262,11 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    ~Iterator() override { input_->Unref(); }
+    ~Iterator() override {
+      if (input_) {
+        input_->Unref();
+      }
+    }
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
@@ -340,7 +344,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    DatasetBase* input_ TF_GUARDED_BY(mu_);
+    DatasetBase* input_ TF_GUARDED_BY(mu_) = nullptr;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };

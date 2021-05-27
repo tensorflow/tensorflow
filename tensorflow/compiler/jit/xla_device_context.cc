@@ -95,7 +95,7 @@ XlaDeviceContext::XlaDeviceContext(
   if (!shape_representation_fn_) {
     shape_representation_fn_ =
         [](const TensorShape& shape, DataType dtype,
-           bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
+           bool use_fast_memory) -> StatusOr<xla::Shape> {
       xla::Shape xla_shape;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
       return xla_shape;

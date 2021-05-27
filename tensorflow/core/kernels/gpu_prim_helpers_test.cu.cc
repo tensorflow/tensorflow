@@ -128,56 +128,6 @@ REGISTER_OP("TestGpuInclusivePrefixSum")
 REGISTER_KERNELS(int32);
 #undef REGISTER_KERNELS
 
-template <typename T, typename Toffset, typename ReduceOp>
-class TestGpuSegmentedReduceKernel : public tensorflow::OpKernel {
- public:
-  explicit TestGpuSegmentedReduceKernel(
-      tensorflow::OpKernelConstruction* context)
-      : OpKernel(context) {}
-
-  void Compute(tensorflow::OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
-    const T* input_data = input.flat<T>().data();
-    const Tensor& segment_offsets = context->input(1);
-    const Toffset* segment_offsets_data =
-        segment_offsets.flat<Toffset>().data();
-    int num_segments = segment_offsets.NumElements() - 1;
-    const Tensor& initial_value_tensor = context->input(2);
-    T initial_value = initial_value_tensor.scalar<T>()();
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({num_segments}), &output));
-    T* output_data = output->flat<T>().data();
-
-    OP_REQUIRES_OK(
-        context,
-        GpuSegmentedReduce(context, num_segments, ReduceOp(), initial_value,
-                           input_data, segment_offsets_data, output_data));
-  }
-
- private:
-  T initial_value_;
-};
-
-REGISTER_OP("TestGpuSegmentedSum")
-    .Input("input: T")
-    .Input("segment_offsets: Toffset")
-    .Input("initial_value: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("Toffset: type");
-#define REGISTER_KERNELS(T, Toffset)           \
-  REGISTER_KERNEL_BUILDER(                     \
-      Name("TestGpuSegmentedSum")              \
-          .Device(tensorflow::DEVICE_GPU)      \
-          .HostMemory("initial_value")         \
-          .TypeConstraint<T>("T")              \
-          .TypeConstraint<Toffset>("Toffset"), \
-      TestGpuSegmentedReduceKernel<T, Toffset, gpuprim::Sum>)
-REGISTER_KERNELS(int32, int32);
-#undef REGISTER_KERNELS
-
 class GpuPrimHelpersTest : public OpsTestBase {
  protected:
   GpuPrimHelpersTest() {
@@ -199,15 +149,6 @@ class GpuPrimHelpersTest : public OpsTestBase {
 
   void MakeInclusivePrefixSum(DataType type) {
     TF_ASSERT_OK(NodeDefBuilder("test_op", "TestGpuInclusivePrefixSum")
-                     .Input(FakeInput(type))
-                     .Finalize(node_def()));
-    TF_ASSERT_OK(InitOp());
-  }
-
-  void MakeSegmentedSum(DataType type, DataType offset_type) {
-    TF_ASSERT_OK(NodeDefBuilder("test_op", "TestGpuSegmentedSum")
-                     .Input(FakeInput(type))
-                     .Input(FakeInput(offset_type))
                      .Input(FakeInput(type))
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
@@ -278,21 +219,6 @@ TEST_F(GpuPrimHelpersTest, GpuInclusivePrefixSum) {
 
   Tensor expected_output(allocator(), DT_INT32, TensorShape({8}));
   test::FillValues<int32>(&expected_output, {4, 6, 12, 19, 20, 23, 23, 28});
-  test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
-}
-
-TEST_F(GpuPrimHelpersTest, GpuSegmentedReduce_Sum) {
-  MakeSegmentedSum(DT_INT32, DT_INT32);
-  // Input.
-  AddInputFromArray<int32>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
-  // Segment IDs.
-  AddInputFromArray<int32>(TensorShape({6}), {1, 3, 4, 4, 8, 10});
-  // Initial value.
-  AddInputFromArray<int32>(TensorShape({}), {0});
-  TF_ASSERT_OK(RunOpKernel());
-
-  Tensor expected_output(allocator(), DT_INT32, TensorShape({5}));
-  test::FillValues<int32>(&expected_output, {3, 3, 0, 22, 17});
   test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
 }
 

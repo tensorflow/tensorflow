@@ -148,7 +148,16 @@ class ShapeInference {
       absl::Span<const Shape* const> operand_shapes);
 
   // Infers the shape of a collective permute operation.
-  static StatusOr<Shape> InferCollectivePermuteShape(const Shape& shape);
+  static StatusOr<Shape> InferCollectivePermuteShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape of a collective permute start operation.
+  static StatusOr<Shape> InferCollectivePermuteStartShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape of a collective permute operation.
+  static StatusOr<Shape> InferCollectivePermuteDoneShape(
+      const Shape& operand_shape);
 
   // Infers the shape produced by applying the given reduction computation
   // shape to the given input operand shape.

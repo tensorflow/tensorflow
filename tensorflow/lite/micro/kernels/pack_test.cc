@@ -45,11 +45,9 @@ void ValidatePackGoldens(TfLiteTensor* tensors, int tensors_size,
   }
 }
 
-void TestPackTwoInputsFloat(const int* input1_dims_data,
-                            const float* input1_data,
-                            const int* input2_dims_data,
-                            const float* input2_data, int axis,
-                            const int* output_dims_data,
+void TestPackTwoInputsFloat(int* input1_dims_data, const float* input1_data,
+                            int* input2_dims_data, const float* input2_data,
+                            int axis, int* output_dims_data,
                             const float* expected_output_data,
                             float* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
@@ -78,12 +76,12 @@ void TestPackTwoInputsFloat(const int* input1_dims_data,
                       1e-5f, output_data);
 }
 
-void TestPackThreeInputsFloat(
-    const int* input1_dims_data, const float* input1_data,
-    const int* input2_dims_data, const float* input2_data,
-    const int* input3_dims_data, const float* input3_data, int axis,
-    const int* output_dims_data, const float* expected_output_data,
-    float* output_data) {
+void TestPackThreeInputsFloat(int* input1_dims_data, const float* input1_data,
+                              int* input2_dims_data, const float* input2_data,
+                              int* input3_dims_data, const float* input3_data,
+                              int axis, int* output_dims_data,
+                              const float* expected_output_data,
+                              float* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* input3_dims = IntArrayFromInts(input3_dims_data);
@@ -112,13 +110,10 @@ void TestPackThreeInputsFloat(
                       1e-5f, output_data);
 }
 
-void TestPackTwoInputsQuantized(const int* input1_dims_data,
-                                const uint8_t* input1_data,
-                                const int* input2_dims_data,
-                                const uint8_t* input2_data, int axis,
-                                const int* output_dims_data,
-                                const uint8_t* expected_output_data,
-                                uint8_t* output_data) {
+void TestPackTwoInputsQuantized(
+    int* input1_dims_data, const uint8_t* input1_data, int* input2_dims_data,
+    const uint8_t* input2_data, int axis, int* output_dims_data,
+    const uint8_t* expected_output_data, uint8_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -149,13 +144,10 @@ void TestPackTwoInputsQuantized(const int* input1_dims_data,
                       1e-5f, output_data);
 }
 
-void TestPackTwoInputsQuantized32(const int* input1_dims_data,
-                                  const int32_t* input1_data,
-                                  const int* input2_dims_data,
-                                  const int32_t* input2_data, int axis,
-                                  const int* output_dims_data,
-                                  const int32_t* expected_output_data,
-                                  int32_t* output_data) {
+void TestPackTwoInputsQuantized32(
+    int* input1_dims_data, const int32_t* input1_data, int* input2_dims_data,
+    const int32_t* input2_data, int axis, int* output_dims_data,
+    const int32_t* expected_output_data, int32_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -188,8 +180,8 @@ void TestPackTwoInputsQuantized32(const int* input1_dims_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(PackFloatThreeInputs) {
-  const int input_shape[] = {1, 2};
-  const int output_shape[] = {2, 3, 2};
+  int input_shape[] = {1, 2};
+  int output_shape[] = {2, 3, 2};
   const float input1_values[] = {1, 4};
   const float input2_values[] = {2, 5};
   const float input3_values[] = {3, 6};
@@ -204,8 +196,8 @@ TF_LITE_MICRO_TEST(PackFloatThreeInputs) {
 }
 
 TF_LITE_MICRO_TEST(PackFloatThreeInputsDifferentAxis) {
-  const int input_shape[] = {1, 2};
-  const int output_shape[] = {2, 2, 3};
+  int input_shape[] = {1, 2};
+  int output_shape[] = {2, 2, 3};
   const float input1_values[] = {1, 4};
   const float input2_values[] = {2, 5};
   const float input3_values[] = {3, 6};
@@ -220,8 +212,8 @@ TF_LITE_MICRO_TEST(PackFloatThreeInputsDifferentAxis) {
 }
 
 TF_LITE_MICRO_TEST(PackFloatThreeInputsNegativeAxis) {
-  const int input_shape[] = {1, 2};
-  const int output_shape[] = {2, 2, 3};
+  int input_shape[] = {1, 2};
+  int output_shape[] = {2, 2, 3};
   const float input1_values[] = {1, 4};
   const float input2_values[] = {2, 5};
   const float input3_values[] = {3, 6};
@@ -236,8 +228,8 @@ TF_LITE_MICRO_TEST(PackFloatThreeInputsNegativeAxis) {
 }
 
 TF_LITE_MICRO_TEST(PackFloatMultilDimensions) {
-  const int input_shape[] = {2, 2, 3};
-  const int output_shape[] = {3, 2, 2, 3};
+  int input_shape[] = {2, 2, 3};
+  int output_shape[] = {3, 2, 2, 3};
   const float input1_values[] = {1, 2, 3, 4, 5, 6};
   const float input2_values[] = {7, 8, 9, 10, 11, 12};
   const float golden[] = {1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12};
@@ -251,8 +243,8 @@ TF_LITE_MICRO_TEST(PackFloatMultilDimensions) {
 }
 
 TF_LITE_MICRO_TEST(PackQuantizedMultilDimensions) {
-  const int input_shape[] = {2, 2, 3};
-  const int output_shape[] = {3, 2, 2, 3};
+  int input_shape[] = {2, 2, 3};
+  int output_shape[] = {3, 2, 2, 3};
   const uint8_t input1_values[] = {1, 2, 3, 4, 5, 6};
   const uint8_t input2_values[] = {7, 8, 9, 10, 11, 12};
   const uint8_t golden[] = {1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12};
@@ -266,8 +258,8 @@ TF_LITE_MICRO_TEST(PackQuantizedMultilDimensions) {
 }
 
 TF_LITE_MICRO_TEST(PackQuantized32MultilDimensions) {
-  const int input_shape[] = {2, 2, 3};
-  const int output_shape[] = {3, 2, 2, 3};
+  int input_shape[] = {2, 2, 3};
+  int output_shape[] = {3, 2, 2, 3};
   const int32_t input1_values[] = {1, 2, 3, 4, 5, 6};
   const int32_t input2_values[] = {7, 8, 9, 10, 11, 12};
   const int32_t golden[] = {1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12};

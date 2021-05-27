@@ -90,10 +90,10 @@ struct NodeCmpByNameResourcesLast {
 };
 
 // Returns the Node* created from the NodeDef in the Graph.
-xla::StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph);
+StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph);
 
 // Build a retval node of given type and index.
-xla::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
+StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
 
 // Returns a textual representation of the names of the nodes in the input.
 template <typename T>

@@ -1174,8 +1174,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       inp, output, calibration_gen = self._getIntegerQuantizeModel()
       sess = session.Session()
 
-    bias_idx = 1 if enable_mlir_converter else 0
-    bias_name = 'Conv2D' if enable_mlir_converter else 'Conv2D_bias'
+    bias_idx = 2 if enable_mlir_converter else 0
+    bias_name = 'Conv2D1' if enable_mlir_converter else 'Conv2D_bias'
 
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
@@ -2803,12 +2803,6 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
     self.assertEqual('Placeholder', input_details[0]['name'])
-
-
-class ImportOpsUtilTest(LiteTest):
-
-  def testGetPotentiallySupportedOps(self):
-    self.assertIsNotNone(lite.get_potentially_supported_ops())
 
 
 class DefaultConverterAttrsTest(LiteTest):

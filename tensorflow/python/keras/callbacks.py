@@ -1456,7 +1456,11 @@ class ModelCheckpoint(Callback):
             self.model.save(filepath, overwrite=True, options=self._options)
 
         self._maybe_remove_file()
-      except IOError as e:
+      except IsADirectoryError as e:  # h5py 3.x
+        raise IOError('Please specify a non-directory filepath for '
+                      'ModelCheckpoint. Filepath used is an existing '
+                      'directory: {}'.format(filepath))
+      except IOError as e:  # h5py 2.x
         # `e.errno` appears to be `None` so checking the content of `e.args[0]`.
         if 'is a directory' in str(e.args[0]).lower():
           raise IOError('Please specify a non-directory filepath for '

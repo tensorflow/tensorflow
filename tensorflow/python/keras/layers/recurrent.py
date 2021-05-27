@@ -1314,6 +1314,9 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
+    if units < 0:
+      raise ValueError(f'Received an invalid value for units, expected '
+                       f'a positive integer, got {units}.')
     # By default use cached variable under v2 mode, see b/143699808.
     if ops.executing_eagerly_outside_functions():
       self._enable_caching_device = kwargs.pop('enable_caching_device', True)
@@ -1752,6 +1755,9 @@ class GRUCell(DropoutRNNCellMixin, Layer):
                recurrent_dropout=0.,
                reset_after=False,
                **kwargs):
+    if units < 0:
+      raise ValueError(f'Received an invalid value for units, expected '
+                       f'a positive integer, got {units}.')
     # By default use cached variable under v2 mode, see b/143699808.
     if ops.executing_eagerly_outside_functions():
       self._enable_caching_device = kwargs.pop('enable_caching_device', True)
@@ -2312,6 +2318,9 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
+    if units < 0:
+      raise ValueError(f'Received an invalid value for units, expected '
+                       f'a positive integer, got {units}.')
     # By default use cached variable under v2 mode, see b/143699808.
     if ops.executing_eagerly_outside_functions():
       self._enable_caching_device = kwargs.pop('enable_caching_device', True)

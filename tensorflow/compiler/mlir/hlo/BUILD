@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
+load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 
 # TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -24,11 +24,13 @@ package_group(
         "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/...",
+        "//third_party/iree/...",
+        "//third_party/mlir_edge/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
-        "//third_party/iree/...",
-        "//third_party/mlir_edge/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
     ],
 )
 
@@ -60,13 +62,16 @@ td_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "MhloPassIncGen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls -name MHLO",
+            [
+                "-gen-pass-decls",
+                "-name=MHLO",
+            ],
             "include/mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc",
         ),
     ],
@@ -77,13 +82,16 @@ gentbl(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "LmhloPassIncGen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls -name LMHLO",
+            [
+                "-gen-pass-decls",
+                "-name=LMHLO",
+            ],
             "include/mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc",
         ),
     ],
@@ -94,76 +102,106 @@ gentbl(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "chlo_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
-        ("-gen-op-decls", "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h.inc"),
-        ("-gen-op-defs", "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"),
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "hlo_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
-        ("-gen-op-decls", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"),
-        ("-gen-op-defs", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"),
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "hlo_ops_base_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
-        ("-gen-op-decls", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h.inc"),
-        ("-gen-op-defs", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.cc.inc"),
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "hlo_ops_base_structs_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-struct-attr-decls", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h.inc"),
-        ("-gen-struct-attr-defs", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.cc.inc"),
+        (
+            ["-gen-struct-attr-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h.inc",
+        ),
+        (
+            ["-gen-struct-attr-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "hlo_ops_base_enums_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-enum-decls", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc"),
-        ("-gen-enum-defs", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc"),
+        (
+            ["-gen-enum-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "hlo_ops_pattern_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "lib/Dialect/mhlo/IR/",
     tbl_outs = [
         (
-            "-gen-rewriters",
+            ["-gen-rewriters"],
             "lib/Dialect/mhlo/IR/hlo_patterns.cc.inc",
         ),
     ],
@@ -176,55 +214,107 @@ gentbl(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "lhlo_ops_structs_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
-        ("-gen-struct-attr-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc"),
-        ("-gen-struct-attr-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc"),
+        (
+            ["-gen-struct-attr-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc",
+        ),
+        (
+            ["-gen-struct-attr-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "lhlo_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
-        ("-gen-op-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"),
-        ("-gen-op-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"),
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "lhlo_gpu_ops_structs_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
-        ("-gen-struct-attr-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc"),
-        ("-gen-struct-attr-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc"),
+        (
+            ["-gen-struct-attr-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc",
+        ),
+        (
+            ["-gen-struct-attr-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "lhlo_gpu_ops_enums_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
-        ("-gen-enum-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.h.inc"),
-        ("-gen-enum-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.cc.inc"),
+        (
+            ["-gen-enum-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_filegroup(
+    name = "hlo_ops_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-dialect-doc"],
+            "g3doc/hlo_ops.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+gentbl_filegroup(
+    name = "lhlo_ops_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-dialect-doc"],
+            "g3doc/lhlo_ops.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -234,6 +324,7 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"],
     includes = ["include"],
     deps = [
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -274,13 +365,19 @@ cc_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "lhlo_gpu_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
-        ("-gen-op-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc"),
-        ("-gen-op-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc"),
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.td",
@@ -288,28 +385,31 @@ gentbl(
 )
 
 #TODO(aminim): revisit the naming and grouping of these rules post-move.
-gentbl(
+gentbl_cc_library(
     name = "canonicalize_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "lib/Dialect/mhlo/IR/",
     tbl_outs = [
-        ("-gen-rewriters", "lib/Dialect/mhlo/IR/mhlo_canonicalize.inc"),
+        (
+            ["-gen-rewriters"],
+            "lib/Dialect/mhlo/IR/mhlo_canonicalize.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/mhlo/IR/mhlo_canonicalize.td",
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "infer_fusibility_op_interface_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-op-interface-decls",
+            ["-gen-op-interface-decls"],
             "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h.inc",
         ),
         (
-            "-gen-op-interface-defs",
+            ["-gen-op-interface-defs"],
             "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.cpp.inc",
         ),
     ],
@@ -409,6 +509,7 @@ cc_library(
         ":infer_fusibility_op_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
@@ -478,6 +579,7 @@ cc_library(
         ":hlo",
         ":hlo_ops_base_enums",
         ":hlo_ops_base_structs",
+        ":hlo_ops_common",
         ":infer_fusibility_op_interface",
         ":lhlo_gpu_ops_enums",
         ":lhlo_gpu_ops_inc_gen",
@@ -689,6 +791,28 @@ cc_library(
 )
 
 cc_library(
+    name = "rank_specialization",
+    srcs = ["lib/Dialect/mhlo/transforms/rank_specialization.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "lhlo_legalize_to_gpu",
     srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_gpu.cc"],
     deps = [
@@ -796,12 +920,15 @@ cc_library(
     alwayslink = 1,
 )
 
-gentbl(
+gentbl_cc_library(
     name = "legalize_to_standard_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "lib/Dialect/mhlo/transforms/",
     tbl_outs = [
-        ("-gen-rewriters", "lib/Dialect/mhlo/transforms/generated_legalize_to_standard.inc"),
+        (
+            ["-gen-rewriters"],
+            "lib/Dialect/mhlo/transforms/generated_legalize_to_standard.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/mhlo/transforms/legalize_to_standard_patterns.td",
@@ -884,12 +1011,15 @@ cc_library(
     alwayslink = 1,
 )
 
-gentbl(
+gentbl_cc_library(
     name = "lower_complex_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "lib/Dialect/mhlo/transforms/",
     tbl_outs = [
-        ("-gen-rewriters", "lib/Dialect/mhlo/transforms/generated_lower_complex.inc"),
+        (
+            ["-gen-rewriters"],
+            "lib/Dialect/mhlo/transforms/generated_lower_complex.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/mhlo/transforms/lower_complex_patterns.td",
@@ -978,13 +1108,13 @@ cc_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "chlo_legalize_to_hlo_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "lib/Dialect/mhlo/transforms/",
     tbl_outs = [
         (
-            "-gen-rewriters",
+            ["-gen-rewriters"],
             "lib/Dialect/mhlo/transforms/generated_chlo_legalize_to_hlo.inc",
         ),
     ],
@@ -1066,6 +1196,7 @@ cc_library(
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
         ":move_up_dynamic_broadcasts_for_fusion",
+        ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",
         ":transform_unranked_hlo",

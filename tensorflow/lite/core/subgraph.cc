@@ -156,42 +156,6 @@ const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
   return tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
 }
 
-// An utility test to detect if the subgraph is abused:
-// 1. Detects if recursion exists in the graph (recursion is not currently
-//    supported.
-// 2. Detects if the interpreter / subgraph is used in multiple subgraphs.
-//    Note: It's clearly documented that the interpreter / subgraph are not
-//    thread-safe. This serves as a check with possible false negatives
-//    unless we switch to atomic boolean flags.
-class SubgraphGuard {
- public:
-  SubgraphGuard(TfLiteContext* context, bool* is_subgraph_in_use)
-      : is_subgraph_in_use_(is_subgraph_in_use) {
-    if (*is_subgraph_in_use_) {
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Subgraph is already in use. Using an interpreter or a subgraph in "
-          "multiple threads is not supported. Recursion in the graph is not "
-          "supported.");
-      status_ = kTfLiteError;
-    } else {
-      *is_subgraph_in_use_ = true;
-    }
-  }
-  ~SubgraphGuard() {
-    // If tht original status was OK, recover the boolean flag.
-    if (status_ == kTfLiteOk) {
-      *is_subgraph_in_use_ = false;
-    }
-  }
-
-  TfLiteStatus status() const { return status_; }
-
- private:
-  TfLiteStatus status_ = kTfLiteOk;
-  bool* is_subgraph_in_use_;
-};
-
 }  // namespace
 
 // A trivial implementation of GraphInfo around the Interpreter.
@@ -705,7 +669,6 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
 
 TfLiteStatus Subgraph::AllocateTensors() {
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "AllocateTensors");
-
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
@@ -728,12 +691,6 @@ TfLiteStatus Subgraph::AllocateTensors() {
     }
     return kTfLiteOk;
   }
-
-  // Note `AllocateTensors` sometimes calls itself recursively above
-  // for delegates. Therefore only the logic below need to be guarded
-  // by `SubgraphGuard`.
-  SubgraphGuard guard(&context_, &is_subgraph_in_use_);
-  TF_LITE_ENSURE_OK(&context_, guard.status());
 
   next_execution_plan_index_to_prepare_ = 0;
   next_execution_plan_index_to_plan_allocation_ = 0;
@@ -808,13 +765,9 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
 
   int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
-  nodes_and_registration_.resize(nodes_and_registration_.size() + 1);
+  nodes_and_registration_.emplace_back();
   auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
-  if (node.inputs) TfLiteIntArrayFree(node.inputs);
-  if (node.outputs) TfLiteIntArrayFree(node.outputs);
-  if (node.intermediates) TfLiteIntArrayFree(node.intermediates);
-  if (node.temporaries) TfLiteIntArrayFree(node.temporaries);
 
   // NOTE, here we are not using move semantics yet, since our internal
   // representation isn't std::vector, but in the future we would like to avoid
@@ -1071,9 +1024,6 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 }
 
 TfLiteStatus Subgraph::Invoke() {
-  SubgraphGuard guard(&context_, &is_subgraph_in_use_);
-  TF_LITE_ENSURE_OK(&context_, guard.status());
-
   if (!consistent_) {
     ReportError("Invoke called on model that is not consistent.");
     return kTfLiteError;
@@ -1520,6 +1470,7 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
     if (reg.builtin_code == kTfLiteBuiltinDequantize) continue;
     for (int i = 0; i < node.inputs->size; ++i) {
       const int original_input_idx = node.inputs->data[i];
+      if (original_input_idx == kTfLiteOptionalTensor) continue;
       if (tensors_[original_input_idx].type == kTfLiteFloat16) {
         node.inputs->data[i] = fp16_to_fp32[original_input_idx];
       }
@@ -1598,44 +1549,8 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     return kTfLiteDelegateError;
   }
 
-  // Restore delegation state if applicable.
-  TF_LITE_ENSURE_STATUS(RedoAllDelegates());
-
-  if (state_ == kStateInvokableAndImmutable) {
-    ReportError(
-        "ModifyGraphWithDelegate is disallowed when graph is immutable.");
-    return kTfLiteApplicationError;
-  }
-
-  if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
-    int last_execution_plan_index_prepared;
-    TF_LITE_ENSURE_OK(
-        &context_, PrepareOpsStartingAt(0, execution_plan_,
-                                        &last_execution_plan_index_prepared));
-    if (has_dynamic_tensors_) {
-      // Make sure that we are in a defined ready state before returning.
-      // Plan and allocate tensors before returning.
-      TF_LITE_ENSURE_OK(&context_, EnsureMemoryAllocations());
-      ReportError(
-          "Attempting to use a delegate that only supports static-sized "
-          "tensors with a graph that has dynamic-sized tensors.");
-      return kTfLiteApplicationError;
-    }
-  }
-
-  const bool was_invokable_before_delegate = state_ == kStateInvokable;
-  if (delegates_applied_.empty()) {
-    // This is the first delegate being applied, so remember original execution
-    // plan.
-    // TODO(b/119623453): Restore execution plan to this state if delegate
-    // application fails.
-    pre_delegation_execution_plan_ = execution_plan_;
-  }
-
-  // TODO(aselle): Consider if it is worth storing pointers to delegates.
-  // Setup additional context interface.
-  SwitchToDelegateContext();
-
+  // Resets delegation & leaves graph in consistent state if delegate status is
+  // not okay.
   auto reset_delegation_if_not_ok = [this](TfLiteStatus status) {
     if (status != kTfLiteOk) {
       TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
@@ -1647,14 +1562,59 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     return kTfLiteOk;
   };
 
-  TfLiteStatus status = delegate->Prepare(&context_, delegate);
+  // STEP 1: Verify & prepare graph for delegation.
+  // ==============================================
 
+  // Restore delegation state if applicable.
+  TF_LITE_ENSURE_STATUS(RedoAllDelegates());
+
+  const bool delegate_supports_dynamic_shapes =
+      delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors;
+  const auto pre_delegation_state = state_;
+
+  if (state_ == kStateInvokableAndImmutable) {
+    // A delegate that doesn't support dynamic shapes was already applied, so
+    // we can assume tensor shapes have been propagated & there are no dynamic
+    // tensors.
+    // Reset the state to force tensor/op reallocation.
+    state_ = kStateUninvokable;
+  } else if (!delegate_supports_dynamic_shapes) {
+    // Check if graph has dynamic tensors by preparing ops.
+    int last_execution_plan_index_prepared;
+    TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
+        0, execution_plan_, &last_execution_plan_index_prepared));
+    if (has_dynamic_tensors_) {
+      TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
+      ReportError(
+          "Attempting to use a delegate that only supports static-sized "
+          "tensors with a graph that has dynamic-sized tensors.");
+      return kTfLiteApplicationError;
+    }
+  }
+
+  if (delegates_applied_.empty()) {
+    // This is the first delegate being applied, so remember original execution
+    // plan.
+    // TODO(b/119623453): Restore execution plan to this state if delegate
+    // application fails.
+    pre_delegation_execution_plan_ = execution_plan_;
+  }
+
+  // STEP 2: Delegate replaces applicable nodes with delegate kernels.
+  // =================================================================
+
+  // Setup additional context interface.
+  SwitchToDelegateContext();
+  TfLiteStatus status = delegate->Prepare(&context_, delegate);
   // Remove additional context info.
   SwitchToKernelContext();
-
   TF_LITE_ENSURE_STATUS(reset_delegation_if_not_ok(status));
 
-  if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
+  // STEP 3: Leave graph in consistent state based on delegate & previous state.
+  // ===========================================================================
+
+  if (!delegate_supports_dynamic_shapes) {
+    // CASE 1: Current delegate does not support dynamic shapes.
     // Reset the state to force tensor/op reallocation.
     state_ = kStateUninvokable;
     TF_LITE_ENSURE_STATUS(
@@ -1662,9 +1622,28 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     // After using a delegate which doesn't support dynamic tensors, make the
     // entire graph immutable.
     state_ = kStateInvokableAndImmutable;
-  } else if (was_invokable_before_delegate) {
-    // If the graph was invokable prior to delegate application, flush
-    // allocation now to leave it in a consistent state.
+  } else if (pre_delegation_state == kStateInvokableAndImmutable) {
+    // CASE 2: Current delegate supports dynamic shapes, but a previous one
+    // does not.
+    // Make sure new delegate didn't mark a tensor as dynamic.
+    int last_execution_plan_index_prepared;
+    TF_LITE_ENSURE_STATUS(reset_delegation_if_not_ok(PrepareOpsStartingAt(
+        0, execution_plan_, &last_execution_plan_index_prepared)));
+    if (has_dynamic_tensors_) {
+      TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
+      ReportError(
+          "Cannot allow dynamic tensors due to previous delegation, resetting "
+          "to original execution plan.");
+      return kTfLiteApplicationError;
+    }
+    // Redo memory allocations & ensure state is set back to original value.
+    TF_LITE_ENSURE_STATUS(
+        reset_delegation_if_not_ok(EnsureMemoryAllocations()));
+    state_ = kStateInvokableAndImmutable;
+  } else if (pre_delegation_state == kStateInvokable) {
+    // CASE 3: Current delegate supports dynamic shapes, and the graph was
+    // previously invokable.
+    // Flush allocation now to leave it in a consistent state.
     TF_LITE_ENSURE_STATUS(
         reset_delegation_if_not_ok(EnsureMemoryAllocations()));
   }

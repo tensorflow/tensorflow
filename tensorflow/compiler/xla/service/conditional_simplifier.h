@@ -29,6 +29,9 @@ class ConditionalSimplifier : public HloModulePass {
  public:
   absl::string_view name() const override { return "simplify-conditional"; }
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  StatusOr<bool> TryRemoveConditional(HloInstruction* conditional);
 };
 
 }  // namespace xla

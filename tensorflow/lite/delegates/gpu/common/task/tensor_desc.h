@@ -65,7 +65,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources() const override;
+  GPUResources GetGPUResources(const GpuInfo& gpu_info) const override;
 
   void Release() override { data.clear(); }
 

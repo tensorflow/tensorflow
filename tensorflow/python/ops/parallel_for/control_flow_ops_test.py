@@ -57,6 +57,7 @@ from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -465,6 +466,117 @@ class NNTest(PForTestCase):
               padding="VALID",
               data_format="NHWC") for inp in [x_i, x_0]
       ]
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_depthwise_conv2d_native(self):
+    x = random_ops.random_uniform([3, 2, 12, 12, 3])
+    filt = random_ops.random_uniform([3, 3, 3, 3, 2])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      filt1 = array_ops.gather(filt, i)
+      return nn.depthwise_conv2d_native(
+          x1, filt1, strides=[1, 2, 2, 1], padding="VALID", data_format="NHWC")
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_depthwise_conv2d_native_backprop_input(self):
+    x_shape = [2, 12, 12, 3]
+    filt = random_ops.random_uniform([3, 3, 3, 3, 2])
+    grad = random_ops.random_uniform([3, 2, 5, 5, 6])
+
+    def loop_fn(i):
+      grad1 = array_ops.gather(grad, i)
+      filt1 = array_ops.gather(filt, i)
+      return nn.depthwise_conv2d_native_backprop_input(
+          x_shape,
+          filt1,
+          grad1,
+          strides=[1, 2, 2, 1],
+          padding="VALID",
+          data_format="NHWC")
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_depthwise_conv2d_native_backprop_filter(self):
+    x = random_ops.random_uniform([3, 2, 12, 12, 3])
+    filter_sizes = [3, 3, 3, 2]
+    grad = random_ops.random_uniform([3, 2, 5, 5, 6])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      grad_i = array_ops.gather(grad, i)
+      return nn.depthwise_conv2d_native_backprop_filter(
+          x_i,
+          filter_sizes,
+          grad_i,
+          strides=[1, 2, 2, 1],
+          padding="VALID",
+          data_format="NHWC")
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_depthwise_conv2d_native_nchw(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("NCHW only works on GPU")
+    x = random_ops.random_uniform([3, 2, 3, 12, 12])
+    filt = random_ops.random_uniform([3, 3, 3, 3, 2])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      filt1 = array_ops.gather(filt, i)
+      return nn.depthwise_conv2d_native(
+          x1, filt1, strides=[1, 1, 2, 2], padding="VALID", data_format="NCHW")
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_depthwise_conv2d_native_backprop_input_nchw(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("NCHW only works on GPU")
+    x_shape = [2, 3, 12, 12]
+    filt = random_ops.random_uniform([3, 3, 3, 3, 2])
+    grad = random_ops.random_uniform([3, 2, 6, 5, 5])
+
+    def loop_fn(i):
+      grad1 = array_ops.gather(grad, i)
+      filt1 = array_ops.gather(filt, i)
+      return nn.depthwise_conv2d_native_backprop_input(
+          x_shape,
+          filt1,
+          grad1,
+          strides=[1, 1, 2, 2],
+          padding="VALID",
+          data_format="NCHW")
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_depthwise_conv2d_native_backprop_filter_nchw(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("NCHW only works on GPU")
+    x = random_ops.random_uniform([3, 2, 3, 12, 12])
+    filter_sizes = [3, 3, 3, 2]
+    grad = random_ops.random_uniform([3, 2, 6, 5, 5])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      grad_i = array_ops.gather(grad, i)
+      return nn.depthwise_conv2d_native_backprop_filter(
+          x_i,
+          filter_sizes,
+          grad_i,
+          strides=[1, 1, 2, 2],
+          padding="VALID",
+          data_format="NCHW")
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_roll(self):
+    x = random_ops.random_uniform([3, 6, 7])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return manip_ops.roll(x_i, 3, axis=1)
 
     self._test_loop_fn(loop_fn, 3)
 

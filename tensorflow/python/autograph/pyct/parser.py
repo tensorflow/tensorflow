@@ -155,11 +155,12 @@ def parse_entity(entity, future_features):
   except (IOError, OSError) as e:
     raise ValueError(
         'Unable to locate the source code of {}. Note that functions defined'
-        ' in certain environments, like the interactive Python shell do not'
-        ' expose their source code. If that is the case, you should to define'
+        ' in certain environments, like the interactive Python shell, do not'
+        ' expose their source code. If that is the case, you should define'
         ' them in a .py source file. If you are certain the code is'
         ' graph-compatible, wrap the call using'
-        ' @tf.autograph.do_not_convert. Original error: {}'.format(entity, e))
+        ' @tf.autograph.experimental.do_not_convert. Original error: {}'.format(
+            entity, e))
 
   source = dedent_block(original_source)
 

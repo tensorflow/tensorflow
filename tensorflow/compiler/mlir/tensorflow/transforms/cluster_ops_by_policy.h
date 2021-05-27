@@ -19,12 +19,15 @@ limitations under the License.
 #include <type_traits>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -54,6 +57,11 @@ enum class ValueConstraint {
 // If you know the value, you always know the shape and the rank. If you know
 // the shape, you always know the rank.
 ValueConstraint Merge(ValueConstraint a, ValueConstraint b);
+
+// Returns success if constraint can be resolved statically based on the value
+// type, e.g. `shape` constraint can be resolved if the value is a tensor of
+// statically known shape.
+LogicalResult IsStaticallyResolved(Value value, ValueConstraint constraint);
 
 raw_ostream& operator<<(raw_ostream& os, const ValueConstraint& constraint);
 
@@ -85,6 +93,13 @@ class ValuesConstraintSet {
   // Returns the constraint of the value if it exists, or None otherwise.
   Optional<ValueConstraint> GetConstraint(Value value) const;
   bool HasConstraint(Value value) const;
+
+  // Merges all constrains from the other constraints set into this one.
+  void MergeAll(const ValuesConstraintSet& other);
+
+  // Remove constraints that can be statically resolved from the type of the
+  // constrained value (see `IsStaticallyResolved` defined above).
+  ValuesConstraintSet& Resolve();
 
   // Reset all constraints.
   ValuesConstraintSet& Reset();
@@ -192,25 +207,68 @@ class ClusteringPolicySet {
 };
 
 // -------------------------------------------------------------------------- //
+// Discovering clusters of operations based on the policy.
+// -------------------------------------------------------------------------- //
+
+// Cluster groups together operations in the single basic block based on the
+// given clustering policy set. Clusters can be outlined into nested modules
+// later device specific compilation (e.g. for TFRT JIT compiler).
+struct Cluster {
+  llvm::SmallVector<Operation*> operations;
+  ValuesConstraintSet constraints;
+};
+
+// Returns clusters of operations in the given `block` based on the provided
+// clustering policy. If `filter` is defined, it will be used to filter
+// operations that can be considered for clustering based on the policy.
+//
+// TODO(ezhulenev): Additional filter function is a workaround for customizing
+// clustering policies at runtime for experimentation. In the long term,
+// clustering policy should be enough.
+llvm::SmallVector<Cluster> FindClustersInTheBlock(
+    Block* block, const ClusteringPolicySet& policies,
+    std::function<bool(Operation* op)> filter = {});
+
+// Creates a `tf_device.cluster` operation from the clustered operations.
+tf_device::ClusterOp CreateClusterOp(Cluster& cluster, StringAttr policy = {});
+
+// -------------------------------------------------------------------------- //
 // Helper functions for value constraints propagations and analysis.
 // -------------------------------------------------------------------------- //
 
-// Propagates initial constraints on the values in the `region` to the other
-// values in the same region, using user provided set of clustering policies.
+// Propagates initial constraints on the values defined by the `constraints` set
+// with operations in the `root` as a starting point, using user provided set of
+// clustering policies.
 //
-// Initially constrained values must be defined by operations in the `region`,
-// propagating constraints through block arguments is not currently supported.
+// Filter predicate specifies if constraints should be propagated across the
+// given operation. Operations in the root set will be also filtered using
+// the `filter` predicate.
+//
+// Optionally resolve constraints that can be statically satisfied by the
+// value type, and stop constraints propagation early.
 //
 // Returns failure if constraints can't be propagated through some of the
-// operations (there is no clustering policy for an operation, or constraints
-// can't be satisfied by the policy), and attaches error diagnostics to the
-// operation that prevented constraints propagation.
+// operations accepted by the filter (there is no clustering policy for an
+// operation, or constraints can't be satisfied by the policy), and attaches
+// error diagnostics to the operation that prevented constraints propagation.
+mlir::LogicalResult PropagateValuesConstraints(
+    llvm::ArrayRef<Operation*> root, std::function<bool(Operation*)> filter,
+    const ClusteringPolicySet& policies, ValuesConstraintSet& constraints,
+    bool resolve = false);
+
+// Propagates initial constraints on the values in the `region` to the other
+// values in the same region, using user provided set of clustering policies.
 mlir::LogicalResult PropagateValuesConstraints(
     mlir::Region& region, const ClusteringPolicySet& policies,
-    ValuesConstraintSet& constraints);
+    ValuesConstraintSet& constraints, bool resolve = false);
 
 // Emits constraints remarks for all operations that use constrained values.
 void EmitValueConstraintsRemarks(const ValuesConstraintSet& constraints);
+
+// Emits constraints remarks for function inputs that are in the constraints
+// set (entry block arguments have constraints).
+void EmitInputsConstraintsRemarks(FuncOp func,
+                                  const ValuesConstraintSet& constraints);
 
 // Infers constraints for the values in the function body from the function
 // results attributes.

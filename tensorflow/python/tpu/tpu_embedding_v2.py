@@ -1631,8 +1631,22 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
                 inp.indices, array_ops.gather(table, truncated_inp.values),
                 dense_output_shape))
       else:
-        outputs.append(embedding_ops.safe_embedding_lookup_sparse_v2(
-            table, inp, sparse_weights=weight, combiner=feature.table.combiner))
+        inp_rank = inp.dense_shape.get_shape()[0]
+        if (not feature.validate_weights_and_indices and
+            inp_rank is not None and inp_rank <= 2):
+          outputs.append(
+              embedding_ops.embedding_lookup_sparse_v2(
+                  table,
+                  inp,
+                  sp_weights=weight,
+                  combiner=feature.table.combiner))
+        else:
+          outputs.append(
+              embedding_ops.safe_embedding_lookup_sparse_v2(
+                  table,
+                  inp,
+                  sparse_weights=weight,
+                  combiner=feature.table.combiner))
 
     elif isinstance(inp, ragged_tensor.RaggedTensor):
       if feature.max_sequence_length > 0:

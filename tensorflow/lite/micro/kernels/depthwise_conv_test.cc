@@ -80,12 +80,11 @@ TfLiteStatus ValidateDepthwiseConvGoldens(
 }
 
 #if !defined(XTENSA)  // Needed to avoid build errors from unsused functions.
-void TestDepthwiseConvFloat(const int* input_dims_data, const float* input_data,
-                            const int* filter_dims_data,
-                            const float* filter_data, const int* bias_dims_data,
-                            const float* bias_data,
+void TestDepthwiseConvFloat(int* input_dims_data, const float* input_data,
+                            int* filter_dims_data, const float* filter_data,
+                            int* bias_dims_data, const float* bias_data,
                             const float* expected_output_data,
-                            const int* output_dims_data,
+                            int* output_dims_data,
                             TfLiteDepthwiseConvParams* conv_params,
                             float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -109,12 +108,11 @@ void TestDepthwiseConvFloat(const int* input_dims_data, const float* input_data,
 }
 
 void TestDepthwiseConvQuantizedPerChannel(
-    const int* input_dims_data, const float* input_data,
-    int8_t* input_quantized, float input_scale, int input_zero_point,
-    const int* filter_dims_data, const float* filter_data,
-    int8_t* filter_data_quantized, const int* bias_dims_data,
-    const float* bias_data, int32_t* bias_data_quantized,
-    const int* output_dims_data, const float* expected_output_data,
+    int* input_dims_data, const float* input_data, int8_t* input_quantized,
+    float input_scale, int input_zero_point, int* filter_dims_data,
+    const float* filter_data, int8_t* filter_data_quantized,
+    int* bias_dims_data, const float* bias_data, int32_t* bias_data_quantized,
+    int* output_dims_data, const float* expected_output_data,
     int8_t* expected_output_data_quantized, int8_t* output_data,
     float output_scale, int output_zero_point,
     TfLiteDepthwiseConvParams* conv_params) {
@@ -189,17 +187,17 @@ TF_LITE_MICRO_TESTS_BEGIN
                       // reference kernels and we ifdef out test cases that are
                       // currently known to fail.
 TF_LITE_MICRO_TEST(SimpleTest) {
-  const int input_shape[] = {4, 1, 3, 2, 2};
+  int input_shape[] = {4, 1, 3, 2, 2};
   const float input_values[] = {1, 2, 7, 8, 3, 4, 9, 10, 5, 6, 11, 12};
-  const int filter_shape[] = {4, 1, 2, 2, 4};
+  int filter_shape[] = {4, 1, 2, 2, 4};
   const float filter_values[] = {1, 2, 3, 4, -9, 10,  -11, 12,
                                  5, 6, 7, 8, 13, -14, 15,  -16};
-  const int bias_shape[] = {4, 1, 1, 1, 4};
+  int bias_shape[] = {4, 1, 1, 1, 4};
   const float bias_values[] = {1, 2, 3, 4};
   const float golden[] = {
       71, -34, 99, -20, 91, -26, 127, -4,
   };
-  const int output_shape[] = {4, 1, 2, 1, 4};
+  int output_shape[] = {4, 1, 2, 1, 4};
   const int output_dims_count = 8;
   float output_data[output_dims_count];
 
@@ -216,14 +214,14 @@ TF_LITE_MICRO_TEST(SimpleTest) {
 }
 
 TF_LITE_MICRO_TEST(SimpleTestRelu) {
-  const int input_shape[] = {4, 1, 3, 2, 2};
+  int input_shape[] = {4, 1, 3, 2, 2};
   const float input_values[] = {1, 2, 7, 8, 3, 4, 9, 10, 5, 6, 11, 12};
-  const int filter_shape[] = {4, 1, 2, 2, 4};
+  int filter_shape[] = {4, 1, 2, 2, 4};
   const float filter_values[] = {1, 2, 3, 4, -9, 10,  -11, 12,
                                  5, 6, 7, 8, 13, -14, 15,  -16};
-  const int bias_shape[] = {4, 1, 1, 1, 4};
+  int bias_shape[] = {4, 1, 1, 1, 4};
   const float bias_values[] = {1, 2, 3, 4};
-  const int output_shape[] = {4, 1, 2, 1, 4};
+  int output_shape[] = {4, 1, 2, 1, 4};
   const int output_dims_count = 8;
   const float golden_relu[] = {71, 0, 99, 0, 91, 0, 127, 0};
   float output_data[output_dims_count];
@@ -242,20 +240,20 @@ TF_LITE_MICRO_TEST(SimpleTestRelu) {
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
   const int input_elements = 12;
-  const int input_shape[] = {4, 1, 3, 2, 2};
+  int input_shape[] = {4, 1, 3, 2, 2};
   const float input_values[] = {1, 2, 7, 8, 3, 4, 9, 10, 5, 6, 11, 12};
   const int filter_elements = 16;
-  const int filter_shape[] = {4, 1, 2, 2, 4};
+  int filter_shape[] = {4, 1, 2, 2, 4};
   const float filter_values[] = {1, 2, 3, 4, -9, 10,  -11, 12,
                                  5, 6, 7, 8, 13, -14, 15,  -16};
   const int bias_elements = 4;
-  const int bias_shape[] = {4, 1, 1, 1, 4};
+  int bias_shape[] = {4, 1, 1, 1, 4};
   const int output_elements = 8;
   const float bias_values[] = {1, 2, 3, 4};
   const float golden[] = {
       71, -34, 99, -20, 91, -26, 127, -4,
   };
-  const int output_shape[] = {4, 1, 2, 1, 4};
+  int output_shape[] = {4, 1, 2, 1, 4};
   const int output_dims_count = 8;
   int8_t output_data[output_dims_count];
 
@@ -285,13 +283,13 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelDepthMultiplier1) {
   const int input_elements = 12;
-  const int input_shape[] = {4, 1, 3, 2, 2};
+  int input_shape[] = {4, 1, 3, 2, 2};
   const float input_values[] = {1, 2, 7, 8, 3, 4, 9, 10, 5, 6, 11, 12};
   const int filter_elements = 8;
-  const int filter_shape[] = {4, 1, 2, 2, 2};
+  int filter_shape[] = {4, 1, 2, 2, 2};
   const float filter_values[] = {1, 2, 3, 4, -9, 10, -11, 12};
   const int bias_elements = 2;
-  const int bias_shape[] = {4, 1, 1, 1, 2};
+  int bias_shape[] = {4, 1, 1, 1, 2};
   const int output_elements = 4;
   const float bias_values[] = {1, 2};
   const float golden[] = {
@@ -300,7 +298,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelDepthMultiplier1) {
       -128,
       127,
   };
-  const int output_shape[] = {4, 1, 2, 1, 2};
+  int output_shape[] = {4, 1, 2, 1, 2};
   const int output_dims_count = 4;
   int8_t output_data[output_dims_count];
 
@@ -330,21 +328,21 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelDepthMultiplier1) {
 
 TF_LITE_MICRO_TEST(TestQuantizedPerChannelDepthMultiplier1Relu6) {
   const int input_elements = 24;
-  const int input_shape[] = {4, 1, 3, 2, 4};
+  int input_shape[] = {4, 1, 3, 2, 4};
   const float input_values[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
   const int filter_elements = 16;
-  const int filter_shape[] = {4, 1, 2, 2, 4};
+  int filter_shape[] = {4, 1, 2, 2, 4};
   const float filter_values[] = {0,  1, 8,   -2, -1, 2, -10, 0,
                                  -1, 3, -18, 0,  0,  4, 20,  -3};
   const int bias_elements = 4;
-  const int bias_shape[] = {4, 1, 1, 1, 4};
+  int bias_shape[] = {4, 1, 1, 1, 4};
   const int output_elements = 8;
   const float bias_values[] = {1, 2, 3, 4};
   const float golden[] = {
       0, 6, 3, 0, 0, 6, 3, 0,
   };
-  const int output_shape[] = {4, 1, 2, 1, 4};
+  int output_shape[] = {4, 1, 2, 1, 4};
   int8_t output_data[output_elements];
 
   const float input_scale = 0.023529f;
@@ -373,24 +371,24 @@ TF_LITE_MICRO_TEST(TestQuantizedPerChannelDepthMultiplier1Relu6) {
 
 TF_LITE_MICRO_TEST(SimpleTestDilatedQuantizedPerChannel) {
   const int input_elements = 48;
-  const int input_shape[] = {4, 1, 4, 6, 2};
+  int input_shape[] = {4, 1, 4, 6, 2};
   const float input_values[] = {1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2,   // h = 0
                                 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4,   // h = 1
                                 1, 2, 3, 4, 5, 6, 2, 6, 2, 4, 4, 2,   // h = 2
                                 3, 2, 6, 5, 1, 4, 1, 2, 1, 4, 6, 3};  // h = 3
   const int filter_elements = 16;
-  const int filter_shape[] = {4, 1, 2, 2, 4};
+  int filter_shape[] = {4, 1, 2, 2, 4};
   const float filter_values[] = {1, 2, 3, 4, -9, 10,  -11, 12,
                                  5, 6, 7, 8, 13, -14, 15,  -16};
   const int bias_elements = 4;
-  const int bias_shape[] = {4, 1, 1, 1, 4};
+  int bias_shape[] = {4, 1, 1, 1, 4};
   const int output_elements = 24;
   const float bias_values[] = {1, 2, 3, 4};
   const float golden[] = {
       15, 2,  88, -48, 25, 14, 72, 0,  61, -2,  56, 48,  // h = 0
       -4, 52, 12, 48,  11, 70, 63, 40, 51, -30, 41, 48   // h = 1
   };
-  const int output_shape[] = {4, 1, 2, 3, 4};
+  int output_shape[] = {4, 1, 2, 3, 4};
   int8_t output_data[output_elements];
 
   const float input_scale = 0.5;
@@ -418,13 +416,13 @@ TF_LITE_MICRO_TEST(SimpleTestDilatedQuantizedPerChannel) {
 }
 
 TF_LITE_MICRO_TEST(TestQuantizedPerChannelCompareWithFloat) {
-  const int input_dims[] = {4, 1, 2, 3, 2};
+  int input_dims[] = {4, 1, 2, 3, 2};
   const float input_data[] = {3, 2, 1, -1, -2, -3, 4, 3, 2, -2, -3, -4};
-  const int filter_dims[] = {4, 1, 2, 2, 4};
+  int filter_dims[] = {4, 1, 2, 2, 4};
   const float filter_data[] = {1, 2, 3, 4, 3, 4, 5, 6, 7, 8, 5, 6, 3, 4, 1, 2};
-  const int bias_dims[] = {4, 1, 1, 1, 4};
+  int bias_dims[] = {4, 1, 1, 1, 4};
   const float bias_data[] = {3, -2, 4, 6};
-  const int output_dims[] = {4, 1, 1, 2, 4};
+  int output_dims[] = {4, 1, 1, 2, 4};
   const float golden[] = {43, 48, 18, 22, 3, -4, -28, -36};
 
   const int input_size = 12;
@@ -467,20 +465,20 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
   const float output_scale = 1.0f;
 
   const int input_elements = 12;
-  const int input_shape[] = {4, 1, 3, 2, 2};
+  int input_shape[] = {4, 1, 3, 2, 2};
   const float input_values[] = {1, 2, 7, 8, 3, 4, 9, 10, 5, 6, 11, 12};
   const int filter_elements = 16;
-  const int filter_shape[] = {4, 1, 2, 2, 4};
+  int filter_shape[] = {4, 1, 2, 2, 4};
   const float filter_values[] = {1, 2, 3, 4, -9, 10,  -11, 12,
                                  5, 6, 7, 8, 13, -14, 15,  -16};
   const int bias_elements = 4;
-  const int bias_shape[] = {4, 1, 1, 1, 4};
+  int bias_shape[] = {4, 1, 1, 1, 4};
   const int output_elements = 8;
   const float bias_values[] = {1, 2, 3, 4};
   const float golden[] = {
       71, -34, 99, -20, 91, -26, 127, -4,
   };
-  const int output_shape[] = {4, 1, 2, 1, 4};
+  int output_shape[] = {4, 1, 2, 1, 4};
   const int output_dims_count = 8;
   int8_t output_data[output_dims_count];
 
@@ -566,13 +564,13 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
 #endif  // !defined(XTENSA)
 
 TF_LITE_MICRO_TEST(FilterDimsNotMatchingAffineQuantization) {
-  const int input_shape[] = {4, 1, 2, 3, 2};
+  int input_shape[] = {4, 1, 2, 3, 2};
   const float input_data[] = {3, 2, 1, -1, -2, -3, 4, 3, 2, -2, -3, -4};
-  const int filter_shape[] = {4, 1, 2, 2, 4};
+  int filter_shape[] = {4, 1, 2, 2, 4};
   const float filter_data[] = {1, 2, 3, 4, 3, 4, 5, 6, 7, 8, 5, 6, 3, 4, 1, 2};
-  const int bias_shape[] = {4, 1, 1, 1, 4};
+  int bias_shape[] = {4, 1, 1, 1, 4};
   const float bias_data[] = {3, -2, 4, 6};
-  const int output_shape[] = {4, 1, 1, 2, 4};
+  int output_shape[] = {4, 1, 1, 2, 4};
 
   const int input_size = 12;
   const int filter_size = 16;
@@ -660,10 +658,10 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
   const int filter_elements = 32 * 4;
   const int bias_elements = 32;
   const int output_elements = 32;
-  const int input_shape[] = {4, 1, 4, 1, 32};
-  const int filter_shape[] = {4, 1, 4, 1, 32};
-  const int bias_shape[] = {1, 32};
-  const int output_shape[] = {4, 1, 1, 1, 32};
+  int input_shape[] = {4, 1, 4, 1, 32};
+  int filter_shape[] = {4, 1, 4, 1, 32};
+  int bias_shape[] = {1, 32};
+  int output_shape[] = {4, 1, 1, 1, 32};
   const float input_values[] = {
       11.0589, 10.8824, 11.1766, 11.5295, 10.8236, 9.5295, 9.5295, 10.0001,
       11.2354, 10.8824, 9.1765,  9.0589,  9.6471,  8.9412, 7.9412, 9.0001,
@@ -815,10 +813,10 @@ TF_LITE_MICRO_TEST(Int8Input32x1Filter32x1ShouldMatchGolden) {
   const int filter_elements = 32 * 1;
   const int bias_elements = 32;
   const int output_elements = 32;
-  const int input_shape[] = {4, 1, 1, 1, 32};
-  const int filter_shape[] = {4, 1, 1, 1, 32};
-  const int bias_shape[] = {1, 32};
-  const int output_shape[] = {4, 1, 1, 1, 32};
+  int input_shape[] = {4, 1, 1, 1, 32};
+  int filter_shape[] = {4, 1, 1, 1, 32};
+  int bias_shape[] = {1, 32};
+  int output_shape[] = {4, 1, 1, 1, 32};
   const float input_values[] = {
       11.0589, 10.8824, 11.1766, 11.5295, 10.8236, 9.5295, 9.5295, 10.0001,
       11.2354, 10.8824, 9.1765,  9.0589,  9.6471,  8.9412, 7.9412, 9.0001,

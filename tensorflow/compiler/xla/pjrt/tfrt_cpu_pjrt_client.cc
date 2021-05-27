@@ -214,7 +214,7 @@ static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
-  VLOG(1) << "Unoptimized HLO module: " << hlo_module->ToString();
+  VLOG(3) << "Unoptimized HLO module: " << hlo_module->ToString();
 
   // Run Hlo Passes
   cpu::CpuCompiler compiler;
@@ -434,11 +434,15 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
   if (shape.IsTuple()) {
     return InvalidArgument("Use BufferFromHostLiteral to transfer a tuple");
   }
-  // If the input buffer is sufficiently aligned, we can simply point to the
-  // input array's data without any further copies. At the time of writing we
-  // require a 16-byte alignment because XLA may generate code which requires
-  // it.
+  bool has_default_layout =
+      !shape.has_layout() ||
+      LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
+  // If the input buffer has a default layout and is sufficiently aligned, we
+  // can simply point to the input array's data without any further copies. At
+  // the time of writing we require a 16-byte alignment because XLA may generate
+  // code which requires it.
   bool can_use_zero_copy =
+      has_default_layout &&
       host_buffer_semantics == HostBufferSemantics::kZeroCopy &&
       ((absl::bit_cast<std::uintptr_t>(data) &
         (cpu_function_runtime::kMinAlign - 1)) == 0);
@@ -455,34 +459,47 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
     auto device_buffer = MaybeOwningCpuMemory::AllocateShared(byte_size);
     auto dst_data_ptr = device_buffer->data();
     buffers.push_back(std::move(device_buffer));
-    bool should_sync_copy =
-        host_buffer_semantics ==
-            HostBufferSemantics::kImmutableUntilTransferCompletes ||
-        (byte_size < kSmallDataTransferByteSize);
-    if (should_sync_copy) {
-      std::memcpy(dst_data_ptr, data, byte_size);
+    if (!has_default_layout) {
+      // If layout is not default, relayout and sync copy.
+      BorrowingLiteral literal(static_cast<const char*>(data), shape);
+      Literal transposed_literal =
+          literal.Relayout(LayoutUtil::GetDefaultLayoutForShape(shape), {});
+      CHECK_EQ(byte_size, transposed_literal.size_bytes());
+      std::memcpy(dst_data_ptr, transposed_literal.untyped_data(), byte_size);
       if (on_done_with_host_buffer) {
         on_done_with_host_buffer();
         on_done_with_host_buffer = nullptr;
       }
     } else {
-      tfrt::AsyncValueRef<CpuEvent> copy_event =
-          tfrt::MakeConstructedAsyncValueRef<CpuEvent>(host_ctx_.get());
-      definition_events.push_back(copy_event.CopyRef());
-      tfrt::EnqueueWork(
-          host_ctx_.get(),
-          [dst_data_ptr, data, byte_size, copy_event = std::move(copy_event),
-           on_done_with_host_buffer =
-               std::move(on_done_with_host_buffer)]() mutable {
-            tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-            std::memcpy(dst_data_ptr, data, byte_size);
-            if (on_done_with_host_buffer) {
-              on_done_with_host_buffer();
-              on_done_with_host_buffer = nullptr;
-            }
-            // Signal copy is complete.
-            copy_event.SetStateConcrete();
-          });
+      bool should_sync_copy =
+          host_buffer_semantics ==
+              HostBufferSemantics::kImmutableOnlyDuringCall ||
+          (byte_size < kSmallDataTransferByteSize);
+      if (should_sync_copy) {
+        std::memcpy(dst_data_ptr, data, byte_size);
+        if (on_done_with_host_buffer) {
+          on_done_with_host_buffer();
+          on_done_with_host_buffer = nullptr;
+        }
+      } else {
+        tfrt::AsyncValueRef<CpuEvent> copy_event =
+            tfrt::MakeConstructedAsyncValueRef<CpuEvent>(host_ctx_.get());
+        definition_events.push_back(copy_event.CopyRef());
+        tfrt::EnqueueWork(
+            host_ctx_.get(),
+            [dst_data_ptr, data, byte_size, copy_event = std::move(copy_event),
+             on_done_with_host_buffer =
+                 std::move(on_done_with_host_buffer)]() mutable {
+              tensorflow::profiler::TraceMe traceme("H2D Dispatch");
+              std::memcpy(dst_data_ptr, data, byte_size);
+              if (on_done_with_host_buffer) {
+                on_done_with_host_buffer();
+                on_done_with_host_buffer = nullptr;
+              }
+              // Signal copy is complete.
+              copy_event.SetStateConcrete();
+            });
+      }
     }
   }
   auto tracked_device_buffer = std::make_shared<TrackedTfrtCpuDeviceBuffer>(
@@ -637,7 +654,7 @@ TfrtCpuBuffer::~TfrtCpuBuffer() {
   }
 }
 
-int64 TfrtCpuBuffer::OnDeviceSizeInBytes() const {
+StatusOr<size_t> TfrtCpuBuffer::GetOnDeviceSizeInBytes() const {
   return ShapeUtil::ByteSizeOf(on_device_shape_);
 }
 
@@ -790,7 +807,7 @@ TfrtCpuBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
     CHECK(tracked_device_buffer_ != nullptr);
   } else {
     if (tracked_device_buffer_ == nullptr) {
-      return InvalidArgument("Hold requested on deleted or donated buffer");
+      return InvalidArgument("Buffer has been deleted or donated.");
     } else {
       ++holds_[type];
     }
@@ -1014,6 +1031,18 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
     return InvalidArgument(
         "CopyToDevice cannot accept the same source and destination devices");
   }
+
+  // Copying across PjRtClients involves a copy through the host.
+  if (dst_device->client() != client_) {
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
+    // Avoid use-after-free on `literal` due to unsequenced move and use.
+    Literal* literal_pointer = literal.get();
+    return dst_device->client()->BufferFromHostBuffer(
+        literal_pointer->untyped_data(), literal_pointer->shape(),
+        TfrtCpuClient::HostBufferSemantics::kZeroCopy,
+        [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
+  }
+
   // Copy each leaf buffer to a destination buffer.
   TfrtCpuBuffer::ScopedHold src_device_buffer(
       this, TfrtCpuBuffer::ScopedHold::kUsage);

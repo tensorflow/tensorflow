@@ -9,6 +9,9 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
@@ -211,8 +214,8 @@ py_library(
         ":tensor_spec",
         ":tensor_util",
         ":type_spec",
-        "//tensorflow/python:_pywrap_debug_events_writer",
-        "//tensorflow/python:_pywrap_events_writer",
+        "//tensorflow/python/client:_pywrap_debug_events_writer",
+        "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         "//tensorflow/python:_pywrap_py_exception_registry",
@@ -434,7 +437,7 @@ py_library(
         ":tensor_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/grappler:tf_optimizer",
     ],
 )
 
@@ -1014,6 +1017,23 @@ cuda_py_test(
     ] + tf_additional_xla_deps_py(),
 )
 
+tpu_py_test(
+    name = "config_test_tpu",
+    size = "small",
+    srcs = ["config_test.py"],
+    main = "config_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],  # test_ops are not available in pip.
+    deps = [
+        ":config",
+        ":constant_op",
+        ":test_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/util",
+    ] + tf_additional_xla_deps_py(),
+)
+
 py_library(
     name = "random_seed",
     srcs = ["random_seed.py"],
@@ -1234,6 +1254,7 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_sanitizers",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",

@@ -234,7 +234,7 @@ std::string ConvBuffer1x1::GenerateConvBuffer1x1(
   }
   AddDstTensor("dst_tensor", dst_desc);
 
-  if (op_def.precision == CalculationsPrecision::F16 && gpu_info.IsMali()) {
+  if (gpu_info.IsMali()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
 

@@ -33,14 +33,8 @@ namespace builtin {
 namespace elementwise {
 namespace {
 
-constexpr char kAbsName[] = "Abs";
-constexpr char kSinName[] = "Sin";
-constexpr char kCosName[] = "Cos";
-constexpr char kLogName[] = "Log";
-constexpr char kSqrtName[] = "Sqrt";
-constexpr char kRsqrtName[] = "Rsqrt";
-constexpr char kSquareName[] = "Square";
-constexpr char kNotName[] = "Not";
+const char kAbsName[] = "Abs";
+const char kRsqrtName[] = "Rsqrt";
 
 struct OpData {
   int32_t multiplier;
@@ -80,8 +74,9 @@ inline void SetRsqrtOutputMultiplier(const float input_scale,
 }
 
 typedef bool (*IsSupportedType)(TfLiteType);
-template <IsSupportedType is_supported_type, const char* op_name>
-TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node,
+                            IsSupportedType is_supported_type,
+                            const char* op_name) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input;
@@ -320,77 +315,89 @@ TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 }  // namespace elementwise
 
+// Given a function...
+// template<int T>
+// int Foo(int b)
+//
+// typedef int(*Bar)(int);
+//
+// MSVC2015 will not see Foo<10> as the same type as Bar.
+//
+// This works around the issue by instantiating wrapper methods around
+// elementwise::GenericPrepare() rather than using a templated
+// elementwise::GenericPrepare method.
+#define GENERIC_PREPARE(function_name, is_supported_type_function, type_name)  \
+  static TfLiteStatus function_name(TfLiteContext* context,                    \
+                                    TfLiteNode* node) {                        \
+    return elementwise::GenericPrepare(context, node,                          \
+                                       is_supported_type_function, type_name); \
+  }
+
+GENERIC_PREPARE(PrepareAbs, elementwise::IsAbsSupportedType,
+                elementwise::kAbsName)
+
 TfLiteRegistration* Register_ABS() {
-  static TfLiteRegistration r = {
-      elementwise::ElementWiseQuantizedInit,
-      elementwise::ElementWiseQuantizedFree,
-      elementwise::GenericPrepare<elementwise::IsAbsSupportedType,
-                                  elementwise::kAbsName>,
-      elementwise::AbsEval};
+  static TfLiteRegistration r = {elementwise::ElementWiseQuantizedInit,
+                                 elementwise::ElementWiseQuantizedFree,
+                                 PrepareAbs, elementwise::AbsEval};
   return &r;
 }
+
+GENERIC_PREPARE(PrepareSin, elementwise::IsNumericSupportedType, "Sin")
 
 TfLiteRegistration* Register_SIN() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType,
-                                  elementwise::kSinName>,
-      elementwise::SinEval};
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr, PrepareSin,
+                                 elementwise::SinEval};
   return &r;
 }
+
+GENERIC_PREPARE(PrepareCos, elementwise::IsNumericSupportedType, "Cos")
 
 TfLiteRegistration* Register_COS() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType,
-                                  elementwise::kCosName>,
-      elementwise::CosEval};
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr, PrepareCos,
+                                 elementwise::CosEval};
   return &r;
 }
+
+GENERIC_PREPARE(PrepareLog, elementwise::IsNumericSupportedType, "Log")
 
 TfLiteRegistration* Register_LOG() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType,
-                                  elementwise::kLogName>,
-      elementwise::LogEval};
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr, PrepareLog,
+                                 elementwise::LogEval};
   return &r;
 }
+
+GENERIC_PREPARE(PrepareSqrt, elementwise::IsNumericSupportedType, "Sqrt")
 
 TfLiteRegistration* Register_SQRT() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType,
-                                  elementwise::kSqrtName>,
-      elementwise::SqrtEval};
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+                                 PrepareSqrt, elementwise::SqrtEval};
   return &r;
 }
+
+GENERIC_PREPARE(PrepareRsqrt, elementwise::IsRsqrtSupportedType,
+                elementwise::kRsqrtName)
 
 TfLiteRegistration* Register_RSQRT() {
-  static TfLiteRegistration r = {
-      elementwise::ElementWiseQuantizedInit,
-      elementwise::ElementWiseQuantizedFree,
-      elementwise::GenericPrepare<elementwise::IsRsqrtSupportedType,
-                                  elementwise::kRsqrtName>,
-      elementwise::RsqrtEval};
+  static TfLiteRegistration r = {elementwise::ElementWiseQuantizedInit,
+                                 elementwise::ElementWiseQuantizedFree,
+                                 PrepareRsqrt, elementwise::RsqrtEval};
   return &r;
 }
+
+GENERIC_PREPARE(PrepareSquare, elementwise::IsNumericSupportedType, "Square")
 
 TfLiteRegistration* Register_SQUARE() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType,
-                                  elementwise::kSquareName>,
-      elementwise::SquareEval};
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+                                 PrepareSquare, elementwise::SquareEval};
   return &r;
 }
 
+GENERIC_PREPARE(PrepareNot, elementwise::IsLogicalSupportedType, "Not")
+
 TfLiteRegistration* Register_LOGICAL_NOT() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsLogicalSupportedType,
-                                  elementwise::kNotName>,
-      elementwise::LogicalNotEval};
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr, PrepareNot,
+                                 elementwise::LogicalNotEval};
   return &r;
 }
 

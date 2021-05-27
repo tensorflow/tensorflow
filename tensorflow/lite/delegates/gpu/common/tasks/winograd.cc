@@ -230,7 +230,7 @@ Winograd4x4To36TileX6::Winograd4x4To36TileX6(const OperationDef& definition,
                                              const GpuInfo& gpu_info)
     : GPUOperation(definition), padding_(padding) {
   work_group_size_ = int3(32, 1, 1);
-  code_ = GetWinograd4x4To36TileX6Code(definition_);
+  code_ = GetWinograd4x4To36TileX6Code(definition_, gpu_info);
   if (gpu_info.IsAdreno()) {
     compiler_options_.push_back(CompilerOptions::kAdrenoMoreWaves);
   }
@@ -241,7 +241,7 @@ Winograd4x4To36TileX6::Winograd4x4To36TileX6(const OperationDef& definition,
 }
 
 std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
-    const OperationDef& op_def) {
+    const OperationDef& op_def, const GpuInfo& gpu_info) {
   std::string c;
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
@@ -339,32 +339,59 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
       }
     }
   }
-  c += "  {\n";
-  c += "    int yc = tile_y + args.padding_y;\n";
-  if (is_buffer || is_image_buffer) {
-    c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
-    c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
-    c += "    ACCUM_FLT bt = bt_ar[0] * TO_ACCUM_FLT(iny);\n";
-  } else {
-    c += "    ACCUM_FLT bt = bt_ar[0];\n";
-  }
-  for (int x = 0; x < 6; ++x) {
-    const std::string xs = std::to_string(x);
-    const std::string src = "src" + xs;
-    read_src(src, xs);
-    c += "    I" + xs + " = bt * " + src + ";\n";
-  }
-  c += "  }\n";
-  for (int y = 1; y < 6; ++y) {
-    const std::string ys = std::to_string(y);
+  const bool manual_unroll =
+      !(op_def.precision == CalculationsPrecision::F32 && gpu_info.IsMali());
+  if (manual_unroll) {
     c += "  {\n";
-    c += "    int yc = tile_y + args.padding_y + (" + ys + ");\n";
+    c += "    int yc = tile_y + args.padding_y;\n";
     if (is_buffer || is_image_buffer) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
       c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
-      c += "    ACCUM_FLT bt = bt_ar[" + ys + "] * TO_ACCUM_FLT(iny);\n";
+      c += "    ACCUM_FLT bt = bt_ar[0] * TO_ACCUM_FLT(iny);\n";
     } else {
-      c += "    ACCUM_FLT bt = bt_ar[" + ys + "];\n";
+      c += "    ACCUM_FLT bt = bt_ar[0];\n";
+    }
+    for (int x = 0; x < 6; ++x) {
+      const std::string xs = std::to_string(x);
+      const std::string src = "src" + xs;
+      read_src(src, xs);
+      c += "    I" + xs + " = bt * " + src + ";\n";
+    }
+    c += "  }\n";
+    for (int y = 1; y < 6; ++y) {
+      const std::string ys = std::to_string(y);
+      c += "  {\n";
+      c += "    int yc = tile_y + args.padding_y + (" + ys + ");\n";
+      if (is_buffer || is_image_buffer) {
+        c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+        c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
+        c += "    ACCUM_FLT bt = bt_ar[" + ys + "] * TO_ACCUM_FLT(iny);\n";
+      } else {
+        c += "    ACCUM_FLT bt = bt_ar[" + ys + "];\n";
+      }
+      for (int x = 0; x < 6; ++x) {
+        const std::string xs = std::to_string(x);
+        const std::string src = "src" + xs;
+        read_src(src, xs);
+        c += "    I" + xs + " += bt * " + src + ";\n";
+      }
+      c += "  }\n";
+    }
+  } else {
+    c += "  I0 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I1 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I2 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I3 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I4 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I5 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  for (int y = 0; y < 6; ++y) {\n";
+    c += "    int yc = tile_y + args.padding_y + y;\n";
+    if (is_buffer || is_image_buffer) {
+      c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+      c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
+      c += "    ACCUM_FLT bt = bt_ar[y] * TO_ACCUM_FLT(iny);\n";
+    } else {
+      c += "    ACCUM_FLT bt = bt_ar[y];\n";
     }
     for (int x = 0; x < 6; ++x) {
       const std::string xs = std::to_string(x);
@@ -523,11 +550,11 @@ Winograd36To4x4Tile4x1::Winograd36To4x4Tile4x1(const OperationDef& definition,
       gpu_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
-  code_ = GetWinograd36To4x4Tile4x1Code(definition_);
+  code_ = GetWinograd36To4x4Tile4x1Code(definition_, gpu_info);
 }
 
 std::string Winograd36To4x4Tile4x1::GetWinograd36To4x4Tile4x1Code(
-    const OperationDef& op_def) {
+    const OperationDef& op_def, const GpuInfo& gpu_info) {
   std::string c;
 
   switch (op_def.precision) {
@@ -583,24 +610,46 @@ std::string Winograd36To4x4Tile4x1::GetWinograd36To4x4Tile4x1Code(
   c += "  at_ar[3] = t00.w;\n";
   c += "  at_ar[4] = t01.x;\n";
   c += "  at_ar[5] = t01.y;\n";
-  c += "  {\n";
-  c += "    ACCUM_FLT at = at_ar[0];\n";
-  for (int x = 0; x < 6; ++x) {
-    const std::string yc = std::to_string(x);
-    const std::string src = "src" + std::to_string(x);
-    c += "    ACCUM_FLT4 " + src +
-         " = args.src_tensor.Read<ACCUM_FLT>(tile_id, " + yc + ", DST_Z);\n";
-    c += "    I" + std::to_string(x) + " = at * " + src + ";\n";
-  }
-  c += "  }\n";
-  for (int y = 1; y < 6; ++y) {
+  const bool manual_unroll =
+      !(op_def.precision == CalculationsPrecision::F32 && gpu_info.IsMali());
+  if (manual_unroll) {
     c += "  {\n";
-    c += "    ACCUM_FLT at = at_ar[" + std::to_string(y) + "];\n";
+    c += "    ACCUM_FLT at = at_ar[0];\n";
     for (int x = 0; x < 6; ++x) {
-      const std::string yc = std::to_string(y * 6 + x);
+      const std::string yc = std::to_string(x);
       const std::string src = "src" + std::to_string(x);
       c += "    ACCUM_FLT4 " + src +
            " = args.src_tensor.Read<ACCUM_FLT>(tile_id, " + yc + ", DST_Z);\n";
+      c += "    I" + std::to_string(x) + " = at * " + src + ";\n";
+    }
+    c += "  }\n";
+    for (int y = 1; y < 6; ++y) {
+      c += "  {\n";
+      c += "    ACCUM_FLT at = at_ar[" + std::to_string(y) + "];\n";
+      for (int x = 0; x < 6; ++x) {
+        const std::string yc = std::to_string(y * 6 + x);
+        const std::string src = "src" + std::to_string(x);
+        c += "    ACCUM_FLT4 " + src +
+             " = args.src_tensor.Read<ACCUM_FLT>(tile_id, " + yc +
+             ", DST_Z);\n";
+        c += "    I" + std::to_string(x) + " += at * " + src + ";\n";
+      }
+      c += "  }\n";
+    }
+  } else {
+    c += "  I0 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I1 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I2 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I3 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I4 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  I5 = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  for (int y = 0; y < 6; ++y) {\n";
+    c += "    ACCUM_FLT at = at_ar[y];\n";
+    for (int x = 0; x < 6; ++x) {
+      const std::string src = "src" + std::to_string(x);
+      c += "    ACCUM_FLT4 " + src +
+           " = args.src_tensor.Read<ACCUM_FLT>(tile_id, y * 6 + " +
+           std::to_string(x) + ", DST_Z);\n";
       c += "    I" + std::to_string(x) + " += at * " + src + ";\n";
     }
     c += "  }\n";

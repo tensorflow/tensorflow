@@ -48,9 +48,8 @@ class ResourceOpKernel : public OpKernel {
       // The resource variant of the op may be placed on non-CPU devices, but
       // this allocation is always on the host. Fortunately we don't need it in
       // the resource case.
-      OP_REQUIRES_OK(context,
-                     context->allocate_persistent(DT_STRING, TensorShape({2}),
-                                                  &handle_, nullptr));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DT_STRING, TensorShape({2}), &tensor_));
     }
   }
 
@@ -96,7 +95,7 @@ class ResourceOpKernel : public OpKernel {
       }
 
       if (!has_resource_type_) {
-        auto h = handle_.AccessTensor(context)->template flat<tstring>();
+        auto h = tensor_.template flat<tstring>();
         h(0) = cinfo_.container();
         h(1) = cinfo_.name();
       }
@@ -107,7 +106,7 @@ class ResourceOpKernel : public OpKernel {
                                   context, 0, cinfo_.container(), cinfo_.name(),
                                   TypeIndex::Make<T>()));
     } else {
-      context->set_output_ref(0, &mu_, handle_.AccessTensor(context));
+      context->set_output_ref(0, &mu_, &tensor_);
     }
   }
 
@@ -130,7 +129,7 @@ class ResourceOpKernel : public OpKernel {
   // inconsistent capacities.
   virtual Status VerifyResource(T* resource) { return Status::OK(); }
 
-  PersistentTensor handle_ TF_GUARDED_BY(mu_);
+  Tensor tensor_ TF_GUARDED_BY(mu_);
 
   // Is the output of the operator of type DT_RESOURCE?
   bool has_resource_type_;

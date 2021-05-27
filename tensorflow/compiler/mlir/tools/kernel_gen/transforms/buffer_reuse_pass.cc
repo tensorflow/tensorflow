@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Analysis/BufferAliasAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -72,12 +72,12 @@ class BufferReuseAnalysis {
 
  private:
   void build(FuncOp &f) {
-    BufferAliasAnalysis aliases(f);
+    BufferViewFlowAnalysis aliases(f);
     find_output_indices(f, aliases);
     find_reuse_candiates(f, aliases);
   }
 
-  void find_output_indices(FuncOp &f, BufferAliasAnalysis &aliases) {
+  void find_output_indices(FuncOp &f, BufferViewFlowAnalysis &aliases) {
     f.walk([&](memref::AllocOp alloc_op) {
       int32_t output_index = kIndexAmbiguous;
       int count_return_uses = 0;
@@ -97,7 +97,7 @@ class BufferReuseAnalysis {
     });
   }
 
-  void find_reuse_candiates(FuncOp &f, BufferAliasAnalysis &aliases) {
+  void find_reuse_candiates(FuncOp &f, BufferViewFlowAnalysis &aliases) {
     Liveness liveness(f);
     f.walk([&](Block *block) {
       find_reuse_candiates(block, aliases, liveness.getLiveness(block),
@@ -105,7 +105,7 @@ class BufferReuseAnalysis {
     });
   }
 
-  void find_reuse_candiates(Block *block, BufferAliasAnalysis &aliases,
+  void find_reuse_candiates(Block *block, BufferViewFlowAnalysis &aliases,
                             const LivenessBlockInfo *liveness,
                             ArrayRef<BlockArgument> arguments) {
     for (Operation &op : *block) {

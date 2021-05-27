@@ -1255,32 +1255,8 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/client:__pkg__",
         "//tensorflow/python/util:__pkg__",
-    ],
-)
-
-cc_library(
-    name = "extension_type_variant",
-    srcs = ["extension_type_variant.cc"],
-    hdrs = ["extension_type_variant.h"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "extension_type_variant_test",
-    size = "small",
-    srcs = ["extension_type_variant_test.cc"],
-    deps = [
-        ":extension_type_variant",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 

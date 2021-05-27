@@ -131,7 +131,15 @@ struct safe_div_or_mod_op {
                                                      const T& b) const {
     const T safe_b = tensorflow::internal::SubtleMustCopy(b);
     if (TF_PREDICT_TRUE(safe_b != 0)) {
-      return DivOrMod()(a, safe_b);
+      // Avoid FPE for INT_MIN/-1.
+      const T safe_a = tensorflow::internal::SubtleMustCopy(a);
+      if (TF_PREDICT_FALSE(std::is_signed<T>::value &&
+                           safe_a == std::numeric_limits<T>::min() &&
+                           safe_b == T(-1))) {
+        // Prefer to overflow 'a' instead of crashing.
+        return DivOrMod()(-safe_a, 1);
+      }
+      return DivOrMod()(safe_a, safe_b);
     } else {
       *error = true;
       return 0;
@@ -435,20 +443,10 @@ template <typename T, typename Enable = void>
 struct google_floor_div {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
-    if ((x < T(0)) != (y < T(0))) {
-// HIP does not have the device version of the abs routine defined
-// for all datatypes that T can resolve to
-#if defined(__HIP_DEVICE_COMPILE__)
-      T abs_x = (x < T(0)) ? -x : x;
-      T abs_y = (y < T(0)) ? -y : y;
-#else
-      T abs_x = std::abs(x);
-      T abs_y = std::abs(y);
-#endif
-      return -(abs_x + abs_y - 1) / abs_y;
-    } else {
-      return x / y;
-    }
+    const T z = x / y;
+    // Subtract one if there is a remainder and if the inputs have opposite
+    // signs. This approach avoids unnecessary overflows.
+    return z * y != x && (x < T(0) != y < T(0)) ? z - T(1) : z;
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
@@ -457,11 +455,9 @@ struct google_floor_div {
     Packet x_mask = pcmp_lt(x, zeros);
     Packet y_mask = pcmp_lt(y, zeros);
     Packet x_div_y = pdiv(x, y);
-    Packet abs_x = pabs(x);
-    Packet abs_y = pabs(y);
-    Packet ones = pones(x);
-    Packet ratio_rounded = pdiv(pnegate(psub(padd(abs_x, abs_y), ones)), abs_y);
-    return pselect(pxor(x_mask, y_mask), ratio_rounded, x_div_y);
+    Packet x_div_y_times_y = pmul(x_div_y, y);
+    return pselect(por(peq(x_div_y_times_y, x), peq(x_mask, y_mask)), x_div_y,
+                   psub(x_div_y, pones(x)));
   }
 };
 

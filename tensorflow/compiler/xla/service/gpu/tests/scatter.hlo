@@ -1,6 +1,6 @@
 // RUN: hlo_to_llvm_ir %s | FileCheck %s
 
-// CHECK-LABEL: define void @scatter_TensorFlowScatterV1(i8* noalias align 16 dereferenceable(36) %alloc0, i8* noalias align 16 dereferenceable(24) %alloc1, i8* noalias align 16 dereferenceable(8) %alloc2) {
+// CHECK-LABEL: define void @scatter_TensorFlowScatterV1(i8* noalias align 16 dereferenceable(36) %alloc0, i8* noalias align 16 dereferenceable(8) %alloc1, i8* noalias align 16 dereferenceable(24) %alloc2) {
 // CHECK: entry:
 // CHECK:         %[[VAL_32:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_7:.*]], i64 0
@@ -70,7 +70,7 @@ ENTRY main {
 
 // -----
 
-// CHECK-LABEL: define void @scatter_ScatterIntoScalar(i8* noalias align 16 dereferenceable(4) %alloc0, i8* noalias align 16 dereferenceable(4) %alloc1, i8* noalias align 16 %alloc2) {
+// CHECK-LABEL: define void @scatter_ScatterIntoScalar(i8* noalias align 16 dereferenceable(4) %alloc0, i8* noalias align 16 %alloc1, i8* noalias align 16 dereferenceable(4) %alloc2) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_60:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_43:.*]] = getelementptr inbounds i8, i8* %[[VAL_44:.*]], i64 0
@@ -127,7 +127,7 @@ ENTRY main {
 
 // -----
 
-// CHECK-LABEL: define void @scatter_TensorFlowScatter_Mul(i8* noalias align 16 dereferenceable(36) %alloc0, i8* noalias align 16 dereferenceable(24) %alloc1, i8* noalias align 16 dereferenceable(8) %alloc2) {
+// CHECK-LABEL: define void @scatter_TensorFlowScatter_Mul(i8* noalias align 16 dereferenceable(36) %alloc0, i8* noalias align 16 dereferenceable(8) %alloc1, i8* noalias align 16 dereferenceable(24) %alloc2) {
 // CHECK:         %[[VAL_63:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_64:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_98:.*]] = alloca i32, align 4

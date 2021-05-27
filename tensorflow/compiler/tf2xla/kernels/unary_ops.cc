@@ -61,18 +61,18 @@ XLAJIT_MAKE_UNARY(Asinh, xla::Asinh(x));
 REGISTER_XLA_OP(Name("Atan"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Atanh, xla::Atanh(x));
 REGISTER_XLA_OP(Name("Ceil"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Cos, xla::Cos(x));
+REGISTER_XLA_OP(Name("Cos"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
 XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
 REGISTER_XLA_OP(Name("Exp"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Expm1, xla::Expm1(x));
+REGISTER_XLA_OP(Name("Expm1"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Floor"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(IsFinite, xla::IsFinite(x));
+REGISTER_XLA_OP(Name("IsFinite"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsInf"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsNan"), MlirXlaOpKernel);
 // Return 1/x
 XLAJIT_MAKE_UNARY(Inv, xla::ScalarLike(x, 1.0) / x);
-XLAJIT_MAKE_UNARY(Reciprocal, xla::ScalarLike(x, 1.0) / x);
+REGISTER_XLA_OP(Name("Reciprocal"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Log, xla::Log(x));
 REGISTER_XLA_OP(Name("Log1p"), MlirXlaOpKernel);
 
@@ -87,14 +87,14 @@ XLAJIT_MAKE_UNARY(Round, xla::RoundToEven(x));
 
 REGISTER_XLA_OP(Name("Rsqrt"), MlirXlaOpKernel);
 
-XLAJIT_MAKE_UNARY(Sigmoid, xla::Logistic(x));
+REGISTER_XLA_OP(Name("Sigmoid"), MlirXlaOpKernel);
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-XLAJIT_MAKE_UNARY(Sign, xla::Sign(x));
+REGISTER_XLA_OP(Name("Sign"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
 
 static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {
-  return b->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(features));
     xla::XlaOp threshold =
         Log(xla::Epsilon(b, shape.element_type())) + ScalarLike(features, 2.0);
@@ -119,7 +119,7 @@ REGISTER_XLA_OP(Name("Sqrt"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Square, x* x);
 XLAJIT_MAKE_UNARY(Tan, xla::Tan(x));
 REGISTER_XLA_OP(Name("Tanh"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Real, xla::Real(x));
+REGISTER_XLA_OP(Name("Real"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Imag"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Erf, xla::Erf(x));
 XLAJIT_MAKE_UNARY(Erfc, xla::Erfc(x));

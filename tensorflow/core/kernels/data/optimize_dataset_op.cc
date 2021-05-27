@@ -51,8 +51,8 @@ namespace {
 // Applies given optimizations and optimizatin_config in dataset graph rewrite
 // to return the OptimizeDataset.
 void MakeDatasetHelper(OpKernelContext* ctx,
-                       std::vector<tstring>& optimizations,
-                       const std::vector<string>& optimization_configs,
+                       absl::flat_hash_set<tstring>& optimizations,
+                       const absl::flat_hash_set<tstring>& optimization_configs,
                        DatasetBase* input, DatasetBase** output) {
   // The vector stores the graduated experiment names which will be turned on
   // for all input pipelines.
@@ -65,9 +65,8 @@ void MakeDatasetHelper(OpKernelContext* ctx,
 
   // Add the graduated experiments to the optimization list and log them.
   for (auto& experiment : graduated_experiments) {
-    if (std::find(optimizations.begin(), optimizations.end(), experiment) ==
-        optimizations.end()) {
-      optimizations.push_back(experiment);
+    if (!optimizations.contains(experiment)) {
+      optimizations.insert(experiment);
     }
     VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
   }
@@ -101,13 +100,16 @@ void MakeDatasetHelper(OpKernelContext* ctx,
 // static
 void OptimizeDatasetOp::MakeDatasetFromOptions(
     OpKernelContext* ctx, DatasetBase* input,
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default,
-    const std::vector<string>& optimization_configs, DatasetBase** output) {
-  std::vector<tstring> optimizations =
-      ConfigureExperimentsAndSelectOptimizations(
-          optimizations_enabled, optimizations_disabled, optimizations_default);
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default,
+    const absl::flat_hash_set<tstring>& optimization_configs,
+    DatasetBase** output) {
+  auto experiments = GetExperiments();
+  LogAndRecordExperiments(experiments);
+  auto optimizations =
+      SelectOptimizations(experiments, optimizations_enabled,
+                          optimizations_disabled, optimizations_default);
   MakeDatasetHelper(ctx, optimizations, optimization_configs, input, output);
 }
 
@@ -119,16 +121,22 @@ OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
   } else if (op_name == kOptimizeDatasetV2) {
     op_version_ = 2;
   }
+  std::vector<tstring> optimization_configs;
   OP_REQUIRES_OK(ctx,
-                 ctx->GetAttr(kOptimizationConfigs, &optimization_configs_));
+                 ctx->GetAttr(kOptimizationConfigs, &optimization_configs));
+  optimization_configs_.insert(optimization_configs.begin(),
+                               optimization_configs.end());
 }
 
 void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
-  std::vector<tstring> optimizations;
+  absl::flat_hash_set<tstring> optimizations;
   if (op_version_ == 1) {
-    OP_REQUIRES_OK(
-        ctx, ParseVectorArgument<tstring>(ctx, kOptimizations, &optimizations));
+    std::vector<tstring> optimizations_enabled;
+    OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizations,
+                                                     &optimizations_enabled));
+    optimizations.insert(optimizations_enabled.begin(),
+                         optimizations_enabled.end());
   } else if (op_version_ == 2) {
     std::vector<tstring> optimizations_enabled, optimizations_disabled,
         optimizations_default;
@@ -139,11 +147,18 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                                 &optimizations_disabled));
     OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizationsDefault,
                                                      &optimizations_default));
-    optimizations = ConfigureExperimentsAndSelectOptimizations(
-        optimizations_enabled, optimizations_disabled, optimizations_default);
+    auto experiments = GetExperiments();
+    LogAndRecordExperiments(experiments);
+    optimizations = SelectOptimizations(
+        experiments,
+        {optimizations_enabled.begin(), optimizations_enabled.end()},
+        {optimizations_disabled.begin(), optimizations_disabled.end()},
+        {optimizations_default.begin(), optimizations_default.end()});
   }
-
-  MakeDatasetHelper(ctx, optimizations, optimization_configs_, input, output);
+  MakeDatasetHelper(
+      ctx, optimizations,
+      {optimization_configs_.begin(), optimization_configs_.end()}, input,
+      output);
 }
 
 namespace {
@@ -161,10 +176,11 @@ namespace data {
 // static
 void OptimizeDatasetOp::MakeDatasetFromOptions(
     OpKernelContext* ctx, DatasetBase* input,
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default,
-    const std::vector<string>& optimization_configs, DatasetBase** output) {
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default,
+    const absl::flat_hash_set<tstring>& optimization_configs,
+    DatasetBase** output) {
   input->Ref();
   *output = input;
 }

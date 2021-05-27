@@ -211,6 +211,14 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     if (status.ok()) {
       break;
     }
+    // TODO(b/165870356): refactor this loop to be
+    // while(!platform->Initialized()) once the Initialized() function works
+    // correctly, and remove this check. The platform may already be initialized
+    // when running internally.
+    if (status.code() == tensorflow::error::ALREADY_EXISTS) {
+      LOG(INFO) << "TpuPlatform already initialized, continuing...";
+      break;
+    }
     LOG(INFO) << "TPU platform initialization failed: " << status;
     if ((absl::Now() - start) >= init_retry_timeout) {
       return status;

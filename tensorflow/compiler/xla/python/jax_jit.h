@@ -95,7 +95,7 @@ struct ParsedArgumentsAsBuffers {
   std::vector<xla::PjRtBuffer*> arg_buffers;
   // We may need to keep these objects around, because:
   // (a) we need to extend the lifetime of objects created within
-  //    `ConvertArgsToBuffers`
+  //    `CopyBuffersToDevice`
   // (b) `arg_buffers` do not maintain ownership
   std::vector<std::unique_ptr<xla::PjRtBuffer>> keep_alive;
 };

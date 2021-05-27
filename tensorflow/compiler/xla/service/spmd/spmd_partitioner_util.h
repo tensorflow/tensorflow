@@ -431,6 +431,8 @@ int64 FindRotateRightPattern(const HloInstruction* concat,
 struct PadWithWrapPattern {
   int64 lhs_slice_start;
   int64 rhs_slice_start;
+  std::vector<const HloInstruction*> lhs_modifiers;
+  std::vector<const HloInstruction*> rhs_modifiers;
 };
 
 // Returns the `PadWithWrapPattern` if the concat(lhs,mid,rhs) is equivalent to

@@ -25,10 +25,10 @@ namespace testing {
 namespace {
 
 void TestMaxMinFloat(const TfLiteRegistration& registration,
-                     const int* input1_dims_data, const float* input1_data,
-                     const int* input2_dims_data, const float* input2_data,
-                     const float* expected_output_data,
-                     const int* output_dims_data, float* output_data) {
+                     int* input1_dims_data, const float* input1_data,
+                     int* input2_dims_data, const float* input2_data,
+                     const float* expected_output_data, int* output_dims_data,
+                     float* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -61,15 +61,13 @@ void TestMaxMinFloat(const TfLiteRegistration& registration,
 }
 
 void TestMaxMinQuantized(const TfLiteRegistration& registration,
-                         const int* input1_dims_data,
-                         const uint8_t* input1_data, float const input1_scale,
-                         const int input1_zero_point,
-                         const int* input2_dims_data,
-                         const uint8_t* input2_data, const float input2_scale,
-                         const int input2_zero_point,
+                         int* input1_dims_data, const uint8_t* input1_data,
+                         float const input1_scale, const int input1_zero_point,
+                         int* input2_dims_data, const uint8_t* input2_data,
+                         const float input2_scale, const int input2_zero_point,
                          const uint8_t* expected_output_data,
                          const float output_scale, const int output_zero_point,
-                         const int* output_dims_data, uint8_t* output_data) {
+                         int* output_dims_data, uint8_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -104,11 +102,11 @@ void TestMaxMinQuantized(const TfLiteRegistration& registration,
   }
 }
 
-void TestMaxMinQuantizedInt32(
-    const TfLiteRegistration& registration, const int* input1_dims_data,
-    const int32_t* input1_data, const int* input2_dims_data,
-    const int32_t* input2_data, const int32_t* expected_output_data,
-    const int* output_dims_data, int32_t* output_data) {
+void TestMaxMinQuantizedInt32(const TfLiteRegistration& registration,
+                              int* input1_dims_data, const int32_t* input1_data,
+                              int* input2_dims_data, const int32_t* input2_data,
+                              const int32_t* expected_output_data,
+                              int* output_dims_data, int32_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -147,7 +145,7 @@ void TestMaxMinQuantizedInt32(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(FloatTest) {
-  const int dims[] = {3, 3, 1, 2};
+  int dims[] = {3, 3, 1, 2};
   const float data1[] = {1.0, 0.0, -1.0, 11.0, -2.0, -1.44};
   const float data2[] = {-1.0, 0.0, 1.0, 12.0, -3.0, -1.43};
   const float golden_max[] = {1.0, 0.0, 1.0, 12.0, -2.0, -1.43};
@@ -164,7 +162,7 @@ TF_LITE_MICRO_TEST(FloatTest) {
 }
 
 TF_LITE_MICRO_TEST(Uint8Test) {
-  const int dims[] = {3, 3, 1, 2};
+  int dims[] = {3, 3, 1, 2};
   const uint8_t data1[] = {1, 0, 2, 11, 2, 23};
   const uint8_t data2[] = {0, 0, 1, 12, 255, 1};
   const uint8_t golden_max[] = {1, 0, 2, 12, 255, 23};
@@ -189,8 +187,8 @@ TF_LITE_MICRO_TEST(Uint8Test) {
 }
 
 TF_LITE_MICRO_TEST(FloatWithBroadcastTest) {
-  const int dims[] = {3, 3, 1, 2};
-  const int dims_scalar[] = {1, 2};
+  int dims[] = {3, 3, 1, 2};
+  int dims_scalar[] = {1, 2};
   const float data1[] = {1.0, 0.0, -1.0, -2.0, -1.44, 11.0};
   const float data2[] = {0.5, 2.0};
   const float golden_max[] = {1.0, 2.0, 0.5, 2.0, 0.5, 11.0};
@@ -207,8 +205,8 @@ TF_LITE_MICRO_TEST(FloatWithBroadcastTest) {
 }
 
 TF_LITE_MICRO_TEST(Int32WithBroadcastTest) {
-  const int dims[] = {3, 3, 1, 2};
-  const int dims_scalar[] = {1, 1};
+  int dims[] = {3, 3, 1, 2};
+  int dims_scalar[] = {1, 1};
   const int32_t data1[] = {1, 0, -1, -2, 3, 11};
   const int32_t data2[] = {2};
   const int32_t golden_max[] = {2, 2, 2, 2, 3, 11};

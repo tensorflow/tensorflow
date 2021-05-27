@@ -74,33 +74,8 @@ uint64 FastTensorProtoHash(const TensorProto& tp) {
   }
 }
 
-// There are multiple equivalent representations of attr values containing
-// TensorProtos. Compare them by constructing Tensors and serializing them
-// back. Comparing Tensor objects is pretty tricky. This is unsafe operation,
-// because large tensors can be represented as TensorProto, but can't be
-// serialized to tensor content.
-bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
-  Tensor lhs_t(lhs.dtype());
-  bool success = lhs_t.FromProto(lhs);
-  DCHECK(success);
-
-  Tensor rhs_t(rhs.dtype());
-  success = rhs_t.FromProto(rhs);
-  DCHECK(success);
-
-  TensorProto lhs_tp;
-  lhs_t.AsProtoTensorContent(&lhs_tp);
-
-  TensorProto rhs_tp;
-  rhs_t.AsProtoTensorContent(&rhs_tp);
-
-  return AreSerializedProtosEqual(lhs_tp, rhs_tp);
-}
-
-// Do not construct large tensors in memory, compare equality using TensorProto
-// string representation. Tensors with identical content potentially can have
-// different tensor proto representation.
-bool FastAreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
+bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs,
+                          bool allow_false_negatives) {
   // A small TensorProto can expand into a giant Tensor.  So we avoid
   // conversion to an actual Tensor if we can quickly rule out equality
   // by comparing the Tensor size since different sized Tensors are definitely
@@ -111,24 +86,49 @@ bool FastAreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
     return false;
   }
 
-  // If the tensor is very large, we'll only compare the proto representation
-  // (even though this may miss some equivalent tensors whose actual tensor
-  // values are the same but which are described by different TensorProtos).
-  if (lhs_tensor_bytes > kMaxAttrValueTensorByteSize) {
-    return AreSerializedProtosEqual(lhs, rhs);
-  }
-
   // If the TensorProto representation expands into a much bigger Tensor,
   // we have a fast-path that first compares the protos.
   const int64 lhs_proto_bytes = lhs.ByteSizeLong();
   const bool large_expansion =
       (lhs_proto_bytes < 512 && lhs_tensor_bytes > 4096);
-  if (large_expansion && AreSerializedProtosEqual(lhs, rhs)) {
-    return true;
+
+  // If the tensor is very large, we'll only compare the proto representation if
+  // false negatives are allowed. This may miss some equivalent tensors whose
+  // actual tensor values are the same but which are described by different
+  // TensorProtos. This avoids construction of large protos in memory.
+  const bool only_compare_proto =
+      (allow_false_negatives && lhs_tensor_bytes > kMaxAttrValueTensorByteSize);
+  if (large_expansion || only_compare_proto) {
+    if (AreSerializedProtosEqual(lhs, rhs))
+      return true;
+    else if (only_compare_proto)
+      return false;
   }
 
-  // Fall back to the general code in AreTensorProtosEqual.
-  return AreTensorProtosEqual(lhs, rhs);
+  // Finally, compare them by constructing Tensors and serializing them back.
+  // There are multiple equivalent representations of attr values containing
+  // TensorProtos. Comparing Tensor objects is pretty tricky. This is unsafe
+  // operation, because large tensors can be represented as TensorProto, but
+  // can't be serialized to tensor content.
+  Tensor lhs_t(lhs.dtype());
+  bool success = lhs_t.FromProto(lhs);
+  if (!success) {
+    return false;
+  }
+
+  Tensor rhs_t(rhs.dtype());
+  success = rhs_t.FromProto(rhs);
+  if (!success) {
+    return false;
+  }
+
+  TensorProto lhs_tp;
+  lhs_t.AsProtoTensorContent(&lhs_tp);
+
+  TensorProto rhs_tp;
+  rhs_t.AsProtoTensorContent(&rhs_tp);
+
+  return AreSerializedProtosEqual(lhs_tp, rhs_tp);
 }
 
 using TensorProtoHasher = std::function<uint64(const TensorProto&)>;
@@ -149,47 +149,6 @@ uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
 
   // If `a` is not a tensor or func, get a hash of serialized string.
   return DeterministicProtoHash64(a);
-}
-
-template <typename TensorProtosEquality>
-bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
-                        TensorProtosEquality tensor_equality) {
-  if (a.type() != b.type()) {
-    return false;
-  } else if (a.type() != DT_INVALID && b.type() != DT_INVALID) {
-    return a.type() == b.type();
-  }
-
-  if (a.has_tensor() != b.has_tensor()) {
-    return false;
-  } else if (a.has_tensor() && b.has_tensor()) {
-    return tensor_equality(a.tensor(), b.tensor());
-  }
-
-  // `func` field contains a nested AttrValue. Compare such AttrValues
-  // recursively.
-  if (a.has_func() != b.has_func()) {
-    return false;
-  } else if (a.has_func() && b.has_func()) {
-    const NameAttrList& af = a.func();
-    const NameAttrList& bf = b.func();
-    if (af.name() != bf.name()) return false;
-    std::unordered_map<string, AttrValue> am(af.attr().begin(),
-                                             af.attr().end());
-    for (const auto& bm_pair : bf.attr()) {
-      const auto& iter = am.find(bm_pair.first);
-      if (iter == am.end()) return false;
-      if (!AreAttrValuesEqual(iter->second, bm_pair.second, tensor_equality))
-        return false;
-      am.erase(iter);
-    }
-    if (!am.empty()) return false;
-    return true;
-  }
-
-  // All other fields in AttrValue have deterministic representations.
-  // It is safe to compare their serialized strings.
-  return AreSerializedProtosEqual(a, b);
 }
 
 string SummarizeString(const string& str) {
@@ -641,16 +600,49 @@ void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out) {
   }
 }
 
-bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
-  return AreAttrValuesEqual(a, b, AreTensorProtosEqual);
+bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
+                        bool allow_false_negatives) {
+  if (a.type() != b.type()) {
+    return false;
+  } else if (a.type() != DT_INVALID && b.type() != DT_INVALID) {
+    return a.type() == b.type();
+  }
+
+  if (a.has_tensor() != b.has_tensor()) {
+    return false;
+  } else if (a.has_tensor() && b.has_tensor()) {
+    return AreTensorProtosEqual(a.tensor(), b.tensor(), allow_false_negatives);
+  }
+
+  // `func` field contains a nested AttrValue. Compare such AttrValues
+  // recursively.
+  if (a.has_func() != b.has_func()) {
+    return false;
+  } else if (a.has_func() && b.has_func()) {
+    const NameAttrList& af = a.func();
+    const NameAttrList& bf = b.func();
+    if (af.name() != bf.name()) return false;
+    std::unordered_map<string, AttrValue> am(af.attr().begin(),
+                                             af.attr().end());
+    for (const auto& bm_pair : bf.attr()) {
+      const auto& iter = am.find(bm_pair.first);
+      if (iter == am.end()) return false;
+      if (!AreAttrValuesEqual(iter->second, bm_pair.second,
+                              allow_false_negatives))
+        return false;
+      am.erase(iter);
+    }
+    if (!am.empty()) return false;
+    return true;
+  }
+
+  // All other fields in AttrValue have deterministic representations.
+  // It is safe to compare their serialized strings.
+  return AreSerializedProtosEqual(a, b);
 }
 
 uint64 AttrValueHash(const AttrValue& a) {
   return AttrValueHash(a, TensorProtoHash);
-}
-
-bool FastAreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
-  return AreAttrValuesEqual(a, b, FastAreTensorProtosEqual);
 }
 
 uint64 FastAttrValueHash(const AttrValue& a) {

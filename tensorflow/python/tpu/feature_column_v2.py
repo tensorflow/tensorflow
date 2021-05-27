@@ -430,6 +430,7 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
               use_safe_embedding_lookup=True,
               bypass_scope_validation=False):
     del bypass_scope_validation
+    # pylint: disable=redundant-keyword-arg
     return fc_lib.EmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -627,6 +628,7 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
               max_sequence_length=0,
               learning_rate_fn=None,
               use_safe_embedding_lookup=True):
+    # pylint: disable=redundant-keyword-arg
     return fc_lib.SharedEmbeddingColumn.__new__(
         cls,
         categorical_column,

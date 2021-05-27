@@ -4794,7 +4794,7 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     self._test(a + 1, tot_var)
 
     # If we negate all pixel-values then the total variation is unchanged.
-    self._test(-a, tot_var)
+    self._test(-a, tot_var)  # pylint: disable=invalid-unary-operand-type
 
     # Scale the pixel-values by a float. This scales the total variation as
     # well.

@@ -24,12 +24,13 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-void TestSplitTwoOutputsFloat(
-    const int* input_dims_data, const float* input_data,
-    const int* axis_dims_data, const int32_t* axis_data,
-    const int* output1_dims_data, const float* expected_output1_data,
-    const int* output2_dims_data, const float* expected_output2_data,
-    float* output1_data, float* output2_data) {
+void TestSplitTwoOutputsFloat(int* input_dims_data, const float* input_data,
+                              int* axis_dims_data, const int32_t* axis_data,
+                              int* output1_dims_data,
+                              const float* expected_output1_data,
+                              int* output2_dims_data,
+                              const float* expected_output2_data,
+                              float* output1_data, float* output2_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
   TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
@@ -79,14 +80,13 @@ void TestSplitTwoOutputsFloat(
 }
 
 void TestSplitFourOutputsFloat(
-    const int* input_dims_data, const float* input_data,
-    const int* axis_dims_data, const int32_t* axis_data,
-    const int* output1_dims_data, const float* expected_output1_data,
-    const int* output2_dims_data, const float* expected_output2_data,
-    const int* output3_dims_data, const float* expected_output3_data,
-    const int* output4_dims_data, const float* expected_output4_data,
-    float* output1_data, float* output2_data, float* output3_data,
-    float* output4_data) {
+    int* input_dims_data, const float* input_data, int* axis_dims_data,
+    const int32_t* axis_data, int* output1_dims_data,
+    const float* expected_output1_data, int* output2_dims_data,
+    const float* expected_output2_data, int* output3_dims_data,
+    const float* expected_output3_data, int* output4_dims_data,
+    const float* expected_output4_data, float* output1_data,
+    float* output2_data, float* output3_data, float* output4_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
   TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
@@ -153,11 +153,11 @@ void TestSplitFourOutputsFloat(
 }
 
 void TestSplitTwoOutputsQuantized(
-    const int* input_dims_data, const uint8_t* input_data,
-    const int* axis_dims_data, const int32_t* axis_data,
-    const int* output1_dims_data, const uint8_t* expected_output1_data,
-    const int* output2_dims_data, const uint8_t* expected_output2_data,
-    uint8_t* output1_data, uint8_t* output2_data) {
+    int* input_dims_data, const uint8_t* input_data, int* axis_dims_data,
+    const int32_t* axis_data, int* output1_dims_data,
+    const uint8_t* expected_output1_data, int* output2_dims_data,
+    const uint8_t* expected_output2_data, uint8_t* output1_data,
+    uint8_t* output2_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
   TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
@@ -209,11 +209,11 @@ void TestSplitTwoOutputsQuantized(
 }
 
 void TestSplitTwoOutputsQuantized32(
-    const int* input_dims_data, const int32_t* input_data,
-    const int* axis_dims_data, const int32_t* axis_data,
-    const int* output1_dims_data, const int32_t* expected_output1_data,
-    const int* output2_dims_data, const int32_t* expected_output2_data,
-    int32_t* output1_data, int32_t* output2_data) {
+    int* input_dims_data, const int32_t* input_data, int* axis_dims_data,
+    const int32_t* axis_data, int* output1_dims_data,
+    const int32_t* expected_output1_data, int* output2_dims_data,
+    const int32_t* expected_output2_data, int32_t* output1_data,
+    int32_t* output2_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
   TfLiteIntArray* output1_dims = IntArrayFromInts(output1_dims_data);
@@ -269,14 +269,14 @@ void TestSplitTwoOutputsQuantized32(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisZero) {
-  const int input_shape[] = {4, 2, 2, 2, 2};
+  int input_shape[] = {4, 2, 2, 2, 2};
   const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
                               9, 10, 11, 12, 13, 14, 15, 16};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {0};
-  const int output1_shape[] = {4, 1, 2, 2, 2};
+  int output1_shape[] = {4, 1, 2, 2, 2};
   const float golden1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  const int output2_shape[] = {4, 1, 2, 2, 2};
+  int output2_shape[] = {4, 1, 2, 2, 2};
   const float golden2[] = {9, 10, 11, 12, 13, 14, 15, 16};
 
   constexpr int output1_dims_count = 8;
@@ -289,14 +289,14 @@ TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisZero) {
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisOne) {
-  const int input_shape[] = {4, 2, 2, 2, 2};
+  int input_shape[] = {4, 2, 2, 2, 2};
   const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
                               9, 10, 11, 12, 13, 14, 15, 16};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {1};
-  const int output1_shape[] = {4, 2, 1, 2, 2};
+  int output1_shape[] = {4, 2, 1, 2, 2};
   const float golden1[] = {1, 2, 3, 4, 9, 10, 11, 12};
-  const int output2_shape[] = {4, 2, 1, 2, 2};
+  int output2_shape[] = {4, 2, 1, 2, 2};
   const float golden2[] = {5, 6, 7, 8, 13, 14, 15, 16};
 
   constexpr int output1_dims_count = 8;
@@ -309,14 +309,14 @@ TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisOne) {
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisTwo) {
-  const int input_shape[] = {4, 2, 2, 2, 2};
+  int input_shape[] = {4, 2, 2, 2, 2};
   const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
                               9, 10, 11, 12, 13, 14, 15, 16};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {2};
-  const int output1_shape[] = {4, 2, 2, 1, 2};
+  int output1_shape[] = {4, 2, 2, 1, 2};
   const float golden1[] = {1, 2, 5, 6, 9, 10, 13, 14};
-  const int output2_shape[] = {4, 2, 2, 1, 2};
+  int output2_shape[] = {4, 2, 2, 1, 2};
   const float golden2[] = {3, 4, 7, 8, 11, 12, 15, 16};
 
   constexpr int output1_dims_count = 8;
@@ -329,14 +329,14 @@ TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisTwo) {
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisThree) {
-  const int input_shape[] = {4, 2, 2, 2, 2};
+  int input_shape[] = {4, 2, 2, 2, 2};
   const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
                               9, 10, 11, 12, 13, 14, 15, 16};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {3};
-  const int output1_shape[] = {4, 2, 2, 2, 1};
+  int output1_shape[] = {4, 2, 2, 2, 1};
   const float golden1[] = {1, 3, 5, 7, 9, 11, 13, 15};
-  const int output2_shape[] = {4, 2, 2, 2, 1};
+  int output2_shape[] = {4, 2, 2, 2, 1};
   const float golden2[] = {2, 4, 6, 8, 10, 12, 14, 16};
 
   constexpr int output1_dims_count = 8;
@@ -349,14 +349,14 @@ TF_LITE_MICRO_TEST(TwoSplitFourDimensionalAxisThree) {
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalNegativeAxis) {
-  const int input_shape[] = {4, 2, 2, 2, 2};
+  int input_shape[] = {4, 2, 2, 2, 2};
   const float input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
                               9, 10, 11, 12, 13, 14, 15, 16};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {-4};
-  const int output1_shape[] = {4, 1, 2, 2, 2};
+  int output1_shape[] = {4, 1, 2, 2, 2};
   const float golden1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  const int output2_shape[] = {4, 1, 2, 2, 2};
+  int output2_shape[] = {4, 1, 2, 2, 2};
   const float golden2[] = {9, 10, 11, 12, 13, 14, 15, 16};
 
   constexpr int output1_dims_count = 8;
@@ -369,17 +369,17 @@ TF_LITE_MICRO_TEST(TwoSplitFourDimensionalNegativeAxis) {
 }
 
 TF_LITE_MICRO_TEST(FourSplit) {
-  const int input_shape[] = {1, 4};
+  int input_shape[] = {1, 4};
   const float input_data[] = {1, 2, 3, 4};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {0};
-  const int output1_shape[] = {1, 1};
+  int output1_shape[] = {1, 1};
   const float golden1[] = {1};
-  const int output2_shape[] = {1, 1};
+  int output2_shape[] = {1, 1};
   const float golden2[] = {2};
-  const int output3_shape[] = {1, 1};
+  int output3_shape[] = {1, 1};
   const float golden3[] = {3};
-  const int output4_shape[] = {1, 1};
+  int output4_shape[] = {1, 1};
   const float golden4[] = {4};
 
   constexpr int output1_dims_count = 1;
@@ -397,13 +397,13 @@ TF_LITE_MICRO_TEST(FourSplit) {
 }
 
 TF_LITE_MICRO_TEST(TwoSplitOneDimensional) {
-  const int input_shape[] = {1, 2};
+  int input_shape[] = {1, 2};
   const float input_data[] = {1, 2};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {0};
-  const int output1_shape[] = {1, 1};
+  int output1_shape[] = {1, 1};
   const float golden1[] = {1};
-  const int output2_shape[] = {1, 1};
+  int output2_shape[] = {1, 1};
   const float golden2[] = {2};
 
   constexpr int output1_dims_count = 8;
@@ -416,14 +416,14 @@ TF_LITE_MICRO_TEST(TwoSplitOneDimensional) {
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalQuantized) {
-  const int input_shape[] = {4, 2, 2, 2, 2};
+  int input_shape[] = {4, 2, 2, 2, 2};
   const uint8_t input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
                                 9, 10, 11, 12, 13, 14, 15, 16};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {1};
-  const int output1_shape[] = {4, 2, 1, 2, 2};
+  int output1_shape[] = {4, 2, 1, 2, 2};
   const uint8_t golden1[] = {1, 2, 3, 4, 9, 10, 11, 12};
-  const int output2_shape[] = {4, 2, 1, 2, 2};
+  int output2_shape[] = {4, 2, 1, 2, 2};
   const uint8_t golden2[] = {5, 6, 7, 8, 13, 14, 15, 16};
 
   constexpr int output1_dims_count = 8;
@@ -436,14 +436,14 @@ TF_LITE_MICRO_TEST(TwoSplitFourDimensionalQuantized) {
 }
 
 TF_LITE_MICRO_TEST(TwoSplitFourDimensionalQuantized32) {
-  const int input_shape[] = {4, 2, 2, 2, 2};
+  int input_shape[] = {4, 2, 2, 2, 2};
   const int32_t input_data[] = {1, 2,  3,  4,  5,  6,  7,  8,
                                 9, 10, 11, 12, 13, 14, 15, 16};
-  const int axis_shape[] = {1, 1};
+  int axis_shape[] = {1, 1};
   const int32_t axis_data[] = {1};
-  const int output1_shape[] = {4, 2, 1, 2, 2};
+  int output1_shape[] = {4, 2, 1, 2, 2};
   const int32_t golden1[] = {1, 2, 3, 4, 9, 10, 11, 12};
-  const int output2_shape[] = {4, 2, 1, 2, 2};
+  int output2_shape[] = {4, 2, 1, 2, 2};
   const int32_t golden2[] = {5, 6, 7, 8, 13, 14, 15, 16};
 
   constexpr int output1_dims_count = 8;

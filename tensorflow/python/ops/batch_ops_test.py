@@ -309,7 +309,7 @@ class BatchOpsTest(test.TestCase):
                     for _ in range(num_calls)]
     results = []
     for p in placeholders:
-      (result,) = f(p)
+      result = f(p)
       results.append(result)
     inputs = [[float(i)] for i in range(num_calls)]
     expected = [[float(i + 2)] for i in range(num_calls)]

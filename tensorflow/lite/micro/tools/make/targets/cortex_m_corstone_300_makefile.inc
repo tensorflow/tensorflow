@@ -1,3 +1,18 @@
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # ARM Cortex M makefile targeted for a FVP based on Arm Corstone-300 software.
 # For more info see: tensorflow/lite/micro/cortex_m_corstone_300/README.md
 
@@ -88,10 +103,13 @@ ifneq ($(filter cortex-m55%,$(TARGET_ARCH)),)
 endif
 
 ifeq ($(TOOLCHAIN), gcc)
-  export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
-  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
-  ifneq ($(DOWNLOAD_RESULT), SUCCESS)
-    $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+  TARGET_DEFAULT_TOOLCHAIN_ROOT := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/
+  TARGET_TOOLCHAIN_ROOT := $(TARGET_DEFAULT_TOOLCHAIN_ROOT)
+  ifeq ($(TARGET_TOOLCHAIN_ROOT), $(TARGET_DEFAULT_TOOLCHAIN_ROOT))
+    DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
+    ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+      $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+    endif
   endif
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 

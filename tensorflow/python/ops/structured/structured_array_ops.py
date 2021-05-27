@@ -127,8 +127,8 @@ def gather(params,
   with ops.name_scope(name):
     if axis is None:
       axis = batch_dims
-    ndims_name = params.shape.rank
-    axis = array_ops.get_positive_axis(axis, ndims_name)
+    axis = array_ops.get_positive_axis(axis, params.shape.rank,
+                                       ndims_name='params.shape.rank')
     indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         indices, name='indices')
 

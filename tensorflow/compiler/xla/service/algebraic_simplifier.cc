@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -1244,18 +1245,25 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   // Check if we can merge "adjacent" slice operands which take slices from the
   // same other op. For simplicity we only merge unstrided slices.
   int64 concatenate_dimension = concatenate->concatenate_dimension();
-  for (int64 i = 0; i < operands.size(); ++i) {
+  std::vector<HloInstruction*> new_operands;
+  int64 i = 0;
+  while (i < operands.size()) {
     if (operands[i]->opcode() != HloOpcode::kSlice ||
         !IsUnstridedSlice(operands[i])) {
+      new_operands.push_back(operands[i]);
+      ++i;
       continue;
     }
     int64 slice_end = operands[i]->slice_limits(concatenate_dimension);
     HloInstruction* slice_operand = operands[i]->mutable_operand(0);
     int64 j = i + 1;
-    while (j < operands.size() && operands[j]->opcode() == HloOpcode::kSlice &&
-           IsUnstridedSlice(operands[j]) &&
-           operands[j]->operand(0) == slice_operand &&
-           operands[j]->slice_starts(concatenate_dimension) == slice_end) {
+    while (j < operands.size()) {
+      if (operands[j]->opcode() != HloOpcode::kSlice ||
+          !IsUnstridedSlice(operands[j]) ||
+          operands[j]->operand(0) != slice_operand ||
+          operands[j]->slice_starts(concatenate_dimension) != slice_end) {
+        break;
+      }
       // Check that all the slice_start values are the same in all other
       // dimensions. This implies that the slice_limit values are also the same,
       // because operands of concatenate need to have the same shape, and we
@@ -1290,28 +1298,17 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
               /*start_indices=*/operands[i]->slice_starts(),
               /*limit_indices=*/new_limit_indices,
               /*strides=*/operands[i]->slice_strides()));
-      std::vector<HloInstruction*> new_operands;
-      for (int64 k = 0; k < i; ++k) {
-        new_operands.push_back(operands[k]);
-      }
       new_operands.push_back(new_slice_op);
-      for (int64 k = j; k < operands.size(); ++k) {
-        new_operands.push_back(operands[k]);
-      }
-      auto replacement =
-          computation_->AddInstruction(concatenate->CloneWithNewOperands(
-              concatenate->shape(), new_operands));
-
-      // Recurse to handle multiple disjoint sequence of inputs. The
-      // logic above merge only 1 sequential series of
-      // inputs. Otherwise, it can lead to the FixPass optimization
-      // hitting its threshold.
-      if (ReplaceInstructionIfSameShape(concatenate, replacement)) {
-        return HandleConcatenate(replacement);
-      }
-
-      return Status::OK();
+    } else {
+      new_operands.push_back(operands[i]);
     }
+    i = j;
+  }
+  if (new_operands.size() < operands.size()) {
+    auto replacement = computation_->AddInstruction(
+        concatenate->CloneWithNewOperands(concatenate->shape(), new_operands));
+    ReplaceInstructionIfSameShape(concatenate, replacement);
+    return Status::OK();
   }
 
   if (operands.size() == 2) {
@@ -2556,8 +2553,10 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     };
     auto result = get_value(0);
     auto pred_shape = ShapeUtil::ChangeElementType(gather->shape(), PRED);
+    simplifier_->UpdateLayout(&pred_shape);
     auto iter_shape = ShapeUtil::ChangeElementType(gather->shape(),
                                                    index_shape.element_type());
+    simplifier_->UpdateLayout(&iter_shape);
     for (int64 i = 0; i < operand_elements; ++i) {
       auto index_mask =
           computation_->AddInstruction(HloInstruction::CreateCompare(
@@ -2576,7 +2575,7 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
 namespace {
 StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
     HloInstruction* clamp_lower_bound_bcast, HloInstruction* to_clamp,
-    HloInstruction* clamp_upper_bound_bcast) {
+    HloInstruction* clamp_upper_bound_bcast, AlgebraicSimplifier* simplifier) {
   HloInstruction* clamp_lower_bound;
   CHECK(Match(clamp_lower_bound_bcast,
               m::Broadcast(m::ConstantEffectiveScalar(&clamp_lower_bound))))
@@ -2601,11 +2600,13 @@ StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
   std::unique_ptr<HloInstruction> upper_bound_instr =
       HloInstruction::CreateConstant(std::move(upper_bound_literal_reshaped));
 
+  Shape compare_shape =
+      ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED);
+  simplifier->UpdateLayout(&compare_shape);
   std::unique_ptr<HloInstruction> cloned_instruction =
-      HloInstruction::CreateCompare(
-          ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED),
-          lower_bound_instr.get(), upper_bound_instr.get(),
-          ComparisonDirection::kLt);
+      HloInstruction::CreateCompare(compare_shape, lower_bound_instr.get(),
+                                    upper_bound_instr.get(),
+                                    ComparisonDirection::kLt);
 
   HloEvaluator evaluator;
   TF_ASSIGN_OR_RETURN(auto result,
@@ -2635,7 +2636,7 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
                                           m::ConstantEffectiveScalar()))))) {
     TF_ASSIGN_OR_RETURN(auto clamp,
                         MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
-                                      clamp_upper_bound_bcast));
+                                      clamp_upper_bound_bcast, simplifier_));
     if (clamp) {
       return ReplaceWithNewInstruction(maximum, std::move(clamp));
     }
@@ -2675,7 +2676,7 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
                                           m::ConstantEffectiveScalar()))))) {
     TF_ASSIGN_OR_RETURN(auto clamp,
                         MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
-                                      clamp_upper_bound_bcast));
+                                      clamp_upper_bound_bcast, simplifier_));
     if (clamp) {
       return ReplaceWithNewInstruction(minimum, std::move(clamp));
     }
@@ -3736,10 +3737,11 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
       HloInstruction* zero_like_a = BroadcastZeros(
           computation, a->shape().element_type(), a->shape().dimensions());
 
+      Shape compare_shape = ShapeUtil::ChangeElementType(a->shape(), PRED);
+      simplifier->UpdateLayout(&compare_shape);
       auto* dividend_is_negative =
           computation->AddInstruction(HloInstruction::CreateCompare(
-              ShapeUtil::ChangeElementType(a->shape(), PRED), a, zero_like_a,
-              ComparisonDirection::kLt));
+              compare_shape, a, zero_like_a, ComparisonDirection::kLt));
 
       auto* negated_dividend = computation->AddInstruction(
           HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));
@@ -4705,17 +4707,47 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // A Transpose feeding a reduce can simply permute the reduction dimensions
   // field if the output of the reduce is a vector or scalar. Higher ranked
   // result may require a transpose of the output.
-  if (reduce_result_shape.rank() <= 1 &&
-      arg->opcode() == HloOpcode::kTranspose) {
+  if (arg->opcode() == HloOpcode::kTranspose) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64> new_reduce_dimensions;
     for (auto dim : dimensions) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
-    return ReplaceWithNewInstruction(
-        reduce, HloInstruction::CreateReduce(
-                    reduce_result_shape, arg->mutable_operand(0), init_value,
-                    new_reduce_dimensions, function));
+
+    Shape new_reduce_result_shape = ShapeUtil::FilterDimensions(
+        [&](const int64 dim) {
+          return !absl::c_linear_search(new_reduce_dimensions, dim);
+        },
+        arg->mutable_operand(0)->shape());
+    HloInstruction* new_reduce =
+        computation_->AddInstruction(HloInstruction::CreateReduce(
+            new_reduce_result_shape, arg->mutable_operand(0), init_value,
+            new_reduce_dimensions, function));
+    reduce->SetupDerivedInstruction(new_reduce);
+    std::vector<int64> new_transpose_dimensions;
+    for (auto dim : transpose_dimensions) {
+      if (absl::c_linear_search(new_reduce_dimensions, dim)) {
+        continue;
+      }
+      new_transpose_dimensions.push_back(dim);
+    }
+
+    // If new transpose dimensions are sorted, then there is no need to
+    // transpose reduce result.
+    if (absl::c_is_sorted(new_transpose_dimensions)) {
+      return ReplaceInstruction(reduce, new_reduce);
+    }
+    for (auto& d : new_transpose_dimensions) {
+      auto old_dim = d;
+      for (auto reduced_dim : new_reduce_dimensions) {
+        if (old_dim > reduced_dim) {
+          --d;
+        }
+      }
+    }
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_transpose,
+                        MakeTransposeHlo(new_reduce, new_transpose_dimensions));
+    return ReplaceInstruction(reduce, new_transpose);
   }
 
   // If a reduce feeds a reduce with the same computation and initial value,

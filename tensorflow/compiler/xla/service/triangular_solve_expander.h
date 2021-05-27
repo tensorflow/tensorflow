@@ -31,6 +31,9 @@ class TriangularSolveExpander : public OpExpanderPass {
   }
 
  protected:
+  // Should we use direct solves for batched inputs?
+  virtual bool UseDirectSolves() const { return true; }
+
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
   StatusOr<HloInstruction*> ExpandInstruction(

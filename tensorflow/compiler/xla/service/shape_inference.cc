@@ -2106,9 +2106,42 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
-    const Shape& shape) {
-  TF_RET_CHECK(shape.IsArray());
-  return shape;
+    absl::Span<const Shape* const> operand_shapes) {
+  if (operand_shapes.size() == 1) {
+    TF_RETURN_IF_ERROR(
+        ExpectArray(*(operand_shapes[0]), "operand of collective-permute"));
+    return *(operand_shapes[0]);
+  } else {
+    TF_RET_CHECK(operand_shapes.size() == 4);
+    return *(operand_shapes[1]);
+  }
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteStartShape(
+    absl::Span<const Shape* const> operand_shapes) {
+  if (operand_shapes.size() == 1) {
+    TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
+                                   "operand of collective-permute-start"));
+    return ShapeUtil::MakeTupleShape(
+        {*(operand_shapes[0]), *(operand_shapes[0]),
+         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
+  } else {
+    TF_RET_CHECK(operand_shapes.size() == 4);
+    return ShapeUtil::MakeTupleShape(
+        {*(operand_shapes[0]), *(operand_shapes[1]),
+         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {}),
+         ShapeUtil::MakeShape(S32, {})});
+  }
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteDoneShape(
+    const Shape& operand_shape) {
+  TF_RET_CHECK(operand_shape.IsTuple());
+  if (operand_shape.tuple_shapes_size() == 4) {
+    return ShapeUtil::GetTupleElementShape(operand_shape, 0);
+  } else {
+    return ShapeUtil::GetTupleElementShape(operand_shape, 1);
+  }
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceShape(

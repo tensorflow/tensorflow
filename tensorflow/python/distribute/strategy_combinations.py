@@ -28,6 +28,8 @@ from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import one_device_strategy as one_device_lib
+from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -36,6 +38,7 @@ from tensorflow.python.eager import remote
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.util.tf_export import tf_export
 
 _TF_INTERNAL_API_PREFIX = "__internal__.distribute.combinations."
@@ -177,6 +180,24 @@ def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
     return strategy
 
   return _create_multi_worker_mirrored
+
+
+def _get_ps_strategy_creator(num_workers, num_ps, required_gpus=0):
+
+  def _create_parameter_server():
+
+    cluster_def = multi_worker_test_base.create_in_process_cluster(
+        num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
+    resolver = cluster_resolver.SimpleClusterResolver(
+        ClusterSpec(cluster_def),
+        num_accelerators={"GPU": required_gpus},
+        rpc_layer="grpc")
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        resolver,
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
+    return strategy
+
+  return _create_parameter_server
 
 
 def _deferred_pool_runner(has_chief, num_workers, initializer=None):
@@ -346,6 +367,27 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     no_xla=True,
 )
 
+parameter_server_strategy_3worker_2ps_cpu = combinations.NamedDistribution(
+    "ParameterServer3Worker2PSCPU",
+    _get_ps_strategy_creator(num_workers=3, num_ps=2),
+)
+
+parameter_server_strategy_1worker_2ps_cpu = combinations.NamedDistribution(
+    "ParameterServer1Worker2PSCPU",
+    _get_ps_strategy_creator(num_workers=1, num_ps=2),
+)
+
+parameter_server_strategy_3worker_2ps_1gpu = combinations.NamedDistribution(
+    "ParameterServer3Worker2PS1GPU",
+    _get_ps_strategy_creator(num_workers=3, num_ps=2, required_gpus=1),
+    required_gpus=1,
+)
+
+parameter_server_strategy_1worker_2ps_1gpu = combinations.NamedDistribution(
+    "ParameterServer1Worker2PS1GPU",
+    _get_ps_strategy_creator(num_workers=1, num_ps=2, required_gpus=1),
+    required_gpus=1,
+)
 
 graph_and_eager_modes = ["graph", "eager"]
 
@@ -493,6 +535,22 @@ tf_export(
 tf_export(
     _TF_INTERNAL_API_PREFIX + "tpu_strategy",
     v1=[]).export_constant(__name__, "tpu_strategy")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "parameter_server_strategy_3worker_2ps_cpu",
+    v1=[]).export_constant(__name__,
+                           "parameter_server_strategy_3worker_2ps_cpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "parameter_server_strategy_1worker_2ps_cpu",
+    v1=[]).export_constant(__name__,
+                           "parameter_server_strategy_1worker_2ps_cpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "parameter_server_strategy_3worker_2ps_1gpu",
+    v1=[]).export_constant(__name__,
+                           "parameter_server_strategy_3worker_2ps_1gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "parameter_server_strategy_1worker_2ps_1gpu",
+    v1=[]).export_constant(__name__,
+                           "parameter_server_strategy_1worker_2ps_1gpu")
 tf_export(
     _TF_INTERNAL_API_PREFIX + "tpu_strategy_one_core",
     v1=[]).export_constant(__name__, "tpu_strategy_one_core")

@@ -144,7 +144,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
-  pybind11::bytes HeapProfile();
+  StatusOr<pybind11::bytes> HeapProfile();
 
  private:
   friend class PyBuffer;

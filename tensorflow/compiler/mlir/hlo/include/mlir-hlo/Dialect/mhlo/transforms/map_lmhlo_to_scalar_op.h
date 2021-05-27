@@ -58,12 +58,14 @@ struct LhloToScalarOp<lmhlo::DivOp> {
   using FOp = ::mlir::DivFOp;
   using IOp = ::mlir::SignedDivIOp;
   using UOp = ::mlir::UnsignedDivIOp;
+  using COp = ::mlir::complex::DivOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::MulOp> {
   using FOp = ::mlir::MulFOp;
   using IOp = ::mlir::MulIOp;
   using UOp = ::mlir::MulIOp;
+  using COp = ::mlir::complex::MulOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::RemOp> {
@@ -192,6 +194,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::AbsOp>(Location loc,
   }
   return nullptr;
 }
+
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::AddOp>(Location loc,
                                                   ArrayRef<Type> result_types,
@@ -279,6 +282,16 @@ inline Value MapCompareOpToStdScalarOp(Location loc,
     return b->create<ScalarFOp<CompareOpTy>>(loc, predicate.getValue(), lhs,
                                              rhs);
   }
+  if (auto complex_type = element_type.dyn_cast<ComplexType>()) {
+    if (complex_type.getElementType().isa<FloatType>()) {
+      if (comparison_direction == "EQ") {
+        return b->create<complex::EqualOp>(loc, lhs, rhs);
+      }
+      if (comparison_direction == "NE") {
+        return b->create<complex::NotEqualOp>(loc, lhs, rhs);
+      }
+    }
+  }
   return nullptr;
 }
 
@@ -289,6 +302,19 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::CopyOp>(Location loc,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
   return args.front();
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::DivOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Type> arg_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToScalarOpImpl<isSignedIntegerType, ScalarIOp<lmhlo::DivOp>,
+                                 isUnsignedIntegerType, ScalarUOp<lmhlo::DivOp>,
+                                 isFloatType, ScalarFOp<lmhlo::DivOp>,
+                                 isComplexType, ScalarCOp<lmhlo::DivOp>>{}(
+      loc, result_types, arg_types, args, b);
 }
 
 template <>
@@ -604,6 +630,19 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MinOp>(Location loc,
                                                            result_types,
                                                            arg_types, args, b),
       args, loc, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::MulOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Type> arg_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToScalarOpImpl<isSignedIntegerType, ScalarIOp<lmhlo::MulOp>,
+                                 isUnsignedIntegerType, ScalarUOp<lmhlo::MulOp>,
+                                 isFloatType, ScalarFOp<lmhlo::MulOp>,
+                                 isComplexType, ScalarCOp<lmhlo::MulOp>>{}(
+      loc, result_types, arg_types, args, b);
 }
 
 template <>
