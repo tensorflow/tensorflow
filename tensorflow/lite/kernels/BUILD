@@ -1,4 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
@@ -2578,3 +2578,9 @@ cc_test(
 )
 
 tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})
+
+# Note this is created mainly for validating external delegates in OSS.
+tflite_combine_cc_tests(
+    name = "combined_all_kernel_tests",
+    deps_conditions = [":test_main"],
+)
