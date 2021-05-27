@@ -293,6 +293,9 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
     const int depth = x.dimension(3);
+    OP_REQUIRES(
+        context, depth != 0,
+        errors::Internal("The 4th element in the input shape cannot be 0."));
     const int size = x.size();
     const int rest_size = size / depth;
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
