@@ -25,6 +25,7 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -59,6 +60,11 @@ public final class InterpreterTest {
   private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
   private static final ByteBuffer MODEL_WITH_SIGNATURE_BUFFER =
       TestUtils.getTestFileAsBuffer(MODEL_WITH_SIGNATURE_PATH);
+
+  @Before
+  public void setUp() {
+    TestInit.init();
+  }
 
   @Test
   public void testInterpreter() throws Exception {
