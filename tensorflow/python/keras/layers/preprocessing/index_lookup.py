@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
@@ -377,16 +378,14 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     # The MutableHashTable data will not be sorted, so we will create a inverted
     # lookup here, and use that to lookup a range of indices [0, vocab_size).
-    keys, values = self._table_handler.data()
-    if self.invert:
-      index_to_token = zip(keys, values)
-    else:
-      index_to_token = zip(values, keys)
-    lookup = collections.defaultdict(lambda: self.oov_token, index_to_token)
+    keys, values = self._table.export()
+    vocab, indices = (values, keys) if self.invert else (keys, values)
+    lookup = collections.defaultdict(
+        lambda: self.oov_token,
+        zip(indices.numpy(), self._tensor_vocab_to_numpy(vocab)))
     vocab = [lookup[x] for x in range(self.vocabulary_size())]
     if self.mask_token is not None and self.output_mode == INT:
       vocab[0] = self.mask_token
-
     return vocab
 
   def vocabulary_size(self):
@@ -441,9 +440,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     it.
 
     Args:
-      vocabulary: An array of hashable tokens.
-      idf_weights: An array of inverse document frequency weights with equal
-        length to vocab. Only necessary if the layer output_mode is TF_IDF.
+      vocabulary: An array, numpy array, or tensor of hashable tokens.
+      idf_weights: An array, numpy array, or tensor of inverse document
+        frequency weights with equal length to vocab. Only necessary if the
+        layer output_mode is TF_IDF.
 
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or
@@ -452,6 +452,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         called. This happens when `"multi_hot"`, `"count"`, and `"tfidf"` modes,
         if `pad_to_max_tokens` is False and the layer itself has already been
         called.
+      RuntimeError: If a tensor vocabulary is passed outside of eager execution.
     """
     if self._has_static_table:
       raise RuntimeError("Layer {} was created with a static file-based table "
@@ -469,6 +470,21 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise RuntimeError("When using {} mode and `pad_to_max_tokens` is "
                          "False, the vocabulary cannot be changed after the "
                          "layer is called.".format(self.output_mode))
+
+    if not context.executing_eagerly() and (tensor_util.is_tensor(vocabulary) or
+                                            tensor_util.is_tensor(idf_weights)):
+      raise RuntimeError(
+          "Cannot set a tensor vocabulary on {} layer {} when not executing "
+          "eagerly. Create this layer or call `set_vocabulary` outside of "
+          "any `tf.function`s and with eager execution enabled.".format(
+              self.__class__.__name__, self.name))
+
+    # TODO(mattdangerw): for better performance we should rewrite this entire
+    # function to operate on tensors and convert vocabulary to a tensor here.
+    if tensor_util.is_tensor(vocabulary):
+      vocabulary = self._tensor_vocab_to_numpy(vocabulary)
+    if tensor_util.is_tensor(idf_weights):
+      idf_weights = idf_weights.numpy()
 
     oov_start = self._oov_start_index()
     token_start = self._token_start_index()
@@ -657,6 +673,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   @property
   def _trackable_saved_model_saver(self):
     return layer_serialization.IndexLookupLayerSavedModelSaver(self)
+
+  # Override points for IntegerLookup and StringLookup.
+  def _tensor_vocab_to_numpy(self, vocabulary):
+    """Converts a tensor vocabulary to a numpy vocabulary."""
+    return vocabulary.numpy()
 
 
 class _IndexLookupAccumulator(

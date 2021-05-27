@@ -15,6 +15,8 @@
 """Keras string lookup preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
@@ -298,10 +300,6 @@ class StringLookup(index_lookup.IndexLookup):
     base_config = super(StringLookup, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  def get_vocabulary(self):
-    vocab = super(StringLookup, self).get_vocabulary()
-    return [compat.as_text(x, self.encoding) for x in vocab]
-
   def set_vocabulary(self, vocabulary, idf_weights=None):
     if isinstance(vocabulary, str):
       if self.output_mode == index_lookup.TF_IDF:
@@ -315,3 +313,8 @@ class StringLookup(index_lookup.IndexLookup):
       vocabulary = table_utils.get_vocabulary_from_file(vocabulary,
                                                         self.encoding)
     super().set_vocabulary(vocabulary, idf_weights=idf_weights)
+
+  # Overriden methods from IndexLookup.
+  def _tensor_vocab_to_numpy(self, vocabulary):
+    vocabulary = vocabulary.numpy()
+    return np.array([compat.as_text(x, self.encoding) for x in vocabulary])
