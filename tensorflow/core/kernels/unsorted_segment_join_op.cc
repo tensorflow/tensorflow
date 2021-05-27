@@ -90,6 +90,8 @@ class UnsortedSegmentJoinOp : public OpKernel {
     const int32 segment_dims = segment_id_shape.dims();
 
     const Tensor& num_segments_tensor = context->input(2);
+    OP_REQUIRES(context, num_segments_tensor.NumElements() != 0,
+                errors::InvalidArgument("Number of segments cannot be empty."));
     auto num_segments = num_segments_tensor.scalar<NUM_SEGMENTS_TYPE>()();
 
     OP_REQUIRES(context, segment_dims != 0,
