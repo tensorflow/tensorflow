@@ -87,8 +87,10 @@ void LegalizeTensorLoadOpPass::runOnFunction() {
   auto context = &getContext();
   OwningRewritePatternList patterns(context);
   patterns.insert<ForwardShapeOfOp, ForwardExtractOp>(context);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    func.emitError("applyPatternsAndFoldGreedily does not converge");
     signalPassFailure();
+  }
 }
 }  // namespace
 
