@@ -205,9 +205,7 @@ def custom_gradient(f=None):
     dtype=float32,
     numpy=array([1., 1., 1.], dtype=float32)>
   >>> tape.gradient(poly, weights)
-  <tf.Tensor: shape=(2,),
-    dtype=float32,
-    numpy=array([6., 3.], dtype=float32)>
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 3.], dtype=float32)>
   ```
 
   Above example illustrates usage of trainable variable `weights`.
