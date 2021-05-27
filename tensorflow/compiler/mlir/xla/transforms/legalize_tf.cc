@@ -1303,18 +1303,17 @@ using ConvertDepthConv2DOp =
 class ConvertPadOpDynamic : public OpRewritePattern<TF::PadV2Op> {
  public:
   using OpRewritePattern::OpRewritePattern;
-  // Converts a tf.PadV2Op to mhlo.DynamicPadOp if paddings_type is 
-  // dynamic shape (but static rank). 
-  // TODO: convert static tf.PadV2 to mhlo.DynamicPadOp and then canonicalize to mhlo.PadOp.
+  // Converts tf.PadV2Op to mhlo.DynamicPadOp. 
+  // TODO: To recover static special case's performance with folding and canonicalization.
   LogicalResult matchAndRewrite(TF::PadV2Op op,
                                 PatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
     auto input = op.input();
     auto paddings = op.paddings();
     auto constant_values = op.constant_values();
-    auto input_type = input.getType().cast<RankedTensorType>();
-    auto paddings_type = paddings.getType().cast<RankedTensorType>();
-    if (!paddings_type.hasStaticShape()) return failure();
+    auto input_type = input.getType().dyn_cast<RankedTensorType>();
+    auto paddings_type = paddings.getType().dyn_cast<RankedTensorType>();
+    if (!input_type || !paddings_type) return failure();
 
     int input_rank = input_type.getRank();
     // interior padding
@@ -1382,28 +1381,26 @@ class ConvertPadOpDynamic : public OpRewritePattern<TF::PadV2Op> {
   }
 };
 
-class ConvertGatherNdOpStaticDynamic : public OpRewritePattern<TF::GatherNdOp> {
+class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
   using OpRewritePattern<TF::GatherNdOp>::OpRewritePattern;
-  // Convert GatherNdOp in tensorflow to mhlo::GatherOp
+  // Converts tf.GatherNdOp to mhlo.DynamicGatherOp.
   // Here we leave 'slice_sizes' as an Attr, without defining a new
   // DynamicGatherOp, since GatherDimensionNumbers has already provide enough
   // information for shape inference and code generation of mhlo::GatherOp. '?'
-  // will be filled into slice_sizes for dimensions that are dynamic sized.
+  // will be filled into slice_sizes for dimensions that are dynamic sized. 
+  // TODO: To recover static special case's performance with folding and canonicalization.
   LogicalResult matchAndRewrite(TF::GatherNdOp op,
                                 PatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
     auto params = op.params();
-    auto params_ty = params.getType().cast<RankedTensorType>();
+    auto params_ty = params.getType().dyn_cast<RankedTensorType>();
     auto indices = op.indices();
-    auto indices_ty = indices.getType().cast<RankedTensorType>();
+    auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
     auto params_rank = params_ty.getRank();
     auto indices_rank = indices_ty.getRank();
     int64_t num_index_dims = indices_ty.getDimSize(indices_rank - 1);
-    assert(num_index_dims != ShapedType::kDynamicSize &&
-           "the last dim of indices of GatherNdOp must be fixed shaped");
+    if (!params_ty || !indices_ty) return failure();
 
-    // slice_sizes
-    bool need_d_gather = false;
     SmallVector<int64_t, 4> slice_sizes;
     slice_sizes.reserve(params_rank);
     for (int64_t i = 0; i < params_rank; ++i) {
@@ -1413,35 +1410,31 @@ class ConvertGatherNdOpStaticDynamic : public OpRewritePattern<TF::GatherNdOp> {
         // potentially dynamic
         auto dim_size = params_ty.getDimSize(i);
         slice_sizes.push_back(dim_size);
-        if (dim_size == ShapedType::kDynamicSize) {
-          need_d_gather = true;
-        }
       }
     }
     SmallVector<Value, 4> slice_sizes_vals;
     Value slice_sizes_value = nullptr;
-    if (need_d_gather) {
-      for (int64_t i = 0; i < params_rank; ++i) {
-        if (i < num_index_dims) {
+    for (int64_t i = 0; i < params_rank; ++i) {
+      if (i < num_index_dims) {
+        slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
+            loc, rewriter.getIntegerAttr(indices_ty.getElementType(), 1)));
+      } else {
+        int64_t dim_size = params_ty.getDimSize(i);
+        if (dim_size != ShapedType::kDynamicSize) {
           slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
-              loc, rewriter.getIntegerAttr(indices_ty.getElementType(), 1)));
+              loc, rewriter.getIntegerAttr(indices_ty.getElementType(),
+                                            dim_size)));
         } else {
-          int64_t dim_size = params_ty.getDimSize(i);
-          if (dim_size != ShapedType::kDynamicSize) {
-            slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
-                loc, rewriter.getIntegerAttr(indices_ty.getElementType(),
-                                             dim_size)));
-          } else {
-            slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
-                loc, rewriter.create<memref::DimOp>(loc, params, i),
-                indices_ty.getElementType()));
-          }
+          slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
+              loc, rewriter.create<memref::DimOp>(loc, params, i),
+              indices_ty.getElementType()));
         }
       }
-      slice_sizes_value = rewriter.create<tensor::FromElementsOp>(
-          loc, 
-          slice_sizes_vals);
     }
+    slice_sizes_value = rewriter.create<tensor::FromElementsOp>(
+        loc, 
+        slice_sizes_vals);
+    
     // collapsed_slice_dims
     SmallVector<int64_t, 4> collapsed_slice_dims;
     collapsed_slice_dims.reserve(num_index_dims);
@@ -1470,15 +1463,9 @@ class ConvertGatherNdOpStaticDynamic : public OpRewritePattern<TF::GatherNdOp> {
         /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
         /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
         rewriter.getContext());
-    if (need_d_gather) {
-      rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
-          op, op.getType(), op.params(), op.indices(), slice_sizes_value,
-          dims_attr);
-    } else {
-      rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
-          op, op.getType(), op.params(), op.indices(), dims_attr,
-          GetI64ElementsAttr(slice_sizes, &rewriter));
-    }
+    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
+        op, op.getType(), op.params(), op.indices(), slice_sizes_value,
+        dims_attr);
     return success();
   }
 };
@@ -6728,7 +6715,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,
     ConvertPadOpDynamic,
-    ConvertGatherNdOpStaticDynamic>(context);
+    ConvertGatherNdOpDynamic>(context);
   // clang-format on
 }
 
