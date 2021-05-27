@@ -343,7 +343,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Runs model inference based on SignatureDef provided through @code methodName.
+   * Runs model inference based on SignatureDef provided through {@code methodName}.
    *
    * <p>See {@link Interpreter#run(Object, Object)} for more details on the allowed input and output
    * data types.
@@ -389,7 +389,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Expicitly updates allocations for all tensors, if necessary.
+   * Explicitly updates allocations for all tensors, if necessary.
    *
    * <p>This will propagate shapes and memory allocations for dependent tensors using the input
    * tensor shape(s) as given.
@@ -401,7 +401,7 @@ public final class Interpreter implements AutoCloseable {
    * <pre>{@code
    * interpreter.resizeInput(0, new int[]{1, 4, 4, 3}));
    * interpreter.allocateTensors();
-   * FloatBuffer input = FloatBuffer.allocate(interpreter.getInputTensor(0),numElements());
+   * FloatBuffer input = FloatBuffer.allocate(interpreter.getInputTensor(0).numElements());
    * // Populate inputs...
    * FloatBuffer output = FloatBuffer.allocate(interpreter.getOutputTensor(0).numElements());
    * interpreter.run(input, output)
