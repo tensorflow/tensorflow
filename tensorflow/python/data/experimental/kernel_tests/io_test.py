@@ -135,6 +135,8 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     for _ in range(30):
       self.evaluate(next_element())
 
+  # TODO(b/189484146): Migrate the load checkpointing tests to use the
+  # checkpoint_test_base library once the library has eager support.
   @combinations.generate(test_base.eager_only_combinations())
   def testLoadCheckpointUnusedIterator(self):
     dataset = dataset_ops.Dataset.range(3)
