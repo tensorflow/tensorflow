@@ -293,10 +293,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("print_postinvoke_state",
                           BenchmarkParam::Create<bool>(false));
 
-  for (const auto& delegate_provider :
-       tools::GetRegisteredDelegateProviders()) {
-    default_params.Merge(delegate_provider->DefaultParams());
-  }
+  tools::ProvidedDelegateList delegate_providers(&default_params);
+  delegate_providers.AddAllDelegateParams();
 
   return default_params;
 }
@@ -365,11 +363,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
-  for (const auto& delegate_provider :
-       tools::GetRegisteredDelegateProviders()) {
-    auto delegate_flags = delegate_provider->CreateFlags(&params_);
-    flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
-  }
+  tools::ProvidedDelegateList delegate_providers(&params_);
+  delegate_providers.AppendCmdlineFlags(&flags);
 
   return flags;
 }
@@ -694,12 +689,16 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   // Contains all ids of TfLiteNodes that have been checked to see whether it's
   // delegated or not.
   std::unordered_set<int> checked_node_ids;
-  for (const auto& delegate_provider :
-       tools::GetRegisteredDelegateProviders()) {
-    auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
-    // It's possible that a delegate of certain type won't be created as
-    // user-specified benchmark params tells not to.
-    if (delegate == nullptr) continue;
+  tools::ProvidedDelegateList delegate_providers(&params_);
+  auto created_delegates = delegate_providers.CreateAllRankedDelegates();
+  TFLITE_LOG(INFO) << "Going to apply " << created_delegates.size()
+                   << " delegates one after another.";
+  for (auto& created_delegate : created_delegates) {
+    const auto* delegate_provider = created_delegate.provider;
+    tools::TfLiteDelegatePtr delegate = std::move(created_delegate.delegate);
+    TFLITE_TOOLS_CHECK(delegate != nullptr)
+        << "The created delegate by the delegate provider should not be "
+           "nullptr!";
     if (interpreter_->ModifyGraphWithDelegate(delegate.get()) != kTfLiteOk) {
       TFLITE_LOG(ERROR) << "Failed to apply " << delegate_provider->GetName()
                         << " delegate.";
