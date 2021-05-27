@@ -82,6 +82,25 @@ REGISTER_KERNEL_BUILDER(
 
 #undef REGISTER_GPU_KERNELS
 
+REGISTER_KERNEL_BUILDER(
+    Name("Min")
+        .Device(DEVICE_DEFAULT)
+        .HostMemory("reduction_indices")
+        .HostMemory("input")
+        .HostMemory("output")
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx"),
+    ReductionOp<CPUDevice, int32, int32, Eigen::internal::MinReducer<int32>>);
+REGISTER_KERNEL_BUILDER(
+    Name("Min")
+        .Device(DEVICE_DEFAULT)
+        .HostMemory("reduction_indices")
+        .HostMemory("input")
+        .HostMemory("output")
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int64>("Tidx"),
+    ReductionOp<CPUDevice, int32, int64, Eigen::internal::MinReducer<int32>>);
+
 #endif
 
 

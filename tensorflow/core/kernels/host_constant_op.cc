@@ -54,6 +54,11 @@ REGISTER_KERNEL_BUILDER(Name("Const")
                         _HostConstantOp);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+REGISTER_KERNEL_BUILDER(Name("Const")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("dtype"),
+                        _HostConstantOp);
 
 // HostConst: forced to generate output on the host.
 REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), _HostConstantOp);

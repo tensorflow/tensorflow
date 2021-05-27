@@ -43,4 +43,12 @@ REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
                         BinaryOp<CPUDevice, functor::greater_equal<int32>>);
 #endif
 
+REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::greater_equal<int32>>);
+
 }  // namespace tensorflow

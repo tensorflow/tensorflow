@@ -532,5 +532,18 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
+#define REGISTER_DEFAULT_KERNEL(type)                     \
+  REGISTER_KERNEL_BUILDER(Name("EnsureShape")             \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("input")        \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnsureShapeOp)
+REGISTER_DEFAULT_KERNEL(int32);
+REGISTER_DEFAULT_KERNEL(bool);
+REGISTER_DEFAULT_KERNEL(tstring);
+REGISTER_DEFAULT_KERNEL(ResourceHandle);
+#undef REGISTER_DEFAULT_KERNEL
+
 #endif
 }  // namespace tensorflow

@@ -141,5 +141,12 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastTo")
                             .HostMemory("output"),
                         BroadcastToOp<CPUDevice, int32>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("BroadcastTo")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("input")
+                            .HostMemory("shape")
+                            .HostMemory("output"),
+                        BroadcastToOp<CPUDevice, int32>);
 
 }  // namespace tensorflow
