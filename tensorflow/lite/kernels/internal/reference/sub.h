@@ -108,63 +108,6 @@ inline void BroadcastSubSlow(const ArithmeticParams& params,
 template <int N = 5>
 inline void BroadcastSubSlow(const ArithmeticParams& params,
                              const RuntimeShape& input1_shape,
-                             const uint8_t* input1_data,
-                             const RuntimeShape& input2_shape,
-                             const uint8_t* input2_data,
-                             const RuntimeShape& output_shape,
-                             uint8_t* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastSubSlow/uint8_t");
-  TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
-  NdArrayDesc<N> desc1;
-  NdArrayDesc<N> desc2;
-  NdArrayDesc<N> output_desc;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, output_shape), &output_desc);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  auto sub_func = [&](int indexes[N]) {
-    const int32_t input1_val =
-        params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    const int32_t input2_val =
-        params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
-    const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
-    const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
-    const int32_t scaled_input1_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input1_val, params.input1_multiplier, params.input1_shift);
-    const int32_t scaled_input2_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input2_val, params.input2_multiplier, params.input2_shift);
-    const int32_t raw_sub = scaled_input1_val - scaled_input2_val;
-    const int32_t raw_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            raw_sub, params.output_multiplier, params.output_shift) +
-        params.output_offset;
-    const int32_t clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, raw_output));
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        static_cast<uint8_t>(clamped_output);
-  };
-  NDOpsHelper<N>(output_desc, sub_func);
-}
-
-template <int N = 5>
-inline void BroadcastSubSlow(const ArithmeticParams& params,
-                             const RuntimeShape& input1_shape,
                              const int32_t* input1_data,
                              const RuntimeShape& input2_shape,
                              const int32_t* input2_data,
@@ -198,60 +141,6 @@ inline void BroadcastSubSlow(const ArithmeticParams& params,
             input1_data[SubscriptToIndex(desc1, indexes)] -
                 input2_data[SubscriptToIndex(desc2, indexes)],
             params.quantized_activation_min, params.quantized_activation_max);
-  };
-  NDOpsHelper<N>(output_desc, sub_func);
-}
-
-template <int N = 5>
-inline void BroadcastSubSlow(const ArithmeticParams& params,
-                             const RuntimeShape& input1_shape,
-                             const int8_t* input1_data,
-                             const RuntimeShape& input2_shape,
-                             const int8_t* input2_data,
-                             const RuntimeShape& output_shape,
-                             int8_t* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastSubSlow/int8_t");
-  NdArrayDesc<N> desc1;
-  NdArrayDesc<N> desc2;
-  NdArrayDesc<N> output_desc;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, output_shape), &output_desc);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  auto sub_func = [&](int indexes[N]) {
-    const int32_t input1_val =
-        params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    const int32_t input2_val =
-        params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
-    const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
-    const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
-    const int32_t scaled_input1_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input1_val, params.input1_multiplier, params.input1_shift);
-    const int32_t scaled_input2_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input2_val, params.input2_multiplier, params.input2_shift);
-    const int32_t raw_sub = scaled_input1_val - scaled_input2_val;
-    const int32_t raw_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            raw_sub, params.output_multiplier, params.output_shift) +
-        params.output_offset;
-    const int32_t clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, raw_output));
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        static_cast<int8_t>(clamped_output);
   };
   NDOpsHelper<N>(output_desc, sub_func);
 }
@@ -372,6 +261,59 @@ inline void BroadcastSub16POTSlow(const ArithmeticParams& params,
                  std::max(params.quantized_activation_min, raw_output));
     output_data[SubscriptToIndex(output_desc, indexes)] =
         static_cast<int16_t>(clamped_output);
+  };
+  NDOpsHelper<N>(output_desc, sub_func);
+}
+
+template <typename T, int N = 5>
+void BroadcastQuantSubSlow(const ArithmeticParams& params,
+                           const RuntimeShape& input1_shape,
+                           const T* input1_data,
+                           const RuntimeShape& input2_shape,
+                           const T* input2_data,
+                           const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("BroadcastQuantSubSlow/T");
+  NdArrayDesc<N> desc1;
+  NdArrayDesc<N> desc2;
+  NdArrayDesc<N> output_desc;
+  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
+                                      &desc2);
+  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, output_shape), &output_desc);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest stride,
+  // typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for the
+  // best cache behavior.
+  auto sub_func = [&](int indexes[N]) {
+    const int32_t input1_val =
+        params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
+    const int32_t input2_val =
+        params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
+    const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
+    const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
+    const int32_t scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, params.input1_multiplier, params.input1_shift);
+    const int32_t scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, params.input2_multiplier, params.input2_shift);
+    const int32_t raw_sub = scaled_input1_val - scaled_input2_val;
+    const int32_t raw_output =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            raw_sub, params.output_multiplier, params.output_shift) +
+        params.output_offset;
+    const int32_t clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, raw_output));
+    output_data[SubscriptToIndex(output_desc, indexes)] =
+        static_cast<T>(clamped_output);
   };
   NDOpsHelper<N>(output_desc, sub_func);
 }
