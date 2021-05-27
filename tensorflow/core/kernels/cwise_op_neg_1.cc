@@ -34,10 +34,4 @@ REGISTER_KERNEL_BUILDER(Name("Neg")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::neg<int32>>);
 #endif
-REGISTER_KERNEL_BUILDER(Name("Neg")
-                            .Device(DEVICE_DEFAULT)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::neg<int32>>);
 }  // namespace tensorflow

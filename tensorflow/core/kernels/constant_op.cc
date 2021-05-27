@@ -231,15 +231,6 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
 
 #undef REGISTER_KERNEL
 
-REGISTER_KERNEL_BUILDER(Name("Fill")
-                            .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("index_type")
-                            .HostMemory("dims")
-                            .HostMemory("value")
-                            .HostMemory("output"),
-                        FillOp<CPUDevice, int32, int32>);
-
 template <typename Device, typename T>
 class ZerosLikeOp : public OpKernel {
  public:
@@ -302,12 +293,6 @@ REGISTER_KERNEL_BUILDER(Name("ZerosLike")
 
 #undef REGISTER_KERNEL
 
-REGISTER_KERNEL_BUILDER(Name("ZerosLike")
-                            .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("y"),
-                        ZerosLikeOp<CPUDevice, int32>);
-
 template <typename Device, typename T>
 class OnesLikeOp : public OpKernel {
  public:
@@ -351,12 +336,6 @@ REGISTER_KERNEL_BUILDER(Name("OnesLike")
 
 #undef REGISTER_KERNEL
 
-REGISTER_KERNEL_BUILDER(Name("OnesLike")
-                            .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("y"),
-                        OnesLikeOp<CPUDevice, int32>);
-
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
 }
@@ -379,7 +358,6 @@ void PlaceholderOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_CPU),
                         PlaceholderOp);
-
 // The following GPU/Default kernel registration is used to address the
 // situation that a placeholder is added in a GPU device context and soft
 // placement is false. Since a placeholder should never be executed, adding

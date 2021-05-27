@@ -283,11 +283,4 @@ REGISTER_KERNEL_BUILDER(Name("AddN")
 
 #undef REGISTER_ADDN
 
-REGISTER_KERNEL_BUILDER(Name("AddN")
-                            .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("inputs")
-                            .HostMemory("sum"),
-                        AddNOp<CPUDevice, int32>);
-
 }  // namespace tensorflow

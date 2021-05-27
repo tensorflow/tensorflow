@@ -336,13 +336,4 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-REGISTER_KERNEL_BUILDER(Name("Slice")
-                            .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("input")
-                            .HostMemory("begin")
-                            .HostMemory("size")
-                            .HostMemory("output"),
-                        SliceOp<CPUDevice, int32>);
-
 }  // namespace tensorflow

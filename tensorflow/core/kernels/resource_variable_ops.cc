@@ -327,18 +327,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int64>("out_type"),
     VariableShapeOp<int64>);
-REGISTER_KERNEL_BUILDER(Name("VariableShape")
-                            .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("out_type")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        VariableShapeOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("VariableShape")
-                            .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int64>("out_type")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        VariableShapeOp<int64>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -374,9 +362,6 @@ void DestroyResourceOp::Compute(OpKernelContext* ctx) {
 
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
                         DestroyResourceOp);
-REGISTER_KERNEL_BUILDER(
-    Name("DestroyResourceOp").Device(DEVICE_DEFAULT).HostMemory("resource"),
-    DestroyResourceOp);
 REGISTER_KERNEL_BUILDER(
     Name("DestroyResourceOp").Device(DEVICE_GPU).HostMemory("resource"),
     DestroyResourceOp);
