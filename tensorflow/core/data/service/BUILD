@@ -574,7 +574,7 @@ tf_cc_test(
     name = "thread_safe_buffer_test",
     size = "small",
     srcs = ["thread_safe_buffer_test.cc"],
-    shard_count = 2,
+    shard_count = 3,
     deps = [
         ":thread_safe_buffer",
         "//tensorflow/core:framework",
