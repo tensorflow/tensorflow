@@ -1220,7 +1220,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       // or
       //
       //   b_i_b_r_ratio = b_i / b_r
-      //   b_i_b_r_denom = b_r + b_i * b_i_b_r_denom
+      //   b_i_b_r_denom = b_r + b_i * b_i_b_r_ratio
       //   c_r = (a_r + a_i * b_i_b_r_ratio ) / b_i_b_r_denom
       //   c_i = (a_i - a_r * b_i_b_r_ratio ) / b_i_b_r_denom
       //
