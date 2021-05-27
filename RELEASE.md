@@ -55,7 +55,9 @@
 * `tf.saved_model`:
     *   SavedModels can now save custom gradients. Use the option
         `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
-        enable this feature.
+        enable this feature. The documentation in [Advanced autodiff]
+        (https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
+        has been updated.
 
 *   TF Core:
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
