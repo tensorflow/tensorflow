@@ -122,7 +122,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
                                            /*use_cuda_malloc_async=*/true);
   std::vector<std::unique_ptr<Device>> devices;
   Status status;
-  int nb_instantiated = GpuCudaMallocAsyncAllocator::NbInstantiated();
+  int number_instantiated = GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
   { // The new scope is to trigger the destruction of the object.
     status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
@@ -140,7 +140,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
     EXPECT_NE(ptr, nullptr);
     allocator->DeallocateRaw(ptr);
   }
-  EXPECT_EQ(nb_instantiated + 1 , GpuCudaMallocAsyncAllocator::NbInstantiated());
+  EXPECT_EQ(number_instantiated + 1 , GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
   EXPECT_EQ(status.code(), error::OK);
 }
 

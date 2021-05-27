@@ -89,8 +89,8 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 #endif
   }
 
-  static int NbInstantiated() {
-    return nb_instanciated_;
+  static int GetInstantiatedCountTestOnly() {
+    return number_instantiated_;
   }
 
  private:
@@ -110,9 +110,9 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   CUmemoryPool pool_;
 #endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
 
-  // Just a counter for the number of time this class is instanciated.
+  // Just a counter for the number of time this class is instantiated.
   // Only useful for tests.
-  static int nb_instanciated_;
+  static std::atomic<int> number_instantiated_;
 
   string name_;
 
