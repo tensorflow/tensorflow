@@ -4163,8 +4163,8 @@ func @gather_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*
   return %1 : tensor<*xf32>
 }
 
-// CHECK-LABEL: @gather_v2_dynamic
-func @gather_v2_dynamic(%arg0: tensor<?x2x3xf32>, %arg1: tensor<?x5xi32>) -> tensor<?x2x5xf32> {
+// CHECK-LABEL: @gather_v2_dynamic_shape
+func @gather_v2_dynamic_shape(%arg0: tensor<?x2x3xf32>, %arg1: tensor<?x5xi32>) -> tensor<?x2x5xf32> {
   // CHECK: constant 0 
   %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
   // CHECK: memref.dim

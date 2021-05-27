@@ -1153,7 +1153,8 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
 
 class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
   using OpRewritePattern<TF::GatherV2Op>::OpRewritePattern;
-  // Convert GatherV2Op in tensorflow to mhlo::GatherOp
+  // Convert GatherV2Op to mhlo::GatherOp
+  // TODO: To recover static special case's performance with folding and canonicalization.
   LogicalResult matchAndRewrite(
       TF::GatherV2Op op, PatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
@@ -1167,7 +1168,6 @@ class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
     auto params_rank = params_ty.getRank();
     auto indices_rank = indices_ty.getRank();
 
-    if (params_ty.hasStaticShape()) return failure();
     // axis
     DenseIntElementsAttr axis_attr;
     // axis must be const for GatherOp
@@ -1241,6 +1241,8 @@ class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
 };
 
 // Conterts tf.Conv2D to mhlo.dynamic_conv.
+// TODO: To recover static special case's performance with adding folding, canonicalization func
+// and removing ConvertConvOp.
 template <typename OpT, int num_spatial_dims, bool depthwise_conv = false>
 class ConvertConvDynamic : public OpRewritePattern<OpT> {
  public:
@@ -1326,9 +1328,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
         op.filter().getType().template dyn_cast<RankedTensorType>();
     auto result_ty = op.getType().template dyn_cast<RankedTensorType>();
     if (!input_ty || !filter_ty || !result_ty) return failure();
-      
-    if (input_ty.hasStaticShape()) return failure();
-
+    
     ArrayRef<Attribute> dilations = op.dilations().getValue();
     ArrayRef<Attribute> strides = op.strides().getValue();
     ArrayRef<Attribute> explicit_paddings;
