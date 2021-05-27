@@ -37,10 +37,6 @@ using tensor::ExtractOp;
 
 struct LegalizeTensorLoadOpPass
     : public mlir::PassWrapper<LegalizeTensorLoadOpPass, FunctionPass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<shape::ShapeDialect, tensor::TensorDialect,
-                    memref::MemRefDialect>();
-  }
   // Perform the lowering to remove memref.tensor_load ops inserted during
   // `mhlo-legalize-to-lmhlo`.
   void runOnFunction() override;
