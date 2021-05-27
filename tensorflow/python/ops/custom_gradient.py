@@ -170,7 +170,6 @@ def custom_gradient(f=None):
   require special handling because they are effectively inputs of the forward
   function.
 
-  ```python
   >>> weights = tf.Variable(tf.ones([2]))  # Trainable variable weights
   >>> @tf.custom_gradient
   ... def linear_poly(x):
@@ -206,7 +205,6 @@ def custom_gradient(f=None):
     numpy=array([1., 1., 1.], dtype=float32)>
   >>> tape.gradient(poly, weights)
   <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 3.], dtype=float32)>
-  ```
 
   Above example illustrates usage of trainable variable `weights`.
   In the example, the inner `grad_fn` accepts an extra `variables` input
