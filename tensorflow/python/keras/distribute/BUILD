@@ -931,6 +931,7 @@ distribute_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/framework:test_combinations_lib",
@@ -1067,6 +1068,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":multi_worker_testing_utils",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/data/ops:dataset_ops",

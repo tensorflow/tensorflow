@@ -512,8 +512,8 @@ class DatasetCreatorAdapter(DataAdapter):
       raise ValueError("When using a "
                        "`tf.keras.utils.experimental.DatasetCreator`, "
                        "`steps_per_epoch`, `validation_steps` or `steps` "
-                       "argument must be provided in `Model.fit` or "
-                       "`Model.evaluate`.")
+                       "argument must be provided in `Model.fit`, "
+                       "`Model.evaluate`, or `Model.predict`.")
     self.dataset_creator = x
     self.steps = steps
     self.strategy = distribution_strategy
