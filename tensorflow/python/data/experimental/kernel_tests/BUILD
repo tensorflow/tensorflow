@@ -238,6 +238,8 @@ tf_py_test(
     srcs = ["io_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:io",
         "//tensorflow/python/data/kernel_tests:test_base",
