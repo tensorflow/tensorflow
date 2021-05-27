@@ -14,13 +14,19 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `DatasetCreator` with `Model.fit` across usages and strategies."""
+
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import dataset_creator_model_fit_test_base as test_base
 from tensorflow.python.keras.distribute import strategy_combinations
+from tensorflow.python.keras.utils import dataset_creator
+from tensorflow.python.ops import random_ops
 
 
 # TODO(rchao): Investigate why there cannot be single worker and multi worker
@@ -57,31 +63,110 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
 
   def testModelFitWithNoStepsPerEpoch(self, strategy):
     with self.assertRaisesRegex(
-        ValueError, "When using a "
-        "`tf.keras.utils.experimental.DatasetCreator`, `steps_per_epoch`, "
-        "`validation_steps` or `steps` argument must be provided in "
-        "`Model.fit` or `Model.evaluate`."):
+        ValueError,
+        "When using a `tf.keras.utils.experimental.DatasetCreator`, "
+        "`steps_per_epoch`, `validation_steps` or `steps` argument must be "
+        "provided in `Model.fit`, `Model.evaluate`, or `Model.predict`."):
       self._model_fit(strategy, steps_per_epoch=None)
 
   def testModelEvaluate(self, strategy):
     self._model_evaluate(strategy)
-    self.assertGreaterEqual(self._metric.result(), 0.0)
+    self.assertGreaterEqual(self._accuracy_metric.result(), 0.0)
 
   def testModelEvaluateWithNormalizationLayer(self, strategy):
     self._model_evaluate(strategy, with_normalization_layer=True)
-    self.assertGreaterEqual(self._metric.result(), 0.0)
+    self.assertGreaterEqual(self._accuracy_metric.result(), 0.0)
 
   def testModelEvaluateWithStepsPerExecution(self, strategy):
     self._model_evaluate(strategy, steps_per_execution=10)
-    self.assertGreaterEqual(self._metric.result(), 0.0)
+    self.assertGreaterEqual(self._accuracy_metric.result(), 0.0)
 
   def testModelEvaluateWithNoStepsPerEpoch(self, strategy):
     with self.assertRaisesRegex(
-        ValueError, "When using a "
-        "`tf.keras.utils.experimental.DatasetCreator`, `steps_per_epoch`, "
-        "`validation_steps` or `steps` argument must be provided in "
-        "`Model.fit` or `Model.evaluate`."):
+        ValueError,
+        "When using a `tf.keras.utils.experimental.DatasetCreator`, "
+        "`steps_per_epoch`, `validation_steps` or `steps` argument must be "
+        "provided in `Model.fit`, `Model.evaluate`, or `Model.predict`."):
       self._model_evaluate(strategy, steps=None)
+
+  def testModelPredict(self, strategy):
+    _, predictions = self._model_predict(strategy, steps=3)
+    # Check the first (0th index), fourth (3rd index) and the last predictions
+    # because the first, fourth and the last input are the same in
+    # `model.predict` so there predictions should match.
+    self.assertTrue(all(predictions[0] == predictions[i] for i in [0, 3, 5]))
+
+    self.assertFalse(
+        all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
+
+  def testModelPredictWithNormalizationLayer(self, strategy):
+    _, predictions = self._model_predict(
+        strategy, with_normalization_layer=True, steps=3)
+    # Check the first (0th index), fourth (3rd index) and the last predictions
+    # because the first, fourth and the last input is the same in
+    # `model.predict` so there predictions should match.
+    self.assertTrue(all(predictions[0] == predictions[i] for i in [0, 3, 5]))
+
+    self.assertFalse(
+        all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
+
+  def testModelPredictWithStepsPerExecution(self, strategy):
+    _, predictions = self._model_predict(
+        strategy, steps_per_execution=3, steps=3)
+
+    # Check the first (0th index), fourth (3rd index) and the last predictions
+    # because the first, fourth and the last input is the same in
+    # `model.predict` so there predictions should match.
+    self.assertTrue(all(predictions[0] == predictions[i] for i in [0, 3, 5]))
+
+    self.assertFalse(
+        all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
+
+  def testModelFitAndPredict(self, strategy):
+    def fit_dataset_fn(input_context):
+      del input_context
+      x = random_ops.random_uniform((10, 1))
+      y = random_ops.random_uniform((10,))
+      return dataset_ops.DatasetV2.from_tensor_slices(
+          (x, y)).shuffle(10).repeat().batch(2)
+
+    x = dataset_creator.DatasetCreator(fit_dataset_fn)
+    validation_data = dataset_creator.DatasetCreator(fit_dataset_fn)
+
+    model = self._model_fit(strategy, x=x, validation_data=validation_data)
+    _, predictions = self._model_predict(strategy, model, steps=3)
+
+    # Check the first (0th index), fourth (3rd index) and the last predictions
+    # because the first, fourth and the last input is the same in
+    # `model.predict` so there predictions should match.
+    self.assertTrue(all(predictions[0] == predictions[i] for i in [0, 3, 5]))
+
+    self.assertFalse(
+        all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
+
+  def testModelPredictWithDatasetCreator(self, strategy):
+    if isinstance(strategy,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest("b/189223991")
+
+    def _dataset_fn(input_context):
+      del input_context
+      x = constant_op.constant([1., 2., 3., 1., 5., 1.])
+      return dataset_ops.DatasetV2.from_tensor_slices(x).repeat().batch(2)
+
+    _, predictions = self._model_predict(
+        strategy,
+        steps=3,
+        test_data=dataset_creator.DatasetCreator(_dataset_fn),
+    )
+
+    # Check the first (0th index), fourth (3rd index) and the last predictions
+    # because the first, fourth and the last input is the same in
+    # `model.predict` so there predictions should match.
+    self.assertTrue(all(predictions[0] == predictions[i] for i in [0, 3, 5]))
+
+    self.assertFalse(
+        all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
 
 
 if __name__ == "__main__":

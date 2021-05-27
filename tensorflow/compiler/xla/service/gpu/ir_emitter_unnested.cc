@@ -1221,16 +1221,20 @@ Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
 
 Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
   auto make_thunk_for_gemm =
-      [&](auto op, absl::optional<double> gemm_bias_beta = absl::nullopt,
+      [&](auto op, absl::optional<BufferAllocation::Slice> bias = absl::nullopt,
+          absl::optional<double> gemm_bias_beta = absl::nullopt,
           bool implements_whole_instruction =
               true) -> StatusOr<std::unique_ptr<Thunk>> {
     TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSliceForMlir(op.lhs()));
     TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSliceForMlir(op.rhs()));
     TF_ASSIGN_OR_RETURN(auto output, GetAllocationSliceForMlir(op.output()));
+    std::vector<BufferAllocation::Slice> inputs = {lhs, rhs};
+    if (bias.has_value()) {
+      inputs.push_back(bias.value());
+    }
 
     if (IsBefThunkEnabled()) {
-      return CreateBefThunk(input.thunk_info, op,
-                            std::vector<BufferAllocation::Slice>{lhs, rhs},
+      return CreateBefThunk(input.thunk_info, op, inputs,
                             std::vector<BufferAllocation::Slice>{output});
     }
 
@@ -1285,7 +1289,7 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
       // shared we can just use it, otherwise copy the bias values into the
       // output buffer first.
       if (bias == output) {
-        return make_thunk_for_gemm(op, gemm_bias_beta);
+        return make_thunk_for_gemm(op, bias, gemm_bias_beta);
       }
 
       ThunkSequence thunks;
@@ -1297,7 +1301,7 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
           ShapeUtil::ByteSizeOf(TypeToShape(op.output().getType()))));
       TF_ASSIGN_OR_RETURN(
           auto thunk,
-          make_thunk_for_gemm(op, gemm_bias_beta,
+          make_thunk_for_gemm(op, bias, gemm_bias_beta,
                               /*implements_whole_instruction=*/false));
       thunks.push_back(std::move(thunk));
       return std::unique_ptr<Thunk>(

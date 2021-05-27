@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_xla_available", "py_test", "py_tests", "tf_cuda_library", "tf_enable_mlir_bridge")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_xla_available", "py_test", "py_tests", "tf_enable_mlir_bridge")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -121,7 +121,6 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
-        ":_pywrap_events_writer",
         ":_pywrap_py_exception_registry",
         ":_pywrap_quantize_training",
         ":_pywrap_utils",
@@ -131,7 +130,6 @@ py_library(
         ":bitwise_ops",
         ":boosted_trees_ops",
         ":check_ops",
-        ":client",
         ":client_testlib",
         ":clustering_ops",
         ":collective_ops",
@@ -162,7 +160,6 @@ py_library(
         ":platform",
         ":proto_ops",
         ":pywrap_tensorflow",
-        ":pywrap_tf_session",
         ":pywrap_tfe",
         ":rnn_ops_gen",
         ":script_ops",
@@ -180,6 +177,9 @@ py_library(
         ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:lite",
+        "//tensorflow/python/client",
+        "//tensorflow/python/client:_pywrap_events_writer",
+        "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/compat",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/compiler",
@@ -316,62 +316,9 @@ tf_python_pybind_extension(
     ],
 )
 
-py_library(
+alias(
     name = "pywrap_tf_session",
-    srcs = ["client/pywrap_tf_session.py"],
-    srcs_version = "PY3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":_pywrap_tf_session",
-        ":pywrap_tensorflow",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_tf_session",
-    srcs = ["client/tf_session_wrapper.cc"],
-    hdrs = [
-        "client/tf_session_helper.h",
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-        "//tensorflow/c/eager:pywrap_required_hdrs",
-        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
-        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:numpy_hdr",
-        "//tensorflow/python/lib/core:safe_ptr_hdr",
-    ],
-    module_name = "_pywrap_tf_session",
-    deps = [
-        "//third_party/eigen3",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//tensorflow/core/framework:pywrap_required_hdrs",
-        "//third_party/py/numpy:headers",
-        "//tensorflow/c:pywrap_required_hdrs",
-        "@pybind11",
-        "//third_party/python_runtime:headers",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//tensorflow/core:lib_headers_for_pybind",
-        "@com_google_absl//absl/types:optional",
-        "//tensorflow/core/lib/llvm_rtti",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/core/protobuf:eager_service_proto_cc",
-            "//tensorflow/core/protobuf:master_proto_cc",
-            "//tensorflow/core/protobuf:worker_proto_cc",
-            "//tensorflow/core:version_lib",
-        ],
-        otherwise = [
-            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-        ],
-    ),
+    actual = "//tensorflow/python/client:pywrap_tf_session",
 )
 
 alias(
@@ -392,40 +339,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//tensorflow/python/lib/core:pybind11_proto",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
-        "@pybind11",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_debug_events_writer",
-    srcs = ["client/debug_events_writer_wrapper.cc"],
-    module_name = "_pywrap_debug_events_writer",
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_headers_for_pybind",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python/lib/core:pybind11_absl",
-        "//tensorflow/python/lib/core:pybind11_proto",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
-        "@pybind11",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_events_writer",
-    srcs = ["client/events_writer_wrapper.cc"],
-    module_name = "_pywrap_events_writer",
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_headers_for_pybind",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
@@ -1385,8 +1298,8 @@ py_library(
         ":gradients_util",
         ":list_ops",
         ":map_ops",
-        ":pywrap_tf_session",
         ":tensor_array_ops",
+        "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:auto_control_deps_utils",
         "//tensorflow/python/framework:constant_op",
@@ -1502,7 +1415,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":protos_all_py",
-        ":pywrap_tf_session",
+        "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util",
@@ -1520,8 +1433,8 @@ py_library(
         ":gradients_impl",
         ":gradients_util",
         ":handle_data_util",
-        ":pywrap_tf_session",
         ":unconnected_gradients",
+        "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:forwardprop",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:tape",
@@ -1848,8 +1761,8 @@ py_library(
         ":array_ops_gen",
         ":math_ops",
         ":math_ops_gen",
-        ":pywrap_tf_session",
         ":special_math_ops",
+        "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -1915,10 +1828,10 @@ py_library(
         ":array_ops",
         ":array_ops_gen",
         ":handle_data_util",
-        ":pywrap_tf_session",
         ":resource_variable_ops_gen",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:auto_control_deps_utils",
@@ -2878,7 +2791,6 @@ cuda_py_test(
     ],
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
         ":control_flow_ops",
         ":image_ops",
@@ -2888,6 +2800,7 @@ cuda_py_test(
         ":random_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
@@ -3081,8 +2994,8 @@ py_test(
     python_version = "PY3",
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
+        "//tensorflow/python/client",
         "//third_party/py/numpy",
     ],
 )
@@ -3121,10 +3034,10 @@ cuda_py_test(
     ],
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
         ":math_ops",
         ":special_math_ops",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//third_party/py/numpy",
     ],
@@ -3143,26 +3056,9 @@ tf_py_test(
     ],
 )
 
-py_library(
+alias(
     name = "client",
-    srcs = [
-        "client/client_lib.py",
-        "client/device_lib.py",
-        "client/timeline.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":_pywrap_device_lib",
-        ":platform",
-        ":session",
-        ":session_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/util",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-    ],
+    actual = "//tensorflow/python/client:client",
 )
 
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
@@ -3192,102 +3088,9 @@ tf_proto_library(
     visibility = visibility,
 )
 
-tf_py_test(
-    name = "events_writer_test",
-    size = "small",
-    srcs = ["client/events_writer_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":lib",
-        ":platform_test",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
-    ],
-)
-
-py_library(
+alias(
     name = "device_lib",
-    srcs = ["client/device_lib.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":_pywrap_device_lib",
-        "//tensorflow/core:protos_all_py",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_device_lib",
-    srcs = ["client/device_lib_wrapper.cc"],
-    module_name = "_pywrap_device_lib",
-    deps = [
-        "//tensorflow/core:framework_internal_headers_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//tensorflow/python/lib/core:pybind11_proto",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
-)
-
-cuda_py_test(
-    name = "device_lib_test",
-    size = "small",
-    srcs = [
-        "client/device_lib_test.py",
-    ],
-    python_version = "PY3",
-    deps = [
-        ":client",
-        ":client_testlib",
-        ":platform_test",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework:test_lib",
-    ],
-)
-
-cc_library(
-    name = "session_ref",
-    srcs = ["client/session_ref.cc"],
-    hdrs = ["client/session_ref.h"],
-    deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/protobuf:master_proto_cc",
-        "//tensorflow/core/protobuf:replay_log_proto_cc",
-    ],
-)
-
-tf_cuda_library(
-    name = "tf_session_helper",
-    srcs = ["client/tf_session_helper.cc"],
-    hdrs = ["client/tf_session_helper.h"],
-    compatible_with = [],
-    deps = [
-        ":construction_fails_op",
-        ":ndarray_tensor",
-        ":ndarray_tensor_bridge",
-        ":numpy_lib",
-        ":safe_ptr",
-        ":session_ref",
-        ":test_ops_kernels",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
-    ],
-    alwayslink = 1,
+    actual = "//tensorflow/python/client:device_lib",
 )
 
 py_library(
@@ -3337,7 +3140,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/framework:python_tensor_converter",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        ":tf_session_helper",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -3372,6 +3174,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
+        "//tensorflow/python/client:tf_session_helper",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/compiler/mlir/python:mlir",
@@ -3421,6 +3224,7 @@ filegroup(
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:op_gen_lib",  # tf_session
+        "//tensorflow/core:protos_all_cc",  # tf_text
         "//tensorflow/core/common_runtime/eager:context",  # tfe
         "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
@@ -3451,7 +3255,7 @@ filegroup(
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
-        ":tf_session_helper",  # tf_session
+        "//tensorflow/python/client:tf_session_helper",  # tf_session
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
@@ -3561,190 +3365,16 @@ cc_import(
 
 # ** Targets for Windows build (end) **
 
-py_library(
+alias(
     name = "session",
-    srcs = ["client/session.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":mixed_precision_global_state",
-        ":platform",
-        ":pywrap_tensorflow",
-        ":session_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:c_api_util",
-        "//tensorflow/python/framework:error_interpolation",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/util",
-        "//third_party/py/numpy",
-        "@wrapt",
-    ],
+    actual = "//tensorflow/python/client:session",
 )
 
-py_library(
+alias(
     name = "timeline",
-    srcs = ["client/timeline.py"],
-    srcs_version = "PY3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":platform",
-    ],
-)
-
-# Just used by tests.
-tf_cuda_library(
-    name = "construction_fails_op",
-    srcs = ["client/test_construction_fails_op.cc"],
-    deps = [
-        "//tensorflow/core",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
-tf_py_test(
-    name = "session_test",
-    size = "medium",
-    srcs = ["client/session_test.py"],
-    grpc_enabled = True,
-    python_version = "PY3",
-    tags = [
-        "no_gpu",  # b/127001953
-        "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
-        "no_windows",
-    ],
-    deps = [
-        ":array_ops",
-        ":client",
-        ":control_flow_ops",
-        ":data_flow_ops",
-        ":math_ops",
-        ":platform_test",
-        ":state_ops",
-        ":training",
-        ":variables",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-    ],
-)
-
-tf_py_test(
-    name = "session_clusterspec_prop_test",
-    size = "small",
-    srcs = ["client/session_clusterspec_prop_test.py"],
-    grpc_enabled = True,
-    python_version = "PY3",
-    tags = [
-        "no_gpu",
-        "no_oss",
-        "no_pip",
-        "no_pip_gpu",
-        "notap",
-    ],
-    deps = [
-        ":array_ops",
-        ":client",
-        ":client_testlib",
-        ":math_ops",
-        ":platform_test",
-        ":state_ops",
-        ":training",
-        ":variables",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "session_list_devices_test",
-    size = "small",
-    srcs = ["client/session_list_devices_test.py"],
-    grpc_enabled = True,
-    python_version = "PY3",
-    tags = [
-        "no_gpu",
-        "no_pip_gpu",
-        "notsan",  # data race due to b/62910646
-    ],
-    deps = [
-        ":client",
-        ":platform_test",
-        ":training",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:test_lib",
-    ],
-)
-
-tf_py_test(
-    name = "session_partial_run_test",
-    size = "small",
-    srcs = ["client/session_partial_run_test.py"],
-    grpc_enabled = True,
-    python_version = "PY3",
-    tags = [
-        "no_gpu",
-        "no_windows",
-    ],
-    deps = [
-        ":array_ops",
-        ":client",
-        ":math_ops",
-        ":platform_test",
-        ":training",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
-        "@six_archive//:six",
-    ],
-)
-
-cuda_py_test(
-    name = "timeline_test",
-    size = "small",
-    srcs = ["client/timeline_test.py"],
-    python_version = "PY3",
-    tags = [
-        "gpu_cupti",
-        "no_gpu",  # b/154742661
-    ],
-    xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
-    deps = [
-        ":client",
-        ":client_testlib",
-        ":math_ops",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework:for_generated_wrappers",
-    ],
-)
-
-cuda_py_test(
-    name = "virtual_gpu_test",
-    size = "small",
-    srcs = ["client/virtual_gpu_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_gpu",  # b/127386241
-        "no_windows_gpu",
-    ],
-    deps = [
-        ":client",
-        ":client_testlib",
-        ":math_ops",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework:for_generated_wrappers",
+    actual = "//tensorflow/python/client:timeline",
+    visibility = [
+        "//visibility:public",
     ],
 )
 
@@ -3772,7 +3402,6 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":client",
         ":lib",
         ":logging_ops_gen",
         ":platform",
@@ -3781,6 +3410,7 @@ py_library(
         ":summary_op_util",
         ":summary_ops_gen",
         ":summary_ops_v2",
+        "//tensorflow/python/client",
         "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework",
@@ -3907,7 +3537,6 @@ cuda_py_test(
     shard_count = 6,
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
         ":control_flow_ops_gen",
         ":data_flow_ops",
@@ -3915,6 +3544,7 @@ cuda_py_test(
         ":random_ops",
         ":state_ops",
         ":state_ops_gen",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
@@ -3926,7 +3556,6 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
         ":gradients",
         ":math_ops",
@@ -3936,6 +3565,7 @@ cuda_py_test(
         ":platform",
         ":random_ops",
         ":variables",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
@@ -3947,12 +3577,12 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
         ":collective_ops",
         ":platform",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
@@ -3964,13 +3594,13 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
         ":control_flow_ops",
         ":gradients",
         ":platform",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
@@ -3996,7 +3626,6 @@ cuda_py_test(
     main = "ops/conv2d_benchmark.py",
     python_version = "PY3",
     deps = [
-        ":client",
         ":client_testlib",
         ":control_flow_ops",
         ":nn_ops",
@@ -4005,6 +3634,7 @@ cuda_py_test(
         ":random_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//third_party/py/numpy",
     ],
@@ -4017,13 +3647,13 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
         ":control_flow_ops",
         ":platform",
         ":platform_benchmark",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//third_party/py/numpy",
     ],
@@ -4037,13 +3667,13 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":array_ops",
-        ":client",
         ":client_testlib",
         ":control_flow_ops",
         ":platform",
         ":platform_benchmark",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//third_party/py/numpy",
     ],
@@ -4064,7 +3694,6 @@ py_library(
     srcs = ["ops/matmul_benchmark.py"],
     srcs_version = "PY3",
     deps = [
-        ":client",
         ":client_testlib",
         ":control_flow_ops",
         ":math_ops",
@@ -4073,26 +3702,9 @@ py_library(
         ":random_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "session_benchmark",
-    srcs = ["client/session_benchmark.py"],
-    grpc_enabled = True,
-    main = "client/session_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client",
-        ":client_testlib",
-        ":random_ops",
-        ":training",
-        ":variables",
-        "//tensorflow/python/framework:for_generated_wrappers",
         "//third_party/py/numpy",
     ],
 )
@@ -4676,7 +4288,7 @@ alias(
 alias(
     name = "is_mlir_bridge_test_true",
     actual = "//tensorflow/python/framework:is_mlir_bridge_test_true",
-    visibility = visibility,
+    visibility = visibility + ["//tensorflow/compiler/tests:friends"],
 )
 
 alias(
@@ -4737,7 +4349,7 @@ alias(
 alias(
     name = "is_mlir_bridge_test_false",
     actual = "//tensorflow/python/framework:is_mlir_bridge_test_false",
-    visibility = visibility,
+    visibility = visibility + ["//tensorflow/compiler/tests:friends"],
 )
 
 alias(

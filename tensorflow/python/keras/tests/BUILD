@@ -425,6 +425,7 @@ tf_py_test(
     name = "tracking_util_with_v1_optimizers_test",
     srcs = ["tracking_util_with_v1_optimizers_test.py"],
     tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
         "notsan",  # b/74395663
     ],
     deps = [

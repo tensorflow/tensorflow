@@ -55,7 +55,9 @@
 * `tf.saved_model`:
     *   SavedModels can now save custom gradients. Use the option
         `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
-        enable this feature.
+        enable this feature. The documentation in [Advanced autodiff]
+        (https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
+        has been updated.
 
 *   TF Core:
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
@@ -123,6 +125,9 @@
     *   Fix mean op reference quantization rounding issue.
     *   Added `framework_stable` BUILD target, which links in only the
         non-experimental TF Lite APIs.
+    *   Remove deprecated Java `Interpreter` methods:
+        *    `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
+        *    `setNumThreads` - Use `Interpreter.Options.setNumThreads`
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,

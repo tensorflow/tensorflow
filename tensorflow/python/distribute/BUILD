@@ -40,13 +40,13 @@ py_library(
         ":values",
         ":values_util",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:device_lib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:kernels",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/util",
@@ -448,6 +448,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
         "noasan",  # TODO(b/180630068)
         "nomsan",  # TODO(b/180630068)
         "notsan",  # TODO(b/151841995)
@@ -1373,6 +1374,9 @@ distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+    ],
     deps = [
         ":combinations",
         ":strategy_combinations",
@@ -1533,6 +1537,7 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+        "no_windows",  # TODO(b/184424727): Re-enable this.
     ],
     deps = [
         ":collective_all_reduce_strategy",

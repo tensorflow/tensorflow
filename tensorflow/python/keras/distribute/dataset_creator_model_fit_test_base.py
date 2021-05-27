@@ -16,10 +16,13 @@
 """Tests for `DatasetCreator` with `Model.fit` across usages and strategies."""
 
 import os
+
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.keras import callbacks as callbacks_lib
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core as core_layers
@@ -100,12 +103,12 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
             axis=-1, input_shape=(4, 4, 3), momentum=0.8)
         model.add(norm)
       model.add(core_layers.Dense(1, activation="sigmoid"))
-      self._metric = keras.metrics.Accuracy()
+      self._accuracy_metric = keras.metrics.Accuracy()
 
     model.compile(
         gradient_descent.SGD(),
         loss="binary_crossentropy",
-        metrics=[self._metric],
+        metrics=[self._accuracy_metric],
         steps_per_execution=steps_per_execution,
         run_eagerly=run_eagerly)
     return model, [ResultAssertingCallback()]
@@ -156,10 +159,12 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
     if callbacks is None:
       callbacks = []
 
-    model, default_callbacks = self._model_compile(strategy,
-                                                   steps_per_execution,
-                                                   run_eagerly,
-                                                   with_normalization_layer)
+    model, default_callbacks = self._model_compile(
+        strategy,
+        steps_per_execution,
+        run_eagerly,
+        with_normalization_layer,
+    )
     callbacks += default_callbacks
 
     def dataset_fn(input_context):
@@ -173,3 +178,31 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
         validation_data or dataset_creator.DatasetCreator(dataset_fn))
     model.evaluate(x=validation_data, steps=steps, callbacks=callbacks)
     return model
+
+  def _model_predict(
+      self,
+      strategy,
+      model=None,
+      steps_per_execution=1,
+      test_data=None,
+      steps=10,
+      with_normalization_layer=False,
+  ):
+    callbacks = []
+
+    if model is None:
+      model, default_callbacks = self._model_compile(
+          strategy,
+          steps_per_execution,
+          with_normalization_layer=with_normalization_layer,
+      )
+      callbacks += default_callbacks
+
+    def create_test_data():
+      x = constant_op.constant([1., 2., 3., 1., 5., 1.])
+      return dataset_ops.DatasetV2.from_tensor_slices(x).repeat().batch(2)
+    test_data = test_data or create_test_data()
+
+    predictions = model.predict(x=test_data, steps=steps, callbacks=callbacks)
+    predictions = np.around(predictions, 4)
+    return model, predictions

@@ -540,36 +540,6 @@ public final class InterpreterTest {
   }
 
   @Test
-  // modifyGraphWithDelegate(...) is deprecated, suppress the warning to allow testing.
-  @SuppressWarnings("deprecation")
-  public void testModifyGraphWithDelegate() throws Exception {
-    System.loadLibrary("tensorflowlite_test_jni");
-    Delegate delegate =
-        new Delegate() {
-          @Override
-          public long getNativeHandle() {
-            return getNativeHandleForDelegate();
-          }
-        };
-    Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(false));
-    interpreter.modifyGraphWithDelegate(delegate);
-
-    // The native delegate stubs out the graph with a single op that produces the scalar value 7.
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {7.0f, 7.0f, 7.0f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-
-    interpreter.close();
-  }
-
-  @Test
   public void testInvalidDelegate() throws Exception {
     System.loadLibrary("tensorflowlite_test_jni");
     Delegate delegate =

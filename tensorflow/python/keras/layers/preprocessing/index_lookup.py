@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
@@ -31,9 +32,12 @@ from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -99,8 +103,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       includes the OOV and mask tokens.
     num_oov_indices: The number of out-of-vocabulary tokens to use. If this
       value is more than 1, OOV inputs are hashed to determine their OOV value.
-      If this value is 0, OOV inputs will map to -1 when `output_mode` is
-      `"int"` and are dropped otherwise.
+      If this value is 0, OOV inputs will cause an error when calling the layer.
     mask_token: A token that represents masked inputs. When `output_mode` is
       `"int"`, the token is included in vocabulary and mapped to index 0. In
       other output modes, the token will not appear in the vocabulary and
@@ -243,10 +246,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       oov_start = self._oov_start_index()
       token_start = self._token_start_index()
       if self.num_oov_indices == 0:
-        # If there are no OOV indices, we map OOV tokens to -1 for int output
-        # and drop them from bagged output. Max ints will be dropped from the
-        # bincount op.
-        default_value = -1 if self.output_mode == INT else dtypes.int64.max
+        # If there are no OOV indices, we map OOV tokens to -1 and error out
+        # during call if we find a negative index.
+        default_value = -1
         oov_indices = None
       elif self.num_oov_indices == 1:
         # If there is only one OOV index, we can set that index as the default
@@ -609,25 +611,39 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       inputs = math_ops.cast(inputs, dtypes.int64)
     lookup_result = self._table_handler.lookup(inputs)
 
-    if self.output_mode == INT:
-      return lookup_result
+    lookup_checks = []
 
-    multi_hot_output = (self.output_mode == MULTI_HOT)
-    if self._vocab_size and not self.pad_to_max_tokens:
-      out_depth = self._vocab_size
-    else:
-      out_depth = self.max_tokens
-    if self.sparse:
-      bincounts = category_encoding.sparse_bincount(lookup_result, out_depth,
-                                                    multi_hot_output)
-    else:
-      bincounts = category_encoding.dense_bincount(lookup_result, out_depth,
-                                                   multi_hot_output)
+    if self.num_oov_indices == 0 and not self.invert:
+      oov_indices = array_ops.where_v2(math_ops.equal(lookup_result, -1))
+      oov_inputs = array_ops.gather_nd(inputs, oov_indices)
+      msg = string_ops.string_format(
+          "When `num_oov_indices=0` all inputs should be in vocabulary, "
+          "found OOV values {} at indices {}, consider setting "
+          "`num_oov_indices=1`.", (oov_inputs, oov_indices))
+      assertion = control_flow_ops.Assert(
+          math_ops.equal(array_ops.size(oov_indices), 0), [msg])
+      lookup_checks.append(assertion)
 
-    if self.output_mode == TF_IDF:
-      return math_ops.multiply(bincounts, self.tf_idf_weights)
+    with ops.control_dependencies(lookup_checks):
+      if self.output_mode == INT:
+        return array_ops.identity(lookup_result)
 
-    return bincounts
+      multi_hot_output = (self.output_mode == MULTI_HOT)
+      if self._vocab_size and not self.pad_to_max_tokens:
+        out_depth = self._vocab_size
+      else:
+        out_depth = self.max_tokens
+      if self.sparse:
+        bincounts = category_encoding.sparse_bincount(lookup_result, out_depth,
+                                                      multi_hot_output)
+      else:
+        bincounts = category_encoding.dense_bincount(lookup_result, out_depth,
+                                                     multi_hot_output)
+
+      if self.output_mode == TF_IDF:
+        return math_ops.multiply(bincounts, self.tf_idf_weights)
+
+      return bincounts
 
   def _convert_to_ndarray(self, x):
     return np.array(x) if isinstance(x, (list, tuple)) else x

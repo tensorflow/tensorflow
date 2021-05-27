@@ -82,9 +82,12 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   // building valid MLIR using MlirHloBuilder.
   // TODO(hinsu): Drop explicit allowlist when MLIR based bridge is enabled for
   // all tf2xla kernels.
+  // Use a pointer for the static set, so the set is not destructed upon thread
+  // end, which would not be thread safe.
   // clang-format off
 
-  static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
+  static auto* ops =
+      new llvm::SmallDenseSet<mlir::TypeID, 512>{
     TypeID::get<TF::AcoshOp>(),
     TypeID::get<TF::AcosOp>(),
     TypeID::get<TF::AddNOp>(),
@@ -277,31 +280,24 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
 
   auto* abstractOp = op->getAbstractOperation();
   if (!abstractOp) return false;
-  return ops.count(abstractOp->typeID);
+  return ops->count(abstractOp->typeID);
 }
 
 /// List of ops that should use XlaOpKernel legalization only in the case of
 /// prefer_tf2xla. All other ops not in this list should use MLIR legalization
 /// only or not be legalized by the new bridge.
-const llvm::DenseSet<mlir::TypeID>& Tf2XlaPreferredOps() {
-  // The static variable is a pointer in order to avoid destruction upon thread
-  // termination.
-
+bool IsOpAllowedTf2XlaPreferred(Operation* op) {
+  // Use a pointer for the static set, so the set is not destructed upon thread
+  // end, which would not be thread safe.
   // clang-format off
-  static const llvm::DenseSet<mlir::TypeID>* ops =
-      new llvm::DenseSet<mlir::TypeID>{
-    // Ops that are legalized in the old bridge using MlirXlaOpKernel
+  static auto* ops =
+      new llvm::SmallDenseSet<mlir::TypeID, 512>{
     TypeID::get<TF::AcosOp>(),
   };
   // clang-format on
-  return *ops;
-}
-
-bool IsOpAllowedTf2XlaPreferred(Operation* op) {
-  auto ops = Tf2XlaPreferredOps();
   auto* abstractOp = op->getAbstractOperation();
   if (!abstractOp) return false;
-  return ops.count(abstractOp->typeID);
+  return ops->count(abstractOp->typeID);
 }
 
 namespace {
@@ -603,12 +599,9 @@ class Tf2XlaRewritePattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (prefer_tf2xla_) {
-      if (!IsOpAllowedTf2XlaPreferred(op) && !IsOpAllowedTf2XlaFallback(op))
-        return failure();
-    } else {
-      if (!IsOpAllowedTf2XlaFallback(op)) return failure();
-    }
+    if (!(IsOpAllowedTf2XlaFallback(op) ||
+          (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op))))
+      return failure();
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
   }
 

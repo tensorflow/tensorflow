@@ -237,7 +237,7 @@ tensorflow::AddWhileInputHack
 tensorflow::ImportNumpy
 _tensorflow_numpy_api
 
-[//tensorflow/python:tf_session_helper] # tf_session
+[//tensorflow/python/client:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef
 tensorflow::TF_SessionMakeCallable
 tensorflow::TF_SessionRunCallable

@@ -2373,8 +2373,14 @@ def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
     globals_dict[test.__name__] = test
 
 
+backends = {
+    "cpu": xla_client.make_cpu_client,
+    "gpu": xla_client.make_gpu_client,
+}
+
 if __name__ == "__main__":
-  flags.DEFINE_string("backend", "cpu", "Target backend.")
-  InstantiateTests(globals(),
-                   lambda: xla_client.get_local_backend(FLAGS.backend))
+  flags.DEFINE_string("backend", "cpu", "Target platform.")
+  # pylint: disable=unnecessary-lambda
+  InstantiateTests(globals(), lambda: backends[FLAGS.backend]())
+  # pylint: enable=unnecessary-lambda
   absltest.main()
