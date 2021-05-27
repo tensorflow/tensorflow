@@ -15,12 +15,22 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_profiler.h"
 
 #include <cstdint>
+#include <limits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_time.h"
 
 namespace tflite {
+
+namespace {
+
+int32_t TickDuration(int32_t start, int32_t end) {
+  int32_t diff = end - start;
+  return (diff >= 0) ? diff : std::numeric_limits<int32_t>::max() + diff;
+}
+
+}  // namespace
 
 uint32_t MicroProfiler::BeginEvent(const char* tag) {
   if (num_events_ == kMaxEvents) {
@@ -41,7 +51,7 @@ void MicroProfiler::EndEvent(uint32_t event_handle) {
 int32_t MicroProfiler::GetTotalTicks() const {
   int32_t ticks = 0;
   for (int i = 0; i < num_events_; ++i) {
-    ticks += end_ticks_[i] - start_ticks_[i];
+    ticks += TickDuration(start_ticks_[i], end_ticks_[i]);
   }
   return ticks;
 }
@@ -49,7 +59,7 @@ int32_t MicroProfiler::GetTotalTicks() const {
 void MicroProfiler::Log() const {
 #if !defined(TF_LITE_STRIP_ERROR_STRINGS)
   for (int i = 0; i < num_events_; ++i) {
-    int32_t ticks = end_ticks_[i] - start_ticks_[i];
+    int32_t ticks = TickDuration(start_ticks_[i], end_ticks_[i]);
     MicroPrintf("%s took %d ticks (%d ms).", tags_[i], ticks, TicksToMs(ticks));
   }
 #endif
