@@ -128,6 +128,8 @@ class ProvidedDelegateList {
     int rank;
   };
 
+  ProvidedDelegateList() : ProvidedDelegateList(/*params*/ nullptr) {}
+
   // 'params' is the ToolParams instance that this class will operate on,
   // including adding all registered delegate parameters to it etc.
   explicit ProvidedDelegateList(ToolParams* params)
@@ -143,10 +145,17 @@ class ProvidedDelegateList {
   // 'params_'.
   void AppendCmdlineFlags(std::vector<Flag>* flags) const;
 
-  // Return a list of TfLite delegates based on the contained 'params_', and the
+  // Return a list of TfLite delegates based on the provided 'params', and the
   // list has been already sorted in ascending order according to the rank of
   // the particular parameter that enables the creation of the delegate.
-  std::vector<ProvidedDelegate> CreateAllRankedDelegates() const;
+  std::vector<ProvidedDelegate> CreateAllRankedDelegates(
+      const ToolParams& params) const;
+
+  // Similar to the above, the list of TfLite delegates are created based on the
+  // contained 'params_'.
+  std::vector<ProvidedDelegate> CreateAllRankedDelegates() const {
+    return CreateAllRankedDelegates(*params_);
+  }
 
  private:
   const DelegateProviderList& providers_;

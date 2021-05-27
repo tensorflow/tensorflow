@@ -201,13 +201,18 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
 
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createTransformUnrankedHloPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createRankSpecializationClusterPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createRankSpecializationToSCFPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateShapeSimplification());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createMoveUpDynamicBroadcastsForFusionPass());
 
   // Transform HLO operations to LinAlg.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
@@ -242,6 +247,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateVectorizationPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createBufferLoopHoistingPass());
+    pm.addNestedPass<::mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateShapeSimplification());
     pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
     pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
     pm.addNestedPass<mlir::FuncOp>(

@@ -33,12 +33,12 @@ void ProvidedDelegateList::AppendCmdlineFlags(std::vector<Flag>* flags) const {
 }
 
 std::vector<ProvidedDelegateList::ProvidedDelegate>
-ProvidedDelegateList::CreateAllRankedDelegates() const {
+ProvidedDelegateList::CreateAllRankedDelegates(const ToolParams& params) const {
   std::vector<ProvidedDelegateList::ProvidedDelegate> delegates;
   for (const auto& provider : providers_) {
-    auto ptr_rank = provider->CreateRankedTfLiteDelegate(*params_);
+    auto ptr_rank = provider->CreateRankedTfLiteDelegate(params);
     // It's possible that a delegate of certain type won't be created as
-    // user-specified benchmark params tells not to.
+    // user-specified tool params tells not to.
     if (ptr_rank.first == nullptr) continue;
     TFLITE_LOG(INFO) << provider->GetName() << " delegate created.";
 

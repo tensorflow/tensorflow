@@ -117,6 +117,7 @@ def java_library_with_tflite(
         name,
         deps = [],
         tflite_deps = [],
+        tflite_jni_binaries = [],
         exports = [],
         tflite_exports = [],
         **kwargs):
@@ -135,6 +136,8 @@ def java_library_with_tflite(
       deps: as for java_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
+      tflite_jni_binaries: dependencies on shared libraries that are defined
+        using 'jni_binary_with_tflite'.
       exports: same as for java_library.
       tflite_exports: exported dependencies that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
@@ -143,7 +146,7 @@ def java_library_with_tflite(
     native.java_library(
         name = name,
         exports = exports + tflite_exports,
-        deps = deps + tflite_deps,
+        deps = deps + tflite_deps + tflite_jni_binaries,
         **kwargs
     )
 
@@ -151,6 +154,7 @@ def java_test_with_tflite(
         name,
         deps = [],
         tflite_deps = [],
+        tflite_jni_binaries = [],
         **kwargs):
     """Defines an java_library that uses the TFLite shims.
 
@@ -167,11 +171,13 @@ def java_test_with_tflite(
       deps: as for java_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
+      tflite_jni_binaries: dependencies on shared libraries that are defined
+        using 'jni_binary_with_tflite'.
       **kwargs: Additional java_library parameters.
     """
     native.java_test(
         name = name,
-        deps = deps + tflite_deps,
+        deps = deps + tflite_deps + tflite_jni_binaries,
         **kwargs
     )
 

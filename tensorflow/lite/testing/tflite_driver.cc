@@ -445,7 +445,8 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   } else {
     auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
     for (auto& one : delegate_providers->CreateAllDelegates()) {
-      if (interpreter_->ModifyGraphWithDelegate(std::move(one)) != kTfLiteOk) {
+      if (interpreter_->ModifyGraphWithDelegate(std::move(one.delegate)) !=
+          kTfLiteOk) {
         Invalidate(
             "Unable to the build graph using the delegate initialized from "
             "tflite::KernelTestDelegateProviders");
