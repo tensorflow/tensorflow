@@ -300,7 +300,8 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
               auto num_loops = llvm::cast<linalg::LinalgOp>(op).getNumLoops();
               SmallVector<Value> tiles(
                   num_loops, b.create<ConstantIndexOp>(op->getLoc(), 1));
-              tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), 4);
+              if (!tiles.empty())
+                tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), 4);
               return tiles;
             });
     auto alignment = 16;

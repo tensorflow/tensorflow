@@ -1029,7 +1029,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
 }
 
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
-    SameOperandsAndResultShape,
+    SameOperandsAndResultShape, Elementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
         ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   let summary = "Comparison operator";
