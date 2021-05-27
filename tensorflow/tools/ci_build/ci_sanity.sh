@@ -186,6 +186,7 @@ do_pylint() {
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
     echo "FAIL: Found ${N_ERRORS} errors"
+    echo "Please correct these. If they must be ignored, use '# pylint: disable=<error name>' comments."
     cat ${OUTPUT_FILE}
     return 1
   else
