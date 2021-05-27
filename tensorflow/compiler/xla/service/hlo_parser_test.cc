@@ -2355,16 +2355,22 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 )";
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
-                      absl::StrCat(prefix, ",dim_labels=00_01_10", suffix))
+                      absl::StrCat(prefix, ",dim_labels=00_01->10", suffix))
                       .status()
                       .error_message(),
-                  "expects dim labels pattern");
+                  "expects unique");
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
-                      absl::StrCat(prefix, ",dim_labels=010_1100->010", suffix))
+                      absl::StrCat(prefix, ",dim_labels=012_0123->210", suffix))
                       .status()
                       .error_message(),
-                  "must have the same rank");
+                  "must have same number of spatial dimensions");
+
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(
+                      absl::StrCat(prefix, ",dim_labels=013_0123->210", suffix))
+                      .status()
+                      .error_message(),
+                  "expects [0-2bf?]");
 }
 
 TEST_F(HloParserTest, UnexpectedAttribute) {
@@ -2849,6 +2855,13 @@ TEST_F(HloParserTest, ParseWindow) {
 
 TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   const string original = "b0f_0io->b0f";
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
+                          ParseConvolutionDimensionNumbers(original));
+  EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
+TEST_F(HloParserTest, ParseConvolutionDimensionNumbersWithUnknownDims) {
+  const string original = "b0?f_?0?io->?b?0?f";
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers(original));
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
