@@ -167,14 +167,8 @@ Status GpuCompiler::OptimizeHloModule(
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<AllToAllDecomposer>();
 
-    OpExpanderPass::PatternExtraFilter upcaster_filter =
-        [&](const HloInstruction* instr) {
-          return !IsVoltaOrLater(*stream_exec) ||
-                 !gpu::IsMatrixMultiplication(*instr);
-        };
-
-    pipeline.AddPass<OperandUpcaster>(upcaster_filter);
-    pipeline.AddPass<ResultCaster>(upcaster_filter);
+    pipeline.AddPass<OperandUpcaster>();
+    pipeline.AddPass<ResultCaster>();
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
