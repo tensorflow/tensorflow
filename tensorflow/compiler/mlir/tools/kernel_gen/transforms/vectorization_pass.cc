@@ -107,8 +107,6 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   // represents relative to the induction variable in its loop and the
   // bounds of the original for loop.
   auto is_op_of_interest = [&](AffineMinOp min_op, Value iv) {
-    if (min_op.getDimOperands().size() + min_op.getSymbolOperands().size() != 2)
-      return false;
     bool min_by_step = false;
     for (auto i : min_op.getAffineMap().getResults()) {
       if (i == b.getAffineConstantExpr(step_bound_value.getInt())) {
@@ -123,6 +121,12 @@ void SplitSCFForOp(scf::ForOp scf_for) {
           min_op.getDimOperands().drop_front().front() == iv &&
           min_op.getDimOperands().front() == scf_for.upperBound())
         continue;
+      if (auto idx_op = scf_for.upperBound().getDefiningOp<ConstantIndexOp>()) {
+        auto val = idx_op.getValue();
+        if (i == b.getAffineConstantExpr(val) - b.getAffineDimExpr(0) &&
+            min_op.getDimOperands().front() == iv)
+          continue;
+      }
       return false;
     }
     return min_by_step;
