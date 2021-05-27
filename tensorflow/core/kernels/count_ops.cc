@@ -122,6 +122,9 @@ class DenseCount : public OpKernel {
 
     int num_batch_elements = 1;
     for (int i = 0; i < num_batch_dimensions; ++i) {
+      OP_REQUIRES(context, data.shape().dim_size(i) != 0,
+                  errors::InvalidArgument(
+                      "Invalid input: Shapes dimension cannot be 0."));
       num_batch_elements *= data.shape().dim_size(i);
     }
     int num_value_elements = data.shape().num_elements() / num_batch_elements;
