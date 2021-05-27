@@ -774,7 +774,8 @@ void EventForest::ConnectTfDataEvents() {
        {HostEventType::kPrefetchProduce,
         HostEventType::kParallelInterleaveProduce,
         HostEventType::kParallelMapProduce, HostEventType::kMapAndBatchProduce,
-        HostEventType::kParseExampleProduce}) {
+        HostEventType::kParseExampleProduce,
+        HostEventType::kParallelBatchProduce}) {
     auto produce_event_list = gtl::FindOrNull(event_node_map_, event_type);
     if (!produce_event_list) continue;
     VLOG(1) << produce_event_list->size() << " "
@@ -803,7 +804,8 @@ void EventForest::ConnectTfDataEvents() {
        {HostEventType::kPrefetchConsume,
         HostEventType::kParallelInterleaveConsume,
         HostEventType::kParallelMapConsume, HostEventType::kMapAndBatchConsume,
-        HostEventType::kParseExampleConsume}) {
+        HostEventType::kParseExampleConsume,
+        HostEventType::kParallelBatchConsume}) {
     auto consume_event_list = gtl::FindOrNull(event_node_map_, event_type);
     if (!consume_event_list) continue;
     VLOG(1) << consume_event_list->size() << " "
