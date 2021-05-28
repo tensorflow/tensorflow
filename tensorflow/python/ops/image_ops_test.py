@@ -179,7 +179,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
           green = images[batch, y, x, 1]
           blue = images[batch, y, x, 2]
           gray = 0.2989 * red + 0.5870 * green + 0.1140 * blue
-          out[batch, y, x, 0] = int(gray)
+          out[batch, y, x, 0] = np.round(gray)
     if not is_batch:
       out = np.squeeze(out, axis=0)
     return out
@@ -344,7 +344,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       # then perform correction
       y_np = np.power(x_np / 255.0, gamma)
       # convert correct numpy image back to uint8 type
-      y_np = np.trunc(np.clip(y_np * 255.5, 0, 255.0))
+      y_np = np.round(np.clip(y_np * 255.0, 0, 255.0))
 
       self.assertAllClose(y_tf, y_np, 1e-6)
 
@@ -436,7 +436,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
     delta = 0.25
-    y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
+    y_data = [13, 0, 12, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.cached_session():
@@ -451,7 +451,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
     delta = 0.25
-    y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
+    y_data = [13, 0, 12, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.cached_session():
@@ -907,7 +907,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
     saturation_factor = 0.5
-    y_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
+    y_data = [7, 9, 13, 140, 180, 226, 136, 121, 234, 172, 255, 128]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.cached_session():
@@ -937,7 +937,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
     saturation_factor = 0.5
-    y_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
+    y_data = [7, 9, 13, 140, 180, 226, 136, 121, 234, 172, 255, 128]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.cached_session():
@@ -1518,7 +1518,7 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
-    y_data = [0, 0, 0, 62, 169, 255, 28, 0, 255, 135, 255, 0]
+    y_data = [0, 0, 0, 63, 169, 255, 29, 0, 255, 135, 255, 0]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     self._testContrast(x_np, y_np, contrast_factor=2.0)
@@ -1541,7 +1541,7 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
-    y_data = [22, 52, 65, 49, 118, 172, 41, 54, 176, 67, 178, 59]
+    y_data = [23, 53, 66, 50, 118, 172, 41, 54, 176, 68, 178, 60]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     self._testContrast(x_np, y_np, contrast_factor=0.5)
@@ -4636,6 +4636,25 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       # int16, uint16
       self._convert([0, 255 * 256], dtypes.uint16, dtypes.int16, [0, 255 * 128])
       self._convert([0, 255 * 128], dtypes.int16, dtypes.uint16, [0, 255 * 256])
+
+  def testConvertBetweenFloat32AndInt8SmallNumbers(self):
+    with self.cached_session():
+      image0 = constant_op.constant(0.)
+      x0 = image_ops.convert_image_dtype(image0 + 0.4 / 255., 'uint8',
+      	saturate=True)
+      y0 = image_ops.convert_image_dtype(image0 + 0.6 / 255., 'uint8',
+      	saturate=True)
+      self.assertAllEqual(x0, constant_op.constant(0.))
+      self.assertAllEqual(y0, constant_op.constant(1.))
+
+      image1 = constant_op.constant(1.)
+      x1 = image_ops.convert_image_dtype(image1 - 0.4 / 255., 'uint8',
+      	saturate=True)
+      y1 = image_ops.convert_image_dtype(image1 - 0.6 / 255., 'uint8',
+      	saturate=True)
+      self.assertAllEqual(x1, constant_op.constant(255))
+      self.assertAllEqual(y1, constant_op.constant(254))
+
 
 
 class TotalVariationTest(test_util.TensorFlowTestCase):
