@@ -100,7 +100,8 @@ class ReduceTest(test_util.TensorFlowTestCase):
       [5., 9., 2.],
       [5.],
       []])
-    self.assertAllClose(math_ops.reduce_variance(x), [0., 16., 1., 0.])
+    self.assertAllClose(math_ops.reduce_variance(x, axis=0),
+      [0., 16., 1., 0.])
 
   def testReduceVarComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
