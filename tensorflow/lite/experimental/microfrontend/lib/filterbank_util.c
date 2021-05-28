@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/filterbank_util.h"
 
 #include <assert.h>
+#include <cstring.h>
 #include <math.h>
 
 #include "tensorflow/lite/experimental/microfrontend/lib/fprintf_shim.h"
