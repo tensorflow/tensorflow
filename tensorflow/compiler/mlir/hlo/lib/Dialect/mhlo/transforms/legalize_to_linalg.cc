@@ -1349,15 +1349,19 @@ class DynamicUpdateSliceConverter
 
     auto index_type = rewriter.getIndexType();
     SmallVector<OpFoldResult, 3> start_indices;
+    Type start_index_type = adaptor.start_indices()[0]
+                                .getType()
+                                .cast<RankedTensorType>()
+                                .getElementType();
     Value zero = rewriter.create<ConstantOp>(
-        loc, rewriter.getZeroAttr(operand_type.getElementType()));
+        loc, rewriter.getZeroAttr(start_index_type));
     for (auto en : llvm::enumerate(adaptor.start_indices())) {
       // By mhlo.DynamicUpdateSlice definition:
       //   `start_indices[i] = clamp(start_indices[i],
       //       0, operand.dimension_size[i] - update.dimension_size[i])`
       Value start_index = rewriter.create<tensor::ExtractOp>(loc, en.value());
       Value ub = rewriter.create<ConstantOp>(
-          loc, rewriter.getIntegerAttr(operand_type.getElementType(),
+          loc, rewriter.getIntegerAttr(start_index_type,
                                        operand_type.getDimSize(en.index()) -
                                            update_type.getDimSize(en.index())));
       // TODO(hanchung): This is a workaround to use the method because only
@@ -1365,9 +1369,8 @@ class DynamicUpdateSliceConverter
       // map_lmhlo_to_scalar_op.h requires to pass a mhlo op. It will convert it
       // to an lmhlo op and call the lmhlo implementation.
       start_index = lmhlo::HloOpToStdScalarOp::map<lmhlo::ClampOp>(
-          loc, start_index.getType(),
-          ArrayRef<Type>{start_index.getType(), start_index.getType(),
-                         start_index.getType()},
+          loc, start_index_type,
+          ArrayRef<Type>{start_index_type, start_index_type, start_index_type},
           ArrayRef<Value>{zero, start_index, ub}, &rewriter);
       start_indices.push_back(
           rewriter.create<IndexCastOp>(loc, index_type, start_index)

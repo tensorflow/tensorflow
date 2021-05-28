@@ -1775,6 +1775,39 @@ func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: tensor<2
 
 // -----
 
+func @dynamic_update_slice_float(%target: tensor<3x3xf32>,
+                                 %update: tensor<2x2xf32>,
+                                 %c0: tensor<i32>) -> tensor<3x3xf32> {
+  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+    : (tensor<3x3xf32>, tensor<2x2xf32>, tensor<i32>, tensor<i32>) -> tensor<3x3xf32>
+  return %0 : tensor<3x3xf32>
+}
+// CHECK-LABEL: func @dynamic_update_slice_float(
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
+// CHECK:         %[[C0:.*]] = constant 0 : i32
+// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[UB1:.*]] = constant 1 : i32
+// CHECK:         %[[COND1:.*]] = cmpi slt, %[[SCALAR1]], %[[UB1]] : i32
+// CHECK:         %[[T1:.*]] = select %[[COND1]], %[[SCALAR1]], %[[UB1]] : i32
+// CHECK:         %[[COND2:.*]] = cmpi sgt, %[[T1]], %[[C0]] : i32
+// CHECK:         %[[CLAMPED1:.*]] = select %[[COND2]], %[[T1]], %[[C0]] : i32
+// CHECK:         %[[START1:.*]] = index_cast %[[CLAMPED1]] : i32 to index
+// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[UB2:.*]] = constant 1 : i32
+// CHECK:         %[[COND3:.*]] = cmpi slt, %[[SCALAR2]], %[[UB2]] : i32
+// CHECK:         %[[T2:.*]] = select %[[COND3]], %[[SCALAR2]], %[[UB2]] : i32
+// CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i32
+// CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i32
+// CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i32 to index
+// CHECK:         %[[RES:.*]] = subtensor_insert %[[ARG1]] into %[[ARG0]]
+// CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
+// CHECK-SAME:    : tensor<2x2xf32> into tensor<3x3xf32>
+// CHECK:         return %[[RES]] : tensor<3x3xf32>
+
+// -----
+
 func @pad_cst(%arg0: tensor<12x4xf32>) -> tensor<18x12xf32> {
   %0 = constant dense<0.0> : tensor<f32>
   %1 = "mhlo.pad"(%arg0, %0) {
