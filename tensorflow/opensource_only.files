@@ -167,7 +167,6 @@ tensorflow/third_party/nccl/nccl_configure.bzl
 tensorflow/third_party/nccl/system.BUILD.tpl
 tensorflow/third_party/nlohmann_json.BUILD
 tensorflow/third_party/opt_einsum.BUILD
-tensorflow/third_party/pcre.BUILD
 tensorflow/third_party/png.BUILD
 tensorflow/third_party/png_fix_rpi.patch
 tensorflow/third_party/pprof.BUILD
@@ -207,7 +206,6 @@ tensorflow/third_party/systemlibs/jsoncpp.BUILD
 tensorflow/third_party/systemlibs/lmdb.BUILD
 tensorflow/third_party/systemlibs/nsync.BUILD
 tensorflow/third_party/systemlibs/opt_einsum.BUILD
-tensorflow/third_party/systemlibs/pcre.BUILD
 tensorflow/third_party/systemlibs/png.BUILD
 tensorflow/third_party/systemlibs/protobuf.BUILD
 tensorflow/third_party/systemlibs/protobuf.bzl

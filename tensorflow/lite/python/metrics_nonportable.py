@@ -15,8 +15,10 @@
 # ==============================================================================
 """Python TFLite metrics helper."""
 from typing import Optional, Text
+import uuid
 
 from tensorflow.lite.python import metrics_interface
+from tensorflow.lite.python.metrics_wrapper import _pywrap_tensorflow_lite_metrics_wrapper as _metrics_wrapper
 from tensorflow.python.eager import monitoring
 
 _counter_debugger_creation = monitoring.Counter(
@@ -80,3 +82,27 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
 
   def set_converter_param(self, name, value):
     _gauge_conversion_params.get_cell(name).set(value)
+
+
+class TFLiteConverterMetrics(TFLiteMetrics):
+  """Similar to TFLiteMetrics but specialized for converter.
+
+  A unique session id will be created for each new TFLiteConverterMetrics.
+  """
+
+  def __init__(self) -> None:
+    super(TFLiteConverterMetrics, self).__init__()
+    session_id = uuid.uuid4().hex
+    self._metrics_exporter = _metrics_wrapper.MetricsWrapper(session_id)
+    self._exported = False
+
+  def __del__(self):
+    if not self._exported:
+      self.export_metrics()
+
+  def set_export_required(self):
+    self._exported = False
+
+  def export_metrics(self):
+    self._metrics_exporter.ExportMetrics()
+    self._exported = True

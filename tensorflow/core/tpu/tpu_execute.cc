@@ -47,8 +47,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_executable.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_op_executable.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
@@ -66,7 +66,7 @@ class HostTransferManager {
  public:
   explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
 
-  using HostCommmandHandler = xla::TpuExecutable::HostCommandHandler;
+  using HostCommmandHandler = TpuOpExecutable::HostCommandHandler;
 
   // Returns a function to be called when the TPU triggers a host command
   // interrupt while executing the current program.
@@ -478,7 +478,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
 
-  auto tpu_executable = absl::make_unique<xla::TpuExecutable>(
+  auto tpu_executable = absl::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), /*host_command_handler=*/handler);
 
   const int32 device_ordinal = node_context->device_ordinal();

@@ -58,6 +58,7 @@ from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -1838,7 +1839,7 @@ def _channel_flatten_input(x, data_format):
   If S is pfor's stacking dimension, then,
     - for SNCHW, we transpose to NSCHW. If N dimension has size 1, the transpose
       should be cheap.
-    - for SNHWC, we transpose to NHWCS.
+    - for SNHWC, we transpose to NHWSC.
   We then merge the S and C dimension.
 
   Args:
@@ -2038,6 +2039,95 @@ def _convert_conv2d_backprop_filter(pfor_input):
     output = array_ops.reshape(output, new_filter_shape)
     output = array_ops.transpose(output, [3, 0, 1, 2, 4])
     return wrap(output, True)
+
+
+def _flatten_with_inner_dim(x, dim, x_rank):
+  """Merges the first dim with the specified dim."""
+  shape = array_ops.shape(x)
+  x = array_ops.transpose(x,
+                          list(range(1, dim)) + [0] + list(range(dim, x_rank)))
+
+  if dim < x_rank - 1:
+    new_shape_pieces = [shape[1:dim], [-1], shape[dim + 1:]]
+  else:
+    new_shape_pieces = [shape[1:dim], [-1]]
+  new_shape = array_ops.concat(new_shape_pieces, axis=0)
+  return array_ops.reshape(x, new_shape)
+
+
+def _unflatten_with_inner_dim(x, dim, x_rank, stack_size):
+  """Undoes _flatten_with_inner_dim."""
+  shape = array_ops.shape(x)
+  if dim < x_rank - 1:
+    new_shape_pieces = [shape[:dim], [stack_size], [-1], shape[dim + 1:]]
+  else:
+    new_shape_pieces = [shape[:dim], [stack_size], [-1]]
+  new_shape = array_ops.concat(new_shape_pieces, axis=0)
+  x = array_ops.reshape(x, new_shape)
+  dims_permutation = [dim] + list(range(dim)) + list(range(dim + 1, x_rank + 1))
+  return array_ops.transpose(x, dims_permutation)
+
+
+@RegisterPFor("DepthwiseConv2dNative")
+def _convert_depthwise_conv2d_native(pfor_input):
+  # Kernel can be vectorized, so folding to batch dimension does not work. We
+  # instead fold into the channel dimension because it is parallel.
+  stack_size = pfor_input.pfor.loop_len_vector[0]
+  data_format = pfor_input.get_attr("data_format")
+  c_dim = 1 if data_format == b"NCHW" else 3
+  t = _flatten_with_inner_dim(pfor_input.stacked_input(0), c_dim + 1, 5)
+  kernel = _flatten_with_inner_dim(pfor_input.stacked_input(1), 3, 5)
+  conv = _create_op(
+      "DepthwiseConv2dNative", [t, kernel],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs[0]
+  return wrap(_unflatten_with_inner_dim(conv, c_dim, 4, stack_size), True)
+
+
+@RegisterPFor("DepthwiseConv2dNativeBackpropInput")
+def _convert_depthwise_conv2d_native_backprop_input(pfor_input):
+  stack_size = pfor_input.pfor.loop_len_vector[0]
+  input_sizes = pfor_input.unstacked_input(0)
+  data_format = pfor_input.get_attr("data_format")
+  c_dim = 1 if data_format == b"NCHW" else 3
+  input_sizes_mutipliers = [
+      constant_op.constant([1] * c_dim, dtype=dtypes.int32), [stack_size]
+  ]
+  if c_dim < 3:
+    input_sizes_mutipliers += [
+        constant_op.constant([1] * (3 - c_dim), dtype=dtypes.int32)
+    ]
+  input_sizes *= array_ops.concat(input_sizes_mutipliers, axis=0)
+  kernel = _flatten_with_inner_dim(pfor_input.stacked_input(1), 3, 5)
+  out_backprop = _flatten_with_inner_dim(
+      pfor_input.stacked_input(2), c_dim + 1, 5)
+  result = _create_op(
+      "DepthwiseConv2dNativeBackpropInput", [input_sizes, kernel, out_backprop],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs[0]
+  return wrap(_unflatten_with_inner_dim(result, c_dim, 4, stack_size), True)
+
+
+@RegisterPFor("DepthwiseConv2dNativeBackpropFilter")
+def _convert_depthwise_conv2d_native_backprop_filter(pfor_input):
+  stack_size = pfor_input.pfor.loop_len_vector[0]
+  data_format = pfor_input.get_attr("data_format")
+  c_dim = 1 if data_format == b"NCHW" else 3
+  inputs = _flatten_with_inner_dim(pfor_input.stacked_input(0), c_dim + 1, 5)
+  filter_sizes = pfor_input.unstacked_input(1)
+  filter_sizes_multipliers = [
+      constant_op.constant([1, 1], dtype=dtypes.int32), [stack_size],
+      constant_op.constant([1], dtype=dtypes.int32)
+  ]
+  filter_sizes *= array_ops.concat(filter_sizes_multipliers, axis=0)
+  out_backprop = _flatten_with_inner_dim(
+      pfor_input.stacked_input(2), c_dim + 1, 5)
+  result = _create_op(
+      "DepthwiseConv2dNativeBackpropFilter",
+      [inputs, filter_sizes, out_backprop],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs[0]
+  return wrap(_unflatten_with_inner_dim(result, 2, 4, stack_size), True)
 
 
 @RegisterPForWithArgs("LogSoftmax", gen_nn_ops.log_softmax)
@@ -2501,6 +2591,17 @@ def _convert_check_numerics(pfor_input):
   return wrap(gen_array_ops.check_numerics(t, message), True)
 
 
+# manip_ops
+
+
+@RegisterPFor("Roll")
+def _convert_roll(pfor_input):
+  t = pfor_input.stacked_input(0)
+  shift = pfor_input.unstacked_input(1)
+  axis = pfor_input.unstacked_input(2)
+  return wrap(manip_ops.roll(t, shift, axis + 1), True)
+
+
 # math_ops
 
 
@@ -2756,6 +2857,7 @@ def _convert_sparse_segment(pfor_input, _, op_func):
   return wrap(output, True)
 
 
+@RegisterPForWithArgs("SparseSegmentSumGrad", math_ops.sparse_segment_sum_grad)
 @RegisterPForWithArgs("SparseSegmentMeanGrad",
                       math_ops.sparse_segment_mean_grad)
 @RegisterPForWithArgs("SparseSegmentSqrtNGrad",

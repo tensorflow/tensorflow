@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -631,6 +632,8 @@ class Translator {
   BufferOffset<tflite::SparsityParameters> BuildSparsityParameters(
       const mlir::TFL::SparsityParameterAttr& s_attr);
 
+  bool EstimateArithmeticCount(int64_t* count);
+
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -672,6 +675,22 @@ class Translator {
   // User's defined ops allowed with Flex.
   const std::unordered_set<std::string> select_user_tf_ops_;
 };
+
+bool Translator::EstimateArithmeticCount(int64_t* count) {
+  int64_t result = 0;
+  bool encounter_undetermined_mac = false;
+  module_->walk([&](mlir::TFL::TflArithmeticCountOpInterface op) {
+    int64_t mac_count = op.GetArithmeticCount(op);
+    if (mac_count < 0) {
+      encounter_undetermined_mac = true;
+      return;
+    }
+    result += mac_count;
+  });
+
+  *count = result;
+  return !encounter_undetermined_mac;
+}
 
 std::string Translator::UniqueName(mlir::Value val) {
   return std::string(name_mapper_.GetUniqueName(val));
@@ -1856,6 +1875,31 @@ Optional<std::string> Translator::TranslateInternal() {
                << "failed while converting: '" << failed_region.first
                << "': " << err,
            llvm::None;
+  }
+
+  // Log MAC count.
+  int64_t ops_count;
+  if (EstimateArithmeticCount(&ops_count)) {
+    const int64_t million = 1e6;
+    const int64_t billion = 1e9;
+    std::string flops_str;
+    std::string mac_str;
+    if (ops_count < 10000) {
+      flops_str = absl::StrFormat("%ld ", ops_count);
+      mac_str = absl::StrFormat("%ld ", ops_count / 2);
+    } else if (ops_count < billion) {
+      flops_str =
+          absl::StrFormat("%.3f M ", static_cast<double>(ops_count) / million);
+      mac_str = absl::StrFormat("%.3f M ",
+                                static_cast<double>(ops_count / 2) / million);
+    } else {
+      flops_str =
+          absl::StrFormat("%.3f G ", static_cast<double>(ops_count) / billion);
+      mac_str = absl::StrFormat("%.3f G ",
+                                static_cast<double>(ops_count / 2) / billion);
+    }
+    LOG(INFO) << "Estimated count of arithmetic ops: " << flops_str
+              << " ops, equivalently " << mac_str << " MACs";
   }
 
   std::string model_description;

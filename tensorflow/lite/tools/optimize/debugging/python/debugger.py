@@ -58,13 +58,16 @@ def _get_quant_params(
 class QuantizationDebugOptions:
   """Debug options to set up a given QuantizationDebugger."""
 
-  def __init__(self,
-               layer_debug_metrics: Optional[Mapping[str,
-                                                     Callable[[np.ndarray],
-                                                              float]]] = None,
-               model_debug_metrics: Optional[Mapping[
-                   str, Callable[[Sequence[np.ndarray], Sequence[np.ndarray]],
-                                 float]]] = None):
+  def __init__(
+      self,
+      layer_debug_metrics: Optional[Mapping[str, Callable[[np.ndarray],
+                                                          float]]] = None,
+      model_debug_metrics: Optional[Mapping[str, Callable[
+          [Sequence[np.ndarray], Sequence[np.ndarray]], float]]] = None,
+      layer_direct_compare_metrics: Optional[Mapping[str, Callable[
+          [Sequence[np.ndarray], Sequence[np.ndarray], float, int],
+          float]]] = None
+  ) -> None:
     """Initializes debugger options.
 
     Args:
@@ -76,9 +79,28 @@ class QuantizationDebugOptions:
         {function_name_str: function} where the function accepts outputs from
           two models, and returns single scalar value for a metric. (e.g.
           accuracy, IoU)
+      layer_direct_compare_metrics: a dict to specify layer debug functions
+        {function_name_str: function}. The signature is different from that of
+          `layer_debug_metrics`, and this one gets passed (original float value,
+          original quantized value, scale, zero point). The function's
+          implementation is responsible for correctly dequantize the quantized
+          value to compare. Use this one when comparing diff is not enough.
+          (Note) quantized value is passed as int8, so cast to int32 is needed.
+
+    Raises:
+      ValueError: when there are duplicate keys
     """
     self.layer_debug_metrics = layer_debug_metrics
     self.model_debug_metrics = model_debug_metrics
+    self.layer_direct_compare_metrics = layer_direct_compare_metrics
+
+    keys = []
+    for metrics in [
+        layer_debug_metrics, model_debug_metrics, layer_direct_compare_metrics]:
+      if metrics is not None:
+        keys.extend(metrics.keys())
+    if len(keys) != len(set(keys)):
+      raise ValueError('Provided metrics have duplicate keys.')
 
 
 @tf_export.tf_export('lite.experimental.QuantizationDebugger')
@@ -125,8 +147,11 @@ class QuantizationDebugger:
     self._debug_options = debug_options or QuantizationDebugOptions()
 
     input_data = next(iter(self._data_gen()))
-    self._quant_interpreter = tf.lite.Interpreter(quant_debug_model_path,
-                                                  quant_debug_model_content)
+    self._quant_interpreter = tf.lite.Interpreter(
+        quant_debug_model_path,
+        quant_debug_model_content,
+        experimental_preserve_all_tensors=(
+            self._debug_options.layer_direct_compare_metrics is not None))
     if self._debug_options.model_debug_metrics:
       self._float_interpreter = tf.lite.Interpreter(float_model_path,
                                                     float_model_content)
@@ -137,9 +162,10 @@ class QuantizationDebugger:
     self._defining_op = dict()
     for op_info in self._quant_interpreter._get_ops_details():  # pylint: disable=protected-access
       self._defining_op.update(
-          {tensor_idx: op_info['op_name'] for tensor_idx in op_info['outputs']})
+          {tensor_idx: op_info['index'] for tensor_idx in op_info['outputs']})
 
     self._numeric_verify_tensor_details = None
+    self._numeric_verify_op_details = None
     if not self._get_numeric_verify_tensor_details():
       raise ValueError('Please check if the quantized model is in debug mode')
 
@@ -182,16 +208,34 @@ class QuantizationDebugger:
       self._quant_interpreter.invoke()
 
       # Collect the statistics of this invoke result.
-      for tensor_details in self._get_numeric_verify_tensor_details():
-        tensor_name = tensor_details['name']
-        diffs = self._quant_interpreter.get_tensor(tensor_details['index'])
+      for tensor_detail in self._get_numeric_verify_tensor_details():
+        tensor_name = tensor_detail['name']
+        diffs = self._quant_interpreter.get_tensor(tensor_detail['index'])
         for metric_name, metric_fn in self._layer_debug_metrics.items():
           layer_statistics[tensor_name][metric_name].append(metric_fn(diffs))
+
+      if self._debug_options.layer_direct_compare_metrics is not None:
+        for tensor_detail in self._get_numeric_verify_tensor_details():
+          tensor_name = tensor_detail['name']
+          op_idx = self._defining_op[tensor_detail['index']]
+          op_detail = self._quant_interpreter._get_op_details(op_idx)  # pylint: disable=protected-access
+          q_idx, f_idx = op_detail['inputs']
+          quant_input_detail = self._quant_interpreter._get_tensor_details(  # pylint: disable=protected-access
+              q_idx)
+          for (metric_name, metric_fn
+              ) in self._debug_options.layer_direct_compare_metrics.items():
+            layer_statistics[tensor_name][metric_name].append(
+                metric_fn(
+                    self._quant_interpreter.get_tensor(f_idx),
+                    self._quant_interpreter.get_tensor(q_idx),
+                    quant_input_detail['quantization_parameters']['scales'][0],
+                    quant_input_detail['quantization_parameters']['zero_points']
+                    [0]))
 
     # Calculate final aggregated metrics for each layer.
     for metrics in layer_statistics.values():
       for metric_name in metrics:
-        metrics[metric_name] = np.mean(metrics[metric_name])
+        metrics[metric_name] = np.nanmean(metrics[metric_name])
 
     return layer_statistics
 
@@ -206,7 +250,7 @@ class QuantizationDebugger:
     output function value` (a scalar).
 
     Returns:
-      aggregated per-model output discrepancy mertics.
+      aggregated per-model output discrepancy metrics.
       {metric_name: aggregated_metric}
     """
 
@@ -301,11 +345,14 @@ class QuantizationDebugger:
     # pylint: disable=protected-access
     if not self._numeric_verify_tensor_details:
       self._numeric_verify_tensor_details = []
+      self._numeric_verify_op_details = {}
       for op_info in self._quant_interpreter._get_ops_details():
         if op_info['op_name'] == _NUMERIC_VERIFY_OP_NAME:
           self._numeric_verify_tensor_details.append(
               self._quant_interpreter._get_tensor_details(
                   op_info['outputs'][0]))
+          tensor_name = self._numeric_verify_tensor_details[-1]['name']
+          self._numeric_verify_op_details[tensor_name] = op_info
     # pylint: enable=protected-access
     return self._numeric_verify_tensor_details
 
@@ -330,17 +377,20 @@ class QuantizationDebugger:
       file: file, or file-like object to write.
     """
     # order of `fields` is the order of fields in csv.
-    fields = ['op_name', 'tensor_idx'] + list(self._layer_debug_metrics.keys(
-    )) + ['scales', 'zero_points', 'tensor_name']
+    fields = ['op_name', 'tensor_idx'] + list(self._layer_debug_metrics.keys())
+    if self._debug_options.layer_direct_compare_metrics is not None:
+      fields += list(self._debug_options.layer_direct_compare_metrics.keys())
+    fields += ['scale', 'zero_point', 'tensor_name']
     writer = csv.DictWriter(file, fields)
     writer.writeheader()
     for name, metrics in self.layer_statistics.items():
       data = metrics.copy()
-      (data['tensor_name'],
-       data['tensor_idx']) = self._get_operand_name_and_index(name)
-      data['op_name'] = self._defining_op[data['tensor_idx']]
+      (data['tensor_name'], _) = self._get_operand_name_and_index(name)
+      data['tensor_idx'] = self._numeric_verify_op_details[name]['inputs'][0]
+      data['op_name'] = self._quant_interpreter._get_op_details(  # pylint: disable=protected-access
+          self._defining_op[data['tensor_idx']])['op_name']
       details = self._quant_interpreter._get_tensor_details(data['tensor_idx'])  # pylint: disable=protected-access
-      data['scales'], data['zero_points'] = (
-          details['quantization_parameters']['scales'],
-          details['quantization_parameters']['zero_points'])
+      data['scale'], data['zero_point'] = (
+          details['quantization_parameters']['scales'][0],
+          details['quantization_parameters']['zero_points'][0])
       writer.writerow(data)

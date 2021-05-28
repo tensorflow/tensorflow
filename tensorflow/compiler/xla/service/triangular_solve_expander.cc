@@ -537,7 +537,8 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
 
     // Prefer the direct implementation whenever there is a nontrivial batch
     // dimension and the matrix is very small.
-    if (batch > block_size_ / 16 && a_size < block_size_ / 4) {
+    if (UseDirectSolves() && batch > block_size_ / 16 &&
+        a_size < block_size_ / 4) {
       return SolveDirectly(a, b, left_side, lower, transpose_a, conjugate_a,
                            unit_diagonal, precision);
     } else {

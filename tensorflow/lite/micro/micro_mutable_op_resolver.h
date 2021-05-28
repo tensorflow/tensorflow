@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/ethosu.h"
 #include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
+#include "tensorflow/lite/micro/kernels/softmax.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -254,6 +255,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseFullyConnected);
   }
 
+  TfLiteStatus AddGather() {
+    return AddBuiltin(BuiltinOperator_GATHER, tflite::Register_GATHER(),
+                      ParseGather);
+  }
+
   TfLiteStatus AddGatherNd() {
     return AddBuiltin(BuiltinOperator_GATHER_ND, tflite::Register_GATHER_ND(),
                       ParseGatherNd);
@@ -274,6 +280,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
     return AddBuiltin(BuiltinOperator_HARD_SWISH,
                       tflite::ops::micro::Register_HARD_SWISH(),
                       ParseHardSwish);
+  }
+
+  TfLiteStatus AddIf() {
+    return AddBuiltin(BuiltinOperator_IF, tflite::Register_IF(), ParseIf);
   }
 
   TfLiteStatus AddL2Normalization() {
@@ -441,9 +451,9 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseSin);
   }
 
-  TfLiteStatus AddSoftmax() {
-    return AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
-                      ParseSoftmax);
+  TfLiteStatus AddSoftmax(
+      const TfLiteRegistration& registration = Register_SOFTMAX()) {
+    return AddBuiltin(BuiltinOperator_SOFTMAX, registration, ParseSoftmax);
   }
 
   TfLiteStatus AddSpaceToBatchNd() {
@@ -499,6 +509,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddTransposeConv() {
     return AddBuiltin(BuiltinOperator_TRANSPOSE_CONV,
                       tflite::Register_TRANSPOSE_CONV(), ParseTransposeConv);
+  }
+
+  TfLiteStatus AddTranspose() {
+    return AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
+                      ParseTranspose);
   }
 
   TfLiteStatus AddUnpack() {

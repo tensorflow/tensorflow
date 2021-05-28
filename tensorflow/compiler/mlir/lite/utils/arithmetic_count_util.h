@@ -24,8 +24,7 @@ namespace TFL {
 // For add/mul/div/sub and other broadcastable ops.
 class ArithmeticCountUtilHelper {
  public:
-  static bool GetArithmeticCountForBroadcastableOp(mlir::Operation* op,
-                                                   int64_t* count) {
+  static bool GetFirstOutputCount(mlir::Operation* op, int64_t* count) {
     auto output = op->getResult(0);
     auto output_type =
         output.getType().dyn_cast_or_null<mlir::RankedTensorType>();

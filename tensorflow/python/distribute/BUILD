@@ -40,13 +40,13 @@ py_library(
         ":values",
         ":values_util",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:device_lib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:kernels",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/util",
@@ -448,6 +448,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
         "noasan",  # TODO(b/180630068)
         "nomsan",  # TODO(b/180630068)
         "notsan",  # TODO(b/151841995)
@@ -608,7 +609,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_ops",
+        "//tensorflow/python/tpu/ops",
         "//third_party/py/numpy",
     ],
 )
@@ -856,10 +857,11 @@ py_library(
     ],
 )
 
-py_test(
+distribute_py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
+    tags = ["multi_gpu"],
     deps = [
         ":combinations",
         ":test_util",
@@ -889,6 +891,7 @@ py_library(
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":one_device_strategy",
+        ":parameter_server_strategy_v2",
         ":test_util",
         ":tpu_strategy",
         "//tensorflow/python:platform",
@@ -913,6 +916,7 @@ distribute_py_test(
         ":combinations",
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":parameter_server_strategy_v2",
         ":reduce_util",
         ":strategy_combinations",
         ":test_util",
@@ -1370,6 +1374,9 @@ distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+    ],
     deps = [
         ":combinations",
         ":strategy_combinations",
@@ -1530,6 +1537,7 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
+        "no_windows",  # TODO(b/184424727): Re-enable this.
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1702,8 +1710,8 @@ py_library(
     srcs = ["multi_process_lib.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl:app",
         "@absl_py//absl/logging",
     ],
 )
@@ -1726,21 +1734,24 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
     shard_count = 12,
     tags = [
+        "multi_gpu",
         "noasan",
         "nomsan",
     ],  # b/175904958
     deps = [
+        ":combinations",
         ":multi_process_runner",
         ":multi_worker_test_base",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/logging",
-        "@six_archive//:six",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

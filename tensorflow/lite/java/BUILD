@@ -20,6 +20,7 @@ exports_files([
     "src/testdata/mul_add_signature_def.bin",
     "src/testdata/tile_with_bool_input.bin",
     "AndroidManifest.xml",
+    "AndroidManifestGpu.xml",
     "proguard.flags",
     "tflite_version_script.lds",
 ])
@@ -103,9 +104,11 @@ tflite_flex_android_library(
 # EXPERIMENTAL: Android target for GPU acceleration. Note that this library
 # contains *only* the GPU delegate and its Java wrapper; clients must also
 # include the core `tensorflowlite` runtime.
+# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
+    exports_manifest = 1,
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     deps = [

@@ -6,9 +6,6 @@
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-
 # cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
 # combine XLA with TensorRT currently and should set
 # xla_enable_strict_auto_jit to False to disable XLA tests.
@@ -70,7 +67,7 @@ py_library(
 
 py_library(
     name = "tf_trt_integration_test_base",
-    srcs = ["test/tf_trt_integration_test_base.py"],
+    srcs = ["//tensorflow/python/compiler/tensorrt/test:tf_trt_integration_test_base_srcs"],
     srcs_version = "PY3",
     deps = [
         ":trt_convert_py",
@@ -90,10 +87,7 @@ cuda_py_test(
     name = "trt_convert_test",
     srcs = ["trt_convert_test.py"],
     data = [
-        "test/testdata/tftrt_2.0_saved_model/saved_model.pb",
-        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
-        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
-        "test/testdata/tftrt_2.0_saved_model/variables/variables.index",
+        "//tensorflow/python/compiler/tensorrt/test:trt_convert_test_data",
     ],
     python_version = "PY3",
     tags = [
@@ -121,59 +115,11 @@ cuda_py_test(
     ],
 )
 
-cuda_py_tests(
-    name = "tf_trt_integration_test",
-    srcs = [
-        "test/annotate_max_batch_sizes_test.py",
-        "test/base_test.py",
-        "test/batch_matmul_test.py",
-        "test/biasadd_matmul_test.py",
-        "test/binary_tensor_weight_broadcast_test.py",
-        "test/cast_test.py",
-        "test/combined_nms_test.py",
-        "test/concatenation_test.py",
-        "test/const_broadcast_test.py",
-        "test/conv2d_test.py",
-        "test/dynamic_input_shapes_test.py",
-        "test/identity_output_test.py",
-        "test/int32_test.py",
-        "test/lru_cache_test.py",
-        "test/memory_alignment_test.py",
-        "test/multi_connection_neighbor_engine_test.py",
-        "test/neighboring_engine_test.py",
-        "test/quantization_test.py",
-        "test/rank_two_test.py",
-        "test/reshape_transpose_test.py",
-        "test/tf_function_test.py",
-        "test/topk_test.py",
-        "test/trt_mode_test.py",
-        "test/unary_test.py",
-        "test/vgg_block_nchw_test.py",
-        "test/vgg_block_test.py",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
-        "no_rocm",
-        "no_windows",
-        "nomac",
-    ],
-    xla_enable_strict_auto_jit = False,
-    deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
 cuda_py_test(
     name = "quantization_mnist_test",
-    srcs = ["test/quantization_mnist_test.py"],
+    srcs = ["//tensorflow/python/compiler/tensorrt/test:quantization_mnist_test_srcs"],
     data = [
-        "test/testdata/mnist/checkpoint",
-        "test/testdata/mnist/model.ckpt-46900.data-00000-of-00001",
-        "test/testdata/mnist/model.ckpt-46900.index",
+        "//tensorflow/python/compiler/tensorrt/test:quantization_mnist_test_data",
     ],
     python_version = "PY3",
     tags = [

@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // This is the legalization pattern definition file for CHLO to MHLO.
+// These are included in the PopulateDecomposeChloPatterns factory
+// and should only include canonical expansions which are not actually
+// ambiguous/different for various backends. Avoid patterns that are actually
+// lowering to non-canonical forms.
 
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"

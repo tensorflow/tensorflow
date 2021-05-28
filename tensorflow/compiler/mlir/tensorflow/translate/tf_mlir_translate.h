@@ -105,7 +105,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options);
+    MLIRImportOptions options, bool lift_variables = true);
 
 // Converts a TensorFlow V1 SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the

@@ -4771,6 +4771,14 @@ func CTCGreedyDecoderMergeRepeated(value bool) CTCGreedyDecoderAttr {
 	}
 }
 
+// CTCGreedyDecoderBlankIndex sets the optional blank_index attribute to value.
+// If not specified, defaults to -1
+func CTCGreedyDecoderBlankIndex(value int64) CTCGreedyDecoderAttr {
+	return func(m optionalAttr) {
+		m["blank_index"] = value
+	}
+}
+
 // Performs greedy decoding on the logits given in inputs.
 //
 // A note about the attribute merge_repeated: if enabled, when
@@ -16002,6 +16010,59 @@ func TensorListFromTensor(scope *Scope, tensor tf.Output, element_shape tf.Outpu
 	return op.Output(0)
 }
 
+// Splits a tensor into a list.
+//
+// list[i] corresponds to lengths[i] tensors from the input tensor.
+// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
+//
+// tensor: The input tensor.
+// element_shape: A shape compatible with that of elements in the tensor.
+// lengths: Vector of sizes of the 0th dimension of tensors in the list.
+// output_handle: The list.
+func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListSplit",
+		Input: []tf.Input{
+			tensor, element_shape, lengths,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Concats all tensors in the list along the 0th dimension.
+//
+// Requires that all tensors have the same shape except the first dimension.
+//
+// input_handle: The input list.
+// element_shape: The shape of the uninitialized elements in the list. If the first
+//   dimension is not -1, it is assumed that all list elements have the same
+//   leading dim.
+// leading_dims: The list of leading dims of uninitialized list elements. Used if
+//   the leading dim of input_handle.element_shape or the element_shape input arg
+//   is not already set.
+// tensor: The concated result.
+// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+//
+func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorListConcatV2",
+		Input: []tf.Input{
+			input_handle, element_shape, leading_dims,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // TensorListStackAttr is an optional argument to TensorListStack.
 type TensorListStackAttr func(optionalAttr)
 
@@ -17181,29 +17242,6 @@ func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Splits a tensor into a list.
-//
-// list[i] corresponds to lengths[i] tensors from the input tensor.
-// The tensor must have rank at least 1 and contain exactly sum(lengths) elements.
-//
-// tensor: The input tensor.
-// element_shape: A shape compatible with that of elements in the tensor.
-// lengths: Vector of sizes of the 0th dimension of tensors in the list.
-// output_handle: The list.
-func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, lengths tf.Output) (output_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorListSplit",
-		Input: []tf.Input{
-			tensor, element_shape, lengths,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // ParseSingleSequenceExampleAttr is an optional argument to ParseSingleSequenceExample.
@@ -19160,9 +19198,9 @@ func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, gro
 //
 // ``` python
 // c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-// tf.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
-// # ==> [[ 5,  5, 5, 5],
-// #       [5,  6, 7, 8]]
+// tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
+// # ==> [[ 5, 5, 5, 5],
+// #       [5, 6, 7, 8]]
 // ```
 //
 //
@@ -25341,36 +25379,6 @@ func MaxPoolGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output, gr
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Concats all tensors in the list along the 0th dimension.
-//
-// Requires that all tensors have the same shape except the first dimension.
-//
-// input_handle: The input list.
-// element_shape: The shape of the uninitialized elements in the list. If the first
-//   dimension is not -1, it is assumed that all list elements have the same
-//   leading dim.
-// leading_dims: The list of leading dims of uninitialized list elements. Used if
-//   the leading dim of input_handle.element_shape or the element_shape input arg
-//   is not already set.
-// tensor: The concated result.
-// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
-//
-func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"element_dtype": element_dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorListConcatV2",
-		Input: []tf.Input{
-			input_handle, element_shape, leading_dims,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
 }
 
 // MaxPoolV2Attr is an optional argument to MaxPoolV2.
@@ -37596,6 +37604,46 @@ func ExperimentalUniqueDataset(scope *Scope, input_dataset tf.Output, output_typ
 	return op.Output(0)
 }
 
+// Decodes a `variant` scalar Tensor into an `ExtensionType` value.
+//
+// Returns the Tensor components encoded in a `CompositeTensorVariant`.
+//
+// Raises an error if `type_spec_proto` doesn't match the TypeSpec
+// in `encoded`.
+//
+// Arguments:
+//	encoded: A scalar `variant` Tensor containing an encoded ExtensionType value.
+//	metadata: String serialization for the TypeSpec.  Must be compatible with the
+// `TypeSpec` contained in `encoded`.  (Note: the encoding for the TypeSpec
+// may change in future versions of TensorFlow.)
+//	Tcomponents: Expected dtypes for components.
+//
+// Returns The component tensors for the ExtensionType value in `encoded`.
+func CompositeTensorVariantToComponents(scope *Scope, encoded tf.Output, metadata string, Tcomponents []tf.DataType) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"metadata": metadata, "Tcomponents": Tcomponents}
+	opspec := tf.OpSpec{
+		Type: "CompositeTensorVariantToComponents",
+		Input: []tf.Input{
+			encoded,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("CompositeTensorVariantToComponents", err)
+		return
+	}
+	return components
+}
+
 // StringFormatAttr is an optional argument to StringFormat.
 type StringFormatAttr func(optionalAttr)
 
@@ -47651,15 +47699,15 @@ func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id
 
 // Strip leading and trailing whitespaces from the Tensor.
 //
-// Arguments:
-//	input: A string `Tensor` of any shape.
-//
-// Returns A string `Tensor` of the same shape as the input.
-//
 // Examples:
 //
 // >>> tf.strings.strip(["\nTensorFlow", "     The python library    "]).numpy()
 // array([b'TensorFlow', b'The python library'], dtype=object)
+//
+// Arguments:
+//	input: A string `Tensor` of any shape.
+//
+// Returns A string `Tensor` of the same shape as the input.
 func StringStrip(scope *Scope, input tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -48171,6 +48219,30 @@ func TPUCompilationResult(scope *Scope) (output tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "TPUCompilationResult",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes gradients for SparseSegmentSum.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is output_dim0.
+//
+// Arguments:
+//	grad: gradient propagated to the SparseSegmentSum op.
+//	indices: indices passed to the corresponding SparseSegmentSum op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentSum op.
+//	output_dim0: dimension 0 of "data" passed to SparseSegmentSum op.
+func SparseSegmentSumGrad(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, output_dim0 tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentSumGrad",
+		Input: []tf.Input{
+			grad, indices, segment_ids, output_dim0,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -50662,6 +50734,33 @@ func BoostedTreesCreateEnsemble(scope *Scope, tree_ensemble_handle tf.Output, st
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Encodes an `ExtensionType` value into a `variant` scalar Tensor.
+//
+// Returns a scalar variant tensor containing a single `CompositeTensorVariant`
+// with the specified Tensor components and TypeSpec.
+//
+// Arguments:
+//	components: The component tensors for the extension type value.
+//	metadata: String serialization for the TypeSpec.  (Note: the encoding for the TypeSpec
+// may change in future versions of TensorFlow.)
+//
+// Returns A `variant` Tensor that containing the encoded value.
+func CompositeTensorVariantFromComponents(scope *Scope, components []tf.Output, metadata string) (encoded tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"metadata": metadata}
+	opspec := tf.OpSpec{
+		Type: "CompositeTensorVariantFromComponents",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Calculates the softmax of a CSRSparseMatrix.

@@ -30,52 +30,52 @@ namespace {
 
 // Simple test data for 2x2x10 input 2x3x10 weights.
 const int simple_input_size = 20;
-const int simple_input_dims[] = {2, 2, 10};
+int simple_input_dims[] = {2, 2, 10};
 const float simple_input_data[] = {
     1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
     1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
 };
 const int simple_weights_size = 30;
-const int simple_weights_dims[] = {2, 3, 10};
+int simple_weights_dims[] = {2, 3, 10};
 const float simple_weights_data[] = {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
 };
-const int simple_bias_dims[] = {1, 3};
+int simple_bias_dims[] = {1, 3};
 const float simple_bias_data[] = {1, 2, 3};
 const float simple_golden[] = {
     24, 25, 26, 58, 59, 60,
 };
 const int simple_output_size = 6;
-const int simple_output_dims[] = {2, 2, 3};
+int simple_output_dims[] = {2, 2, 3};
 
 // Test data for 2x2x10 input 2x3x10 weights with negative outputs to test relu.
 const int relu_input_size = 20;
-const int relu_input_dims[] = {2, 2, 10};
+int relu_input_dims[] = {2, 2, 10};
 const float relu_input_data[] = {
     1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
     1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
 };
 const int relu_weights_size = 30;
-const int relu_weights_dims[] = {2, 3, 10};
+int relu_weights_dims[] = {2, 3, 10};
 const float relu_weights_data[] = {
     1,  2,  3,  4,  5,  6,  7,  8,  9,  10,   // u = 0
     -1, -2, -3, -4, -5, -6, -7, -8, -9, -10,  // u = 1
     1,  2,  3,  4,  5,  6,  7,  8,  9,  10,   // u = 2
 };
-const int relu_bias_dims[] = {1, 3};
+int relu_bias_dims[] = {1, 3};
 const float relu_bias_data[] = {1, -2, 3};
 const float relu_golden[] = {
     24, 0, 26, 58, 0, 60,
 };
 const int relu_output_size = 6;
-const int relu_output_dims[] = {2, 2, 3};
+int relu_output_dims[] = {2, 2, 3};
 
 // Input and filter similar to real model. Input shape is 1x64 and output is
 // 1x16.
 const int representative_64x16_input_size = 64;
-const int representative_64x16_input_dims[] = {2, 1, 64};
+int representative_64x16_input_dims[] = {2, 1, 64};
 const float representative_64x16_input_data[] = {
     0.0000, 0.1543, 0.0000, 0.0000, 1.8520, 0.0000, 4.7844, 1.1832,
     0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.5948, 0.0000,
@@ -86,7 +86,7 @@ const float representative_64x16_input_data[] = {
     3.1896, 4.4757, 0.0000, 0.0000, 0.0000, 0.0000, 4.1671, 0.0000,
     2.8295, 3.0353, 0.0000, 2.7780, 0.0000, 0.0000, 0.0000, 0.0000};
 const int representative_64x16_weights_size = 64 * 16;
-const int representative_64x16_weights_dims[] = {2, 16, 64};
+int representative_64x16_weights_dims[] = {2, 16, 64};
 const float representative_64x16_weights_data[] = {
     -0.1075, 0.1245,  0.1811,  -0.1302, -0.1868, 0.0679,  0.1245,  0.2321,
     -0.1981, -0.2094, 0.1358,  -0.1698, 0.0113,  0.0566,  0.1358,  -0.2490,
@@ -216,7 +216,7 @@ const float representative_64x16_weights_data[] = {
     0.2717,  -0.2094, 0.3396,  0.0340,  0.1245,  0.2547,  -0.5886, 0.2717,
     -0.0906, 0.1641,  0.0962,  -0.0792, -0.0113, 0.2264,  -0.0736, 0.3170,
     0.0623,  0.0679,  0.0623,  -0.0792, -0.2207, 0.1924,  0.1245,  -0.2773};
-const int representative_64x16_bias_dims[] = {1, 16};
+int representative_64x16_bias_dims[] = {1, 16};
 const float representative_64x16_bias_data[] = {
     -0.0084, 0.0006,  0.0000,  0.0000,  -0.0087, -0.0006, -0.0003, -0.0003,
     0.0006,  -0.0003, -0.0003, -0.0003, -0.0253, 0.0012,  0.0000,  0.0000};
@@ -224,7 +224,7 @@ const float representative_64x16_golden[] = {
     3.8624,  -2.9580, 4.3043,  -1.2844, -1.5769, -2.7998, -0.1011, -3.4029,
     -1.0557, -7.1931, -1.4852, -0.4163, 1.7186,  -0.6965, 0.3580,  2.7378};
 const int representative_64x16_output_size = 16;
-const int representative_64x16_output_dims[] = {2, 1, 16};
+int representative_64x16_output_dims[] = {2, 1, 16};
 
 template <typename T>
 TfLiteStatus ValidateFullyConnectedGoldens(
@@ -262,11 +262,10 @@ TfLiteStatus ValidateFullyConnectedGoldens(
 
 #if !defined(XTENSA)  // Needed to avoid build error from unused functions.
 TfLiteStatus TestFullyConnectedFloat(
-    const int* input_dims_data, const float* input_data,
-    const int* weights_dims_data, const float* weights_data,
-    const int* bias_dims_data, const float* bias_data, const float* golden,
-    const int* output_dims_data, TfLiteFusedActivation activation,
-    float* output_data) {
+    int* input_dims_data, const float* input_data, int* weights_dims_data,
+    const float* weights_data, int* bias_dims_data, const float* bias_data,
+    const float* golden, int* output_dims_data,
+    TfLiteFusedActivation activation, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* weights_dims = IntArrayFromInts(weights_dims_data);
   TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
@@ -290,13 +289,12 @@ TfLiteStatus TestFullyConnectedFloat(
 
 template <typename T>
 TfLiteStatus TestFullyConnectedQuantized(
-    const int* input_dims_data, const float* input_data, T* input_quantized,
-    const float input_scale, const int input_zero_point,
-    const int* weights_dims_data, const float* weights_data,
-    T* weights_quantized, const float weights_scale,
-    const int weights_zero_point, const int* bias_dims_data,
-    const float* bias_data, int32_t* bias_quantized, const float* golden,
-    T* golden_quantized, const int* output_dims_data, const float output_scale,
+    int* input_dims_data, const float* input_data, T* input_quantized,
+    const float input_scale, const int input_zero_point, int* weights_dims_data,
+    const float* weights_data, T* weights_quantized, const float weights_scale,
+    const int weights_zero_point, int* bias_dims_data, const float* bias_data,
+    int32_t* bias_quantized, const float* golden, T* golden_quantized,
+    int* output_dims_data, const float output_scale,
     const int output_zero_point, TfLiteFusedActivation activation,
     T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -396,7 +394,7 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8) {
   const float output_scale = 0.5f;
   const int output_zero_point = -1;
 
-  const int input_dims_4d[] = {4, 1, 1, 2, 10};
+  int input_dims_4d[] = {4, 1, 1, 2, 10};
 
   int8_t input_quantized[tflite::testing::simple_input_size];
   int8_t weights_quantized[tflite::testing::simple_weights_size];
@@ -450,7 +448,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8Relu) {
                       // reference kernels and we ifdef out test cases that are
                       // currently known to fail.
 TF_LITE_MICRO_TEST(SimpleTest4DInput) {
-  const int input_dims_4d[] = {4, 1, 1, 2, 10};
+  int input_dims_4d[] = {4, 1, 1, 2, 10};
 
   float output_data[tflite::testing::simple_output_size];
 

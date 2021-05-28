@@ -1,4 +1,4 @@
-load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -64,10 +64,16 @@ cc_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "kernel_gen_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [("-gen-pass-decls -name KernelGen", "kernel_gen_passes.h.inc")],
+    tbl_outs = [(
+        [
+            "-gen-pass-decls",
+            "-name=KernelGen",
+        ],
+        "kernel_gen_passes.h.inc",
+    )],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -102,7 +108,6 @@ cc_library(
         ":tf_framework_legalize_to_llvm",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
-        "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AllPassesAndDialects",

@@ -44,9 +44,12 @@ class ShapeLayout {
 
   // Returns true if the Layouts in this ShapeLayout match the layouts in the
   // given shape. Returns false otherwise. If the given shape is not compatible
-  // with the ShapeLayout's shape, then false is returned.
+  // with the ShapeLayout's shape, then false is returned. If
+  // `ignore_fully_empty_tiling` is true, tiling info is ignored if one of the
+  // shapes has no tiling at all in all its subshapes.
   bool MatchesLayoutInShape(const Shape& shape,
-                            bool minor_to_major_only = false) const;
+                            bool minor_to_major_only = false,
+                            bool ignore_fully_empty_tiling = false) const;
 
   // Copies the layout from the given shape into this ShapeLayout. 'other_shape'
   // must be compatible with the ShapeLayout's shape.

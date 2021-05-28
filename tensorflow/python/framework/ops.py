@@ -2624,7 +2624,8 @@ class Operation(object):
     """
     _run_using_default_session(self, feed_dict, self.graph, session)
 
-_gradient_registry = registry.Registry("gradient")
+# TODO(b/185395742): Clean up usages of _gradient_registry
+gradient_registry = _gradient_registry = registry.Registry("gradient")
 
 
 @tf_export("RegisterGradient")
@@ -2671,7 +2672,7 @@ class RegisterGradient(object):
 
   def __call__(self, f):
     """Registers the function `f` as gradient function for `op_type`."""
-    _gradient_registry.register(f, self._op_type)
+    gradient_registry.register(f, self._op_type)
     return f
 
 
@@ -2707,7 +2708,7 @@ def no_gradient(op_type):
   """
   if not isinstance(op_type, six.string_types):
     raise TypeError("op_type must be a string")
-  _gradient_registry.register(None, op_type)
+  gradient_registry.register(None, op_type)
 
 
 # Aliases for the old names, will be eventually removed.
@@ -2728,7 +2729,7 @@ def get_gradient_function(op):
     op_type = op.get_attr("_gradient_op_type")
   except ValueError:
     op_type = op.type
-  return _gradient_registry.lookup(op_type)
+  return gradient_registry.lookup(op_type)
 
 
 def set_shape_and_handle_data_for_outputs(_):

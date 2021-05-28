@@ -3234,7 +3234,36 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  inferredReturnTypes.assign({operands.front().getType()});
+  auto loc = location ? *location : mlir::UnknownLoc::get(context);
+  XlaSetDynamicDimensionSizeOpAdaptor op(operands, attributes);
+  if (failed(op.verify(loc))) return failure();
+
+  TensorType operand_ty = op.input().getType().cast<TensorType>();
+  Type element_ty = operand_ty.getElementType();
+
+  TensorType result_ty;
+  if (operand_ty.hasRank()) {
+    auto shape = llvm::to_vector<4>(operand_ty.getShape());
+
+    DenseIntElementsAttr dim_index_attr;
+    if (matchPattern(op.dim_index(), m_Constant(&dim_index_attr))) {
+      int64_t dim_index = dim_index_attr.getValue<APInt>({}).getSExtValue();
+
+      int64_t rank = operand_ty.getRank();
+      if (dim_index < 0 || dim_index >= rank) {
+        return emitOptionalError(location, "dim_index (", dim_index,
+                                 ") is out of range [0, ", rank, ")");
+      }
+      shape[dim_index] = RankedTensorType::kDynamicSize;
+    } else {
+      shape.assign(shape.size(), RankedTensorType::kDynamicSize);
+    }
+    result_ty = RankedTensorType::get(shape, element_ty);
+  } else {
+    result_ty = UnrankedTensorType::get(element_ty);
+  }
+
+  inferredReturnTypes.push_back(result_ty);
   return success();
 }
 

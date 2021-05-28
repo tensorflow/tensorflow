@@ -44,8 +44,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-const char kDataServiceDataset[] = "DataServiceDataset";
-
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {

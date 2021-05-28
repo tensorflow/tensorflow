@@ -308,7 +308,7 @@ class Layer(base_layer.Layer):
           new_losses,
           ops.GraphKeys.REGULARIZATION_LOSSES)
 
-  def _name_scope(self):
+  def _name_scope(self):  # pylint: disable=method-hidden
     """Determines op naming for the Layer."""
     if self._keras_style:
       return super(Layer, self)._name_scope()
@@ -452,7 +452,7 @@ class Layer(base_layer.Layer):
     with vs.variable_scope(
         self._scope, reuse=reuse, auxiliary_name_scope=False) as scope:
       self._current_scope = scope
-      with backend.name_scope(self._name_scope()):
+      with backend.name_scope(self._name_scope()):  # pylint: disable=not-callable
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)
@@ -532,7 +532,7 @@ class Layer(base_layer.Layer):
       try:
         # Some classes which inherit from Layer do not use its constructor, so
         # rather than initializing to None we check for an AttributeError.
-        scope_context_manager = self._always_reuse_variable_scope
+        scope_context_manager = self._always_reuse_variable_scope  # pylint: disable=access-member-before-definition
       except AttributeError:
         scope_context_manager = None
 
@@ -591,7 +591,7 @@ class Layer(base_layer.Layer):
 
   def __setattr__(self, value, name):
     # By-pass the automatic dependency tracking performed by the parent Layer.
-    super(trackable.Trackable, self).__setattr__(value, name)
+    super(trackable.Trackable, self).__setattr__(value, name)  # pylint: disable=bad-super-call
 
   @property
   def _is_legacy_layer(self):

@@ -621,6 +621,7 @@ cc_library(
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:decode_proto_op",
         "//tensorflow/core/kernels:encode_proto_op",
+        "//tensorflow/core/kernels:composite_tensor_ops",
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
@@ -978,6 +979,7 @@ filegroup(
         "ragged_conversion_ops_op_lib",
         "ragged_math_ops_op_lib",
         "ragged_ops",
+        "composite_tensor_ops_op_lib",
         "random_grad_op_lib",
         "random_ops_op_lib",
         "resource_variable_ops_op_lib",
@@ -1074,6 +1076,7 @@ cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
         ":platform_base",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

@@ -88,9 +88,8 @@ cc_library(
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
-    ] + if_static([
-        # Temporary workaround for duplicated symbols issues.
         ":pluggable_device_runtime_impl",
+    ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
     ]),
 )

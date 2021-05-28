@@ -32,7 +32,8 @@ class EighExpander : public OpExpanderPass {
   StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
-  virtual XlaOp BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol);
+  virtual XlaOp BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol,
+                          bool sort_eigenvalues);
 
   Status SortByEigenvalues(XlaOp& v, XlaOp& w);
 

@@ -1208,29 +1208,41 @@ class HloInstructionPatternOpcodeImpl {
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
-// has a given custom call target.
+// has one of a given list of custom call targets.
 class HloInstructionCustomCallTargetImpl {
  public:
   explicit HloInstructionCustomCallTargetImpl(
-      absl::string_view custom_call_target)
-      : custom_call_target_(custom_call_target) {}
+      absl::Span<const absl::string_view> custom_call_targets)
+      : custom_call_targets_(custom_call_targets.begin(),
+                             custom_call_targets.end()) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (inst->opcode() != HloOpcode::kCustomCall ||
-        inst->custom_call_target() != custom_call_target_) {
-      EXPLAIN << "HloInstruction is not a custom call with a target '"
-              << custom_call_target_ << "'";
+        !absl::c_linear_search(custom_call_targets_,
+                               inst->custom_call_target())) {
+      if (custom_call_targets_.size() == 1) {
+        EXPLAIN << "HloInstruction is not a custom call with a target '"
+                << custom_call_targets_.front() << "'";
+      } else {
+        EXPLAIN << "HloInstruction is not a custom call with a target in {"
+                << absl::StrJoin(custom_call_targets_, ", ") << "}";
+      }
       return false;
     }
     return true;
   }
 
   void DescribeTo(std::ostream* os, int64 indent = 0) const {
-    *os << "custom call with target '" << custom_call_target_ << "'";
+    if (custom_call_targets_.size() == 1) {
+      *os << "custom call with target '" << custom_call_targets_.front() << "'";
+    } else {
+      *os << "custom call with target in {"
+          << absl::StrJoin(custom_call_targets_, ", ") << "}";
+    }
   }
 
  private:
-  std::string custom_call_target_;
+  absl::InlinedVector<std::string, 1> custom_call_targets_;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -1812,7 +1824,13 @@ class HloInstructionPattern {
 
   // Modifies the pattern to match only the custom call with a given target.
   auto WithCustomCallTarget(absl::string_view custom_call_target) const {
-    return AppendImpl(HloInstructionCustomCallTargetImpl(custom_call_target));
+    return AppendImpl(HloInstructionCustomCallTargetImpl({custom_call_target}));
+  }
+
+  // Modifies the pattern to match a custom call with one of the given targets.
+  auto WithCustomCallTarget(
+      absl::Span<const absl::string_view> custom_call_targets) const {
+    return AppendImpl(HloInstructionCustomCallTargetImpl(custom_call_targets));
   }
 
   auto WithNumOperands(int64 num_operands) const {

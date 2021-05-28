@@ -432,7 +432,7 @@ cc_test(
     srcs = ["transpose_utils_test.cc"],
     deps = [
         ":transpose_utils",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

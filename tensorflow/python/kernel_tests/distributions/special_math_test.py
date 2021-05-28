@@ -61,7 +61,7 @@ def _make_grid(dtype, grid_spec):
   num_points = np.prod(grid_spec.shape)
   grid = np.linspace(grid_spec.min, grid_spec.max, num=num_points).astype(dtype)
   grid_spacing = (grid_spec.max - grid_spec.min) / num_points
-  grid += 0.1 * grid_spacing * rng.randn(*grid.shape)
+  grid += 0.1 * grid_spacing * rng.randn(*grid.shape)  # pylint: disable=not-an-iterable
   # More useful if it's sorted (e.g. for testing monotonicity, or debugging).
   grid = np.sort(grid)
   return np.reshape(grid, grid_spec.shape)

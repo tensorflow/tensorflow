@@ -61,8 +61,7 @@ class ConditionalAccumulator
  protected:
   // accum_grad is the tensor that holds the aggregate gradient.
   // It is initialized the first time ApplyGrad is called.
-  Tensor* accum_grad_ = nullptr;
-  PersistentTensor accum_grad_persistent_;
+  Tensor accum_grad_;
 
   functor::SetZeroFunctor<Device, T> set_zero_functor_;
 
@@ -70,9 +69,9 @@ class ConditionalAccumulator
       TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // Must be compatible with accumulated gradient if available
     if (counter_ > 0) {
-      if (!accum_grad_->shape().IsSameSize(tensor->shape())) {
+      if (!accum_grad_.shape().IsSameSize(tensor->shape())) {
         return errors::InvalidArgument("Shape mismatch: expected ",
-                                       accum_grad_->shape().DebugString(),
+                                       accum_grad_.shape().DebugString(),
                                        ", got ", tensor->shape().DebugString());
       }
     }
@@ -88,16 +87,14 @@ class ConditionalAccumulator
   void AllocateAndAssignToAccumGradFunction(OpKernelContext* ctx,
                                             const Tensor* grad) override {
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    ctx->allocate_persistent(dtype_, grad->shape(), &accum_grad_persistent_,
-                             &accum_grad_)
-        .IgnoreError();
-    accum_grad_->flat<T>().device(ctx->template eigen_device<Device>()) =
+    ctx->allocate_temp(dtype_, grad->shape(), &accum_grad_).IgnoreError();
+    accum_grad_.flat<T>().device(ctx->template eigen_device<Device>()) =
         grad->flat<T>();
   }
 
   void AddToAccumGradFunction(OpKernelContext* ctx,
                               const Tensor* grad) override {
-    accum_grad_->flat<T>().device(ctx->template eigen_device<Device>()) +=
+    accum_grad_.flat<T>().device(ctx->template eigen_device<Device>()) +=
         grad->flat<T>();
   }
 
@@ -105,13 +102,13 @@ class ConditionalAccumulator
       TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     Tensor c(DataTypeToEnum<T>::value, {});
     c.scalar<T>()() = TypeConverter<T, int>::ConvertUToT(this->counter_);
-    this->accum_grad_->template flat<T>().device(
+    this->accum_grad_.template flat<T>().device(
         ctx->template eigen_device<Device>()) =
-        this->accum_grad_->template flat<T>() / c.scalar<T>()();
+        this->accum_grad_.template flat<T>() / c.scalar<T>()();
   }
 
   bool SetOutput(OpKernelContext* ctx) override {
-    ctx->set_output(0, *accum_grad_);
+    ctx->set_output(0, accum_grad_);
     return true;
   }
 

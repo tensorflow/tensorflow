@@ -221,8 +221,6 @@ Status RemoteTensorHandleData::WaitReady(const char* caller) const {
         [caller] { return absl::StrCat(caller, " WaitReady"); },
         profiler::TraceMeLevel::kInfo);
     DVLOG(3) << "WaitReady: " << caller << " " << this;
-    // TODO(b/155493048): add a timeout here if it could cause any hanging
-    // issue.
     mu_.Await(Condition(&is_ready_));
   }
   return is_poisoned_;

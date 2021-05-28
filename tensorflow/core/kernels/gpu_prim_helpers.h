@@ -136,44 +136,6 @@ Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
   return Status::OK();
 }
 
-// Note that this behaves deterministically for repeat calls on the same device.
-template <typename InputIteratorT, typename OutputIteratorT,
-          typename OffsetIteratorT, typename ReduceOp, typename T>
-Status GpuSegmentedReduce(
-    OpKernelContext* context, int num_segments, ReduceOp reduce_op,
-    const T& initial_value,
-    InputIteratorT input,             // [any]
-    OffsetIteratorT segment_offsets,  // [num_segments + 1]
-    OutputIteratorT output) {         // [num_segments]
-  if (num_segments == 0) return Status::OK();
-  const auto& cu_stream = GetGpuStream(context);
-  size_t temp_storage_bytes;
-  auto err = gpuprim::DeviceSegmentedReduce::Reduce(
-      nullptr, temp_storage_bytes, input, output, num_segments, segment_offsets,
-      segment_offsets + 1, reduce_op, initial_value, cu_stream);
-  if (err != 0) {
-    return errors::Internal(
-        "Failed to launch gpuprim::DeviceSegmentedReduce::Reduce to calculate "
-        "temp_storage_bytes, status: ",
-        cudaGetErrorString(err));
-  }
-  Tensor temp_storage;
-  TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
-      &temp_storage));
-  err = gpuprim::DeviceSegmentedReduce::Reduce(
-      temp_storage.flat<int8>().data(), temp_storage_bytes, input, output,
-      num_segments, segment_offsets, segment_offsets + 1, reduce_op,
-      initial_value, cu_stream);
-  if (err != 0) {
-    return errors::Internal(
-        "Failed to launch gpuprim::DeviceSegmentedReduce::Reduce"
-        ", temp_storage_bytes: ",
-        temp_storage_bytes, ", status: ", cudaGetErrorString(err));
-  }
-  return Status::OK();
-}
-
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -48,9 +48,9 @@ StatusOr<bool> RunFileCheckWithPatternFile(const std::string& input,
       tensorflow::io::JoinPath("external", "llvm-project", "llvm", "FileCheck"));
 
   tensorflow::SubProcess file_check_process;
-  file_check_process.SetProgram(
-      file_check_path,
-      {file_check_path, "-v", "-dump-input=fail", pattern_file});
+  file_check_process.SetProgram(file_check_path,
+                                {file_check_path, "-v", "-dump-input=fail",
+                                 "--dump-input-filter=all", pattern_file});
   file_check_process.SetChannelAction(tensorflow::CHAN_STDIN,
                                       tensorflow::ACTION_PIPE);
   file_check_process.SetChannelAction(tensorflow::CHAN_STDERR,

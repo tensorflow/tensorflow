@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/optional_debug_tools.h"
 
+#include <algorithm>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
@@ -22,6 +24,17 @@ limitations under the License.
 #include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
+namespace {
+// This is specific to the testdata/add.bin model used in the test.
+void InitInputTensorData(Interpreter* interpreter) {
+  ASSERT_EQ(interpreter->inputs().size(), 1);
+  TfLiteTensor* t = interpreter->input_tensor(0);
+  ASSERT_EQ(t->type, kTfLiteFloat32);
+  float* data = static_cast<float*>(t->data.data);
+  int num_elements = t->bytes / sizeof(float);
+  std::fill(data, data + num_elements, 1.0f);
+}
+}  // namespace
 
 TEST(OptionalDebugTools, PrintInterpreterState) {
   auto model = FlatBufferModel::BuildFromFile(
@@ -44,6 +57,7 @@ TEST(OptionalDebugTools, PrintInterpreterState) {
   ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
   PrintInterpreterState(interpreter.get());
 
+  InitInputTensorData(interpreter.get());
   ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
   PrintInterpreterState(interpreter.get());
 }
@@ -66,6 +80,8 @@ TEST(OptionalDebugTools, PrintInterpreterStateWithDelegate) {
                        TfLiteXNNPackDelegateDelete);
   ASSERT_EQ(interpreter->ModifyGraphWithDelegate(xnnpack_delegate.get()),
             kTfLiteOk);
+
+  InitInputTensorData(interpreter.get());
   ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
 
   // Ensure printing the interpreter state doesn't crash.

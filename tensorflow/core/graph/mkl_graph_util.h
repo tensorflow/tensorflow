@@ -157,7 +157,9 @@ inline string GetMklNativeOpName(const string& name) {
       (0 == name.compare("ConjugateTranspose") ||
        0 == name.compare("BatchMatMul") || 0 == name.compare("BatchMatMulV2") ||
        0 == name.compare("Einsum") || 0 == name.compare("MatMul") ||
-       0 == name.compare("Transpose"));
+       0 == name.compare("Transpose") || 0 == name.compare("QuantizeV2") ||
+       0 == name.compare("Dequantize") || 0 == name.rfind("Quantized", 0));
+
   if (result) {
     return string(kMklOpPrefix) + name;
   } else {
@@ -203,10 +205,6 @@ static inline void BF16UnsupportedWarning() {
 static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
   string kernel = KernelsRegisteredForOp(op_name);
 
-  // Restrict quantized ops to QUINT8 and QINT8 for now
-  if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
-    return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
-  }
   // Restrict regular ops to FLOAT and BFLOAT16
   if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
     if (T == DT_FLOAT) return true;
@@ -228,8 +226,8 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
 // TODO(mdfaijul): QuantizedConv2D is registered with input: QUINT8
 // filter:QINT8 for mkldnn integration. First a dummy kernel is created
 // and then it is replaced by an actual kernel.
-static inline bool IsMklLayoutDependentOp(const string& op_name,
-                                          DataType Tinput, DataType Tfilter) {
+static inline bool IsMklQuantizedOp(const string& op_name, DataType Tinput,
+                                    DataType Tfilter) {
   string kernel = KernelsRegisteredForOp(op_name);
 
   // Restrict quantized ops to QUINT8 and QINT8 for now
@@ -255,6 +253,11 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   // device='CPU'; label='MklNameChangeOp'; T in [DT_COMPLEX64]
   // device='CPU'; label='MklNameChangeOp'; T in [DT_DOUBLE]
   // device='CPU'; label='MklNameChangeOp'; T in [DT_FLOAT]
+
+  if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
+    // Restrict quantized ops to QUINT8, QINT8 and DT_QINT32
+    return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
+  }
 
   // Now we just construct a search string to match what we are looking for.
   string search_string = kMklNameChangeOpLabelPattern;

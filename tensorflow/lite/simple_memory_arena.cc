@@ -83,10 +83,8 @@ TfLiteStatus SimpleMemoryArena::Allocate(
   high_water_mark_ = std::max(high_water_mark_, best_offset + size);
   new_alloc->offset = best_offset;
 
-  auto insertion_it = ordered_allocs_.begin();
-  while (insertion_it != ordered_allocs_.end() && *insertion_it < *new_alloc) {
-    ++insertion_it;
-  }
+  auto insertion_it = std::upper_bound(ordered_allocs_.begin(),
+                                       ordered_allocs_.end(), *new_alloc);
   ordered_allocs_.insert(insertion_it, *new_alloc);
   return kTfLiteOk;
 }

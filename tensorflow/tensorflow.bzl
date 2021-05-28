@@ -52,6 +52,11 @@ VERSION = "2.6.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
+# The workspace root, to be used to set workspace 'include' paths in a way that
+# will still work correctly when TensorFlow is included as a dependency of an
+# external project.
+workspace_root = Label("//:WORKSPACE").workspace_root or "."
+
 def clean_dep(target):
     """Returns string to 'target' in @org_tensorflow repository.
 

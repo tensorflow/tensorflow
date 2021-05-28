@@ -103,7 +103,16 @@ class MutableOpResolver : public OpResolver {
   /// lifetime of this MutableOpResolver.
   void ChainOpResolver(const OpResolver* other);
 
+  /// True if this OpResolver itself (as opposed to chained op resolvers
+  /// registed with ChainOpResolver) may contain user defined ops.
+  ///
+  /// By "user defined" ops, we mean any op definitions other than those
+  /// contained in tflite::ops::builtin::BuiltinOpResolver.
+  bool may_directly_contain_user_defined_ops_ = false;
+
  private:
+  bool MayContainUserDefinedOps() const override;
+
   typedef std::pair<tflite::BuiltinOperator, int> BuiltinOperatorKey;
   typedef std::pair<std::string, int> CustomOperatorKey;
 

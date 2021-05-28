@@ -84,21 +84,11 @@ class CUDABlas : public blas::BlasSupport {
   // stream:             Stream to enqueue the BLAS operation onto.
   // pointer_mode_host:  Indicate if the pointer to a scalar value is from host
   //                     (true) or device (false).
-  // err_on_failure:     Whether to print an error if the cublas function fails.
   // args:               Arguments of cuBLAS function.
   template <typename FuncT, typename... Args>
-  bool DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
-                          bool pointer_mode_host, bool err_on_failure,
-                          cublasMath_t math_type, Args... args);
-
-  // Same as above, but returns Status.
-  template <typename... Args>
-  port::Status DoBlasInternalImplStatus(Args... args) {
-    if (!DoBlasInternalImpl(args...)) {
-      return port::InternalError("Failed calling cuBLAS");
-    }
-    return port::Status::OK();
-  }
+  port::Status DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+                                  bool pointer_mode_host,
+                                  cublasMath_t math_type, Args... args);
 
   // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
   // and math_type=CUBLAS_DEFAULT_MATH.
@@ -106,8 +96,8 @@ class CUDABlas : public blas::BlasSupport {
   bool DoBlasInternal(FuncT cublas_func, Stream *stream, bool pointer_mode_host,
                       Args... args) {
     return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/true, CUBLAS_DEFAULT_MATH,
-                              args...);
+                              CUBLAS_DEFAULT_MATH, args...)
+        .ok();
   }
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic

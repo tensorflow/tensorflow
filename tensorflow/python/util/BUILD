@@ -431,7 +431,7 @@ tf_py_test(
 py_library(
     name = "util",
     srcs = glob(
-        ["**/*.py"],
+        ["*.py"],
         exclude = [
             "example_parser*",
             "tf_contextlib.py",
@@ -439,7 +439,7 @@ py_library(
             "tf_export.py",
             "tf_stack.py",
             "tf_decorator.py",
-            "**/*_test.py",
+            "*_test.py",
         ],
     ),
     compatible_with = get_compatible_with_portable(),
@@ -463,6 +463,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "@wrapt",
+        "//tensorflow/python/util/protobuf",
         "//tensorflow/tools/docs:doc_controls",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ],
@@ -642,28 +643,6 @@ tf_py_test(
     ],
 )
 
-tf_proto_library(
-    name = "compare_test_proto",
-    testonly = 1,
-    srcs = ["protobuf/compare_test.proto"],
-    cc_api_version = 2,
-)
-
-tf_py_test(
-    name = "protobuf_compare_test",
-    size = "small",
-    srcs = ["protobuf/compare_test.py"],
-    main = "protobuf/compare_test.py",
-    python_version = "PY3",
-    tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
-    deps = [
-        ":compare_test_proto_py",
-        ":util",
-        "//tensorflow/python:platform_test",
-        "@six_archive//:six",
-    ],
-)
-
 tf_py_test(
     name = "example_parser_configuration_test",
     size = "small",
@@ -684,18 +663,3 @@ filegroup(
     name = "util_hdr",
     srcs = ["util.h"],
 )
-
-filegroup(
-    name = "compare_test_proto_src",
-    srcs = ["protobuf/compare_test.proto"],
-)
-
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "compare_test_py_pb2",
-#     testonly = 1,
-#     has_services = 0,
-#     api_version = 2,
-#     deps = [":compare_test_proto"],
-# )
-# copybara:uncomment_end

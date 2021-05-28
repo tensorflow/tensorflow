@@ -140,7 +140,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_tokens\', \'num_oov_indices\', \'mask_token\', \'oov_token\', \'vocabulary\', \'encoding\', \'invert\', \'output_mode\', \'sparse\', \'pad_to_max_tokens\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'1\', \'\', \'[UNK]\', \'None\', \'None\', \'False\', \'int\', \'False\', \'False\'], "
+    argspec: "args=[\'self\', \'max_tokens\', \'num_oov_indices\', \'mask_token\', \'oov_token\', \'vocabulary\', \'encoding\', \'invert\', \'output_mode\', \'sparse\', \'pad_to_max_tokens\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'1\', \'None\', \'[UNK]\', \'None\', \'None\', \'False\', \'int\', \'False\', \'False\'], "
   }
   member_method {
     name: "adapt"

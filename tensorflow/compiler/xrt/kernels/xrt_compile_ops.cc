@@ -161,7 +161,7 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   build_options.set_device_ordinal(device_ref.device_ordinal());
   build_options.set_num_replicas(num_replicas);
   build_options.set_result_layout(xla::Shape(config.program_shape().result()));
-  build_options.set_device_allocator(device_ref.backend()->memory_allocator());
+  build_options.set_device_allocator(device_ref.allocator());
   if (config.has_debug_options()) {
     *build_options.mutable_debug_options() =
         BuildXlaDebugOptions(config.debug_options());

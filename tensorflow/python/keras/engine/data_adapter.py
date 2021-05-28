@@ -512,8 +512,8 @@ class DatasetCreatorAdapter(DataAdapter):
       raise ValueError("When using a "
                        "`tf.keras.utils.experimental.DatasetCreator`, "
                        "`steps_per_epoch`, `validation_steps` or `steps` "
-                       "argument must be provided in `Model.fit` or "
-                       "`Model.evaluate`.")
+                       "argument must be provided in `Model.fit`, "
+                       "`Model.evaluate`, or `Model.predict`.")
     self.dataset_creator = x
     self.steps = steps
     self.strategy = distribution_strategy
@@ -1353,16 +1353,8 @@ class _ClusterCoordinatorDataHandler(DataHandler):
 
     def per_worker_dataset_fn():
 
-      def wrapped_dataset_fn(input_context):
-        # TODO(b/186692679): Currently we need to remove the device scope
-        # imposed in `distribute_datasets_from_function` lib so that any
-        # `StaticHashTable` is placed on the coordinator. Remove this workaround
-        # once resolved.
-        with ops.device_v2(None):
-          return x(input_context)
-
       return strategy.distribute_datasets_from_function(
-          wrapped_dataset_fn, options=x.input_options)
+          x, options=x.input_options)
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)

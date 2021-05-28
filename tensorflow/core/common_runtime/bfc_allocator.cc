@@ -1158,11 +1158,12 @@ absl::optional<AllocatorStats> BFCAllocator::GetStats() {
   return stats_;
 }
 
-void BFCAllocator::ClearStats() {
+bool BFCAllocator::ClearStats() {
   mutex_lock l(lock_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
   stats_.largest_alloc_size = 0;
+  return true;
 }
 
 std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins>

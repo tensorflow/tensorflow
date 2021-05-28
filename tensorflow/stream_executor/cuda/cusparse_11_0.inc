@@ -6671,6 +6671,8 @@ cusparseSpVV(cusparseHandle_t handle, cusparseOperation_t opX,
   return func_ptr(handle, opX, vecX, vecY, result, computeType, externalBuffer);
 }
 
+#if CUSPARSE_VERSION >= 11300
+
 cusparseStatus_t CUSPARSEAPI cusparseSparseToDense_bufferSize(
     cusparseHandle_t handle, cusparseSpMatDescr_t matA,
     cusparseDnMatDescr_t matB, cusparseSparseToDenseAlg_t alg,
@@ -6729,6 +6731,8 @@ cusparseStatus_t CUSPARSEAPI cusparseDenseToSparse_convert(
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle, matA, matB, alg, buffer);
 }
+
+#endif  // CUSPARSE_VERSION >= 11300
 
 cusparseStatus_t CUSPARSEAPI cusparseSpMV(
     cusparseHandle_t handle, cusparseOperation_t opA, const void *alpha,

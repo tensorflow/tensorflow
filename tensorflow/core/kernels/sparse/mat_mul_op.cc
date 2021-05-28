@@ -708,10 +708,8 @@ REGISTER_CPU(complex128)
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
-#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
-#endif
 
 #undef REGISTER_GPU
 
@@ -835,7 +833,6 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       gpusparseSpMatDescr_t matA;
       gpusparseDnMatDescr_t matB, matC;
 
-      // NOTE: the following APIs are not available in ROCM
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsr(
           &matA, m, k, nnz, const_cast<int*>(a.row_ptr.data()),
           const_cast<int*>(a.col_ind.data()), const_cast<T*>(a.values.data()),
@@ -867,6 +864,44 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matB));
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matC));
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroySpMat(matA));
+
+#elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 40200
+      // Use SPMM
+      const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
+      gpusparseSpMatDescr_t matA;
+      gpusparseDnMatDescr_t matB, matC;
+
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateCsr(
+          &matA, m, k, nnz, const_cast<int*>(a.row_ptr.data()),
+          const_cast<int*>(a.col_ind.data()), const_cast<T*>(a.values.data()),
+          CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, HIPSPARSE_INDEX_BASE_ZERO,
+          GPUDataType<T>::type));
+
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateDnMat(
+          &matB, n, k, ldb, const_cast<T*>(b.data()), GPUDataType<T>::type,
+          HIPSPARSE_ORDER_COL));
+
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateDnMat(
+          &matC, m, n, ldc, c.data(), GPUDataType<T>::type,
+          HIPSPARSE_ORDER_COL));
+
+      size_t bufferSize = 0;
+      TF_RETURN_IF_ERROR(cuda_sparse.SpMMBufferSize(
+          transA, transB, &alpha, matA, matB, &beta, matC,
+          HIPSPARSE_MM_ALG_DEFAULT, &bufferSize));
+
+      Tensor buffer;
+      TF_RETURN_IF_ERROR(ctx->allocate_temp(
+          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+      DCHECK(buffer.flat<int8>().data() != nullptr);
+
+      TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
+                                          &beta, matC, CUSPARSE_MM_ALG_DEFAULT,
+                                          buffer.flat<int8>().data()));
+
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matB));
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matC));
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroySpMat(matA));
 
 #else
 

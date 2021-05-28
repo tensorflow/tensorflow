@@ -65,16 +65,6 @@ bool ModelTransformer::Apply(const std::string& name,
     if (result.status == TransformStatus::INVALID) {
       return false;
     }
-    if (reporter_) {
-      if (result.status == TransformStatus::APPLIED) {
-        reporter_->AppliedTransformation(name, std::to_string(node_id),
-                                         result.message);
-      }
-      if (result.status == TransformStatus::DECLINED) {
-        reporter_->DeclinedTransformation(name, std::to_string(node_id),
-                                          result.message);
-      }
-    }
   }
   return true;
 }
@@ -113,16 +103,7 @@ bool ModelTransformer::ApplyStartingWithNode(
         // graph is broken now.
         return false;
       }
-      if (result.status == TransformStatus::DECLINED) {
-        if (reporter_) {
-          reporter_->DeclinedTransformation(name, absl::StrJoin(sequence, "+"),
-                                            result.message);
-        }
-      } else if (result.status == TransformStatus::APPLIED) {
-        if (reporter_) {
-          reporter_->AppliedTransformation(name, absl::StrJoin(sequence, "+"),
-                                           result.message);
-        }
+      if (result.status == TransformStatus::APPLIED) {
         // Also remove first node of a sequence from a set of processed node.
         // Out of all nodes in a sequence only first one may have been added
         // to "processed" set because other nodes do not have more than one

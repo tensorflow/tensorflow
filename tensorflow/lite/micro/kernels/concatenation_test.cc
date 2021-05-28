@@ -24,11 +24,9 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestConcatenateTwoInputs(const int* input1_dims_data,
-                              const float* input1_data,
-                              const int* input2_dims_data,
-                              const float* input2_data, int axis,
-                              const int* output_dims_data,
+void TestConcatenateTwoInputs(int* input1_dims_data, const float* input1_data,
+                              int* input2_dims_data, const float* input2_data,
+                              int axis, int* output_dims_data,
                               const float* expected_output_data,
                               float* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
@@ -68,12 +66,11 @@ void TestConcatenateTwoInputs(const int* input1_dims_data,
 }
 
 void TestConcatenateQuantizedTwoInputs(
-    const int* input1_dims_data, const uint8_t* input1_data,
-    const int* input2_dims_data, const uint8_t* input2_data,
-    const float input_scale, const int input_zero_point, int axis,
-    const int* output_dims_data, const uint8_t* expected_output_data,
-    const float output_scale, const int output_zero_point,
-    uint8_t* output_data) {
+    int* input1_dims_data, const uint8_t* input1_data, int* input2_dims_data,
+    const uint8_t* input2_data, const float input_scale,
+    const int input_zero_point, int axis, int* output_dims_data,
+    const uint8_t* expected_output_data, const float output_scale,
+    const int output_zero_point, uint8_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -123,17 +120,17 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TwoInputsAllAxesCombinations) {
   // Concatenate the same two input tensors along all possible axes.
 
-  const int input_shape[] = {2, 2, 3};
+  int input_shape[] = {2, 2, 3};
   const float input1_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   const float input2_value[] = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
 
   // expected output when concatenating on axis 0
-  const int output_shape_axis0[] = {2, 4, 3};
+  int output_shape_axis0[] = {2, 4, 3};
   const float output_value_axis0[] = {1.0f, 2.0f, 3.0f, 4.0f,  5.0f,  6.0f,
                                       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
 
   // expected output when concatenating on axis 1
-  const int output_shape_axis1[] = {2, 2, 6};
+  int output_shape_axis1[] = {2, 2, 6};
   const float output_value_axis1[] = {1.0f, 2.0f, 3.0f, 7.0f,  8.0f,  9.0f,
                                       4.0f, 5.0f, 6.0f, 10.0f, 11.0f, 12.0f};
 
@@ -162,8 +159,8 @@ TF_LITE_MICRO_TEST(TwoInputsAllAxesCombinations) {
 
 TF_LITE_MICRO_TEST(TwoInputsQuantizedUint8) {
   const int axis = 2;
-  const int input_shape[] = {3, 2, 1, 2};
-  const int output_shape[] = {3, 2, 1, 4};
+  int input_shape[] = {3, 2, 1, 2};
+  int output_shape[] = {3, 2, 1, 4};
 
   const float input_scale = 0.1f;
   const int input_zero_point = 127;
@@ -188,9 +185,9 @@ TF_LITE_MICRO_TEST(TwoInputsQuantizedUint8) {
 TF_LITE_MICRO_TEST(ThreeDimensionalTwoInputsDifferentShapes) {
   const int axis = 1;
 
-  const int input1_shape[] = {3, 2, 1, 2};
-  const int input2_shape[] = {3, 2, 3, 2};
-  const int output_shape[] = {3, 2, 4, 2};
+  int input1_shape[] = {3, 2, 1, 2};
+  int input2_shape[] = {3, 2, 3, 2};
+  int output_shape[] = {3, 2, 4, 2};
 
   const float input1_values[] = {1.0f, 3.0f, 4.0f, 7.0f};
   const float input2_values[] = {1.0f, 2.0f, 3.0f, 4.0f,  5.0f,  6.0f,

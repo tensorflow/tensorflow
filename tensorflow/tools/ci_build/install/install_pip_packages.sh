@@ -60,9 +60,9 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
 if $(cat /etc/*-release | grep -q 14.04); then
-  pip3 install --no-binary=:all: --upgrade numpy==1.14.5
-else
   pip3 install --upgrade numpy==1.14.5
+else
+  pip3 install --upgrade numpy~=1.19.2
 fi
 
 pip3 install scipy==1.4.1
@@ -76,17 +76,10 @@ pip3 install pandas==0.19.2
 pip3 install psutil
 pip3 install py-cpuinfo
 
-# pylint==1.6.4 requires python-astroid (>= 1.4.5) requires lazy-object-proxy
-# Latest version of lazy-object-proxy (1.4.2) fails to install from source
-# when using setuptools 39.1.0.
-# NOTE: Using the updated version of pylint for python3 as python2 is EOL,
-# thus using the updated version of lazy-object-proxy==1.4.3
-pip3 install lazy-object-proxy==1.4.3
-
 # pylint tests require the following version. pylint==1.6.4 hangs erratically,
 # thus using the updated version of 2.5.3 only for python3 as python2 is EOL
 # and this version is not available.
-pip3 install pylint==2.7.2
+pip3 install pylint==2.7.4
 
 # pycodestyle tests require the following:
 pip3 install pycodestyle

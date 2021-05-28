@@ -2,7 +2,7 @@
 
 HloModule Test
 
-// CHECK: define void @dot(i8* noalias align 64 dereferenceable(80) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(80) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(48) %[[VAL_2:.*]]) {
+// CHECK: define void @dot(i8* noalias align 16 dereferenceable(48) %[[VAL_2:.*]], i8* noalias align 16 dereferenceable(80) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(80) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca float, align 4
 // CHECK:         %[[VAL_4:.*]] = alloca i32, align 4
@@ -64,7 +64,7 @@ ENTRY main {
 
 HloModule Test
 
-// CHECK: define void @reshape(i8* noalias align 64 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(8) %[[VAL_1:.*]]) {
+// CHECK: define void @reshape(i8* noalias align 16 dereferenceable(8) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(8) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x float]*
@@ -267,7 +267,7 @@ ENTRY main {
 
 HloModule Test
 
-// CHECK: define void @pad(i8* noalias align 64 dereferenceable(988) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_2:.*]]) {
+// CHECK: define void @pad(i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_2:.*]], i8* noalias align 64 dereferenceable(988) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca float, align 4
 // CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
@@ -335,7 +335,7 @@ ENTRY main {
 
 HloModule Test
 
-// CHECK: define void @transpose(i8* noalias align 64 dereferenceable(96) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]]) {
+// CHECK: define void @transpose(i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(96) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [1 x [2 x [3 x [4 x float]]]]*
@@ -375,7 +375,7 @@ ENTRY main {
 
 HloModule Test
 
-// CHECK: define void @broadcast(i8* noalias align 64 dereferenceable(40) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]]) {
+// CHECK: define void @broadcast(i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(40) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [1 x float]*
@@ -409,7 +409,7 @@ ENTRY main {
 
 HloModule Test
 
-// CHECK: define void @concatenate(i8* noalias align 64 dereferenceable(2048) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(1920) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(128) %[[VAL_2:.*]]) {
+// CHECK: define void @concatenate(i8* noalias align 16 dereferenceable(128) %[[VAL_2:.*]], i8* noalias align 16 dereferenceable(1920) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(2048) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
 // CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [32 x [1 x float]]*
@@ -467,7 +467,7 @@ ENTRY main {
 
 HloModule m
 
-// CHECK: define void @dus(i8* noalias align 16 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_2:.*]]) {
+// CHECK: define void @dus(i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_2:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
@@ -515,7 +515,7 @@ HloModule m
 // CHECK:         br label %[[VAL_17]]
 // CHECK:       }
 
-// CHECK: define void @ds(i8* noalias align 64 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_2:.*]]) {
+// CHECK: define void @ds(i8* noalias align 16 dereferenceable(4) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(8) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_2:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_2]], i64 0
 // CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [6 x i32]*
@@ -562,7 +562,7 @@ ENTRY test {
 
 HloModule TensorFlowGatherV1
 
-// CHECK: define void @gather(i8* noalias align 16 dereferenceable(36) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_1:.*]], i8* noalias align 16 dereferenceable(8) %[[VAL_2:.*]]) {
+// CHECK: define void @gather(i8* noalias align 16 dereferenceable(36) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(8) %[[VAL_2:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_1:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
 // CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [3 x [3 x i32]]*
@@ -648,7 +648,7 @@ ENTRY main {
 
 HloModule Test
 
-// CHECK: define void @reverse(i8* noalias align 64 dereferenceable(96) %[[VAL_0:.*]], i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]]) {
+// CHECK: define void @reverse(i8* noalias align 16 dereferenceable(96) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(96) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_3:.*]] = bitcast i8* %[[VAL_2]] to [2 x [3 x [4 x float]]]*

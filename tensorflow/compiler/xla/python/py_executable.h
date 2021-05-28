@@ -75,6 +75,9 @@ class PyExecutable {
 
   PjRtExecutable* mutable_pjrt_executable() const { return executable_.get(); }
   const ExecuteOptions& options() const { return options_; }
+  const absl::optional<std::string>& fingerprint() const {
+    return fingerprint_;
+  }
 
  private:
   friend class PyClient;

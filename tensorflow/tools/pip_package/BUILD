@@ -46,7 +46,7 @@ transitive_hdrs(
         # NOTE(ebrevdo): None of the python symbols are exported by libtensorflow_framework.so.
         # Code that relies on these headers should dynamically link to
         # _pywrap_tensorflow_internal.so as well.
-        "//tensorflow/python:model_analyzer_lib",
+        "//tensorflow/python/grappler:model_analyzer_lib",
         "//tensorflow/python/lib/core:py_exception_registry",
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_absl",
@@ -59,7 +59,7 @@ transitive_hdrs(
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
-        "//tensorflow/python:tf_session_helper",
+        "//tensorflow/python/client:tf_session_helper",
         "//third_party/eigen3",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -100,7 +100,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
     "//tensorflow/core:protos_all_proto_srcs",
-    "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
     "//tensorflow/lite/tools:visualize",

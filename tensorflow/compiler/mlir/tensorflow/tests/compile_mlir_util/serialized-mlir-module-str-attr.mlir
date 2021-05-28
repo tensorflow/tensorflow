@@ -8,7 +8,7 @@
 
 // CHECK-LABEL: module
 // CHECK-SAME:  attributes {tf.versions = {producer = 888 : i32}} {
-// CHECK-NEXT:   func @main([[ARG0:%.+]]: tensor<?xi32>) -> tensor<?xi32> {
+// CHECK-NEXT:   func @main([[ARG0:%.+]]: tensor<?xi32> loc({{.*}})) -> tensor<?xi32> {
 // CHECK-NEXT:     [[IDENTITY:%.+]] = "tf.Identity"([[ARG0]]) : (tensor<?xi32>) -> tensor<?xi32> loc(unknown)
 // CHECK-NEXT:     return [[IDENTITY]] : tensor<?xi32> loc(unknown)
 // CHECK-NEXT:   } loc(unknown)

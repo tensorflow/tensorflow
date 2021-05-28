@@ -3,9 +3,24 @@
 This document describes how to build TensorFlow Lite Android library on your
 own. Normally, you do not need to locally build TensorFlow Lite Android library.
 If you just want to use it, the easiest way is using the
-[TensorFlow Lite AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite).
+[TensorFlow Lite AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite).
 See [Android quickstart](../guide/android.md) for more details on how to use
 them in your Android projects.
+
+## Use Nightly Snapshots
+
+To use nightly snapshots, add the following repo to your root Gradle build
+config.
+
+```build
+allprojects {     // should be already there
+    mavenCentral  // should be already there
+    maven {       // add this repo to use snapshots
+      name 'ossrh-snapshot'
+      url 'http://oss.sonatype.org/content/repositories/snapshots'
+    }
+}
+```
 
 ## Build TensorFlow Lite locally
 
@@ -147,7 +162,11 @@ e.g.:
 ```
 allprojects {
     repositories {
-        jcenter()
+        mavenCentral()
+        maven {  // Only for snapshot artifacts
+            name 'ossrh-snapshot'
+            url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
         flatDir {
             dirs 'libs'
         }
@@ -177,7 +196,11 @@ for select TensorFlow ops:
 ```
 allprojects {
     repositories {
-        jcenter()
+        mavenCentral()
+        maven {  // Only for snapshot artifacts
+            name 'ossrh-snapshot'
+            url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
         mavenLocal()
     }
 }

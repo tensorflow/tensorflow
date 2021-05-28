@@ -218,6 +218,14 @@ tf_gen_op_libs(
     ],
 )
 
+tf_gen_op_libs(
+    op_lib_names = ["composite_tensor_ops"],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
 cc_library(
     name = "ragged_ops",
     deps = [
@@ -259,6 +267,7 @@ cc_library(
         ":decode_proto_ops_op_lib",
         ":encode_proto_ops_op_lib",
         ":experimental_dataset_ops_op_lib",
+        ":composite_tensor_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
         ":image_ops_op_lib",

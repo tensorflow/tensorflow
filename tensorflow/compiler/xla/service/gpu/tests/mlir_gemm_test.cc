@@ -26,12 +26,12 @@ class GemmTest : public MlirGpuTestBase {};
 TEST_F(GemmTest, SimpleCase1) {
   const char* mlir_text = R"(
       module attributes {hlo.unique_id = 0 : i32} {
-        func @main(%arg0: memref<2x2xf32> {lmhlo.alloc = 1 : index, lmhlo.params = 0 : index},
-                   %arg1: memref<2x2xf32> {lmhlo.alloc = 2 : index, lmhlo.params = 1 : index},
-                   %arg2: memref<2x2xf32> {lmhlo.alloc = 0 : index, lmhlo.output_index = dense<[0]> : tensor<1xindex>}) attributes {
+        func @main(%arg0: memref<2x2xf32> {lmhlo.params = 0 : index},
+                   %arg1: memref<2x2xf32> {lmhlo.params = 1 : index},
+                   %arg2: memref<2x2xf32> {lmhlo.output_index = dense<[0]> : tensor<1xindex>}) attributes {
                        result_xla_shape = "(f32[4]) "
                    } {
-          "lmhlo_gpu.gemm"(%arg0, %arg1, %arg2) {algorithm = 7 : i64, alpha_imag = 0.000000e+00 : f64, alpha_real = 1.000000e+00 : f64, batch_size = 1 : i64, dot_dimension_numbers = {lhs_batching_dimensions = dense<> : tensor<0xi64>, lhs_contracting_dimensions = dense<1> : tensor<1xi64>, rhs_batching_dimensions = dense<> : tensor<0xi64>, rhs_contracting_dimensions = dense<0> : tensor<1xi64>}} : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+          "lmhlo_gpu.gemm"(%arg0, %arg1, %arg2) {alpha_imag = 0.000000e+00 : f64, alpha_real = 1.000000e+00 : f64, batch_size = 1 : i64, dot_dimension_numbers = {lhs_batching_dimensions = dense<> : tensor<0xi64>, lhs_contracting_dimensions = dense<1> : tensor<1xi64>, rhs_batching_dimensions = dense<> : tensor<0xi64>, rhs_contracting_dimensions = dense<0> : tensor<1xi64>}} : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
           "lmhlo.terminator"() : () -> ()
         }
       })";

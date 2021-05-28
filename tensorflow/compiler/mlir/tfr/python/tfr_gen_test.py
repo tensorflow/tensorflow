@@ -15,12 +15,6 @@
 """Tests for `tfr_gen` module."""
 
 # pylint: disable=missing-function-docstring
-# pylint: disable=invalid-name
-# pylint: disable=g-direct-tensorflow-import
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import sys
 
@@ -234,6 +228,24 @@ def _tfr_temp_use_op(x):
   y = _tfr_temp_op([x])
   return y[0]
 
+#--- test fn for quant built-ins ---
+
+
+# pylint: disable=undefined-variable
+@composite.Composite('TestIdentityOp')
+def _tfr_quant_test(x):
+  y = _tfr_quant_raw_data(x)
+  s, z = _tfr_quant_qparam(x)
+  s = _tfr_quant_scale_factor(1.0, [s, s])
+  s = _tfr_quant_scale_factor(1.0, [s])
+  y = math_ops.Sub(y, z)
+  qmin, qmax = _tfr_quant_act_range('RELU', 1.0, 0)
+  (qmin, qmax)  # pylint: disable=pointless-statement
+  d = _tfr_quant_rescale(y, s, 0)
+  e = math_ops.Cast(x=d, DstT=dtypes.int16)
+  f = math_ops.Cast(x=e, DstT=dtypes.int8)
+  return f
+
 
 class TFRGenTestBase(test.TestCase):
 
@@ -415,7 +427,7 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT: }
 
       CHECK-LABEL: tfr.func @tf__test_input_n_op(%ins: !tfr.tensor_list) -> (!tfr.tensor) {
-      CHECK: %[[attr:.*]] = tfr.constant i64 -> !tfr.attr loc("tfr_gen_test.py":134:57)
+      CHECK: %[[attr:.*]] = tfr.constant i64 -> !tfr.attr
       CHECK: %Const = tfr.call @tf__const(%{{.*}}, %[[attr]]) : (!tfr.attr, !tfr.attr) -> (!tfr.tensor)
     """
     self._check_code(mlir_code, mlir_code_exp)
@@ -593,6 +605,27 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-LABEL: tfr.func @tf__test_identity_op(%x: !tfr.tensor) -> (!tfr.tensor) {
       CHECK-NEXT:   %[[list:.*]] = "tfr.build_list"(%x) : (!tfr.tensor) -> !tfr.tensor_list
       CHECK-NEXT:   %[[call:.*]] = tfr.call @tf__test_identity_n_op(%[[list]]) : (!tfr.tensor_list)
+    """
+    self._check_code(mlir_code, mlir_code_exp)
+
+  def test_quant_builtins(self):
+    mlir_code = tfr_gen(sys.modules[__name__], '_tfr_quant', [test_ops])
+    mlir_code_exp = r"""
+      CHECK-LABEL: tfr.func @tf__test_identity_op(%x: !tfr.tensor) -> (!tfr.tensor) {
+      CHECK-NEXT:   %[[raw_data:.*]] = tfr.quant_raw_data(%x) : (!tfr.tensor) -> (!tfr.tensor)
+      CHECK-NEXT:   %[[qparam:.*]]:2 = tfr.quant_qparam(%x) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
+      CHECK:        %[[list:.*]] = "tfr.build_list"(%[[qparam]]#0, %[[qparam]]#0) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+      CHECK:        %[[factor:.*]] = tfr.quant_scale_factor(%{{.*}}, %[[list]]) : (f32, !tfr.tensor_list) -> (!tfr.tensor)
+      CHECK:        %[[list1:.*]] = "tfr.build_list"(%[[factor]]) : (!tfr.tensor) -> !tfr.tensor_list
+      CHECK:        %[[factor1:.*]] = tfr.quant_scale_factor(%{{.*}}, %[[list1]]) : (f32, !tfr.tensor_list) -> (!tfr.tensor)
+      CHECK-NEXT:   %[[Sub:.*]] = tfr.call @tf__sub(%[[raw_data]], %[[qparam]]#1) : (!tfr.tensor, !tfr.tensor) -> (!tfr.tensor)
+      CHECK:        %[[act_range:.*]]:2 = tfr.quant_act_range(%{{.*}}, %{{.*}}, %{{.*}}) : (!tfr.attr, f32, i64) -> (!tfr.tensor, !tfr.tensor)
+      CHECK:        %[[rescale:.*]] = tfr.quant_rescale(%[[Sub]], %[[factor1]], %{{.*}}) : (!tfr.tensor, !tfr.tensor, i64) -> (!tfr.tensor)
+      CHECK:        %[[attr:.*]] = tfr.constant i16 -> !tfr.attr
+      CHECK:        %[[Cast:.*]] = tfr.call @tf__cast(%[[rescale]], %[[attr]], %{{.*}}) : (!tfr.tensor, !tfr.attr, i1) -> (!tfr.tensor)
+      CHECK:        %[[attr_1:.*]] = tfr.constant i8 -> !tfr.attr
+      CHECK:        tfr.call @tf__cast(%[[Cast]], %[[attr_1]], %{{.*}}) : (!tfr.tensor, !tfr.attr, i1) -> (!tfr.tensor)
+      CHECK:       }
     """
     self._check_code(mlir_code, mlir_code_exp)
 

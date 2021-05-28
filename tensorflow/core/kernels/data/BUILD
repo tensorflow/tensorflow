@@ -21,6 +21,8 @@ exports_files([
     "iterator_ops.h",
     "finalize_dataset_op.h",
     "finalize_dataset_op.cc",
+    "flat_map_dataset_op.h",
+    "flat_map_dataset_op.cc",
     "map_dataset_op.cc",
     "map_dataset_op.h",
     "model_dataset_op.cc",
@@ -33,6 +35,8 @@ exports_files([
     "reduce_dataset_op.cc",
     "repeat_dataset_op.h",
     "repeat_dataset_op.cc",
+    "take_dataset_op.h",
+    "take_dataset_op.cc",
     "tensor_slice_dataset_op.cc",
     "tensor_slice_dataset_op.h",
     "unbounded_thread_pool.cc",
@@ -564,6 +568,7 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:rewrite_utils",
         "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

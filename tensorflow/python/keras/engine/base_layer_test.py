@@ -1617,11 +1617,6 @@ class IdentityLayer(base_layer.Layer):
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class DTypeTest(keras_parameterized.TestCase):
 
-  # This class only have tests relating to layer.dtype. Tests for dtype policies
-  # are in mixed_precision/keras_test.py
-
-  # TODO(reedwm): Maybe have a separate test file for input casting tests.
-
   def _const(self, dtype):
     return array_ops.constant(1, dtype=dtype)
 

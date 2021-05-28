@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 
 namespace mlir {
@@ -130,19 +131,27 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
 };
 
 // Canonicalize operations in functions.
-struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
-    auto func = getFunction();
-    populateWithGenerated(patterns);
-    patterns.insert<SimplifyBroadcastReshape>(&getContext());
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+struct TensorFlowOptimizePass
+    : public TensorFlowOptimizePassBase<TensorFlowOptimizePass> {
+  LogicalResult initialize(MLIRContext *context) override {
+    OwningRewritePatternList pattern_list(context);
+    populateWithGenerated(pattern_list);
+    pattern_list.insert<SimplifyBroadcastReshape>(context);
+    patterns = std::move(pattern_list);
+    return success();
   }
+
+  void runOnFunction() override {
+    auto func = getFunction();
+    if (failed(applyPatternsAndFoldGreedily(func, patterns)))
+      signalPassFailure();
+  }
+
+  FrozenRewritePatternSet patterns;
 };
 
 }  // namespace
 
-// NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
 void CreateTFStandardPipeline(OpPassManager &pm,
                               const StandardPipelineOptions &options) {
   OpPassManager &func_pm = pm.nest<FuncOp>();
@@ -170,10 +179,8 @@ void CreateTFStandardPipeline(OpPassManager &pm,
 }
 
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass() {
-  return std::make_unique<TFOptimizePass>();
+  return std::make_unique<TensorFlowOptimizePass>();
 }
-
-static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");
 
 // Registers a pipeline builder function for the default canonicalize/optimizer.
 static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(

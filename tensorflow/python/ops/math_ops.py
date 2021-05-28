@@ -3314,7 +3314,8 @@ def matmul(a,
   and any further outer dimensions specify matching batch size.
 
   Both matrices must be of the same type. The supported types are:
-  `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
+  `bfloat16`, `float16`, `float32`, `float64`, `int32`, `int64`,
+  `complex64`, `complex128`.
 
   Either matrix can be transposed or adjointed (conjugated and transposed) on
   the fly by setting one of the corresponding flag to `True`. These are `False`
@@ -4033,7 +4034,7 @@ def log_sigmoid(x, name=None):
   """
   with ops.name_scope(name, "LogSigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)
+    return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)  # pylint: disable=invalid-unary-operand-type
 
 
 @tf_export("math.cumsum", "cumsum")

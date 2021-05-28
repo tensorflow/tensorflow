@@ -100,7 +100,7 @@ Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   while (true) {
     tstring record;
-    Status s = reader_->ReadRecord(&offset_, &record);
+    Status s = reader_->ReadRecord(&record);
     if (errors::IsOutOfRange(s)) {
       sequence_number_++;
       std::string next_journal_file =
@@ -129,8 +129,9 @@ Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
 Status FileJournalReader::UpdateFile(const std::string& filename) {
   VLOG(1) << "Reading from journal file " << filename;
   TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(filename, &file_));
-  reader_ = absl::make_unique<io::RecordReader>(file_.get());
-  offset_ = 0;
+  io::RecordReaderOptions opts;
+  opts.buffer_size = 2 << 20;  // 2MB
+  reader_ = absl::make_unique<io::SequentialRecordReader>(file_.get(), opts);
   return Status::OK();
 }
 

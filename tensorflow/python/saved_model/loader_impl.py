@@ -34,10 +34,14 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+# API label for SavedModel metrics.
+_LOADER_LABEL = "loader"
 
 
 def parse_saved_model_with_debug_info(export_dir):
@@ -451,9 +455,12 @@ class SavedModelLoader(object):
     Returns:
       `MetagraphDef` proto of the graph that was loaded.
     """
+    metrics.IncrementReadApi(_LOADER_LABEL)
     with sess.graph.as_default():
       saver, _ = self.load_graph(sess.graph, tags, import_scope,
                                  **saver_kwargs)
       self.restore_variables(sess, saver, import_scope)
       self.run_init_ops(sess, tags, import_scope)
-    return self.get_meta_graph_def_from_tags(tags)
+    meta_graph_def = self.get_meta_graph_def_from_tags(tags)
+    metrics.IncrementRead()
+    return meta_graph_def

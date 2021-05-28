@@ -304,13 +304,20 @@ class NormalizationAdaptTest(keras_parameterized.TestCase,
     actual_output = model.predict(predict_input)
     self.assertAllClose(actual_output, expected_second_output)
 
-  def test_saved_model_tf(self):
-    input_data = [[0], [2], [0], [2]]
-    expected_output = [[-1], [1], [-1], [1]]
+  @parameterized.parameters(
+      {"adapted": True},
+      {"adapted": False},
+  )
+  def test_saved_model_tf(self, adapted):
+    input_data = [[0.], [2.], [0.], [2.]]
+    expected_output = [[-1.], [1.], [-1.], [1.]]
 
-    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
-    layer = normalization.Normalization(axis=-1)
-    layer.adapt(input_data)
+    inputs = keras.Input(shape=(1,), dtype=dtypes.float32)
+    if adapted:
+      layer = normalization.Normalization(axis=-1)
+      layer.adapt(input_data)
+    else:
+      layer = normalization.Normalization(mean=1., variance=1.)
     outputs = layer(inputs)
     model = keras.Model(inputs=inputs, outputs=outputs)
 
@@ -330,14 +337,21 @@ class NormalizationAdaptTest(keras_parameterized.TestCase,
     new_output_data = f(constant_op.constant(input_data))["normalization"]
     self.assertAllClose(new_output_data, expected_output)
 
-  def test_saved_model_keras(self):
-    input_data = [[0], [2], [0], [2]]
-    expected_output = [[-1], [1], [-1], [1]]
+  @parameterized.parameters(
+      {"adapted": True},
+      {"adapted": False},
+  )
+  def test_saved_model_keras(self, adapted):
+    input_data = [[0.], [2.], [0.], [2.]]
+    expected_output = [[-1.], [1.], [-1.], [1.]]
 
     cls = normalization.Normalization
-    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
-    layer = cls(axis=-1)
-    layer.adapt(input_data)
+    inputs = keras.Input(shape=(1,), dtype=dtypes.float32)
+    if adapted:
+      layer = cls(axis=-1)
+      layer.adapt(input_data)
+    else:
+      layer = cls(mean=1., variance=1.)
     outputs = layer(inputs)
     model = keras.Model(inputs=inputs, outputs=outputs)
 
@@ -357,14 +371,21 @@ class NormalizationAdaptTest(keras_parameterized.TestCase,
     new_output_data = loaded_model.predict(input_data)
     self.assertAllClose(new_output_data, expected_output)
 
-  def test_saved_weights_keras(self):
-    input_data = [[0], [2], [0], [2]]
-    expected_output = [[-1], [1], [-1], [1]]
+  @parameterized.parameters(
+      {"adapted": True},
+      {"adapted": False},
+  )
+  def test_saved_weights_keras(self, adapted):
+    input_data = [[0.], [2.], [0.], [2.]]
+    expected_output = [[-1.], [1.], [-1.], [1.]]
 
     cls = normalization.Normalization
-    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
-    layer = cls(axis=-1)
-    layer.adapt(input_data)
+    inputs = keras.Input(shape=(1,), dtype=dtypes.float32)
+    if adapted:
+      layer = cls(axis=-1)
+      layer.adapt(input_data)
+    else:
+      layer = cls(mean=1., variance=1.)
     outputs = layer(inputs)
     model = keras.Model(inputs=inputs, outputs=outputs)
 

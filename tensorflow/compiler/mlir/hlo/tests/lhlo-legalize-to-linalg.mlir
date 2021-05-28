@@ -158,8 +158,8 @@ func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
 
 // -----
 
-// CHECK-LABEL: func @is_finte
-func @is_finte(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
+// CHECK-LABEL: func @is_finite
+func @is_finite(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
   "lmhlo.is_finite"(%input, %result) : (memref<2x2xf32>, memref<2x2xi1>) -> ()
   return
 }
@@ -188,7 +188,7 @@ func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 
 // CHECK-LABEL: func @int_cmp
 func @int_cmp(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
-          %result: memref<2x2xi1>) {
+              %result: memref<2x2xi1>) {
   "lmhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "LT"}
       : (memref<2x2xi32>, memref<2x2xi32>, memref<2x2xi1>) -> ()
   return
@@ -197,6 +197,62 @@ func @int_cmp(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i1):
 // CHECK-NEXT:   %[[RESULT:.*]] = cmpi slt, %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @complex_cmp_eq
+func @complex_cmp_eq(%lhs: memref<2xcomplex<f32>>, %rhs: memref<2xcomplex<f32>>,
+                     %result: memref<2xi1>) {
+  "lmhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "EQ"}
+      : (memref<2xcomplex<f32>>, memref<2xcomplex<f32>>, memref<2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: complex<f32>, %[[RHS_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.eq %[[LHS_IN]], %[[RHS_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @complex_cmp_neq
+func @complex_cmp_neq(%lhs: memref<2xcomplex<f64>>, %rhs: memref<2xcomplex<f64>>,
+                      %result: memref<2xi1>) {
+  "lmhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "NE"}
+      : (memref<2xcomplex<f64>>, memref<2xcomplex<f64>>, memref<2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: complex<f64>, %[[RHS_IN:.*]]: complex<f64>, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.neq %[[LHS_IN]], %[[RHS_IN]] : complex<f64>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @complex_divide
+func @complex_divide(%lhs: memref<2xcomplex<f64>>, %rhs: memref<2xcomplex<f64>>,
+                     %result: memref<2xcomplex<f64>>) {
+  "lmhlo.divide"(%lhs, %rhs, %result)
+      : (memref<2xcomplex<f64>>, memref<2xcomplex<f64>>, memref<2xcomplex<f64>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: complex<f64>, %[[RHS_IN:.*]]: complex<f64>, %[[RESULT_OUT:.*]]: complex<f64>):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.div %[[LHS_IN]], %[[RHS_IN]] : complex<f64>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f64>
+
+// -----
+
+// CHECK-LABEL: func @complex_multiply
+func @complex_multiply(%lhs: memref<2xcomplex<f64>>, %rhs: memref<2xcomplex<f64>>,
+                       %result: memref<2xcomplex<f64>>) {
+  "lmhlo.multiply"(%lhs, %rhs, %result)
+      : (memref<2xcomplex<f64>>, memref<2xcomplex<f64>>, memref<2xcomplex<f64>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: complex<f64>, %[[RHS_IN:.*]]: complex<f64>, %[[RESULT_OUT:.*]]: complex<f64>):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.mul %[[LHS_IN]], %[[RHS_IN]] : complex<f64>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f64>
 
 // -----
 
@@ -220,9 +276,10 @@ func @iota(%out: memref<7x10xf32>) {
   "lmhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xf32>) -> ()
   return
 }
-// CHECK: linalg.indexed_generic
+// CHECK: linalg.generic
 // CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
-// CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index, %[[RESULT:.*]]: f32):
+// CHECK-NEXT: ^bb0(%[[RESULT:.*]]: f32):
+// CHECK-NEXT:   %[[D1:.+]] = linalg.index 1
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32

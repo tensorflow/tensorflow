@@ -1836,6 +1836,7 @@ class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
         ])
     self.assertAllClose(segments, array_ops.zeros((2, 5)))
 
+    # pylint: disable=invalid-unary-operand-type
     y, segments = nn_ops.isotonic_regression(-x, decreasing=True)
     self.assertAllClose(segments, [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]])
 

@@ -503,11 +503,23 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
  public:
   explicit HloCollectivePermuteInstruction(
       HloOpcode opcode, const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64, int64>>& source_target_pairs,
-      const absl::optional<int64>& channel_id);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const absl::optional<int64_t>& channel_id);
 
-  const std::vector<std::pair<int64, int64>>& source_target_pairs() const {
+  explicit HloCollectivePermuteInstruction(
+      HloOpcode opcode, const Shape& shape, HloInstruction* input,
+      HloInstruction* output, HloInstruction* input_start_indices,
+      HloInstruction* output_start_indices,
+      absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+      absl::Span<const std::vector<int64_t>> slice_sizes,
+      const absl::optional<int64_t>& channel_id);
+
+  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs() const {
     return source_target_pairs_;
+  }
+
+  const std::vector<std::vector<int64_t>>& dynamic_slice_sizes_list() const {
+    return slice_sizes_;
   }
 
   // Returns a serialized representation of this instruction.
@@ -526,7 +538,8 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  const std::vector<std::pair<int64, int64>> source_target_pairs_;
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs_;
+  const std::vector<std::vector<int64_t>> slice_sizes_;
 };
 
 class HloReverseInstruction : public HloInstruction {
@@ -1524,6 +1537,12 @@ class HloCustomCallInstruction : public HloInstruction {
           aliasing) {
     output_to_operand_aliasing_ = std::move(aliasing);
   }
+  void set_custom_call_schedule(CustomCallSchedule custom_call_schedule) {
+    custom_call_schedule_ = custom_call_schedule;
+  }
+  CustomCallSchedule custom_call_schedule() const {
+    return custom_call_schedule_;
+  }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -1562,6 +1581,8 @@ class HloCustomCallInstruction : public HloInstruction {
   std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
       output_to_operand_aliasing_;
   absl::optional<Literal> literal_;
+  // A custom-call schedule hint.
+  CustomCallSchedule custom_call_schedule_;
 };
 
 class HloPadInstruction : public HloInstruction {
