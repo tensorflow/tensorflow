@@ -635,12 +635,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "jsoncpp_git",
         build_file = clean_dep("//third_party:jsoncpp.BUILD"),
-        sha256 = "c49deac9e0933bcb7044f08516861a2d560988540b23de2ac1ad443b219afdb6",
-        strip_prefix = "jsoncpp-1.8.4",
+        sha256 = "e34a628a8142643b976c7233ef381457efad79468c67cb1ae0b83a33d7493999",
+        strip_prefix = "jsoncpp-1.9.4",
         system_build_file = clean_dep("//third_party/systemlibs:jsoncpp.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/open-source-parsers/jsoncpp/archive/1.8.4.tar.gz",
-            "https://github.com/open-source-parsers/jsoncpp/archive/1.8.4.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/open-source-parsers/jsoncpp/archive/1.9.4.tar.gz",
+            "https://github.com/open-source-parsers/jsoncpp/archive/1.9.4.tar.gz",
         ],
     )
 

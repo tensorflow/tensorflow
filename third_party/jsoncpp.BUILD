@@ -12,7 +12,6 @@ cc_library(
         "src/lib_json/json_writer.cpp",
     ],
     hdrs = [
-        "include/json/autolink.h",
         "include/json/config.h",
         "include/json/features.h",
         "include/json/forwards.h",
