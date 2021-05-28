@@ -911,9 +911,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
         v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = v.scatter_nd_assign(indices, updates)
-        with tf.compat.v1.Session() as sess:
-          print sess.run(op)
+        v.scatter_nd_update(indices, updates)
+        print(v)
     ```
 
     The resulting update to v would look like this:
