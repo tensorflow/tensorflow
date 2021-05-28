@@ -156,7 +156,7 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
                    nondeterministic               deterministic
     dloss/dlogits: [[2.0], [1.0], [0.0], [0.0]]   [[0.0], [0.0], [0.0], [0.0]]
 
-    Note that only the second two label vectors are a valid probability
+    Note that only the second two label vectors are valid probability
     distributions (as required by the API) and that the gradient matches for
     those cases.
 
@@ -185,14 +185,14 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
     dloss/dlogits (determinsitic):
         [[ 0.   ,  0.   ,  0.   ,  0.   ],
          [-1.743, -1.303, -0.105,  3.150],
-         [-0.218, -0.163, -0.013, 0.394]]
+         [-0.218, -0.163, -0.013,  0.394]]
 
     Note that neither of the first two broadcast label vectors is a valid
     probability distribution (as required by the API) and that these are the
     cases that yield different gradients for nondeterministic vs determinsitic
     implementations.
 
-    TODO(duncanriach): Further investigate the source the difference in
+    TODO(duncanriach): Further investigate the source of the difference in
                        the gradient for this case.
     """
     self._testLabelsBroadcast(
