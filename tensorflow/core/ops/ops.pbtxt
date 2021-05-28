@@ -8186,6 +8186,46 @@ op {
   }
 }
 op {
+  name: "CompositeTensorVariantFromComponents"
+  input_arg {
+    name: "components"
+    type_list_attr: "Tcomponents"
+  }
+  output_arg {
+    name: "encoded"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
+  }
+}
+op {
+  name: "CompositeTensorVariantToComponents"
+  input_arg {
+    name: "encoded"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "Tcomponents"
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
+  }
+}
+op {
   name: "CompressElement"
   input_arg {
     name: "components"

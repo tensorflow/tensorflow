@@ -1665,9 +1665,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     `Model.fit` and `Model.evaluate`, so inputs must be unambiguous for all
     three methods.
 
-    `Model.predict` is not yet supported with
-    `tf.distribute.experimental.ParameterServerStrategy`.
-
     Returns:
         Numpy array(s) of predictions.
 
@@ -1683,9 +1680,19 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self._check_call_args('predict')
     _disallow_inside_tf_function('predict')
 
+    # TODO(yashkatariya): Cache model on the coordinator for faster prediction.
+    # If running under PSS, then swap it with OneDeviceStrategy so that
+    # execution will run on the coordinator.
+    original_pss_strategy = None
     if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
-      raise NotImplementedError('`model.predict` is not yet supported with '
-                                '`ParameterServerStrategy`.')
+      original_pss_strategy = self.distribute_strategy
+      self._distribution_strategy = None
+
+    # Cluster coordinator is set by `.fit()` and `.evaluate()` which is not
+    # needed in `.predict()` because all the predictions happen on the
+    # coordinator/locally.
+    if self._cluster_coordinator:
+      self._cluster_coordinator = None
 
     outputs = None
     with self.distribute_strategy.scope():
@@ -1753,6 +1760,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         raise ValueError('Expect x to be a non-empty array or dataset.')
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
+
+    # If originally PSS strategy was used, then replace it back since predict
+    # is running under `OneDeviceStrategy` after the swap and once its done
+    # we need to replace it back to PSS again.
+    if original_pss_strategy is not None:
+      self._distribution_strategy = original_pss_strategy
+
     return tf_utils.sync_to_numpy_or_python_type(all_outputs)
 
   def reset_metrics(self):

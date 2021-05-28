@@ -125,7 +125,7 @@ function install_ubuntu_16_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
+  "${PIP_CMD}" install --user --upgrade 'numpy ~= 1.19.2'
   # Now, install the deps, as listed in setup.py
   "${PIP_CMD}" install --user 'absl-py ~= 0.10'
   "${PIP_CMD}" install --user 'astunparse ~= 1.6.3'
@@ -182,7 +182,7 @@ function install_ubuntu_16_python_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install --user 'numpy ~= 1.19.2'
+  ${PIP_CMD} install --user --upgrade 'numpy ~= 1.19.2'
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install --user 'absl-py ~= 0.10'
   ${PIP_CMD} install --user 'astunparse ~= 1.6.3'
@@ -225,7 +225,7 @@ function install_macos_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install 'numpy ~= 1.19.2'
+  ${PIP_CMD} install --upgrade 'numpy ~= 1.19.2'
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install 'absl-py ~= 0.10'
   ${PIP_CMD} install 'astunparse ~= 1.6.3'
@@ -272,7 +272,7 @@ function install_macos_pip_deps_no_venv {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install 'numpy ~= 1.19.2' --user
+  ${PIP_CMD} install --upgrade 'numpy ~= 1.19.2' --user
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install 'absl-py ~= 0.10' --user
   ${PIP_CMD} install 'astunparse ~= 1.6.3' --user

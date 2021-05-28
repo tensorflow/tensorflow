@@ -28,7 +28,9 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -40,9 +42,16 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     os.mkdir(tmpdir)
     self._test_dir = tmpdir
 
+    self._checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    os.mkdir(self._checkpoint_prefix)
+    self._save_dir = os.path.join(self.get_temp_dir(), "save")
+    os.mkdir(self._save_dir)
+
   def tearDown(self):
     super(IOTest, self).tearDown()
     shutil.rmtree(self._test_dir)
+    shutil.rmtree(self._checkpoint_prefix)
+    shutil.rmtree(self._save_dir)
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
@@ -125,6 +134,80 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = self.getNext(dataset)
     for _ in range(30):
       self.evaluate(next_element())
+
+  # TODO(b/189484146): Migrate the load checkpointing tests to use the
+  # checkpoint_test_base library once the library has eager support.
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLoadCheckpointUnusedIterator(self):
+    dataset = dataset_ops.Dataset.range(3)
+    io.save(dataset, self._save_dir)
+    loaded_dataset = io.load(self._save_dir)
+    iterator = iter(loaded_dataset)
+    get_next = iterator.get_next
+
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
+    save_path = checkpoint.save(self._checkpoint_prefix)
+    self.assertAllEqual(0, get_next())
+    self.assertAllEqual(1, get_next())
+    checkpoint.restore(save_path).run_restore_ops()
+    self.assertAllEqual(0, get_next())
+    self.assertAllEqual(1, get_next())
+    self.assertAllEqual(2, get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLoadCheckpointFullyUsedIterator(self):
+    dataset = dataset_ops.Dataset.range(3)
+    io.save(dataset, self._save_dir)
+    loaded_dataset = io.load(self._save_dir)
+    iterator = iter(loaded_dataset)
+    get_next = iterator.get_next
+
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
+    self.assertAllEqual(0, get_next())
+    self.assertAllEqual(1, get_next())
+    self.assertAllEqual(2, get_next())
+    save_path = checkpoint.save(self._checkpoint_prefix)
+    checkpoint.restore(save_path).run_restore_ops()
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLoadCheckpointExhaustedIterator(self):
+    dataset = dataset_ops.Dataset.range(3)
+    io.save(dataset, self._save_dir)
+    loaded_dataset = io.load(self._save_dir)
+    iterator = iter(loaded_dataset)
+    get_next = iterator.get_next
+
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
+    self.assertAllEqual(0, get_next())
+    self.assertAllEqual(1, get_next())
+    self.assertAllEqual(2, get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
+    save_path = checkpoint.save(self._checkpoint_prefix)
+    checkpoint.restore(save_path).run_restore_ops()
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testLoadCheckpointIteratorMultipleBreaks(self):
+    dataset = dataset_ops.Dataset.range(3)
+    io.save(dataset, self._save_dir)
+    loaded_dataset = io.load(self._save_dir)
+    iterator = iter(loaded_dataset)
+    get_next = iterator.get_next
+
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
+    for i in range(len(dataset)):
+      save_path = checkpoint.save(self._checkpoint_prefix)
+      self.assertAllEqual(i, get_next())
+      checkpoint.restore(save_path).run_restore_ops()
+      self.assertAllEqual(i, get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      get_next()
 
 
 if __name__ == "__main__":

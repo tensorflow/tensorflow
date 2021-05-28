@@ -41,7 +41,9 @@ template <typename T>
 T GetRawValue(T val) {
   return val;
 }
-uint16 GetRawValue(Eigen::half val) { return val.x; }
+uint16 GetRawValue(Eigen::half val) {
+  return Eigen::numext::bit_cast<uint16>(val);
+}
 
 // Helper function for comparing a floating point type, FloatT, bitwise equal
 // between the left-hand-side and right-hand-side, by bit-casting to UnsignedT

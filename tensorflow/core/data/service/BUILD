@@ -144,9 +144,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -490,6 +490,7 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":data_transfer",
+        ":thread_safe_buffer",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -502,6 +503,7 @@ tf_cc_test(
     name = "task_runner_test",
     srcs = ["task_runner_test.cc"],
     deps = [
+        ":data_transfer",
         ":task_runner",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
@@ -554,6 +556,34 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:standalone",
+    ],
+)
+
+cc_library(
+    name = "thread_safe_buffer",
+    hdrs = ["thread_safe_buffer.h"],
+    deps = [
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "thread_safe_buffer_test",
+    size = "small",
+    srcs = ["thread_safe_buffer_test.cc"],
+    shard_count = 3,
+    deps = [
+        ":thread_safe_buffer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 

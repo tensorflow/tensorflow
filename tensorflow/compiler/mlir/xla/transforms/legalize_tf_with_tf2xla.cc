@@ -82,9 +82,12 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   // building valid MLIR using MlirHloBuilder.
   // TODO(hinsu): Drop explicit allowlist when MLIR based bridge is enabled for
   // all tf2xla kernels.
+  // Use a pointer for the static set, so the set is not destructed upon thread
+  // end, which would not be thread safe.
   // clang-format off
 
-  static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
+  static auto* ops =
+      new llvm::SmallDenseSet<mlir::TypeID, 512>{
     TypeID::get<TF::AcoshOp>(),
     TypeID::get<TF::AcosOp>(),
     TypeID::get<TF::AddNOp>(),
@@ -277,31 +280,123 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
 
   auto* abstractOp = op->getAbstractOperation();
   if (!abstractOp) return false;
-  return ops.count(abstractOp->typeID);
+  return ops->count(abstractOp->typeID);
 }
 
 /// List of ops that should use XlaOpKernel legalization only in the case of
 /// prefer_tf2xla. All other ops not in this list should use MLIR legalization
 /// only or not be legalized by the new bridge.
-const llvm::DenseSet<mlir::TypeID>& Tf2XlaPreferredOps() {
-  // The static variable is a pointer in order to avoid destruction upon thread
-  // termination.
-
+bool IsOpAllowedTf2XlaPreferred(Operation* op) {
+  // Use a pointer for the static set, so the set is not destructed upon thread
+  // end, which would not be thread safe.
   // clang-format off
-  static const llvm::DenseSet<mlir::TypeID>* ops =
-      new llvm::DenseSet<mlir::TypeID>{
-    // Ops that are legalized in the old bridge using MlirXlaOpKernel
-    TypeID::get<TF::AcosOp>(),
+  static auto* ops =
+      new llvm::SmallDenseSet<mlir::TypeID, 512>{
+    TypeID::get<TF::AllOp>(),
+    TypeID::get<TF::AllToAllOp>(),
+    TypeID::get<TF::AnyOp>(),
+    TypeID::get<TF::AssertOp>(),
+    TypeID::get<TF::AvgPoolOp>(),
+    TypeID::get<TF::AvgPool3DGradOp>(),
+    TypeID::get<TF::AvgPoolGradOp>(),
+    TypeID::get<TF::BatchToSpaceNDOp>(),
+    TypeID::get<TF::BitcastOp>(),
+    TypeID::get<TF::BroadcastToOp>(),
+    TypeID::get<TF::CollectivePermuteOp>(),
+    TypeID::get<TF::ConcatV2Op>(),
+    TypeID::get<TF::ConjOp>(),
+    TypeID::get<TF::Conv2DOp>(),
+    TypeID::get<TF::Conv2DBackpropFilterOp>(),
+    TypeID::get<TF::Conv2DBackpropInputOp>(),
+    TypeID::get<TF::Conv3DOp>(),
+    TypeID::get<TF::Conv3DBackpropFilterV2Op>(),
+    TypeID::get<TF::Conv3DBackpropInputV2Op>(),
+    TypeID::get<TF::CrossReplicaSumOp>(),
+    TypeID::get<TF::CumprodOp>(),
+    TypeID::get<TF::CumsumOp>(),
+    TypeID::get<TF::DepthwiseConv2dNativeOp>(),
+    TypeID::get<TF::DynamicStitchOp>(),
+    TypeID::get<TF::EmptyOp>(),
+    TypeID::get<TF::ExpandDimsOp>(),
+    TypeID::get<TF::FakeQuantWithMinMaxVarsOp>(),
+    TypeID::get<TF::FillOp>(),
+    TypeID::get<TF::FusedBatchNormOp>(),
+    TypeID::get<TF::FusedBatchNormGradOp>(),
+    TypeID::get<TF::FusedBatchNormGradV2Op>(),
+    TypeID::get<TF::FusedBatchNormGradV3Op>(),
+    TypeID::get<TF::FusedBatchNormV2Op>(),
+    TypeID::get<TF::FusedBatchNormV3Op>(),
+    TypeID::get<TF::GatherV2Op>(),
+    TypeID::get<TF::IdentityOp>(),
+    TypeID::get<TF::IdentityNOp>(),
+    TypeID::get<TF::InfeedDequeueTupleOp>(),
+    TypeID::get<TF::InplaceUpdateOp>(),
+    TypeID::get<TF::InvertPermutationOp>(),
+    TypeID::get<TF::IRFFTOp>(),
+    TypeID::get<TF::L2LossOp>(),
+    TypeID::get<TF::LegacyCallOp>(),
+    TypeID::get<TF::LinSpaceOp>(),
+    TypeID::get<TF::MatrixDiagPartV3Op>(),
+    TypeID::get<TF::MaxOp>(),
+    TypeID::get<TF::MaximumOp>(),
+    TypeID::get<TF::MaxPoolOp>(),
+    TypeID::get<TF::MaxPool3DOp>(),
+    TypeID::get<TF::MaxPoolGradOp>(),
+    TypeID::get<TF::MeanOp>(),
+    TypeID::get<TF::MinOp>(),
+    TypeID::get<TF::MinimumOp>(),
+    TypeID::get<TF::MulNoNanOp>(),
+    TypeID::get<TF::OneHotOp>(),
+    TypeID::get<TF::OnesLikeOp>(),
+    TypeID::get<TF::PackOp>(),
+    TypeID::get<TF::PadV2Op>(),
+    TypeID::get<TF::ParallelDynamicStitchOp>(),
+    TypeID::get<TF::PartitionedCallOp>(),
+    TypeID::get<TF::ProdOp>(),
+    TypeID::get<TF::QrOp>(),
+    TypeID::get<TF::RandomStandardNormalOp>(),
+    TypeID::get<TF::RandomUniformOp>(),
+    TypeID::get<TF::RangeOp>(),
+    TypeID::get<TF::ReshapeOp>(),
+    TypeID::get<TF::ReverseV2Op>(),
+    TypeID::get<TF::RFFTOp>(),
+    TypeID::get<TF::RsqrtGradOp>(),
+    TypeID::get<TF::ScatterNdOp>(),
+    TypeID::get<TF::ShapeOp>(),
+    TypeID::get<TF::SizeOp>(),
+    TypeID::get<TF::SliceOp>(),
+    TypeID::get<TF::SoftmaxCrossEntropyWithLogitsOp>(),
+    TypeID::get<TF::SoftplusOp>(),
+    TypeID::get<TF::SparseMatMulOp>(),
+    TypeID::get<TF::SparseSoftmaxCrossEntropyWithLogitsOp>(),
+    TypeID::get<TF::SplitOp>(),
+    TypeID::get<TF::SplitVOp>(),
+    TypeID::get<TF::SqueezeOp>(),
+    TypeID::get<TF::StatefulPartitionedCallOp>(),
+    TypeID::get<TF::StopGradientOp>(),
+    TypeID::get<TF::StridedSliceOp>(),
+    TypeID::get<TF::StridedSliceGradOp>(),
+    TypeID::get<TF::SumOp>(),
+    TypeID::get<TF::TensorScatterUpdateOp>(),
+    TypeID::get<TF::TileOp>(),
+    TypeID::get<TF::TopKV2Op>(),
+    TypeID::get<TF::_UnaryOpsCompositionOp>(),
+    TypeID::get<TF::UnsortedSegmentMaxOp>(),
+    TypeID::get<TF::UnsortedSegmentMinOp>(),
+    TypeID::get<TF::UnsortedSegmentProdOp>(),
+    TypeID::get<TF::UnsortedSegmentSumOp>(),
+    TypeID::get<TF::XdivyOp>(),
+    TypeID::get<TF::XlaAllReduceOp>(),
+    TypeID::get<TF::XlaGatherOp>(),
+    TypeID::get<TF::XlaReplicaIdOp>(),
+    TypeID::get<TF::XlaShardingOp>(),
+    TypeID::get<TF::Xlog1pyOp>(),
+    TypeID::get<TF::ZerosLikeOp>(),
   };
   // clang-format on
-  return *ops;
-}
-
-bool IsOpAllowedTf2XlaPreferred(Operation* op) {
-  auto ops = Tf2XlaPreferredOps();
   auto* abstractOp = op->getAbstractOperation();
   if (!abstractOp) return false;
-  return ops.count(abstractOp->typeID);
+  return ops->count(abstractOp->typeID);
 }
 
 namespace {
@@ -603,12 +698,9 @@ class Tf2XlaRewritePattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (prefer_tf2xla_) {
-      if (!IsOpAllowedTf2XlaPreferred(op) && !IsOpAllowedTf2XlaFallback(op))
-        return failure();
-    } else {
-      if (!IsOpAllowedTf2XlaFallback(op)) return failure();
-    }
+    if (!(IsOpAllowedTf2XlaFallback(op) ||
+          (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op))))
+      return failure();
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
   }
 

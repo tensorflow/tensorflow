@@ -51,6 +51,26 @@ bool IsRank2(const Shape& shape, int64 batch_dimensions_size) {
   return shape.rank() == batch_dimensions_size + 2;
 }
 
+// In a gemm operation where output = lhs * rhs, check whether the given shapes
+// are valid for the operation.
+bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
+                        const Shape& output_shape,
+                        int64 batch_dimensions_size) {
+  // The inputs and the output must
+  // 1) be matrices with no padding and a non-zero number of elements,
+  // 2) have an allowed element type.
+  PrimitiveType output_primitive_type = output_shape.element_type();
+  bool type_is_allowed =
+      (output_primitive_type == F16 || output_primitive_type == F32 ||
+       output_primitive_type == F64 || output_primitive_type == C64 ||
+       output_primitive_type == C128);
+  return type_is_allowed && IsRank2(lhs_shape, batch_dimensions_size) &&
+         IsRank2(rhs_shape, batch_dimensions_size) &&
+         IsRank2(output_shape, batch_dimensions_size) &&
+         !ShapeUtil::IsZeroElementArray(lhs_shape) &&
+         !ShapeUtil::IsZeroElementArray(rhs_shape);
+}
+
 // Given a shape and a group of contiguous dimensions in the shape, returns
 // a tuple of three values (major, middle, minor), where major is the size of
 // the dimensions more major then the given dimensions, minor is the size of
@@ -92,32 +112,18 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   const Shape& rhs_shape = dot.operand(1)->shape();
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
-  PrimitiveType output_primitive_type = dot.shape().element_type();
-  bool type_is_allowed =
-      (output_primitive_type == F16 || output_primitive_type == F32 ||
-       output_primitive_type == F64 || output_primitive_type == C64 ||
-       output_primitive_type == C128) ||
-      (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
-       lhs_shape.element_type() == S8);
-  bool shapes_are_valid =
-      type_is_allowed &&
-      IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-      IsRank2(rhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-      IsRank2(dot.shape(), dim_numbers.lhs_batch_dimensions_size()) &&
-      !ShapeUtil::IsZeroElementArray(lhs_shape) &&
-      !ShapeUtil::IsZeroElementArray(rhs_shape);
-
-  if (!shapes_are_valid) {
-    return false;
+  // If gemm can accept the operand shapes, use it rather than a custom
+  // kernel.
+  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape(),
+                         dim_numbers.lhs_batch_dimensions_size())) {
+    // The size of the reduction dimension should match. The shape inference
+    // guarantees this invariant, so the check here is for programming
+    // errors.
+    CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+             rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
+    return true;
   }
-
-  // The size of the reduction dimension should match. The shape inference
-  // guarantees this invariant, so the check here is for programming
-  // errors.
-  CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
-           rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
-
-  return true;
+  return false;
 }
 
 bool IsCublasGemm(const HloInstruction& hlo) {

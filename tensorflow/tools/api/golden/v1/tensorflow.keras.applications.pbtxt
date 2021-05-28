@@ -122,11 +122,11 @@ tf_module {
   }
   member_method {
     name: "MobileNetV3Large"
-    argspec: "args=[\'input_shape\', \'alpha\', \'minimalistic\', \'include_top\', \'weights\', \'input_tensor\', \'classes\', \'pooling\', \'dropout_rate\', \'classifier_activation\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'False\', \'True\', \'imagenet\', \'None\', \'1000\', \'None\', \'0.2\', \'softmax\'], "
+    argspec: "args=[\'input_shape\', \'alpha\', \'minimalistic\', \'include_top\', \'weights\', \'input_tensor\', \'classes\', \'pooling\', \'dropout_rate\', \'classifier_activation\', \'include_preprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'False\', \'True\', \'imagenet\', \'None\', \'1000\', \'None\', \'0.2\', \'softmax\', \'True\'], "
   }
   member_method {
     name: "MobileNetV3Small"
-    argspec: "args=[\'input_shape\', \'alpha\', \'minimalistic\', \'include_top\', \'weights\', \'input_tensor\', \'classes\', \'pooling\', \'dropout_rate\', \'classifier_activation\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'False\', \'True\', \'imagenet\', \'None\', \'1000\', \'None\', \'0.2\', \'softmax\'], "
+    argspec: "args=[\'input_shape\', \'alpha\', \'minimalistic\', \'include_top\', \'weights\', \'input_tensor\', \'classes\', \'pooling\', \'dropout_rate\', \'classifier_activation\', \'include_preprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'False\', \'True\', \'imagenet\', \'None\', \'1000\', \'None\', \'0.2\', \'softmax\', \'True\'], "
   }
   member_method {
     name: "NASNetLarge"

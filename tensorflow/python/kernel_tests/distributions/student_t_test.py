@@ -58,7 +58,7 @@ class StudentTTest(test.TestCase):
     mu_v = 7.
     sigma_v = 8.
     t = np.array([-2.5, 2.5, 8., 0., -1., 2.], dtype=np.float32)
-    student = student_t.StudentT(df, loc=mu, scale=-sigma)
+    student = student_t.StudentT(df, loc=mu, scale=-sigma)  # pylint: disable=invalid-unary-operand-type
 
     log_pdf = student.log_prob(t)
     self.assertEqual(log_pdf.get_shape(), (6,))

@@ -1221,16 +1221,20 @@ Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
 
 Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
   auto make_thunk_for_gemm =
-      [&](auto op, absl::optional<double> gemm_bias_beta = absl::nullopt,
+      [&](auto op, absl::optional<BufferAllocation::Slice> bias = absl::nullopt,
+          absl::optional<double> gemm_bias_beta = absl::nullopt,
           bool implements_whole_instruction =
               true) -> StatusOr<std::unique_ptr<Thunk>> {
     TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSliceForMlir(op.lhs()));
     TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSliceForMlir(op.rhs()));
     TF_ASSIGN_OR_RETURN(auto output, GetAllocationSliceForMlir(op.output()));
+    std::vector<BufferAllocation::Slice> inputs = {lhs, rhs};
+    if (bias.has_value()) {
+      inputs.push_back(bias.value());
+    }
 
     if (IsBefThunkEnabled()) {
-      return CreateBefThunk(input.thunk_info, op,
-                            std::vector<BufferAllocation::Slice>{lhs, rhs},
+      return CreateBefThunk(input.thunk_info, op, inputs,
                             std::vector<BufferAllocation::Slice>{output});
     }
 
@@ -1285,7 +1289,7 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
       // shared we can just use it, otherwise copy the bias values into the
       // output buffer first.
       if (bias == output) {
-        return make_thunk_for_gemm(op, gemm_bias_beta);
+        return make_thunk_for_gemm(op, bias, gemm_bias_beta);
       }
 
       ThunkSequence thunks;
@@ -1297,7 +1301,7 @@ Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {
           ShapeUtil::ByteSizeOf(TypeToShape(op.output().getType()))));
       TF_ASSIGN_OR_RETURN(
           auto thunk,
-          make_thunk_for_gemm(op, gemm_bias_beta,
+          make_thunk_for_gemm(op, bias, gemm_bias_beta,
                               /*implements_whole_instruction=*/false));
       thunks.push_back(std::move(thunk));
       return std::unique_ptr<Thunk>(
@@ -1354,7 +1358,10 @@ Status VerifyBatchNormForThunkEmission(
 // fusion with only point-wise operations, scalar broadcasting and row
 // broadcasting, we can trigger a kernel that vectorize the row loads.
 // This speed up the kernel, in particular on A100.
-bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
+// Returns a pair<bool, int>. The bool mean should we try to enable
+// row vectorization.  The int is the number of inputs with the higher
+// rank.
+std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
   const auto is_row_major = [](mlir::Value value) {
     // Only tested when the inputs are row-major. So only
     // enable that case. Maybe it would works if only the
@@ -1376,10 +1383,17 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
   // We also detect at the same time if there is a row broadcasting
   // operation.
   bool some_row_broadcasting = false;
+  auto out_rank =
+      fusion.getFusionResults()[0].getType().cast<mlir::ShapedType>().getRank();
+  int num_big_inputs = 0;
   for (mlir::Operation& op : fusion.region().front()) {
-    if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
-                  mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op)) {
+    if (auto load = mlir::dyn_cast<mlir::memref::TensorLoadOp>(op)) {
+      auto rank = load.getResult().getType().cast<mlir::ShapedType>().getRank();
+      num_big_inputs += static_cast<int>(rank == out_rank);
+      continue;
+    } else if (mlir::isa<mlir::memref::TensorStoreOp, mlir::lmhlo::TerminatorOp,
+                         mlir::mhlo::ReturnOp, mlir::mhlo::ConstOp,
+                         mlir::lmhlo::ConstOp>(op)) {
       continue;
     }
     HloOpcode opcode = *MhloToHloOpcode(&op);
@@ -1405,10 +1419,11 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
     }
     VLOG(2) << "Row vectorization not enabled due to this op: "
             << MlirToString(&op);
-    return false;
+    return std::make_pair(false, 0);
   }
   // Trigger only when there is a row broadcasting.
-  return row_vectorized && some_row_broadcasting;
+  return std::make_pair(row_vectorized && some_row_broadcasting,
+                        num_big_inputs);
 }
 }  // namespace
 
@@ -1895,35 +1910,45 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     unroll_factor = 1;
   }
 
-  bool few_waves = [fusion]() mutable {
+  bool row_vectorized;
+  int num_big_inputs;
+  std::tie(row_vectorized, num_big_inputs) = RowVectorizationEnabled(fusion);
+  bool few_waves = [fusion, row_vectorized, num_big_inputs]() mutable {
     for (mlir::Operation& op : fusion.region().front()) {
       if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
-                    mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp>(op)) {
+                    mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
+                    mlir::mhlo::ConstOp>(op)) {
         continue;
       }
       HloOpcode opcode = *MhloToHloOpcode(&op);
       if (HloInstruction::IsOpElementwise(opcode)) {
         continue;
       }
-      if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastOp>(op)) {
-        if (broadcast.broadcast_sizes().size() == 0) {
+      if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
+        if (broadcast.broadcast_dimensions().empty() ||
+            // More then 2 bit inputs cause one speed regression.
+            (row_vectorized && num_big_inputs <= 2)) {
           continue;
         }
       }
+      VLOG(2) << "few_waves not enabled due to: " << MlirToString(&op);
       return false;
     }
     return true;
   }();
 
-  bool row_vectorized = RowVectorizationEnabled(fusion);
   Shape element_shape = context.output_shapes[0];
   LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
                                        row_vectorized};
   // Check that the shapes is supported.
-  launch_config.row_vectorized &=
+  if (launch_config.row_vectorized &&
       ThreadsPerBlockRowVectorized(element_shape,
                                    ir_emitter_context_->gpu_device_info(),
-                                   launch_config) > 0;
+                                   launch_config) <= 0) {
+    VLOG(2) << "Cancelling row_vectorization as the shape isn't supported.";
+    launch_config.row_vectorized = false;
+    launch_config.few_waves = false;
+  }
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(

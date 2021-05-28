@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EXECUTABLE_H_
-#define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EXECUTABLE_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_OP_EXECUTABLE_H_
+#define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_OP_EXECUTABLE_H_
 
 #include <functional>
 #include <memory>
@@ -30,19 +30,19 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
 
-namespace xla {
+namespace tensorflow {
 
 // An executable capable of being fed to a TPU device via TpuExecutor.
-class TpuExecutable : public TpuExecutableInterface {
+class TpuOpExecutable : public xla::TpuExecutableInterface {
  public:
   using HostCommandHandler = std::function<void(uint32, int64)>;
 
   // Constructs an executable that holds a non-owning reference to an
   // XLA_TpuProgram.
-  explicit TpuExecutable(const XLA_TpuProgram* core_program,
-                         std::unique_ptr<HloModule> hlo_module,
-                         HostCommandHandler host_command_handler = nullptr);
-  ~TpuExecutable() override = default;
+  explicit TpuOpExecutable(const XLA_TpuProgram* core_program,
+                           std::unique_ptr<xla::HloModule> hlo_module,
+                           HostCommandHandler host_command_handler = nullptr);
+  ~TpuOpExecutable() override = default;
 
   const XLA_TpuProgram* core_program() const { return core_program_; }
 
@@ -50,23 +50,23 @@ class TpuExecutable : public TpuExecutableInterface {
 
  private:
   Status LoadProgramAndEnqueueToStream(
-      const ServiceExecutableRunOptions& run_options,
+      const xla::ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,
       absl::optional<stream_executor::DeviceMemoryBase>
           cross_program_prefetch_addr) override;
 
-  Shape HostShapeToDeviceShape(const Shape& host_shape) override;
+  xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) override;
 
-  int64 ShapeSize(const Shape& shape) override;
+  int64 ShapeSize(const xla::Shape& shape) override;
 
   const XLA_TpuProgram* const core_program_;
 
   const HostCommandHandler host_command_handler_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuExecutable);
+  TF_DISALLOW_COPY_AND_ASSIGN(TpuOpExecutable);
 };
 
-}  // namespace xla
+}  // namespace tensorflow
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EXECUTABLE_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_OP_EXECUTABLE_H_

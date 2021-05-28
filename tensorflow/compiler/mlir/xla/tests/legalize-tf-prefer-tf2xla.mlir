@@ -12,11 +12,11 @@ func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // -----
 
-// CHECK-LABEL: func @softplus
-func @softplus(%arg0: tensor<8x16xf16>) -> tensor<8x16xf16> {
-  // CHECK:     tf.Softplus
-  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf16>) -> tensor<8x16xf16>
-  return %0 : tensor<8x16xf16>
+// CHECK-LABEL: func @testBroadcastGradientArgs
+func @testBroadcastGradientArgs(%s0: tensor<4xi32>, %s1: tensor<4xi32>) -> (tensor<1xi32>, tensor<0xi32>) {
+  // CHECK:     tf.BroadcastGradientArgs
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
 }
 
 // -----

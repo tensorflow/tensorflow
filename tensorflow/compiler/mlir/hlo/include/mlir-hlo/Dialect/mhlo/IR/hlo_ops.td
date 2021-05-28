@@ -1029,7 +1029,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
 }
 
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
-    SameOperandsAndResultShape,
+    SameOperandsAndResultShape, Elementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
         ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   let summary = "Comparison operator";
@@ -1471,12 +1471,12 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     See https://www.tensorflow.org/xla/operation_semantics#customcall.
   }];
   let arguments = (ins
-    Variadic<HLO_Tensor>:$args,
+    Variadic<HLO_TensorOrTuple>:$args,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
     DefaultValuedAttr<StrAttr, "">:$backend_config
   );
-  let results = (outs Variadic<HLO_Tensor>);
+  let results = (outs Variadic<HLO_TensorOrTuple>);
   let hasCustomHLOConverter = 1;
 }
 

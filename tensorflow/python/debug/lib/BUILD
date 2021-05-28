@@ -588,7 +588,10 @@ cuda_py_test(
     size = "small",
     srcs = ["session_debug_multi_gpu_test.py"],
     python_version = "PY3",
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+        "no_windows_gpu",
+    ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":debug_data",

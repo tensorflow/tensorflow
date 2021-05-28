@@ -333,7 +333,8 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
     operand_inserted_concat_dim = false;
     // Only support adding/removing trivial dims.
     while (i < operand_shape.rank() || j <= hlo_concat_dim) {
-      if (operand_shape.dimensions(i) == hlo->shape().dimensions(j)) {
+      if (i < operand_shape.rank() && j < hlo->shape().rank() &&
+          operand_shape.dimensions(i) == hlo->shape().dimensions(j)) {
         if (j == hlo_concat_dim) {
           operand_concat_dim = i;
           break;
@@ -342,7 +343,7 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
         j++;
         continue;
       }
-      if (operand_shape.dimensions(i) == 1) {
+      if (i < operand_shape.rank() && operand_shape.dimensions(i) == 1) {
         if (j == hlo_concat_dim && hlo_inserted_concat_dim) {
           operand_concat_dim = i;
           break;
@@ -350,12 +351,12 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
         i++;
         continue;
       }
-      if (hlo->shape().dimensions(j) == 1) {
-        if (j == hlo_concat_dim) {
-          operand_concat_dim = i;
-          operand_inserted_concat_dim = true;
-          break;
-        }
+      if (j == hlo_concat_dim) {
+        operand_concat_dim = i;
+        operand_inserted_concat_dim = true;
+        break;
+      }
+      if (j < hlo->shape().rank() && hlo->shape().dimensions(j) == 1) {
         j++;
         continue;
       }
@@ -700,6 +701,8 @@ Status RemoveCopiesFromRoot(HloComputation* body) {
 Status RewriteLoopWithConcatGroups(HloInstruction* loop,
                                    absl::Span<HloInstruction* const> param_gtes,
                                    ConcatGroups& groups) {
+  VLOG(1) << "RewriteLoopWithConcatGroups with " << groups.Groups().size()
+          << " groups.";
   // For simplicity, for each group, we rewrite the first element into full
   // shape, and leave the other elements unchagned. Non-grouped users will be
   // have slices of the expanded first element as the new input. Later

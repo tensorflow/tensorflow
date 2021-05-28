@@ -312,7 +312,7 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
                         custom_legalization_passes)
                   : CompileMlirToXlaHlo(
                         module_op, arg_shapes, device_type, emit_use_tuple_arg,
-                        prefer_tf2xla, emit_return_tuple,
+                        /*analyse_graph=*/false, emit_return_tuple,
                         /*use_resource_updates_for_aliases=*/true,
                         IdentityShapeRepresentationFn(), &compilation_result,
                         custom_legalization_passes);
@@ -339,10 +339,12 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
   }
 
   XlaCompilationResult compilation_result;
-  auto compilation_status = CompileGraphToXlaHlo(
-      module_op, xla_arguments, /*device_type=*/"XLA_CPU_JIT",
-      emit_use_tuple_arg, emit_return_tuple, IdentityShapeRepresentationFn(),
-      &compilation_result, /*custom_legalization_passes=*/{});
+  auto compilation_status =
+      CompileGraphToXlaHlo(module_op, xla_arguments,
+                           /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
+                           /*analyse_graph=*/false, emit_return_tuple,
+                           IdentityShapeRepresentationFn(), &compilation_result,
+                           /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
                << compilation_status.ToString();

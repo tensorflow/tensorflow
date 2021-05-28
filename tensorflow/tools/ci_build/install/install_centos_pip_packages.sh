@@ -55,7 +55,7 @@ pip2 install --upgrade protobuf==3.6.1
 pip3 install --upgrade protobuf==3.6.1
 
 pip2 install --upgrade numpy==1.14.5
-pip3 install --upgrade numpy==1.14.5
+pip3 install --upgrade numpy~=1.19.2
 
 pip2 install scipy==1.2.2
 pip3 install scipy==1.4.1
@@ -74,7 +74,7 @@ pip3 install py-cpuinfo
 
 # pylint tests require the following:
 pip2 install pylint==1.6.4
-pip3 install pylint==2.7.2
+pip3 install pylint==2.7.4
 
 # pycodestyle tests require the following:
 pip2 install pycodestyle

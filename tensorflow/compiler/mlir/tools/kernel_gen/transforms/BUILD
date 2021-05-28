@@ -108,7 +108,6 @@ cc_library(
         ":tf_framework_legalize_to_llvm",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
-        "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AllPassesAndDialects",

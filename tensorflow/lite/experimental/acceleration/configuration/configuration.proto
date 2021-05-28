@@ -288,6 +288,14 @@ message EdgeTpuInactivePowerConfig {
 // EdgeTPU Delegate settings.
 //
 message EdgeTpuSettings {
+  // Float truncation types for EdgeTPU.
+  enum FloatTruncationType {
+    UNSPECIFIED = 0;
+    NO_TRUNCATION = 1;
+    BFLOAT16 = 2;
+    HALF = 3;
+  }
+
   // Target inference power state for running the model.
   optional EdgeTpuPowerState inference_power_state = 1;
 
@@ -302,6 +310,9 @@ message EdgeTpuSettings {
 
   // A unique identifier of the input TfLite model.
   optional string model_token = 5;
+
+  // Float truncation type for EdgeTPU.
+  optional FloatTruncationType float_truncation_type = 6;
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
