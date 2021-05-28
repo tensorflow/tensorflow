@@ -416,6 +416,8 @@ class Bidirectional(Wrapper):
     this layer, the first half in the list of elements in the `initial_state`
     list will be passed to the forward RNN call and the last half in the list
     of elements will be passed to the backward RNN call.
+    
+    Note: When the argument, `return_sequences=True`, the `Output` for `Masked Sequences` become zero.
 
   Raises:
     ValueError:
