@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
@@ -820,15 +821,10 @@ class GeneratorDataAdapter(DataAdapter):
 
     self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
 
-    def _get_dynamic_shape(t):
-      shape = t.shape
-      # Unknown number of dimensions, `as_list` cannot be called.
-      if shape.rank is None:
-        return shape
-      return tensor_shape.TensorShape([None for _ in shape.as_list()])
+    def _get_tensor_spec(t):
+      return type_spec._type_spec_from_value(t)._with_tensor_ranks_only()
 
-    output_shapes = nest.map_structure(_get_dynamic_shape, peek)
-    output_types = nest.map_structure(lambda t: t.dtype, peek)
+    output_signature = nest.map_structure(_get_tensor_spec, peek)
 
     # Note that dataset API takes a callable that creates a generator object,
     # rather than generator itself, which is why we define a function here.
@@ -840,7 +836,7 @@ class GeneratorDataAdapter(DataAdapter):
         yield self._standardize_batch(data)
 
     dataset = dataset_ops.DatasetV2.from_generator(
-        wrapped_generator, output_types, output_shapes=output_shapes)
+        wrapped_generator, output_signature=output_signature)
 
     if workers == 1 and not use_multiprocessing:
       dataset = dataset.prefetch(1)

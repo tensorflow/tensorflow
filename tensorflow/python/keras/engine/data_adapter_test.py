@@ -30,7 +30,9 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -103,6 +105,30 @@ class TestSequence(data_utils.Sequence):
 
   def __len__(self):
     return 10
+
+
+class TestSparseSequence(TestSequence):
+
+  def __getitem__(self, item):
+    indices = [[row, self.feature_shape-1] for row in range(self.batch_size)]
+    values = [1 for row in range(self.batch_size)]
+    st = sparse_tensor.SparseTensor(
+      indices, values, (self.batch_size,self.feature_shape)
+    )
+    return (st, np.ones((self.batch_size,)))
+
+
+class TestRaggedSequence(TestSequence):
+  
+  def __getitem__(self, item):
+    values = np.random.randint(
+      0,
+      self.feature_shape,
+      (self.batch_size, 2)
+    ).reshape(-1)
+    row_lengths = np.full(self.batch_size, 2)
+    rt = ragged_tensor.RaggedTensor.from_row_lengths(values, row_lengths)
+    return (rt, np.ones((self.batch_size,)))
 
 
 class TensorLikeDataAdapterTest(DataAdapterTestBase):
@@ -783,6 +809,27 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     with self.assertRaisesRegex(ValueError,
                                 r'`sample_weight` argument is not supported'):
       self.adapter_cls(self.sequence_input, sample_weights=self.sequence_input)
+
+
+class KerasSequenceAdapterSparseTest(KerasSequenceAdapterTest):
+
+  def setUp(self):
+    super(KerasSequenceAdapterSparseTest, self).setUp()
+    self.sequence_input = TestSparseSequence(self.batch_size, 10)
+
+
+class KerasSequenceAdapterRaggedTest(KerasSequenceAdapterTest):
+
+  def setUp(self):
+    super(KerasSequenceAdapterRaggedTest, self).setUp()
+    self.sequence_input = TestRaggedSequence(self.batch_size, 10)
+    
+    self.model = keras.models.Sequential([
+        keras.layers.Input(shape=(None, ), ragged=True),
+        keras.layers.Embedding(10, 10),
+        keras.layers.Lambda(math_ops.reduce_mean, arguments=dict(axis=1)),
+        keras.layers.Dense(8, input_shape=(10,), activation='relu'),
+      ])
 
 
 class DataHandlerTest(keras_parameterized.TestCase):
