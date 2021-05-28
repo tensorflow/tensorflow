@@ -103,6 +103,82 @@ class ModelToDotFormatTest(test.TestCase):
     except ImportError:
       pass
 
+  def test_dot_layer_range(self):
+    model = keras.applications.EfficientNetB0()
+    layer_range = [9, 29]
+    layer_ids_from_model = get_layer_ids_from_model(
+      model, layer_range
+    )
+    dot = vis_utils.model_to_dot(model, layer_range=layer_range)
+    dot_edges = dot.get_edges()
+    layer_ids_from_dot = get_layer_ids_from_dot(
+        dot_edges
+    )
+    self.assertAllEqual(sorted(layer_ids_from_model),
+      sorted(layer_ids_from_dot))
+
+  def test_plot_layer_range(self):
+    model = keras.applications.EfficientNetB0()
+    layer_range = [9, 29]
+    effnet_subplot = 'model_effnet_1.png'
+    vis_utils.plot_model(model,
+      to_file=effnet_subplot,
+      layer_range=layer_range)
+    self.assertTrue(file_io.file_exists_v2(effnet_subplot))
+    file_io.delete_file_v2(effnet_subplot)
+
+  def test_layer_range_fails(self):
+    model = keras.applications.EfficientNetB0()
+
+    # Case 1: When layer_range don't have complete subgraph.
+    with self.assertRaises(AssertionError):
+      vis_utils.model_to_dot(model, layer_range=[10, 29])
+    with self.assertRaises(AssertionError):
+      vis_utils.plot_model(model, layer_range=[10, 29])
+
+    # Case 2: When shape(layer_range) != 2
+    with self.assertRaises(ValueError):
+      vis_utils.model_to_dot(model, layer_range=[0])
+    with self.assertRaises(ValueError):
+      vis_utils.model_to_dot(model, layer_range=[0, 29, 42])
+    with self.assertRaises(ValueError):
+      vis_utils.plot_model(model, layer_range=[0])
+    with self.assertRaises(ValueError):
+      vis_utils.plot_model(model, layer_range=[0, 29, 42])
+
+    # Case 3: When layer_range[0] > layer_range[1]
+    with self.assertRaises(ValueError):
+      vis_utils.model_to_dot(model, layer_range=[29, 10])
+    with self.assertRaises(ValueError):
+      vis_utils.plot_model(model, layer_range=[29, 10])
+
+    # Case 4: When one of the range is out of layer numbers
+    with self.assertRaises(ValueError):
+      vis_utils.model_to_dot(model, layer_range=[-1, 29])
+    with self.assertRaises(ValueError):
+      vis_utils.model_to_dot(model,
+        layer_range=[10, len(model.layers)+1])
+    with self.assertRaises(ValueError):
+      vis_utils.plot_model(model, layer_range=[-1, 29])
+    with self.assertRaises(ValueError):
+      vis_utils.plot_model(model,
+        layer_range=[10, len(model.layers)+1])
+
+def get_layer_ids_from_model(model, layer_range):
+  layer_ids_from_model = []
+  for i, layer in enumerate(model.layers):
+    if i >= layer_range[0] and i < layer_range[1]:
+      layer_ids_from_model.append(str(id(layer)))
+  return layer_ids_from_model
+
+def get_layer_ids_from_dot(dot_edges):
+  layer_ids_from_dot = []
+  for edge in dot_edges:
+    for pt in edge.obj_dict["points"]:
+      if pt not in layer_ids_from_dot:
+        layer_ids_from_dot.append(pt)
+  return layer_ids_from_dot
+
 
 if __name__ == '__main__':
   test.main()
