@@ -119,6 +119,8 @@
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
     *   Add `keepdims` argument to all `GlobalPooling` layers.
+    *   Add `include_preprocessing` argument to `MobileNetV3` architectures to
+        control the inclusion of `Rescaling` layer in the model.
 *   `tf.linalg`:
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
