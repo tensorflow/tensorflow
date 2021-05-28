@@ -1008,6 +1008,95 @@ TEST_F(HloVerifierTest, AllReduce_FlattenedID_Valid) {
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
+TEST_F(HloVerifierTest, AllReduceStartAndDone) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    start = (f32[2,3], f32[2,3]) all-reduce-start(p0), to_apply=add
+    ROOT done = f32[2,3] all-reduce-done(start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    start = f32[2,3] all-reduce-start(p0), to_apply=add
+    ROOT done = f32[2,3] all-reduce-done(start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to "
+                        "(f32[2,3], f32[2,3])"));
+}
+
+TEST_F(HloVerifierTest, AllReduceStartAndMultipleDone) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    start = (f32[2,3], f32[2,3]) all-reduce-start(p0), to_apply=add
+    done1 = f32[2,3] all-reduce-done(start)
+    ROOT done2 = f32[2,3] all-reduce-done(start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("all-reduce-start instruction requires one consumer, found 2"));
+}
+
+TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    p1 = u32[] parameter(1)
+    tuple = (f32[2,3], f32[2,3]) tuple(p0, p0, p1, p1)
+    ROOT done = f32[2,3] all-reduce-done(tuple)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("The operand of a all-reduce-done instruction "
+                        "needs to be all-reduce-start, found tuple"));
+}
+
 StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
     std::vector<std::vector<int64>> replica_groups,
     absl::optional<int64> replica_count = absl::nullopt,

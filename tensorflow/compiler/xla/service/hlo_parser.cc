@@ -162,6 +162,8 @@ bool CanInferShape(HloOpcode code) {
     // but we made it so that we always write the shapes explicitly.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
@@ -1099,6 +1101,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
@@ -1241,7 +1244,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           use_global_device_ids ? *use_global_device_ids : false));
       break;
     }
-    case HloOpcode::kAllReduce: {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
@@ -1264,10 +1268,18 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
-          shape, operands, *to_apply, replica_groups,
-          constrain_layout ? *constrain_layout : false, channel_id,
-          use_global_device_ids ? *use_global_device_ids : false));
+      if (opcode == HloOpcode::kAllReduce) {
+        instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
+            shape, operands, *to_apply, replica_groups,
+            constrain_layout ? *constrain_layout : false, channel_id,
+            use_global_device_ids ? *use_global_device_ids : false));
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAllReduceStart(
+                shape, operands, *to_apply, replica_groups,
+                constrain_layout ? *constrain_layout : false, channel_id,
+                use_global_device_ids ? *use_global_device_ids : false));
+      }
       break;
     }
     case HloOpcode::kAllToAll: {

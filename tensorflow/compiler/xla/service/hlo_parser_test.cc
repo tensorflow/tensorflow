@@ -1617,6 +1617,25 @@ ENTRY CRS {
 
 )"
 },
+// all-reduce start and done
+{
+"AllReduceStartAndDone",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  crs = (f32[8]{0}, f32[8]{0}) all-reduce-start(input), replica_groups={}, to_apply=add
+  ROOT done = f32[8]{0} all-reduce-done(crs)
+}
+
+)"
+},
 // all-gather
 {
 "AllGather",
