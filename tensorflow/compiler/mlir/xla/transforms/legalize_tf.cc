@@ -6478,6 +6478,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // Ops that have no XlaOpKernel.
     TypeID::get<TF::RiscAddOp>(),
     TypeID::get<TF::RiscDotOp>(),
+
+    // TFXLA fallback doesn't handle const output yet and this is a safe op.
+    TypeID::get<TF::ConstOp>(),
   };
   // clang-format on
   return *ops;

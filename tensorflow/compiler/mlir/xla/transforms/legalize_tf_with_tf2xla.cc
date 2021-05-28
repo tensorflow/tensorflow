@@ -305,7 +305,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::CollectivePermuteOp>(),
     TypeID::get<TF::ConcatV2Op>(),
     TypeID::get<TF::ConjOp>(),
-    TypeID::get<TF::ConstOp>(),
     TypeID::get<TF::Conv2DOp>(),
     TypeID::get<TF::Conv2DBackpropFilterOp>(),
     TypeID::get<TF::Conv2DBackpropInputOp>(),
