@@ -92,9 +92,8 @@ def smart_resize(x, size, interpolation='bilinear'):
   we resize the `(340, 340)` crop to `(200, 200)`.
 
   Args:
-    x: Input image or batch of images (as a tensor or NumPy array).
-      Must be in format `(height, width, channels)` or
-      `(batch_size, height, width, channels)`.
+    x: Input image (as a tensor or NumPy array). Must be in format
+      `(height, width, channels)`.
     size: Tuple of `(height, width)` integer. Target size.
     interpolation: String, interpolation to use for resizing.
       Defaults to `'bilinear'`. Supports `bilinear`, `nearest`, `bicubic`,
@@ -110,18 +109,12 @@ def smart_resize(x, size, interpolation='bilinear'):
                      'but got: %s' % (size,))
   img = ops.convert_to_tensor_v2_with_dispatch(x)
   if img.shape.rank is not None:
-    if img.shape.rank < 3 or img.shape.rank > 4:
+    if img.shape.rank != 3:
       raise ValueError(
-          'Expected an image array with shape `(height, width, channels)`, '
-          'or `(batch_size, height, width, channels)` but '
+          'Expected an image array with shape `(height, width, channels)`, but '
           'got input with incorrect rank, of shape %s' % (img.shape,))
   shape = array_ops.shape(img)
-  if img.shape.rank == 3:
-    height, width = shape[0], shape[1]
-    batch_size = None
-  else:
-    batch_size, height, width = shape[0], shape[1], shape[2]
-    static_num_channels = img.shape[-1]
+  height, width = shape[0], shape[1]
   target_height, target_width = size
 
   crop_height = math_ops.cast(
@@ -138,20 +131,14 @@ def smart_resize(x, size, interpolation='bilinear'):
   crop_box_wstart = math_ops.cast(
       math_ops.cast(width - crop_width, 'float32') / 2, 'int32')
 
-  if batch_size is None:
-    crop_box_start = array_ops.stack([crop_box_hstart, crop_box_wstart, 0])
-    crop_box_size = array_ops.stack([crop_height, crop_width, -1])
-  else:
-    crop_box_start = array_ops.stack([0, crop_box_hstart, crop_box_wstart, 0])
-    crop_box_size = array_ops.stack([-1, crop_height, crop_width, -1])
+  crop_box_start = array_ops.stack([crop_box_hstart, crop_box_wstart, 0])
+  crop_box_size = array_ops.stack([crop_height, crop_width, -1])
+
   img = array_ops.slice(img, crop_box_start, crop_box_size)
   img = image_ops.resize_images_v2(
       images=img,
       size=size,
       method=interpolation)
-  if img.shape.rank == 4:
-    # Apparent bug in resize_images_v2 may cause shape to be lost
-    img.set_shape((None, None, None, static_num_channels))
   if isinstance(x, np.ndarray):
     return img.numpy()
   return img

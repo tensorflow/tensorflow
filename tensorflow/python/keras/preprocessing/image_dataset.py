@@ -43,8 +43,7 @@ def image_dataset_from_directory(directory,
                                  subset=None,
                                  interpolation='bilinear',
                                  follow_links=False,
-                                 crop_to_aspect_ratio=False,
-                                 **kwargs):
+                                 smart_resize=False):
   """Generates a `tf.data.Dataset` from image files in a directory.
 
   If your directory structure is:
@@ -113,13 +112,11 @@ def image_dataset_from_directory(directory,
       `area`, `lanczos3`, `lanczos5`, `gaussian`, `mitchellcubic`.
     follow_links: Whether to visits subdirectories pointed to by symlinks.
         Defaults to False.
-    crop_to_aspect_ratio: If True, resize the images without aspect
-      ratio distortion. When the original aspect ratio differs from the target
-      aspect ratio, the output image will be cropped so as to return the largest
-      possible window in the image (of size `image_size`) that matches
-      the target aspect ratio. By default (`crop_to_aspect_ratio=False`),
-      aspect ratio may not be preserved.
-    **kwargs: Legacy keyword arguments.
+    smart_resize: If True, the resizing function used will be
+      `tf.keras.preprocessing.image.smart_resize`, which preserves the aspect
+      ratio of the original image by using a mixture of resizing and cropping.
+      If False (default), the resizing function is `tf.image.resize`, which
+      does not preserve aspect ratio.
 
   Returns:
     A `tf.data.Dataset` object.
@@ -147,10 +144,6 @@ def image_dataset_from_directory(directory,
     - if `color_mode` is `rgba`,
       there are 4 channel in the image tensors.
   """
-  if 'smart_resize' in kwargs:
-    crop_to_aspect_ratio = kwargs.pop('smart_resize')
-  if kwargs:
-    raise TypeError(f'Unknown keywords argument(s): {tuple(kwargs.keys())}')
   if labels not in ('inferred', None):
     if not isinstance(labels, (list, tuple)):
       raise ValueError(
@@ -214,7 +207,7 @@ def image_dataset_from_directory(directory,
       label_mode=label_mode,
       num_classes=len(class_names),
       interpolation=interpolation,
-      crop_to_aspect_ratio=crop_to_aspect_ratio)
+      smart_resize=smart_resize)
   if shuffle:
     # Shuffle locally at each iteration
     dataset = dataset.shuffle(buffer_size=batch_size * 8, seed=seed)
@@ -233,11 +226,11 @@ def paths_and_labels_to_dataset(image_paths,
                                 label_mode,
                                 num_classes,
                                 interpolation,
-                                crop_to_aspect_ratio=False):
+                                smart_resize=False):
   """Constructs a dataset of images and labels."""
   # TODO(fchollet): consider making num_parallel_calls settable
   path_ds = dataset_ops.Dataset.from_tensor_slices(image_paths)
-  args = (image_size, num_channels, interpolation, crop_to_aspect_ratio)
+  args = (image_size, num_channels, interpolation, smart_resize)
   img_ds = path_ds.map(
       lambda x: load_image(x, *args))
   if label_mode:
@@ -247,12 +240,12 @@ def paths_and_labels_to_dataset(image_paths,
 
 
 def load_image(path, image_size, num_channels, interpolation,
-               crop_to_aspect_ratio=False):
+               smart_resize=False):
   """Load an image from a path and resize it."""
   img = io_ops.read_file(path)
   img = image_ops.decode_image(
       img, channels=num_channels, expand_animations=False)
-  if crop_to_aspect_ratio:
+  if smart_resize:
     img = keras_image_ops.smart_resize(img, image_size,
                                        interpolation=interpolation)
   else:
