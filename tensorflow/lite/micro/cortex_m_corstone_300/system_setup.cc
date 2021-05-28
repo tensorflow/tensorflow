@@ -63,17 +63,7 @@ constexpr int kClocksPerSecond = 25e6;
 
 int32_t ticks_per_second() { return kClocksPerSecond; }
 
-int32_t GetCurrentTimeTicks() {
-  static bool is_initialized = false;
-  if (!is_initialized) {
-    KIN1_UnlockAccessToDWT();
-    KIN1_InitCycleCounter();
-    KIN1_ResetCycleCounter();
-    KIN1_EnableCycleCounter();
-    is_initialized = true;
-  }
-  return KIN1_GetCycleCounter();
-}
+int32_t GetCurrentTimeTicks() { return KIN1_GetCycleCounter(); }
 
 #ifdef ETHOS_U
 void ethosuIrqHandler0() { ethosu_irq_handler(); }
@@ -85,6 +75,11 @@ void uart_init(void);
 
 void InitializeTarget() {
   uart_init();
+
+  KIN1_UnlockAccessToDWT();
+  KIN1_InitCycleCounter();
+  KIN1_ResetCycleCounter();
+  KIN1_EnableCycleCounter();
 
 #ifdef ETHOS_U
   constexpr int ethosu_base_address = 0x48102000;
