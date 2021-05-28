@@ -14,12 +14,14 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for ClusterCoordinator and Keras models."""
+from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
@@ -109,7 +111,33 @@ class ShardedVariableTest(test.TestCase):
     checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
     self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
 
+  def test_saved_model(self):
 
-if __name__ == "__main__":
+    def create_model():
+      inputs = keras.layers.Input(shape=(4,))
+      outputs = keras.layers.Dense(2)(inputs)
+      model = keras.Model(inputs, outputs)
+      model.compile(optimizer='adam', loss='mean_squared_error')
+      return model
+
+    with self.strategy.scope():
+      model = create_model()
+
+    inputs = random_ops.random_normal(shape=(8, 4))
+    expect = model(inputs)
+    saved_dir = self.get_temp_dir()
+    model.save(saved_dir)
+
+    loaded_model = keras.models.load_model(saved_dir)
+    got = loaded_model(inputs)
+    self.assertAllClose(got, expect)
+    self.assertGreater(len(model.variables), len(loaded_model.variables))
+
+    with self.assertRaises(ValueError):
+      with self.strategy.scope():
+        keras.models.load_model(saved_dir)
+
+
+if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
   test.main()
