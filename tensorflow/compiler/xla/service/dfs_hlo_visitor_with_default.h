@@ -104,6 +104,12 @@ class DfsHloVisitorWithDefaultBase
   Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
+  Status HandleAllReduceStart(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleAllReduceDone(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   Status HandleAllToAll(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }

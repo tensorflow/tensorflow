@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -2057,6 +2058,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     operand_shape_values.push_back(*operand_shape);
   }
   return ShapeUtil::MakeTupleShape(operand_shape_values);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferAllReduceStartShape(
+    absl::Span<const Shape* const> operand_shapes) {
+  TF_ASSIGN_OR_RETURN(Shape shape, InferAllReduceShape(operand_shapes));
+
+  return ShapeUtil::MakeTupleShape({shape, shape});
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferAllReduceDoneShape(
+    const Shape& operand_shape) {
+  return ShapeUtil::GetTupleElementShape(operand_shape, 0);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllToAllShape(
