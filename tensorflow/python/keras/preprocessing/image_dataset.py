@@ -123,6 +123,7 @@ def image_dataset_from_directory(directory,
       - If `label_mode` is None, it yields `float32` tensors of shape
         `(batch_size, image_size[0], image_size[1], num_channels)`,
         encoding images (see below for rules regarding `num_channels`).
+      - If `label_mode` is None and interpolation is `bilinear` it yields `uint8`.
       - Otherwise, it yields a tuple `(images, labels)`, where `images`
         has shape `(batch_size, image_size[0], image_size[1], num_channels)`,
         and `labels` follows the format described below.
