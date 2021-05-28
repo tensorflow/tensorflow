@@ -45,13 +45,11 @@ Status EagerOpRewriteRegistry::RunRewrite(
     Phase phase, EagerOperation* orig_op,
     std::unique_ptr<EagerOperation>* out_op) {
   EagerOperation* pre_op = orig_op;
-  std::unique_ptr<EagerOperation>* post_op = out_op;
   for (auto it_rewrites = rewrites_[phase].cbegin();
        it_rewrites != rewrites_[phase].cend(); ++it_rewrites) {
-    TF_RETURN_IF_ERROR(it_rewrites->first->Run(pre_op, post_op));
-    if (*post_op != nullptr) {
-      pre_op = post_op->release();
-      out_op->reset(pre_op);
+    TF_RETURN_IF_ERROR(it_rewrites->first->Run(pre_op, out_op));
+    if (*out_op != nullptr) {
+      pre_op = out_op->get();
     }
   }
 
