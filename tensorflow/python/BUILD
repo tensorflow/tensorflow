@@ -814,10 +814,6 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "user_ops_gen",
-)
-
-tf_gen_op_wrapper_private_py(
     name = "training_ops_gen",
     visibility = [
         "//tensorflow/python/training:__pkg__",
@@ -2578,18 +2574,6 @@ py_library(
         ":platform",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//third_party/py/numpy",
-    ],
-)
-
-# This target is deprecated.
-py_library(
-    name = "ops",
-    srcs = ["user_ops/user_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":user_ops_gen",
-        "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -4446,6 +4430,11 @@ alias(
     name = "tf_optimizer",
     actual = "//tensorflow/python/grappler:tf_optimizer",
     visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "ops",
+    actual = "//tensorflow/python/user_ops:ops",
 )
 
 alias(

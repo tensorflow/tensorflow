@@ -307,9 +307,9 @@ pytype_library(
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/user_ops:ops",
     ],
 )
 
