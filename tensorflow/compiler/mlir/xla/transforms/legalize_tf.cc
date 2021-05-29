@@ -2954,12 +2954,13 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
       begin_values.push_back(begin_value_casted);
     }
 
+    auto start_indices = rewriter.create<tensor::FromElementsOp>(
+        loc, rewriter.getIndexType(), begin_values);
     auto end_indices = rewriter.create<tensor::FromElementsOp>(
         loc, rewriter.getIndexType(), end_values);
     auto stride_indices = rewriter.create<tensor::FromElementsOp>(
         loc, rewriter.getIndexType(), stride_values);
-    auto start_indices = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getIndexType(), begin_values);
+
     auto d_slice = rewriter.create<mhlo::RealDynamicSliceOp>(
         loc, op.getOperation()->getResult(0).getType(), input, start_indices,
         end_indices, stride_indices);
