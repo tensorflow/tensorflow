@@ -3443,6 +3443,19 @@ func @tile_just_broadcast(%arg0: tensor<1x1xf32>) -> tensor<7x3xf32> {
   return %0 : tensor<7x3xf32>
 }
 
+// CHECK-LABEL: func @tile_dynamic_shape
+func @tile_dynamic_shape(%arg0: tensor<?x8xf32>) -> tensor<?x24xf32> {
+  %multiples = "tf.Const"() { value = dense<[7,3]> : tensor<2xi32> } : () -> tensor<2xi32>
+  // CHECK: memref.dim
+  // CHECK: tensor.from_elements
+  // CHECK: mhlo.dynamic_broadcast_in_dim
+  // CHECK: muli
+  // CHECK: tensor.from_elements
+  // CHECK: "mhlo.dynamic_reshape"({{.*}}) : (tensor<?x?x?x?xf32>, tensor<2xindex>) -> tensor<?x24xf32>
+  %0 = "tf.Tile"(%arg0, %multiples) : (tensor<?x8xf32>, tensor<2xi32>) -> tensor<?x24xf32>
+  return %0 : tensor<?x24xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // ArgMax/ArgMin op legalizations.
 //===----------------------------------------------------------------------===//
