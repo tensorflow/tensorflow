@@ -147,3 +147,40 @@ distribute_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+distribute_py_test(
+    name = "distributed_training_test",
+    srcs = ["distributed_training_test.py"],
+    python_version = "PY3",
+    shard_count = 50,
+    tags = [
+        "multi_gpu",
+        "no_oss",  # TODO(b/183640564): Reenable
+        "no_rocm",
+        "noasan",  # TODO(b/184542721)
+        "nomsan",  # TODO(b/184542721)
+        "nomultivm",  # TODO(b/170502145)
+        "notsan",  # TODO(b/184542721)
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)
+
+distribute_py_test(
+    name = "parameter_server_custom_training_loop_test",
+    srcs = ["parameter_server_custom_training_loop_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_gpu",
+        "no_oss",  # TODO(b/183640564): Reenable
+        "no_rocm",
+        "noasan",  # TODO(b/184542721)
+        "nomsan",  # TODO(b/184542721)
+        "nomultivm",  # TODO(b/170502145)
+        "notsan",  # TODO(b/184542721)
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)

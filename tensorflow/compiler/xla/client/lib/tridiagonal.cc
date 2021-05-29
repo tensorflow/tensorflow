@@ -128,7 +128,9 @@ XlaOp UpdateEq(XlaOp updated, XlaOp i, XlaOp update) {
   return DynamicUpdateSliceInMinorDims(updated, update, /*starts=*/{i});
 }
 
-}  // namespace
+template <SolverAlgorithm algo>
+StatusOr<XlaOp> TridiagonalSolverImpl(XlaOp lower_diagonal, XlaOp main_diagonal,
+                                      XlaOp upper_diagonal, XlaOp rhs);
 
 // Applies Thomas algorithm to solve a linear system where the linear operand
 // is a tri-diagonal matrix.
@@ -142,8 +144,11 @@ XlaOp UpdateEq(XlaOp updated, XlaOp i, XlaOp update) {
 // (`upper_diagonal[..., :, num_equations - 1]`) will be ignored. The shape of
 // the right-hand-side `rhs` should be [..., num_rhs, num_equations]. The
 // solution will have the shape [..., num_rhs, num_equations].
-StatusOr<XlaOp> ThomasSolver(XlaOp lower_diagonal, XlaOp main_diagonal,
-                             XlaOp upper_diagonal, XlaOp rhs) {
+template <>
+StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
+                                               XlaOp main_diagonal,
+                                               XlaOp upper_diagonal,
+                                               XlaOp rhs) {
   XlaBuilder* builder = lower_diagonal.builder();
 
   TF_ASSIGN_OR_RETURN(int64 num_eqs,
@@ -273,8 +278,23 @@ StatusOr<XlaOp> ThomasSolver(XlaOp lower_diagonal, XlaOp main_diagonal,
   return x_coeffs;
 }
 
-// Applies Thomas algorithm to solve a linear system where the linear operand
-// is a tri-diagonal matrix.
+}  // namespace
+
+StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
+                                  XlaOp main_diagonal, XlaOp upper_diagonal,
+                                  XlaOp rhs) {
+  switch (algo) {
+    case kThomas:
+      return TridiagonalSolverImpl<kThomas>(lower_diagonal, main_diagonal,
+                                            upper_diagonal, rhs);
+    default:
+      return Unimplemented(
+          "Only algorithm kThomas (%d) is implemented, got: %d",
+          static_cast<int>(kThomas), algo);
+  }
+}
+
+// Solves a linear system where the linear operand is a tri-diagonal matrix.
 // It is expected that the tree diagonals are stacked into a tensors of shape
 // [..., 3, num_equations] where num_equations is the number of spatial
 // dimensions considered in the system.
@@ -286,7 +306,8 @@ StatusOr<XlaOp> ThomasSolver(XlaOp lower_diagonal, XlaOp main_diagonal,
 // The right-hand-side d is expected to have dimension
 // [..., num_rhs, num_equations].
 // The solution will have size [..., num_rhs, num_equations].
-StatusOr<XlaOp> ThomasSolver(XlaOp diagonals, XlaOp rhs) {
+StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
+                                  XlaOp rhs) {
   XlaBuilder* builder = diagonals.builder();
   TF_ASSIGN_OR_RETURN(Shape diagonals_shape, builder->GetShape(diagonals));
   const int64 rank = diagonals_shape.rank();
@@ -309,9 +330,18 @@ StatusOr<XlaOp> ThomasSolver(XlaOp diagonals, XlaOp rhs) {
   // Swap the last two dimensions.
   rhs = Transpose(rhs, transpose_order);
 
-  TF_ASSIGN_OR_RETURN(XlaOp x, ThomasSolver(lower_diagonal, main_diagonal,
-                                            upper_diagonal, rhs));
-  return Transpose(x, transpose_order);
+  switch (algo) {
+    case kThomas: {
+      TF_ASSIGN_OR_RETURN(
+          XlaOp x, TridiagonalSolverImpl<kThomas>(lower_diagonal, main_diagonal,
+                                                  upper_diagonal, rhs));
+      return Transpose(x, transpose_order);
+    }
+    default:
+      return Unimplemented(
+          "Only algorithm kThomas (%d) is implemented, got: %d",
+          static_cast<int>(kThomas), algo);
+  }
 }
 
 }  // namespace tridiagonal

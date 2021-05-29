@@ -820,8 +820,8 @@ Status XlaCompiler::CompileFunction(
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
         valid_control_rets, options_.device_type.type_string(),
-        options.use_tuple_arg, *options_.flib_def, debug_info,
-        options_.shape_representation_fn, result));
+        options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
+        debug_info, options_.shape_representation_fn, result));
   } else {
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));

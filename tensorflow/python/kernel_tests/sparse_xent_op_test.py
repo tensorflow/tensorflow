@@ -392,6 +392,6 @@ def main(_):
 if __name__ == "__main__":
   if "--benchmarks" in sys.argv:
     sys.argv.remove("--benchmarks")
-    app.run()
+    app.run()  # pylint: disable=no-value-for-parameter
   else:
     test.main()

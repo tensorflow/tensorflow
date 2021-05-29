@@ -213,10 +213,10 @@ Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
   TF_RETURN_IF_ERROR(runner.AddGpus(8));
 
   for (auto _ : state) {
-    StopBenchmarkTiming();
+    state.PauseTiming();
     GraphDef result;
     GraphDef graph_def_copy = graph_def;
-    StartBenchmarkTiming();
+    state.ResumeTiming();
     TF_RETURN_IF_ERROR(runner.Run("MarkForCompilationPass",
                                   std::move(graph_def_copy), &result));
   }

@@ -52,15 +52,12 @@ namespace label_image {
 double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 
 using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
-using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
+using ProvidedDelegateList = tflite::tools::ProvidedDelegateList;
 
 class DelegateProviders {
  public:
-  DelegateProviders()
-      : delegates_list_(tflite::tools::GetRegisteredDelegateProviders()) {
-    for (const auto& delegate : delegates_list_) {
-      params_.Merge(delegate->DefaultParams());
-    }
+  DelegateProviders() : delegate_list_util_(&params_) {
+    delegate_list_util_.AddAllDelegateParams();
   }
 
   // Initialize delegate-related parameters from parsing command line arguments,
@@ -68,10 +65,7 @@ class DelegateProviders {
   // recognized arg values are parsed correctly.
   bool InitFromCmdlineArgs(int* argc, const char** argv) {
     std::vector<tflite::Flag> flags;
-    for (const auto& delegate : delegates_list_) {
-      auto delegate_flags = delegate->CreateFlags(&params_);
-      flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
-    }
+    delegate_list_util_.AppendCmdlineFlags(&flags);
 
     const bool parse_result = Flags::Parse(argc, argv, flags);
     if (!parse_result) {
@@ -140,17 +134,9 @@ class DelegateProviders {
 
   // Create a list of TfLite delegates based on what have been initialized (i.e.
   // 'params_').
-  TfLiteDelegatePtrMap CreateAllDelegates() const {
-    TfLiteDelegatePtrMap delegates_map;
-    for (const auto& delegate : delegates_list_) {
-      auto ptr = delegate->CreateTfLiteDelegate(params_);
-      // It's possible that a delegate of certain type won't be created as
-      // user-specified benchmark params tells not to.
-      if (ptr == nullptr) continue;
-      LOG(INFO) << delegate->GetName() << " delegate created.";
-      delegates_map.emplace(delegate->GetName(), std::move(ptr));
-    }
-    return delegates_map;
+  std::vector<ProvidedDelegateList::ProvidedDelegate> CreateAllDelegates()
+      const {
+    return delegate_list_util_.CreateAllRankedDelegates();
   }
 
  private:
@@ -158,7 +144,8 @@ class DelegateProviders {
   // flags.
   tflite::tools::ToolParams params_;
 
-  const tflite::tools::DelegateProviderList& delegates_list_;
+  // A helper to create TfLite delegates.
+  ProvidedDelegateList delegate_list_util_;
 };
 
 // Takes a file name, and loads a list of labels from it, one per line, and
@@ -269,14 +256,15 @@ void RunInference(Settings* settings,
     LOG(INFO) << "number of outputs: " << outputs.size();
   }
 
-  auto delegates_ = delegate_providers.CreateAllDelegates();
-  for (const auto& delegate : delegates_) {
-    if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
+  auto delegates = delegate_providers.CreateAllDelegates();
+  for (auto& delegate : delegates) {
+    const auto delegate_name = delegate.provider->GetName();
+    if (interpreter->ModifyGraphWithDelegate(std::move(delegate.delegate)) !=
         kTfLiteOk) {
-      LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+      LOG(ERROR) << "Failed to apply " << delegate_name << " delegate.";
       exit(-1);
     } else {
-      LOG(INFO) << "Applied " << delegate.first << " delegate.";
+      LOG(INFO) << "Applied " << delegate_name << " delegate.";
     }
   }
 

@@ -1669,9 +1669,7 @@ func @scatter_negative_index() -> tensor<3x3xi32> {
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
-  // CHECK: constant dense<[
-  // CHECK-SAME: [1, 2, 3], [4, 5, 6], [7, 8, 9]
-  // CHECK-SAME: ]> : tensor<3x3xi32>
+  // CHECK: constant dense<{{\[}}[1, 2, 3], [4, 5, 6], [7, 8, 9]{{\]}}> : tensor<3x3xi32>
   // CHECK: "mhlo.scatter"
 }
 
@@ -1693,9 +1691,7 @@ func @scatter_out_of_bound() -> tensor<3x3xi32> {
         unique_indices = false
     } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
   return %3 : tensor<3x3xi32>
-  // CHECK: constant dense<[
-  // CHECK-SAME: [1, 2, 3], [4, 5, 6], [7, 8, 9]
-  // CHECK-SAME: ]> : tensor<3x3xi32>
+  // CHECK: constant dense<{{\[}}[1, 2, 3], [4, 5, 6], [7, 8, 9]{{\]}}> : tensor<3x3xi32>
   // CHECK: "mhlo.scatter"
 }
 

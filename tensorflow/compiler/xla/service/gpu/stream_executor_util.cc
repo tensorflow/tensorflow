@@ -83,7 +83,8 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                           dnums.input_spatial_dimensions().begin(),
                           dnums.input_spatial_dimensions().end());
       break;
-    case DataLayout::kBatchDepthYX4:  // NCHW_VECT_C
+    case DataLayout::kBatchDepthYX4:   // NCHW_VECT_C
+    case DataLayout::kBatchDepthYX32:  // NCHW_VECT_C
       input_layout.push_back(dnums.input_batch_dimension());
       input_layout.push_back(dnums.input_feature_dimension());
       input_layout.insert(input_layout.end(),
@@ -113,7 +114,8 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                            dnums.kernel_spatial_dimensions().begin(),
                            dnums.kernel_spatial_dimensions().end());
       break;
-    case FilterLayout::kOutputInputYX4:  // OIHW_VECT_C
+    case FilterLayout::kOutputInputYX4:   // OIHW_VECT_C
+    case FilterLayout::kOutputInputYX32:  // OIHW_VECT_C
       filter_layout.push_back(dnums.kernel_output_feature_dimension());
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       filter_layout.insert(filter_layout.end(),
@@ -143,7 +145,8 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                            dnums.output_spatial_dimensions().begin(),
                            dnums.output_spatial_dimensions().end());
       break;
-    case DataLayout::kBatchDepthYX4:  // NCHW_VECT_C
+    case DataLayout::kBatchDepthYX4:   // NCHW_VECT_C
+    case DataLayout::kBatchDepthYX32:  // NCHW_VECT_C
       output_layout.push_back(dnums.output_batch_dimension());
       output_layout.push_back(dnums.output_feature_dimension());
       output_layout.insert(output_layout.end(),
@@ -170,9 +173,13 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
 }
 
 StatusOr<std::tuple<DataLayout, FilterLayout, DataLayout>>
-XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
-                                      const Layout& input, const Layout& filter,
-                                      const Layout& output) {
+XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
+                                     const Shape& input, const Shape& filter,
+                                     const Shape& output) {
+  CHECK(input.has_layout());
+  CHECK(filter.has_layout());
+  CHECK(output.has_layout());
+
   Layout nchw_input, nchw_filter, nchw_output;
   std::tie(nchw_input, nchw_filter, nchw_output) =
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX,
@@ -180,8 +187,9 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
                                             DataLayout::kBatchDepthYX)
           .ConsumeValueOrDie();
 
-  Layout nchw4_input, nchw4_filter, nchw4_output;
-  std::tie(nchw4_input, nchw4_filter, nchw4_output) =
+  // NCHW4 and NCHW32 have the same Layout; we disambiguate them below.
+  Layout nchw_vect_input, nchw_vect_filter, nchw_vect_output;
+  std::tie(nchw_vect_input, nchw_vect_filter, nchw_vect_output) =
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX4,
                                             FilterLayout::kOutputInputYX4,
                                             DataLayout::kBatchDepthYX4)
@@ -195,41 +203,75 @@ XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
           .ConsumeValueOrDie();
 
   DataLayout input_layout;
-  if (LayoutUtil::Equal(input, nchw_input)) {
+  if (LayoutUtil::Equal(input.layout(), nchw_input)) {
     input_layout = DataLayout::kBatchDepthYX;
-  } else if (LayoutUtil::Equal(input, nchw4_input)) {
-    input_layout = DataLayout::kBatchDepthYX4;
-  } else if (LayoutUtil::Equal(input, nhwc_input)) {
+  } else if (LayoutUtil::Equal(input.layout(), nchw_vect_input)) {
+    // Differentiate between VECT_4 and VECT_32 by looking at the input shape.
+    int64 vect_size = input.dimensions(input.layout().minor_to_major(0));
+    if (vect_size == 4) {
+      input_layout = DataLayout::kBatchDepthYX4;
+    } else if (vect_size == 32) {
+      input_layout = DataLayout::kBatchDepthYX32;
+    } else {
+      return InternalError(
+          "Invalid input shape %s for conv with dnums %s.  Most-minor dim "
+          "should be 4 or 32, but was %d.",
+          ShapeUtil::HumanString(input),
+          ConvolutionDimensionNumbersToString(dnums), vect_size);
+    }
+  } else if (LayoutUtil::Equal(input.layout(), nhwc_input)) {
     input_layout = DataLayout::kBatchYXDepth;
   } else {
     return InternalError("Invalid input layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(input),
+                         LayoutUtil::HumanString(input.layout()),
                          ConvolutionDimensionNumbersToString(dnums));
   }
 
   FilterLayout filter_layout;
-  if (LayoutUtil::Equal(filter, nchw_filter)) {
+  if (LayoutUtil::Equal(filter.layout(), nchw_filter)) {
     filter_layout = FilterLayout::kOutputInputYX;
-  } else if (LayoutUtil::Equal(filter, nchw4_filter)) {
-    filter_layout = FilterLayout::kOutputInputYX4;
-  } else if (LayoutUtil::Equal(filter, nhwc_filter)) {
+  } else if (LayoutUtil::Equal(filter.layout(), nchw_vect_filter)) {
+    int64 vect_size = filter.dimensions(filter.layout().minor_to_major(0));
+    if (vect_size == 4) {
+      filter_layout = FilterLayout::kOutputInputYX4;
+    } else if (vect_size == 32) {
+      filter_layout = FilterLayout::kOutputInputYX32;
+    } else {
+      return InternalError(
+          "Invalid filter shape %s for conv with dnums %s.  Most-minor dim "
+          "should be 4 or 32, but was %d.",
+          ShapeUtil::HumanString(filter),
+          ConvolutionDimensionNumbersToString(dnums), vect_size);
+    }
+  } else if (LayoutUtil::Equal(filter.layout(), nhwc_filter)) {
     filter_layout = FilterLayout::kOutputYXInput;
   } else {
     return InternalError("Invalid filter layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(filter),
+                         LayoutUtil::HumanString(filter.layout()),
                          ConvolutionDimensionNumbersToString(dnums));
   }
 
   DataLayout output_layout;
-  if (LayoutUtil::Equal(output, nchw_output)) {
+  if (LayoutUtil::Equal(output.layout(), nchw_output)) {
     output_layout = DataLayout::kBatchDepthYX;
-  } else if (LayoutUtil::Equal(output, nchw4_output)) {
-    output_layout = DataLayout::kBatchDepthYX4;
-  } else if (LayoutUtil::Equal(output, nhwc_output)) {
+  } else if (LayoutUtil::Equal(output.layout(), nchw_vect_output)) {
+    int64 vect_size = output.dimensions(output.layout().minor_to_major(0));
+    if (vect_size == 4) {
+      output_layout = DataLayout::kBatchDepthYX4;
+    } else if (vect_size == 32) {
+      output_layout = DataLayout::kBatchDepthYX32;
+    } else {
+      return InternalError(
+          "Invalid output shape %s for conv with dnums %s.  Most-minor dim "
+          "should be 4 or 32, but was %d.",
+          ShapeUtil::HumanString(output),
+          ConvolutionDimensionNumbersToString(dnums), vect_size);
+    }
+  } else if (LayoutUtil::Equal(output.layout(), nhwc_output)) {
     output_layout = DataLayout::kBatchYXDepth;
   } else {
     return InternalError("Invalid output layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(output),
+                         LayoutUtil::HumanString(output.layout()),
                          ConvolutionDimensionNumbersToString(dnums));
   }
 

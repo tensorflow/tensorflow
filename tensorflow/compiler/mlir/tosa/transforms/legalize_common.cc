@@ -2313,16 +2313,19 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
 
       if (fused_activation_fn.getValue() == "RELU") {
         return rewriter
-            .create<tosa::ReluNOp>(
+            .create<tosa::ClampOp>(
                 op->getLoc(), input_type, input_value,
+                rewriter.getI64IntegerAttr(0),
                 rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
+                rewriter.getF32FloatAttr(0.0f),
                 rewriter.getF32FloatAttr(std::numeric_limits<float>::max()))
             .getResult();
       } else if (fused_activation_fn.getValue() == "RELU6") {
         return rewriter
-            .create<tosa::ReluNOp>(op->getLoc(), input_type, input_value,
-                                   rewriter.getI64IntegerAttr(6),
-                                   rewriter.getF32FloatAttr(6.0))
+            .create<tosa::ClampOp>(
+                op->getLoc(), input_type, input_value,
+                rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(6),
+                rewriter.getF32FloatAttr(0.0f), rewriter.getF32FloatAttr(6.0f))
             .getResult();
       } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
         return rewriter

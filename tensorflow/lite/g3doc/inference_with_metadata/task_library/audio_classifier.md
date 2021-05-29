@@ -118,7 +118,9 @@ for more options to configure `AudioClassifier`.
 ## Model compatibility requirements
 
 The `AudioClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+metadata for audio classifiers using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#audio_classifiers).
 
 The compatible audio classifier models should meet the following requirements:
 

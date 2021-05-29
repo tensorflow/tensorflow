@@ -507,7 +507,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // place nodes if outside compilation has DT_RESOURCE inputs (e.g. a
   // DT_RESOURCE input fed into multiple While nodes on different devices).
   static Status LowerOutsideCompilationFunctionalNodes(
-      Graph* g, const FunctionLibraryDefinition& flib_def,
+      Graph* g, FunctionLibraryDefinition& flib_def,
       const TPUReplicateDeviceNamesMapping& tpu_replicate_device_names_mapping);
 
   // Parses the 'host_compute_core' attribute on replicate_node to get the

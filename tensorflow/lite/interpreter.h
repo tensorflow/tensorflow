@@ -348,8 +348,8 @@ class Interpreter {
   /// be between 0 and inputs().size().
   TfLiteTensor* input_tensor(size_t index) { return tensor(inputs()[index]); }
 
-  /// Return an immutable pointerto the given input tensor. The given index must
-  /// be between 0 and inputs().size().
+  /// Return an immutable pointer to the given input tensor. The given index
+  /// must be between 0 and inputs().size().
   const TfLiteTensor* input_tensor(size_t index) const {
     return tensor(inputs()[index]);
   }

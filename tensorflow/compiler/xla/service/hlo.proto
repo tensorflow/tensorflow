@@ -492,6 +492,7 @@ message HeapSimulatorTrace {
   }
   repeated Event events = 1;
   bool whole_module_simulation = 2;
+  int64 buffer_allocation_index = 3;
 }
 
 // An abstraction representing a set of HLO module built to run concurrently

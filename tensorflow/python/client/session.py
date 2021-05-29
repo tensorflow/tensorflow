@@ -1391,7 +1391,7 @@ class BaseSession(SessionInterface):
                     '\nby modifying the config for creating the session eg.'
                     '\nsession_config.graph_options.rewrite_options.'
                     'disable_meta_optimizer = True')
-      raise type(e)(node_def, op, message)
+      raise type(e)(node_def, op, message)  # pylint: disable=no-value-for-parameter
 
   def _extend_graph(self):
     with self._graph._session_run_lock():  # pylint: disable=protected-access

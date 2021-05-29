@@ -6,6 +6,7 @@ load(
     "if_cuda_or_rocm",
     "if_mobile",
     "if_not_windows",
+    "if_oss",
     "tf_cc_binary",
     "tf_cc_shared_object",
     "tf_cc_test",
@@ -19,6 +20,10 @@ load(
     "if_mlir_generated_cpu_kernels_enabled",
     "if_mlir_generated_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
+)
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_fingerprint_deps",
 )
 
 # buildifier: disable=same-origin-load
@@ -1323,6 +1328,43 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "composite_tensor_variant",
+    srcs = ["composite_tensor_variant.cc"],
+    hdrs = ["composite_tensor_variant.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "composite_tensor_variant_test",
+    size = "small",
+    srcs = ["composite_tensor_variant_test.cc"],
+    deps = [
+        ":composite_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "composite_tensor_ops",
+    srcs = ["composite_tensor_ops.cc"],
+    deps = [
+        ":composite_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_cross_op",
@@ -1523,6 +1565,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "//third_party/eigen3",
     ],
 )
@@ -3809,9 +3852,10 @@ tf_kernel_library(
         "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util/proto:proto_utils",
@@ -3960,6 +4004,7 @@ tf_kernel_library(
     prefix = "bias_op",
     deps = NN_DEPS + [
         ":redux_functor",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
@@ -5027,6 +5072,7 @@ cc_library(
         ":string_to_hash_bucket_op",
         ":string_upper_op",
         ":substr_op",
+        ":tensor_to_hash_bucket_op",
         ":unicode_ops",
         ":unicode_script_op",
         ":unsorted_segment_join_op",
@@ -5065,6 +5111,15 @@ tf_kernel_library(
         "string_to_hash_bucket_op.h",
     ],
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "tensor_to_hash_bucket_op",
+    prefix = "tensor_to_hash_bucket_op",
+    deps = STRING_DEPS + if_oss(
+        if_cuda(["@farmhash_gpu_archive//:farmhash_gpu"]),
+        tf_fingerprint_deps(),
+    ),
 )
 
 tf_kernel_library(

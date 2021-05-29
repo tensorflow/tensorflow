@@ -7885,6 +7885,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_HALF
         type: DT_DOUBLE
@@ -7987,6 +7988,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_HALF
         type: DT_DOUBLE
@@ -8181,6 +8183,46 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+}
+op {
+  name: "CompositeTensorVariantFromComponents"
+  input_arg {
+    name: "components"
+    type_list_attr: "Tcomponents"
+  }
+  output_arg {
+    name: "encoded"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
+  }
+}
+op {
+  name: "CompositeTensorVariantToComponents"
+  input_arg {
+    name: "encoded"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "Tcomponents"
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
   }
 }
 op {
@@ -19366,6 +19408,8 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -19416,6 +19460,8 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -41754,7 +41800,9 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_INT16
+        type: DT_UINT32
         type: DT_INT32
+        type: DT_UINT64
         type: DT_INT64
         type: DT_BOOL
         type: DT_BFLOAT16
@@ -41848,7 +41896,9 @@ op {
         type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
+        type: DT_UINT32
         type: DT_INT64
+        type: DT_UINT64
         type: DT_BOOL
         type: DT_BFLOAT16
         type: DT_HALF

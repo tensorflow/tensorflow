@@ -188,7 +188,7 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
 
   // Wait for this TensorHandle to be ready.
   profiler::TraceMe activity("TensorHandle::GetResourceHandleInfo WaitReady",
-                             profiler::TraceMeLevel::kInfo);
+                             profiler::TraceMeLevel::kVerbose);
   auto& data = absl::get<LocalTensorHandleData>(data_);
   TF_RETURN_IF_ERROR(data.WaitReady("TensorHandle::GetResourceHandleInfo"));
 

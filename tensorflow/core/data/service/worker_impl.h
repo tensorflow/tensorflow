@@ -101,7 +101,8 @@ class DataServiceWorkerImpl {
 
   mutex mu_;
   condition_variable cv_;
-  // Information about tasks, keyed by task ids.
+  // Information about tasks, keyed by task ids. The tasks are updated based on
+  // the heartbeat responses from the dispatcher.
   absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
   // Ids of tasks that have finished.
   absl::flat_hash_set<int64> finished_tasks_ TF_GUARDED_BY(mu_);

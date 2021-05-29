@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import inspect
 import re
 
 from tensorflow.python.platform import tf_logging as logging
@@ -100,7 +101,7 @@ def _validate_deprecation_args(date, instructions):
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
   # Two up: <_call_location>, <_call_location's caller>
-  f = tf_inspect.currentframe().f_back.f_back
+  f = inspect.currentframe().f_back.f_back
   parent = f.f_back
   if outer and parent is not None:
     f = parent

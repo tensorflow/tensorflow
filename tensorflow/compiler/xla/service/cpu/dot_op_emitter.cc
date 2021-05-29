@@ -24,8 +24,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"  // from @llvm-project
-#include "mlir/EDSC/Builders.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/Utils/Utils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -305,26 +304,6 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         llvm::SmallVector<llvm::StringRef, 4> iteratorTypes(
             parallel_exprs.size(), toString(mlir::IteratorType::Parallel));
         iteratorTypes.push_back(toString(mlir::IteratorType::Reduction));
-        /// Helper struct to build simple arithmetic quantities with minimal
-        /// type inference support.
-        /// TODO: reuse the core abstraction once it is in a reusable location.
-        struct ArithBuilder {
-          ArithBuilder(mlir::OpBuilder& b, mlir::Location loc)
-              : b(b), loc(loc) {}
-          mlir::Value add(mlir::Value lhs, mlir::Value rhs) {
-            if (lhs.getType().isa<mlir::IntegerType>())
-              return b.create<mlir::AddIOp>(loc, lhs, rhs);
-            return b.create<mlir::AddFOp>(loc, lhs, rhs);
-          }
-          mlir::Value mul(mlir::Value lhs, mlir::Value rhs) {
-            if (lhs.getType().isa<mlir::IntegerType>())
-              return b.create<mlir::MulIOp>(loc, lhs, rhs);
-            return b.create<mlir::MulFOp>(loc, lhs, rhs);
-          }
-
-          mlir::OpBuilder& b;
-          mlir::Location loc;
-        };
         builder->create<mlir::linalg::GenericOp>(
             function.getLoc(),
             /*inputs=*/mlir::ValueRange{b, c},
@@ -334,7 +313,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
                 {b_exprs, c_exprs, parallel_exprs}),
             /*iteratorTypes=*/iteratorTypes,
             [](mlir::OpBuilder& b, mlir::Location loc, mlir::ValueRange args) {
-              ArithBuilder ab(b, loc);
+              mlir::ArithBuilder ab(b, loc);
               mlir::Value mul = ab.mul(args[0], args[1]);
               mlir::Value add = ab.add(mul, args[2]);
               b.create<mlir::linalg::YieldOp>(loc, add);

@@ -23,6 +23,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "delegate_provider_lib",
+    srcs = [
+        "delegate_provider.cc",
+    ],
+    copts = common_copts,
+    deps = [
+        ":delegate_provider_hdr",
+    ],
+)
+
 # A convenient library for all inference execution providers.
 cc_library(
     name = "tflite_execution_providers",
@@ -30,6 +41,7 @@ cc_library(
     deps = [
         ":coreml_delegate_provider",
         ":default_execution_provider",
+        ":delegate_provider_lib",
         ":external_delegate_provider",
         ":gpu_delegate_provider",
         ":hexagon_delegate_provider",
@@ -170,4 +182,26 @@ cc_library(
         "//tensorflow/lite/delegates/external:external_delegate",
     ],
     alwayslink = 1,
+)
+
+cc_test(
+    name = "delegate_provider_lib_test",
+    size = "small",
+    srcs = ["delegate_provider_test.cc"],
+    # See details in https://github.com/bazelbuild/bazel/issues/11552 to avoid
+    # lazy symbol binding failure on macOS.
+    linkstatic = select({
+        "//tensorflow:macos": True,
+        "//conditions:default": False,
+    }),
+    deps = [
+        ":default_execution_provider",
+        ":delegate_provider_hdr",
+        ":delegate_provider_lib",
+        ":nnapi_delegate_provider",
+        ":xnnpack_delegate_provider",
+        "//tensorflow/lite/delegates/utils/dummy_delegate:dummy_delegate_provider",
+        "//tensorflow/lite/tools:tool_params",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

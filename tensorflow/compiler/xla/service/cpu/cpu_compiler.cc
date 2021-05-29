@@ -254,6 +254,22 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
     return Status::OK();
   }
+  // Recurse into "conditional" so we can profile inside of it.
+  Status HandleConditional(HloInstruction* conditional) override {
+    TF_RETURN_IF_ERROR(DefaultAction(conditional));
+
+    CollectProfileCandidates candidates_for_true(hlo_to_profile_idx_,
+                                                 assigned_indices_);
+    TF_RETURN_IF_ERROR(
+        conditional->true_computation()->Accept(&candidates_for_true));
+
+    CollectProfileCandidates candidates_for_false(hlo_to_profile_idx_,
+                                                  assigned_indices_);
+    TF_RETURN_IF_ERROR(
+        conditional->false_computation()->Accept(&candidates_for_false));
+
+    return Status::OK();
+  }
 
   // Skip constants, there is nothing to profile.
   Status HandleConstant(HloInstruction*) override { return Status::OK(); }

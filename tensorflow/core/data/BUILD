@@ -232,6 +232,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

@@ -230,7 +230,6 @@ py_library(
         ":category_encoding",
         ":string_lookup",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:string_ops",
@@ -565,6 +564,9 @@ cuda_py_test(
     srcs = ["image_preprocessing_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+    ],
     deps = [
         ":image_preprocessing",
         "//tensorflow/python:client_testlib",

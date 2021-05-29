@@ -1287,6 +1287,35 @@ LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
   return success();
 }
 
+// MHLO and XLA HLO disagree on the meaning of addition of `pred` / `i1`, so
+// there has to be a special case somewhere to account for the difference.  To
+// get the expected behavior of an `AddOp` on `i1`, we have to use `xor`.  Since
+// the majority of the conversion is generated code, we just sidestep it here
+// for this single case, and inline the code to emit an `xor`.
+LogicalResult ExportXlaOperatorWrapped(mlir::Operation* inst,
+                                       OpLoweringContext ctx) {
+  auto op = dyn_cast<mlir::mhlo::AddOp>(inst);
+  if (op && op.getResult()
+                .getType()
+                .cast<mlir::TensorType>()
+                .getElementType()
+                .isSignlessInteger(1)) {
+    auto& value_map = *ctx.values;
+    auto result = op.getResult();
+    xla::XlaOp xla_arg_0;
+    if (failed(GetXlaOp(op.lhs(), value_map, &xla_arg_0, op)))
+      return mlir::failure();
+    xla::XlaOp xla_arg_1;
+    if (failed(GetXlaOp(op.rhs(), value_map, &xla_arg_1, op)))
+      return mlir::failure();
+    auto xla_result = xla::Xor(Unwrap(xla_arg_0), Unwrap(xla_arg_1));
+    value_map[result] = xla_result;
+    return mlir::success();
+  }
+
+  return ExportXlaOperator(inst, ctx);
+}
+
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, bool is_entry_function,
     llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
@@ -1334,7 +1363,8 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   };
 
-  if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder}))) {
+  if (succeeded(
+          ExportXlaOperatorWrapped(inst, {value_lowering, this, builder}))) {
     if (inst->getNumResults() == 1) {
       auto iter = value_lowering->find(inst->getResult(0));
       if (iter == value_lowering->end()) {

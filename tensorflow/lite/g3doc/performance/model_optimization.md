@@ -94,6 +94,12 @@ Technique                                                                       
 [Post-training integer quantization](post_training_integer_quant.ipynb)                                 | Unlabelled representative sample | Up to 75%      | Smaller accuracy loss       | CPU, GPU (Android), EdgeTPU, Hexagon DSP
 [Quantization-aware training](http://www.tensorflow.org/model_optimization/guide/quantization/training) | Labelled training data           | Up to 75%      | Smallest accuracy loss      | CPU, GPU (Android), EdgeTPU, Hexagon DSP
 
+The following decision tree helps you select the quantization schemes you might
+want to use for your model, simply based on the expected model size and
+accuracy.
+
+![quantization-decision-tree](images/quantization_decision_tree.png)
+
 Below are the latency and accuracy results for post-training quantization and
 quantization-aware training on a few models. All latency numbers are measured on
 Pixel 2 devices using a single big core CPU. As the toolkit improves, so will

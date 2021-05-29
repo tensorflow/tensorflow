@@ -300,14 +300,13 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     path = os.path.join(self.get_temp_dir(), 'no_optimizer')
     x, y = np.ones((10, 10)), np.ones((10, 1))
 
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(1))
-      model.compile('adam', loss='mse')
-      model.train_on_batch(x, y)
-      model.save(path, save_format='tf', include_optimizer=False)
-
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1))
+    model.compile('adam', loss='mse')
+    model.train_on_batch(x, y)
+    model.save(path, save_format='tf', include_optimizer=False)
     variables = get_variables(path)
+
     for v in variables:
       self.assertNotIn('optimizer', v)
 
@@ -1045,31 +1044,30 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     if not context.executing_eagerly() and not fit:
       self.skipTest('b/181767784')
 
-    with self.cached_session():
-      input_ = keras.Input((4,))
-      model = keras.Model(
-          input_,
-          [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
-           keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
-      metric = keras.metrics.BinaryAccuracy()
-      model.compile(optimizer='rmsprop',
-                    loss='mse',
-                    metrics={'head_0': [metric, 'accuracy']})
+    input_ = keras.Input((4,))
+    model = keras.Model(
+        input_,
+        [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
+         keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
+    metric = keras.metrics.BinaryAccuracy()
+    model.compile(optimizer='rmsprop',
+                  loss='mse',
+                  metrics={'head_0': [metric, 'accuracy']})
 
-      x = np.random.rand(2, 4)
-      y = {'head_0': np.random.randint(2, size=(2, 3)),
-           'head_1': np.random.randint(2, size=(2, 5))}
+    x = np.random.rand(2, 4)
+    y = {'head_0': np.random.randint(2, size=(2, 3)),
+         'head_1': np.random.randint(2, size=(2, 5))}
 
-      # Make sure metrix prefixing works the same regardless of whether the user
-      # has fit the model before saving.
-      if fit:
-        model.fit(x, y, verbose=0)
+    # Make sure metrix prefixing works the same regardless of whether the user
+    # has fit the model before saving.
+    if fit:
+      model.fit(x, y, verbose=0)
 
-      # Save and reload.
-      save_format = testing_utils.get_save_format()
-      saved_model_dir = self._save_model_dir()
-      keras.models.save_model(model, saved_model_dir, save_format=save_format)
-      loaded = keras.models.load_model(saved_model_dir)
+    # Save and reload.
+    save_format = testing_utils.get_save_format()
+    saved_model_dir = self._save_model_dir()
+    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+    loaded = keras.models.load_model(saved_model_dir)
 
     # Make sure the metrics names from the model before saving match the loaded
     # model.

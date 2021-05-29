@@ -606,6 +606,12 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           },
           expected=[True, True]),
       dict(
+          op=math_ops.matmul,
+          kwargs={
+              'a': ragged_factory_ops.constant_value([[1, 2, 3], [4, 5, 6]]),
+              'b': ragged_factory_ops.constant_value([[5], [4], [3]])},
+          expected=[[22], [58]]),
+      dict(
           op=string_ops.reduce_join,
           kwargs={
               'inputs':
