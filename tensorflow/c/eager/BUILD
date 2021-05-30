@@ -407,11 +407,9 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/c:tensor_interface",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -471,6 +469,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:intrusive_ptr",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
     ],
 )
@@ -820,6 +820,44 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "c_api_multi_client_test",
+    size = "small",
+    srcs = [
+        "c_api_multi_client_test.cc",
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        ":c_api_test_util",
+        ":tfe_tensorhandle_internal",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:env",
+    ],
+)
+
+cc_library(
+    name = "graph_function",
+    srcs = ["graph_function.cc"],
+    hdrs = [
+        "graph_function.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_function",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
@@ -842,6 +880,7 @@ tf_cuda_library(
         "//conditions:default": [
             ":c_api",
             ":c_api_internal",
+            ":graph_function",
             ":tfe_context_internal",
             ":tfe_op_internal",
             ":tfe_tensorhandle_internal",
@@ -1044,6 +1083,8 @@ filegroup(
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
             "c_api_unified_experimental_internal.h",
+            "graph_function.h",
+            "graph_function.cc",
             "gradient_checker.cc",
             "gradient_checker.h",
             "gradients.cc",  # Uses RTTI.

@@ -457,3 +457,31 @@ func @stateful_composite_op_control_then(%arg0: tensor<*x!tf.resource<tensor<i32
   }
   return %0 : tensor<i32>
 }
+
+// CHECK-LABEL: func @generator_op
+func @generator_op(%str : tensor<!tf.string>, %arg0: tensor<*x!tf.string>, %arg1: tensor<!tf.string>, %arg2: tensor<*xi64>, %arg3: tensor<!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      // CHECK: %{{.*}}, %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.GeneratorDataset"
+      %gen0 = "tf.GeneratorDataset"(%str, %arg0, %arg1, %arg2, %arg3) {
+        finalize_func = @__finalize_func_790,
+        init_func = @__init_func_530, next_func = @__next_func_680,
+        next_func.experimental_ints_on_device = true,
+        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        output_shapes = [#tf.shape<?>], output_types = [f32]} :
+         (tensor<!tf.string>, tensor<*x!tf.string>, tensor<!tf.string>, tensor<*xi64>, tensor<!tf.string>) -> tensor<*x!tf.variant>
+      %add1 = "tf.Add"(%str, %arg3) : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<!tf.string>
+      // CHECK: tf_executor.island(%[[CONTROL]]) wraps "tf.GeneratorDataset"
+      %gen1 = "tf.GeneratorDataset"(%str, %arg0, %arg1, %arg2, %arg3) {
+        finalize_func = @__finalize_func_790,
+        init_func = @__init_func_530, next_func = @__next_func_680,
+        next_func.experimental_ints_on_device = true,
+        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        output_shapes = [#tf.shape<?>], output_types = [f32]} :
+         (tensor<!tf.string>, tensor<*x!tf.string>, tensor<!tf.string>, tensor<*xi64>, tensor<!tf.string>) -> tensor<*x!tf.variant>
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}

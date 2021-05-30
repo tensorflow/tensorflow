@@ -58,6 +58,7 @@ struct AbstractTensorHandleDeleter {
 };
 }  // namespace internal
 
+// TODO(b/185908092): Make AbstractTensorHandlePtr an IntrusivePtr.
 using AbstractTensorHandlePtr =
     std::unique_ptr<AbstractTensorHandle,
                     internal::AbstractTensorHandleDeleter>;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,14 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# This script can be used to initiate a bazel build with a reduced set of
-# downloads, but still sufficient to test all the TFLM targets.
-#
-# This is primarily intended for use from a Docker image as part of the TFLM
-# github continuous integration system. There are still a number of downloads
-# (e.g. java) that are not necessary and it may be possible to further reduce
-# the set of external libraries and downloads.
-
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,23 +22,36 @@ cd "${ROOT_DIR}"
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
-TEST_OUTPUT_DIR="/tmp/tflm_project_gen"
-rm -rf ${TEST_OUTPUT_DIR}
-
-TEST_OUTPUT_DIR_CMSIS="/tmp/tflm_project_gen_cmsis"
-rm -rf ${TEST_OUTPUT_DIR_CMSIS}
+TEST_OUTPUT_DIR=$(mktemp -d)
 
 readable_run \
   python3 tensorflow/lite/micro/tools/project_generation/create_tflm_tree.py \
   ${TEST_OUTPUT_DIR} \
   -e hello_world
 
-readable_run cp tensorflow/lite/micro/tools/project_generation/Makefile ${TEST_OUTPUT_DIR}
+# Confirm that print_src_files and print_dest_files output valid paths (and
+# nothing else).
+set +x
+FILES="$(python3 tensorflow/lite/micro/tools/project_generation/create_tflm_tree.py \
+           ${TEST_OUTPUT_DIR} \
+           --print_src_files --print_dest_files --no_copy)"
 
+readable_run ls ${FILES} > /dev/null
+
+# Next, make sure that the output tree has all the files needed buld the
+# examples.
+readable_run cp tensorflow/lite/micro/tools/project_generation/Makefile ${TEST_OUTPUT_DIR}
 pushd ${TEST_OUTPUT_DIR} > /dev/null
 readable_run make -j8 examples
 popd > /dev/null
 
+rm -rf ${TEST_OUTPUT_DIR}
+
+# Check that we can export a TFLM tree with additional makefile options.
+TEST_OUTPUT_DIR_CMSIS=$(mktemp -d)
 readable_run python3 tensorflow/lite/micro/tools/project_generation/create_tflm_tree.py \
   --makefile_options="TARGET=cortex_m_generic OPTIMIZED_KERNEL_DIR=cmsis_nn TARGET_ARCH=cortex-m4" \
   ${TEST_OUTPUT_DIR_CMSIS}
+
+rm -rf ${TEST_OUTPUT_DIR_CMSIS}
+

@@ -143,7 +143,7 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     zeros = array_ops.zeros_like(logits, dtype=logits.dtype)
     cond = (logits >= zeros)
     relu_logits = array_ops.where(cond, logits, zeros)
-    neg_abs_logits = array_ops.where(cond, -logits, logits)
+    neg_abs_logits = array_ops.where(cond, -logits, logits)  # pylint: disable=invalid-unary-operand-type
     return math_ops.add(
         relu_logits - logits * labels,
         math_ops.log1p(math_ops.exp(neg_abs_logits)),
@@ -337,7 +337,7 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     return math_ops.add(
         (1 - labels) * logits,
         log_weight * (math_ops.log1p(math_ops.exp(-math_ops.abs(logits))) +
-                      nn_ops.relu(-logits)),
+                      nn_ops.relu(-logits)),  # pylint: disable=invalid-unary-operand-type
         name=name)
 
 
@@ -459,8 +459,8 @@ def compute_average_loss(per_example_loss,
       num_replicas = ds.get_strategy().num_replicas_in_sync
       per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
       global_batch_size = per_replica_batch_size * num_replicas
-      global_batch_size = math_ops.cast(global_batch_size, input_dtype)
 
+    global_batch_size = math_ops.cast(global_batch_size, input_dtype)
     return math_ops.reduce_sum(per_example_loss) / global_batch_size
 
 

@@ -98,7 +98,8 @@ struct TFConstantFoldInterface : public DialectFoldInterface {
 struct TFDecodeAttributesInterface : public DialectDecodeAttributesInterface {
   TFDecodeAttributesInterface(Dialect *dialect)
       : DialectDecodeAttributesInterface(dialect) {}
-  LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) const {
+  LogicalResult decode(OpaqueElementsAttr input,
+                       ElementsAttr &output) const override {
     return TensorFlowDialect::decode(input, output);
   }
 };

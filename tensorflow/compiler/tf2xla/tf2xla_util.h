@@ -177,12 +177,12 @@ struct OutEdgeInfo {
 };
 
 // Replaces node `n` with a new node whose NodeDef is `node_def`.
-xla::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
+StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
 
 // Helper function that builds an Identity node.
-xla::StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
-                                       DataType dtype, const Node* input,
-                                       absl::optional<string> requested_device);
+StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
+                                  DataType dtype, const Node* input,
+                                  absl::optional<string> requested_device);
 
 // For "If"/"While" nodes, if some of their inputs are Const nodes, rewrite
 // body functions to use the Const nodes instead of original _Arg nodes.
@@ -220,9 +220,8 @@ inline bool IsConstTraversableOpType(const Node* node) {
 }
 
 // Determines whether a loop body is invariant for the given argument index.
-xla::StatusOr<bool> IsLoopInvariant(
-    const FunctionBody* loop_body, int index,
-    const FunctionLibraryDefinition* lookup_fld);
+StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
+                               const FunctionLibraryDefinition* lookup_fld);
 
 }  // namespace tensorflow
 

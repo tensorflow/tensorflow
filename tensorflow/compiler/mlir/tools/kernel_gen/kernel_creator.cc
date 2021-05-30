@@ -22,11 +22,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -199,19 +201,27 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
 
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createTransformUnrankedHloPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createRankSpecializationClusterPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createRankSpecializationToSCFPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLowerComplexPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateShapeSimplification());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createMoveUpDynamicBroadcastsForFusionPass());
 
   // Transform HLO operations to LinAlg.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+
+  // Convert operations from the Complex dialect to the Standard/Math dialects.
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createConvertComplexToStandardPass());
+
   // Fuse linalg operations.
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgFusionOfTensorOpsPass());
 
@@ -230,6 +240,21 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   // equality can be determined based on `linalg.generic` operations.
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateBufferReusePass());
+  // Approximate Tanh using standard operations.
+  pm.addNestedPass<::mlir::FuncOp>(
+      ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
+  if (cpu_codegen) {
+    pm.addNestedPass<mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateVectorizationPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createBufferLoopHoistingPass());
+    pm.addNestedPass<::mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateShapeSimplification());
+    pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
+    pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+    pm.addNestedPass<mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateVectorizationCleanupPass());
+    pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
+  }
   // Transform the Linalg ops inside of the loop nest into parallel loops.
   pm.addNestedPass<mlir::FuncOp>(
       ::mlir::createConvertLinalgToParallelLoopsPass());
@@ -315,9 +340,6 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Make loops with min bounds into a conditional plus static bounds.
   pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
-  // Approximate Tanh using standard operations.
-  pm.addNestedPass<::mlir::FuncOp>(
-      ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   // Take launches to launches with kernels.
   if (!cpu_codegen) {
     pm.addPass(::mlir::createGpuKernelOutliningPass());
@@ -328,6 +350,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addPass(::mlir::createLowerToCFGPass());
+  if (cpu_codegen) pm.addPass(::mlir::createConvertVectorToLLVMPass());
   // Map asserts to the tensorflow framework.
   pm.addPass(
       mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkAssertPass());

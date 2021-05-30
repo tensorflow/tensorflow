@@ -265,7 +265,7 @@ H AbslHashValue(H h, const HeapProfileKey& key) {
 
 }  // namespace
 
-py::bytes PyClient::HeapProfile() {
+StatusOr<py::bytes> PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
   absl::flat_hash_set<PjRtBuffer*> buffer_set;
   absl::flat_hash_map<HeapProfileKey, int64> entries;
@@ -273,8 +273,9 @@ py::bytes PyClient::HeapProfile() {
     // We only wish to count each PjRtBuffer once, even though they may be
     // shared by multiple PyBuffers.
     if (buffer_set.insert(buffer->buffer()).second) {
-      HeapProfileKey key{buffer->traceback().get(),
-                         buffer->buffer()->OnDeviceSizeInBytes(),
+      TF_ASSIGN_OR_RETURN(size_t size,
+                          buffer->buffer()->GetOnDeviceSizeInBytes());
+      HeapProfileKey key{buffer->traceback().get(), static_cast<int64_t>(size),
                          buffer->buffer()->device()};
       ++entries[key];
     }
@@ -321,7 +322,7 @@ py::bytes PyClient::HeapProfile() {
       kind_label->set_str(executable_string_id);
     }
   }
-  return builder.profile().SerializeAsString();
+  return py::bytes(builder.profile().SerializeAsString());
 }
 
 }  // namespace xla

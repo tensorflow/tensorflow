@@ -119,7 +119,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
         opts->session_options.options,
         static_cast<tensorflow::ContextDevicePlacementPolicy>(
             opts->device_placement_policy),
-        opts->async);
+        opts->async, opts->use_tfrt_distributed_runtime);
 #if !defined(IS_MOBILE_PLATFORM)
     tfrt_context->SetDistributedManager(
         tfrt::tf::CreateDistributedManagerContext(

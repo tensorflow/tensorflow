@@ -228,7 +228,10 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
                               default_value_t.shape().DebugString()),
       done);
   // TODO(ebrevdo): add shape checks between values, indices,
-  // dense_shape.  Also add check that dense rank > 0.
+  // Also add check that dense rank > 0.
+  OP_REQUIRES_ASYNC(context, dense_shape_t.NumElements() != 0,
+                    errors::InvalidArgument("Dense shape cannot be empty."),
+                    done);
 
   using FunctorType = functor::SparseFillEmptyRows<Device, T, Tindex>;
   OP_REQUIRES_OK_ASYNC(context,
@@ -263,7 +266,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if 0 && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
 // The GPU implementation is async because it requires waiting for a
 // host->device memcpy before the output is allocated (similar to
@@ -411,7 +414,7 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if 0 && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {

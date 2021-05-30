@@ -3505,7 +3505,8 @@ class SavedModelSignatureDefImporterLite {
   // TODO(chky): Remove import_restore once the restore graph is correctly
   // handled in SavedModelSignatureDefImporter.
   static StatusOr<mlir::OwningModuleRef> Convert(
-      SavedModelMLIRImportInput& input, absl::Span<std::string> exported_names,
+      SavedModelMLIRImportInput& input,
+      absl::optional<absl::Span<const std::string>> exported_names,
       mlir::MLIRContext* context, bool import_restore = true) {
     SavedModelSignatureDefImporterLite importer(input, exported_names, context,
                                                 import_restore);
@@ -3513,10 +3514,10 @@ class SavedModelSignatureDefImporterLite {
   }
 
  private:
-  SavedModelSignatureDefImporterLite(SavedModelMLIRImportInput& input,
-                                     absl::Span<std::string> exported_names,
-                                     mlir::MLIRContext* context,
-                                     bool import_restore)
+  SavedModelSignatureDefImporterLite(
+      SavedModelMLIRImportInput& input,
+      absl::optional<absl::Span<const std::string>> exported_names,
+      mlir::MLIRContext* context, bool import_restore)
       : input_(input),
         original_func_tf_names_(GetOriginalTfFuncNamesFromGraphDef(
             input.meta_graph_def().graph_def())),
@@ -3560,7 +3561,7 @@ class SavedModelSignatureDefImporterLite {
  private:
   SavedModelMLIRImportInput& input_;
   absl::flat_hash_set<std::string> original_func_tf_names_;
-  absl::Span<std::string> exported_names_;
+  absl::optional<absl::Span<const std::string>> exported_names_;
   mlir::OwningModuleRef module_;
   mlir::SymbolTable symbol_table_;
   bool import_restore_ = true;
@@ -3799,7 +3800,10 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
                      input_.meta_graph_def().graph_def().versions());
 
   llvm::DenseSet<llvm::StringRef> exported_name_set;
-  exported_name_set.insert(exported_names_.begin(), exported_names_.end());
+  bool import_all_signatures = !exported_names_.has_value();
+  if (exported_names_.has_value()) {
+    exported_name_set.insert(exported_names_->begin(), exported_names_->end());
+  }
 
   for (const auto& key_and_signature_def : signatures) {
     const std::string& sig_def_key = key_and_signature_def.first;
@@ -3811,8 +3815,7 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
     if (sig_def_key == "__saved_model_init_op") {
       continue;
     }
-    if (!exported_name_set.empty() &&
-        exported_name_set.count(sig_def_key) == 0) {
+    if (!import_all_signatures && exported_name_set.count(sig_def_key) == 0) {
       continue;
     }
 
@@ -3878,8 +3881,10 @@ class SavedModelSignatureDefImporter {
   // Main entry point: converts all functions (specified by SignatureDefs) in
   // the given meta graph to an MLIR Module.
   static StatusOr<mlir::OwningModuleRef> Convert(
-      const SavedModelBundle& bundle, absl::Span<std::string> exported_names,
-      mlir::MLIRContext* context, tensorflow::MLIRImportOptions options) {
+      const SavedModelBundle& bundle,
+      absl::optional<absl::Span<const std::string>> exported_names,
+      mlir::MLIRContext* context, tensorflow::MLIRImportOptions options,
+      bool lift_varhandle_ops_to_args = true) {
     // debug_info might not be loaded with loader_lite.
     GraphDebugInfo debug_info;
     if (bundle.debug_info != nullptr) debug_info = *bundle.debug_info;
@@ -3896,7 +3901,8 @@ class SavedModelSignatureDefImporter {
     mlir::OpBuilder builder(module->getContext());
     (*module)->setAttr("tf_saved_model.under_construction",
                        builder.getUnitAttr());
-    TF_RETURN_IF_ERROR(LiftVariables(bundle, *module));
+    TF_RETURN_IF_ERROR(
+        LiftVariables(bundle, *module, lift_varhandle_ops_to_args));
     (*module)->removeAttr("tf_saved_model.under_construction");
 
     return module;
@@ -3905,11 +3911,13 @@ class SavedModelSignatureDefImporter {
  private:
   // Lifts the variables in `module`.
   static Status LiftVariables(const SavedModelBundle& bundle,
-                              mlir::ModuleOp module);
+                              mlir::ModuleOp module,
+                              bool lift_varhandle_ops_to_args);
 };
 
 Status SavedModelSignatureDefImporter::LiftVariables(
-    const SavedModelBundle& bundle, mlir::ModuleOp module) {
+    const SavedModelBundle& bundle, mlir::ModuleOp module,
+    bool lift_varhandle_ops_to_args) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   mlir::PassManager pm(module.getContext());
@@ -3923,12 +3931,18 @@ Status SavedModelSignatureDefImporter::LiftVariables(
   pm.addNestedPass<mlir::FuncOp>(
       mlir::TF::
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::tf_saved_model::CreateMarkInitializedVariablesPass(
-          bundle.GetSession()));
-  pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
-  pm.addPass(
-      mlir::tf_saved_model::CreateLiftVariablesPass(bundle.GetSession()));
+  if (lift_varhandle_ops_to_args) {
+    pm.addNestedPass<mlir::FuncOp>(
+        mlir::tf_saved_model::CreateMarkInitializedVariablesPass(
+            bundle.GetSession()));
+    pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
+    pm.addPass(
+        mlir::tf_saved_model::CreateLiftVariablesPass(bundle.GetSession()));
+  } else {
+    pm.addPass(
+        mlir::tf_saved_model::CreateInitializeVariablesInSessionInitializerPass(
+            bundle.GetSession()));
+  }
   pm.addNestedPass<mlir::FuncOp>(
       mlir::tf_saved_model::CreateDedupBoundInputBindingPass());
   if (mlir::failed(pm.run(module)))
@@ -4004,22 +4018,29 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlir(
     const SavedModelBundle& saved_model, absl::Span<std::string> exported_names,
-    mlir::MLIRContext* context, MLIRImportOptions options) {
-  return SavedModelSignatureDefImporter::Convert(saved_model, exported_names,
-                                                 context, options);
+    mlir::MLIRContext* context, MLIRImportOptions options,
+    bool lift_variables) {
+  absl::optional<absl::Span<const std::string>> optional_exported_names;
+  // TODO(b/187062560): Change ConvertSavedModelV1ToMlir() to take an optional
+  // `exported_names` so that it can be configured to import only restore/init
+  // graphs.
+  if (!exported_names.empty()) optional_exported_names = exported_names;
+  return SavedModelSignatureDefImporter::Convert(
+      saved_model, optional_exported_names, context, options, lift_variables);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlirLite(
     const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
-    absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options) {
+    absl::optional<absl::Span<const std::string>> exported_names,
+    mlir::MLIRContext* context, MLIRImportOptions options) {
   TF_ASSIGN_OR_RETURN(auto input, SimpleSavedModelMLIRImportInput::Create(
                                       options, &meta_graph_def, debug_info));
   return ConvertSavedModelV1ToMlirLite(input, exported_names, context);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlirLite(
-    SavedModelMLIRImportInput& input, absl::Span<std::string> exported_names,
+    SavedModelMLIRImportInput& input,
+    absl::optional<absl::Span<const std::string>> exported_names,
     mlir::MLIRContext* context) {
   return SavedModelSignatureDefImporterLite::Convert(input, exported_names,
                                                      context);

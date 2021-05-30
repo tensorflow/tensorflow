@@ -437,6 +437,7 @@ class Delegate {
     InferenceContext::CreateInferenceInfo create_info;
     create_info.precision = precision;
     create_info.storage_type = TensorStorageType::BUFFER;
+    create_info.hints.Add(ModelHints::kAllowSpecialKernels);
     RETURN_IF_ERROR(
         inference_context_.InitFromGraphWithTransforms(create_info, &graph, metal_device_));
     return absl::OkStatus();

@@ -346,7 +346,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     if is_int_only:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -357,7 +357,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     else:
       if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
-            lite.OpsSet.\
+            lite.OpsSet.
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
             lite.OpsSet.TFLITE_BUILTINS
         ]
@@ -951,14 +951,14 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       ('UseTfliteBuiltinsIntDisableMLIR',
        [lite.OpsSet.TFLITE_BUILTINS_INT8], False),
       # Quantize model to Int16: with disable mlir
-      ('UseTfliteBuiltinsInt16DisableMLIR',
-       [lite.OpsSet.\
-       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       False),
-      ('UseTfliteBuiltinsInt16EnableMLIR',
-       [lite.OpsSet.\
-       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
-       True))
+      ('UseTfliteBuiltinsInt16DisableMLIR', [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ], False),
+      ('UseTfliteBuiltinsInt16EnableMLIR', [
+          lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ], True))
   def testQuantizeInt8And16x8(self, supported_ops, enable_mlir_converter):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getIntegerQuantizeModel()
@@ -1174,8 +1174,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       inp, output, calibration_gen = self._getIntegerQuantizeModel()
       sess = session.Session()
 
-    bias_idx = 1 if enable_mlir_converter else 0
-    bias_name = 'Conv2D' if enable_mlir_converter else 'Conv2D_bias'
+    bias_idx = 2 if enable_mlir_converter else 0
+    bias_name = 'Conv2D1' if enable_mlir_converter else 'Conv2D_bias'
 
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
@@ -2805,12 +2805,6 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     self.assertEqual('Placeholder', input_details[0]['name'])
 
 
-class ImportOpsUtilTest(LiteTest):
-
-  def testGetPotentiallySupportedOps(self):
-    self.assertIsNotNone(lite.get_potentially_supported_ops())
-
-
 class DefaultConverterAttrsTest(LiteTest):
 
   def testAttrs(self):
@@ -2865,6 +2859,22 @@ class ControlFlowV1OpsTest(LiteTest):
         'Failed to functionalize Control Flow V1 ops. Consider using Control '
         'Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/'
         'tf/compat/v1/enable_control_flow_v2.', str(error.exception))
+
+
+class QuantizationModeTest(LiteTest, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('size', lite.Optimize.OPTIMIZE_FOR_SIZE),
+      ('latency', lite.Optimize.OPTIMIZE_FOR_LATENCY))
+  def testDeprecatedOptionWarning(self, optimization):
+    """Test if the warning message when using TOCO is logged."""
+    log = io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    warning_message = 'please use optimizations=[Optimize.DEFAULT] instead.'
+    lite.QuantizationMode([optimization], lite.TargetSpec(), None, None)
+    self.assertIn(warning_message, log.getvalue())
+    logging.root.removeHandler(handler)
 
 
 if __name__ == '__main__':

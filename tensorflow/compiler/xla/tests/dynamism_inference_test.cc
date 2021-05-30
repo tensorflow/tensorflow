@@ -421,14 +421,76 @@ TEST_F(DynamismInferenceTest,
   auto false_computation = false_builder.Build().ValueOrDie();
 
   XlaBuilder b(TestName());
+  auto param = Parameter(&b, 0, s32_shape, "param");
   auto pred = ConstantR0<bool>(&b, false);
   auto constant = ConstantR0<int32>(&b, 0);
-  auto cond = Conditional(pred, constant, true_computation, constant,
-                          false_computation);
+  auto cond =
+      Conditional(pred, constant, true_computation, param, false_computation);
   auto gte = GetTupleElement(cond, 0);
   ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
   // Result is dynamic.
   EXPECT_TRUE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
+}
+
+TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
+  // The result of following conditional is considered static.
+  // pred = .. dynamic value..
+  //
+  // op = 1
+  // if (pred) {
+  //   if (pred) {
+  //     return op
+  //   } else {
+  //     return op
+  //   }
+  // } else {
+  //   if (pred) {
+  //     return op
+  //   } else {
+  //     return op
+  //   }
+  // }
+  //
+  auto pred_shape = ShapeUtil::MakeShape(PRED, {});
+  auto s32_shape = ShapeUtil::MakeShape(S32, {});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({pred_shape, s32_shape});
+  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  XlaBuilder inner_true_builder("inner_true");
+  Parameter(&inner_true_builder, 0, s32_shape, "cond_param");
+  Tuple(&inner_true_builder, {ConstantR0<int32>(&inner_true_builder, 0)});
+  auto inner_true_computation = inner_true_builder.Build().ValueOrDie();
+
+  XlaBuilder inner_false_builder("inner_false");
+  Tuple(&inner_false_builder,
+        {Parameter(&inner_false_builder, 0, s32_shape, "cond_param")});
+  auto inner_false_computation = inner_false_builder.Build().ValueOrDie();
+
+  XlaBuilder true_builder("true");
+  {
+    auto param = Parameter(&true_builder, 0, tuple_shape, "param");
+    auto op = GetTupleElement(param, 1);
+    auto pred = GetTupleElement(param, 0);
+    Conditional(pred, op, inner_true_computation, op, inner_false_computation);
+  }
+  auto true_computation = true_builder.Build().ValueOrDie();
+  XlaBuilder false_builder("false");
+  {
+    auto param = Parameter(&false_builder, 0, tuple_shape, "param");
+    auto op = GetTupleElement(param, 1);
+    auto pred = GetTupleElement(param, 0);
+    Conditional(pred, op, inner_true_computation, op, inner_false_computation);
+  }
+  auto false_computation = false_builder.Build().ValueOrDie();
+  XlaBuilder b(TestName());
+  auto constant = ConstantR0<int32>(&b, 0);
+  auto pred = Parameter(&b, 0, pred_shape, "param");
+  auto param = Tuple(&b, {pred, constant});
+  auto cond =
+      Conditional(pred, param, true_computation, param, false_computation);
+  auto gte = GetTupleElement(cond, 0);
+  ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+  // Result is static.
+  EXPECT_FALSE(ComputeDynamismLiteral(gte, &b).ValueOrDie().Get<bool>({}));
 }
 
 class UpperBoundInferenceTest : public ValueInferenceTest {

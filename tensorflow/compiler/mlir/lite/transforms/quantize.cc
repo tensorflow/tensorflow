@@ -81,13 +81,29 @@ namespace TFL {
 //
 namespace {
 
-// Full integer quantization rewrite pattern for TFLite.
+// Full integer quantization rewrite pattern using DQ as the root op.
 struct TFLFullQuantization
     : public quant::QuantizationPattern<TFLFullQuantization, QuantizeOp,
                                         DequantizeOp, NumericVerifyOp> {
   explicit TFLFullQuantization(MLIRContext* ctx, bool verify_numeric_flag,
                                float tolerance, bool verify_single_layer,
                                bool log_if_failed_flag = false)
+      : BaseType(ctx, verify_numeric_flag, tolerance, verify_single_layer,
+                 log_if_failed_flag) {}
+  static bool AllowHybridOperand() { return false; }
+  static bool AllowHybridResult() { return false; }
+};
+
+// Full integer quantization rewrite pattern using Q as the root op. This is for
+// the quantizable ops without floating-point operands.
+struct TFLFullQuantizationReverse
+    : public quant::QuantizationPattern<TFLFullQuantizationReverse, QuantizeOp,
+                                        DequantizeOp, NumericVerifyOp,
+                                        QuantizeOp> {
+  explicit TFLFullQuantizationReverse(MLIRContext* ctx,
+                                      bool verify_numeric_flag, float tolerance,
+                                      bool verify_single_layer,
+                                      bool log_if_failed_flag = false)
       : BaseType(ctx, verify_numeric_flag, tolerance, verify_single_layer,
                  log_if_failed_flag) {}
   static bool AllowHybridOperand() { return false; }
@@ -145,7 +161,7 @@ void QuantizePass::runOnFunction() {
   auto* ctx = func.getContext();
 
   TFL::populateWithGenerated(patterns);
-  patterns.insert<TFLFullQuantization>(
+  patterns.insert<TFLFullQuantization, TFLFullQuantizationReverse>(
       ctx, enable_numeric_verify || verify_numeric, error_tolerance,
       enable_single_layer_verify, enable_log_if_failed);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));

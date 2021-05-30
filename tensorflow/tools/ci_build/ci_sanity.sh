@@ -127,8 +127,15 @@ do_pylint() {
   PYLINT_BIN="python3.8 -m pylint"
 
   echo ""
+  echo "print python version and pip freeze for debugging."
+  echo ""
+  python3.8
+  python3.8 -m pip freeze
+
+  echo ""
   echo "check whether pylint is available or not."
   echo ""
+
   ${PYLINT_BIN} --version
   if [[ $? -eq 0 ]]
   then
@@ -159,14 +166,8 @@ do_pylint() {
 
   PYLINT_START_TIME=$(date +'%s')
   OUTPUT_FILE="$(mktemp)_pylint_output.log"
-  ERRORS_FILE="$(mktemp)_pylint_errors.log"
-  PERMIT_FILE="$(mktemp)_pylint_permit.log"
-  FORBID_FILE="$(mktemp)_pylint_forbid.log"
 
   rm -rf ${OUTPUT_FILE}
-  rm -rf ${ERRORS_FILE}
-  rm -rf ${PERMIT_FILE}
-  rm -rf ${FORBID_FILE}
 
   # When running, filter to only contain the error code lines. Removes module
   # header, removes lines of context that show up from some lines.
@@ -179,57 +180,18 @@ do_pylint() {
   echo "pylint took $((PYLINT_END_TIME - PYLINT_START_TIME)) s"
   echo ""
 
-  # Report only what we care about
-  # Ref https://pylint.readthedocs.io/en/latest/technical_reference/features.html
-  # E: all errors
-  # W0311 bad-indentation
-  # W0312 mixed-indentation
-  # C0330 bad-continuation
-  # C0301 line-too-long
-  # C0326 bad-whitespace
-  # W0611 unused-import
-  # W0622 redefined-builtin
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
-
-  # Split the pylint reported errors into permitted ones and those we want to
-  # block submit on until fixed.
-  # We use `${ALLOW_LIST_FILE}` to record the errors we temporarily accept. Goal
-  # is to make that file only contain errors caused by difference between
-  # internal and external versions.
-  ALLOW_LIST_FILE="${SCRIPT_DIR}/pylint_allowlist"
-
-  if [[ ! -f "${ALLOW_LIST_FILE}" ]]; then
-    die "ERROR: Cannot find pylint allowlist file at ${ALLOW_LIST_FILE}"
-  fi
-
-  # We can split with just 2 grep invocations
-  grep    -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} > ${PERMIT_FILE}
-  grep -v -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} > ${FORBID_FILE}
-
   # Determine counts of errors
-  N_PERMIT_ERRORS=$(wc -l ${PERMIT_FILE} | cut -d' ' -f1)
-  N_FORBID_ERRORS=$(wc -l ${FORBID_FILE} | cut -d' ' -f1)
-
-  # First print all allowed errors
-  echo ""
-  if [[ ${N_PERMIT_ERRORS} != 0 ]]; then
-    echo "Found ${N_PERMIT_ERRORS} allowlisted pylint errors:"
-    cat ${PERMIT_FILE}
-  fi
-
-  # Now, print the errors we should fix
-  echo ""
-  if [[ ${N_FORBID_ERRORS} != 0 ]]; then
-    echo "Found ${N_FORBID_ERRORS} non-allowlisted pylint errors:"
-    cat ${FORBID_FILE}
-  fi
+  N_ERRORS=$(wc -l ${OUTPUT_FILE} | cut -d' ' -f1)
 
   echo ""
-  if [[ ${N_FORBID_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_FORBID_ERRORS} non-allowlisted errors and ${N_PERMIT_ERRORS} allowlisted errors"
+  if [[ ${N_ERRORS} != 0 ]]; then
+    echo "FAIL: Found ${N_ERRORS} errors"
+    echo "Please correct these. If they must be ignored, use '# pylint: disable=<error name>' comments."
+    cat ${OUTPUT_FILE}
     return 1
   else
-    echo "PASS: Found only ${N_PERMIT_ERRORS} allowlisted errors"
+    echo "PASS: No error found"
+    return 0
   fi
 }
 
@@ -655,7 +617,6 @@ do_configure_test() {
 # Supply all sanity step commands and descriptions
 SANITY_STEPS=("do_configure_test" "do_pylint" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
 SANITY_STEPS_DESC=("Run ./configure" "Python 3 pylint" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
-
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS=""
 

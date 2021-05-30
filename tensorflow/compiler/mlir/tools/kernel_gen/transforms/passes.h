@@ -99,6 +99,12 @@ CreateGpuKernelToRocdlPass();
 // Pass to simplify shape ops.
 std::unique_ptr<FunctionPass> CreateShapeSimplification();
 
+// Pass to create vectorized code for CPU.
+std::unique_ptr<FunctionPass> CreateVectorizationPass();
+
+// Pass to remove unneeded code generated in VectorizationPass.
+std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass();
+
 }  // namespace transforms
 
 #define GEN_PASS_REGISTRATION

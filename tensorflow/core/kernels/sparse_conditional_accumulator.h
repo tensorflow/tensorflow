@@ -53,26 +53,14 @@ class SparseConditionalAccumulator
                                const string& name, const string& reduction_type)
       : TypedConditionalAccumulatorBase<
             std::tuple<const Tensor*, const Tensor*, const Tensor*>>(
-            dtype, shape, name, reduction_type) {
-    accum_idx_vec_ = nullptr;
-    count_element_ = nullptr;
-    accum_val_ = nullptr;
-    accum_val_persistent_ = new PersistentTensor();
-  }
-
-  ~SparseConditionalAccumulator() override {
-    if (accum_idx_vec_ != nullptr) delete accum_idx_vec_;
-    if (count_element_ != nullptr) delete count_element_;
-    if (accum_val_persistent_ != nullptr) delete accum_val_persistent_;
-    // Do not delete accum_val_! Will be automatically garbage collected
-  };
+            dtype, shape, name, reduction_type),
+        accum_val_(std::make_unique<Tensor>()) {}
 
  protected:
-  std::vector<int64>* accum_idx_vec_ = nullptr;
-  std::vector<int>* count_element_ = nullptr;
+  std::unique_ptr<std::vector<int64>> accum_idx_vec_;
+  std::unique_ptr<std::vector<int>> count_element_;
 
-  Tensor* accum_val_ = nullptr;
-  PersistentTensor* accum_val_persistent_ = nullptr;
+  std::unique_ptr<Tensor> accum_val_;
 
   typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor>,
                            Eigen::Unaligned>
@@ -164,26 +152,20 @@ class SparseConditionalAccumulator
     const int64 nnz = grad_idx->dim_size(0);
 
     // Assign indices
-    if (accum_idx_vec_ != nullptr) delete accum_idx_vec_;
-    accum_idx_vec_ = new std::vector<int64>();
+    accum_idx_vec_ = std::make_unique<std::vector<int64>>();
     accum_idx_vec_->reserve(nnz);
     for (int i = 0; i < nnz; i++) {
       accum_idx_vec_->push_back(grad_idx->vec<int64>()(i));
     }
 
     // Assign values to accum_val_tensor
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    ctx->allocate_persistent(dtype_, grad_val->shape(), accum_val_persistent_,
-                             &accum_val_)
-        .IgnoreError();
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(dtype_, grad_val->shape(), accum_val_.get()));
     accum_val_->flat<T>().device(ctx->template eigen_device<Device>()) =
         grad_val->flat<T>();
 
     // Assign count_element_
-    if (count_element_ != nullptr) {
-      delete count_element_;
-    }
-    count_element_ = new std::vector<int>(nnz, 1);
+    count_element_ = std::make_unique<std::vector<int>>(nnz, 1);
 
     // Do not need shape; Assume that the op has checked that the shapes match,
     // so grad's shape == shape_
@@ -216,7 +198,7 @@ class SparseConditionalAccumulator
     int64 sum_nnz = 0;
     while (i < accum_nnz && j < grad_nnz) {
       sum_nnz++;
-      switch (cmp(accum_idx_vec_, grad_idx, i, j)) {
+      switch (cmp(accum_idx_vec_.get(), grad_idx, i, j)) {
         case -1:
           entries_to_copy.emplace_back(from_accum, i, -1);
           ++i;
@@ -252,15 +234,12 @@ class SparseConditionalAccumulator
     std::vector<int>* sum_counts = new std::vector<int>();
     sum_counts->reserve(sum_nnz);
 
-    Tensor* sum_tensor = nullptr;
-    PersistentTensor* tensor_sum_persistent = new PersistentTensor();
+    Tensor* sum_tensor = new Tensor();
 
     TensorShape sum_shape = grad_val->shape();
     sum_shape.set_dim(0, sum_nnz);
 
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_persistent(dtype_, sum_shape, tensor_sum_persistent,
-                                      &sum_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(dtype_, sum_shape, sum_tensor));
     auto sum_flat = sum_tensor->flat_outer_dims<T>();
     auto accum_flat = accum_val_->flat_outer_dims<T>();
     auto grad_flat = grad_val->flat_outer_dims<T>();
@@ -305,15 +284,11 @@ class SparseConditionalAccumulator
     // (3) Keep output, i.e., switch pointers to point to new data structures
     // representing the sum
     // Indices
-    if (accum_idx_vec_ != nullptr) delete accum_idx_vec_;
-    accum_idx_vec_ = sum_indices_vec;
+    accum_idx_vec_.reset(sum_indices_vec);
     // Values
-    accum_val_ = sum_tensor;
-    delete accum_val_persistent_;
-    accum_val_persistent_ = tensor_sum_persistent;
+    accum_val_.reset(sum_tensor);
     // Counts
-    if (count_element_ != nullptr) delete count_element_;
-    count_element_ = sum_counts;
+    count_element_.reset(sum_counts);
 
     // No need to copy shape, since shape remains the same after sum.
   }

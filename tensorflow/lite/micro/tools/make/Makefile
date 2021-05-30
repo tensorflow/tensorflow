@@ -116,7 +116,6 @@ endif
 OPTIMIZATION_LEVEL := -O3
 
 CC_WARNINGS := \
-  -Werror \
   -Wsign-compare \
   -Wdouble-promotion \
   -Wshadow \
@@ -131,6 +130,7 @@ CC_WARNINGS := \
   -Wno-unused-parameter
 
 COMMON_FLAGS := \
+  -Werror \
   -fno-unwind-tables \
   -ffunction-sections \
   -fdata-sections \
@@ -155,6 +155,7 @@ CXXFLAGS := \
   $(COMMON_FLAGS)
 
 CCFLAGS := \
+  -Wimplicit-function-declaration \
   -std=c11 \
   $(COMMON_FLAGS)
 
@@ -237,13 +238,6 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
 MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
 
-# Image recognition experimental uses uint8 quantization and is no longer
-# supported (See #44912 for more details). We should consider deleting
-# the image_recognition_experimental example.
-EXCLUDED_EXAMPLE_TESTS := \
-  tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
-MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
-
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 # TODO(b/152645559): move all benchmarks to benchmarks directory.
@@ -289,6 +283,8 @@ tensorflow/lite/micro/kernels/floor_test.cc \
 tensorflow/lite/micro/kernels/floor_div_test.cc \
 tensorflow/lite/micro/kernels/floor_mod_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
+tensorflow/lite/micro/kernels/gather_test.cc \
+tensorflow/lite/micro/kernels/gather_nd_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
 tensorflow/lite/micro/kernels/l2_pool_2d_test.cc \
@@ -307,6 +303,7 @@ tensorflow/lite/micro/kernels/quantization_util_test.cc \
 tensorflow/lite/micro/kernels/quantize_test.cc \
 tensorflow/lite/micro/kernels/reduce_test.cc \
 tensorflow/lite/micro/kernels/reshape_test.cc \
+tensorflow/lite/micro/kernels/resize_bilinear_test.cc \
 tensorflow/lite/micro/kernels/resize_nearest_neighbor_test.cc \
 tensorflow/lite/micro/kernels/round_test.cc \
 tensorflow/lite/micro/kernels/shape_test.cc \
@@ -319,6 +316,7 @@ tensorflow/lite/micro/kernels/strided_slice_test.cc \
 tensorflow/lite/micro/kernels/sub_test.cc \
 tensorflow/lite/micro/kernels/svdf_test.cc \
 tensorflow/lite/micro/kernels/tanh_test.cc \
+tensorflow/lite/micro/kernels/transpose_test.cc \
 tensorflow/lite/micro/kernels/transpose_conv_test.cc \
 tensorflow/lite/micro/kernels/unpack_test.cc \
 tensorflow/lite/micro/kernels/zeros_like_test.cc \
@@ -355,7 +353,10 @@ tensorflow/lite/micro/kernels/floor_div.cc \
 tensorflow/lite/micro/kernels/floor_mod.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
 tensorflow/lite/micro/kernels/fully_connected_common.cc \
+tensorflow/lite/micro/kernels/gather.cc \
+tensorflow/lite/micro/kernels/gather_nd.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
+tensorflow/lite/micro/kernels/if.cc \
 tensorflow/lite/micro/kernels/kernel_runner.cc \
 tensorflow/lite/micro/kernels/kernel_util.cc \
 tensorflow/lite/micro/kernels/l2norm.cc \
@@ -375,6 +376,7 @@ tensorflow/lite/micro/kernels/quantize.cc \
 tensorflow/lite/micro/kernels/quantize_common.cc \
 tensorflow/lite/micro/kernels/reduce.cc \
 tensorflow/lite/micro/kernels/reshape.cc \
+tensorflow/lite/micro/kernels/resize_bilinear.cc \
 tensorflow/lite/micro/kernels/resize_nearest_neighbor.cc \
 tensorflow/lite/micro/kernels/round.cc \
 tensorflow/lite/micro/kernels/shape.cc \
@@ -389,6 +391,7 @@ tensorflow/lite/micro/kernels/sub.cc \
 tensorflow/lite/micro/kernels/svdf.cc \
 tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
+tensorflow/lite/micro/kernels/transpose.cc \
 tensorflow/lite/micro/kernels/transpose_conv.cc \
 tensorflow/lite/micro/kernels/unpack.cc \
 tensorflow/lite/micro/kernels/zeros_like.cc
@@ -407,9 +410,6 @@ tensorflow/lite/core/api/tensor_utils.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc \
 tensorflow/lite/kernels/kernel_util.cc \
 tensorflow/lite/schema/schema_utils.cc
-
-MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
-MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SRCS))
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \
@@ -474,6 +474,7 @@ tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/quantize.h \
 tensorflow/lite/kernels/internal/reference/reduce.h \
 tensorflow/lite/kernels/internal/reference/requantize.h \
+tensorflow/lite/kernels/internal/reference/resize_bilinear.h \
 tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
@@ -482,6 +483,7 @@ tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/tanh.h \
+tensorflow/lite/kernels/internal/reference/transpose.h \
 tensorflow/lite/kernels/internal/reference/transpose_conv.h \
 tensorflow/lite/kernels/internal/cppmath.h \
 tensorflow/lite/kernels/internal/max.h \
@@ -496,6 +498,12 @@ tensorflow/lite/kernels/padding.h \
 tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/schema/schema_utils.h
+
+# Load custom kernels.
+include $(MAKEFILE_DIR)/additional_kernels.inc
+
+MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
+MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SRCS))
 
 # For project generation v1, the headers that are common to all targets need to
 # have a third_party prefix. Other third_party headers (e.g. CMSIS) do not have
@@ -586,7 +594,10 @@ ifneq ($(DISABLE_DOWNLOADS), true)
   $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
   $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
   $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
-  $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
+  RESULT := $(shell $(MAKEFILE_DIR)/person_detection_int8_download.sh ${MAKEFILE_DIR}/downloads $(CO_PROCESSOR))
+  ifneq ($(RESULT), SUCCESS)
+    $(error Something went wrong with the person detection int8 model download: $(RESULT))
+  endif
 endif
 
 # The target-specific makefile must have a name that is exactly
@@ -679,6 +690,9 @@ include $(MICRO_LITE_EXAMPLE_TESTS)
 
 # Load the benchmarks.
 include $(MICRO_LITE_BENCHMARKS)
+
+# Load custom kernel tests.
+include $(MAKEFILE_DIR)/additional_tests.inc
 
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=
@@ -826,7 +840,6 @@ ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
   $(eval $(call microlite_test,kernel_transpose_conv_test,\
   $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
 endif
-
 
 # For all the tests that do not have any additional dependencies, we can
 # add a make target in a common way.

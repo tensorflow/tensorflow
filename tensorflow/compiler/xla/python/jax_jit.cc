@@ -327,6 +327,10 @@ struct CacheEntry {
   // The processing done in `AddCacheEntry` ensures that LazyExpr are stored as
   // `py::none()`.
   std::vector<py::object> out_lazy_exprs;
+
+  // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
+  // in CompiledFunction::Call before calling into compiled computation.
+  absl::optional<std::vector<bool>> kept_var_bitvec;
   xla::PjRtDevice* sticky_device;
 
   // Fallback to Python happens:
@@ -536,18 +540,14 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
 
 CompiledFunction::~CompiledFunction() = default;
 
-// Converts flattened arguments contained in ParsedArgumentsAsBuffers in
-// place. If arguments are `DeviceArray`, they must all be on the same `Device`.
+// Compute signature for arguments.
 //
 // Returns `Status::OK()` on success. Returning an error should lead to
 // calling the Python fallback.
-xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
-                                 xla::PjRtDevice* default_device,
-                                 bool is_committed,
-                                 ParsedArgumentsAsBuffers& arguments) {
-  tensorflow::profiler::TraceMe traceme("ConvertArgsToBuffers");
-  std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
-  auto& keep_alive = arguments.keep_alive;
+xla::Status ComputeSignature(bool jax_enable_x64, xla::PyClient& pyclient,
+                             xla::PjRtDevice* default_device, bool is_committed,
+                             ParsedArgumentsAsBuffers& arguments) {
+  tensorflow::profiler::TraceMe traceme("ComputeSignature");
 
   int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   struct PythonTypes {
@@ -620,14 +620,38 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   CHECK(data_device);
   arguments.signature.device = data_device;
 
+  arguments.signature.dynamic_arg_signatures.reserve(num_flat_dynamic_args);
+  for (int i = 0; i < num_flat_dynamic_args; ++i) {
+    py::handle arg = arguments.flat_dynamic_args[i];
+    TF_ASSIGN_OR_RETURN(auto sig,
+                        xla::PyArgSignatureOfValue(arg, jax_enable_x64));
+    arguments.signature.dynamic_arg_signatures.push_back(std::move(sig));
+  }
+  return xla::Status::OK();
+}
+
+// Copy buffers to device, skipping pruned arguments.
+// Returns `Status::OK()` on success. Returning an error should lead to
+// calling the Python fallback.
+xla::Status CopyBuffersToDevice(
+    bool jax_enable_x64, const absl::optional<std::vector<bool>>& kept_args,
+    ParsedArgumentsAsBuffers& arguments) {
+  std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
+  xla::PjRtDevice* data_device = arguments.signature.device;
+
+  int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   xla::DevicePutOptions options;
   options.squash_64bit_types = !jax_enable_x64;
   // TODO(phawkins): consider allowing forces here.
   options.force_lazy_arrays = false;
   options.allow_zero_copy = true;
   arg_buffers.reserve(num_flat_dynamic_args);
-  arguments.signature.dynamic_arg_signatures.reserve(num_flat_dynamic_args);
+  bool input_pruning_enabled = kept_args.has_value();
   for (int i = 0; i < num_flat_dynamic_args; ++i) {
+    if (input_pruning_enabled && !kept_args.value()[i]) {
+      continue;
+    }
+
     py::handle arg = arguments.flat_dynamic_args[i];
     TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device,
                         DevicePut(arg, data_device, options));
@@ -635,16 +659,11 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
     xla::PjRtBuffer* buffer = on_device.buffer;
     arg_buffers.push_back(buffer);
     if (on_device.owned_buffer) {
-      keep_alive.push_back(std::move(on_device.owned_buffer));
+      arguments.keep_alive.push_back(std::move(on_device.owned_buffer));
     } else if (on_device.owning_pybuffer) {
       arguments.keep_alive_objects.push_back(
           std::move(on_device.owning_pybuffer));
     }
-
-    xla::PyArgSignature sig(buffer->on_device_shape().element_type(),
-                            buffer->on_device_shape().dimensions(),
-                            on_device.weak_type);
-    arguments.signature.dynamic_arg_signatures.push_back(std::move(sig));
   }
   return xla::Status::OK();
 }
@@ -660,12 +679,14 @@ void CompiledFunction::PopulateCacheEntry(
 
   py::tuple executable_handlers_out_tree =
       py::cast<py::tuple>(out_and_fastpath_data[1]);
-  if (executable_handlers_out_tree.size() != 5) {
+  // TODO(zhangqiaorjc): Lookup NamedTuple by name after min jax version bump.
+  size_t arity = executable_handlers_out_tree.size();
+  if (arity != 5 && !py::hasattr(executable_handlers_out_tree, "_fields")) {
     throw std::runtime_error(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (jaxlib is too recent "
         "compared to Jax. Upgrade Jax is advised. The C++ code expects "
-        "5 arguments but ",
-        executable_handlers_out_tree.size(), " where provided: ",
+        "5 or 6 arguments but ",
+        arity, " were provided: ",
         py::cast<std::string>(
             py::str(py::repr(executable_handlers_out_tree)))));
   }
@@ -698,6 +719,17 @@ void CompiledFunction::PopulateCacheEntry(
     cache_entry->out_weak_types.push_back(
         py::cast<bool>(shaped_array.attr("weak_type")));
     cache_entry->out_lazy_exprs.push_back(lazy_expr);
+  }
+  auto kept_var_bitvec_attr =
+      py::getattr(executable_handlers_out_tree, "kept_var_bitvec", py::none());
+  if (!kept_var_bitvec_attr.is_none()) {
+    auto kept_var_bitvec = py::cast<py::list>(kept_var_bitvec_attr);
+    cache_entry->kept_var_bitvec =
+        absl::make_optional<std::vector<bool>>(kept_var_bitvec.size(), false);
+    for (int i = 0; i < kept_var_bitvec.size(); ++i) {
+      cache_entry->kept_var_bitvec.value()[i] =
+          py::cast<bool>(kept_var_bitvec[i]);
+    }
   }
 }
 
@@ -767,8 +799,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  if (!ConvertArgsToBuffers(jax_enable_x64, *default_pyclient_, default_device_,
-                            is_committed_, arguments)
+  if (!ComputeSignature(jax_enable_x64, *default_pyclient_, default_device_,
+                        is_committed_, arguments)
            .ok()) {
     return py::object(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
@@ -820,6 +852,14 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   // occured. If the first compilation failed, other threads will also execute
   // the Python path.
   if (cache_entry->fall_back_to_python) {
+    return py::object(
+        py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
+                                        **kwargs.value_or(py::kwargs())))[0]);
+  }
+
+  if (!CopyBuffersToDevice(jax_enable_x64, cache_entry->kept_var_bitvec,
+                           arguments)
+           .ok()) {
     return py::object(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
                                         **kwargs.value_or(py::kwargs())))[0]);

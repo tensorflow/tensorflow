@@ -142,6 +142,10 @@ build --config=short_logs
 
 build --config=v2
 
+# Disable AWS/HDFS support by default
+build --define=no_aws_support=true
+build --define=no_hdfs_support=true
+
 # Default options should come above this line.
 
 # Allow builds using libc++ as a linker library
@@ -504,6 +508,11 @@ build:rbe_win --experimental_strict_action_env=true
 build:rbe_win --define=override_eigen_strong_inline=true
 build:rbe_win --jobs=100
 
+# Don't build the python zip archive in the RBE build.
+build:rbe_win --remote_download_minimal
+build:rbe_win --enable_runfiles
+build:rbe_win --nobuild_python_zip
+
 build:rbe_win_py37 --config=rbe
 build:rbe_win_py37 --repo_env=TF_PYTHON_CONFIG_REPO="@windows_py37_config_python"
 build:rbe_win_py37 --python_path=C:\\Python37\\python.exe
@@ -590,7 +599,7 @@ build:asan --linkopt -fsanitize=address
 # CC=clang bazel build --config msan
 build:msan --strip=never
 build:msan --copt -fsanitize=memory
-build:msan --copt -DADDRESS_SANITIZER
+build:msan --copt -DMEMORY_SANITIZER
 build:msan --copt -g
 build:msan --copt -O3
 build:msan --copt -fno-omit-frame-pointer
@@ -600,6 +609,7 @@ build:msan --linkopt -fsanitize=memory
 # CC=clang bazel build --config ubsan
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
+build:msan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
 build:ubsan --copt -g
 build:ubsan --copt -O3
 build:ubsan --copt -fno-omit-frame-pointer

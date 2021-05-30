@@ -39,7 +39,7 @@ Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
 
 // Returns a Literal with the contents of 'host_tensor', backed by its own
 // storage (i.e., not reusing 'host_tensor's buffers.)
-xla::StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor);
+StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor);
 
 // Returns a MutableBorrowingLiteral that utilizes the same underlying buffer
 // owned by 'host_tensor', but is mutable via the xla::Literal methods.

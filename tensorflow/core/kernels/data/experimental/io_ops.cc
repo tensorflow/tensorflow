@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/io_ops.h"
 
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -87,9 +88,12 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
   TF_RETURN_IF_ERROR(
       captured_func->Instantiate(&iter_ctx, &instantiated_captured_func));
 
+  DatasetBase* finalized_dataset;
+  TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(
-      dataset->MakeIterator(&iter_ctx, /*parent=*/nullptr, "Save", &iterator));
+  TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
+      &iter_ctx, /*parent=*/nullptr, "Save", &iterator));
 
   mutex mu;
   Status status;
@@ -119,7 +123,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
       auto writer_thread = std::make_unique<snapshot_util::AsyncWriter>(
           ctx->env(), shard_index, snapshot_shard_directory,
           /*checkpoint_id=*/0, compression_, kFileFormatVersion,
-          dataset->output_dtypes(), [&mu, &status](Status s) {
+          finalized_dataset->output_dtypes(), [&mu, &status](Status s) {
             mutex_lock l(mu);
             status.Update(s);
           });
@@ -258,7 +262,11 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    ~Iterator() override { input_->Unref(); }
+    ~Iterator() override {
+      if (input_) {
+        input_->Unref();
+      }
+    }
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
@@ -283,12 +291,14 @@ class LoadDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return errors::Unimplemented("Checkpointing is currently not supported.");
+      mutex_lock l(mu_);
+      return this->SaveInput(ctx, writer, input_impl_);
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return errors::Unimplemented("Checkpointing is currently not supported.");
+      mutex_lock l(mu_);
+      return this->RestoreInput(ctx, reader, input_impl_);
     }
 
    private:
@@ -336,7 +346,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    DatasetBase* input_ TF_GUARDED_BY(mu_);
+    DatasetBase* input_ TF_GUARDED_BY(mu_) = nullptr;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };

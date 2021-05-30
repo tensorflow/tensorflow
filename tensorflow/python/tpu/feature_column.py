@@ -378,6 +378,7 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
     # are not supported on TPU. They are solely for matching the signature of
     # __new__ of parent class fc._EmbeddingColumn.
     del bypass_scope_validation
+    # pylint: disable=redundant-keyword-arg
     return fc._EmbeddingColumn.__new__(
         cls,
         categorical_column,

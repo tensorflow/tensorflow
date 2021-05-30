@@ -35,9 +35,9 @@ namespace {
 struct OpData {
   OpDataConv reference_op_data;
 
-#if defined(FUSION_F1)
+#if defined(FUSION_F1) || defined(HIFI5)
   int scratch_tensor_index;
-#endif  // defined(FUSION_F1)
+#endif  // defined(FUSION_F1) || defined(HIFI5)
 };
 
 #if defined(HIFIMINI)
@@ -294,7 +294,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, DepthwiseConvPrepare(context, node));
 
-#if defined(FUSION_F1)
+#if defined(FUSION_F1) || defined(HIFI5)
   OpData* data = static_cast<OpData*>(node->user_data);
   const auto& params =
       *(static_cast<const TfLiteDepthwiseConvParams*>(node->builtin_data));
@@ -340,16 +340,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(
       context, context->RequestScratchBufferInArena(
                    context, required_scratch, &data->scratch_tensor_index));
-#endif  // defined(FUISON_F1)
+#endif  // defined(FUISON_F1) || defined(HIFI5)
   return kTfLiteOk;
 }
 
-#if defined(FUSION_F1)
-TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
-                       const TfLiteDepthwiseConvParams& params,
-                       const OpData& data, const TfLiteEvalTensor* input,
-                       const TfLiteEvalTensor* filter,
-                       const TfLiteEvalTensor* bias, TfLiteEvalTensor* output) {
+#if defined(FUSION_F1) || defined(HIFI5)
+TfLiteStatus EvalHifi(TfLiteContext* context, TfLiteNode* node,
+                      const TfLiteDepthwiseConvParams& params,
+                      const OpData& data, const TfLiteEvalTensor* input,
+                      const TfLiteEvalTensor* filter,
+                      const TfLiteEvalTensor* bias, TfLiteEvalTensor* output) {
   // If dilation is not required use the optimized NN Library kernel.
   // Otherwise call the reference implementation.
   if ((params.dilation_width_factor == 1) &&
@@ -439,7 +439,7 @@ TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
 
   return kTfLiteOk;
 }
-#endif  // defined(FUSION_F1)
+#endif  // defined(FUSION_F1) || defined(HIFI5)
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
@@ -499,8 +499,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           tflite::micro::GetTensorData<int32_t>(bias),
           tflite::micro::GetTensorShape(output),
           tflite::micro::GetTensorData<int8_t>(output));
-#elif defined(FUSION_F1)
-      EvalHifi4(context, node, params, op_data, input, filter, bias, output);
+#elif defined(FUSION_F1) || defined(HIFI5)
+      EvalHifi(context, node, params, op_data, input, filter, bias, output);
 #else
       reference_integer_ops::DepthwiseConvPerChannel(
           DepthwiseConvParamsQuantized(params, op_data.reference_op_data),

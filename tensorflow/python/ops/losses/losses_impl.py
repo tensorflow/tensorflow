@@ -179,8 +179,7 @@ def compute_weighted_loss(
     # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
-    with ops.control_dependencies((
-        weights_broadcast_ops.assert_broadcastable(weights, losses),)):
+    def compute_loss(losses, weights, loss_collection, reduction):
       losses = ops.convert_to_tensor(losses)
       input_dtype = losses.dtype
       losses = math_ops.cast(losses, dtype=dtypes.float32)
@@ -203,6 +202,17 @@ def compute_weighted_loss(
       loss = math_ops.cast(loss, input_dtype)
       util.add_loss(loss, loss_collection)
       return loss
+
+    # Skip the assert_broadcastable in XLA context because asserts are not
+    # supported so it only causes unnecessary ops. Also skip it because it uses
+    # a DenseToDenseSetOperation op that is incompatible with XLA when
+    # the shape(s) are dynamic.
+    if control_flow_ops.get_enclosing_xla_context() is not None:
+      return compute_loss(losses, weights, loss_collection, reduction)
+    else:
+      with ops.control_dependencies(
+          (weights_broadcast_ops.assert_broadcastable(weights, losses),)):
+        return compute_loss(losses, weights, loss_collection, reduction)
 
 
 @tf_export(v1=["losses.absolute_difference"])
@@ -561,8 +571,8 @@ def mean_pairwise_squared_error(
                       (predictions, labels, weights)) as scope:
     weights = math_ops.cast(weights, dtype=dtypes.float32)
     labels = math_ops.cast(labels, dtype=dtypes.float32)
-    with ops.control_dependencies((
-        weights_broadcast_ops.assert_broadcastable(weights, labels),)):
+
+    def compute_loss(labels, predictions, weights, loss_collection):
       predictions = math_ops.cast(predictions, dtype=dtypes.float32)
       predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
@@ -597,6 +607,17 @@ def mean_pairwise_squared_error(
           name="value")
       util.add_loss(mean_loss, loss_collection)
       return mean_loss
+
+    # Skip the assert_broadcastable in XLA context because asserts are not
+    # supported so it only causes unnecessary ops. Also skip it because it uses
+    # a DenseToDenseSetOperation op that is incompatible with XLA when
+    # the shape(s) are dynamic.
+    if control_flow_ops.get_enclosing_xla_context() is not None:
+      return compute_loss(labels, predictions, weights, loss_collection)
+    else:
+      with ops.control_dependencies(
+          (weights_broadcast_ops.assert_broadcastable(weights, labels),)):
+        return compute_loss(labels, predictions, weights, loss_collection)
 
 
 @tf_export(v1=["losses.mean_squared_error"])

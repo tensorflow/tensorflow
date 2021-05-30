@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,7 +70,7 @@ class MicroProfiler {
   TF_LITE_REMOVE_VIRTUAL_DELETE;
 };
 
-#if defined(NDEBUG)
+#if defined(TF_LITE_STRIP_ERROR_STRINGS)
 // For release builds, the ScopedMicroProfiler is a noop.
 //
 // This is done because the ScipedProfiler is used as part of the

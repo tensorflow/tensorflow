@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import device_attributes_pb2
-from tensorflow.python import _pywrap_device_lib
+from tensorflow.python.client import _pywrap_device_lib
 
 
 def list_local_devices(session_config=None):

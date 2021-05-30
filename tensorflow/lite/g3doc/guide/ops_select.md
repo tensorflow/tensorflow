@@ -46,7 +46,7 @@ includes the necessary library of TensorFlow ops.
 To reduce the binary size, please build your own custom AAR files as guided in
 the [next section](#building-the-android-aar). If the binary size is not a
 considerable concern, we recommend using the prebuilt
-[AAR with TensorFlow ops hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-select-tf-ops).
+[AAR with TensorFlow ops hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-select-tf-ops).
 
 You can specify this in your `build.gradle` dependencies by adding it alongside
 the standard TensorFlow Lite AAR as follows:
@@ -58,6 +58,9 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly-SNAPSHOT'
 }
 ```
+
+To use nightly snapshots, make sure that you have added
+[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
 
 Once you've added the dependency, the necessary delegate for handling the
 graph's TensorFlow ops should be automatically installed for graphs that require
@@ -116,7 +119,11 @@ has support for select TensorFlow ops:
 ```build
 allprojects {
     repositories {
-        jcenter()
+        mavenCentral()
+        maven {  // Only for snapshot artifacts
+            name 'ossrh-snapshot'
+            url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
         mavenLocal()
     }
 }

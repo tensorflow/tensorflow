@@ -18,6 +18,7 @@ import time
 from tensorflow.python.eager import benchmarks_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util import tf_inspect
@@ -98,6 +99,45 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def benchmark_tf_matmul_1000_by_1000_GPU(self):
     self._benchmark_matmul(self._m_1000_by_1000, GPU)
+
+
+class RunEagerOpAsFunctionTest(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self._m_2_by_2 = random_ops.random_uniform((2, 2))
+
+  def testMatmul(self):
+    math_ops.matmul(self._m_2_by_2, self._m_2_by_2)
+
+  def testMixedTypeListInputFastPath(self):
+    array_ops.identity_n([self._m_2_by_2, self._m_2_by_2])
+
+  def testMixedTypeListInputEagerFallback(self):
+    array_ops.identity_n([1, 1])
+
+  def testMixedTypeListInputFastPathDifferentArity(self):
+    # This tests that the FunctionDef cache key contains the number of args.
+    array_ops.identity_n([self._m_2_by_2, self._m_2_by_2])
+    array_ops.identity_n([self._m_2_by_2, self._m_2_by_2, self._m_2_by_2])
+
+  def testMixedTypeListInputEagerFallbackDifferentArity(self):
+    array_ops.identity_n([1, 1])
+    array_ops.identity_n([1, 1, 1])
+
+  def testSingleTypeListFastPath(self):
+    array_ops.concat([self._m_2_by_2, self._m_2_by_2], axis=-1)
+
+  def testSingleTypeListEagerFallback(self):
+    array_ops.concat([[1], [2]], axis=-1)
+
+  def testSingleTypeListFastPathDifferentArity(self):
+    array_ops.concat([self._m_2_by_2, self._m_2_by_2], axis=-1)
+    array_ops.concat([self._m_2_by_2, self._m_2_by_2, self._m_2_by_2], axis=-1)
+
+  def testSingleTypeListEagerFallbackDifferentArity(self):
+    array_ops.concat([[1], [2]], axis=-1)
+    array_ops.concat([[1], [2], [3]], axis=-1)
 
 
 if __name__ == "__main__":

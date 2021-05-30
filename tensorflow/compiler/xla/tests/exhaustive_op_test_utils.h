@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -243,15 +244,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     ExecutableBuildOptions build_opts;
     *build_opts.mutable_debug_options() = *mutable_debug_options();
 
-    std::vector<const Shape*> input_shapes;
-    absl::c_transform(
-        input_literals, std::back_inserter(input_shapes),
-        [&](const Literal* input_literal) { return &input_literal->shape(); });
-
-    TF_ASSIGN_OR_RETURN(
-        auto executables,
-        client_->Compile(computation, input_shapes, build_opts));
-
     std::vector<ScopedShapedBuffer> input_buffers;
     absl::c_transform(input_literals, std::back_inserter(input_buffers),
                       [&](const Literal* input_literal) {
@@ -260,6 +252,15 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
                                                     /*device_ordinal=*/0)
                             .ConsumeValueOrDie();
                       });
+    std::vector<const Shape*> input_shapes;
+    absl::c_transform(input_buffers, std::back_inserter(input_shapes),
+                      [&](const ScopedShapedBuffer& buffer) {
+                        return &buffer.on_device_shape();
+                      });
+
+    TF_ASSIGN_OR_RETURN(
+        auto executables,
+        client_->Compile(computation, input_shapes, build_opts));
 
     std::vector<const ShapedBuffer*> input_buffer_pointers;
     absl::c_transform(

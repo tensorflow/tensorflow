@@ -16,12 +16,15 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_cuda_tests_tags",
+)
 
 package(
     default_visibility = [
         ":internal",
-        "//learning/tfx/pipeline/infra_validation:__pkg__",
         "//third_party/cloud_tpu/inference_converter:__pkg__",
     ],
     licenses = ["notice"],
@@ -152,6 +155,7 @@ cc_library(
         ":jit_compilation_passes",
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
+        ":xla_device_no_jit_rewrite_registration",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit/kernels:xla_ops",
@@ -176,7 +180,6 @@ cc_library(
     hdrs = ["xla_tpu_device.h"],
     visibility = [":friends"],
     deps = [
-        ":jit_compilation_passes",
         ":xla_device",
         ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
@@ -187,7 +190,6 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:copy_tensor",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/common_runtime:dma_helper",
@@ -202,7 +204,10 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_node_context",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/stream_executor/tpu:tpu_stream_interface",
-    ],
+    ] + if_static([
+        "//tensorflow/core/common_runtime:copy_tensor",
+        ":jit_compilation_passes",
+    ]),
     alwayslink = 1,
 )
 
@@ -382,10 +387,7 @@ cc_library(
     hdrs = [
         "defs.h",
     ],
-    visibility = [
-        ":friends",
-        "//learning/tfx/pipeline/infra_validation:__pkg__",
-    ],
+    visibility = [":friends"],
 )
 
 # Internal targets below this point.
@@ -396,6 +398,8 @@ cc_library(
     hdrs = ["xla_launch_util.h"],
     visibility = [
         ":internal",
+        # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
+        "//learning/brain/tfrt/tf_tpu:__pkg__",
     ],
     deps = [
         ":common",

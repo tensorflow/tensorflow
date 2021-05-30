@@ -1,9 +1,9 @@
  <!-- mdformat off(b/169948621#comment2) -->
 
-# Running a fixed virtual platform based on Corstone-300 software
+# Running a fixed virtual platform based on Arm(R) Corstone(TM)-300 software
 
-This target makes use of a fixed virtual platform (FVP) based on Arm Cortex-300
-based software. More info about Arm Corstone-300 software:
+This target makes use of a fixed virtual platform (FVP) based on Arm
+Corstone-300 software. More info about Arm Corstone-300 software:
 https://developer.arm.com/ip-products/subsystem/corstone/corstone-300. More info
 about FVPs:
 https://developer.arm.com/tools-and-software/simulation-models/fixed-virtual-platforms.
@@ -40,7 +40,10 @@ not matter when running unit tests or for debugging.
 Some examples:
 
 ```
-make -j -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 test_kernel_fully_connected_test
+make -j -f tensorflow/lite/micro/tools/make/Makefile CO_PROCESSOR=ethos_u TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 test_network_tester_test
+make -j -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 test_network_tester_test
+make -j -f tensorflow/lite/micro/tools/make/Makefile CO_PROCESSOR=ethos_u OPTIMIZED_KERNEL_DIR=cmsis_nn TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 test_network_tester_test
+make -j -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 test_network_tester_test
 make -j -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 test_kernel_fully_connected_test
 make -j -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m7+fp test_kernel_fully_connected_test
 make -j -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m3 test_kernel_fully_connected_test

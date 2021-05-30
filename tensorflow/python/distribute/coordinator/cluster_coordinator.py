@@ -1461,4 +1461,11 @@ def _is_worker_failure(error):
         "registered" in str(error)):
       return True
 
+  # NOTE(b/179061495): During worker preemptions, if multiple functions are
+  # running concurrently (especially with subfunctions spanning chief/PS),
+  # CancelledError can be returned due to chief/PS cancelling outstanding RPCs
+  # to the failing workers.
+  if isinstance(error, errors.CancelledError):
+    return True
+
   return False

@@ -1456,7 +1456,11 @@ class ModelCheckpoint(Callback):
             self.model.save(filepath, overwrite=True, options=self._options)
 
         self._maybe_remove_file()
-      except IOError as e:
+      except IsADirectoryError as e:  # h5py 3.x
+        raise IOError('Please specify a non-directory filepath for '
+                      'ModelCheckpoint. Filepath used is an existing '
+                      'directory: {}'.format(filepath))
+      except IOError as e:  # h5py 2.x
         # `e.errno` appears to be `None` so checking the content of `e.args[0]`.
         if 'is a directory' in str(e.args[0]).lower():
           raise IOError('Please specify a non-directory filepath for '
@@ -2341,15 +2345,14 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def _init_profile_batch(self, profile_batch):
     """Validate profile_batch value and set the range of batches to profile.
+    Sets values of _start_batch and _stop_batch attributes,
+    specifying the start and stop batch to profile.
+    Setting `profile_batch=0` disables profiling.
 
     Args:
       profile_batch: The range of batches to profile. Should be a non-negative
         integer or a comma separated string of pair of positive integers. A pair
         of positive integers signify a range of batches to profile.
-
-    Returns:
-      A pair of non-negative integers specifying the start and stop batch to
-      profile.
 
     Raises:
       ValueError: If profile_batch is not an integer or a comma seperated pair

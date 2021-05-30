@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 
+#include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -113,9 +114,9 @@ std::string Node::DebugString() const {
   } else if (IsSink()) {
     strings::StrAppend(&ret, " sink}");
   } else {
-    strings::StrAppend(&ret, " op device:");
-    strings::StrAppend(&ret, "{", assigned_device_name(), "}");
-    strings::StrAppend(&ret, " def:{", SummarizeNode(*this), "}}");
+    strings::StrAppend(&ret, " op device:", "{requested: '", requested_device(),
+                       "', assigned: '", assigned_device_name(), "'}", " def:{",
+                       SummarizeNode(*this), "}}");
   }
   return ret;
 }
@@ -177,6 +178,8 @@ const std::string& Node::name() const { return props_->node_def.name(); }
 const std::string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
 const OpDef& Node::op_def() const { return *props_->op_def; }
+
+NodeDef* Node::mutable_def() { return &props_->node_def; }
 
 int32 Node::num_inputs() const { return props_->input_types.size(); }
 DataType Node::input_type(int32 i) const { return props_->input_types[i]; }
@@ -411,6 +414,12 @@ Graph::~Graph() {
   }
   // Edges have no destructor, and we arena-allocated them, so no need to
   // destroy them.
+}
+
+std::unique_ptr<Graph> Graph::Clone() {
+  std::unique_ptr<Graph> new_graph(new Graph(flib_def()));
+  new_graph->Copy(*this);
+  return new_graph;
 }
 
 const VersionDef& Graph::versions() const { return *versions_; }

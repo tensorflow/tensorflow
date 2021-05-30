@@ -575,7 +575,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       },
       py::is_method(type));
   type.attr("on_device_size_in_bytes") = py::cpp_function(
-      [](PyBuffer::object self) -> int64_t {
+      [](PyBuffer::object self) -> StatusOr<size_t> {
         return self.buf()->OnDeviceSizeInBytes();
       },
       py::is_method(type));

@@ -61,11 +61,23 @@ namespace {
 //      "tf.Yield"() : () -> ()
 //     }) { is_stateless = true } : (tensor<i1>) -> ()
 
-struct MergeControlFlow : public TF::PerFunctionAggregateAnalysisConsumerPass<
-                              MergeControlFlow, TF::SideEffectAnalysis> {
-  void runOnFunction(FuncOp func,
-                     const TF::SideEffectAnalysis::Info& side_effect_analysis);
+struct MergeControlFlowPass
+    : public PassWrapper<MergeControlFlowPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
+
+// Gets the IfRegion op and all of ops in the then and else branches.
+llvm::SmallSetVector<Operation*, 4> GetAllOpsFromIf(TF::IfRegionOp if_op) {
+  llvm::SmallSetVector<Operation*, 4> all_ops;
+  all_ops.insert(if_op);
+  for (Operation& op : if_op.then_branch().front()) {
+    all_ops.insert(&op);
+  }
+  for (Operation& op : if_op.else_branch().front()) {
+    all_ops.insert(&op);
+  }
+  return all_ops;
+}
 
 // Returns whether it is safe to merge `source` IfRegion into `destination`
 // IfRegion. `source` must come after `destination`.
@@ -77,14 +89,9 @@ bool SafeToMerge(TF::IfRegionOp source, TF::IfRegionOp destination,
     return false;
   assert(destination.getOperation()->isBeforeInBlock(source.getOperation()));
 
-  llvm::SmallSetVector<Operation*, 4> source_ops;
-  source_ops.insert(source);
-  for (Operation& op : source.then_branch().front()) {
-    source_ops.insert(&op);
-  }
-  for (Operation& op : source.else_branch().front()) {
-    source_ops.insert(&op);
-  }
+  llvm::SmallSetVector<Operation*, 4> source_ops = GetAllOpsFromIf(source);
+  llvm::SmallSetVector<Operation*, 4> destination_ops =
+      GetAllOpsFromIf(destination);
 
   // If there is an intermediate data or side effect dependency between the
   // ops in destination and the ops in the source, it's not safe to merge
@@ -99,12 +106,16 @@ bool SafeToMerge(TF::IfRegionOp source, TF::IfRegionOp destination,
   }
   for (Operation& op : destination.then_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
-      if (!source_ops.contains(successor)) dependencies.push_back(successor);
+      if (!source_ops.contains(successor) &&
+          !destination_ops.contains(successor))
+        dependencies.push_back(successor);
     }
   }
   for (Operation& op : destination.else_branch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
-      if (!source_ops.contains(successor)) dependencies.push_back(successor);
+      if (!source_ops.contains(successor) &&
+          !destination_ops.contains(successor))
+        dependencies.push_back(successor);
     }
   }
 
@@ -287,8 +298,7 @@ TF::IfRegionOp CreateMergedIf(
 }
 
 // Groups if regions by common predicate and attemps to merge them.
-void OptimizeIfRegions(
-    Block* block, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+void OptimizeIfRegions(Block* block, ModuleOp module) {
   // Determine IfRegions with the same predicate.
   llvm::SmallDenseMap<Value, llvm::SmallVector<TF::IfRegionOp, 8>, 8>
       grouped_if_ops;
@@ -297,14 +307,19 @@ void OptimizeIfRegions(
     it.first->getSecond().push_back(if_op);
   });
 
+  auto side_effect_analysis = std::make_unique<TF::SideEffectAnalysis>(module);
+
   for (auto& entry : grouped_if_ops) {
     auto& if_ops = entry.second;
     for (auto it = if_ops.begin(); it != if_ops.end(); ++it) {
       TF::IfRegionOp first_if_op = *it;
       for (auto it2 = std::next(it); it2 != if_ops.end(); ++it2) {
+        FuncOp func = first_if_op->getParentOfType<FuncOp>();
+        const TF::SideEffectAnalysis::Info& analysis =
+            side_effect_analysis->GetAnalysisForFunc(func);
+
         TF::IfRegionOp second_if_op = *it2;
-        if (!SafeToMerge(second_if_op, first_if_op, side_effect_analysis))
-          break;
+        if (!SafeToMerge(second_if_op, first_if_op, analysis)) break;
 
         // For both check if there are uses outside of IfRegion, keep these as
         // part of the return and replace the internal uses.
@@ -313,21 +328,26 @@ void OptimizeIfRegions(
         auto second_return_indices_to_keep =
             GetReturnIndicesToKeep(second_if_op, first_if_op);
 
-        auto new_if_op = CreateMergedIf(
-            second_return_indices_to_keep, first_return_indices_to_keep,
-            second_if_op, first_if_op, side_effect_analysis);
+        auto new_if_op = CreateMergedIf(second_return_indices_to_keep,
+                                        first_return_indices_to_keep,
+                                        second_if_op, first_if_op, analysis);
 
         if_ops.erase(it2--);
         first_if_op = new_if_op;
+        // We regenerate the side effect analysis since merging the IfRegions
+        // invalidates the side effect analysis.  This approach is O(N*M) where
+        // N is the number of ops in `module` and M is the number of pairs of
+        // IfRegion ops that are merged.
+        side_effect_analysis = std::make_unique<TF::SideEffectAnalysis>(module);
       }
     }
   }
 }
 
-void MergeControlFlow::runOnFunction(
-    FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
-  auto result = func.walk([&](tf_device::ClusterOp cluster) {
-    OptimizeIfRegions(&cluster.GetBody(), side_effect_analysis);
+void MergeControlFlowPass::runOnOperation() {
+  ModuleOp module = getOperation();
+  auto result = module.walk([&](tf_device::ClusterOp cluster) {
+    OptimizeIfRegions(&cluster.GetBody(), module);
     return WalkResult::advance();
   });
 
@@ -337,10 +357,10 @@ void MergeControlFlow::runOnFunction(
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass() {
-  return std::make_unique<MergeControlFlow>();
+  return std::make_unique<MergeControlFlowPass>();
 }
 
-static PassRegistration<MergeControlFlow> pass(
+static PassRegistration<MergeControlFlowPass> pass(
     "tf-merge-control-flow", "Merges control flow with a common predicate.");
 }  // namespace TFDevice
 }  // namespace mlir

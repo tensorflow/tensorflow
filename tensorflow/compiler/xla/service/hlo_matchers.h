@@ -119,7 +119,9 @@ class HloShapeMatcher
 class HloShapeAndLayoutMatcher
     : public ::testing::MatcherInterface<const HloInstruction*> {
  public:
-  explicit HloShapeAndLayoutMatcher(const Shape& shape) : shape_(shape) {}
+  explicit HloShapeAndLayoutMatcher(const Shape& shape,
+                                    bool minor_to_major_only = false)
+      : shape_(shape), minor_to_major_only_(minor_to_major_only) {}
 
   bool MatchAndExplain(const HloInstruction* instruction,
                        ::testing::MatchResultListener* listener) const override;
@@ -127,6 +129,7 @@ class HloShapeAndLayoutMatcher
 
  private:
   Shape shape_;
+  bool minor_to_major_only_;
 };
 
 // Verify the sharding of an instruction against the provided HloSharding. If a
@@ -209,6 +212,7 @@ HLO_MATCHER(AllToAll);
 HLO_MATCHER(And);
 HLO_MATCHER(BatchNormGrad);
 HLO_MATCHER(Bitcast);
+HLO_MATCHER(BitcastConvert);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
@@ -258,6 +262,8 @@ HLO_MATCHER(ReplicaId);
 HLO_MATCHER(Reshape);
 HLO_MATCHER(Reverse);
 HLO_MATCHER(Rng);
+HLO_MATCHER(RngBitGenerator);
+HLO_MATCHER(RngGetAndUpdateState);
 HLO_MATCHER(Scatter);
 HLO_MATCHER(Select);
 HLO_MATCHER(SelectAndScatter);
@@ -394,9 +400,9 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
       new ::xla::testing::HloShapeAndLayoutMatcher(shape));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
-    absl::string_view shape) {
+    absl::string_view shape, bool minor_to_major_only = false) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
-      ParseShape(shape).ValueOrDie()));
+      ParseShape(shape).ValueOrDie(), minor_to_major_only));
 }
 
 // Verifies the value of the HloSharing against the provided sharding object.

@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
-from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
@@ -108,25 +107,6 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
           use_inter_op_parallelism=True,
           label="_short_circuit",
           benchmark_id=6)
-
-  def benchmark_stats(self):
-    for stats in [True, False]:
-      dataset = dataset_ops.Dataset.range(1000).repeat()
-      dataset = dataset.map(lambda x: x + 1, num_parallel_calls=32)
-      options = dataset_ops.Options()
-      options.experimental_deterministic = False
-      if stats:
-        aggregator = stats_aggregator.StatsAggregator()
-        options.experimental_stats.aggregator = aggregator
-      dataset = dataset.with_options(options)
-      self.run_and_report_benchmark(
-          dataset,
-          num_elements=10000,
-          extras={
-              "model_name": "map.benchmark.7",
-              "parameters": "%s" % stats,
-          },
-          name="stats_%s" % stats)
 
   def benchmark_sequential_control_flow(self):
     dataset = dataset_ops.Dataset.from_tensors(100000)

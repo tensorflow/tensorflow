@@ -107,7 +107,7 @@ class InitializeVariablesPass
         if (!exported_names) continue;
         for (auto exported_name : exported_names) {
           if (auto name = exported_name.dyn_cast_or_null<StringAttr>())
-            if (name.getValue() == kTfSavedModelSessionInitNameAttr)
+            if (name.getValue().startswith(kTfSavedModelSessionInitNameAttr))
               session_init_func = func;
         }
         if (session_init_func) break;

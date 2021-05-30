@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -74,55 +75,7 @@ class BiasOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("BiasAdd"), BiasOp);
 REGISTER_XLA_OP(Name("BiasAddV1"), BiasOp);
-
-class BiasAddGradOp : public XlaOpKernel {
- public:
-  explicit BiasAddGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    string data_format;
-    if (ctx->GetAttr("data_format", &data_format).ok()) {
-      OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
-    } else {
-      data_format_ = FORMAT_NHWC;
-    }
-  }
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape out_backprop_shape = ctx->InputShape(0);
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrixOrHigher(out_backprop_shape),
-                errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        out_backprop_shape.DebugString()));
-
-    // feature_dim is the channel (C) dimension of the data.
-    int feature_dim = (data_format_ == FORMAT_NHWC)
-                          ? out_backprop_shape.dims() - 1
-                          : /*data_format == FORMAT_NCHW*/ 1;
-    OP_REQUIRES(
-        ctx, feature_dim >= 0,
-        errors::InvalidArgument("Input tensor does not have enough dimensions "
-                                "to contain the feature dimension"));
-
-    std::vector<int64> reduce_dims(out_backprop_shape.dims() - 1);
-    std::iota(reduce_dims.begin(), reduce_dims.begin() + feature_dim, 0);
-    std::iota(reduce_dims.begin() + feature_dim, reduce_dims.end(),
-              feature_dim + 1);
-    xla::XlaBuilder* const b = ctx->builder();
-    const DataType accumulation_type =
-        XlaHelpers::SumAccumulationType(input_type(0));
-    auto converted =
-        XlaHelpers::ConvertElementType(ctx->Input(0), accumulation_type);
-    auto reduce =
-        xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
-                    *ctx->GetOrCreateAdd(accumulation_type), reduce_dims);
-    ctx->SetOutput(0, XlaHelpers::ConvertElementType(reduce, input_type(0)));
-  }
-
- private:
-  TensorFormat data_format_;
-};
-
-REGISTER_XLA_OP(Name("BiasAddGrad"), BiasAddGradOp);
+REGISTER_XLA_OP(Name("BiasAddGrad"), MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

@@ -910,6 +910,11 @@ cc_library(
         ],
         if_true = [],
     ),
+    visibility = [
+        # We define a new TPU device in TFRT to enable TFRT TPU Runtime.
+        "//learning/brain/tfrt/tf_tpu:__pkg__",
+        ":internal",
+    ],
     deps = if_libtpu(
         if_false = [
             ":mlir_bridge_pass",

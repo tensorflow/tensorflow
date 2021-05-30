@@ -42,15 +42,9 @@ py_test(
     ],
 )
 
-pytype_library(
+alias(
     name = "tpu_ops",
-    srcs = ["ops/tpu_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":tpu_function",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:tpu_ops_gen",
-    ],
+    actual = "//tensorflow/python/tpu/ops",
 )
 
 pytype_library(
@@ -94,6 +88,9 @@ tpu_py_test(
 pytype_library(
     name = "device_assignment",
     srcs = ["device_assignment.py"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         ":topology",
         "//tensorflow/python:platform",
@@ -230,7 +227,6 @@ pytype_library(
         ":topology",
         ":tpu_feed",
         ":tpu_function",
-        ":tpu_ops",
         ":tpu_sharding",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
@@ -258,6 +254,7 @@ pytype_library(
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu:tensor_tracer_proto_py",
+        "//tensorflow/python/tpu/ops",
         "//tensorflow/python/tpu/profiler",
         "@six_archive//:six",
     ],
@@ -271,7 +268,6 @@ pytype_library(
         ":tpu_feed",
         ":tpu_function",
         ":tpu_name_util",
-        ":tpu_ops",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:array_ops",
@@ -293,6 +289,7 @@ pytype_library(
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/tpu/ops",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
@@ -306,13 +303,13 @@ pytype_library(
     srcs = ["tpu_feed.py"],
     deps = [
         ":tpu_name_util",
-        ":tpu_ops",
         ":tpu_sharding",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/user_ops:ops",
     ],
 )
 
@@ -564,7 +561,7 @@ pytype_library(
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_ops",
+        "//tensorflow/python/tpu/ops",
         "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],
@@ -577,12 +574,12 @@ pytype_library(
     deps = [
         ":tpu_embedding_v2_utils",
         ":tpu_lib",
-        ":tpu_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/tpu/ops",
         "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],

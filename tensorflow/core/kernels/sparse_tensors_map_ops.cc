@@ -44,30 +44,27 @@ class SparseTensorsMap : public ResourceBase {
   string DebugString() const override { return "A SparseTensorsMap"; }
 
   typedef struct {
-    PersistentTensor indices;
-    PersistentTensor values;
+    Tensor indices;
+    Tensor values;
     gtl::InlinedVector<int64, 8> shape;
   } PersistentSparseTensor;
 
   Status AddSparseTensor(OpKernelContext* ctx, const SparseTensor& sp,
                          int64* handle) {
-    PersistentTensor persistent_ix;
-    Tensor* ix;
-    TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-        sp.indices().dtype(), sp.indices().shape(), &persistent_ix, &ix));
-    *ix = sp.indices();
+    Tensor ix;
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_temp(sp.indices().dtype(), sp.indices().shape(), &ix));
+    ix = sp.indices();
 
-    PersistentTensor persistent_values;
-    Tensor* values;
-    TF_RETURN_IF_ERROR(ctx->allocate_persistent(sp.indices().dtype(),
-                                                sp.indices().shape(),
-                                                &persistent_values, &values));
-    *values = sp.values();
+    Tensor values;
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(sp.indices().dtype(),
+                                          sp.indices().shape(), &values));
+    values = sp.values();
     {
       mutex_lock l(mu_);
       int64 unique_st_handle = counter_++;  // increment is guarded on purpose
       sp_tensors_[unique_st_handle] = PersistentSparseTensor{
-          persistent_ix, persistent_values,
+          ix, values,
           gtl::InlinedVector<int64, 8>(sp.shape().begin(), sp.shape().end())};
       *handle = unique_st_handle;
     }
@@ -88,8 +85,8 @@ class SparseTensorsMap : public ResourceBase {
           return errors::InvalidArgument(
               "Unable to find SparseTensor: ", handle, " in map: ", name_);
         }
-        const Tensor* ix = sp_iter->second.indices.AccessTensor(ctx);
-        const Tensor* values = sp_iter->second.values.AccessTensor(ctx);
+        const Tensor* ix = &sp_iter->second.indices;
+        const Tensor* values = &sp_iter->second.values;
         const auto& shape = sp_iter->second.shape;
         SparseTensor tensor;
         TF_RETURN_IF_ERROR(SparseTensor::Create(*ix, *values, shape, &tensor));

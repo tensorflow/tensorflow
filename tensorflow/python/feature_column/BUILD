@@ -104,7 +104,10 @@ filegroup(
         "testdata/embedding.ckpt.index",
         "testdata/embedding.ckpt.meta",
         "testdata/unicode_vocabulary",
+        "testdata/unicode_vocabulary.tfrecord.gz",
+        "testdata/warriors_vocabulary.tfrecord.gz",
         "testdata/warriors_vocabulary.txt",
+        "testdata/wire_vocabulary.tfrecord.gz",
         "testdata/wire_vocabulary.txt",
     ],
 )

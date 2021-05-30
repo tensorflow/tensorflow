@@ -175,6 +175,31 @@ TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
 TFE_MonitoringGetCellStringGauge2(TFE_MonitoringStringGauge2* gauge,
                                   const char* label1, const char* label2);
 
+// APIs for String Gauge with 3 labels.
+typedef struct TFE_MonitoringStringGauge3 TFE_MonitoringStringGauge3;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge3(
+    TFE_MonitoringStringGauge3* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge3(TFE_MonitoringStringGauge3* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3);
+
+// APIs for String Gauge with 4 labels.
+typedef struct TFE_MonitoringStringGauge4 TFE_MonitoringStringGauge4;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3,
+    const char* label4);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge4(
+    TFE_MonitoringStringGauge4* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge4(TFE_MonitoringStringGauge4* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3, const char* label4);
+
 typedef struct TFE_MonitoringBoolGaugeCell TFE_MonitoringBoolGaugeCell;
 TF_CAPI_EXPORT extern void TFE_MonitoringBoolGaugeCellSet(
     TFE_MonitoringBoolGaugeCell* cell, bool value);
@@ -268,6 +293,10 @@ TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
 // Sets whether to use TFRT
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
+
+// Sets whether to use TFRT distributed runtime
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrtDistributedRuntime(
+    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime);
 
 // Returns the context_id from the EagerContext which is used by the
 // EagerService to maintain consistency between client and worker. The

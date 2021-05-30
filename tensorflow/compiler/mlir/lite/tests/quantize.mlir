@@ -262,30 +262,26 @@ func @QuantizeSplitUnusedResults(%arg: tensor<4x!quant.uniform<u8:f32, 1.0>>, %c
 }
 
 // CHECK-LABEL: QuantizeShape
-func @QuantizeShape(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>,
-                    %arg2: tensor<*x!quant.uniform<u8:f32, 1.0>>,
-                    %arg3: tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<?xi32>,tensor<3xi32>) {
-  %1 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
-  %2 = "tfl.dequantize"(%arg2) : (tensor<*x!quant.uniform<u8:f32, 1.0>>) -> tensor<*xf32>
-  %3 = "tfl.dequantize"(%arg3) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> tensor<?x?x4xf32>
-  %4 = "tfl.shape"(%1) : (tensor<4xf32>) -> tensor<1xi32>
+func @QuantizeShape(%arg0: tensor<*x!quant.uniform<u8:f32, 1.0>>,
+                    %arg1: tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<?xi32>,tensor<3xi32>) {
+  %2 = "tfl.dequantize"(%arg0) : (tensor<*x!quant.uniform<u8:f32, 1.0>>) -> tensor<*xf32>
+  %3 = "tfl.dequantize"(%arg1) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> tensor<?x?x4xf32>
   %5 = "tfl.shape"(%2) : (tensor<*xf32>) -> tensor<?xi32>
   %6 = "tfl.shape"(%3) : (tensor<?x?x4xf32>) -> tensor<3xi32>
-  return %4, %5, %6 : tensor<1xi32>, tensor<?xi32>, tensor<3xi32>
+  return %5, %6 : tensor<?xi32>, tensor<3xi32>
 
-// CHECK: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
-// CHECK-NEXT: %[[s2:.*]] = "tfl.shape"(%arg1) : (tensor<*x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<?xi32>
-// CHECK-NEXT: %[[s3:.*]] = "tfl.shape"(%arg2) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<3xi32>
-// CHECK-NEXT: %[[s1]], %[[s2]], %[[s3]] : tensor<1xi32>, tensor<?xi32>, tensor<3xi32>
+// CHECK: %[[s2:.*]] = "tfl.shape"(%arg0) : (tensor<*x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<?xi32>
+// CHECK-NEXT: %[[s3:.*]] = "tfl.shape"(%arg1) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<3xi32>
+// CHECK-NEXT: %[[s2]], %[[s3]] : tensor<?xi32>, tensor<3xi32>
 }
 
 // CHECK-LABEL: QuantizeMultipleUsers
-func @QuantizeMultipleUsers(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<1xi32>) {
-  %1 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
-  %2 = "tfl.shape"(%1) : (tensor<4xf32>) -> tensor<1xi32>
+func @QuantizeMultipleUsers(%arg1: tensor<?x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<1xi32>) {
+  %1 = "tfl.dequantize"(%arg1) : (tensor<?x!quant.uniform<u8:f32, 1.0>>) -> tensor<?xf32>
+  %2 = "tfl.shape"(%1) : (tensor<?xf32>) -> tensor<1xi32>
   return %2, %2 : tensor<1xi32>, tensor<1xi32>
 
-// CHECK: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
+// CHECK: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<?x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
 // CHECK-NEXT: %[[s1]], %[[s1]] : tensor<1xi32>, tensor<1xi32>
 }
 
@@ -358,6 +354,22 @@ func @NotQuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127
 // CHECK-NEXT: }) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
 }
 
+// CHECK-LABEL: NotQuantizableValues
+func @NotQuantizableValues(%arg0: tensor<1x!tf.string>) -> (tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>, tensor<1x!tf.string>, tensor<1xi32>) {
+  %0:3 = "tfl.custom_tf"(%arg0) ( {
+  ^bb0(%arg1: tensor<1x!tf.string>):  // no predecessors
+    %1:3 = "tf.SequenceStringProjection"(%arg1) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf.string>, tensor<1xi32>)
+    "tfl.yield"(%1#0, %1#1, %1#2) : (tensor<1x?x16xf32>, tensor<1x!tf.string>, tensor<1xi32>) -> ()
+  }) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf.string>, tensor<1xi32>)
+  %2 = "tfl.quantize"(%0#0) {qtype = tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>} : (tensor<1x?x16xf32>) -> tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>
+  return %2, %0#1, %0#2 : tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>, tensor<1x!tf.string>, tensor<1xi32>
+
+// CHECK: "tfl.custom_tf"(%arg0) ( {
+// CHECK-NEXT: ^bb0(%arg1: tensor<1x!tf.string>):  // no predecessors
+// CHECK-NEXT:   "tf.SequenceStringProjection"(%arg1) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf.string>, tensor<1xi32>)
+// CHECK-NEXT:   "tfl.yield"
+// CHECK: }) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf.string>) -> (tensor<1x?x16x!quant.uniform<u8:f32, 1.000000e-01:128>>, tensor<1x!tf.string>, tensor<1xi32>)
+}
 
 // Checks that legacy path correctly handles asymmetric quantized values.
 // LEGACY-LABEL: CheckLegacyQuantizeAdd

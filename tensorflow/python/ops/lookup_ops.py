@@ -24,7 +24,6 @@ import uuid
 
 import six
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -690,16 +689,10 @@ class TextFileInitializer(TableInitializerBase):
     with ops.name_scope(self._name, "text_file_init", (table.resource_handle,)):
       filename = ops.convert_to_tensor(
           self._filename, dtypes.string, name="asset_filepath")
-      if self._offset != 0 or compat.forward_compatible(2021, 3, 18):
-        init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
-            table.resource_handle, filename, self._key_index, self._value_index,
-            -1 if self._vocab_size is None else self._vocab_size,
-            self._delimiter, self._offset)
-      else:
-        init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
-            table.resource_handle, filename, self._key_index, self._value_index,
-            -1 if self._vocab_size is None else self._vocab_size,
-            self._delimiter)
+      init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
+          table.resource_handle, filename, self._key_index, self._value_index,
+          -1 if self._vocab_size is None else self._vocab_size, self._delimiter,
+          self._offset)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g.,
     # if it is a placeholder) then it does not make sense to track it as an

@@ -246,6 +246,25 @@ func @testConcatCwiseBinaryInvalidInnerDim(%arg0: tensor<?x2xf32>,
   return %3 : tensor<?x4xf32>
 }
 
+// CHECK-LABEL: testConcatCwiseBinaryInvalidExceptions
+func @testConcatCwiseBinaryInvalidExceptions(%arg0: tensor<?x1xf32>,
+  %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<?x2xf32>) -> tensor<?x4xf32> {
+  // Each individual binary operation has an implicit broadcast that will be
+  // lost if we would reorder them with the concat.
+
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK-DAG: %[[MUL1:.*]] = "tf.Mul"(%arg0, %arg2)
+  // CHECK-DAG: %[[MUL2:.*]] = "tf.Mul"(%arg1, %arg3)
+  // CHECK: "tf.ConcatV2"(%[[MUL1]], %[[MUL2]],
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %1 = "tf.Mul"(%arg0, %arg2) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %2 = "tf.Mul"(%arg1, %arg3) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %3 = "tf.ConcatV2"(%1, %2, %arg4, %0) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x2xf32>, tensor<i32>) -> tensor<?x4xf32>
+
+  return %3 : tensor<?x4xf32>
+}
+
+
 // CHECK-LABEL: testConcatCwiseBinaryNegativeAxis
 func @testConcatCwiseBinaryNegativeAxis(%arg0: tensor<f32>,
   %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xf32> {

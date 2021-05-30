@@ -22,7 +22,7 @@ import os.path
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.util import event_pb2
-from tensorflow.python import _pywrap_events_writer
+from tensorflow.python.client import _pywrap_events_writer
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record

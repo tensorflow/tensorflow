@@ -38,17 +38,17 @@ class UtilsTest(test.TestCase, parameterized.TestCase):
 
   # pylint: disable=unused-argument
   def testNpDocInlined(self):
-    def np_fun(x):
+    def np_fun(x, y, z):
       """np_fun docstring."""
       return
     np_utils.set_np_doc_form('inlined')
-    @np_utils.np_doc(None, np_fun=np_fun)
-    def f():
+    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
+    def f(x, z):
       """f docstring."""
       return
     expected = """TensorFlow variant of NumPy's `np_fun`.
 
-Unsupported arguments: `x`.
+Unsupported arguments: `x`, `y`.
 
 f docstring.
 
@@ -67,17 +67,17 @@ np_fun docstring."""
         'https://numpy.org/doc/1.16/reference/generated/numpy.np_fun.html')
       ]])
   def testNpDocLink(self, version, link):
-    def np_fun(x):
+    def np_fun(x, y, z):
       """np_fun docstring."""
       return
     np_utils.set_np_doc_form(version)
-    @np_utils.np_doc(None, np_fun=np_fun)
-    def f():
+    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
+    def f(x, z):
       """f docstring."""
       return
     expected = """TensorFlow variant of NumPy's `np_fun`.
 
-Unsupported arguments: `x`.
+Unsupported arguments: `x`, `y`.
 
 f docstring.
 
@@ -87,17 +87,17 @@ See the NumPy documentation for [`numpy.np_fun`](%s)."""
 
   @parameterized.parameters([None, 1, 'a', '1a', '1.1a', '1.1.1a'])
   def testNpDocInvalid(self, invalid_flag):
-    def np_fun(x):
+    def np_fun(x, y, z):
       """np_fun docstring."""
       return
     np_utils.set_np_doc_form(invalid_flag)
-    @np_utils.np_doc(None, np_fun=np_fun)
-    def f():
+    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
+    def f(x, z):
       """f docstring."""
       return
     expected = """TensorFlow variant of NumPy's `np_fun`.
 
-Unsupported arguments: `x`.
+Unsupported arguments: `x`, `y`.
 
 f docstring.
 

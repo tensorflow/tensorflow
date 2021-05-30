@@ -33,7 +33,6 @@ from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -296,7 +295,24 @@ class TypeSpec(object):
 
   @classmethod
   def _deserialize(cls, serialization):
-    """Reconstructs a TypeSpec from a value returned by `serialize`."""
+    """Reconstructs a TypeSpec from a value returned by `serialize`.
+
+    Args:
+      serialization: A value returned by _serialize.  In some contexts,
+        `namedtuple`s in `serialization` may not have the identical type
+        that was returned by `_serialize` (but its type will still be a
+        `namedtuple` type with the same type name and field names).  For
+        example, the code that loads a SavedModel does not have access to
+        the original `namedtuple` type, so it dynamically creates a new
+        `namedtuple` type with the same type name and field names as the
+        original one.  If necessary, you can check `serialization` for these
+        duck-typed `nametuple` types, and restore them to the original type.
+        (E.g., this would be necessary if you rely on type checks such as
+        `isinstance` for this `TypeSpec`'s member variables).
+
+    Returns:
+      A `TypeSpec` of type `cls`.
+    """
     return cls(*serialization)
 
   # === Operators ===
@@ -390,11 +406,34 @@ class TypeSpec(object):
     return value
 
   @staticmethod
+  def __same_types(a, b):
+    """Returns whether a and b have the same type, up to namedtuple equivalence.
+
+    Consistent with tf.nest.assert_same_structure(), two namedtuple types
+    are considered the same iff they agree in their class name (without
+    qualification by module name) and in their sequence of field names.
+    This makes namedtuples recreated by StructureCoder compatible with their
+    original Python definition.
+
+    Args:
+      a: a Python object.
+      b: a Python object.
+
+    Returns:
+      A boolean that is true iff type(a) and type(b) are the same object
+      or equivalent namedtuple types.
+    """
+    if nest.is_namedtuple(a) and nest.is_namedtuple(b):
+      return nest.same_namedtuples(a, b)
+    else:
+      return type(a) is type(b)
+
+  @staticmethod
   def __is_compatible(a, b):
     """Returns true if the given type serializations compatible."""
     if isinstance(a, TypeSpec):
       return a.is_compatible_with(b)
-    if type(a) is not type(b):
+    if not TypeSpec.__same_types(a, b):
       return False
     if isinstance(a, (list, tuple)):
       return (len(a) == len(b) and
@@ -405,13 +444,6 @@ class TypeSpec(object):
     if isinstance(a, (tensor_shape.TensorShape, dtypes.DType)):
       return a.is_compatible_with(b)
     return a == b
-
-  @staticmethod
-  def __is_named_tuple(t):
-    """Returns true if the given tuple t is a namedtuple."""
-    return (hasattr(t, "_fields") and
-            isinstance(t._fields, collections_abc.Sequence) and
-            all(isinstance(f, six.string_types) for f in t._fields))
 
   @staticmethod
   def __most_specific_compatible_type_serialization(a, b):
@@ -442,18 +474,16 @@ class TypeSpec(object):
     Raises:
       ValueError: If `a` and `b` are incompatible.
     """
-    if type(a) is not type(b):
+    if not TypeSpec.__same_types(a, b):
       raise ValueError("Types are not compatible: %r vs %r" % (a, b))
+    if nest.is_namedtuple(a):
+      assert a._fields == b._fields  # Implied by __same_types(a, b).
+      return type(a)(*[
+          TypeSpec.__most_specific_compatible_type_serialization(x, y)
+          for (x, y) in zip(a, b)])
     if isinstance(a, (list, tuple)):
       if len(a) != len(b):
         raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-      if TypeSpec.__is_named_tuple(a):
-        if not hasattr(b, "_fields") or not isinstance(
-            b._fields, collections_abc.Sequence) or a._fields != b._fields:
-          raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-        return type(a)(*[
-            TypeSpec.__most_specific_compatible_type_serialization(x, y)
-            for (x, y) in zip(a, b)])
       return tuple(TypeSpec.__most_specific_compatible_type_serialization(x, y)
                    for (x, y) in zip(a, b))
     if isinstance(a, collections.OrderedDict):

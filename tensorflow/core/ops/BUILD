@@ -3,7 +3,6 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_chromiumos",
     "tf_cc_test",
 )
 
@@ -218,6 +217,14 @@ tf_gen_op_libs(
     ],
 )
 
+tf_gen_op_libs(
+    op_lib_names = ["composite_tensor_ops"],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
 cc_library(
     name = "ragged_ops",
     deps = [
@@ -259,6 +266,7 @@ cc_library(
         ":decode_proto_ops_op_lib",
         ":encode_proto_ops_op_lib",
         ":experimental_dataset_ops_op_lib",
+        ":composite_tensor_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
         ":image_ops_op_lib",
@@ -296,10 +304,11 @@ cc_library(
         ":string_ops_op_lib",
         ":training_ops_op_lib",
         ":word2vec_ops",
-    ] + if_chromiumos(
-        [],
+    ] + select({
         # Non-tpu platforms don't need tpu dependency.
-        [
+        "//tensorflow:chromiumos": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
             ":tpu_configuration_ops_op_lib",
             ":tpu_cross_replica_ops_op_lib",
             ":tpu_embedding_ops_op_lib",
@@ -312,7 +321,7 @@ cc_library(
             ":tpu_ordinal_selector_ops_op_lib",
             ":tpu_replication_ops_op_lib",
         ],
-    ) + if_mkl([
+    }) + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
     ]),

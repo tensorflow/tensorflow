@@ -256,8 +256,7 @@ def _convert_tf1_model(flags):
   if flags.conversion_summary_dir:
     converter.conversion_summary_dir = flags.conversion_summary_dir
 
-  if flags.experimental_new_converter is not None:
-    converter.experimental_new_converter = flags.experimental_new_converter
+  converter.experimental_new_converter = flags.experimental_new_converter
 
   if flags.experimental_new_quantizer is not None:
     converter.experimental_new_quantizer = flags.experimental_new_quantizer
@@ -287,8 +286,7 @@ def _convert_tf2_model(flags):
     model = keras_deps.get_load_model_function()(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  if flags.experimental_new_converter is not None:
-    converter.experimental_new_converter = flags.experimental_new_converter
+  converter.experimental_new_converter = flags.experimental_new_converter
 
   if flags.experimental_new_quantizer is not None:
     converter.experimental_new_quantizer = flags.experimental_new_quantizer
@@ -639,6 +637,7 @@ def _get_parser(use_v2_converter):
       "--experimental_new_converter",
       action=_ParseBooleanFlag,
       nargs="?",
+      default=True,
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion. (default True)"))
 

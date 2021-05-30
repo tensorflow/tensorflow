@@ -76,7 +76,7 @@ class PaddingFIFOQueue : public FIFOQueue {
 
   static Status GetElementComponent(const PaddingFIFOQueue::Tuple& tuple,
                                     int component, OpKernelContext* ctx,
-                                    PersistentTensor* out_tensor);
+                                    Tensor* out_tensor);
 
   static Status IsSameSizeExceptZerosInFirst(const TensorShape& first,
                                              const TensorShape& second);

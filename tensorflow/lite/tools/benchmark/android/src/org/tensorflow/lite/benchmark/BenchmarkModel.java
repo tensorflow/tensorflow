@@ -18,7 +18,12 @@ package org.tensorflow.lite.benchmark;
 /** Helper class for running a native TensorFlow Lite benchmark. */
 class BenchmarkModel {
   static {
-    System.loadLibrary("tensorflowlite_benchmark");
+    // Try loading flex first if available. If not load regular tflite shared library.
+    try {
+      System.loadLibrary("tensorflowlite_benchmark_plus_flex");
+    } catch (UnsatisfiedLinkError e) {
+      System.loadLibrary("tensorflowlite_benchmark");
+    }
   }
 
   // Executes a standard TensorFlow Lite benchmark according to the provided args.

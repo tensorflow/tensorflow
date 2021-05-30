@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
@@ -246,7 +247,15 @@ class SpmdPartitioner : public HloModulePass {
 
   // Verifies that the sharding of instructions in the module are valid, and
   // also fill in missing sharding information.
-  Status PreprocessSharding(HloModule* module);
+  virtual Status PreprocessSharding(HloModule* module);
+
+  // Returns if the given side-effecting instruction is allowed to have
+  // replicated sharding.
+  virtual bool CanSideEffectingHaveReplicatedSharding(
+      const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kInfeed ||
+           hlo->opcode() == HloOpcode::kOutfeed;
+  }
 
   // Preprocesses the graph to simplify some communication patterns. E.g., merge
   // pad->slice into a single pad with potentially negative padding to avoid
@@ -523,7 +532,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     bool operands_sharded_at_contracting_dims;
   };
 
- private:
+ protected:
   Status Preprocess(HloInstruction* hlo) override;
   Status Postprocess(HloInstruction* hlo) override;
 

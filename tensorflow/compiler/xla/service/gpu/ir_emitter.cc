@@ -124,9 +124,6 @@ Status IrEmitter::EmitConstants(const HloComputation& computation) {
     //
     // We may have to be more clever here in the future if we notice that we're
     // keeping around too many globals because of their linkage.
-    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
-        *ir_emitter_context_->llvm_module());
-
     std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
 
     llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
@@ -134,7 +131,7 @@ Status IrEmitter::EmitConstants(const HloComputation& computation) {
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer, global_name,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/global_address_space,
+        /*AddressSpace=*/0,
         /*isExternallyInitialized=*/false);
     global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(

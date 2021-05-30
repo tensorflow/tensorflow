@@ -104,8 +104,8 @@ bool HasForwardedRefInput(const Node& node) {
   return false;
 }
 
-xla::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
-                                              GraphCycles* cycles) {
+StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
+                                         GraphCycles* cycles) {
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     // We rely on the node IDs in the cycle detection graph being consecutive
     // integers starting from 0.
@@ -421,7 +421,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime,
     Direction direction, int depth, absl::flat_hash_set<Node*>* result);
 
-xla::StatusOr<bool> DoesAnyCalleeHaveRefNodes(
+StatusOr<bool> DoesAnyCalleeHaveRefNodes(
     const CallTargetListTy& call_target_list,
     FunctionLibraryRuntime* lib_runtime, Direction direction, int depth) {
   const int kMaxDepth = 10;
@@ -497,7 +497,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
   std::vector<bool> callee_has_ref_nodes_cache;
   callee_has_ref_nodes_cache.resize(graph.num_node_ids());
 
-  auto does_callee_have_ref_nodes = [&](Node* n) -> xla::StatusOr<bool> {
+  auto does_callee_have_ref_nodes = [&](Node* n) -> StatusOr<bool> {
     if (iterations == 1) {
       TF_ASSIGN_OR_RETURN(
           bool callee_has_ref_nodes,
@@ -558,7 +558,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
 }
 }  // namespace
 
-xla::StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
+StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime) {
   absl::flat_hash_set<Node*> result;
   TF_RETURN_IF_ERROR(GetNodesRelatedToRefVariablesInDirection(

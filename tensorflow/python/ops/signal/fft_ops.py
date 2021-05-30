@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes as _dtypes
@@ -75,7 +77,7 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   # TensorFlow.
   if fft_shape.is_fully_defined() and input_tensor.shape.ndims is not None:
     # Slice the last FFT-rank dimensions from input_tensor's shape.
-    input_fft_shape = input_tensor.shape[-fft_shape.ndims:]
+    input_fft_shape = input_tensor.shape[-fft_shape.ndims:]  # pylint: disable=invalid-unary-operand-type
 
     if input_fft_shape.is_fully_defined():
       # In reverse, we only pad the inner-most dimension to fft_length / 2 + 1.
@@ -139,7 +141,7 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
       if fft_length_static is not None:
         fft_length = fft_length_static
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
-  _rfft.__doc__ = fft_fn.__doc__
+  _rfft.__doc__ = re.sub("    Tcomplex.*?\n", "", fft_fn.__doc__)
   return _rfft
 
 
@@ -169,7 +171,7 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       if fft_length_static is not None:
         fft_length = fft_length_static
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
-  _irfft.__doc__ = ifft_fn.__doc__
+  _irfft.__doc__ = re.sub("    Treal.*?\n", "", ifft_fn.__doc__)
   return _irfft
 
 

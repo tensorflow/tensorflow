@@ -58,11 +58,11 @@ void ValidatePoolingGoldens(TfLiteTensor* tensors, int tensors_size,
   }
 }
 
-void TestAveragePoolFloat(const int* input_dims_data, const float* input_data,
+void TestAveragePoolFloat(int* input_dims_data, const float* input_data,
                           const int filter_height, const int filter_width,
                           const int stride_height, const int stride_width,
                           const float* expected_output_data,
-                          const int* output_dims_data, TfLitePadding padding,
+                          int* output_dims_data, TfLitePadding padding,
                           TfLiteFusedActivation activation,
                           float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -88,10 +88,10 @@ void TestAveragePoolFloat(const int* input_dims_data, const float* input_data,
 
 template <typename T>
 void TestAveragePoolQuantized(
-    const int* input_dims_data, const T* input_data, const float input_scale,
+    int* input_dims_data, const T* input_data, const float input_scale,
     const int input_zero_point, const int filter_height, const int filter_width,
     const int stride_height, const int stride_width,
-    const T* expected_output_data, const int* output_dims_data,
+    const T* expected_output_data, int* output_dims_data,
     const float output_scale, const int output_zero_point,
     TfLitePadding padding, TfLiteFusedActivation activation, T* output_data) {
   static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
@@ -118,10 +118,10 @@ void TestAveragePoolQuantized(
                          activation, output_data);
 }
 
-void TestMaxPoolFloat(const int* input_dims_data, const float* input_data,
+void TestMaxPoolFloat(int* input_dims_data, const float* input_data,
                       int filter_width, int filter_height, int stride_width,
                       int stride_height, const float* expected_output_data,
-                      const int* output_dims_data, TfLitePadding padding,
+                      int* output_dims_data, TfLitePadding padding,
                       TfLiteFusedActivation activation, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -144,13 +144,13 @@ void TestMaxPoolFloat(const int* input_dims_data, const float* input_data,
 }
 
 template <typename T>
-void TestMaxPoolQuantized(const int* input_dims_data, const T* input_data,
+void TestMaxPoolQuantized(int* input_dims_data, const T* input_data,
                           const float input_scale, const int input_zero_point,
                           const int filter_height, const int filter_width,
                           const int stride_height, const int stride_width,
-                          const T* expected_output_data,
-                          const int* output_dims_data, const float output_scale,
-                          const int output_zero_point, TfLitePadding padding,
+                          const T* expected_output_data, int* output_dims_data,
+                          const float output_scale, const int output_zero_point,
+                          TfLitePadding padding,
                           TfLiteFusedActivation activation, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -182,14 +182,14 @@ void TestMaxPoolQuantized(const int* input_dims_data, const T* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SimpleAveragePoolTestFloat) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const float input_values[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const float golden[] = {2.75, 5.75};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   float output_data[2];
   tflite::testing::TestAveragePoolFloat(
       input_shape, input_values, filter_height, filter_width, stride_height,
@@ -198,14 +198,14 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestFloat) {
 }
 
 TF_LITE_MICRO_TEST(SimpleAveragePoolTestUint8) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values[] = {0, 24, 8, 16, 12, 8, 40, 28};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const uint8_t golden[] = {11, 23};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   uint8_t output_data[2];
 
   const float input_scale = 0.25;
@@ -220,14 +220,14 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestUint8) {
 }
 
 TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2ActNone) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values[] = {0, -24, 8, 16, 12, 8, -40, 28};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const int8_t golden[] = {-1, 3};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   int8_t output_data[2];
 
   const float input_scale = .25;
@@ -242,14 +242,14 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2ActNone) {
 }
 
 TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride1Stride2Relu) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values[] = {0, -24, 8, 16, 12, 8, -40, 28};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 1;
   const int stride_height = 2;
   const int8_t golden[] = {0, 0, 3};
-  const int output_shape[] = {4, 1, 1, 3, 1};
+  int output_shape[] = {4, 1, 1, 3, 1};
   int8_t output_data[3];
 
   const float input_scale = .25;
@@ -265,14 +265,14 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride1Stride2Relu) {
 
 TF_LITE_MICRO_TEST(
     SimpleAveragePoolTestInt8PaddingValidStride2Stride1ReluN1To1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values[] = {0, -24, 8, 16, 12, 8, -40, 28};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 1;
   const int8_t golden[] = {-1, 3};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   int8_t output_data[2];
 
   const float input_scale = .25;
@@ -287,14 +287,14 @@ TF_LITE_MICRO_TEST(
 }
 
 TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2Relu6) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values[] = {12, -24, 32, 16, 12, 8, 40, 28};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const int8_t golden[] = {2, 24};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   int8_t output_data[2];
 
   const float input_scale = .25;
@@ -309,14 +309,14 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2Relu6) {
 }
 
 TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingSameStride1ActNone) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values[] = {12, -24, 32, 16, 12, 8, 40, 28};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 1;
   const int stride_height = 1;
   const int8_t golden[] = {2, 14, 29, 22, 10, 24, 34, 28};
-  const int output_shape[] = {4, 1, 2, 4, 1};
+  int output_shape[] = {4, 1, 2, 4, 1};
   int8_t output_data[8];
 
   const float input_scale = .25;
@@ -331,14 +331,14 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingSameStride1ActNone) {
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloat) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const float input_values[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const float golden[] = {6, 10};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   float output_data[2];
   tflite::testing::TestMaxPoolFloat(input_shape, input_values, filter_height,
                                     filter_width, stride_height, stride_width,
@@ -347,14 +347,14 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloat) {
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const float input_values[] = {-1, -6, 2, 4, -3, -2, 10.5, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const float golden[] = {0, 10.5};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   float output_data[2];
   tflite::testing::TestMaxPoolFloat(input_shape, input_values, filter_height,
                                     filter_width, stride_height, stride_width,
@@ -363,14 +363,14 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu) {
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatReluN1To1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const float input_values1[] = {-2.75, -6, 0.2, 0.4, -3, -2, -0.3, 0.7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const float golden1[] = {-1.0, 0.7};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   float output_data[2];
   tflite::testing::TestMaxPoolFloat(input_shape, input_values1, filter_height,
                                     filter_width, stride_height, stride_width,
@@ -386,14 +386,14 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatReluN1To1) {
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu6) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const float input_values1[] = {-1.5, -6, 12, 4, -3, -2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const float golden1[] = {0, 6};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   float output_data[2];
   tflite::testing::TestMaxPoolFloat(input_shape, input_values1, filter_height,
                                     filter_width, stride_height, stride_width,
@@ -409,14 +409,14 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu6) {
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestPaddingSameStride1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const float input_values[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 1;
   const int stride_height = 1;
   const float golden[] = {6, 10, 10, 7, 3, 10, 10, 7};
-  const int output_shape[] = {4, 1, 2, 4, 1};
+  int output_shape[] = {4, 1, 2, 4, 1};
   float output_data[8];
   tflite::testing::TestMaxPoolFloat(input_shape, input_values, filter_height,
                                     filter_width, stride_height, stride_width,
@@ -425,14 +425,14 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestPaddingSameStride1) {
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestPaddingValidStride1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const float input_values[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 1;
   const int stride_height = 1;
   const float golden[] = {6, 10, 10};
-  const int output_shape[] = {4, 1, 1, 3, 1};
+  int output_shape[] = {4, 1, 1, 3, 1};
   float output_data[8];
   tflite::testing::TestMaxPoolFloat(input_shape, input_values, filter_height,
                                     filter_width, stride_height, stride_width,
@@ -441,14 +441,14 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestPaddingValidStride1) {
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestUInt8ActNone) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values[] = {0, 12, 4, 8, 6, 4, 20, 14};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const uint8_t golden[] = {12, 20};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   uint8_t output_data[2];
 
   const float input_scale = 1.0;
@@ -463,14 +463,14 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestUInt8ActNone) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values[] = {0, 4, 2, 4, 3, 2, 14, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const uint8_t golden[] = {4, 14};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   uint8_t output_data[2];
 
   const float input_scale = 1.0;
@@ -485,14 +485,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActReluN1To1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values[] = {0, 4, 2, 4, 3, 2, 14, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const uint8_t golden[] = {3, 5};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   uint8_t output_data[2];
 
   const float input_scale = 1.0;
@@ -507,14 +507,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActReluN1To1) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu6) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values1[] = {12, 0, 36, 20, 6, 8, 32, 26};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const uint8_t golden1[] = {12, 24};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   uint8_t output_data[8];
 
   const float input_scale = 0.5;
@@ -538,14 +538,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu6) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingSameStride1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values1[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 1;
   const int stride_height = 1;
   const uint8_t golden1[] = {6, 10, 10, 7, 3, 10, 10, 7};
-  const int output_shape[] = {4, 1, 2, 4, 1};
+  int output_shape[] = {4, 1, 2, 4, 1};
   uint8_t output_data[8];
 
   const float input_scale = 1.0;
@@ -560,14 +560,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingSameStride1) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingValidStride1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values1[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 1;
   const int stride_height = 1;
   const uint8_t golden1[] = {6, 10, 10};
-  const int output_shape[] = {4, 1, 1, 3, 1};
+  int output_shape[] = {4, 1, 1, 3, 1};
   uint8_t output_data[3];
 
   const float input_scale = 1.0;
@@ -582,14 +582,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingValidStride1) {
 }
 
 TF_LITE_MICRO_TEST(SimpleMaxPoolTestInt8ActNone) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values1[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const int8_t golden1[] = {6, 10};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   int8_t output_data[2];
 
   const float input_scale = 1.0;
@@ -604,14 +604,14 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestInt8ActNone) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestInt8ActRelu) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values1[] = {-3, -12, 4, 8, -6, -4, 20, 14};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const int8_t golden1[] = {0, 20};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   int8_t output_data[2];
 
   const float input_scale = 0.5;
@@ -626,14 +626,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestInt8ActRelu) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestInt8ActReluN1To1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values1[] = {-2, -6, -2, -4, -3, -2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const int8_t golden1[] = {-1, 1};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   int8_t output_data[2];
 
   const float input_scale = 1.0;
@@ -648,14 +648,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestInt8ActReluN1To1) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestInt8ActRelu6) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const int8_t input_values1[] = {0, -6, 12, 4, -3, -2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 2;
   const int stride_height = 2;
   const int8_t golden1[] = {0, 6};
-  const int output_shape[] = {4, 1, 1, 2, 1};
+  int output_shape[] = {4, 1, 1, 2, 1};
   int8_t output_data[2];
 
   const float input_scale = 1.0;
@@ -670,14 +670,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestInt8ActRelu6) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingSameStride1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values1[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 1;
   const int stride_height = 1;
   const uint8_t golden1[] = {6, 10, 10, 7, 3, 10, 10, 7};
-  const int output_shape[] = {4, 1, 2, 4, 1};
+  int output_shape[] = {4, 1, 2, 4, 1};
   uint8_t output_data[8];
 
   const float input_scale = 1.0;
@@ -692,14 +692,14 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingSameStride1) {
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8PaddingValidStride1) {
-  const int input_shape[] = {4, 1, 2, 4, 1};
+  int input_shape[] = {4, 1, 2, 4, 1};
   const uint8_t input_values1[] = {0, 6, 2, 4, 3, 2, 10, 7};
   const int filter_width = 2;
   const int filter_height = 2;
   const int stride_width = 1;
   const int stride_height = 1;
   const uint8_t golden1[] = {6, 10, 10};
-  const int output_shape[] = {4, 1, 1, 3, 1};
+  int output_shape[] = {4, 1, 1, 3, 1};
   uint8_t output_data[3];
 
   const float input_scale = 1.0;

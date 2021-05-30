@@ -397,7 +397,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
-                            const FunctionDefLibrary& lib_def);
+                            const FunctionDefLibrary& lib_def = {});
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
@@ -517,6 +517,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
+  void set_default_registry(const OpRegistryInterface* registry) {
+    default_registry_ = registry;
+  }
 
   // Returns a copy of `*this` with only the subset of functions that are
   // reachable from the nodes of `graph` or `func`.
@@ -581,8 +584,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Remove all functions in `funcs` and all gradients of functions in
   // `funcs_with_grads` from this library.
-  void Remove(const std::vector<string>& funcs,
-              const std::vector<string>& funcs_with_grads)
+  Status Remove(const std::vector<string>& funcs,
+                const std::vector<string>& funcs_with_grads)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Remove `func` from the library. Returns non-OK Status unless `func` is in
@@ -597,7 +600,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
-  const OpRegistryInterface* const default_registry_;
+  const OpRegistryInterface* default_registry_;
   gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
       function_defs_ TF_GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ TF_GUARDED_BY(mu_);

@@ -714,6 +714,8 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+    self.assertRaises(ValueError, np_array_ops.amax, np.ones([2, 2]), out=[])
+    self.assertRaises(ValueError, np_array_ops.amin, np.ones([2, 2]), out=[])
 
   def testMean(self):
 
@@ -741,6 +743,7 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+    self.assertRaises(ValueError, np_array_ops.mean, np.ones([2, 2]), out=[])
 
   def testProd(self):
 
@@ -1061,6 +1064,7 @@ class ArrayMethodsTest(test.TestCase):
   def testMoveaxis(self):
 
     def _test(*args):
+      # pylint: disable=no-value-for-parameter
       expected = np.moveaxis(*args)
       raw_ans = np_array_ops.moveaxis(*args)
 

@@ -45,6 +45,7 @@ class SingleAddOpModel : tflite::SingleOpModel {
 
     SetBuiltinOp(tflite::BuiltinOperator_ADD, tflite::BuiltinOptions_AddOptions,
                  tflite::CreateAddOptions(builder_).Union());
+
     // Set apply_delegate to false to skip applying TfLite default delegates.
     BuildInterpreter({GetShape(input), GetShape(constant)},
                      /*num_threads=*/-1,
@@ -244,7 +245,6 @@ class MultiplePartitionsModel : tflite::MultiOpModel {
         tflite::BuiltinOperator_ADD, tflite::BuiltinOptions_AddOptions,
         CreateAddOptions(builder_, ActivationFunctionType_NONE).Union(),
         {round_out, input3}, {output});
-    BuildInterpreter({GetShape(input1), GetShape(input2), GetShape(input3)});
 
     // Set apply_delegate to false to skip applying TfLite default delegates.
     BuildInterpreter({GetShape(input1), GetShape(input2), GetShape(input3)},

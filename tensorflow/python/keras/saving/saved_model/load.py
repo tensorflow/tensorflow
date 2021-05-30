@@ -889,13 +889,16 @@ def _finalize_config_layers(layers):
     # Restore metrics list.
     _restore_layer_metrics(layer)
 
-    # Restore RNN layer states
+    # Restore RNN layer states.
     if (isinstance(layer, recurrent.RNN) and
         layer.stateful and
         hasattr(_get_keras_attr(layer), 'states')):
       layer.states = getattr(_get_keras_attr(layer), 'states', None)
       for variable in nest.flatten(layer.states):
         backend.track_variable(variable)
+
+    # Perform any layer defined finalization of the layer state.
+    layer.finalize_state()
 
 
 def _finalize_metric(metric):
