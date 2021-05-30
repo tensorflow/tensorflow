@@ -103,9 +103,10 @@ def model_to_dot(model,
     expand_nested: whether to expand nested models into clusters.
     dpi: Dots per inch.
     subgraph: whether to return a `pydot.Cluster` instance.
-    layer_range: range of layers passed as `list` or `Tensor` of `int` of
-        shape (2,) indicating the range of layers for which the `pyDot.Dot`
-        will be generated. By default `None` and considers all layers of model.
+    layer_range: range of layers passed as `list` or `Tensor` of `int` or `str`
+        of shape (2,) indicating the range of layers for which the `pyDot.Dot`
+        will be generated. `layer_range` can be either layer indexes or layer
+        names. By default `None` and considers all layers of model.
         Note that you must pass range such that the resultant subgraph must
         be complete.
 
@@ -362,9 +363,10 @@ def plot_model(model,
         'LR' creates a horizontal plot.
     expand_nested: Whether to expand nested models into clusters.
     dpi: Dots per inch.
-    layer_range: range of layers passed as `list` or `Tensor` of `int` of
-        shape (2,) indicating the range of layers for which the plot
-        will be generated. By default `None` and considers all layers of model.
+    layer_range: range of layers passed as `list` or `Tensor` of `int` or `str`
+        of shape (2,) indicating the range of layers for which the plot
+        will be generated. `layer_range` can be either layer indexes or layer
+        names. By default `None` and considers all layers of model.
         Note that you must pass range such that the resultant subgraph must
         be complete.
 
