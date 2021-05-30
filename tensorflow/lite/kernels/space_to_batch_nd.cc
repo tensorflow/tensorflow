@@ -73,6 +73,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   for (int dim = 0; dim < kSpatialDimensionNum; ++dim) {
     int final_dim_size = (input_size->data[dim + 1] + paddings_data[dim * 2] +
                           paddings_data[dim * 2 + 1]);
+    TF_LITE_ENSURE(context, block_shape[dim] != 0);
     TF_LITE_ENSURE_EQ(context, final_dim_size % block_shape[dim], 0);
     output_size->data[dim + 1] = final_dim_size / block_shape[dim];
   }
