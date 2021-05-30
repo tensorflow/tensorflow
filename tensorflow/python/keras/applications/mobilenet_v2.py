@@ -149,7 +149,7 @@ def MobileNetV2(input_shape=None,
           of filters in each layer.
       - If `alpha` > 1.0, proportionally increases the number
           of filters in each layer.
-      - If `alpha` = 1, default number of filters from the paper
+      - If `alpha` = 1.0, default number of filters from the paper
           are used at each layer.
     include_top: Boolean, whether to include the fully-connected
       layer at the top of the network. Defaults to `True`.
@@ -286,6 +286,7 @@ def MobileNetV2(input_shape=None,
   cols = input_shape[col_axis]
 
   if weights == 'imagenet':
+   alpha = float(alpha)
     if alpha not in [0.35, 0.50, 0.75, 1.0, 1.3, 1.4]:
       raise ValueError('If imagenet weights are being loaded, '
                        'alpha can be one of `0.35`, `0.50`, `0.75`, '
