@@ -19,7 +19,6 @@
 import os
 import sys
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -62,6 +61,22 @@ def is_wrapped_model(layer):
 def add_edge(dot, src, dst):
   if not dot.get_edge(src, dst):
     dot.add_edge(pydot.Edge(src, dst))
+
+
+def get_layer_index_bound_by_layer_name(model, layer_names):
+  '''Return specific range of layers to plot, mainly for sub-graph plot models.
+  Args:
+    model: tf.keras.Model 
+    layer_names: unique name of layer of the model, type(str)
+
+  Returns:
+    retun the index value of layer based on its unique name (layer_names)
+  '''
+  index = [] 
+  for idx, layer in enumerate(model.layers):
+    if layer.name in layer_names:
+      index.append(idx)
+  return [min(index), max(index)] if len(index) > 1 else index
 
 
 @keras_export('keras.utils.model_to_dot')
@@ -133,14 +148,23 @@ def model_to_dot(model,
 
   if layer_range is None:
     layer_range = [0, len(model.layers)]
-  elif array_ops.shape(layer_range) != [2]:
-    raise ValueError("layer_range must be of shape (2,)")
-  elif layer_range[0] > layer_range[1]:
-    raise ValueError("layer_range should be of shape (2,)",
-                     "where layer_range[0] <= layer_range[1]")
-  elif layer_range[0] < 0 or layer_range[1] > len(model.layers):
-    raise ValueError("Both values in layer_range should be in",
-                     "range (%d, %d)"%(0, len(model.layers)))
+  
+  # check point for layer range whether its string or integer 
+  # layer range must be same dtype (mixed dtype is not allowed)
+  if all(map(lambda x: str(x).isdigit(), layer_range)):
+    layer_range = list(map(int, layer_range))
+    if len(layer_range) >= 2:
+      layer_range = [min(layer_range), max(layer_range)]
+    elif len(layer_range) != [2]:
+      raise ValueError("layer_range must be of shape (2,)")
+    if layer_range[0] < 0 or layer_range[1] > len(model.layers):
+      raise ValueError("Both values in layer_range should be in",
+                       "range (%d, %d)"%(0, len(model.layers)))
+  elif all(isinstance(item, str) for item in layer_range):
+    layer_range = get_layer_index_bound_by_layer_name(model, layer_range)
+  elif any(map(lambda x: str(x), layer_range)):
+    raise ValueError("layer_range should not contain mixed data type,",
+                     "got layer_range:", layer_range)
 
   sub_n_first_node = {}
   sub_n_last_node = {}

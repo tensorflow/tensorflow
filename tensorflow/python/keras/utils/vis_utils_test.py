@@ -106,6 +106,8 @@ class ModelToDotFormatTest(test.TestCase):
 
   def test_dot_layer_range(self):
     model = efficientnet.EfficientNetB0()
+
+    # Case 1: When layer_range has indexes
     layer_range = [9, 29]
     layer_ids_from_model = get_layer_ids_from_model(
       model, layer_range
@@ -114,7 +116,39 @@ class ModelToDotFormatTest(test.TestCase):
       dot = vis_utils.model_to_dot(model, layer_range=layer_range)
       dot_edges = dot.get_edges()
       layer_ids_from_dot = get_layer_ids_from_dot(
-          dot_edges
+        dot_edges
+      )
+      self.assertAllEqual(sorted(layer_ids_from_model),
+        sorted(layer_ids_from_dot))
+    except ImportError:
+      pass
+
+    # Case 2: When layer_range has layer names
+    layer_range = ['block1a_project_conv', 'block1a_activation']
+    layer_ids_from_model = get_layer_ids_from_model(
+      model, layer_range
+    )
+    try:
+      dot = vis_utils.model_to_dot(model, layer_range=layer_range)
+      dot_edges = dot.get_edges()
+      layer_ids_from_dot = get_layer_ids_from_dot(
+        dot_edges
+      )
+      self.assertAllEqual(sorted(layer_ids_from_model),
+        sorted(layer_ids_from_dot))
+    except ImportError:
+      pass
+
+    # Case 3: When more than 2 elements in layer_range
+    layer_range = ['block1a_project_conv', 'block1a_activation', 'block1a_bn']
+    layer_ids_from_model = get_layer_ids_from_model(
+      model, layer_range
+    )
+    try:
+      dot = vis_utils.model_to_dot(model, layer_range=layer_range)
+      dot_edges = dot.get_edges()
+      layer_ids_from_dot = get_layer_ids_from_dot(
+        dot_edges
       )
       self.assertAllEqual(sorted(layer_ids_from_model),
         sorted(layer_ids_from_dot))
@@ -123,8 +157,46 @@ class ModelToDotFormatTest(test.TestCase):
 
   def test_plot_layer_range(self):
     model = efficientnet.EfficientNetB0()
+
+    # Case 1: When layer_range has indexes
     layer_range = [9, 29]
     effnet_subplot = 'model_effnet_1.png'
+    try:
+      vis_utils.plot_model(model,
+        to_file=effnet_subplot,
+        layer_range=layer_range)
+      self.assertTrue(file_io.file_exists_v2(effnet_subplot))
+      file_io.delete_file_v2(effnet_subplot)
+    except ImportError:
+      pass
+
+    # Case 2: When layer_range has layer names
+    layer_range = ['block1a_project_conv', 'block1a_activation']
+    effnet_subplot = 'model_effnet_2.png'
+    try:
+      vis_utils.plot_model(model,
+        to_file=effnet_subplot,
+        layer_range=layer_range)
+      self.assertTrue(file_io.file_exists_v2(effnet_subplot))
+      file_io.delete_file_v2(effnet_subplot)
+    except ImportError:
+      pass
+
+    # Case 3: When more than 2 elements in layer_range
+    layer_range = ['block1a_project_conv', 'block1a_activation', 'block1a_bn']
+    effnet_subplot = 'model_effnet_3.png'
+    try:
+      vis_utils.plot_model(model,
+        to_file=effnet_subplot,
+        layer_range=layer_range)
+      self.assertTrue(file_io.file_exists_v2(effnet_subplot))
+      file_io.delete_file_v2(effnet_subplot)
+    except ImportError:
+      pass
+
+    # Case 4: When layer_range has numbers but passed as string
+    layer_range = [8, "15"]
+    effnet_subplot = 'model_effnet_4.png'
     try:
       vis_utils.plot_model(model,
         to_file=effnet_subplot,
@@ -149,17 +221,17 @@ class ModelToDotFormatTest(test.TestCase):
       with self.assertRaises(ValueError):
         vis_utils.model_to_dot(model, layer_range=[0])
       with self.assertRaises(ValueError):
-        vis_utils.model_to_dot(model, layer_range=[0, 29, 42])
+        vis_utils.model_to_dot(model, layer_range=[])
       with self.assertRaises(ValueError):
         vis_utils.plot_model(model, layer_range=[0])
       with self.assertRaises(ValueError):
-        vis_utils.plot_model(model, layer_range=[0, 29, 42])
+        vis_utils.plot_model(model, layer_range=[])
 
-      # Case 3: When layer_range[0] > layer_range[1]
+      # Case 3: When layer_range elements are mixed type
       with self.assertRaises(ValueError):
-        vis_utils.model_to_dot(model, layer_range=[29, 10])
+        vis_utils.model_to_dot(model, layer_range=[9, 'block1a_activation'])
       with self.assertRaises(ValueError):
-        vis_utils.plot_model(model, layer_range=[29, 10])
+        vis_utils.plot_model(model, layer_range=[9, 'block1a_activation'])
 
       # Case 4: When one of the range is out of layer numbers
       with self.assertRaises(ValueError):
@@ -176,6 +248,7 @@ class ModelToDotFormatTest(test.TestCase):
       pass
 
 def get_layer_ids_from_model(model, layer_range):
+  layer_range = get_layer_index_bound_by_layer_name(model, layer_range)
   layer_ids_from_model = []
   for i, layer in enumerate(model.layers):
     if i >= layer_range[0] and i < layer_range[1]:
