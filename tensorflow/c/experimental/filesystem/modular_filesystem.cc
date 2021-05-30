@@ -390,6 +390,30 @@ void ModularFileSystem::FlushCaches(TransactionToken* token) {
   if (ops_->flush_caches != nullptr) ops_->flush_caches(filesystem_.get());
 }
 
+Status ModularFileSystem::SetConfiguration(const std::string& name,
+                                           const std::string& value) {
+  if (ops_->set_filesystem_configuration == nullptr) {
+    return errors::Unimplemented(
+        "Filesystem does not support SetConfiguration()");
+  }
+
+  TF_Filesystem_Option option;
+  memset(&option, 0, sizeof(option));
+  option.name = const_cast<char*>(name.c_str());
+  option.per_file = 0;
+  option.type_tag = TF_FILESYSTEM_OPTION_TYPE_BUFFER;
+  option.num_values = 1;
+  TF_Filesystem_Option_Value option_value[1];
+  memset(&option_value, 0, sizeof(option_value));
+  option_value[0].buffer_val.buf = const_cast<char*>(value.c_str());
+  option_value[0].buffer_val.buf_length = value.size();
+  option.value = &option_value[0];
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->set_filesystem_configuration(
+      filesystem_.get(), &option, 1, plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
+}
+
 Status ModularRandomAccessFile::Read(uint64 offset, size_t n,
                                      StringPiece* result, char* scratch) const {
   if (ops_->read == nullptr)

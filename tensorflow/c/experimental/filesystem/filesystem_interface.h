@@ -83,23 +83,25 @@ typedef struct TF_TransactionToken {
   TF_Filesystem* owner;
 } TF_TransactionToken;
 
-typedef struct TF_Filesystem_Option_Value {
-  int type_tag;
-  int num_values;
-  union {
-    int64_t inv_val;
-    double real_val;
-    struct {
-      char* buf;
-      int buf_length;
-    } buffer_val;
-  } * values;  // owned
+typedef union TF_Filesystem_Option_Value {
+  int64_t inv_val;
+  double real_val;
+  struct {
+    char* buf;
+    int buf_length;
+  } buffer_val;
 } TF_Filesystem_Option_Value;
+
+constexpr int TF_FILESYSTEM_OPTION_TYPE_INT = 0;
+constexpr int TF_FILESYSTEM_OPTION_TYPE_REAL = 1;
+constexpr int TF_FILESYSTEM_OPTION_TYPE_BUFFER = 2;
 
 typedef struct TF_Filesystem_Option {
   char* name;                         // null terminated, owned
   char* description;                  // null terminated, owned
   int per_file;                       // bool actually, but bool is not a C type
+  int type_tag;                       // type of the value (int, real, buffer)
+  int num_values;                     // num of values
   TF_Filesystem_Option_Value* value;  // owned
 } TF_Filesystem_Option;
 
@@ -860,7 +862,7 @@ typedef struct TF_FilesystemOps {
   ///
   /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
   void (*set_filesystem_configuration)(const TF_Filesystem* filesystem,
-                                       const TF_Filesystem_Option** options,
+                                       const TF_Filesystem_Option* options,
                                        int num_options, TF_Status* status);
 
   /// Returns the value of the filesystem option given in `key` in `option`.
@@ -879,22 +881,6 @@ typedef struct TF_FilesystemOps {
                                               const char* key,
                                               TF_Filesystem_Option** option,
                                               TF_Status* status);
-
-  /// Sets the value of the filesystem option given in `key` to value in
-  /// `option`. Valid values of the `key` are returned by
-  /// `get_file_system_configuration_keys` call. Ownership of the `option` and
-  /// the `key` belogs to the caller. Buffers therein should be allocated and
-  /// freed by the filesystems allocation API.
-  ///
-  /// Plugins:
-  ///   * Must set `status` to `TF_OK` if `option` is set/updated
-  ///   * Must set `status` to `TF_NOT_FOUND` if the key is invalid
-  ///   * Might use any other error value for `status` to signal other errors.
-  ///
-  /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
-  void (*set_filesystem_configuration_option)(
-      const TF_Filesystem* filesystem, const TF_Filesystem_Option* option,
-      TF_Status* status);
 
   /// Returns a list of valid configuration keys in `keys` array and number of
   /// keys in `num_keys`. Ownership of the buffers in `keys` are transferred to

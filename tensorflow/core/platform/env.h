@@ -93,6 +93,9 @@ class Env {
   virtual Status RegisterFileSystem(const std::string& scheme,
                                     std::unique_ptr<FileSystem> filesystem);
 
+  Status SetConfiguration(const std::string& scheme,
+                          const std::string& key, const std::string& value);
+
   /// \brief Flush filesystem caches for all registered filesystems.
   Status FlushFileSystemCaches();
 

@@ -516,6 +516,12 @@ class FileSystem {
   /// \brief Decode transaction to human readable string.
   virtual std::string DecodeTransaction(const TransactionToken* token);
 
+  /// \brief Set File System Configuration
+  virtual tensorflow::Status SetConfiguration(const std::string& name,
+                                              const std::string& value) {
+    return errors::Unimplemented("SetConfiguration");
+  }
+
   FileSystem() {}
 
   virtual ~FileSystem() = default;
