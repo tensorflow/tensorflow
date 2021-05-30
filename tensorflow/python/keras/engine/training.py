@@ -160,6 +160,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   model = tf.keras.Model(inputs=inputs, outputs=outputs)
   ```
 
+  Note: Only dicts, lists, and tuples of input tensors are supported. Nested
+  inputs are not supported (e.g. lists of list or dicts of dict).
+
   2 - By subclassing the `Model` class: in that case, you should define your
   layers in `__init__` and you should implement the model's forward pass
   in `call`.
@@ -466,7 +469,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     i.e. `model(inputs)`, which relies on the underlying `call` method.
 
     Args:
-        inputs: A tensor or list of tensors.
+        inputs: Input tensor, or dict/list/tuple of input tensors.
         training: Boolean or boolean scalar tensor, indicating whether to run
           the `Network` in training mode or inference mode.
         mask: A mask or list of masks. A mask can be

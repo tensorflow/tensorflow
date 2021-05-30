@@ -144,7 +144,8 @@ def smart_resize(x, size, interpolation='bilinear'):
   return img
 
 
-@keras_export('keras.preprocessing.image.array_to_img')
+@keras_export('keras.utils.array_to_img',
+              'keras.preprocessing.image.array_to_img')
 def array_to_img(x, data_format=None, scale=True, dtype=None):
   """Converts a 3D Numpy array to a PIL Image instance.
 
@@ -187,7 +188,8 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
   return image.array_to_img(x, data_format=data_format, scale=scale, **kwargs)
 
 
-@keras_export('keras.preprocessing.image.img_to_array')
+@keras_export('keras.utils.img_to_array',
+              'keras.preprocessing.image.img_to_array')
 def img_to_array(img, data_format=None, dtype=None):
   """Converts a PIL Image instance to a Numpy array.
 
@@ -228,7 +230,8 @@ def img_to_array(img, data_format=None, dtype=None):
   return image.img_to_array(img, data_format=data_format, **kwargs)
 
 
-@keras_export('keras.preprocessing.image.save_img')
+@keras_export('keras.utils.save_img',
+              'keras.preprocessing.image.save_img')
 def save_img(path,
              x,
              data_format=None,
@@ -258,6 +261,8 @@ def save_img(path,
                  scale=scale, **kwargs)
 
 
+@keras_export('keras.utils.load_img',
+              'keras.preprocessing.image.load_img')
 def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
              interpolation='nearest'):
   """Loads an image into PIL format.
@@ -1132,4 +1137,3 @@ keras_export(
 keras_export('keras.preprocessing.image.random_brightness')(random_brightness)
 keras_export(
     'keras.preprocessing.image.apply_affine_transform')(apply_affine_transform)
-keras_export('keras.preprocessing.image.load_img')(load_img)
