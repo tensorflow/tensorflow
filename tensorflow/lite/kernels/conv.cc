@@ -427,6 +427,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     // Only one scale factor per batch is typically necessary. See optimized
     // implementation for why we need to allocate for the height of the inputs
     // flattened to 2D.
+    TF_LITE_ENSURE(context, channels_in != 0);
     const int height = NumElements(input) / channels_in;
     int scaling_dims[1] = {height};
     if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
@@ -449,6 +450,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       input_offsets->type = kTfLiteInt32;
       input_offsets->allocation_type = kTfLiteArenaRw;
       // See above comment for the need to allocate for height of inputs.
+      TF_LITE_ENSURE(context, channels_in != 0);
       const int height = NumElements(input) / channels_in;
       int scaling_dims[1] = {height};
       if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1, scaling_dims)) {
@@ -656,8 +658,9 @@ void EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
 
-  const int input_size = NumElements(input) / SizeOfDimension(input, 0);
   const int batch_size = SizeOfDimension(input, 0);
+  TF_LITE_ENSURE(context, batch_size != 0);
+  const int input_size = NumElements(input) / batch_size;
   const TfLiteTensor* input_quantized =
       GetTemporary(context, node, data->input_quantized_index);
   int8_t* quantized_input_ptr_batch = input_quantized->data.int8;
@@ -726,8 +729,9 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
 
-  const int input_size = NumElements(input) / SizeOfDimension(input, 0);
   const int batch_size = SizeOfDimension(input, 0);
+  TF_LITE_ENSURE(context, batch_size != 0);
+  const int input_size = NumElements(input) / batch_size;
 
   float* input_ptr = GetTensorData<float>(input);
   int8_t* quantized_input_ptr_batch = GetTensorData<int8_t>(
