@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/noise_reduction_util.h"
 
-#include <cstring.h>
+#include <string.h>
 
 #include "tensorflow/lite/experimental/microfrontend/lib/fprintf_shim.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
