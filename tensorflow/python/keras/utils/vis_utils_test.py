@@ -248,7 +248,9 @@ class ModelToDotFormatTest(test.TestCase):
       pass
 
 def get_layer_ids_from_model(model, layer_range):
-  layer_range = get_layer_index_bound_by_layer_name(model, layer_range)
+  if all(isinstance(item, str) for item in layer_range):
+    layer_range = vis_utils.get_layer_index_bound_by_layer_name(model,
+      layer_range)
   layer_ids_from_model = []
   for i, layer in enumerate(model.layers):
     if i >= layer_range[0] and i < layer_range[1]:
