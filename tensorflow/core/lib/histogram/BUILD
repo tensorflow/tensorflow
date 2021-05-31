@@ -11,7 +11,7 @@ package(
         # tensorflow/core/lib/monitoring:sampler uses histogram
         "//tensorflow/core/lib/monitoring:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add are: all tests.

@@ -42,8 +42,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/dump_graph.h"
 
-using xla::StatusOr;
-
 namespace tensorflow {
 namespace functionalize_cond {
 

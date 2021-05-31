@@ -73,6 +73,31 @@ def _make_raw_assign_fn(raw_assign_fn):  # pylint: disable=missing-docstring
   return assign_fn
 
 
+_scatter_error_msg = ("{op_name} is only supported for distributed "
+                      "variable (variable created within certain "
+                      "`tf.distribute.Strategy` scope) with NONE "
+                      " aggregation, got: {aggregation}.")
+
+
+def _make_raw_scatter_xxx_fn(raw_scatter_xxx_fn):
+  """Wrap `raw_scatter_xxx_fn` so that it can be called w/ and w/o packed handle."""
+
+  def scatter_xxx_fn(var, sparse_delta, use_locking=False, name=None):  # pylint: disable=missing-docstring
+    del use_locking  # Unused.
+
+    handle = var.handle
+    with _maybe_enter_graph(handle), _maybe_on_device(var):
+      op = raw_scatter_xxx_fn(
+          handle,
+          sparse_delta.indices,
+          ops.convert_to_tensor(sparse_delta.values, var.dtype),
+          name=name)
+      with ops.control_dependencies([op]):
+        return var._read_variable_op()  # pylint: disable=protected-access
+
+  return scatter_xxx_fn
+
+
 class TPUVariableMixin(object):
   """Mixin for TPU variables."""
 
@@ -450,26 +475,62 @@ class TPUOnWritePolicy(values.OnWritePolicy):
     return assign(
         var, value, use_locking=use_locking, name=name, read_value=read_value)
 
-  def scatter_sub(self, *args, **kwargs):
-    raise NotImplementedError
+  def _scatter_xxx(self,
+                   raw_scater_xxx_fn,
+                   op_name,
+                   var,
+                   sparse_delta,
+                   use_locking=False,
+                   name=None):
+    scater_xxx_fn = _make_raw_scatter_xxx_fn(raw_scater_xxx_fn)
+    if tpu_util.enclosing_tpu_context():
+      if self._aggregation != variable_scope.VariableAggregation.NONE:
+        raise NotImplementedError(
+            _scatter_error_msg.format(
+                op_name=op_name, aggregation=self._aggregation))
+      return scater_xxx_fn(
+          var, sparse_delta=sparse_delta, use_locking=use_locking, name=name)
+    else:
+      return var._update(  # pylint: disable=protected-access
+          update_fn=scater_xxx_fn,
+          value=sparse_delta,
+          use_locking=use_locking,
+          name=name)
 
-  def scatter_add(self, *args, **kwargs):
-    raise NotImplementedError
+  def scatter_sub(self, var, sparse_delta, use_locking=False, name=None):
+    return self._scatter_xxx(gen_resource_variable_ops.resource_scatter_sub,
+                             "scatter_sub", var, sparse_delta, use_locking,
+                             name)
 
-  def scatter_max(self, *args, **kwargs):
-    raise NotImplementedError
+  def scatter_add(self, var, sparse_delta, use_locking=False, name=None):
+    return self._scatter_xxx(gen_resource_variable_ops.resource_scatter_add,
+                             "scatter_add", var, sparse_delta, use_locking,
+                             name)
 
-  def scatter_min(self, *args, **kwargs):
-    raise NotImplementedError
+  def scatter_max(self, var, sparse_delta, use_locking=False, name=None):
+    return self._scatter_xxx(gen_resource_variable_ops.resource_scatter_max,
+                             "scatter_max", var, sparse_delta, use_locking,
+                             name)
 
-  def scatter_mul(self, *args, **kwargs):
-    raise NotImplementedError
+  def scatter_min(self, var, sparse_delta, use_locking=False, name=None):
+    return self._scatter_xxx(gen_resource_variable_ops.resource_scatter_min,
+                             "scatter_min", var, sparse_delta, use_locking,
+                             name)
 
-  def scatter_div(self, *args, **kwargs):
-    raise NotImplementedError
+  def scatter_mul(self, var, sparse_delta, use_locking=False, name=None):
+    return self._scatter_xxx(gen_resource_variable_ops.resource_scatter_mul,
+                             "scatter_mul", var, sparse_delta, use_locking,
+                             name)
 
-  def scatter_update(self, *args, **kwargs):
-    raise NotImplementedError
+  def scatter_div(self, var, sparse_delta, use_locking=False, name=None):
+    return self._scatter_xxx(gen_resource_variable_ops.resource_scatter_div,
+                             "scatter_div", var, sparse_delta, use_locking,
+                             name)
+
+  def scatter_update(self, var, sparse_delta, use_locking=False, name=None):
+    return self._scatter_xxx(gen_resource_variable_ops.resource_scatter_update,
+                             "scatter_update", var, sparse_delta, use_locking,
+                             name)
 
   def _is_mirrored(self):
     return True

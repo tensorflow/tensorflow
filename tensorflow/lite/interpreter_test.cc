@@ -1148,6 +1148,12 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   ASSERT_EQ(interpreter_.SetNumThreads(4), kTfLiteOk);
 }
 
+TEST_F(InterpreterTest, SetNumThreadsSucceedsWithZero) {
+  ASSERT_EQ(interpreter_.SetNumThreads(0), kTfLiteOk);
+  // num_threads == 0 has the same effect as num_threads == 1.
+  EXPECT_EQ(interpreter_.subgraph(0)->context()->recommended_num_threads, 1);
+}
+
 struct TestCpuBackendContext : public TfLiteInternalBackendContext {
   // Count the number of calls to ClearCaches for the backend context.
   void ClearCaches() override { ++num_calls; }
@@ -1176,7 +1182,7 @@ TEST_F(InterpreterTest, ExternalBackendContextClearsCachesOnDelete) {
 // node graph that can be executed in either [0,1] order or [1,0] order.
 // The CopyOp records when it is invoked in the class member run_order_
 // so we can test whether the execution plan was honored.
-class TestExecutionPlan : public ::testing::Test {
+class TestExecutionPlan : public InterpreterTest {
   // Encapsulates the node ids and provides them to a C primitive data type
   // Allocatable with placement new, but never destructed, so make sure this
   // doesn't own any heap allocated data. This is then is used as op local
@@ -1270,8 +1276,6 @@ class TestExecutionPlan : public ::testing::Test {
   }
 
  protected:
-  Interpreter interpreter_;
-
   // list of node_ids that were run
   std::vector<int> run_order_;
 };
@@ -1284,21 +1288,21 @@ TEST_F(TestExecutionPlan, DefaultExecutionPlan) {
 
 TEST_F(TestExecutionPlan, ReversedExecutionPlan) {
   // Check reversed order
-  interpreter_.SetExecutionPlan({1, 0});
+  SetExecutionPlan({1, 0});
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>({1, 0}));
 }
 
 TEST_F(TestExecutionPlan, SubsetExecutionPlan) {
   // Check running only node index 1
-  interpreter_.SetExecutionPlan({1});
+  SetExecutionPlan({1});
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>({1}));
 }
 
 TEST_F(TestExecutionPlan, NullExecutionPlan) {
   // Check nothing executed.
-  interpreter_.SetExecutionPlan({});
+  SetExecutionPlan({});
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
   ASSERT_EQ(run_order_, std::vector<int>());
 }
@@ -1975,9 +1979,3 @@ TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

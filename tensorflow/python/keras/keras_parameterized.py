@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utilities for unit-testing Keras."""
 
-import collections.abc as collections_abc
+import collections
 import functools
 import itertools
 import unittest
@@ -456,7 +456,7 @@ def _test_or_class_decorator(test_or_class, single_method_decorator):
     The decorated result.
   """
   def _decorate_test_or_class(obj):
-    if isinstance(obj, collections_abc.Iterable):
+    if isinstance(obj, collections.abc.Iterable):
       return itertools.chain.from_iterable(
           single_method_decorator(method) for method in obj)
     if isinstance(obj, type):

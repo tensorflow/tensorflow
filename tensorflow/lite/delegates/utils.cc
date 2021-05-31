@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -119,11 +121,17 @@ TfLiteStatus GraphPartitionHelper::PrepareSupportedNodes(
     TF_LITE_KERNEL_LOG(context_, "Unable to get graph execution plan.\n");
     return status;
   }
-
+  // context->GetExecutionPlan invalidates memory obtained from previous calls,
+  // which is dangerous if a delegate's IsNodeSupportedFn uses it anywhere.
+  // So we store a copy to ensure validity.
   num_total_nodes_ = execution_plan->size;
+  original_execution_plan_ = TfLiteIntArrayCreate(execution_plan->size);
+  std::memcpy(original_execution_plan_->data, execution_plan->data,
+              num_total_nodes_ * sizeof(int32_t));
+
   supported_nodes_ = TfLiteIntArrayCreate(num_total_nodes_);
   supported_nodes_->size = 0;
-  for (int node_id : TfLiteIntArrayView(execution_plan)) {
+  for (int node_id : TfLiteIntArrayView(original_execution_plan_)) {
     TfLiteNode* node;
     TfLiteRegistration* registration;
 
@@ -164,13 +172,7 @@ FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
     // We delegate all nodes in this case to avoid unnecessary partitions due to
     // FP16 DEQUANT nodes. This is safe to do since no non-delegated op needs
     // the output of such a DEQUANT.
-    TfLiteIntArray* execution_plan = nullptr;
-    auto status = context_->GetExecutionPlan(context_, &execution_plan);
-    if (status != kTfLiteOk) {
-      TF_LITE_KERNEL_LOG(context_, "Unable to get graph execution plan.\n");
-      return ops_to_replace;
-    }
-    for (int node_id : TfLiteIntArrayView(execution_plan)) {
+    for (int node_id : TfLiteIntArrayView(original_execution_plan_)) {
       ops_to_replace.push_back(node_id);
     }
   } else {

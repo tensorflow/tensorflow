@@ -21,6 +21,8 @@ import abc
 import collections
 import functools
 import os
+import threading
+import time
 import weakref
 
 import six
@@ -29,6 +31,7 @@ from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -65,12 +68,51 @@ from tensorflow.python.util.tf_export import tf_export
 # The callable that provide Keras default session that is needed for saving.
 _SESSION_PROVIDER = None
 
+_checkpoint_write_durations = monitoring.Sampler(
+    "/tensorflow/core/checkpoint/write/write_durations",
+    # Scale of 10, power of 1.8 with bucket count 33 (~25 minutes).
+    monitoring.ExponentialBuckets(10, 1.8, 33),
+    "Distribution of the wall time duration in microseconds of the "
+    "`tf.train.Checkpoint.write` operation",
+    "version")
+
+_checkpoint_read_durations = monitoring.Sampler(
+    "/tensorflow/core/checkpoint/read/read_durations",
+    # Scale of 10, power of 1.8 with bucket count 33 (~25 minutes).
+    monitoring.ExponentialBuckets(10, 1.8, 33),
+    "Distribution of the wall time duration in microseconds of the "
+    "`tf.train.Checkpoint.restore` operation",
+    "version")
+
+# Accumulates total time elapsed between module import time and the last
+# successful Checkpoint write prior to job pre-emption or job completion.
+_checkpoint_training_time_saved = monitoring.Counter(
+    "/tensorflow/core/checkpoint/write/training_time_saved",
+    "Total time in microseconds elapsed between two consecutive write "
+    "operations in a single job or between module import time and a "
+    "Checkpoint's first write.",
+    "version")
+
+# Captures the timestamp of module import or end of write operation. Can be
+# accessed by multiple Checkpoint instances.
+_END_TIME_OF_LAST_WRITE = time.time()
+_END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
+
+
+def _get_duration_microseconds(start_time_seconds, end_time_seconds):
+  if end_time_seconds < start_time_seconds:
+    # Avoid returning negative value in case of clock skew.
+    return 0
+  return round((end_time_seconds - start_time_seconds) * 1000000)
+
 
 @tf_export("__internal__.tracking.register_session_provider", v1=[])
 def register_session_provider(session_provider):
   global _SESSION_PROVIDER
-  if _SESSION_PROVIDER is None:
-    _SESSION_PROVIDER = session_provider
+  # TODO(scottzhu): Change it back to only allow one time setting for session
+  # provider once we finished the keras repo split.
+  # if _SESSION_PROVIDER is None:
+  _SESSION_PROVIDER = session_provider
 
 
 def get_session():
@@ -220,8 +262,9 @@ class _CheckpointRestoreCoordinator(object):
     self.all_python_objects = object_identity.ObjectIdentityWeakSet()
     self.save_path_tensor = save_path_tensor
     self.save_path_string = save_path
-    self.dtype_map = py_checkpoint_reader.NewCheckpointReader(
-        save_path).get_variable_to_dtype_map()
+    reader = py_checkpoint_reader.NewCheckpointReader(save_path)
+    self.dtype_map = reader.get_variable_to_dtype_map()
+    self.shape_map = reader.get_variable_to_shape_map()
     # A NewCheckpointReader for the most recent checkpoint, for streaming Python
     # state restoration.
     # When graph building, contains a list of ops to run to restore objects from
@@ -1073,6 +1116,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
+@tf_export("__internal__.tracking.TrackableSaver", v1=[])
 class TrackableSaver(object):
   """Saves and restores a `Trackable` object and its dependencies.
 
@@ -1395,7 +1439,6 @@ def frozen_saver(root_trackable):
 
 
 def saver_with_op_caching(obj, attached_dependencies=None):
-  """A TrackableSaver with a SaveableObject cache when graph building."""
   if context.executing_eagerly():
     saveables_cache = None
   else:
@@ -1588,7 +1631,18 @@ class CheckpointV1(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
+    start_time = time.time()
     output = self._saver.save(file_prefix=file_prefix, session=session)
+    end_time = time.time()
+    _checkpoint_write_durations.get_cell("V1").add(
+        _get_duration_microseconds(start_time, end_time))
+
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      _checkpoint_training_time_saved.get_cell("V1").increase_by(
+          _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time))
+      _END_TIME_OF_LAST_WRITE = end_time
+
     if tensor_util.is_tf_type(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
@@ -1773,6 +1827,7 @@ class CheckpointV1(tracking.AutoTrackable):
           executing eagerly (restore operations are run eagerly). May only be
           called when `save_path` is not `None`.
     """
+    start_time = time.time()
     status = self._saver.restore(save_path=save_path)
     # Create the save counter now so it gets initialized with other variables
     # when graph building. Creating it earlier would lead to errors when using,
@@ -1780,6 +1835,8 @@ class CheckpointV1(tracking.AutoTrackable):
     self._maybe_create_save_counter()
     if isinstance(status, NameBasedSaverStatus):
       status.add_to_optionally_restored(self.save_counter)
+    _checkpoint_read_durations.get_cell("V1").add(
+        _get_duration_microseconds(start_time, time.time()))
     return status
 
 
@@ -2009,8 +2066,19 @@ class Checkpoint(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
+    start_time = time.time()
     options = options or checkpoint_options.CheckpointOptions()
     output = self._saver.save(file_prefix=file_prefix, options=options)
+    end_time = time.time()
+    _checkpoint_write_durations.get_cell("V2").add(
+        _get_duration_microseconds(start_time, end_time))
+
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      _checkpoint_training_time_saved.get_cell("V2").increase_by(
+          _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time))
+      _END_TIME_OF_LAST_WRITE = end_time
+
     if tensor_util.is_tf_type(output):
       if context.executing_eagerly():
         return compat.as_str(output.numpy())
@@ -2147,8 +2215,12 @@ class Checkpoint(tracking.AutoTrackable):
       A load status object, which can be used to make assertions about the
       status of a checkpoint restoration.  See `restore` for details.
     """
+    start_time = time.time()
     options = options or checkpoint_options.CheckpointOptions()
-    return self._saver.restore(save_path=save_path, options=options)
+    result = self._saver.restore(save_path=save_path, options=options)
+    _checkpoint_read_durations.get_cell("V2").add(
+        _get_duration_microseconds(start_time, time.time()))
+    return result
 
   def restore(self, save_path, options=None):
     """Restores a training checkpoint.
@@ -2261,11 +2333,11 @@ class Checkpoint(tracking.AutoTrackable):
 
     try:
       status = self.read(save_path, options=options)
-    except errors_impl.NotFoundError:
+    except errors_impl.NotFoundError as e:
       raise errors_impl.NotFoundError(
           None, None,
-          "Could not find checkpoint or SavedModel at {}."
-          .format(orig_save_path))
+          "Failed to restore from checkpoint or SavedModel at {}: {}".format(
+              orig_save_path, e.message))
     # Create the save counter now so it gets initialized with other variables
     # when graph building. Creating it earlier would lead to errors when using,
     # say, train.Saver() to save the model before initializing it.

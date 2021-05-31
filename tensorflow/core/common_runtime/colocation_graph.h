@@ -367,7 +367,6 @@ class ColocationGraph {
 
   const Graph& graph_;
   const FunctionStack stack_;
-  const FunctionLibraryDefinition& flib_def_;
   std::vector<Member> members_;
   InspectingPlacer inspecting_placer_;
   PlacerInspectionRequiredOpChecker inspection_required_checker_;

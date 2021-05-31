@@ -71,7 +71,8 @@ BufferAllocStats* GetAllocStats() {
 
 Status AllocateScopedShapedBuffer(
     XRTMemoryManager* memory_manager, xla::Backend* backend, int device_ordinal,
-    const xla::Shape& shape, std::unique_ptr<xla::ScopedShapedBuffer>* buffer) {
+    const xla::Shape& shape, std::unique_ptr<xla::ScopedShapedBuffer>* buffer,
+    se::DeviceMemoryAllocator* allocator) {
   auto transfer_manager = backend->transfer_manager();
   TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal));
 
@@ -93,14 +94,14 @@ Status AllocateScopedShapedBuffer(
   // it goes out of scope. That's useful if we return early as the result of an
   // error allocating one of the later buffers.
   *buffer = absl::make_unique<xla::ScopedShapedBuffer>(
-      shape, on_device_shape, backend->memory_allocator(), device_ordinal);
+      shape, on_device_shape, allocator, device_ordinal);
   for (auto& index_to_buffer : (*buffer)->buffers()) {
     const xla::Shape& subshape =
         xla::ShapeUtil::GetSubshape(on_device_shape, index_to_buffer.first);
     uint64 size = transfer_manager->GetByteSizeRequirement(subshape);
     TF_ASSIGN_OR_RETURN(
         se::OwningDeviceMemory buffer,
-        memory_manager->Allocate(backend, device_ordinal, size));
+        memory_manager->Allocate(backend, device_ordinal, size, allocator));
     // Move our buffer into shaped_buffer, which takes ownership of it.
     index_to_buffer.second = buffer.Release();
     VLOG(2) << "Allocated buffer at " << index_to_buffer.second.opaque()
@@ -168,13 +169,13 @@ void XRTTupleAllocation::ReleaseBuffers() {
 
 /*static*/ Status XRTTupleAllocation::CreateAndTransfer(
     const xla::LiteralBase& literal, XRTMemoryManager* memory_manager,
-    xla::Backend* backend, int device_ordinal,
-    XRTTupleAllocation** allocation) {
+    xla::Backend* backend, int device_ordinal, XRTTupleAllocation** allocation,
+    se::DeviceMemoryAllocator* allocator) {
   auto transfer_manager = backend->transfer_manager();
   std::unique_ptr<xla::ScopedShapedBuffer> scoped_buffer;
   TF_RETURN_IF_ERROR(AllocateScopedShapedBuffer(memory_manager, backend,
                                                 device_ordinal, literal.shape(),
-                                                &scoped_buffer));
+                                                &scoped_buffer, allocator));
   TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal));
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
       stream.get(), literal, *scoped_buffer));
@@ -184,35 +185,34 @@ void XRTTupleAllocation::ReleaseBuffers() {
   // call. To avoid a leak, there must be no error-case returns from here until
   // the end of the method.
   auto shaped_buffer = scoped_buffer->release();
-  *allocation = new XRTTupleAllocation(
-      device_ordinal, backend->memory_allocator(),
-      shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape());
+  *allocation = new XRTTupleAllocation(device_ordinal, allocator,
+                                       shaped_buffer.on_host_shape(),
+                                       shaped_buffer.on_device_shape());
   (*allocation)
-      ->InitializeFromShapedBuffer(shaped_buffer, backend->memory_allocator(),
-                                   device_ordinal);
+      ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
   return Status::OK();
 }
 
 /*static*/ Status XRTTupleAllocation::CreateUninitialized(
     const xla::Shape& shape, XRTMemoryManager* memory_manager,
-    xla::Backend* backend, int device_ordinal,
-    XRTTupleAllocation** allocation) {
+    xla::Backend* backend, int device_ordinal, XRTTupleAllocation** allocation,
+    se::DeviceMemoryAllocator* allocator) {
   std::unique_ptr<xla::ScopedShapedBuffer> scoped_buffer;
-  TF_RETURN_IF_ERROR(AllocateScopedShapedBuffer(
-      memory_manager, backend, device_ordinal, shape, &scoped_buffer));
+  TF_RETURN_IF_ERROR(AllocateScopedShapedBuffer(memory_manager, backend,
+                                                device_ordinal, shape,
+                                                &scoped_buffer, allocator));
 
   // By releasing the ScopedShapedBuffer we ensure that the underlying storage
   // won't be freed when the buffer goes out of scope at the end of this
   // call. To avoid a leak, there must be no error-case returns from here until
   // the end of the method.
   auto shaped_buffer = scoped_buffer->release();
-  *allocation = new XRTTupleAllocation(
-      device_ordinal, backend->memory_allocator(),
-      shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape());
+  *allocation = new XRTTupleAllocation(device_ordinal, allocator,
+                                       shaped_buffer.on_host_shape(),
+                                       shaped_buffer.on_device_shape());
   (*allocation)
-      ->InitializeFromShapedBuffer(shaped_buffer, backend->memory_allocator(),
-                                   device_ordinal);
+      ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
   return Status::OK();
 }
@@ -220,9 +220,8 @@ void XRTTupleAllocation::ReleaseBuffers() {
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
     const xla::ShapedBuffer& shaped_buffer, const xla::Shape& on_host_shape,
     const xla::Shape& on_device_shape, xla::Backend* backend,
-    int device_ordinal, XRTTupleAllocation** allocation) {
-  auto allocator = backend->memory_allocator();
-
+    int device_ordinal, XRTTupleAllocation** allocation,
+    se::DeviceMemoryAllocator* allocator) {
   *allocation = new XRTTupleAllocation(device_ordinal, allocator, on_host_shape,
                                        on_device_shape);
   (*allocation)
@@ -233,10 +232,11 @@ void XRTTupleAllocation::ReleaseBuffers() {
 
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
     const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
-    int device_ordinal, XRTTupleAllocation** allocation) {
+    int device_ordinal, XRTTupleAllocation** allocation,
+    se::DeviceMemoryAllocator* allocator) {
   return CreateFromBuffer(shaped_buffer, shaped_buffer.on_host_shape(),
                           shaped_buffer.on_device_shape(), backend,
-                          device_ordinal, allocation);
+                          device_ordinal, allocation, allocator);
 }
 
 Status XRTTupleAllocation::ToLiteral(xla::Backend* backend,
@@ -289,8 +289,9 @@ xla::StatusOr<bool> XRTTupleAllocation::SwapOut(xla::Backend* backend,
   return false;
 }
 
-xla::StatusOr<bool> XRTTupleAllocation::SwapIn(XRTMemoryManager* memory_manager,
-                                               xla::Backend* backend) {
+xla::StatusOr<bool> XRTTupleAllocation::SwapIn(
+    XRTMemoryManager* memory_manager, xla::Backend* backend,
+    se::DeviceMemoryAllocator* allocator) {
   // We need to call AllocateScopedShapedBuffer() outside the locks, since the
   // XRTMemoryManager might end up calling back into the SwapOut() API.
   // So we do a quick check before using the IsSwapped() API, and it can happen
@@ -306,7 +307,7 @@ xla::StatusOr<bool> XRTTupleAllocation::SwapIn(XRTMemoryManager* memory_manager,
   std::unique_ptr<xla::ScopedShapedBuffer> scoped_buffer;
   TF_RETURN_IF_ERROR(
       AllocateScopedShapedBuffer(memory_manager, backend, device_ordinal(),
-                                 on_host_shape(), &scoped_buffer));
+                                 on_host_shape(), &scoped_buffer, allocator));
   TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal()));
 
   mutex_lock lock(lock_);
@@ -315,8 +316,7 @@ xla::StatusOr<bool> XRTTupleAllocation::SwapIn(XRTMemoryManager* memory_manager,
         stream.get(), *literal_, *scoped_buffer));
 
     auto shaped_buffer = scoped_buffer->release();
-    InitializeFromShapedBuffer(shaped_buffer, backend->memory_allocator(),
-                               device_ordinal());
+    InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal());
     literal_ = nullptr;
     return true;
   }
@@ -324,9 +324,10 @@ xla::StatusOr<bool> XRTTupleAllocation::SwapIn(XRTMemoryManager* memory_manager,
 }
 
 xla::StatusOr<bool> XRTTupleAllocation::PinAndSwapIn(
-    XRTMemoryManager* memory_manager, xla::Backend* backend) {
+    XRTMemoryManager* memory_manager, xla::Backend* backend,
+    se::DeviceMemoryAllocator* allocator) {
   Pin();
-  return SwapIn(memory_manager, backend);
+  return SwapIn(memory_manager, backend, allocator);
 }
 
 bool XRTTupleAllocation::IsSwapped() const {
@@ -454,9 +455,8 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
 /*static*/ Status XRTTupleAllocation::MakeTuple(
     XRTMemoryManager* memory_manager, xla::Backend* backend, int device_ordinal,
     const xla::ShapeTree<ExpandedTupleInput>& elements,
-    XRTTupleAllocation** allocation) {
+    XRTTupleAllocation** allocation, se::DeviceMemoryAllocator* allocator) {
   auto transfer_manager = backend->transfer_manager();
-  auto allocator = backend->memory_allocator();
   TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal));
 
   xla::Shape host_shape;
@@ -485,9 +485,9 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
           const xla::Shape& subshape =
               xla::ShapeUtil::GetSubshape(device_shape, index);
           uint64 size = transfer_manager->GetByteSizeRequirement(subshape);
-          TF_ASSIGN_OR_RETURN(
-              se::OwningDeviceMemory buffer,
-              memory_manager->Allocate(backend, device_ordinal, size));
+          TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory buffer,
+                              memory_manager->Allocate(backend, device_ordinal,
+                                                       size, allocator));
           VLOG(2) << "Allocated buffer at " << buffer->opaque() << " index "
                   << index.ToString();
           // Move the new buffer into new_tuple_buffers, which takes ownership

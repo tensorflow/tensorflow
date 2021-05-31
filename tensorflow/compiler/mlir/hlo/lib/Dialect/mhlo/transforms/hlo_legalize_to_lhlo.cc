@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -93,6 +94,8 @@ Value InsertAlloc(Location loc, OpResult result,
 /// to the `results` vector.
 LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
                              ConversionPatternRewriter& rewriter) {
+  size_t num_operands = results.size();
+  SmallVector<Value, 2> tensor_operands;
   for (auto result : llvm::enumerate(op->getResults())) {
     RankedTensorType resultType =
         result.value().getType().dyn_cast<RankedTensorType>();
@@ -105,8 +108,19 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
     auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
     if (!shape_type_op) return failure();
 
+    if (tensor_operands.empty()) {
+      for (auto operand : ArrayRef<Value>(results).take_front(num_operands)) {
+        auto tp = operand.getType().cast<ShapedType>();
+        tensor_operands.push_back(rewriter.create<memref::TensorLoadOp>(
+            op->getLoc(),
+            RankedTensorType::get(tp.getShape(), tp.getElementType()),
+            operand));
+      }
+    }
+
     SmallVector<Value, 1> results_shape;
-    auto status = shape_type_op.reifyReturnTypeShapes(rewriter, results_shape);
+    auto status = shape_type_op.reifyReturnTypeShapes(rewriter, tensor_operands,
+                                                      results_shape);
     if (failed(status)) return failure();
     results.push_back(
         InsertDynamicAllocAndDealloc(op->getLoc(), result.value(),
@@ -389,7 +403,8 @@ struct HloToLhloDotGeneralOpConverter
     } else {
       SmallVector<Value, 1> results_shape;
       auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
-      if (failed(shape_type_op.reifyReturnTypeShapes(rewriter, results_shape)))
+      if (failed(shape_type_op.reifyReturnTypeShapes(rewriter, operands,
+                                                     results_shape)))
         return failure();
 
       bufferArgs[2] = InsertDynamicAllocAndDealloc(
@@ -564,7 +579,8 @@ class HloToLhloTensorStoreOpLegacyConverter
 struct HloLegalizeToLhlo
     : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<lmhlo::LmhloDialect>();
+    registry.insert<lmhlo::LmhloDialect, memref::MemRefDialect,
+                    shape::ShapeDialect>();
   }
 
  public:
@@ -581,9 +597,9 @@ struct HloLegalizeToLhlo
     target.addLegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    // Declare tensor_load and tensor_store illegal.
-    target.addIllegalOp<mlir::memref::TensorLoadOp,
-                        mlir::memref::TensorStoreOp>();
+    // Declare tensor_store illegal. tensor_load may be used to reify output
+    // shape computation during dialect conversion and will be handled later.
+    target.addIllegalOp<mlir::memref::TensorStoreOp>();
     // buffer_cast is illegal if it has uses.
     // TODO(b/175670649) Make buffer_cast illegal.
     target.addDynamicallyLegalOp<mlir::memref::BufferCastOp>(

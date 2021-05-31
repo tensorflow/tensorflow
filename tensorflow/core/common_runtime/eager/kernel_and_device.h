@@ -323,6 +323,12 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   const string& name() const override { return name_; };
 
  private:
+  std::shared_ptr<FunctionLibraryRuntime::Options> PrepareForRun(
+      ScopedStepContainer* step_container, std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace);
+
   ProcessFunctionLibraryRuntime* const pflr_;  // non-null
   FunctionLibraryRuntime::Handle handle_;
   // Indicates whether the function needs to execute cross process.

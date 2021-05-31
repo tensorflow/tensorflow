@@ -74,15 +74,14 @@ func @get_shape(%arg0: !tfr.tensor) -> (!shape.shape, !shape.shape) {
 
 // CHECK-LABEL: get_real_shape
 // CANON-LABEL: get_real_shape
-func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<1xindex> {
+func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<2xindex> {
   %0 = "tfr.cast"(%arg0) : (tensor<1x2xf32>) -> !tfr.tensor
   %1 = tfr.get_shape %0 -> !shape.shape
-  %2 = shape.to_extent_tensor %1 : !shape.shape -> tensor<1xindex>
-  return %2 : tensor<1xindex>
+  %2 = shape.to_extent_tensor %1 : !shape.shape -> tensor<2xindex>
+  return %2 : tensor<2xindex>
 
-// CANON-NEXT: %[[s:.*]] = shape.const_shape [1, 2] : tensor<?xindex>
-// CANON-NEXT: %[[e:.*]] = shape.to_extent_tensor %[[s]] : tensor<?xindex> -> tensor<1xindex>
-// CANON-NEXT: return %[[e]] : tensor<1xindex>
+// CANON-NEXT: %[[e:.*]] = shape.const_shape [1, 2] : tensor<2xindex>
+// CANON-NEXT: return %[[e]] : tensor<2xindex>
 }
 
 // -----
@@ -168,8 +167,8 @@ func @constant_tensor_array() -> !tfr.tensor {
   %1 = "tfr.constant_tensor"(%0) : (!tfr.attr) -> !tfr.tensor
   return %1 : !tfr.tensor
 
-// CANON-NEXT: "tf.Const"() {value = dense<[1, -1, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
-// CANON-NEXT: "tfr.cast"(%0) : (tensor<3xi64>) -> !tfr.tensor
+// CANON-NEXT: %[[RES:.*]] = "tf.Const"() {value = dense<[1, -1, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CANON-NEXT: "tfr.cast"(%[[RES]]) : (tensor<3xi64>) -> !tfr.tensor
 // CANON-NEXT: return
 }
 
@@ -182,8 +181,8 @@ func @constant_tensor_scalar() -> !tfr.tensor {
   %1 = "tfr.constant_tensor"(%0) : (i32) -> !tfr.tensor
   return %1 : !tfr.tensor
 
-// CANON-NEXT: "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
-// CANON-NEXT: "tfr.cast"(%0) : (tensor<i32>) -> !tfr.tensor
+// CANON-NEXT: %[[RES:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
+// CANON-NEXT: "tfr.cast"(%[[RES]]) : (tensor<i32>) -> !tfr.tensor
 // CANON-NEXT: return
 }
 
@@ -242,6 +241,46 @@ func @get_element(%arg0: !tfr.tensor_list<T>) -> !tfr.tensor {
 func @build_list(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> !tfr.tensor_list {
   %0 = "tfr.build_list"(%arg0, %arg1) : (!tfr.tensor<A>, !tfr.tensor<B>) -> !tfr.tensor_list
   return %0 : !tfr.tensor_list
+}
+
+// -----
+
+// CHECK-LABEL: quant_act_range
+func @quant_act_range(%arg0: !tfr.attr, %arg1: f32, %arg2: i64) -> !tfr.tensor {
+  %0:2 = "tfr.quant_act_range"(%arg0, %arg1, %arg2) : (!tfr.attr,f32,i64) -> (!tfr.tensor,!tfr.tensor)
+  return %0#0 : !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL: quant_rescale
+func @quant_rescale(%arg0: !tfr.tensor, %arg1: !tfr.tensor, %arg2: i64) -> !tfr.tensor {
+  %0 = "tfr.quant_rescale"(%arg0, %arg1, %arg2) : (!tfr.tensor, !tfr.tensor, i64) -> (!tfr.tensor)
+  return %0 : !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL: quant_raw_data
+func @quant_raw_data(%arg0: !tfr.tensor) -> !tfr.tensor {
+  %0 = "tfr.quant_raw_data"(%arg0) : (!tfr.tensor) -> (!tfr.tensor)
+  return %0 : !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL: quant_qparam
+func @quant_qparam(%arg0: !tfr.tensor) -> (!tfr.tensor, !tfr.tensor) {
+  %0:2 = "tfr.quant_qparam"(%arg0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
+  return %0#0, %0#1 : !tfr.tensor, !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL: quant_scale_factor
+func @quant_scale_factor(%arg0: f32, %arg1: !tfr.tensor_list) -> (!tfr.tensor) {
+  %0 = "tfr.quant_scale_factor"(%arg0, %arg1) : (f32, !tfr.tensor_list) -> (!tfr.tensor)
+  return %0 : !tfr.tensor
 }
 
 // -----

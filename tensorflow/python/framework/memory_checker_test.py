@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import _memory_checker_test_helper
+from tensorflow.python.framework import _memory_checker_test_helper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.memory_checker import MemoryChecker

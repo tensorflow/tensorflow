@@ -12,7 +12,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -213,7 +213,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops/ragged:ragged_functional_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -231,7 +230,6 @@ py_library(
         ":category_encoding",
         ":string_lookup",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:string_ops",
@@ -335,7 +333,6 @@ py_library(
 
 cuda_py_test(
     name = "category_crossing_test",
-    size = "medium",
     srcs = ["category_crossing_test.py"],
     python_version = "PY3",
     shard_count = 4,
@@ -363,7 +360,6 @@ cuda_py_test(
 
 tf_py_test(
     name = "category_encoding_test",
-    size = "medium",
     srcs = ["category_encoding_test.py"],
     python_version = "PY3",
     deps = [
@@ -435,10 +431,14 @@ distribute_py_test(
     srcs = ["image_preprocessing_distribution_test.py"],
     main = "image_preprocessing_distribution_test.py",
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
     ],
-    tpu_tags = ["no_oss"],
+    tpu_tags = [
+        "no_oss",
+        "noguitar",  # TODO(b/183957207)
+    ],
     deps = [
         ":image_preprocessing",
         ":preprocessing_test_utils",
@@ -454,7 +454,6 @@ distribute_py_test(
 
 tf_py_test(
     name = "discretization_test",
-    size = "small",
     srcs = ["discretization_test.py"],
     python_version = "PY3",
     shard_count = 4,
@@ -490,7 +489,6 @@ distribute_py_test(
 
 cuda_py_test(
     name = "hashing_test",
-    size = "medium",
     srcs = ["hashing_test.py"],
     python_version = "PY3",
     shard_count = 4,
@@ -529,9 +527,9 @@ distribute_py_test(
 
 tf_py_test(
     name = "index_lookup_test",
-    size = "medium",
     srcs = ["index_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":index_lookup",
         ":preprocessing_test_utils",
@@ -563,7 +561,6 @@ distribute_py_test(
 
 cuda_py_test(
     name = "image_preprocessing_test",
-    size = "medium",
     srcs = ["image_preprocessing_test.py"],
     python_version = "PY3",
     shard_count = 4,
@@ -589,9 +586,9 @@ cuda_py_test(
 
 tf_py_test(
     name = "normalization_test",
-    size = "small",
     srcs = ["normalization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "broken",  # b/170974360
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
@@ -607,9 +604,9 @@ tf_py_test(
 
 tf_py_test(
     name = "integer_lookup_test",
-    size = "medium",
     srcs = ["integer_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":integer_lookup",
         ":preprocessing_test_utils",
@@ -658,7 +655,6 @@ tf_py_test(
 
 tf_py_test(
     name = "text_vectorization_test",
-    size = "medium",
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
     shard_count = 4,
@@ -703,6 +699,7 @@ tf_py_test(
     name = "reduction_test",
     srcs = ["reduction_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = ["notsan"],  # TODO(b/170783154)
     deps = [
         ":reduction",
@@ -714,7 +711,6 @@ tf_py_test(
 
 tf_py_test(
     name = "string_lookup_test",
-    size = "medium",
     srcs = ["string_lookup_test.py"],
     python_version = "PY3",
     tags = [

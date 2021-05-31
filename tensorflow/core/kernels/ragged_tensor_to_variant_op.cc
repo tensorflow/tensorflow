@@ -159,6 +159,11 @@ class RaggedTensorToVariantOp : public OpKernel {
 
     // Unbatch the Ragged Tensor and encode the components.
     std::vector<RaggedTensorVariant> unbatched_ragged_input;
+    auto batched_splits_top_vec =
+        batched_ragged_input.splits(0).vec<SPLIT_TYPE>();
+    int num_components = batched_splits_top_vec.size() - 1;
+    OP_REQUIRES(context, num_components >= 0,
+                errors::Internal("Invalid split argument."));
     OP_REQUIRES_OK(context, UnbatchRaggedZerothDim<VALUE_TYPE, SPLIT_TYPE>(
                                 batched_ragged_input, &unbatched_ragged_input));
 

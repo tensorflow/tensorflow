@@ -354,6 +354,15 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
                                             bool allow_float,
                                             int activations_py_type) {
+  return QuantizeModel(input_py_type, output_py_type, allow_float,
+                       activations_py_type, /*disable_per_channel=*/false);
+}
+
+PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
+                                            int output_py_type,
+                                            bool allow_float,
+                                            int activations_py_type,
+                                            bool disable_per_channel) {
   if (NoOpModel(*model_)) {
     return python_utils::ConvertToPyString(model_str_->data(),
                                            model_str_->size());
@@ -377,7 +386,8 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   status = tflite::optimize::QuantizeModelAllOperators(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float,
-      TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
+      TfLiteTypeToSchemaType(activations_type), disable_per_channel,
+      error_reporter_.get());
 
   if (status != kTfLiteOk) {
     error_reporter_->exception();

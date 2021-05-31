@@ -133,9 +133,3 @@ TEST_F(DeviceDbTest, StatusLookupBasedOnDerivedProperties) {
 }  // namespace
 }  // namespace acceleration
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

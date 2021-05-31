@@ -172,9 +172,3 @@ TEST_F(SubgraphBuilderTest, TestBuildPadLoopBodySubgraph) {
 }  // namespace
 }  // namespace subgraph_test_util
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

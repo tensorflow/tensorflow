@@ -188,7 +188,10 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.enable_select_tf_ops.default_value(), ""),
       // WARNING: Experimental interface, subject to change
       Flag("force_select_tf_ops", parsed_flags.force_select_tf_ops.bind(),
-           parsed_flags.force_select_tf_ops.default_value(), "")};
+           parsed_flags.force_select_tf_ops.default_value(), ""),
+      // WARNING: Experimental interface, subject to change
+      Flag("unfold_batchmatmul", parsed_flags.unfold_batchmatmul.bind(),
+           parsed_flags.unfold_batchmatmul.default_value(), "")};
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
   if (asked_for_help) {
@@ -286,6 +289,7 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(post_training_quantize, FlagRequirement::kNone);
   READ_TOCO_FLAG(enable_select_tf_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(force_select_tf_ops, FlagRequirement::kNone);
+  READ_TOCO_FLAG(unfold_batchmatmul, FlagRequirement::kNone);
 
   if (parsed_toco_flags.force_select_tf_ops.value() &&
       !parsed_toco_flags.enable_select_tf_ops.value()) {

@@ -49,13 +49,21 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
       v = variables.Variable([0., 0.])
       optimizer = gradient_descent.SGD(0.1)
 
+    class PerReplica(values.DistributedValues):
+      """Holds a map from replica to unsynchronized values."""
+
+      @property
+      def values(self):
+        """Returns the per replica values."""
+        return self._values
+
     @def_function.function
     def optimize():
       with ops.device(distribution.extended.worker_devices[0]):
         v1 = ops.convert_to_tensor_v2_with_dispatch([1., 1.])
       with ops.device(distribution.extended.worker_devices[1]):
         v2 = ops.convert_to_tensor_v2_with_dispatch([2., 2.])
-      grads = values.PerReplica([v1, v2])
+      grads = PerReplica([v1, v2])
       def step_fn(grads):
         optimizer.apply_gradients(
             [(grads, v)],

@@ -451,8 +451,12 @@ Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
       GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
                                /*use_global_device_ids=*/absl::nullopt));
   TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
-  return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
-                             hlo->operand(0)->shape()));
+  std::vector<const Shape*> operand_shapes;
+  absl::c_transform(
+      hlo->operands(), std::back_inserter(operand_shapes),
+      [](const HloInstruction* operand) { return &(operand->shape()); });
+  return CheckShape(
+      hlo, ShapeInference::InferCollectivePermuteShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
@@ -461,15 +465,17 @@ Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
       GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
                                /*use_global_device_ids=*/absl::nullopt));
   TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
+  std::vector<const Shape*> operand_shapes;
+  absl::c_transform(
+      hlo->operands(), std::back_inserter(operand_shapes),
+      [](const HloInstruction* operand) { return &(operand->shape()); });
   return CheckShape(
-      hlo, ShapeUtil::MakeTupleShape(
-               {hlo->operand(0)->shape(), hlo->operand(0)->shape(),
-                ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})}));
+      hlo, ShapeInference::InferCollectivePermuteStartShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandleCollectivePermuteDone(HloInstruction* hlo) {
-  return CheckShape(
-      hlo, ShapeUtil::GetTupleElementShape(hlo->operand(0)->shape(), 0));
+  return CheckShape(hlo, ShapeInference::InferCollectivePermuteDoneShape(
+                             hlo->operand(0)->shape()));
 }
 
 Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
@@ -591,7 +597,10 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
 }
 
 Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
-  if (!hlo->shape().IsTuple() || hlo->shape().tuple_shapes_size() != 2) {
+  if (!hlo->shape().IsTuple()) {
+    return Status::OK();
+  }
+  if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() != 2) {
     return InternalError(
         "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
         hlo->shape().ToString());
@@ -979,7 +988,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
   VLOG(2) << "Verify reduce window:" << reduce_window->ToString() << "\n";
   auto reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
-  auto input_shapes = reduce_window_instr->input_array_shapes();
+  auto input_shapes = reduce_window_instr->input_shapes();
   VLOG(2) << "reduce window input shape count: " << input_shapes.size() << "\n";
   auto init_shapes = reduce_window_instr->init_value_shapes();
   VLOG(2) << "reduce instruction is :" << reduce_window->ToString() << "\n";

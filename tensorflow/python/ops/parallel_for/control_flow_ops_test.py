@@ -149,6 +149,17 @@ class PForTest(PForTestCase):
     result = pfor_control_flow_ops.vectorized_map(compute, x)
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
+  def test_where_shape(self):
+    @def_function.function
+    def f():
+      a = constant_op.constant([[1.], [1.]])
+      b = constant_op.constant([1.])
+      result = pfor_control_flow_ops.vectorized_map(
+          lambda x: array_ops.where(x > 0, x, b), a)
+      return result.shape
+
+    self.assertAllEqual([2, 1], f())
+
   def test_vectorized_map_broadcasts_unit_dimensions(self):
     convert_with_static_shape = ops.convert_to_tensor
     convert_with_dynamic_shape = (

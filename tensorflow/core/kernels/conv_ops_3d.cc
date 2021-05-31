@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
@@ -69,6 +70,11 @@ struct LaunchConvOp<CPUDevice, T> {
                 errors::InvalidArgument("CPU implementation of Conv3D "
                                         "currently only supports dilated rates "
                                         "of 1."));
+    OP_REQUIRES(context, filter.dim_size(3) == input.dim_size(input.dims() - 1),
+                errors::InvalidArgument(
+                    "Number of channels in filter (", filter.dim_size(3),
+                    ") must match last dimension of input (",
+                    input.dim_size(input.dims() - 1), ")"));
     functor::CuboidConvolution<CPUDevice, T>()(
         context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
         input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
@@ -142,6 +148,8 @@ class Conv3DOp : public BinaryOp<T> {
     const int64 filter_depth = filter.dim_size(3);
     const int64 out_depth = filter.dim_size(4);
 
+    OP_REQUIRES(context, filter_depth != 0,
+                errors::InvalidArgument("filter_depth must be non-zero"));
     OP_REQUIRES(context, in_depth % filter_depth == 0,
                 errors::InvalidArgument(
                     "Input depth must be evenly divisible by filter depth: ",
@@ -266,15 +274,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                   output->template flat<T>().size());
 
       auto no_transpose = se::blas::Transpose::kNoTranspose;
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
+      OP_REQUIRES_OK(
+          ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr,
+                                    n, a_ptr, k, &c_ptr, n));
       return;
     } else if (!is_grouped_convolution && filter_planes == in_planes &&
                filter_rows == in_rows && filter_cols == in_cols &&
@@ -293,15 +295,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                   output->template flat<T>().size());
 
       auto no_transpose = se::blas::Transpose::kNoTranspose;
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
+      OP_REQUIRES_OK(
+          ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr,
+                                    n, a_ptr, k, &c_ptr, n));
       return;
     }
 
@@ -507,6 +503,8 @@ struct LaunchConvOp<GPUDevice, T> {
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
+      profiler::ScopedAnnotation trace("cudnn_autotuning");
+
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;

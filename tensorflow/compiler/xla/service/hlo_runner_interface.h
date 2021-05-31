@@ -52,7 +52,7 @@ class HloRunnerInterface {
 
     // If the HLO module being run has an infeed instruction, this will be the
     // data which will be fed to it, for as many as infeed_steps steps.
-    const Literal* infeed = nullptr;
+    std::vector<const Literal*> infeed_values;
 
     // The number of times the infeed literal should be fed to the HLO module.
     // For a clean exit, this should match the iterations-per-loop parameter
@@ -135,19 +135,17 @@ class HloRunnerInterface {
                                     ExecutionProfile* profile) = 0;
 
   // Same as above, but with Executable as input.
-  StatusOr<Literal> ExecuteWithExecutable(
-      std::unique_ptr<Executable> executable,
-      absl::Span<const Literal> arguments, ExecutionProfile* profile = nullptr);
+  StatusOr<Literal> ExecuteWithExecutable(Executable* executable,
+                                          absl::Span<const Literal> arguments,
+                                          ExecutionProfile* profile = nullptr);
 
   StatusOr<Literal> ExecuteWithExecutable(
-      std::unique_ptr<Executable> executable,
-      absl::Span<const Literal* const> arguments) {
-    return ExecuteWithExecutable(std::move(executable), arguments, nullptr);
+      Executable* executable, absl::Span<const Literal* const> arguments) {
+    return ExecuteWithExecutable(executable, arguments, nullptr);
   }
 
   virtual StatusOr<Literal> ExecuteWithExecutable(
-      std::unique_ptr<Executable> executable,
-      absl::Span<const Literal* const> arguments,
+      Executable* executable, absl::Span<const Literal* const> arguments,
       ExecutionProfile* profile) = 0;
 
   // Executes a given HLO module into a set of replicas, and returns a map

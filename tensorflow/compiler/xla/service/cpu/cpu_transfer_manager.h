@@ -60,31 +60,6 @@ class CpuTransferManager : public GenericTransferManager {
                            Shape* device_shape) override;
 
  private:
-  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
-                                const void* source);
-
-  // Transfers infeed data to device. InfeedBuffer->Done() must be
-  // called to clean up the memory allocated for InfeedBuffer.
-  StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
-      se::StreamExecutor* executor, int64 size, const void* source);
-
-  // Helper that transfers a tuple of element buffers from the device's outfeed.
-  StatusOr<Shape> TransferTupleBuffersFromOutfeed(
-      se::StreamExecutor* executor,
-      absl::Span<const std::pair<void*, int64>> buffer_data);
-
-  // Helper that transfers an array buffer from the device's outfeed.
-  StatusOr<Shape> TransferArrayBufferFromOutfeed(se::StreamExecutor* executor,
-                                                 void* destination,
-                                                 int64 size_bytes);
-
-  // On success, returns the shape that was transferred from the outfeed -- if
-  // is_tuple is true, the returned shape will be a tuple of the returned shapes
-  // for the given buffers.
-  StatusOr<Shape> TransferBuffersFromOutfeedInternal(
-      se::StreamExecutor* executor,
-      absl::Span<const std::pair<void*, int64>> buffer_data, bool is_tuple);
-
   TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
 };
 

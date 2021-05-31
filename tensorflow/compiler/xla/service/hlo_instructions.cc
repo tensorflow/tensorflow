@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 #include <deque>
+#include <string>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -776,12 +777,34 @@ HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
   AppendOperand(operand);
 }
 
+HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
+    HloOpcode opcode, const Shape& shape, HloInstruction* input,
+    HloInstruction* output, HloInstruction* input_start_indices,
+    HloInstruction* output_start_indices,
+    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+    absl::Span<const std::vector<int64_t>> slice_sizes,
+    const absl::optional<int64_t>& channel_id)
+    : HloChannelInstruction(opcode, shape, channel_id),
+      source_target_pairs_(source_target_pairs.begin(),
+                           source_target_pairs.end()),
+      slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
+  AppendOperand(input);
+  AppendOperand(output);
+  AppendOperand(input_start_indices);
+  AppendOperand(output_start_indices);
+}
+
 HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
   for (const auto& pair : source_target_pairs()) {
     auto* proto_pair = proto.add_source_target_pairs();
     proto_pair->set_source(pair.first);
     proto_pair->set_target(pair.second);
+  }
+  for (const auto& slice_size : dynamic_slice_sizes_list()) {
+    for (const auto& dimension_slice_size : slice_size) {
+      proto.add_dynamic_slice_sizes(dimension_slice_size);
+    }
   }
   return proto;
 }
@@ -791,11 +814,20 @@ HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> result =
       HloChannelInstruction::ExtraAttributesToStringImpl(options);
-  std::vector<string> strs;
-  for (const auto& pair : source_target_pairs()) {
-    strs.push_back(StrCat("{", pair.first, ",", pair.second, "}"));
+  {
+    std::vector<string> strs;
+    for (const auto& pair : source_target_pairs()) {
+      strs.push_back(StrCat("{", pair.first, ",", pair.second, "}"));
+    }
+    result.push_back(StrCat("source_target_pairs={", StrJoin(strs, ","), "}"));
   }
-  result.push_back(StrCat("source_target_pairs={", StrJoin(strs, ","), "}"));
+  if (!dynamic_slice_sizes_list().empty()) {
+    std::vector<string> strs;
+    for (const auto& slice_sizes : dynamic_slice_sizes_list()) {
+      strs.push_back(StrCat("{", StrJoin(slice_sizes, ","), "}"));
+    }
+    result.push_back(StrCat("slice_sizes={", StrJoin(strs, ","), "}"));
+  }
   return result;
 }
 
@@ -810,18 +842,31 @@ bool HloCollectivePermuteInstruction::IdenticalSlowPathIgnoringChannelIdValues(
       static_cast<const HloCollectivePermuteInstruction&>(other);
   return HloChannelInstruction::IdenticalSlowPathIgnoringChannelIdValues(
              other, eq_computations) &&
-         absl::c_equal(source_target_pairs(),
-                       casted_other.source_target_pairs(),
-                       [](const std::pair<int64, int64>& a,
-                          const std::pair<int64, int64>& b) { return a == b; });
+         absl::c_equal(
+             source_target_pairs(), casted_other.source_target_pairs(),
+             [](const std::pair<int64, int64>& a,
+                const std::pair<int64, int64>& b) { return a == b; }) &&
+         absl::c_equal(
+             dynamic_slice_sizes_list(),
+             casted_other.dynamic_slice_sizes_list(),
+             [](const std::vector<int64>& a, const std::vector<int64>& b) {
+               return absl::c_equal(a, b);
+             });
 }
 
 std::unique_ptr<HloInstruction>
 HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
-  return absl::make_unique<HloCollectivePermuteInstruction>(
-      opcode(), shape, new_operands[0], source_target_pairs(), channel_id());
+  if (dynamic_slice_sizes_list().empty()) {
+    return absl::make_unique<HloCollectivePermuteInstruction>(
+        opcode(), shape, new_operands[0], source_target_pairs(), channel_id());
+  } else {
+    return absl::make_unique<HloCollectivePermuteInstruction>(
+        opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
+        new_operands[3], source_target_pairs(), dynamic_slice_sizes_list(),
+        channel_id());
+  }
 }
 
 HloReverseInstruction::HloReverseInstruction(const Shape& shape,
@@ -2383,7 +2428,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       batch_group_count_(1),
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2400,7 +2446,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       batch_group_count_(1),
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2418,7 +2465,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       batch_group_count_(1),
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2440,7 +2488,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       padding_type_(PaddingType::PADDING_INVALID),
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
                                   operand_shapes_with_layout.end()),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2481,6 +2530,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
       aliasing->add_operand_shape_index(index);
     }
   }
+  proto.set_custom_call_schedule(custom_call_schedule_);
   return proto;
 }
 
@@ -2537,6 +2587,10 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     }
     extra.push_back(StrCat("output_to_operand_aliasing={",
                            StrJoin(pair_strings, ", "), "}"));
+  }
+  if (custom_call_schedule_ != CustomCallSchedule::SCHEDULE_NONE) {
+    extra.push_back(
+        StrCat("schedule=", CustomCallSchedule_Name(custom_call_schedule_)));
   }
   return extra;
 }
@@ -2604,6 +2658,9 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       return false;
     }
   }
+  if (custom_call_schedule_ != casted_other.custom_call_schedule()) {
+    return false;
+  }
   if (HasLiteral() == casted_other.HasLiteral()) {
     if (HasLiteral() && literal() == casted_other.literal()) {
       return false;
@@ -2611,7 +2668,6 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   } else {
     return true;
   }
-
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
   return custom_call_target_ == casted_other.custom_call_target_;
@@ -2642,6 +2698,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   cloned->set_output_to_operand_aliasing(output_to_operand_aliasing_);
   cloned->set_padding_type(padding_type_);
   *cloned->mutable_precision_config() = precision_config();
+  cloned->set_custom_call_schedule(custom_call_schedule_);
   return std::move(cloned);
 }
 

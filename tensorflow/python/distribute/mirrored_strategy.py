@@ -46,7 +46,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -773,10 +772,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
-    if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
-        var.aggregation != variables_lib.VariableAggregation.NONE):
-      distribute_utils.assert_mirrored(args)
-      distribute_utils.assert_mirrored(kwargs)
     updates = []
     for i, v in enumerate(var.values):
       name = "update_%d" % i
@@ -838,8 +833,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       name = "update_%d" % i
       with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         updates.append(
-            fn(*distribute_utils.select_replica_mirrored(i, args),
-               **distribute_utils.select_replica_mirrored(i, kwargs)))
+            fn(*distribute_utils.select_replica(i, args),
+               **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
 
   def read_var(self, replica_local_var):

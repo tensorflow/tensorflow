@@ -72,7 +72,7 @@ extern const char* kModelWithCustomOp;
 // Test model with a argmax op.
 extern const char* kModelWithArgMaxOp;
 
-// Test model with a argmax op.
+// Test model with a fully connected op.
 extern const char* kModelWithFCOp;
 
 // Test model with a gather_nd op.

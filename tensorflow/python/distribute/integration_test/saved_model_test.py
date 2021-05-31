@@ -28,7 +28,7 @@ using Keras models are in keras*_test.py
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+import os
 from absl.testing import parameterized
 
 import tensorflow as tf
@@ -44,6 +44,58 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.ops import lookup_ops
+
+_sixteen_worker_pool = strategy_combinations._deferred_pool_runner(
+    has_chief=True,
+    num_workers=8,
+    initializer=strategy_combinations._get_multi_worker_mirrored_creator(
+        required_gpus=0))
+
+
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            combinations.NamedDistribution(
+                "MultiWorkerMirrored8x1CPU",
+                strategy_combinations._get_multi_worker_mirrored_creator(
+                    required_gpus=0),
+                has_chief=True,
+                num_workers=8,
+                pool_runner_fn=_sixteen_worker_pool,
+                no_xla=True,
+            ),
+        ],
+        mode=["eager"]))
+class SaveModelForMultipleWorkers(test.TestCase, parameterized.TestCase):
+
+  def test_read_sync_on_read_variable(self, strategy):
+    # TODO(b/178943315): Enable test when the design in b/17894331 is
+    # implemented.
+    self.skipTest(
+        "This test fails today due to issue in multiple workers trying to write"
+        " to same file location: b/178943315"
+    )
+
+    class Model(tf.Module):
+
+      def __init__(self):
+        self.v = tf.Variable(
+            0.,
+            synchronization=tf.VariableSynchronization.ON_READ,
+            aggregation=tf.VariableAggregation.SUM)
+
+      @tf.function(input_signature=[])
+      def __call__(self):
+        return self.v.read_value()
+
+    export_dir = os.path.join(self._get_tempdir_path_test(),
+                              "test-file-failure")
+    with strategy.scope():
+      m = Model()
+      m.v.assign(1.)
+      # This fails when multiple workers try to write to the same file location.
+      # b/178943315 for tracking this bug.
+      tf.saved_model.save(m, export_dir)
 
 
 @combinations.generate(

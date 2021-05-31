@@ -43,10 +43,10 @@ landing_page:
         path: https://blog.tensorflow.org/2019/04/mlir-new-intermediate-representation.html
     - heading: MLIR on GitHub
       image_path: /resources/images/github-card-16x9.png
-      path: https://github.com/llvm/llvm-project/tree/master/mlir
+      path: https://github.com/llvm/llvm-project/tree/main/mlir
       buttons:
       - label: View on GitHub
-        path: https://github.com/llvm/llvm-project/tree/master/mlir
+        path: https://github.com/llvm/llvm-project/tree/main/mlir
     - heading: TensorFlow MLIR on GitHub
       image_path: /resources/images/github-card-16x9.png
       path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/mlir

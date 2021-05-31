@@ -210,7 +210,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   import_options.upgrade_legacy = upgrade_legacy;
   auto module_or =
       ConvertSavedModelV1ToMlir(bundle, absl::Span<std::string>(exported_names),
-                                &context, import_options);
+                                &context, import_options, lift_variables);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
@@ -225,11 +225,6 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
 
   mlir::TF::StandardPipelineOptions tf_options;
   mlir::TF::CreateTFStandardPipeline(pm, tf_options);
-  if (lift_variables) {
-    pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
-    pm.addPass(
-        mlir::tf_saved_model::CreateLiftVariablesPass(bundle.GetSession()));
-  }
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module))) {

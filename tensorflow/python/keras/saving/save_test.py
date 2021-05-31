@@ -16,8 +16,8 @@
 
 import collections
 import os
+import pathlib
 import shutil
-import sys
 import tempfile
 import warnings
 
@@ -54,8 +54,6 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.training import training as training_module
 
 
-if sys.version_info >= (3, 6):
-  import pathlib  # pylint:disable=g-import-not-at-top
 try:
   import h5py  # pylint:disable=g-import-not-at-top
 except ImportError:
@@ -86,8 +84,6 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_format_defaults_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model_path'
     save.save_model(self.model, path)
     self.assert_saved_model(path)
@@ -104,8 +100,6 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_load_hdf5_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     save.save_model(self.model, path, save_format='h5')
     save.load_model(path)
@@ -129,24 +123,18 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_save_load_tf_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     save.save_model(self.model, path, save_format='tf')
     save.load_model(path)
 
   @testing_utils.run_v2_only
   def test_save_load_weights_tf_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     self.model.save_weights(path, save_format='tf')
     self.model.load_weights(path)
 
   @testing_utils.run_v2_only
   def test_save_load_weights_hdf5_pathlib(self):
-    if sys.version_info < (3, 6):
-      self.skipTest('pathlib is only available for python version >= 3.6')
     path = pathlib.Path(self.get_temp_dir()) / 'model'
     self.model.save_weights(path, save_format='h5')
     self.model.load_weights(path)
@@ -312,14 +300,13 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     path = os.path.join(self.get_temp_dir(), 'no_optimizer')
     x, y = np.ones((10, 10)), np.ones((10, 1))
 
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(1))
-      model.compile('adam', loss='mse')
-      model.train_on_batch(x, y)
-      model.save(path, save_format='tf', include_optimizer=False)
-
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1))
+    model.compile('adam', loss='mse')
+    model.train_on_batch(x, y)
+    model.save(path, save_format='tf', include_optimizer=False)
     variables = get_variables(path)
+
     for v in variables:
       self.assertNotIn('optimizer', v)
 
@@ -1057,31 +1044,30 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     if not context.executing_eagerly() and not fit:
       self.skipTest('b/181767784')
 
-    with self.cached_session():
-      input_ = keras.Input((4,))
-      model = keras.Model(
-          input_,
-          [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
-           keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
-      metric = keras.metrics.BinaryAccuracy()
-      model.compile(optimizer='rmsprop',
-                    loss='mse',
-                    metrics={'head_0': [metric, 'accuracy']})
+    input_ = keras.Input((4,))
+    model = keras.Model(
+        input_,
+        [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
+         keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
+    metric = keras.metrics.BinaryAccuracy()
+    model.compile(optimizer='rmsprop',
+                  loss='mse',
+                  metrics={'head_0': [metric, 'accuracy']})
 
-      x = np.random.rand(2, 4)
-      y = {'head_0': np.random.randint(2, size=(2, 3)),
-           'head_1': np.random.randint(2, size=(2, 5))}
+    x = np.random.rand(2, 4)
+    y = {'head_0': np.random.randint(2, size=(2, 3)),
+         'head_1': np.random.randint(2, size=(2, 5))}
 
-      # Make sure metrix prefixing works the same regardless of whether the user
-      # has fit the model before saving.
-      if fit:
-        model.fit(x, y, verbose=0)
+    # Make sure metrix prefixing works the same regardless of whether the user
+    # has fit the model before saving.
+    if fit:
+      model.fit(x, y, verbose=0)
 
-      # Save and reload.
-      save_format = testing_utils.get_save_format()
-      saved_model_dir = self._save_model_dir()
-      keras.models.save_model(model, saved_model_dir, save_format=save_format)
-      loaded = keras.models.load_model(saved_model_dir)
+    # Save and reload.
+    save_format = testing_utils.get_save_format()
+    saved_model_dir = self._save_model_dir()
+    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+    loaded = keras.models.load_model(saved_model_dir)
 
     # Make sure the metrics names from the model before saving match the loaded
     # model.

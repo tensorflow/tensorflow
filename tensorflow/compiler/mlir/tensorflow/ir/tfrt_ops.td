@@ -73,7 +73,7 @@ def TF__TfrtSetResourceOp : TF_Op<"_TfrtSetResource", []> {
   );
 }
 
-def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource", []> {
+def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource", [NoSideEffect]> {
   let summary = "Get values from TFRT runtime's static resource.";
 
   let description = [{

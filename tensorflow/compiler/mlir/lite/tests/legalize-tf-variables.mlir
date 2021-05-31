@@ -3,13 +3,15 @@
 // Test for case with no session initialize op.
 module attributes {tf_saved_model.semantics} {
   "tf_saved_model.global_tensor"() {is_mutable, sym_name = "Variable", type = tensor<1x10xf32>, value = dense<0.000000e+00> : tensor<1x10xf32>} : () -> ()
-  func @serving_default(%arg0: tensor<1x10xf32> {tf_saved_model.index_path = ["x"]}, %arg1: tensor<!tf.resource<tensor<1x10xf32>>> {tf_saved_model.bound_input = @Variable}) ->
-    (tensor<1x10xf32> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_x:0", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+  "tf_saved_model.global_tensor"() {is_mutable, sym_name = "VariableI64", type = tensor<1x10xi64>, value = dense<0> : tensor<1x10xi64>} : () -> ()
+  func @serving_default(%arg0: tensor<1x10xf32> {tf_saved_model.index_path = ["x"]}, %arg1: tensor<!tf.resource<tensor<1x10xf32>>> {tf_saved_model.bound_input = @Variable}, %arg2: tensor<!tf.resource<tensor<1x10xi64>>> {tf_saved_model.bound_input = @VariableI64}) ->
+    (tensor<1x10xf32> {tf_saved_model.index_path = ["output_0"]}, tensor<1x10xi64> {tf_saved_model.index_path = ["output_1"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_x:0", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %0 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<1x10xf32>>>) -> tensor<1x10xf32>
     %1 = tfl.add %0, %arg0 {fused_activation_function = "NONE"} : tensor<1x10xf32>
     "tf.AssignVariableOp"(%arg1, %1) : (tensor<!tf.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
     %2 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<!tf.resource<tensor<1x10xf32>>>) -> tensor<1x10xf32>
-    return %2 : tensor<1x10xf32>
+    %3 = "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<!tf.resource<tensor<1x10xi64>>>) -> tensor<1x10xi64>
+    return %2, %3 : tensor<1x10xf32>, tensor<1x10xi64>
   }
 
   // CHECK: func @serving_default(%arg0: tensor<1x10xf32> {tf_saved_model.index_path = ["x"]}
@@ -18,7 +20,9 @@ module attributes {tf_saved_model.semantics} {
   // CHECK: %[[ADD:.*]] = tfl.add %[[VAR_VAL]], %arg0 {fused_activation_function = "NONE"} : tensor<1x10xf32>
   // CHECK: "tfl.assign_variable"(%[[RESOURCE]], %[[ADD]]) : (tensor<1xi32>, tensor<1x10xf32>) -> ()
   // CHECK: %[[RESULT:.*]] = "tfl.read_variable"(%[[RESOURCE]]) : (tensor<1xi32>) -> tensor<1x10xf32>
-  // CHECK:  return %[[RESULT]] : tensor<1x10xf32>
+  // CHECK: %[[RESOURCE_1:.*]] = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[VAR:.*]] = "tfl.read_variable"(%[[RESOURCE_1]]) : (tensor<1xi32>) -> tensor<1x10xi64>
+  // CHECK:  return %[[RESULT]], %[[VAR]] : tensor<1x10xf32>, tensor<1x10xi64>
 }
 
 // -----
@@ -54,3 +58,18 @@ module attributes {tf_saved_model.semantics} {
     // CHECK:  return %[[RESULT]] : tensor<1x10xf32>
   }
 }
+
+// -----
+
+// Don't legalize if type is not supported.
+module attributes {tf_saved_model.semantics} {
+  "tf_saved_model.global_tensor"() {is_mutable, sym_name = "Variable", type = tensor<1x10xui64>, value = dense<0> : tensor<1x10xui64>} : () -> ()
+  func @serving_default(%arg0: tensor<!tf.resource<tensor<1x10xui64>>> {tf_saved_model.bound_input = @Variable}) ->
+    (tensor<1x10xui64> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_x:0", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf.resource<tensor<1x10xui64>>>) -> tensor<1x10xui64>
+    return %0 : tensor<1x10xui64>
+  }
+
+  // CHECK: tf.ReadVariableOp
+}
+

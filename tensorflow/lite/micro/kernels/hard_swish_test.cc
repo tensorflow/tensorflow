@@ -61,8 +61,8 @@ void TestHardSwishQuantized(int size, const T* output_data,
                             float output_max, std::minstd_rand* random_engine,
                             float* float_input_values,
                             float* float_ref_output_values) {
-  const int input_dims_data[] = {2, 1, size};
-  const int output_dims_data[] = {2, 1, size};
+  int input_dims_data[] = {2, 1, size};
+  int output_dims_data[] = {2, 1, size};
   const float input_scale = ScaleFromMinMax<T>(input_min, input_max);
   const int input_zero_point = ZeroPointFromMinMax<T>(input_min, input_max);
   const float output_scale = ScaleFromMinMax<T>(output_min, output_max);
@@ -160,8 +160,8 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
         std::min(output_max, std::max(output_min, val));
   }
 
-  const int input_dims_data[] = {2, 1, size};
-  const int output_dims_data[] = {2, 1, size};
+  int input_dims_data[] = {2, 1, size};
+  int output_dims_data[] = {2, 1, size};
 
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -214,8 +214,8 @@ void TestHardSwishFloat(const int size, float* output_data,
 
   EvalTestReferenceHardSwish(size, float_input_values, float_ref_output_values);
 
-  const int input_dims_data[] = {1, size};
-  const int output_dims_data[] = {1, size};
+  int input_dims_data[] = {1, size};
+  int output_dims_data[] = {1, size};
 
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);

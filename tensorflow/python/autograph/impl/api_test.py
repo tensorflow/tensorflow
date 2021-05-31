@@ -33,7 +33,6 @@ import types
 import numpy as np
 import six
 
-from tensorflow.python import _errors_test_helper
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
@@ -46,6 +45,7 @@ from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.framework import _errors_test_helper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors as tf_errors
 from tensorflow.python.framework import ops

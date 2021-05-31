@@ -45,6 +45,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kReleaseJobClient:
       ReleaseJobClient(update.release_job_client());
       break;
+    case Update::kGarbageCollectJob:
+      GarbageCollectJob(update.garbage_collect_job());
+      break;
     case Update::kRemoveTask:
       RemoveTask(update.remove_task());
       break;
@@ -148,6 +151,17 @@ void DispatcherState::ReleaseJobClient(
   DCHECK_GE(job->num_clients, 0);
   job->last_client_released_micros = release_job_client.time_micros();
   jobs_for_client_ids_.erase(job_client_id);
+}
+
+void DispatcherState::GarbageCollectJob(
+    const GarbageCollectJobUpdate& garbage_collect_job) {
+  int64 job_id = garbage_collect_job.job_id();
+  for (auto& task : tasks_by_job_[job_id]) {
+    task->finished = true;
+    tasks_by_worker_[task->worker_address].erase(task->task_id);
+  }
+  jobs_[job_id]->finished = true;
+  jobs_[job_id]->garbage_collected = true;
 }
 
 void DispatcherState::RemoveTask(const RemoveTaskUpdate& remove_task) {
@@ -354,6 +368,7 @@ Status DispatcherState::TasksForJob(
 Status DispatcherState::TasksForWorker(
     absl::string_view worker_address,
     std::vector<std::shared_ptr<const Task>>& tasks) const {
+  tasks.clear();
   auto it = tasks_by_worker_.find(worker_address);
   if (it == tasks_by_worker_.end()) {
     return errors::NotFound("Worker ", worker_address, " not found");

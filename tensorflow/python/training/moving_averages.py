@@ -32,7 +32,7 @@ from tensorflow.python.training import slot_creator
 from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(touts): switch to variables.Variable.
+@tf_export("__internal__.train.assign_moving_average", v1=[])
 def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   """Compute the moving average of a variable.
 

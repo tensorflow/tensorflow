@@ -23,8 +23,17 @@ limitations under the License.
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+#ifdef ETHOS_U
+#include "tensorflow/lite/micro/examples/person_detection/person_detect_model_data.h"
+#include "tensorflow/lite/micro/examples/person_detection/person_image_data.h"
+#endif
+
 #ifndef TENSOR_ARENA_SIZE
+#ifdef ETHOS_U
+#define TENSOR_ARENA_SIZE (136 * 1024)
+#else
 #define TENSOR_ARENA_SIZE (1024)
+#endif
 #endif
 
 #ifndef NUM_INFERENCES
@@ -73,7 +82,11 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestInvoke) {
   tflite::MicroErrorReporter micro_error_reporter;
 
+#ifdef ETHOS_U
+  const tflite::Model* model = ::tflite::GetModel(g_person_detect_model_data);
+#else
   const tflite::Model* model = ::tflite::GetModel(network_model);
+#endif
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     TF_LITE_REPORT_ERROR(&micro_error_reporter,
                          "Model provided is schema version %d not equal "
@@ -96,7 +109,11 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   for (int n = 0; n < NUM_INFERENCES; n++) {
     for (size_t i = 0; i < interpreter.inputs_size(); ++i) {
       TfLiteTensor* input = interpreter.input(i);
+#ifdef ETHOS_U
+      memcpy(input->data.int8, g_person_data, input->bytes);
+#else
       memcpy(input->data.data, input_data[i], input->bytes);
+#endif
     }
     TfLiteStatus invoke_status = interpreter.Invoke();
     if (invoke_status != kTfLiteOk) {

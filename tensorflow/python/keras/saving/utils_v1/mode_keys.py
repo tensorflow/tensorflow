@@ -16,7 +16,7 @@
 """Utils for managing different mode strings used by Keras and Estimator models.
 """
 
-import collections.abc as collections_abc
+import collections
 
 
 class KerasModeKeys:
@@ -62,7 +62,7 @@ def is_train(mode):
   return mode in [KerasModeKeys.TRAIN, EstimatorModeKeys.TRAIN]
 
 
-class ModeKeyMap(collections_abc.Mapping):
+class ModeKeyMap(collections.abc.Mapping):
   """Map using ModeKeys as keys.
 
   This class creates an immutable mapping from modes to values. For example,

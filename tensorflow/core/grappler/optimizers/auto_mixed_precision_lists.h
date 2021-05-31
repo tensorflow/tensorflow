@@ -129,8 +129,12 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "LSTMBlockCellGrad",
         "MatMul",
     };
+#if TENSORFLOW_USE_ROCM
+    if (true) {
+#else
     if (cuda_version_ >= 9010) {
       // Fp16 BatchMatMul is slow before CUDA 9.1.
+#endif
       list.insert("BatchMatMul");
       list.insert("BatchMatMulV2");
     }

@@ -85,6 +85,7 @@ REGISTER_OP("Namespace>TestStringOutput")
 REGISTER_OP("TestAttr")
     .Output("out: T")
     .Attr("T: {float, double}")
+    .SetDoNotOptimize()
     .SetShapeFn(shape_inference::UnknownShape);
 
 namespace {

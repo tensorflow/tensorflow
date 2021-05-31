@@ -52,6 +52,11 @@ VERSION = "2.6.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
+# The workspace root, to be used to set workspace 'include' paths in a way that
+# will still work correctly when TensorFlow is included as a dependency of an
+# external project.
+workspace_root = Label("//:WORKSPACE").workspace_root or "."
+
 def clean_dep(target):
     """Returns string to 'target' in @org_tensorflow repository.
 
@@ -990,7 +995,7 @@ def tf_gen_op_wrapper_py(
         visibility = [clean_dep("//tensorflow:internal")],
         deps = ([
             clean_dep("//tensorflow/core:framework"),
-            clean_dep("//tensorflow/python:python_op_gen_main"),
+            clean_dep("//tensorflow/python/framework:python_op_gen_main"),
         ] + deps),
         testonly = testonly,
     )
@@ -1086,7 +1091,7 @@ def tf_cc_test(
         linkstatic = 0,
         extra_copts = [],
         suffix = "",
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         kernels = [],
         **kwargs):
     cc_test(
@@ -2216,7 +2221,7 @@ def tf_py_test(
     # kernels compiled with XLA.
     if xla_enable_strict_auto_jit:
         xla_enabled = True
-        xla_test_true_list += ["//tensorflow/python:is_xla_test_true"]
+        xla_test_true_list.append("//tensorflow/python/framework:is_xla_test_true")
     if xla_enabled:
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
@@ -2625,7 +2630,7 @@ def pybind_extension(
         pytype_deps = [],
         pytype_srcs = []):
     """Builds a generic Python extension module."""
-    _ignore = [module_name, pytype_deps, pytype_srcs]
+    _ignore = [module_name]
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -2727,7 +2732,8 @@ def pybind_extension(
         data = select({
             "@org_tensorflow//tensorflow:windows": [pyd_file],
             "//conditions:default": [so_file],
-        }),
+        }) + pytype_srcs,
+        deps = pytype_deps,
         srcs_version = srcs_version,
         licenses = licenses,
         testonly = testonly,

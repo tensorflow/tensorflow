@@ -81,8 +81,8 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    // Don't apply conversion unless all operands are unranked.
-    if (!llvm::all_of(op.getOperation()->getOperands(), [&](Value operand) {
+    // Only apply conversion if at least one operand is unranked.
+    if (llvm::none_of(op.getOperation()->getOperands(), [&](Value operand) {
           return operand.getType().isa<UnrankedTensorType>();
         })) {
       return failure();
@@ -183,7 +183,9 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
     Value size_tensor =
         rewriter.create<tensor::FromElementsOp>(loc, num_elements);
     Value reshaped = rewriter.create<mhlo::DynamicReshapeOp>(
-        loc, RankedTensorType::get({-1}, scalar_element_type),
+        loc,
+        RankedTensorType::get({RankedTensorType::kDynamicSize},
+                              scalar_element_type),
         lhs_is_scalar ? rhs : lhs, size_tensor);
 
     // Create a new ranked Chlo op that will be further lowered by other
@@ -191,7 +193,9 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
     SmallVector<Value, 2> new_operands{lhs_is_scalar ? lhs : reshaped,
                                        rhs_is_scalar ? rhs : reshaped};
     Value computed = rewriter.create<ChloOpTy>(
-        loc, TypeRange{RankedTensorType::get({-1}, result_element_type)},
+        loc,
+        TypeRange{RankedTensorType::get({RankedTensorType::kDynamicSize},
+                                        result_element_type)},
         new_operands, op->getAttrs());
 
     // Reshape the result back into an unranked tensor.
@@ -202,19 +206,173 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
   }
 };
 
-template <typename ChloOpTy, typename HloOpTy>
-struct ConvertUnrankedDynamicBroadcastOpHelper {
+// Handles lowering of the following pattern to patterns that will be further
+// matched by other patterns until they result in LHLO:
+//   %result = "chlo.op"(%op0, %op1, ...) : (<*xTy>, <*xTy>, ...) -> <*xTy>
+//
+// The sequence of specializations this handles is:
+//   - At most one operand has a shape that does not consist of exactly one
+//     element.
+//   - All operands having equal shapes
+//   - The resulting minimized shapes being any of ranks [1,5]
+template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
+struct ConvertUnrankedDynamicBroadcastNaryOp
+    : public OpConversionPattern<ChloOpTy> {
+  using OpConversionPattern<ChloOpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      ChloOpTy op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    auto loc = op.getLoc();
+    typename ChloOpTy::Adaptor transformed(operands);
+    ValueRange transformed_operands = transformed.getOperands();
+    auto num_operands = transformed_operands.size();
+    llvm::SmallVector<Type, 3> operand_element_types;
+    operand_element_types.reserve(num_operands);
+    bool has_unranked_tensor_type = false;
+    for (int i = 0; i < num_operands; ++i) {
+      if (auto type =
+              transformed_operands[i].getType().dyn_cast<TensorType>()) {
+        if (type.isa<UnrankedTensorType>()) {
+          has_unranked_tensor_type = true;
+        }
+        operand_element_types.push_back(type.getElementType());
+      } else {
+        return failure();
+      }
+    }
+    if (!has_unranked_tensor_type) return failure();
+    auto result_type = op.getResult().getType().template dyn_cast<TensorType>();
+
+    llvm::SmallVector<Value> shapes;
+    shapes.reserve(num_operands);
+    for (int i = 0; i < num_operands; ++i) {
+      shapes.push_back(
+          rewriter.create<shape::ShapeOfOp>(loc, transformed_operands[i]));
+    }
+
+    // If at most one shape does not have exactly one element
+    Value counter = rewriter.create<ConstantIndexOp>(loc, 0);
+    Value one = rewriter.create<ConstantIndexOp>(loc, 1);
+    for (int i = 0; i < num_operands; ++i) {
+      Value is_scalar_like = IsSingleElementShape(rewriter, op, shapes[i]);
+      Value counter_plus_one = rewriter.create<AddIOp>(loc, counter, one);
+      counter = rewriter.create<SelectOp>(loc, is_scalar_like, counter_plus_one,
+                                          counter);
+    }
+    Value num_operands_minus_one =
+        rewriter.create<ConstantIndexOp>(loc, num_operands - 1);
+    Value at_most_one_non_scalar =
+        rewriter.create<CmpIOp>(loc, rewriter.getI1Type(), CmpIPredicate::uge,
+                                counter, num_operands_minus_one);
+
+    auto if_op = rewriter.create<scf::IfOp>(loc, result_type,
+                                            at_most_one_non_scalar, true);
+    OpBuilder if_at_most_one_non_scalar_builder =
+        if_op.getThenBodyBuilder(rewriter.getListener());
+
+    llvm::SmallVector<Value, 3> reshaped_operands;
+    reshaped_operands.reserve(num_operands);
+    for (int i = 0; i < num_operands; ++i) {
+      Value num_elements =
+          if_at_most_one_non_scalar_builder.create<shape::NumElementsOp>(
+              loc, shapes[i]);
+      Value size_tensor =
+          if_at_most_one_non_scalar_builder.create<tensor::FromElementsOp>(
+              loc, num_elements);
+      Value reshaped =
+          if_at_most_one_non_scalar_builder.create<mhlo::DynamicReshapeOp>(
+              loc,
+              RankedTensorType::get({RankedTensorType::kDynamicSize},
+                                    operand_element_types[i]),
+              transformed_operands[i], size_tensor);
+      reshaped_operands.push_back(reshaped);
+    }
+
+    auto rank_one_result_type = RankedTensorType::get(
+        {RankedTensorType::kDynamicSize}, result_type.getElementType());
+    Value if_at_most_one_non_scalar_result =
+        if_at_most_one_non_scalar_builder.create<ChloOpTy>(
+            loc, ArrayRef<Type>{rank_one_result_type}, reshaped_operands,
+            op->getAttrs());
+    Value extended_result = extendToBroadcastShape(
+        if_at_most_one_non_scalar_builder, loc, result_type,
+        if_at_most_one_non_scalar_result, shapes);
+    if_at_most_one_non_scalar_builder.create<scf::YieldOp>(loc,
+                                                           extended_result);
+
+    // If there is more than one shape which does not have exactly one element
+    //
+    // See if all shapes are equal.
+    OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
+    Value equal_shapes =
+        else_builder.create<shape::ShapeEqOp>(loc, shapes[0], shapes[1]);
+    for (int i = 2; i < num_operands; ++i) {
+      Value are_equal =
+          else_builder.create<shape::ShapeEqOp>(loc, shapes[0], shapes[i]);
+      equal_shapes = else_builder.create<AndOp>(loc, equal_shapes, are_equal);
+    }
+
+    auto if_eq_shapes_op =
+        else_builder.create<scf::IfOp>(loc, result_type, equal_shapes, true);
+    else_builder.create<scf::YieldOp>(loc, if_eq_shapes_op.getResult(0));
+
+    OpBuilder if_eq_shapes_builder =
+        if_eq_shapes_op.getThenBodyBuilder(rewriter.getListener());
+    Value non_broadcast_op = Adaptor::CreateOp(
+        op, result_type, transformed_operands, if_eq_shapes_builder);
+    if_eq_shapes_builder.create<scf::YieldOp>(loc, non_broadcast_op);
+
+    // If shapes do not have exactly one element, nor are equal
+    //
+    // See if values are of a rank that we support.
+    OpBuilder if_neq_shapes_builder =
+        if_eq_shapes_op.getElseBodyBuilder(rewriter.getListener());
+    if_neq_shapes_builder.create<scf::YieldOp>(
+        loc,
+        HandleBroadcastAndOp(if_neq_shapes_builder, op, transformed_operands));
+
+    rewriter.replaceOp(op, {if_op.getResult(0)});
+    return success();
+  }
+
+ private:
   // Returns the dynamic result of checking the given value is effectively a
   // scalar shape (i.e. the number of elements is 1).
-  static Value GreaterRankIsN(OpBuilder &builder, Location loc,
-                              Value actual_rank, int targeted_rank) {
+  Value IsSingleElementShape(OpBuilder &rewriter, ChloOpTy op,
+                             Value shape_of_tensor) const {
+    auto loc = op.getLoc();
+
+    Value num_elements =
+        rewriter.create<shape::NumElementsOp>(loc, shape_of_tensor);
+    return rewriter.create<CmpIOp>(loc, rewriter.getI1Type(), CmpIPredicate::eq,
+                                   num_elements,
+                                   rewriter.create<ConstantIndexOp>(loc, 1));
+  }
+
+  Value extendToBroadcastShape(OpBuilder &builder, Location loc,
+                               Type result_type, Value value,
+                               ValueRange shapes) const {
+    auto unknown_rank_extent_tensor_type = RankedTensorType::get(
+        {RankedTensorType::kDynamicSize}, builder.getIndexType());
+    Value broadcast_shape = builder.create<shape::BroadcastOp>(
+        loc, unknown_rank_extent_tensor_type, shapes, nullptr);
+    return builder.create<mhlo::DynamicReshapeOp>(loc, result_type, value,
+                                                  broadcast_shape);
+  }
+
+  // Returns the dynamic result of checking the given value is effectively a
+  // scalar shape (i.e. the number of elements is 1).
+  Value GreaterRankIsN(OpBuilder &builder, Location loc, Value actual_rank,
+                       int targeted_rank) const {
     return builder.create<CmpIOp>(
         loc, CmpIPredicate::eq, actual_rank,
         builder.create<ConstantIndexOp>(loc, targeted_rank));
   }
 
-  static scf::IfOp createIfOpForRankSpecializedBroadcastAndOp(
-      OpBuilder &builder, ChloOpTy op, Value actual_rank, int targeted_rank) {
+  scf::IfOp createIfOpForRankSpecializedBroadcastAndOp(
+      OpBuilder &builder, ChloOpTy op, Value actual_rank,
+      int targeted_rank) const {
     // Create the if block to place the current specialized logic in.
     Value greater_rank_is_n =
         GreaterRankIsN(builder, op.getLoc(), actual_rank, targeted_rank);
@@ -222,8 +380,8 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
                                      greater_rank_is_n, true);
   }
 
-  static Value createBroadcastToKnownRank(OpBuilder &builder, ChloOpTy op,
-                                          Value shape, int targeted_rank) {
+  Value createBroadcastToKnownRank(OpBuilder &builder, ChloOpTy op, Value shape,
+                                   int targeted_rank) const {
     auto loc = op.getLoc();
     SmallVector<int64_t, 6> ranked_shape(targeted_rank, 1);
     auto unknown_rank_extent_tensor_type = RankedTensorType::get(
@@ -242,11 +400,10 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
 
   // Create the if statement and code for a broadcasting op with a result of a
   // given rank.
-  static void createRankSpecializedBroadcastAndOp(OpBuilder &if_builder,
-                                                  ChloOpTy op,
-                                                  ValueRange operands,
-                                                  ValueRange operand_shapes,
-                                                  int targeted_rank) {
+  void createRankSpecializedBroadcastAndOp(OpBuilder &if_builder, ChloOpTy op,
+                                           ValueRange operands,
+                                           ValueRange operand_shapes,
+                                           int targeted_rank) const {
     auto loc = op.getLoc();
     SmallVector<Value, 2> reshaped_operands;
 
@@ -288,8 +445,8 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
 
   // Iterates over the desired ranks to be specialized and generates the code
   // snippet for each case.
-  static Value HandleBroadcastAndOp(OpBuilder &rewriter, ChloOpTy op,
-                                    ValueRange operands) {
+  Value HandleBroadcastAndOp(OpBuilder &rewriter, ChloOpTy op,
+                             ValueRange operands) const {
     auto loc = op.getLoc();
 
     // Get the minimum broadcast shapes of the operands.
@@ -346,7 +503,11 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
     // Put each subsequent rank specialization inside the else statement of the
     // previous one.
     OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
-    constexpr int kMaxRankSpecialization = 5;
+
+    // Tensorflow supports up to rank 8 for SelectOp (currently the only op with
+    // arity > 2 that we support), but only up to rank 5 for binary ops. We want
+    // to preserve this behavior.
+    const int kMaxRankSpecialization = operands.size() > 2 ? 8 : 5;
     for (int i = 2; i < kMaxRankSpecialization; i++) {
       auto inner_if = createIfOpForRankSpecializedBroadcastAndOp(
           else_builder, op, greater_rank, i);
@@ -376,159 +537,10 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
   }
 };
 
-// Handles lowering of the following pattern to patterns that will be further
-// matched by other patterns until they result in LHLO:
-//   %result = "chlo.op"(%lhs, %rhs) : (<*xTy>, <*xTy>) -> <*xTy>
-//
-// The sequence of specializations this handles is:
-//   - Either operand being scalar
-//   - Operands having equal shapes
-//   - The resulting value being any of ranks [2,6]
-template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
-struct ConvertUnrankedDynamicBroadcastBinaryOp
-    : public OpConversionPattern<ChloOpTy> {
-  using OpConversionPattern<ChloOpTy>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      ChloOpTy op, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const override {
-    auto loc = op.getLoc();
-    typename ChloOpTy::Adaptor transformed(operands);
-    Value lhs = transformed.lhs();
-    Value rhs = transformed.rhs();
-    auto lhs_type = lhs.getType().dyn_cast<UnrankedTensorType>();
-    auto rhs_type = rhs.getType().dyn_cast<UnrankedTensorType>();
-    auto result_type = op.getResult().getType().template dyn_cast<TensorType>();
-
-    // Only support unranked operands. If either operand is ranked, another
-    // pattern will handle the lowering.
-    if (!lhs_type || !rhs_type) return failure();
-
-    Value shape_of_lhs = rewriter.create<shape::ShapeOfOp>(loc, lhs);
-    Value shape_of_rhs = rewriter.create<shape::ShapeOfOp>(loc, rhs);
-
-    // If lhs has exactly one element
-    auto if_op = rewriter.create<scf::IfOp>(
-        loc, result_type, IsSingleElementShape(rewriter, op, shape_of_lhs),
-        true);
-    OpBuilder if_lhs_scalar_builder =
-        if_op.getThenBodyBuilder(rewriter.getListener());
-    Value reshaped_lhs = if_lhs_scalar_builder.create<mhlo::ReshapeOp>(
-        loc, RankedTensorType::get({}, lhs_type.getElementType()), lhs);
-    Value if_lhs_scalar_result = if_lhs_scalar_builder.create<ChloOpTy>(
-        loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{reshaped_lhs, rhs},
-        op->getAttrs());
-    Value extended_if_lhs_scalar_result =
-        extendToBroadcastShape(if_lhs_scalar_builder, loc, if_lhs_scalar_result,
-                               shape_of_lhs, shape_of_rhs);
-    if_lhs_scalar_builder.create<scf::YieldOp>(loc,
-                                               extended_if_lhs_scalar_result);
-
-    // If lhs does not have exactly one element
-    //
-    // See if rhs has exactly one element
-    OpBuilder else_lhs_scalar_builder =
-        if_op.getElseBodyBuilder(rewriter.getListener());
-    auto if_rhs_scalar_op = else_lhs_scalar_builder.create<scf::IfOp>(
-        loc, result_type,
-        IsSingleElementShape(else_lhs_scalar_builder, op, shape_of_rhs), true);
-    else_lhs_scalar_builder.create<scf::YieldOp>(loc,
-                                                 if_rhs_scalar_op.getResult(0));
-    OpBuilder if_rhs_scalar_builder =
-        if_rhs_scalar_op.getThenBodyBuilder(rewriter.getListener());
-    Value reshaped_rhs = if_rhs_scalar_builder.create<mhlo::ReshapeOp>(
-        loc, RankedTensorType::get({}, rhs_type.getElementType()), rhs);
-    Value if_rhs_scalar_result = if_rhs_scalar_builder.create<ChloOpTy>(
-        loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{lhs, reshaped_rhs},
-        op->getAttrs());
-    Value extended_if_rhs_scalar_result =
-        extendToBroadcastShape(if_rhs_scalar_builder, loc, if_rhs_scalar_result,
-                               shape_of_lhs, shape_of_rhs);
-    if_rhs_scalar_builder.create<scf::YieldOp>(loc,
-                                               extended_if_rhs_scalar_result);
-
-    // If NEITHER shape has exactly one element
-    //
-    // See if shapes are equal.
-    OpBuilder else_no_scalars_builder =
-        if_rhs_scalar_op.getElseBodyBuilder(rewriter.getListener());
-    Value equal_shapes = else_no_scalars_builder.create<shape::ShapeEqOp>(
-        loc, shape_of_lhs, shape_of_rhs);
-
-    auto if_eq_shapes_op = else_no_scalars_builder.create<scf::IfOp>(
-        loc, result_type, equal_shapes, true);
-    else_no_scalars_builder.create<scf::YieldOp>(loc,
-                                                 if_eq_shapes_op.getResult(0));
-
-    OpBuilder if_eq_shapes_builder =
-        if_eq_shapes_op.getThenBodyBuilder(rewriter.getListener());
-    Value non_broadcast_op =
-        Adaptor::CreateOp(op, result_type, lhs, rhs, if_eq_shapes_builder);
-    if_eq_shapes_builder.create<scf::YieldOp>(loc, non_broadcast_op);
-
-    // If shapes do not have exactly one element, nor are equal
-    //
-    // See if values are of a rank that we support.
-    OpBuilder if_neq_shapes_builder =
-        if_eq_shapes_op.getElseBodyBuilder(rewriter.getListener());
-    if_neq_shapes_builder.create<scf::YieldOp>(
-        loc, ConvertUnrankedDynamicBroadcastOpHelper<
-                 ChloOpTy, HloOpTy>::HandleBroadcastAndOp(if_neq_shapes_builder,
-                                                          op, {lhs, rhs}));
-
-    rewriter.replaceOp(op, {if_op.getResult(0)});
-    return success();
-  }
-
- private:
-  // Returns the dynamic result of checking the given value is effectively a
-  // scalar shape (i.e. the number of elements is 1).
-  Value IsSingleElementShape(OpBuilder &rewriter, ChloOpTy op,
-                             Value shape_of_tensor) const {
-    auto loc = op.getLoc();
-
-    Value num_elements =
-        rewriter.create<shape::NumElementsOp>(loc, shape_of_tensor);
-    return rewriter.create<CmpIOp>(loc, rewriter.getI1Type(), CmpIPredicate::eq,
-                                   num_elements,
-                                   rewriter.create<ConstantIndexOp>(loc, 1));
-  }
-
-  Value extendToBroadcastShape(OpBuilder &builder, Location loc, Value value,
-                               Value shape_of_lhs, Value shape_of_rhs) const {
-    auto unknown_rank_extent_tensor_type = RankedTensorType::get(
-        {RankedTensorType::kDynamicSize}, builder.getIndexType());
-    Value broadcast_shape =
-        builder.create<shape::BroadcastOp>(loc, unknown_rank_extent_tensor_type,
-                                           shape_of_lhs, shape_of_rhs, nullptr);
-    return builder.create<mhlo::DynamicReshapeOp>(loc, value.getType(), value,
-                                                  broadcast_shape);
-  }
-};
-
-// Rank-specialize chlo.broadcast_select ops.
-struct ConvertUnrankedDynamicBroadcastSelectOp
-    : public OpConversionPattern<chlo::BroadcastSelectOp> {
-  using OpConversionPattern<chlo::BroadcastSelectOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      chlo::BroadcastSelectOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const override {
-    // For now only do the bare minimum and specialize for every rank. There is
-    // more potential for optimization here. This also is missing the
-    // specialization for rank 0.
-    rewriter.replaceOp(
-        op, {ConvertUnrankedDynamicBroadcastOpHelper<
-                chlo::BroadcastSelectOp,
-                mhlo::SelectOp>::HandleBroadcastAndOp(rewriter, op, operands)});
-    return success();
-  }
-};
-
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect,
+    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect, scf::SCFDialect,
                     shape::ShapeDialect>();
   }
 
@@ -551,7 +563,7 @@ struct TransformUnrankedHloPass
     AddLegalOpOnRankedTensor<mhlo::SelectOp>(&target);
     target.addDynamicallyLegalDialect<chlo::HloClientDialect>(
         [](Operation *op) {
-          return !llvm::any_of(op->getOperandTypes(), [](Type type) {
+          return llvm::none_of(op->getOperandTypes(), [](Type type) {
             return type.isa<UnrankedTensorType>();
           });
         });
@@ -588,11 +600,14 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
 #undef MAP_HLO
 #undef MAP_CHLO
 #undef COMMA
-  chlo::PopulateForBroadcastingBinaryOp<
-      ConvertUnrankedDynamicBroadcastBinaryOp>(context, patterns);
+  chlo::PopulateForBroadcastingBinaryOp<ConvertUnrankedDynamicBroadcastNaryOp>(
+      context, patterns);
+  patterns->insert<ConvertUnrankedDynamicBroadcastNaryOp<
+      chlo::BroadcastSelectOp, mhlo::SelectOp,
+      chlo::HloNaryElementwiseAdaptor<chlo::BroadcastSelectOp,
+                                      mhlo::SelectOp>>>(context);
   chlo::PopulateForBroadcastingBinaryOp<
       ConvertUnrankedScalarDynamicBroadcastBinaryOp>(context, patterns);
-  patterns->insert<ConvertUnrankedDynamicBroadcastSelectOp>(context);
 }
 
 std::unique_ptr<FunctionPass> createTransformUnrankedHloPass() {

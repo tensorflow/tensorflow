@@ -34,7 +34,7 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type);
 // TensorFlow object in the first place, you most likely should preserve the
 // original TensorFlow type, rather than trying to convert an XLA type back into
 // a TensorFlow type.
-xla::StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type);
+StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type);
 
 }  // namespace tensorflow
 

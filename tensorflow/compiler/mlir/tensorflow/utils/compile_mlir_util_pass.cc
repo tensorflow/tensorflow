@@ -20,7 +20,7 @@ limitations under the License.
 namespace {
 void CreateConvertMlirToXlaHloPipelineWithDefaults(mlir::OpPassManager& pm) {
   tensorflow::CreateConvertMlirToXlaHloPipeline(
-      pm, /*device_type=*/"XLA_CPU_JIT",
+      pm, /*device_type=*/"XLA_CPU_JIT", /*prefer_tf2xla=*/false,
       /*custom_legalization_passes=*/{});
 }
 

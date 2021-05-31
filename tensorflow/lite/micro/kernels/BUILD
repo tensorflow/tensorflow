@@ -5,7 +5,7 @@ load(
 
 package(
     features = ["-layering_check"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(
@@ -233,8 +233,10 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro:micro_allocator",
         "//tensorflow/lite/micro:micro_error_reporter",
-        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:mock_micro_graph",
+        "//tensorflow/lite/micro:test_helpers",
     ],
 )
 
@@ -244,6 +246,9 @@ cc_library(
         "kernel_util.cc",
     ],
     hdrs = ["kernel_util.h"],
+    visibility = [
+        ":micro",
+    ],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -266,20 +271,27 @@ cc_library(
         "circular_buffer.cc",
         "comparisons.cc",
         "concatenation.cc",
+        "cumsum.cc",
+        "depth_to_space.cc",
         "dequantize.cc",
         "detection_postprocess.cc",
-        "div.cc",
         "elementwise.cc",
         "elu.cc",
         "exp.cc",
         "expand_dims.cc",
         "fill.cc",
         "floor.cc",
+        "floor_div.cc",
+        "floor_mod.cc",
+        "gather.cc",
+        "gather_nd.cc",
+        "if.cc",
         "l2norm.cc",
         "l2_pool_2d.cc",
         "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
+        "log_softmax.cc",
         "maximum_minimum.cc",
         "mul.cc",
         "neg.cc",
@@ -290,6 +302,7 @@ cc_library(
         "quantize_common.cc",
         "reduce.cc",
         "reshape.cc",
+        "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
         "round.cc",
         "shape.cc",
@@ -303,6 +316,7 @@ cc_library(
         "svdf_common.cc",
         "tanh.cc",
         "transpose_conv.cc",
+        "transpose.cc",
         "unpack.cc",
         "zeros_like.cc",
     ] + select({
@@ -325,9 +339,8 @@ cc_library(
     ],
     copts = micro_copts(),
     visibility = [
-        # Needed for micro:op_resolvers but visibility can not be finer-grained
-        # than a package.
-        ":micro_top_level",
+        # Public visibility to allow application code to select kernel variants.
+        "//visibility:public",
     ],
     deps = [
         ":activation_utils",
@@ -335,8 +348,9 @@ cc_library(
         ":kernel_util",
         ":micro_utils",
         ":xtensa",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -346,8 +360,10 @@ cc_library(
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:micro_graph",
         "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
@@ -539,6 +555,36 @@ cc_test(
 )
 
 cc_test(
+    name = "cumsum_test",
+    srcs = [
+        "cumsum_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "depth_to_space_test",
+    srcs = [
+        "depth_to_space_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "depthwise_conv_test",
     srcs = [
         "depthwise_conv_test.cc",
@@ -577,20 +623,7 @@ cc_test(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
-        "@flatbuffers",
-    ],
-)
-
-cc_test(
-    name = "div_test",
-    srcs = ["div_test.cc"],
-    deps = [
-        ":kernel_runner",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:debug_log",
-        "//tensorflow/lite/micro:op_resolvers",
-        "//tensorflow/lite/micro:test_helpers",
-        "//tensorflow/lite/micro/testing:micro_test",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -663,6 +696,32 @@ cc_test(
 )
 
 cc_test(
+    name = "floor_div_test",
+    srcs = ["floor_div_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "floor_mod_test",
+    srcs = ["floor_mod_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "floor_test",
     srcs = [
         "floor_test.cc",
@@ -692,11 +751,55 @@ cc_test(
 )
 
 cc_test(
+    name = "gather_test",
+    srcs = [
+        "gather_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "gather_nd_test",
+    srcs = [
+        "gather_nd_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "hard_swish_test",
     srcs = ["hard_swish_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "if_test",
+    srcs = ["if_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:mock_micro_graph",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -769,6 +872,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "log_softmax_test",
+    srcs = [
+        "log_softmax_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -929,6 +1047,20 @@ cc_test(
 )
 
 cc_test(
+    name = "resize_bilinear_test",
+    srcs = [
+        "resize_bilinear_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "resize_nearest_neighbor_test",
     srcs = [
         "resize_nearest_neighbor_test.cc",
@@ -1081,6 +1213,17 @@ cc_test(
 cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "transpose_test",
+    srcs = ["transpose_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

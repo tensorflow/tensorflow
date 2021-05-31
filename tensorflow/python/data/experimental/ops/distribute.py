@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -336,22 +335,10 @@ def replicate(dataset, devices):
     return datasets
 
   with ops.colocate_with(dataset._variant_tensor):
-    # We apply options before replicating the dataset because options are
-    # currently not automatically preserved through dataset serialization and
-    # thus an explicit application of options here is needed to avoid losing
-    # `dataset` options.
-    #
-    # TODO(b/183497230): Move options application after deserialization.
-    dataset = dataset._apply_options()
-    if tf_compat.forward_compatible(2021, 4, 12):
-      policy = ExternalStatePolicy.WARN
-    else:
-      policy = dataset.options().experimental_external_state_policy
-      if policy is None:
-        policy = ExternalStatePolicy.WARN
+    dataset = dataset._apply_debug_options()
     graph_def = dataset._as_serialized_graph(
         strip_device_assignment=True,
-        external_state_policy=policy)
+        external_state_policy=ExternalStatePolicy.WARN)
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)
     datasets[device] = ds

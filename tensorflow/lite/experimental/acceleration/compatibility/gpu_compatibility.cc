@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/experimental/acceleration/compatibility/canonicalize_value.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility_binary.h"
@@ -29,20 +30,6 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 namespace {
-
-std::string CanonicalizeValue(absl::string_view input) {
-  // This assumes ASCII, which holds for all values we have in the list.
-  std::string output(input);
-  for (int i = 0; i < output.size(); i++) {
-    char c = output[i];
-    if (c == ' ' || c == '-') {
-      output[i] = '_';
-    } else if (isalpha(c)) {
-      output[i] = tolower(c);
-    }
-  }
-  return output;
-}
 
 void CanonicalizeValues(std::map<std::string, std::string>* variable_values) {
   for (auto& i : *variable_values) {

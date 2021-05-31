@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -60,6 +61,30 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
       >();
 }
+
+//===----------------------------------------------------------------------===//
+// AbsOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AbsOp op) {
+  auto operand_type = getElementTypeOrSelf(op.input().getType());
+  auto output_type = getElementTypeOrSelf(op.output().getType());
+  if (auto complex_type = operand_type.dyn_cast<ComplexType>()) {
+    if (complex_type.getElementType() != output_type) {
+      return op.emitOpError(
+          "requires output type to be the same as the element type of the "
+          "input");
+    }
+    return success();
+  }
+  if (operand_type != output_type)
+    return op.emitOpError("requires all operands to have the same type");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AllToAllOp
+//===----------------------------------------------------------------------===//
 
 // Verifies replica groups attached to collective communication operations.
 // If the attribute is not empty, it must be a rank 2 tensor, and each replica
@@ -119,8 +144,8 @@ static LogicalResult Verify(AllReduceOp op) {
   if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/false)))
     return failure();
 
-  // AllReduce had variadic operands and results that have the same size.
-  // Each memeber of the operand should have the same type as the corresponding
+  // AllReduce has variadic operands and results that have the same size.
+  // Each member of the operand should have the same type as the corresponding
   // member of the result.
   for (auto it : llvm::enumerate(
            llvm::zip(op.operands().getTypes(), op.results().getTypes()))) {
@@ -132,6 +157,23 @@ static LogicalResult Verify(AllReduceOp op) {
              << it.index() << " (type: " << resultType << ") to have same type";
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CaseOp
+//===----------------------------------------------------------------------===//
+
+void CaseOp::getSuccessorRegions(Optional<unsigned> index,
+                                 ArrayRef<Attribute> operands,
+                                 SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the CaseOp, branch to all other branches.
+  if (!index.hasValue()) {
+    for (auto& branch : branches())
+      regions.push_back(RegionSuccessor(&branch, branch.getArguments()));
+  }
+  // If the predecessor is one of the branches, branch back to the parent
+  // operation.
+  regions.push_back(RegionSuccessor());
 }
 
 //===----------------------------------------------------------------------===//
@@ -225,6 +267,107 @@ static LogicalResult Verify(CustomCallOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// ReduceOp
+//===----------------------------------------------------------------------===//
+
+// Removes `lmhlo.copy` inside ReduceOp body.
+//
+// TODO(b/183920887): Remove this pattern as soon as bufferization is fixed.
+struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
+  using OpRewritePattern<ReduceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ReduceOp reduce,
+                                PatternRewriter& rewriter) const override {
+    // Find the only `lmhlo.copy` in the body of `reduce`.
+    CopyOp the_only_copy;
+    for (auto& op : reduce.body().front()) {
+      if (auto copy = dyn_cast<lmhlo::CopyOp>(op)) {
+        if (the_only_copy == nullptr) {
+          the_only_copy = copy;
+        } else {
+          the_only_copy = nullptr;
+          break;
+        }
+      }
+    }
+    if (!the_only_copy) return failure();
+
+    auto new_reduce = rewriter.cloneWithoutRegions(reduce);
+    Block* new_block =
+        rewriter.createBlock(&new_reduce.body(), new_reduce.body().end(),
+                             reduce.body().front().getArgumentTypes());
+
+    mlir::BlockAndValueMapping bvm;
+    for (auto item : llvm::zip(reduce.body().front().getArguments(),
+                               new_block->getArguments())) {
+      bvm.map(std::get<0>(item), std::get<1>(item));
+    }
+    bvm.map(the_only_copy.operand(), bvm.lookup(the_only_copy.output()));
+
+    rewriter.setInsertionPointToStart(new_block);
+    for (auto& op : reduce.body().front()) {
+      if (llvm::isa<lmhlo::CopyOp>(op) || llvm::isa<memref::DeallocOp>(op) ||
+          llvm::isa<memref::AllocOp>(op))
+        continue;
+      rewriter.clone(op, bvm);
+    }
+    rewriter.eraseOp(reduce);
+    return success();
+  }
+};
+
+void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                           MLIRContext* context) {
+  results.insert<RemoveCopyInReduceBody>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceWindowOp.
+//===----------------------------------------------------------------------===//
+
+// For reduce-window, all `inputs` need to have compatible shapes.
+static LogicalResult Verify(ReduceWindowOp op) {
+  if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
+    return op.emitOpError() << "requires same shape for all operands";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
+void WhileOp::getSuccessorRegions(Optional<unsigned> index,
+                                  ArrayRef<Attribute> operands,
+                                  SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the WhileOp or the body region, branch into the
+  // cond region.
+  if (!index.hasValue() || index.getValue() == 1) {
+    regions.push_back(RegionSuccessor(&cond(), cond().getArguments()));
+    return;
+  }
+  // If the predecessor is the cond region, we can branch to the body region
+  // or back to the parent operation.
+  regions.push_back(RegionSuccessor(&body(), body().getArguments()));
+  regions.push_back(RegionSuccessor());
+}
+
+Region& WhileOp::getLoopBody() { return body(); }
+
+bool WhileOp::isDefinedOutsideOfLoop(Value value) {
+  return !body().isAncestor(value.getParentRegion());
+}
+
+LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
+  for (auto op : ops) op->moveBefore(*this);
+  return success();
+}
+
+// suppress warning.
+
+using mlir::hlo::parseWindowAttributes;
+using mlir::hlo::printWindowAttributes;
+
 }  // namespace lmhlo
 }  // namespace mlir
 
@@ -241,6 +384,19 @@ void FusionOp::build(OpBuilder& builder, OperationState& result,
   result.addAttributes(attributes);
   Region* bodyRegion = result.addRegion();
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
+}
+
+void FusionOp::getSuccessorRegions(Optional<unsigned> index,
+                                   ArrayRef<Attribute> operands,
+                                   SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the fusion region, jump back to the parent op.
+  if (index.hasValue()) {
+    assert(index.getValue() == 0 && "expected fusion region");
+    regions.push_back(RegionSuccessor());
+  } else {
+    // If the predecessor is the FusionOp, branch into the region.
+    regions.push_back(RegionSuccessor(&region(), region().getArguments()));
+  }
 }
 
 }  // namespace lmhlo

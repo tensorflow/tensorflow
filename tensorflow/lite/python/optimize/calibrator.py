@@ -19,6 +19,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.lite.python.convert_phase import Component
+from tensorflow.lite.python.convert_phase import convert_phase
+from tensorflow.lite.python.convert_phase import SubComponent
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util.lazy_loader import LazyLoader
 
@@ -74,13 +77,16 @@ class Calibrator(object):
     if not self._calibrator:
       raise ValueError("Failed to parse the model.")
 
+  @convert_phase(Component.OPTIMIZE_TFLITE_MODEL,
+                 SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER)
   def calibrate_and_quantize(self,
                              dataset_gen,
                              input_type,
                              output_type,
                              allow_float,
                              activations_type=dtypes.int8,
-                             resize_input=True):
+                             resize_input=True,
+                             disable_per_channel=False):
     """Calibrates the model with specified generator and then quantizes it.
 
     The input shapes of the calibrator are resized with the calibration data if
@@ -101,6 +107,8 @@ class Calibrator(object):
                    activations.
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
+      disable_per_channel: A boolean. True if disabling per-channel
+                   quantization.
     """
     initialized = False
     for sample in dataset_gen():
@@ -114,8 +122,11 @@ class Calibrator(object):
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float,
-        np.dtype(activations_type.as_numpy_dtype()).num)
+        np.dtype(activations_type.as_numpy_dtype()).num,
+        disable_per_channel)
 
+  @convert_phase(Component.OPTIMIZE_TFLITE_MODEL,
+                 SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER)
   def calibrate_and_quantize_single(self,
                                     dataset_gen,
                                     input_type,
@@ -156,6 +167,7 @@ class Calibrator(object):
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)
 
+  @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.CALIBRATE)
   def calibrate(self, dataset_gen):
     """Calibrates the model with specified generator.
 

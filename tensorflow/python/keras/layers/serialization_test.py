@@ -19,10 +19,10 @@ from absl.testing import parameterized
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.keras import combinations
-from tensorflow.python.keras.layers import normalization as batchnorm_v1
-from tensorflow.python.keras.layers import normalization_v2 as batchnorm_v2
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
+from tensorflow.python.keras.layers.normalization import batch_normalization as batchnorm_v2
+from tensorflow.python.keras.layers.normalization import batch_normalization_v1 as batchnorm_v1
 from tensorflow.python.platform import test
 
 

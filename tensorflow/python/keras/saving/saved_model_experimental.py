@@ -436,8 +436,7 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
 def _get_or_create_variables_dir(export_dir):
   """Return variables sub-directory, or create one if it doesn't exist."""
   variables_dir = _get_variables_dir(export_dir)
-  if not file_io.file_exists(variables_dir):
-    file_io.recursive_create_dir(variables_dir)
+  file_io.recursive_create_dir(variables_dir)
   return variables_dir
 
 
@@ -459,8 +458,7 @@ def _get_or_create_assets_dir(export_dir):
   """Return assets sub-directory, or create one if it doesn't exist."""
   assets_destination_dir = _get_assets_dir(export_dir)
 
-  if not file_io.file_exists(assets_destination_dir):
-    file_io.recursive_create_dir(assets_destination_dir)
+  file_io.recursive_create_dir(assets_destination_dir)
 
   return assets_destination_dir
 
@@ -470,4 +468,3 @@ def _get_assets_dir(export_dir):
   return os.path.join(
       compat.as_text(export_dir),
       compat.as_text(constants.ASSETS_DIRECTORY))
-

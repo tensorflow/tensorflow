@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python metrics helper TFLiteMetrics check."""
+import gc
 import os
 from unittest import mock
 
@@ -51,48 +52,58 @@ class MetricsNonportableTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       metrics.TFLiteMetrics(model_path='/path/to/model')
 
-  def test_debugger_creation_counter_increase_success(self):
-    stub = metrics.TFLiteMetrics()
-    stub.increase_counter_debugger_creation()
-    self.assertEqual(stub._counter_debugger_creation.get_cell().value(), 1)
+  def test_debugger_creation_counter_increase_multiple_same_topic_success(self):
+    try:
+      stub = metrics.TFLiteMetrics()
+      stub.increase_counter_debugger_creation()
+      self.assertEqual(metrics._counter_debugger_creation.get_cell().value(), 1)
+      stub2 = metrics.TFLiteMetrics()
+      stub2.increase_counter_debugger_creation()
+      self.assertEqual(metrics._counter_debugger_creation.get_cell().value(), 2)
+      del stub
+      gc.collect()
+      stub2.increase_counter_debugger_creation()
+      self.assertEqual(metrics._counter_debugger_creation.get_cell().value(), 3)
+    except:
+      raise Exception('No exception should be raised.')
 
   def test_interpreter_creation_counter_increase_success(self):
     stub = metrics.TFLiteMetrics()
     stub.increase_counter_interpreter_creation()
     self.assertEqual(
-        stub._counter_interpreter_creation.get_cell('python').value(), 1)
+        metrics._counter_interpreter_creation.get_cell('python').value(), 1)
 
   def test_converter_attempt_counter_increase_success(self):
     stub = metrics.TFLiteMetrics()
     stub.increase_counter_converter_attempt()
-    self.assertEqual(stub._counter_conversion_attempt.get_cell().value(), 1)
+    self.assertEqual(metrics._counter_conversion_attempt.get_cell().value(), 1)
 
   def test_converter_success_counter_increase_success(self):
     stub = metrics.TFLiteMetrics()
     stub.increase_counter_converter_success()
-    self.assertEqual(stub._counter_conversion_success.get_cell().value(), 1)
+    self.assertEqual(metrics._counter_conversion_success.get_cell().value(), 1)
 
   def test_converter_params_set_success(self):
     stub = metrics.TFLiteMetrics()
     stub.set_converter_param('name', 'value')
     self.assertEqual(
-        stub._gauge_conversion_params.get_cell('name').value(), 'value')
+        metrics._gauge_conversion_params.get_cell('name').value(), 'value')
 
   def test_converter_params_multiple_set_success(self):
     stub = metrics.TFLiteMetrics()
     stub.set_converter_param('name', 'value')
     stub.set_converter_param('name', 'value1')
     self.assertEqual(
-        stub._gauge_conversion_params.get_cell('name').value(), 'value1')
+        metrics._gauge_conversion_params.get_cell('name').value(), 'value1')
 
   def test_converter_params_multiple_label_success(self):
     stub = metrics.TFLiteMetrics()
     stub.set_converter_param('name1', 'value1')
     stub.set_converter_param('name2', 'value2')
     self.assertEqual(
-        stub._gauge_conversion_params.get_cell('name1').value(), 'value1')
+        metrics._gauge_conversion_params.get_cell('name1').value(), 'value1')
     self.assertEqual(
-        stub._gauge_conversion_params.get_cell('name2').value(), 'value2')
+        metrics._gauge_conversion_params.get_cell('name2').value(), 'value2')
 
 
 class ConverterMetricsTest(test_util.TensorFlowTestCase):
@@ -115,13 +126,15 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     # Check metrics when conversion successed.
     converter = lite.TFLiteConverter(frozen_graph_def, None, None,
                                      [('in_tensor', [2, 16, 16, 3])], ['add'])
-    mock_metrics = mock.create_autospec(metrics.TFLiteMetrics, instance=True)
+    mock_metrics = mock.create_autospec(
+        metrics.TFLiteConverterMetrics, instance=True)
     converter._tflite_metrics = mock_metrics
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
+        mock.call.export_metrics(),
         mock.call.set_converter_param('input_format', '1'),
         mock.call.set_converter_param('enable_mlir_converter', 'True'),
         mock.call.set_converter_param('allow_custom_ops', 'False'),
@@ -135,7 +148,8 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     converter = lite.TFLiteConverter(frozen_graph_def, None, None,
                                      [('wrong_tensor', [2, 16, 16, 3])],
                                      ['add'])
-    mock_metrics = mock.create_autospec(metrics.TFLiteMetrics, instance=True)
+    mock_metrics = mock.create_autospec(
+        metrics.TFLiteConverterMetrics, instance=True)
     converter._tflite_metrics = mock_metrics
     with self.assertRaises(ConverterError):
       converter.convert()
@@ -172,7 +186,8 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     func, calibration_gen = self._getIntegerQuantizeModel()
 
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    mock_metrics = mock.create_autospec(metrics.TFLiteMetrics, instance=True)
+    mock_metrics = mock.create_autospec(
+        metrics.TFLiteConverterMetrics, instance=True)
     quantized_converter._tflite_metrics = mock_metrics
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
@@ -181,7 +196,8 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
-        mock.call.set_converter_param('calibrate_and_quantize', 'True'),
+        mock.call.set_converter_param(
+            'optimization_post_training_integer_quantize', 'True'),
         mock.call.set_converter_param('inference_type', 'tf.int8'),
         mock.call.set_converter_param('select_user_tf_ops', 'None'),
         mock.call.set_converter_param('activations_type', 'tf.int8'),
@@ -195,12 +211,14 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit(x, y, epochs=1)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    mock_metrics = mock.create_autospec(metrics.TFLiteMetrics, instance=True)
+    mock_metrics = mock.create_autospec(
+        metrics.TFLiteConverterMetrics, instance=True)
     converter._tflite_metrics = mock_metrics
     converter.convert()
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
+        mock.call.export_metrics(),
         mock.call.set_converter_param('inference_type', 'tf.float32'),
         mock.call.set_converter_param('target_ops', 'TFLITE_BUILTINS'),
         mock.call.set_converter_param('optimization_default', 'False'),
@@ -228,12 +246,14 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     converter = lite.TFLiteSavedModelConverter(saved_model_dir, set(['serve']),
                                                ['serving_default'])
     converter.experimental_new_converter = True
-    mock_metrics = mock.create_autospec(metrics.TFLiteMetrics, instance=True)
+    mock_metrics = mock.create_autospec(
+        metrics.TFLiteConverterMetrics, instance=True)
     converter._tflite_metrics = mock_metrics
     converter.convert()
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
+        mock.call.export_metrics(),
         mock.call.set_converter_param('enable_mlir_converter', 'True'),
     ], any_order=True)  # pyformat: disable
 
@@ -242,15 +262,48 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
 
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     converter.experimental_new_converter = False
-    mock_metrics = mock.create_autospec(metrics.TFLiteMetrics, instance=True)
+    mock_metrics = mock.create_autospec(
+        metrics.TFLiteConverterMetrics, instance=True)
     converter._tflite_metrics = mock_metrics
     converter.convert()
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
+        mock.call.export_metrics(),
         mock.call.set_converter_param('enable_mlir_converter', 'False'),
         mock.call.set_converter_param('api_version', '2'),
     ], any_order=True)  # pyformat: disable
+
+  def disable_converter_counter_metrics(self, tflite_metrics):
+    def empty_func():
+      pass
+    tflite_metrics.increase_counter_converter_attempt = empty_func
+    tflite_metrics.increase_counter_converter_success = empty_func
+
+  def test_export_at_conversion_done(self):
+    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    tflite_metrics = converter._tflite_metrics
+    mock_exporter = mock.MagicMock()
+    tflite_metrics._metrics_exporter = mock_exporter
+    self.disable_converter_counter_metrics(tflite_metrics)
+    mock_exporter.ExportMetrics.assert_not_called()
+    converter.convert()
+    mock_exporter.ExportMetrics.assert_called_once()
+    tflite_metrics.__del__()
+    mock_exporter.ExportMetrics.assert_called_once()
+
+  def test_export_at_exit(self):
+    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    tflite_metrics = converter._tflite_metrics
+    mock_exporter = mock.MagicMock()
+    tflite_metrics._metrics_exporter = mock_exporter
+    self.disable_converter_counter_metrics(tflite_metrics)
+    mock_exporter.ExportMetrics.assert_not_called()
+    tflite_metrics.__del__()
+    mock_exporter.ExportMetrics.assert_called_once()
 
 
 if __name__ == '__main__':

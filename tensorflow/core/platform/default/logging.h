@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(_WIN32)
+// prevent compile error because MSVC doesn't realize in debug build that
+// LOG(FATAL) finally invokes abort()
+#pragma warning(disable : 4716)
+#endif  // _WIN32
+
 #ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_
 

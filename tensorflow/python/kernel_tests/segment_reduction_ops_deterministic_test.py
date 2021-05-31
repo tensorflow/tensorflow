@@ -34,7 +34,11 @@ from tensorflow.python.platform import test
 
 
 class SegmentReductionDeterminismExceptionsTest(test.TestCase):
-  """Test that tf.errors.UnimplementedError is thrown or not thrown, as appropriate, by the GPU code-paths for the segment reduction ops when determinsitic ops are enabled.
+  """Test d9m-unimplemented exceptions from the segment reduction ops.
+
+  Test that tf.errors.UnimplementedError is thrown or not thrown, as
+  appropriate, by the GPU code-paths for segment reduction ops when
+  deterministic ops are enabled.
 
   This test assumes that the base op test runs all the same test cases when
   deterministic ops are not enabled and will therefore detect erroneous
@@ -105,6 +109,9 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
               result = op(data, segment_ids, num_segments)
               self.evaluate(result)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message="No ROCm support for complex types in segment reduction ops")
   @test_util.run_cuda_only
   def testUnsortedOpsComplex(self):
     for op in [
@@ -140,10 +147,10 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
 
   @test_util.run_cuda_only
   def testGatherBackprop(self):
-    for data_type in [
-        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]:
+    dtypes_to_test = [dtypes.float16, dtypes.float32, dtypes.float64]
+    if not test.is_built_with_rocm():
+      dtypes_to_test += [dtypes.complex64, dtypes.complex128]
+    for data_type in dtypes_to_test:
       for segment_ids_type in [dtypes.int32, dtypes.int64]:
         with self.cached_session(force_gpu=True):
           params, indices, _ = self._input(data_type, segment_ids_type)

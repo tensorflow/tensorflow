@@ -40,8 +40,8 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
         std::string error;
         auto* wrapper = ::CalibrationWrapper::CreateWrapperCPPFromBuffer(
             data.ptr(), registerers_by_name, registerers_by_func, &error);
-        if (PyErr_Occurred()) {
-          throw py::error_already_set();
+        if (!wrapper) {
+          throw std::invalid_argument(error);  // throws ValueError in Python
         }
         return wrapper;
       }))
@@ -60,17 +60,10 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
               bool allow_float, int activations_py_type,
-              bool enable_mlir_quantizer) {
+              bool disable_per_channel) {
              return tensorflow::PyoOrThrow(
                  self.QuantizeModel(input_py_type, output_py_type, allow_float,
-                                    activations_py_type));
-           })
-      .def("QuantizeModel",
-           [](CalibrationWrapper& self, int input_py_type, int output_py_type,
-              bool allow_float, int activations_py_type) {
-             return tensorflow::PyoOrThrow(
-                 self.QuantizeModel(input_py_type, output_py_type, allow_float,
-                                    activations_py_type));
+                                    activations_py_type, disable_per_channel));
            })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,

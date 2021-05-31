@@ -63,6 +63,11 @@ struct TPUEmbedding : ::mlir::SideEffects::Resource::Base<TPUEmbedding> {
   StringRef getName() final { return "TPUEmbedding"; }
 };
 
+// Resource corresponding to GeneratorOp.
+struct GeneratorOp : public SideEffects::Resource::Base<GeneratorOp> {
+  StringRef getName() final { return "<Default Generator>"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

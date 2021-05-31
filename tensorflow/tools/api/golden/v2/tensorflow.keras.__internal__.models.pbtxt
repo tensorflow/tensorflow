@@ -1,0 +1,11 @@
+path: "tensorflow.keras.__internal__.models"
+tf_module {
+  member_method {
+    name: "clone_and_build_model"
+    argspec: "args=[\'model\', \'input_tensors\', \'target_tensors\', \'custom_objects\', \'compile_clone\', \'in_place_reset\', \'optimizer_iterations\', \'optimizer_config\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "in_place_subclassed_model_state_restoration"
+    argspec: "args=[\'model\'], varargs=None, keywords=None, defaults=None"
+  }
+}

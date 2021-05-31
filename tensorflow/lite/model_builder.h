@@ -42,7 +42,11 @@ namespace tflite {
 ///
 /// NOTE: The current API requires that a FlatBufferModel instance be kept alive
 /// by the client as long as it is in use by any dependent Interpreter
-/// instances.
+/// instances. As the FlatBufferModel instance is effectively immutable after
+/// creation, the client may safely use a single model with multiple dependent
+/// Interpreter instances, even across multiple threads (though note that each
+/// Interpreter instance is *not* thread-safe).
+///
 /// <pre><code>
 /// using namespace tflite;
 /// StderrReporter error_reporter;

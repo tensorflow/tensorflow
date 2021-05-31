@@ -22,6 +22,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/costmodel.h"
@@ -48,6 +49,11 @@ struct GraphOptimizationPassOptions {
   // workers.
   const DeviceSet* device_set = nullptr;  // Not owned.
 
+  // Maps from a CompositeDevice name to a list of underlying physical
+  // devices.
+  const std::vector<CompositeDevice*>* composite_devices =
+      nullptr;  // Not owned.
+
   // The graph to optimize, for optimization passes that run before
   // partitioning. Null for post-partitioning passes.
   // An optimization pass may replace *graph with a new graph object.
@@ -61,6 +67,13 @@ struct GraphOptimizationPassOptions {
 
   // Indicator of whether or not the graph was derived from a function.
   bool is_function_graph = false;
+  // Set when is_function_graph is true. The default device where the function
+  // runs. If nullptr, it runs on the local host.
+  const Device* default_function_device = nullptr;
+  // Set when is_function_graph is true. The function where the graph was
+  // derived. `graph` doesn't contain all the information in the function_def,
+  // e.g. function attributes.
+  const FunctionDef* function_def = nullptr;
 };
 
 // Optimization passes are implemented by inheriting from

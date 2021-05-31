@@ -751,6 +751,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       function_name, function_key, ret_node_names.size(),
       lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
+  // The runtime shouldn't depend on duplication between the function library
+  // owned by the graph and the one owned by the runtime. To ensure this, for
+  // now we ensure that the graph function library is empty and the runtime
+  // library receives the query from LookUps on the graph function library.
+  graph->mutable_flib_def()->set_default_registry(&data->lib_def_);
+  graph->mutable_flib_def()->Clear();
+
   // Do not run function/graph optimization passes for component functions,
   // since they have already processed the main function.
   const bool should_run_optimization_passes = !options.is_component_function;
@@ -792,6 +799,14 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.flib_def = &data->lib_def_;
   optimization_options.device_set = dev_set.get();
   optimization_options.is_function_graph = true;
+  std::vector<CompositeDevice*> composite_devices;
+  {
+    tf_shared_lock l(mu_);
+    for (auto* d : composite_devices_) composite_devices.push_back(d);
+  }
+  optimization_options.composite_devices = &composite_devices;
+  optimization_options.default_function_device = default_device;
+  optimization_options.function_def = fdef;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   if (should_run_optimization_passes) {

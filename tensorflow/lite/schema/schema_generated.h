@@ -839,11 +839,12 @@ enum BuiltinOperator {
   BuiltinOperator_HASHTABLE_FIND = 137,
   BuiltinOperator_HASHTABLE_IMPORT = 138,
   BuiltinOperator_HASHTABLE_SIZE = 139,
+  BuiltinOperator_REDUCE_ALL = 140,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_HASHTABLE_SIZE
+  BuiltinOperator_MAX = BuiltinOperator_REDUCE_ALL
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[140] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[141] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -984,13 +985,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[140] {
     BuiltinOperator_HASHTABLE,
     BuiltinOperator_HASHTABLE_FIND,
     BuiltinOperator_HASHTABLE_IMPORT,
-    BuiltinOperator_HASHTABLE_SIZE
+    BuiltinOperator_HASHTABLE_SIZE,
+    BuiltinOperator_REDUCE_ALL
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[141] = {
+  static const char * const names[142] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1131,13 +1133,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "HASHTABLE_FIND",
     "HASHTABLE_IMPORT",
     "HASHTABLE_SIZE",
+    "REDUCE_ALL",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_HASHTABLE_SIZE)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_REDUCE_ALL)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }

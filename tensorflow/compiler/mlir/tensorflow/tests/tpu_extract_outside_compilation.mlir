@@ -1,12 +1,26 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tpu-extract-outside-compilation | FILECHECK_OPTS="" FileCheck %s
 
-// Tests that missing `_xla_outside_compilation` attribute value results in an error.
+// Tests that outside compilation and model parallelism together fail.
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @outside_compilation_model_parallelism_fail() -> tensor<2xi32> {
+    // expected-error@+1 {{outside compilation is not supported with model parallelism}}
+    %0 = "tf_device.cluster"() ( {
+      %1 = "tf.A"() : () -> tensor<2xi32>
+      %2 = "tf.B"(%1) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }) {num_cores_per_replica = 2, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+    return %0 : tensor<2xi32>
+  }
+}
+
+// -----
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // Tests that TPU cluster with no outside compilation does not generate parallel_execute.
 
   // CHECK-LABEL: func @no_outside_compilation
   func @no_outside_compilation() -> tensor<2xi32> {
+    // CHECK-NOT: "tf_device.parallel_execute"
     %0 = "tf_device.cluster"() ( {
       %1 = "tf.A"() : () -> tensor<2xi32>
       %2 = "tf.B"(%1) : (tensor<2xi32>) -> tensor<2xi32>
@@ -15,7 +29,17 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return %0 : tensor<2xi32>
   }
 
-  // CHECK-NOT: "tf_device.parallel_execute"
+  // CHECK-LABEL: func @attribute_outside_of_cluster
+  func @attribute_outside_of_cluster() -> tensor<2xi32> {
+    // CHECK-NOT: _xla_outside_compilation
+    %0 = "tf_device.cluster"() ( {
+      %1 = "tf.A"() : () -> tensor<2xi32>
+      tf_device.return %1 : tensor<2xi32>
+    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+    %2 = "tf.B"(%0) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
+    return %0 : tensor<2xi32>
+  }
+
 
   // Tests extraction of a single outside compiled cluster with no input or output dependencies.
 
@@ -154,6 +178,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
+    // CHECK-SAME:       host_mlir_module = ""
     // CHECK-SAME:       send_key = "host_compute_channel_0_args"
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ( {
@@ -263,8 +288,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            _xla_has_host_transfer = true
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT]])
     // CHECK:            "tf._XlaSendFromHostV2"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            _xla_has_host_transfer = true
     // CHECK-SAME:       key = "host_compute_channel_0_retvals"
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -594,6 +621,61 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
         "tf.IfRegion"(%6) ({
           "tf.D"(%4, %3) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>, tensor<2xi32>) -> ()
+          "tf.Yield"() : () -> ()
+        }, {
+          "tf.Yield"() : () -> ()
+        }) { is_stateless = false, _then_func_name = "test_then_name", _else_func_name = "test_else_name"} : (tensor<i1>) -> ()
+
+        %5 = "tf.E"() : () -> tensor<2xi32>
+        tf_device.return %5 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    return %1 : tensor<2xi32>
+  }
+
+  // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op with dynamic shape.
+
+  // CHECK-LABEL: func @outside_compiled_ops_inside_tf_if_dynamic_shape
+  func @outside_compiled_ops_inside_tf_if_dynamic_shape(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+
+    // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:       %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK-NEXT:      %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK-SAME:      key = "if_predicate_channel_1"
+    // CHECK-NEXT:       tf.IfRegion"(%[[PREDICATE_RECV_OUTPUT]])
+    // CHECK-NEXT:         %[[ARG_RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK-SAME:         key = "host_compute_channel_0_args"
+    // CHECK:              "tf.D"(%[[ARG_RECV_OUTPUT]]#0, %[[ARG_RECV_OUTPUT]]#1)
+    // CHECK-NOT:          "tf._XlaSendFromHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:              "tf.Yield"() : () -> ()
+    // CHECK:            _else_func_name = "test_else_name"
+    // CHECK-SAME        _then_func_name = "test_then_name"
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
+    // CHECK:            %[[G_OUTPUT:[0-9]*]] = "tf.G"
+    // CHECK:            "tf._XlaHostComputeMlir"
+    // CHECK-SAME:       key = "if_predicate_channel_1"
+    // CHECK-NEXT:       tf.IfRegion"(%[[G_OUTPUT]])
+    // CHECK:              "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[A_OUTPUT]])
+    // CHECK-SAME:         recv_key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:         send_key = "host_compute_channel_0_args"
+    // CHECK-SAME:         tpu_core = 0
+    // CHECK-NEXT:         "tf.Yield"() : () -> ()
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ( {
+        %3 = "tf.A"() : () -> (tensor<2xi32>)
+        %4 = "tf.B"() : () -> (tensor<?xi32>)
+        %6 = "tf.G"() : () -> (tensor<i1>)
+
+        "tf.IfRegion"(%6) ({
+          "tf.D"(%4, %3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>, tensor<2xi32>) -> ()
           "tf.Yield"() : () -> ()
         }, {
           "tf.Yield"() : () -> ()
@@ -1440,39 +1522,231 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
     return
   }
-}
 
-// -----
+  // Tests dynamically shaped input to outside compilation.
 
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-
-  // Tests that dynamically shaped input to outside compilation fails.
-
-  func @dynamically_shaped_input_fails() -> () {
+  // CHECK-LABEL: func @dynamically_shaped_input
+  func @dynamically_shaped_input() -> () {
+    // CHECK:          "tf_device.launch"
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHost"
+    // CHECK:            "tf.B"(%[[RECV_OUTPUT]])
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
+    // CHECK-SAME:       host_mlir_module = ""
     "tf_device.cluster"() ( {
       %0 = "tf.A"() : () -> (tensor<?xi32>)
-      // expected-error@+1 {{outside compiled contains dynamically shaped input which is not currently supported}}
       "tf.B"(%0) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> ()
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
     return
   }
-}
 
-// -----
+  // Tests dynamically shaped output from outside compilation.
 
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-
-  // Tests that dynamically shaped output from outside compilation fails.
-
-  func @dynamically_shaped_output_fails() -> () {
+  // CHECK-LABEL: func @dynamically_shaped_output
+  func @dynamically_shaped_output() -> () {
+    // CHECK:          "tf_device.launch"
+    // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
+    // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]]
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[HOST_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"()
+    // CHECK-SAME:       host_mlir_module = "module  {\0A  func @host_func() -> tensor<?xi32> {\0A    %0 = \22tf.B\22() {_xla_outside_compilation = \22cluster1\22} : () -> tensor<?xi32> loc(#loc1)\0A    return %0 : tensor<?xi32> loc(#loc1)\0A  }
+    // CHECK:            "tf.C"(%[[HOST_OUTPUT]])
     "tf_device.cluster"() ( {
-      // expected-error@+1 {{outside compiled contains dynamically shaped output which is not currently supported}}
       %0 = "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> (tensor<?xi32>)
       "tf.C"(%0) : (tensor<?xi32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
     return
+  }
+
+  // Tests extraction of a single outside compiled cluster with arg input and single dynamic shape device->host input.
+
+  // CHECK-LABEL: func @mixed_dynamic_input_single_outside_compilation
+  func @mixed_dynamic_input_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+    // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK-SAME:       key = "host_compute_channel_0_args"
+    // CHECK:            "tf.B"(%[[RECV_OUTPUT]]#0, %[[RECV_OUTPUT]]#1)
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            "tf._XlaHostComputeMlir"(%arg0, %[[A_OUTPUT]])
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ( {
+        %3 = "tf.A"() : () -> (tensor<?xi32>)
+        %4 = "tf.B"(%arg0, %3) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>, tensor<?xi32>) -> (tensor<?xi32>)
+        %5 = "tf.C"(%4) : (tensor<?xi32>) -> tensor<2xi32>
+        tf_device.return %5 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    return %1 : tensor<2xi32>
+  }
+
+  // CHECK-LABEL: func @dynamic_input_chained_ops_outside_compilation
+  func @dynamic_input_chained_ops_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+    // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
+    // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[RECV_OUTPUT]])
+    // CHECK:            %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[B_OUTPUT]])
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[C_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            %[[HOST_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
+    // CHECK:            "tf.D"(%[[HOST_OUTPUT]])
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ( {
+        %3 = "tf.A"() : () -> (tensor<?xi32>)
+        %4 = "tf.B"(%3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> (tensor<?xi32>)
+        %5 = "tf.C"(%4) {_xla_outside_compilation = "cluster1"}: (tensor<?xi32>) -> tensor<?xi32>
+        %6 = "tf.D"(%5) : (tensor<?xi32>) -> tensor<2xi32>
+        tf_device.return %6 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    return %1 : tensor<2xi32>
+  }
+
+   //  Tests that all inputs to a function are passed and all outputs are returned
+   //  if any outputs of outside compilation cluster are dynamically shaped.
+
+  // CHECK-LABEL: func @dynamic_input_all_captured_outside_compilation
+  func @dynamic_input_all_captured_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+    // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
+    // CHECK:            %[[C_OUTPUT:[0-9]*]]:2 = "tf.C"(%[[RECV_OUTPUT]])
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[C_OUTPUT]]#0, %[[C_OUTPUT]]#1, %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"
+    // CHECK:            %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[RECV_OUTPUT]]#0, %[[RECV_OUTPUT]]#1)
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[E_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            %[[HOST_OUTPUT:[0-9]*]]:2 = "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
+    // CHECK:            %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[HOST_OUTPUT]]#0)
+    // CHECK:            %[[HOST_OUTPUT2:[0-9]*]] = "tf._XlaHostComputeMlir"(%[[D_OUTPUT]], %[[HOST_OUTPUT]]#1)
+    // CHECK:            "tf.F"(%[[HOST_OUTPUT2]])
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ( {
+        %3 = "tf.A"() : () -> (tensor<?xi32>)
+        %5:2 = "tf.C"(%3) {_xla_outside_compilation = "auto"} : (tensor<?xi32>) -> (tensor<?xi32>, tensor<2xi32>)
+        %6 = "tf.D"(%5#0) : (tensor<?xi32>) -> (tensor<?xi32>)
+        %7 = "tf.E"(%6, %5#1) {_xla_outside_compilation = "auto"} : (tensor<?xi32>, tensor<2xi32>) -> (tensor<?xi32>)
+        %8 = "tf.F"(%7) : (tensor<?xi32>) -> tensor<2xi32>
+        tf_device.return %8 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    return %1 : tensor<2xi32>
+  }
+
+  //  Tests that all inputs to a function are passed and all outputs are returned for an outside compilation cluster
+  //  with dynamic-shaped inputs/outputs. This test case tests that if another outside compiled returns
+  //  only statically-shaped outputs, the value consumed by an outside compiled op with some dynamically shaped inputs is
+  //  sent back to the host.
+
+  // CHECK-LABEL: func @dynamic_input_all_captured_mixed_shapes_outside_compilation
+  func @dynamic_input_all_captured_mixed_shapes_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+    // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
+    // CHECK:            %[[C_OUTPUT:[0-9]*]]:2 = "tf.C"(%[[RECV_OUTPUT]])
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[C_OUTPUT]]#0, %[[C_OUTPUT]]#1, %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"
+    // CHECK:            %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[RECV_OUTPUT]]#0, %[[RECV_OUTPUT]]#1)
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[E_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
+    // CHECK:            %[[HOST_OUTPUT:[0-9]*]]:2 = "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
+    // CHECK:            %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[HOST_OUTPUT]]#0)
+    // CHECK:            %[[HOST_OUTPUT2:[0-9]*]] = "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[HOST_OUTPUT]]#1)
+    // CHECK:            "tf.F"(%[[HOST_OUTPUT2]])
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ( {
+        %3 = "tf.A"() : () -> (tensor<2xi32>)
+        %4 = "tf.B"() : () -> (tensor<?xi32>)
+        %5:2 = "tf.C"(%3) {_xla_outside_compilation = "auto"} : (tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>)
+        %6 = "tf.D"(%5#0) : (tensor<2xi32>) -> (tensor<2xi32>)
+        %7 = "tf.E"(%4, %5#1) {_xla_outside_compilation = "auto"} : (tensor<?xi32>, tensor<2xi32>) -> (tensor<?xi32>)
+        %8 = "tf.F"(%7) : (tensor<?xi32>) -> tensor<2xi32>
+        tf_device.return %8 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    return %1 : tensor<2xi32>
+  }
+
+  //  Tests the case when an outside compiled op with only statically shaped inputs/outputs
+  //  is in between two other outside compiled ops with some dynamic shapes.
+
+  // CHECK-LABEL: func @static_shapes_sandwiched_outside_compilation
+  func @static_shapes_sandwiched_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+    // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
+    // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+    // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+    // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
+    // CHECK:            %[[C_OUTPUT:[0-9]*]]:2 = "tf.C"(%[[RECV_OUTPUT]])
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[C_OUTPUT]]#0, %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"
+    // CHECK:            %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[RECV_OUTPUT]])
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[E_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            %[[F_OUTPUT:[0-9]*]] = "tf.F"(%[[C_OUTPUT]]#1)
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[F_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:            %[[RECV_OUTPUT2:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"
+    // CHECK:            %[[G_OUTPUT:[0-9]*]] = "tf.G"(%[[RECV_OUTPUT2]]#0, %[[RECV_OUTPUT2]]#1)
+    // CHECK:            "tf._XlaSendFromHostV2"(%[[G_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
+    // CHECK:          "tf_device.cluster"
+    // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
+    // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
+    // CHECK:            %[[HOST_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
+    // CHECK:            %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[HOST_OUTPUT]])
+    // CHECK:            %[[HOST_OUTPUT2:[0-9]*]] = "tf._XlaHostComputeMlir"(%[[B_OUTPUT]])
+    // CHECK:            %[[HOST_OUTPUT3:[0-9]*]] = "tf._XlaHostComputeMlir"()
+    // CHECK:            %[[HOST_OUTPUT4:[0-9]*]] = "tf._XlaHostComputeMlir"(%[[HOST_OUTPUT3]], %[[HOST_OUTPUT2]])
+    // CHECK:            "tf.H"(%[[HOST_OUTPUT4]])
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ( {
+        %3 = "tf.A"() : () -> (tensor<2xi32>)
+        %4 = "tf.B"() : () -> (tensor<?xi32>)
+        %5:2 = "tf.C"(%3) {_xla_outside_compilation = "auto"} : (tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>)
+        %6 = "tf.D"(%5#0) : (tensor<2xi32>) -> (tensor<2xi32>)
+        %7 = "tf.E"(%4) {_xla_outside_compilation = "auto"} : (tensor<?xi32>) -> (tensor<?xi32>)
+        %8 = "tf.F"(%5#1) {_xla_outside_compilation = "auto"} : (tensor<2xi32>) -> (tensor<2xi32>)
+        %9 = "tf.G"(%8, %7) {_xla_outside_compilation = "auto"} : (tensor<2xi32>, tensor<?xi32>) -> (tensor<?xi32>)
+        %10 = "tf.H"(%9) : (tensor<?xi32>) -> tensor<2xi32>
+        tf_device.return %10 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    return %1 : tensor<2xi32>
   }
 }

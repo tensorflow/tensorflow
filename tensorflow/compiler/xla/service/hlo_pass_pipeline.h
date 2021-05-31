@@ -108,7 +108,7 @@ class HloPassPipeline : public HloPassInterface {
   // HloModule or HloModuleGroup.
   template <typename HloT>
   StatusOr<bool> RunPassesInternal(HloT* hlo,
-                                   absl::Span<HloPassInterface* const> passes);
+                                   const DebugOptions& debug_options);
 
   // Helpers which run the given passes on the given HLO construct. These
   // helpers enable templating of the core of the pipeline logic by providing

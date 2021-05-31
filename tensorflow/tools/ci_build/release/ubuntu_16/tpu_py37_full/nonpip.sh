@@ -56,6 +56,7 @@ ctpu_up -s v2-8 -p tensorflow-testing-tpu
 
 test_args=(
   --test_timeout=120,600,-1,-1 \
+  --test_env=TF_ENABLE_LEGACY_FILESYSTEM=1 \
   --test_arg=--tpu="${TPU_NAME}" \
   --test_arg=--zone="${TPU_ZONE}" \
   --test_arg=--test_dir_base=gs://kokoro-tpu-testing/tempdir/ \

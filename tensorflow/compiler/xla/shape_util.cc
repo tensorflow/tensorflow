@@ -320,6 +320,15 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64 dim) {
+  if (shape.IsTuple()) {
+    std::vector<Shape> result_shapes;
+    result_shapes.reserve(shape.tuple_shapes_size());
+    for (const Shape& s : shape.tuple_shapes()) {
+      result_shapes.push_back(MoveDimToMajor(s, dim));
+    }
+    return ShapeUtil::MakeTupleShape(result_shapes);
+  }
+
   Shape ret = shape;
   if (!ret.has_layout()) {
     LayoutUtil::SetToDefaultLayout(&ret);

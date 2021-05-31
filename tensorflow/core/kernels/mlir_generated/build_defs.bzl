@@ -271,6 +271,7 @@ def _gen_kernel_library(
             )
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
+            gpu_arch_option = "sm_70,compute_75" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
             native.sh_test(
                 name = "{op}_{platform}_{type}_{output_type}_gen_test".format(
                     op = op,
@@ -288,7 +289,7 @@ def _gen_kernel_library(
                         type = type,
                         output_type = output_type,
                     ),
-                    "--cpu_codegen=true" if enable_cpu else "--arch=sm_70,compute_75",
+                    "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
                 ],
                 size = "medium",
                 data = [

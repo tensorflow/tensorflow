@@ -222,18 +222,6 @@ StatusOr<PrimitiveType> MaybeUpcast(
       *preferred_element_type == from_type) {
     return from_type;
   }
-  if (primitive_util::IsIntegralType(from_type) !=
-      primitive_util::IsIntegralType(*preferred_element_type)) {
-    return InvalidArgument(
-        "`preferred_element_type` and the original type must both be integral "
-        "or both be floating point.");
-  }
-  if (!primitive_util::IsSignedIntegralType(from_type) !=
-      !primitive_util::IsSignedIntegralType(*preferred_element_type)) {
-    return InvalidArgument(
-        "`preferred_element_type` must have the same signedness as the "
-        "original type.");
-  }
   if (!primitive_util::IsFloatingPointType(from_type) &&
       primitive_util::BitWidth(*preferred_element_type) <
           primitive_util::BitWidth(from_type)) {
@@ -2118,9 +2106,42 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
-    const Shape& shape) {
-  TF_RET_CHECK(shape.IsArray());
-  return shape;
+    absl::Span<const Shape* const> operand_shapes) {
+  if (operand_shapes.size() == 1) {
+    TF_RETURN_IF_ERROR(
+        ExpectArray(*(operand_shapes[0]), "operand of collective-permute"));
+    return *(operand_shapes[0]);
+  } else {
+    TF_RET_CHECK(operand_shapes.size() == 4);
+    return *(operand_shapes[1]);
+  }
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteStartShape(
+    absl::Span<const Shape* const> operand_shapes) {
+  if (operand_shapes.size() == 1) {
+    TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
+                                   "operand of collective-permute-start"));
+    return ShapeUtil::MakeTupleShape(
+        {*(operand_shapes[0]), *(operand_shapes[0]),
+         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
+  } else {
+    TF_RET_CHECK(operand_shapes.size() == 4);
+    return ShapeUtil::MakeTupleShape(
+        {*(operand_shapes[0]), *(operand_shapes[1]),
+         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {}),
+         ShapeUtil::MakeShape(S32, {})});
+  }
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteDoneShape(
+    const Shape& operand_shape) {
+  TF_RET_CHECK(operand_shape.IsTuple());
+  if (operand_shape.tuple_shapes_size() == 4) {
+    return ShapeUtil::GetTupleElementShape(operand_shape, 0);
+  } else {
+    return ShapeUtil::GetTupleElementShape(operand_shape, 1);
+  }
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceShape(

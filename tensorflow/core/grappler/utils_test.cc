@@ -199,8 +199,9 @@ TEST_F(UtilsTest, ExecuteWithTimeout) {
   notification.Notify();
 
   // This should run till the end.
-  ASSERT_TRUE(ExecuteWithTimeout([]() { sleep(1); }, 0 /* timeout_in_ms */,
-                                 thread_pool.get()));
+  ASSERT_TRUE(ExecuteWithTimeout(
+      []() { Env::Default()->SleepForMicroseconds(1000000); },
+      0 /* timeout_in_ms */, thread_pool.get()));
 
   // Deleting before local variables go off the stack.
   thread_pool.reset();

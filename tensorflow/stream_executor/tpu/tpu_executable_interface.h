@@ -64,7 +64,7 @@ class TpuExecutableInterface : public Executable {
   // The optional 'transfer_stream' parameter enables transfers (for tuple
   // tables) to be performed on a separate stream to 'stream'.
   StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
-      const Shape& host_shape, const HloInputOutputAliasConfig& alias_config,
+      const Shape& shape, const HloInputOutputAliasConfig& alias_config,
       se::DeviceMemoryAllocator* allocator,
       std::vector<ExecutionInput>* arguments, se::Stream* stream,
       se::Stream* transfer_stream = nullptr);

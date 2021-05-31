@@ -29,7 +29,6 @@ from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
@@ -40,9 +39,9 @@ LOWER_AND_STRIP_PUNCTUATION = "lower_and_strip_punctuation"
 
 SPLIT_ON_WHITESPACE = "whitespace"
 
-TFIDF = index_lookup.TFIDF
+TF_IDF = index_lookup.TF_IDF
 INT = index_lookup.INT
-BINARY = index_lookup.BINARY
+MULTI_HOT = index_lookup.MULTI_HOT
 COUNT = index_lookup.COUNT
 
 # This is an explicit regex of all the tokens that will be stripped if
@@ -73,10 +72,10 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Text vectorization layer.
 
   This layer has basic options for managing text in a Keras model. It
-  transforms a batch of strings (one sample = one string) into either a list of
-  token indices (one sample = 1D tensor of integer token indices) or a dense
-  representation (one sample = 1D tensor of float values representing data about
-  the sample's tokens).
+  transforms a batch of strings (one example = one string) into either a list of
+  token indices (one example = 1D tensor of integer token indices) or a dense
+  representation (one example = 1D tensor of float values representing data
+  about the example's tokens).
 
   If desired, the user can call this layer's adapt() method on a dataset.
   When this layer is adapted, it will analyze the dataset, determine the
@@ -86,13 +85,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   input than the maximum vocabulary size, the most frequent terms will be used
   to create the vocabulary.
 
-  The processing of each sample contains the following steps:
+  The processing of each example contains the following steps:
 
-    1. standardize each sample (usually lowercasing + punctuation stripping)
-    2. split each sample into substrings (usually words)
+    1. standardize each example (usually lowercasing + punctuation stripping)
+    2. split each example into substrings (usually words)
     3. recombine substrings into tokens (usually ngrams)
     4. index tokens (associate a unique int value with each token)
-    5. transform each sample using this index, either into a vector of ints or
+    5. transform each example using this index, either into a vector of ints or
        a dense float vector.
 
   Some notes on passing Callables to customize splitting and normalization for
@@ -118,41 +117,42 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       contains 1 OOV token, so the effective number of tokens is `(max_tokens -
-      1 - (1 if output == "int" else 0))`.
+      1 - (1 if output == `"int"` else 0))`.
     standardize: Optional specification for standardization to apply to the
       input text. Values can be None (no standardization),
-      'lower_and_strip_punctuation' (lowercase and remove punctuation) or a
-      Callable. Default is 'lower_and_strip_punctuation'.
+      `"lower_and_strip_punctuation"` (lowercase and remove punctuation) or a
+      Callable. Default is `"lower_and_strip_punctuation"`.
     split: Optional specification for splitting the input text. Values can be
-      None (no splitting), 'whitespace' (split on ASCII whitespace), or a
-      Callable. The default is 'whitespace'.
+      None (no splitting), `"whitespace"` (split on ASCII whitespace), or a
+      Callable. The default is `"whitespace"`.
     ngrams: Optional specification for ngrams to create from the possibly-split
       input text. Values can be None, an integer or tuple of integers; passing
       an integer will create ngrams up to that integer, and passing a tuple of
       integers will create ngrams for the specified values in the tuple. Passing
       None means that no ngrams will be created.
     output_mode: Optional specification for the output of the layer. Values can
-      be "int", "binary", "count" or "tf-idf", configuring the layer as follows:
-        "int": Outputs integer indices, one integer index per split string
-          token. When output == "int", 0 is reserved for masked locations;
+      be `"int"`, `"multi_hot"`, `"count"` or `"tf_idf"`, configuring the layer
+      as follows:
+        - `"int"`: Outputs integer indices, one integer index per split string
+          token. When output == `"int"`, 0 is reserved for masked locations;
           this reduces the vocab size to max_tokens-2 instead of max_tokens-1
-        "binary": Outputs a single int array per batch, of either vocab_size or
-          max_tokens size, containing 1s in all elements where the token mapped
-          to that index exists at least once in the batch item.
-        "count": As "binary", but the int array contains a count of the number
-          of times the token at that index appeared in the batch item.
-        "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
-          value in each token slot.
+        - `"multi_hot"`: Outputs a single int array per batch, of either
+          vocab_size or max_tokens size, containing 1s in all elements where the
+          token mapped to that index exists at least once in the batch item.
+        - `"count"`: As `"multi_hot"`, but the int array contains a count of the
+          number of times the token at that index appeared in the batch item.
+        - `"tf_idf"`: As `"multi_hot"`, but the TF-IDF algorithm is applied to
+          find the value in each token slot.
     output_sequence_length: Only valid in INT mode. If set, the output will have
       its time dimension padded or truncated to exactly `output_sequence_length`
       values, resulting in a tensor of shape [batch_size,
       output_sequence_length] regardless of how many tokens resulted from the
       splitting step. Defaults to None.
-    pad_to_max_tokens: Only valid in  "binary", "count", and "tf-idf" modes. If
-      True, the output will have its feature axis padded to `max_tokens` even if
-      the number of unique tokens in the vocabulary is less than max_tokens,
-      resulting in a tensor of shape [batch_size, max_tokens] regardless of
-      vocabulary size. Defaults to False.
+    pad_to_max_tokens: Only valid in  `"multi_hot"`, `"count"`, and `"tf_idf"`
+      modes. If True, the output will have its feature axis padded to
+      `max_tokens` even if the number of unique tokens in the vocabulary is less
+      than max_tokens, resulting in a tensor of shape [batch_size, max_tokens]
+      regardless of vocabulary size. Defaults to False.
     vocabulary: An optional list of vocabulary terms, or a path to a text file
       containing a vocabulary to load into this layer. The file should contain
       one token per line. If the list or file contains the same token multiple
@@ -166,7 +166,6 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   >>> text_dataset = tf.data.Dataset.from_tensor_slices(["foo", "bar", "baz"])
   >>> max_features = 5000  # Maximum vocab size.
   >>> max_len = 4  # Sequence length to pad the outputs to.
-  >>> embedding_dims = 2
   >>>
   >>> # Create the layer.
   >>> vectorize_layer = TextVectorization(
@@ -204,21 +203,6 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   This example instantiates a TextVectorization layer by passing a list
   of vocabulary terms to the layer's __init__ method.
 
-    input_array = np.array([["earth", "wind", "and", "fire"],
-                            ["fire", "and", "earth", "michigan"]])
-    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=None,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.INT,
-        vocabulary=vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-
-    output_dataset = model.predict(input_array)
   >>> vocab_data = ["earth", "wind", "and", "fire"]
   >>> max_len = 4  # Sequence length to pad the outputs to.
   >>>
@@ -276,10 +260,15 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         allow_none=True,
         allow_callables=True)
 
-    # 'output_mode' must be one of (None, INT, COUNT, BINARY, TFIDF)
+    # Support deprecated names for output_modes.
+    if output_mode == "binary":
+      output_mode = MULTI_HOT
+    if output_mode == "tf-idf":
+      output_mode = TF_IDF
+    # 'output_mode' must be one of (None, INT, COUNT, MULTI_HOT, TF_IDF)
     layer_utils.validate_string_arg(
         output_mode,
-        allowable_strings=(INT, COUNT, BINARY, TFIDF),
+        allowable_strings=(INT, COUNT, MULTI_HOT, TF_IDF),
         layer_name="TextVectorization",
         arg_name="output_mode",
         allow_none=True)
@@ -329,16 +318,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "TextVectorization").set(True)
 
-    self._index_lookup_layer = self._get_index_lookup_class()(
+    self._index_lookup_layer = string_lookup.StringLookup(
         max_tokens=max_tokens,
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
+        mask_token="",
         output_mode=output_mode if output_mode is not None else INT,
         vocabulary_size=vocabulary_size)
-
-  def _get_index_lookup_class(self):
-    return string_lookup.StringLookup
-  # End of V1/V2 shim points.
 
   def _assert_same_type(self, expected_type, values, value_name):
     if dtypes.as_dtype(expected_type) != dtypes.as_dtype(values.dtype):
@@ -350,13 +336,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       return tensor_shape.TensorShape([input_shape[0], self._max_tokens])
 
     if self._output_mode == INT and self._split is None:
-      if len(input_shape) == 1:
+      if len(input_shape) <= 1:
         input_shape = tuple(input_shape) + (1,)
       return tensor_shape.TensorShape(input_shape)
 
     if self._output_mode == INT and self._split is not None:
       input_shape = list(input_shape)
-      if len(input_shape) == 1:
+      if len(input_shape) <= 1:
         input_shape = input_shape + [self._output_sequence_length]
       else:
         input_shape[1] = self._output_sequence_length
@@ -463,14 +449,14 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       vocabulary: An array of string tokens, or a path to a file containing one
         token per line.
       idf_weights: An array of document frequency data with equal length to
-        vocab. Only necessary if the layer output_mode is TFIDF.
+        vocab. Only necessary if the layer output_mode is TF_IDF.
 
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or
         input data is missing.
       RuntimeError: If the vocabulary cannot be set when this function is
-        called. This happens when "binary", "count", and "tfidf" modes,
-        if "pad_to_max_tokens" is False and the layer itself has already been
+        called. This happens when `"multi_hot"`, `"count"`, and "tfidf" modes,
+        if `pad_to_max_tokens` is False and the layer itself has already been
         called.
     """
     self._index_lookup_layer.set_vocabulary(vocabulary, idf_weights=idf_weights)
@@ -492,7 +478,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   def _set_state_variables(self, updates):
     if not self.built:
       raise RuntimeError("_set_state_variables() must be called after build().")
-    if self._output_mode == TFIDF:
+    if self._output_mode == TF_IDF:
       self.set_vocabulary(updates[_VOCAB_NAME], idf_weights=updates[_IDF_NAME])
     else:
       self.set_vocabulary(updates[_VOCAB_NAME])
@@ -556,31 +542,25 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # If we're not doing any output processing, return right away.
     if self._output_mode is None:
       return inputs
+
     lookup_data = self._index_lookup_layer(inputs)
     if self._output_mode == INT:
-      # Once we have the dense tensor, we can return it if we weren't given a
-      # fixed output sequence length. If we were, though, we have to dynamically
-      # choose whether to pad or trim it based on each tensor.
 
-      # We need to convert to dense if we have a ragged tensor.
-      if tf_utils.is_ragged(lookup_data):
-        dense_data = lookup_data.to_tensor(default_value=0)
-      else:
-        dense_data = lookup_data
+      # Maybe trim the output (NOOP if self._output_sequence_length is None).
+      output_tensor = lookup_data[..., :self._output_sequence_length]
+
+      output_shape = output_tensor.shape.as_list()
+      output_shape[-1] = self._output_sequence_length
+
+      # If it is a ragged tensor, convert it to dense with correct shape.
+      if tf_utils.is_ragged(output_tensor):
+        return output_tensor.to_tensor(default_value=0, shape=output_shape)
 
       if self._output_sequence_length is None:
-        return dense_data
-      else:
-        sequence_len = backend.shape(dense_data)[1]
-        pad_amt = self._output_sequence_length - sequence_len
-        pad_fn = lambda: array_ops.pad(dense_data, [[0, 0], [0, pad_amt]])
-        slice_fn = lambda: dense_data[:, :self._output_sequence_length]
-        output_tensor = control_flow_ops.cond(
-            sequence_len < self._output_sequence_length,
-            true_fn=pad_fn,
-            false_fn=slice_fn)
-        output_shape = output_tensor.shape.as_list()
-        output_shape[-1] = self._output_sequence_length
-        output_tensor.set_shape(tensor_shape.TensorShape(output_shape))
         return output_tensor
+
+      padding, _ = array_ops.required_space_to_batch_paddings(
+          output_tensor.shape, output_shape)
+      return array_ops.pad(output_tensor, padding)
+
     return lookup_data

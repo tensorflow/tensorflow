@@ -54,13 +54,28 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   constexpr auto kAllNCHW =
       std::make_tuple(DataLayout::kBatchDepthYX, FilterLayout::kOutputInputYX,
                       DataLayout::kBatchDepthYX);
+  constexpr auto kAllNCHW_VECT_C =
+      std::make_tuple(DataLayout::kBatchDepthYX4, FilterLayout::kOutputInputYX4,
+                      DataLayout::kBatchDepthYX4);
   constexpr auto kAllNHWC =
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
-  // Integer convolution must use NHWC.
-  if (primitive_util::IsIntegralType(
-          instr->operand(0)->shape().element_type())) {
+  // Integer convolution must use NHWC or NCHW_VECT_C.
+  //
+  // TODO(jlebar): Do non-VECT_C int8 convs still require NHWC with new versions
+  // of cudnn?
+  const ConvolutionDimensionNumbers& dnums =
+      instr->convolution_dimension_numbers();
+  Shape input_shape = instr->operand(0)->shape();
+  PrimitiveType input_ty = instr->operand(0)->shape().element_type();
+  if (primitive_util::IsIntegralType(input_ty)) {
+    if (input_ty == S8 && dnums.input_spatial_dimensions_size() == 2 &&
+        input_shape.dimensions_size() == 5) {
+      VLOG(2) << "Using NCHW_VECT_C for int8 conv " << instr->ToString();
+      return kAllNCHW_VECT_C;
+    }
+    VLOG(2) << "Using NHWC for int8 conv " << instr->ToString();
     return kAllNHWC;
   }
 
@@ -79,8 +94,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
-  if (instr->operand(0)->shape().element_type() != xla::PrimitiveType::F16 ||
-      !IsVoltaOrLater(*stream_executor) ||
+  if (input_ty != F16 || !IsVoltaOrLater(*stream_executor) ||
       instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }

@@ -58,7 +58,8 @@ TEST_P(AutotuneSetting, BatchParallelizationTest) {
        NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
        NDef("drop_remainder", "Const", {},
             {{"value", false}, {"dtype", DT_BOOL}}),
-       MakeBatchV2Node("batch", "range", "batch_size", "drop_remainder"),
+       MakeBatchV2Node("batch", "range", "batch_size", "drop_remainder",
+                       /*parallel_copy=*/false),
        NDef("Sink", "Identity", {"batch"}, {})},
       // FunctionLib
       {});
@@ -90,7 +91,8 @@ TEST_P(FromFunctionDef, BatchParallelizationTest) {
        NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
        NDef("drop_remainder", "Const", {},
             {{"value", false}, {"dtype", DT_BOOL}}),
-       MakeBatchV2Node("batch", "range", "batch_size", "drop_remainder"),
+       MakeBatchV2Node("batch", "range", "batch_size", "drop_remainder",
+                       /*parallel_copy=*/false),
        NDef("Sink", op, {"batch"}, {})},
       // FunctionLib
       {});
@@ -109,7 +111,10 @@ INSTANTIATE_TEST_SUITE_P(Test, FromFunctionDef,
                          ::testing::Values("Identity", "_Retval"));
 
 // Test the input and attr values after applying the optimization.
-TEST(ValueRewrites, BatchParallelizationTest) {
+class ValueRewrites : public ::testing::TestWithParam<bool> {};
+
+TEST_P(ValueRewrites, BatchParallelizationTest) {
+  const bool parallel_copy = GetParam();
   using test::function::NDef;
   GrapplerItem item;
 
@@ -121,7 +126,8 @@ TEST(ValueRewrites, BatchParallelizationTest) {
        NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
        NDef("drop_remainder", "Const", {},
             {{"value", false}, {"dtype", DT_BOOL}}),
-       MakeBatchV2Node("batch", "range", "batch_size", "drop_remainder"),
+       MakeBatchV2Node("batch", "range", "batch_size", "drop_remainder",
+                       parallel_copy),
        NDef("Sink", "Identity", {"batch"}, {})},
       // FunctionLib
       {});
@@ -142,13 +148,14 @@ TEST(ValueRewrites, BatchParallelizationTest) {
   EXPECT_EQ(parallel_batch.input(0), "range");
   EXPECT_EQ(parallel_batch.input(1), "batch_size");
   EXPECT_EQ(parallel_batch.input(3), "drop_remainder");
-  EXPECT_TRUE(parallel_batch.attr().find("parallel_copy") ==
-              parallel_batch.attr().end());
+  EXPECT_EQ(parallel_batch.attr().at("parallel_copy").b(), parallel_copy);
 
   NodeDef parallelism_val = output.node(
       graph_utils::FindGraphNodeWithName(parallel_batch.input(2), output));
   EXPECT_EQ(parallelism_val.attr().at("value").tensor().int64_val(0), -1);
 }
+
+INSTANTIATE_TEST_SUITE_P(Test, ValueRewrites, ::testing::Values(false, true));
 
 }  // namespace
 }  // namespace grappler

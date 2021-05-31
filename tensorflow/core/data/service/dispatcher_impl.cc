@@ -27,6 +27,8 @@ limitations under the License.
 #include "grpcpp/security/credentials.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
@@ -37,8 +39,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/hash_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
@@ -136,8 +136,10 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
-  job_gc_thread_ = absl::WrapUnique(
-      env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
+  if (config_.job_gc_timeout_ms() >= 0) {
+    job_gc_thread_ = absl::WrapUnique(
+        env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
+  }
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
@@ -791,6 +793,12 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         "could be caused by a dispatcher restart.");
   }
   TF_RETURN_IF_ERROR(s);
+  if (job->garbage_collected) {
+    return errors::FailedPrecondition(
+        "The requested job has been garbage collected due to inactivity. "
+        "Consider configuring the dispatcher with a higher "
+        "`job_gc_timeout_ms`.");
+  }
   if (request->optional_current_round_case() ==
       ClientHeartbeatRequest::kCurrentRound) {
     round_robin_rounds_[request->job_client_id()] =
@@ -933,17 +941,10 @@ Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                   (config_.job_gc_timeout_ms() * 1000)) {
       continue;
     }
-    std::vector<std::shared_ptr<const Task>> tasks;
-    TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
-    for (const auto& task : tasks) {
-      if (task->finished) {
-        continue;
-      }
-      Update update;
-      update.mutable_finish_task()->set_task_id(task->task_id);
-      TF_RETURN_IF_ERROR(state_.Apply(update));
-    }
-    DCHECK(job->finished);
+    Update update;
+    update.mutable_garbage_collect_job()->set_job_id(job->job_id);
+    TF_RETURN_IF_ERROR(state_.Apply(update));
+    LOG(INFO) << "Garbage collected job " << job->DebugString();
   }
   return Status::OK();
 }

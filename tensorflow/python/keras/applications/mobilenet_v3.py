@@ -292,6 +292,11 @@ def MobileNetV3(stack_fn,
       axis=channel_axis, epsilon=1e-3,
       momentum=0.999, name='Conv_1/BatchNorm')(x)
   x = activation(x)
+  x = layers.GlobalAveragePooling2D()(x)
+  if channel_axis == 1:
+    x = layers.Reshape((last_conv_ch, 1, 1))(x)
+  else:
+    x = layers.Reshape((1, 1, last_conv_ch))(x)
   x = layers.Conv2D(
       last_point_ch,
       kernel_size=1,
@@ -301,11 +306,6 @@ def MobileNetV3(stack_fn,
   x = activation(x)
 
   if include_top:
-    x = layers.GlobalAveragePooling2D()(x)
-    if channel_axis == 1:
-      x = layers.Reshape((last_point_ch, 1, 1))(x)
-    else:
-      x = layers.Reshape((1, 1, last_point_ch))(x)
     if dropout_rate > 0:
       x = layers.Dropout(dropout_rate)(x)
     x = layers.Conv2D(classes, kernel_size=1, padding='same', name='Logits')(x)

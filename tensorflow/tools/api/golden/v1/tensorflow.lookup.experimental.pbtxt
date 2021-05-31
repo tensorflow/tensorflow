@@ -1,11 +1,11 @@
 path: "tensorflow.lookup.experimental"
 tf_module {
   member {
-    name: "DatasetInitializer"
+    name: "DenseHashTable"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "DenseHashTable"
+    name: "MutableHashTable"
     mtype: "<type \'type\'>"
   }
 }

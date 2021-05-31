@@ -31,7 +31,8 @@ package(
         "//tensorflow_models:__subpackages__",
     ],
     # features = ["-parse_headers"],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 cc_library(

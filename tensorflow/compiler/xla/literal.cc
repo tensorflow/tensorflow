@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -94,7 +95,9 @@ template <typename T>
 T GetRawValue(T val) {
   return val;
 }
-uint16 GetRawValue(Eigen::half val) { return val.x; }
+uint16 GetRawValue(Eigen::half val) {
+  return Eigen::numext::bit_cast<uint16>(val);
+}
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
   return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
@@ -400,6 +403,16 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
       }));
 
   return std::move(literal);
+}
+
+Literal Literal::SubLiteral(ShapeIndexView shape_index) {
+  if (!shape_index.empty()) {
+    auto decomposed = this->DecomposeTuple();
+    return decomposed.at(shape_index.front())
+        .SubLiteral(shape_index.ConsumeFront());
+  } else {
+    return std::move(*this);
+  }
 }
 
 std::vector<Literal> Literal::DecomposeTuple() {
@@ -1354,7 +1367,7 @@ Literal ConvertBetweenNativeTypesWithConverter(const LiteralBase& src_literal,
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(std::is_same<NativeSrcT, Eigen::half>::value) &&
+typename std::enable_if<std::is_same<NativeSrcT, Eigen::half>::value &&
                             (std::is_same<NativeDestT, complex64>::value ||
                              std::is_same<NativeDestT, complex128>::value),
                         Literal>::type
@@ -1367,9 +1380,46 @@ ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(!std::is_same<NativeSrcT, Eigen::half>::value) ||
-                            (!std::is_same<NativeDestT, complex64>::value &&
-                             !std::is_same<NativeDestT, complex128>::value),
+typename std::enable_if<std::is_floating_point<NativeSrcT>::value &&
+                            std::is_integral<NativeDestT>::value,
+                        Literal>::type
+ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
+  auto converter = [](NativeSrcT src) {
+    // C++ [conv.bool]p1:
+    //   A prvalue of arithmetic [...] type can be converted to a prvalue of
+    //   type bool. A zero value [...] is converted to false; any other value is
+    //   converted to true.
+    // C++ [conv.fpint]p1:
+    //   [...] The behavior is undefined if the truncated value cannot be
+    //   represented in the destination type.
+    //
+    // Using static_cast to convert a float to an integral type other than bool
+    // may be undefined if the value's magnitude is too large or it is a NaN.
+    // Let's choose saturating arithmetic as it captures the spirit of infinity
+    // and arbitrarily map NaN to zero.
+    if (!std::is_same<NativeDestT, bool>::value) {
+      if (src != src) {
+        return NativeDestT{0};
+      }
+      if (src >= std::numeric_limits<NativeDestT>::max()) {
+        return std::numeric_limits<NativeDestT>::max();
+      }
+      if (src <= std::numeric_limits<NativeDestT>::lowest()) {
+        return std::numeric_limits<NativeDestT>::lowest();
+      }
+    }
+    return static_cast<NativeDestT>(src);
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<!(std::is_floating_point<NativeSrcT>::value &&
+                          std::is_integral<NativeDestT>::value) &&
+                            !(std::is_same<NativeSrcT, Eigen::half>::value &&
+                              (std::is_same<NativeDestT, complex64>::value ||
+                               std::is_same<NativeDestT, complex128>::value)),
                         Literal>::type
 ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) { return static_cast<NativeDestT>(src); };
@@ -1969,6 +2019,60 @@ bool LiteralBase::IsR1Iota() const {
   }
 
   return true;
+}
+
+// Returns a stride if the literal is a strided iota, i.e., iota multiplied by a
+// stride. Only applicable for integer iotas. Returns absl::nullopt if the
+// literal is not a strided iota.
+absl::optional<int64> LiteralBase::IsR1StridedIota() const {
+  if (!shape().IsArray() || shape().rank() != 1) {
+    return absl::nullopt;
+  }
+
+  const int64 elements = ShapeUtil::ElementsIn(shape());
+  const PrimitiveType type = shape().element_type();
+  if (elements <= 1 || !primitive_util::IsIntegralType(type)) {
+    return absl::nullopt;
+  }
+
+  auto get_element_at = [&](const int64 idx) -> int64 {
+    switch (type) {
+      case U8:
+        return static_cast<int64>(Get<uint8>({idx}));
+      case U16:
+        return static_cast<int64>(Get<uint16>({idx}));
+      case U32:
+        return static_cast<int64>(Get<uint32>({idx}));
+      case U64:
+        return static_cast<int64>(Get<uint64>({idx}));
+      case S8:
+        return Get<int8>({idx});
+      case S16:
+        return Get<int16>({idx});
+      case S32:
+        return Get<int32>({idx});
+      case S64:
+        return Get<int64>({idx});
+      default:
+        CHECK(0);
+        return 0;
+    }
+  };
+
+  // Infer the stride as the second element (since first element is supposed
+  // to be zero).
+  int64 stride = get_element_at(1);
+  if (stride == 0) {
+    return absl::nullopt;
+  }
+
+  for (int64 idx = 0; idx < elements; ++idx) {
+    if (get_element_at(idx) != idx * stride) {
+      return absl::nullopt;
+    }
+  }
+
+  return stride;
 }
 
 bool LiteralBase::IsZero(absl::Span<const int64> indices) const {

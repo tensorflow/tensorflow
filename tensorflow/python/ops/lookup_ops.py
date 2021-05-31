@@ -24,14 +24,12 @@ import uuid
 
 import six
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -87,7 +85,7 @@ def tables_initializer(name="init_all_tables"):
   return control_flow_ops.no_op(name=name)
 
 
-def _check_table_dtypes(table, key_dtype, value_dtype):
+def check_table_dtypes(table, key_dtype, value_dtype):
   """Check that the given key_dtype and value_dtype matches the table dtypes.
 
   Args:
@@ -436,65 +434,6 @@ class TableInitializerBase(trackable_base.Trackable):
     return shared_name
 
 
-@tf_export("lookup.experimental.DatasetInitializer")
-class DatasetInitializer(TableInitializerBase):
-  """Creates a table initializer from a `tf.data.Dataset`.
-
-  Sample usage:
-
-  >>> keys = tf.data.Dataset.range(100)
-  >>> values = tf.data.Dataset.range(100).map(
-  ...     lambda x: string_ops.as_string(x * 2))
-  >>> ds = tf.data.Dataset.zip((keys, values))
-  >>> init = tf.lookup.experimental.DatasetInitializer(ds)
-  >>> table = tf.lookup.StaticHashTable(init, "")
-  >>> table.lookup(tf.constant([0, 1, 2], dtype=tf.int64)).numpy()
-  array([b'0', b'2', b'4'], dtype=object)
-
-  Attributes:
-    dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
-      first scalar is treated as a key and the second as value.
-
-  Raises: ValueError if `dataset` doesn't conform to specifications.
-  """
-
-  def __init__(self, dataset):
-    """Creates a table initializer from a `tf.data.Dataset`.
-
-    Args:
-      dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
-      first scalar is treated as a key and the second as value.
-
-    Raises: ValueError if `dataset` doesn't conform to specifications.
-    Returns: A `DatasetInitializer` object
-    """
-    # Assert that the dataset element spec is a tuple of TensorSpecs where
-    # each tensor is a scalar.
-    self.dataset = dataset
-    elem_spec = self.dataset.element_spec
-    if len(elem_spec) != 2:
-      raise ValueError("element spec size should be 2")
-    if not isinstance(elem_spec[0], tensor_spec.TensorSpec):
-      raise ValueError("elem_spec[0] should be of type TensorSpec")
-    if not isinstance(elem_spec[1], tensor_spec.TensorSpec):
-      raise ValueError("elem_spec[1] should be of type TensorSpec")
-    if elem_spec[0].shape.rank not in (None, 0):
-      raise ValueError("key tensor should be a scalar")
-    if elem_spec[1].shape.rank not in (None, 0):
-      raise ValueError("value tensor should be a scalar")
-
-    key_type = elem_spec[0].dtype
-    value_type = elem_spec[1].dtype
-    super(DatasetInitializer, self).__init__(key_type, value_type)
-
-  def initialize(self, table):
-    _check_table_dtypes(table, self._key_dtype, self._value_dtype)
-    init_op = gen_lookup_ops.initialize_table_from_dataset(
-        table.resource_handle, self.dataset._variant_tensor)  # pylint: disable=protected-access
-    ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
-    return init_op
-
-
 @tf_export("lookup.KeyValueTensorInitializer")
 class KeyValueTensorInitializer(TableInitializerBase):
   """Table initializers given `keys` and `values` tensors.
@@ -554,7 +493,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
       TypeError: when the keys and values data types do not match the table
       key and value data types.
     """
-    _check_table_dtypes(table, self._keys.dtype, self._values.dtype)
+    check_table_dtypes(table, self._keys.dtype, self._values.dtype)
     with ops.name_scope(
         self._name, values=(table.resource_handle, self._keys, self._values)):
       init_op = gen_lookup_ops.lookup_table_import_v2(table.resource_handle,
@@ -746,20 +685,14 @@ class TextFileInitializer(TableInitializerBase):
       TypeError: when the keys and values data types do not match the table
       key and value data types.
     """
-    _check_table_dtypes(table, self.key_dtype, self.value_dtype)
+    check_table_dtypes(table, self.key_dtype, self.value_dtype)
     with ops.name_scope(self._name, "text_file_init", (table.resource_handle,)):
       filename = ops.convert_to_tensor(
           self._filename, dtypes.string, name="asset_filepath")
-      if self._offset != 0 or compat.forward_compatible(2021, 3, 18):
-        init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
-            table.resource_handle, filename, self._key_index, self._value_index,
-            -1 if self._vocab_size is None else self._vocab_size,
-            self._delimiter, self._offset)
-      else:
-        init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
-            table.resource_handle, filename, self._key_index, self._value_index,
-            -1 if self._vocab_size is None else self._vocab_size,
-            self._delimiter)
+      init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
+          table.resource_handle, filename, self._key_index, self._value_index,
+          -1 if self._vocab_size is None else self._vocab_size, self._delimiter,
+          self._offset)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g.,
     # if it is a placeholder) then it does not make sense to track it as an
@@ -1216,6 +1149,20 @@ class StaticVocabularyTable(LookupInterface):
 
   The hash function used for generating out-of-vocabulary buckets ID is
   Fingerprint64.
+
+  Note that the out-of-vocabulary bucket IDs always range from the table `size`
+  up to `size + num_oov_buckets - 1` regardless of the table values, which could
+  cause unexpected collisions:
+
+  >>> init = tf.lookup.KeyValueTensorInitializer(
+  ...     keys=tf.constant(["emerson", "lake", "palmer"]),
+  ...     values=tf.constant([1, 2, 3], dtype=tf.int64))
+  >>> table = tf.lookup.StaticVocabularyTable(
+  ...     init,
+  ...     num_oov_buckets=1)
+  >>> input_tensor = tf.constant(["emerson", "lake", "palmer", "king"])
+  >>> table[input_tensor].numpy()
+  array([1, 2, 3, 3])
   """
 
   def __init__(self,
@@ -1741,21 +1688,34 @@ def index_to_string_table_from_tensor(vocabulary_list,
     return StaticHashTableV1(init, default_value)
 
 
+@tf_export("lookup.experimental.MutableHashTable")
 class MutableHashTable(LookupInterface):
   """A generic mutable hash table implementation.
 
-  Data can be inserted by calling the insert method and removed by calling the
-  remove method. It does not support initialization via the init method.
+  Data can be inserted by calling the `insert` method and removed by calling the
+  `remove` method. It does not support initialization via the init method.
+
+  `MutableHashTable` requires additional memory during checkpointing and restore
+  operations to create temporary key and value tensors.
 
   Example usage:
 
-  ```python
-  table = tf.lookup.MutableHashTable(key_dtype=tf.string, value_dtype=tf.int64,
-                                     default_value=-1)
-  sess.run(table.insert(keys, values))
-  out = table.lookup(query_keys)
-  print(out.eval())
-  ```
+  >>> table = tf.lookup.experimental.MutableHashTable(key_dtype=tf.string,
+  ...                                                 value_dtype=tf.int64,
+  ...                                                 default_value=-1)
+  >>> keys_tensor = tf.constant(['a', 'b', 'c'])
+  >>> vals_tensor = tf.constant([7, 8, 9], dtype=tf.int64)
+  >>> input_tensor = tf.constant(['a', 'f'])
+  >>> table.insert(keys_tensor, vals_tensor)
+  >>> table.lookup(input_tensor).numpy()
+  array([ 7, -1])
+  >>> table.remove(tf.constant(['c']))
+  >>> table.lookup(keys_tensor).numpy()
+  array([ 7, 8, -1])
+  >>> sorted(table.export()[0].numpy())
+  [b'a', b'b']
+  >>> sorted(table.export()[1].numpy())
+  [7, 8]
   """
 
   def __init__(self,
@@ -1999,16 +1959,21 @@ class MutableHashTable(LookupInterface):
 
 @tf_export("lookup.experimental.DenseHashTable")
 class DenseHashTable(LookupInterface):
-  """A generic mutable hash table implementation using tensors as backing store.
+  """A mutable hash table with faster lookups and higher memory usage.
 
-  Data can be inserted by calling the insert method and removed by calling the
-  remove method. It does not support initialization via the init method.
+  Data can be inserted by calling the `insert` method and removed by calling the
+  `remove` method. It does not support initialization via the init method.
 
-  It uses "open addressing" with quadratic reprobing to resolve collisions.
-  Compared to `MutableHashTable` the insert, remove and lookup operations in a
-  `DenseHashTable` are typically faster, but memory usage can be higher.
-  However, `DenseHashTable` does not require additional memory for
-  temporary tensors created during checkpointing and restore operations.
+  Compared to `MutableHashTable`, `DenseHashTable` offers generally faster
+  `insert`, `remove` and `lookup` operations, in exchange for a higher overall
+  memory footprint.
+
+  It uses "open addressing" with quadratic reprobing to resolve collisions. This
+  requires specifying two keys in the key space, `empty_key` and `deleted_key`,
+  that can never inserted into the table.
+
+  Unlike `MutableHashTable`, `DenseHashTable` does not require additional memory
+  for temporary tensors created during checkpointing and restore operations.
 
   Example usage:
 

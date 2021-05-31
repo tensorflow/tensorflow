@@ -395,11 +395,7 @@ bool Env::LocalTempFilename(string* filename) {
 
 bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
   int32 tid = GetCurrentThreadId();
-#ifdef PLATFORM_WINDOWS
-  int32 pid = static_cast<int32>(GetCurrentProcessId());
-#else
-  int32 pid = static_cast<int32>(getpid());
-#endif
+  int32 pid = GetProcessId();
   long long now_microsec = NowMicros();  // NOLINT
 
   *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,
@@ -414,6 +410,14 @@ bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
   } else {
     return true;
   }
+}
+
+int32 Env::GetProcessId() {
+#ifdef PLATFORM_WINDOWS
+  return static_cast<int32>(GetCurrentProcessId());
+#else
+  return static_cast<int32>(getpid());
+#endif
 }
 
 Thread::~Thread() {}

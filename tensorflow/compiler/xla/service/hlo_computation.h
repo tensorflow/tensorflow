@@ -72,6 +72,8 @@ class HloComputation {
         : name_(name),
           last_added_instruction_(nullptr),
           fusion_instruction_(fusion_instruction) {}
+    Builder(Builder&& b) = default;
+    virtual ~Builder() = default;
 
     // Build and return an HloComputation. The parameter root_instruction
     // specifies the already-added instruction to use as the root. If
@@ -80,7 +82,7 @@ class HloComputation {
     std::unique_ptr<HloComputation> Build(
         HloInstruction* root_instruction = nullptr);
 
-    HloInstruction* AddInstruction(
+    virtual HloInstruction* AddInstruction(
         std::unique_ptr<HloInstruction> instruction) {
       instructions_.push_back(std::move(instruction));
       last_added_instruction_ = instructions_.back().get();
@@ -100,6 +102,8 @@ class HloComputation {
     HloInstruction* last_added_instruction_;
     HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
+
+    TF_DISALLOW_COPY_AND_ASSIGN(Builder);
   };
 
   // Helper class to automatically set the OpMetadata for every instruction

@@ -433,39 +433,53 @@ class EMBenchmarkHelper {
   }
 };
 
-static void BM_no_ops(int iters, int threads) {
-  testing::StopTiming();
-#ifdef PLATFORM_GOOGLE
-  BenchmarkUseRealTime();
-#else
-  testing::UseRealTime();
-#endif  // PLATFORM_GOOGLE
+static void BM_no_ops(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  const int iters = state.max_iterations;
+
   auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
   CHECK(stream);
   stream->Init();
   TEST_EventMgr em(stream_exec, GPUOptions());
-  testing::StartTiming();
-  std::atomic<int> counter;
-  counter.store(0, std::memory_order_seq_cst);
-  se::Stream* stream_ptr = stream.get();
-  auto runner = [&em, &counter, stream_ptr, iters]() {
-    auto callback = [&counter]() { counter.fetch_add(1); };
-    for (int i = 0; i < iters; ++i) {
-      em.ThenExecute(stream_ptr, callback);
+
+  auto benchmark_exec = [&]() {
+    std::atomic<int> counter;
+    counter.store(0, std::memory_order_seq_cst);
+    se::Stream* stream_ptr = stream.get();
+    auto runner = [&em, &counter, stream_ptr, iters]() {
+      auto callback = [&counter]() { counter.fetch_add(1); };
+      for (int i = 0; i < iters; ++i) {
+        em.ThenExecute(stream_ptr, callback);
+      }
+    };
+    for (int t = 0; t < threads; ++t) {
+      Env::Default()->SchedClosure(runner);
+    }
+    int expected = iters * threads;
+    while (counter < expected) {
+      Env::Default()->SleepForMicroseconds(1);
     }
   };
-  for (int t = 0; t < threads; ++t) {
-    Env::Default()->SchedClosure(runner);
+
+#ifdef PLATFORM_GOOGLE
+
+  // The timer starts automatically
+  while (state.KeepRunningBatch(state.max_iterations)) {
+    benchmark_exec();
   }
-  int expected = iters * threads;
-  while (counter < expected) {
-    Env::Default()->SleepForMicroseconds(1);
-  }
+#else
+  // The tensorflow's own implementation of the benchmark does not support
+  // running-batch (yet), therefore we had to use the Stop/StartTimer.
+  // FIXME: Remove this if-def once we switched all tensorflow's benchmarks to
+  // using the OSS benchmark library.
+
+  state.ResumeTiming();
+  benchmark_exec();
+  state.PauseTiming();
+#endif
 }
-BENCHMARK(BM_no_ops)->Arg(4);
-BENCHMARK(BM_no_ops)->Arg(8);
-BENCHMARK(BM_no_ops)->Arg(32);
+BENCHMARK(BM_no_ops)->UseRealTime()->Arg(4)->Arg(8)->Arg(32);
 
 // Benchmark functions are defined at top level.  In order to provide a real,
 // persistent GPUDevice to the following function it also needs to be at top
@@ -476,18 +490,15 @@ EMBenchmarkHelper* bm_helper = nullptr;
 mutex helper_mu;
 
 #ifdef PLATFORM_GOOGLE
-static void BM_chain_ops(int iters, int tensor_size, int adds_per_round,
-                         bool event_after_add, int pending_cap) {
+static void BM_chain_ops(::testing::benchmark::State& state, int tensor_size,
+                         int adds_per_round, bool event_after_add,
+                         int pending_cap) {
 #else
-static void BM_chain_ops(int iters, int tensor_size, int adds_per_round,
-                         bool event_after_add, int pending_cap, int threads) {
+static void BM_chain_ops(::testing::benchmark::State& state, int tensor_size,
+                         int adds_per_round, bool event_after_add,
+                         int pending_cap, int threads) {
 #endif
-  testing::StopTiming();
-#ifdef PLATFORM_GOOGLE
-  BenchmarkUseRealTime();
-#else
-  testing::UseRealTime();
-#endif  // PLATFORM_GOOGLE
+  const int iters = state.max_iterations;
   {
     mutex_lock l(helper_mu);
     if (gpu_helper && gpu_helper->pending_cap() != pending_cap) {
@@ -521,12 +532,18 @@ static void BM_chain_ops(int iters, int tensor_size, int adds_per_round,
     Env::Default()->SleepForMicroseconds(1);
   }
   counter = 0;
-  testing::StartTiming();
+
 #ifdef PLATFORM_GOOGLE
-  expected = iters * (1 + (event_after_add ? adds_per_round : 0));
-  bm_helper->DoAddChain(adds_per_round, iters, event_after_add, callback,
-                        time_ptr);
+  while (state.KeepRunningBatch(state.max_iterations)) {
+    expected = iters * (1 + (event_after_add ? adds_per_round : 0));
+    bm_helper->DoAddChain(adds_per_round, iters, event_after_add, callback,
+                          time_ptr);
+    while (counter < expected) {
+      Env::Default()->SleepForMicroseconds(1);
+    }
+  }
 #else
+  state.ResumeTiming();
   expected = threads * iters * (1 + (event_after_add ? adds_per_round : 0));
   for (int i = 0; i < threads; ++i) {
     Env::Default()->SchedClosure(
@@ -535,180 +552,192 @@ static void BM_chain_ops(int iters, int tensor_size, int adds_per_round,
                                 callback, time_ptr);
         });
   }
-#endif
   while (counter < expected) {
     Env::Default()->SleepForMicroseconds(1);
   }
-  testing::StopTiming();
+  state.PauseTiming();
+#endif
   VLOG(1) << "counter = " << counter << " post_execute Output: "
           << bm_helper->host_outputs(0).SummarizeValue(64);
   if (time_ptr) bm_helper->DisplayTimes(time_ptr);
 }
 
 #ifdef PLATFORM_GOOGLE
-static void BM_chain_1024_1_false(int iters) {
-  BM_chain_ops(iters, 1024, 1, false, 0);
+static void BM_chain_1024_1_false(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1024, 1, false, 0);
 }
 
-static void BM_chain_1024_1_true(int iters) {
-  BM_chain_ops(iters, 1024, 1, true, 0);
+static void BM_chain_1024_1_true(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1024, 1, true, 0);
 }
 
-static void BM_chain_1024_10_false(int iters) {
-  BM_chain_ops(iters, 1024, 10, false, 0);
+static void BM_chain_1024_10_false(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1024, 10, false, 0);
 }
 
-static void BM_chain_1024_10_true(int iters) {
-  BM_chain_ops(iters, 1024, 10, true, 0);
+static void BM_chain_1024_10_true(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1024, 10, true, 0);
 }
 
-static void BM_chain_1024_100_false(int iters) {
-  BM_chain_ops(iters, 1024, 100, false, 0);
+static void BM_chain_1024_100_false(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1024, 100, false, 0);
 }
 
-static void BM_chain_1024_100_true(int iters) {
-  BM_chain_ops(iters, 1024, 100, true, 0);
+static void BM_chain_1024_100_true(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1024, 100, true, 0);
 }
 
-static void BM_chain_1M_1_false(int iters) {
-  BM_chain_ops(iters, 1 << 20, 1, false, 0);
+static void BM_chain_1M_1_false(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1 << 20, 1, false, 0);
 }
 
-static void BM_chain_1M_1_true(int iters) {
-  BM_chain_ops(iters, 1 << 20, 1, true, 0);
+static void BM_chain_1M_1_true(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1 << 20, 1, true, 0);
 }
 
-static void BM_chain_1M_10_false(int iters) {
-  BM_chain_ops(iters, 1 << 20, 10, false, 0);
+static void BM_chain_1M_10_false(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1 << 20, 10, false, 0);
 }
 
-static void BM_chain_1M_10_true(int iters) {
-  BM_chain_ops(iters, 1 << 20, 10, true, 0);
+static void BM_chain_1M_10_true(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1 << 20, 10, true, 0);
 }
 
-static void BM_chain_1M_100_false(int iters) {
-  BM_chain_ops(iters, 1 << 20, 100, false, 0);
+static void BM_chain_1M_100_false(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1 << 20, 100, false, 0);
 }
 
-static void BM_chain_1M_100_true(int iters) {
-  BM_chain_ops(iters, 1 << 20, 100, true, 0);
+static void BM_chain_1M_100_true(::testing::benchmark::State& state) {
+  BM_chain_ops(state, 1 << 20, 100, true, 0);
 }
 
-BENCHMARK(BM_chain_1024_1_false)->Threads(1);
-BENCHMARK(BM_chain_1024_1_true)->Threads(1);
-BENCHMARK(BM_chain_1024_1_false)->Threads(2);
-BENCHMARK(BM_chain_1024_1_true)->Threads(2);
-BENCHMARK(BM_chain_1024_1_false)->Threads(8);
-BENCHMARK(BM_chain_1024_1_true)->Threads(8);
-BENCHMARK(BM_chain_1024_10_false)->Threads(1);
-BENCHMARK(BM_chain_1024_10_true)->Threads(1);
-BENCHMARK(BM_chain_1024_10_false)->Threads(8);
-BENCHMARK(BM_chain_1024_10_true)->Threads(8);
-BENCHMARK(BM_chain_1024_100_false)->Threads(1);
-BENCHMARK(BM_chain_1024_100_true)->Threads(1);
-BENCHMARK(BM_chain_1024_100_false)->Threads(2);
-BENCHMARK(BM_chain_1024_100_true)->Threads(2);
-BENCHMARK(BM_chain_1024_100_false)->Threads(8);
-BENCHMARK(BM_chain_1024_100_true)->Threads(8);
+BENCHMARK(BM_chain_1024_1_false)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1024_1_true)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1024_1_false)->UseRealTime()->Threads(2);
+BENCHMARK(BM_chain_1024_1_true)->UseRealTime()->Threads(2);
+BENCHMARK(BM_chain_1024_1_false)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1024_1_true)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1024_10_false)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1024_10_true)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1024_10_false)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1024_10_true)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1024_100_false)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1024_100_true)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1024_100_false)->UseRealTime()->Threads(2);
+BENCHMARK(BM_chain_1024_100_true)->UseRealTime()->Threads(2);
+BENCHMARK(BM_chain_1024_100_false)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1024_100_true)->UseRealTime()->Threads(8);
 
-BENCHMARK(BM_chain_1M_1_false)->Threads(1);
-BENCHMARK(BM_chain_1M_1_true)->Threads(1);
-BENCHMARK(BM_chain_1M_1_false)->Threads(2);
-BENCHMARK(BM_chain_1M_1_true)->Threads(2);
-BENCHMARK(BM_chain_1M_1_false)->Threads(8);
-BENCHMARK(BM_chain_1M_1_true)->Threads(8);
-BENCHMARK(BM_chain_1M_10_false)->Threads(1);
-BENCHMARK(BM_chain_1M_10_true)->Threads(1);
-BENCHMARK(BM_chain_1M_10_false)->Threads(8);
-BENCHMARK(BM_chain_1M_10_true)->Threads(8);
-BENCHMARK(BM_chain_1M_100_false)->Threads(1);
-BENCHMARK(BM_chain_1M_100_true)->Threads(1);
-BENCHMARK(BM_chain_1M_100_false)->Threads(2);
-BENCHMARK(BM_chain_1M_100_true)->Threads(2);
-BENCHMARK(BM_chain_1M_100_false)->Threads(8);
-BENCHMARK(BM_chain_1M_100_true)->Threads(8);
+BENCHMARK(BM_chain_1M_1_false)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1M_1_true)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1M_1_false)->UseRealTime()->Threads(2);
+BENCHMARK(BM_chain_1M_1_true)->UseRealTime()->Threads(2);
+BENCHMARK(BM_chain_1M_1_false)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1M_1_true)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1M_10_false)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1M_10_true)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1M_10_false)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1M_10_true)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1M_100_false)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1M_100_true)->UseRealTime()->Threads(1);
+BENCHMARK(BM_chain_1M_100_false)->UseRealTime()->Threads(2);
+BENCHMARK(BM_chain_1M_100_true)->UseRealTime()->Threads(2);
+BENCHMARK(BM_chain_1M_100_false)->UseRealTime()->Threads(8);
+BENCHMARK(BM_chain_1M_100_true)->UseRealTime()->Threads(8);
 #else
-static void BM_chain_1024_1_false(int iters, int threads) {
-  BM_chain_ops(iters, 1024, 1, false, 0, threads);
+static void BM_chain_1024_1_false(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1024, 1, false, 0, threads);
 }
 
-static void BM_chain_1024_1_true(int iters, int threads) {
-  BM_chain_ops(iters, 1024, 1, true, 0, threads);
+static void BM_chain_1024_1_true(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1024, 1, true, 0, threads);
 }
 
-static void BM_chain_1024_10_false(int iters, int threads) {
-  BM_chain_ops(iters, 1024, 10, false, 0, threads);
+static void BM_chain_1024_10_false(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1024, 10, false, 0, threads);
 }
 
-static void BM_chain_1024_10_true(int iters, int threads) {
-  BM_chain_ops(iters, 1024, 10, true, 0, threads);
+static void BM_chain_1024_10_true(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1024, 10, true, 0, threads);
 }
 
-static void BM_chain_1024_100_false(int iters, int threads) {
-  BM_chain_ops(iters, 1024, 100, false, 0, threads);
+static void BM_chain_1024_100_false(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1024, 100, false, 0, threads);
 }
 
-static void BM_chain_1024_100_true(int iters, int threads) {
-  BM_chain_ops(iters, 1024, 100, true, 0, threads);
+static void BM_chain_1024_100_true(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1024, 100, true, 0, threads);
 }
 
-static void BM_chain_1M_1_false(int iters, int threads) {
-  BM_chain_ops(iters, 1 << 20, 1, false, 0, threads);
+static void BM_chain_1M_1_false(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1 << 20, 1, false, 0, threads);
 }
 
-static void BM_chain_1M_1_true(int iters, int threads) {
-  BM_chain_ops(iters, 1 << 20, 1, true, 0, threads);
+static void BM_chain_1M_1_true(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1 << 20, 1, true, 0, threads);
 }
 
-static void BM_chain_1M_10_false(int iters, int threads) {
-  BM_chain_ops(iters, 1 << 20, 10, false, 0, threads);
+static void BM_chain_1M_10_false(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1 << 20, 10, false, 0, threads);
 }
 
-static void BM_chain_1M_10_true(int iters, int threads) {
-  BM_chain_ops(iters, 1 << 20, 10, true, 0, threads);
+static void BM_chain_1M_10_true(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1 << 20, 10, true, 0, threads);
 }
 
-static void BM_chain_1M_100_false(int iters, int threads) {
-  BM_chain_ops(iters, 1 << 20, 100, false, 0, threads);
+static void BM_chain_1M_100_false(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1 << 20, 100, false, 0, threads);
 }
 
-static void BM_chain_1M_100_true(int iters, int threads) {
-  BM_chain_ops(iters, 1 << 20, 100, true, 0, threads);
+static void BM_chain_1M_100_true(::testing::benchmark::State& state) {
+  const int threads = state.range(0);
+  BM_chain_ops(state, 1 << 20, 100, true, 0, threads);
 }
 
-BENCHMARK(BM_chain_1024_1_false)->Arg(1);
-BENCHMARK(BM_chain_1024_1_true)->Arg(1);
-BENCHMARK(BM_chain_1024_1_false)->Arg(2);
-BENCHMARK(BM_chain_1024_1_true)->Arg(2);
-BENCHMARK(BM_chain_1024_1_false)->Arg(8);
-BENCHMARK(BM_chain_1024_1_true)->Arg(8);
-BENCHMARK(BM_chain_1024_10_false)->Arg(1);
-BENCHMARK(BM_chain_1024_10_true)->Arg(1);
-BENCHMARK(BM_chain_1024_10_false)->Arg(8);
-BENCHMARK(BM_chain_1024_10_true)->Arg(8);
-BENCHMARK(BM_chain_1024_100_false)->Arg(1);
-BENCHMARK(BM_chain_1024_100_true)->Arg(1);
-BENCHMARK(BM_chain_1024_100_false)->Arg(2);
-BENCHMARK(BM_chain_1024_100_true)->Arg(2);
-BENCHMARK(BM_chain_1024_100_false)->Arg(8);
-BENCHMARK(BM_chain_1024_100_true)->Arg(8);
+BENCHMARK(BM_chain_1024_1_false)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1024_1_true)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1024_1_false)->UseRealTime()->Arg(2);
+BENCHMARK(BM_chain_1024_1_true)->UseRealTime()->Arg(2);
+BENCHMARK(BM_chain_1024_1_false)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1024_1_true)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1024_10_false)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1024_10_true)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1024_10_false)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1024_10_true)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1024_100_false)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1024_100_true)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1024_100_false)->UseRealTime()->Arg(2);
+BENCHMARK(BM_chain_1024_100_true)->UseRealTime()->Arg(2);
+BENCHMARK(BM_chain_1024_100_false)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1024_100_true)->UseRealTime()->Arg(8);
 
-BENCHMARK(BM_chain_1M_1_false)->Arg(1);
-BENCHMARK(BM_chain_1M_1_true)->Arg(1);
-BENCHMARK(BM_chain_1M_1_false)->Arg(2);
-BENCHMARK(BM_chain_1M_1_true)->Arg(2);
-BENCHMARK(BM_chain_1M_1_false)->Arg(8);
-BENCHMARK(BM_chain_1M_1_true)->Arg(8);
-BENCHMARK(BM_chain_1M_10_false)->Arg(1);
-BENCHMARK(BM_chain_1M_10_true)->Arg(1);
-BENCHMARK(BM_chain_1M_10_false)->Arg(8);
-BENCHMARK(BM_chain_1M_10_true)->Arg(8);
-BENCHMARK(BM_chain_1M_100_false)->Arg(1);
-BENCHMARK(BM_chain_1M_100_true)->Arg(1);
-BENCHMARK(BM_chain_1M_100_false)->Arg(2);
-BENCHMARK(BM_chain_1M_100_true)->Arg(2);
-BENCHMARK(BM_chain_1M_100_false)->Arg(8);
-BENCHMARK(BM_chain_1M_100_true)->Arg(8);
+BENCHMARK(BM_chain_1M_1_false)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1M_1_true)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1M_1_false)->UseRealTime()->Arg(2);
+BENCHMARK(BM_chain_1M_1_true)->UseRealTime()->Arg(2);
+BENCHMARK(BM_chain_1M_1_false)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1M_1_true)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1M_10_false)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1M_10_true)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1M_10_false)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1M_10_true)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1M_100_false)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1M_100_true)->UseRealTime()->Arg(1);
+BENCHMARK(BM_chain_1M_100_false)->UseRealTime()->Arg(2);
+BENCHMARK(BM_chain_1M_100_true)->UseRealTime()->Arg(2);
+BENCHMARK(BM_chain_1M_100_false)->UseRealTime()->Arg(8);
+BENCHMARK(BM_chain_1M_100_true)->UseRealTime()->Arg(8);
 #endif
 }  // namespace
 }  // namespace tensorflow

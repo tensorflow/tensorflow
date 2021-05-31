@@ -16,11 +16,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
-#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -603,17 +603,23 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                                   &result->return_values);
             },
             std::move(input_element));
+        auto node = model_node();
+        const bool collect_usage =
+            node && ctx->model() && ctx->model()->collect_resource_usage();
         // `ctx->runner()` may execute its logic synchronous so we wrap it in
         // `RecordStop` and `RecordStart` to prevent invalid nesting of
         // `RecordStart` calls.
         RecordStop(ctx.get());
-        (*ctx->runner())(
-            [this, ctx, fn = std::move(fn), done = std::move(done)]() {
-              RecordStart(ctx.get());
-              auto cleanup =
-                  gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-              done(fn());
-            });
+        (*ctx->runner())([node, collect_usage, fn = std::move(fn),
+                          done = std::move(done)]() {
+          if (collect_usage) {
+            node->record_start(EnvTime::NowNanos());
+          }
+          done(fn());
+          if (collect_usage) {
+            node->record_stop(EnvTime::NowNanos());
+          }
+        });
         RecordStart(ctx.get());
       }
 

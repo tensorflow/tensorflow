@@ -226,4 +226,27 @@ TEST(AttrValueEquality, StringAndFuncTensors) {
   ExpectDifferent(c1, c2);
 }
 
+TEST(AttrValueEquality, GiantTensors) {
+  AttrValue tensor = FromText(R"(
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1024
+          }
+          dim {
+            size: 1024
+          }
+          dim {
+            size: 1024
+          }
+          dim {
+            size: 1024
+          }
+        }
+        int_val: 0
+      })");
+  EXPECT_TRUE(AreAttrValuesEqual(tensor, tensor));
+}
+
 }  // namespace tensorflow

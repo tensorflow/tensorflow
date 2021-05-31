@@ -54,7 +54,8 @@ void UnrollBatchMatMulPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(&getContext());
+                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
+                  ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
@@ -203,6 +204,13 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
 
   auto lhs_type = input_lhs.getType().cast<RankedTensorType>();
   auto rhs_type = input_rhs.getType().cast<RankedTensorType>();
+
+  // Skip int8 x int8 => int32.
+  if (lhs_type.getElementType().isInteger(8) &&
+      rhs_type.getElementType().isInteger(8)) {
+    return rewriter.notifyMatchFailure(op,
+                                       "skip unrolling for int8 BatchMatMulV3");
+  }
 
   auto element_type = lhs_type.getElementType();
 

@@ -19,10 +19,10 @@ limitations under the License.
 #include <climits>
 
 #include "tensorflow/lite/micro/micro_error_reporter.h"
-#include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/micro/micro_time.h"
+#include "tensorflow/lite/micro/recording_micro_interpreter.h"
 
 namespace tflite {
 
@@ -73,8 +73,12 @@ class MicroBenchmarkRunner {
     }
   }
 
+  void PrintAllocations() const {
+    interpreter_.GetMicroAllocator().PrintAllocations();
+  }
+
  private:
-  tflite::MicroInterpreter interpreter_;
+  tflite::RecordingMicroInterpreter interpreter_;
 };
 
 }  // namespace tflite

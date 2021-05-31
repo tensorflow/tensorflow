@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/relu_op.h"
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -35,25 +36,8 @@ XlaOp Relu6(XlaOp x) {
 namespace tensorflow {
 namespace {
 
-class ReluOp : public XlaOpKernel {
- public:
-  explicit ReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  // Computes the max of the scalar input x and 0.
-  void Compile(XlaOpKernelContext* ctx) override {
-    ctx->SetOutput(0, xla::Relu(ctx->Input(0)));
-  }
-};
-REGISTER_XLA_OP(Name("Relu"), ReluOp);
-
-class Relu6Op : public XlaOpKernel {
- public:
-  explicit Relu6Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  // Clamp the scalar input between 0 and 6.
-  void Compile(XlaOpKernelContext* ctx) override {
-    ctx->SetOutput(0, xla::Relu6(ctx->Input(0)));
-  }
-};
-REGISTER_XLA_OP(Name("Relu6"), Relu6Op);
+REGISTER_XLA_OP(Name("Relu"), MlirXlaOpKernel);
+REGISTER_XLA_OP(Name("Relu6"), MlirXlaOpKernel);
 
 class LeakyReluOp : public XlaOpKernel {
  public:
@@ -71,21 +55,7 @@ class LeakyReluOp : public XlaOpKernel {
 };
 REGISTER_XLA_OP(Name("LeakyRelu"), LeakyReluOp);
 
-class ReluGradOp : public XlaOpKernel {
- public:
-  explicit ReluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
-  // otherwise return 0.
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    const TensorShape shape = ctx->InputShape(0);
-    const auto zero =
-        xla::Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
-    const auto pred = xla::Gt(ctx->Input(1), zero);
-    ctx->SetOutput(0, xla::Select(pred, ctx->Input(0), zero));
-  }
-};
-REGISTER_XLA_OP(Name("ReluGrad"), ReluGradOp);
+REGISTER_XLA_OP(Name("ReluGrad"), MlirXlaOpKernel);
 
 class Relu6GradOp : public XlaOpKernel {
  public:

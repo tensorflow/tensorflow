@@ -269,6 +269,10 @@ TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
 
+// Sets whether to use TFRT distributed runtime
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrtDistributedRuntime(
+    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime);
+
 // Returns the context_id from the EagerContext which is used by the
 // EagerService to maintain consistency between client and worker. The
 // context_id is initialized with a dummy value and is later set when the worker
@@ -617,6 +621,14 @@ TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
 TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
                                                   TF_Buffer* buf,
                                                   TF_Status* status);
+
+// Set logical devices to the context's device manager.
+// If logical devices are already configured at context initialization
+// through TFE_ContextOptions, this method should not be called.
+TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
+                                                    int num_cpus,
+                                                    const char* prefix,
+                                                    TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

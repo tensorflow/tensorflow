@@ -55,6 +55,9 @@ struct OutputArgInstantiation {
 struct ControlOutput {
   string output_name;
   string node_name;
+  bool operator<(const ControlOutput& a) const {
+    return output_name < a.output_name;
+  }
 };
 
 // A special case of GrapplerItem, constructed from a TensorFlow Function.

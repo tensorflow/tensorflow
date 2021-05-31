@@ -16,15 +16,18 @@ tensorflow/lite/core/shims/c/shims_test_util.h
 tensorflow/lite/core/shims/cc/experimental/acceleration/configuration/delegate_registry.h
 tensorflow/lite/core/shims/cc/interpreter.h
 tensorflow/lite/core/shims/cc/interpreter_builder.h
+tensorflow/lite/core/shims/cc/kernels/builtin_op_kernels.h
 tensorflow/lite/core/shims/cc/kernels/register.h
 tensorflow/lite/core/shims/cc/model.h
 tensorflow/lite/core/shims/cc/model_builder.h
 tensorflow/lite/core/shims/cc/shims_test_util.h
+tensorflow/lite/core/shims/cc/tools/verifier.h
 tensorflow/lite/core/shims/cc_library_with_tflite.bzl
 tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+tensorflow/lite/java/src/main/native/BUILD
 tensorflow/lite/java/src/main/native/nativeinterpreterwrapper_jni.cc
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
@@ -164,7 +167,6 @@ tensorflow/third_party/nccl/nccl_configure.bzl
 tensorflow/third_party/nccl/system.BUILD.tpl
 tensorflow/third_party/nlohmann_json.BUILD
 tensorflow/third_party/opt_einsum.BUILD
-tensorflow/third_party/pcre.BUILD
 tensorflow/third_party/png.BUILD
 tensorflow/third_party/png_fix_rpi.patch
 tensorflow/third_party/pprof.BUILD
@@ -204,7 +206,6 @@ tensorflow/third_party/systemlibs/jsoncpp.BUILD
 tensorflow/third_party/systemlibs/lmdb.BUILD
 tensorflow/third_party/systemlibs/nsync.BUILD
 tensorflow/third_party/systemlibs/opt_einsum.BUILD
-tensorflow/third_party/systemlibs/pcre.BUILD
 tensorflow/third_party/systemlibs/png.BUILD
 tensorflow/third_party/systemlibs/protobuf.BUILD
 tensorflow/third_party/systemlibs/protobuf.bzl

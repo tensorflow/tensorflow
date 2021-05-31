@@ -51,6 +51,10 @@ auto* mlir_function_pass_failed_fallback = monitoring::Counter<0>::New(
     "/tensorflow/core/mlir_pass_failed_fallback",
     "Failure count of MLIR pass runs when fallback used");
 
+auto* mlir_function_pass_succeeded_fallback = monitoring::Counter<0>::New(
+    "/tensorflow/core/mlir_pass_succeeded_fallback",
+    "Success count of MLIR pass runs when fallback enabled");
+
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
 }
@@ -164,8 +168,7 @@ Status MlirFunctionOptimizationPass::Run(
     }
   }
 
-  // TODO(b/176852151): Remove this after dark launch completed.
-  // Capture stats relevant to graph properties used in dark launch.
+  // Capture stats on graph properties analyzed before running the MLIR bridge.
   // We set `uses_uninitialized_resource_args` to false here because function
   // optimization is not affected by uninitialized resource args.
   GetMlirBridgeRolloutPolicy(**graph, flib_def, config_proto,
@@ -269,6 +272,10 @@ Status MlirFunctionOptimizationPass::Run(
         mlir_function_pass_failed_fallback->GetCell()->IncrementBy(1);
       } else if (pass_state == MlirOptimizationPassState::Enabled) {
         return pass_status;
+      }
+    } else {
+      if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+        mlir_function_pass_succeeded_fallback->GetCell()->IncrementBy(1);
       }
     }
 
@@ -381,6 +388,10 @@ Status MlirV1CompatGraphOptimizationPass::Run(
                       "pass has fallback enabled";
       mlir_function_pass_failed_fallback->GetCell()->IncrementBy(1);
       return Status::OK();
+    }
+  } else {
+    if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      mlir_function_pass_succeeded_fallback->GetCell()->IncrementBy(1);
     }
   }
 

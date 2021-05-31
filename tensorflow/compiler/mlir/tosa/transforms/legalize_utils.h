@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -37,8 +38,8 @@ namespace tosa {
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    RankedTensorType output_type, Value input_val, double scale,
-                   int64_t input_zp, int64_t output_zp,
-                   bool double_round = false);
+                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   bool scale32);
 
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
@@ -56,10 +57,23 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                                RankedTensorType weight_type,
                                RankedTensorType output_type);
 
-// Create a 513 entry TOSA constant tensor suitable for the Table operator based
-// on the values from an int32_t func(int32_t) lambda function.
-Value getTosa1DConstTensorTable(PatternRewriter& rewriter, Operation* op,
-                                std::function<int32_t(int32_t)> func);
+// Create a 8-bit TOSA TABLE constant tensor
+Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
+                            double input_scale, int32_t input_zp,
+                            double output_scale, int32_t output_zp,
+                            std::function<double(double)> func);
+
+// Create a 16-bit TOSA TABLE constant tensor
+Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
+                             std::function<double(double)> func, double min,
+                             double max);
+
+// Create a 32-bit TOSA TABLE constant tensor
+// Output is restricted to [-1.0, 1.0] as s0.31 format
+void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
+                            double input_scale, int32_t input_zp,
+                            std::function<double(double)> func,
+                            Value& upper_const, Value& lower_const);
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
@@ -71,7 +85,7 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
 // Create a vector from a 32-bit value tensor.  Returns vector size on success
 // or -1 on error.
-int getVectorFromValue32(Value val, SmallVector<int32_t, 4>& vec);
+int getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
 
 // Calculates the TOSA padding values based on TF operators padded with
 // SAME/VALID.
@@ -94,23 +108,20 @@ bool getTransposeConv2dPaddingValues(
     ArrayAttr strides, ArrayAttr dilations, PatternRewriter& rewriter,
     ArrayAttr& explicit_pad);
 
-// Templated function to create a constant op in a given dialect and with a
-// given type.  Specializations below.
-
-// T0: target dialect constant op
-// T1: native c++ integer type
-template <typename T0, typename T1>
-Value get1DConstTensor(PatternRewriter& rewriter, Operation* op,
-                       SmallVector<T1, 8> arr);
-
-// Same as get1DConstTensor, but int48 is not native c++ type, needs additional
-// interface
-Value get1DConstTensorInt48(PatternRewriter& rewriter, Operation* op,
-                            SmallVector<int64_t, 8> arr);
+// Templated function to create a constant op for given type and shape.
+// T: storage C type.
+// Default template creates a constant tensor in T.
+// To create INT48 TOSA constant, need to pass in llvm::APInt instead.
+template <typename T>
+llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
+                                     ArrayRef<T> vec, ArrayRef<int64_t> shape);
 
 // Strip off quantization information for bias tensor and return a unquantized
 // bias
 Value getUnquantizedBias(PatternRewriter& rewriter, Operation* op, Value input);
+
+// Check if scale32 mode is used for given output_element_type
+bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
 
 }  // namespace tosa
 }  // namespace mlir

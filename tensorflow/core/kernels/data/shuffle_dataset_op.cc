@@ -18,12 +18,12 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -64,10 +64,7 @@ constexpr char kNumElements[] = "num_elements";
 constexpr char kSlicesSize[] = "slices_size";
 constexpr char kSlicesStart[] = "slices_start";
 constexpr char kSlicesEnd[] = "slices_end";
-constexpr char kBuffer[] = "buffer";
-constexpr char kSize[] = "size";
 constexpr char kSeedGenerator[] = "SeedGenerator";
-constexpr char kTFData[] = "tf_data";
 constexpr char kEpochNumRandomSamples[] = "epoch_num_random_samples";
 constexpr char kShuffleDatasetV1[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2[] = "ShuffleDatasetV2";

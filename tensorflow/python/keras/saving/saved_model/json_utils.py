@@ -21,7 +21,7 @@ separate inputs if the given input_shape is a list, and will create a single
 input if the given shape is a tuple.
 """
 
-import collections.abc as collections_abc
+import collections
 import enum
 import json
 import numpy as np
@@ -118,7 +118,7 @@ def get_json_type(obj):
   if isinstance(obj, dtypes.DType):
     return obj.name
 
-  if isinstance(obj, collections_abc.Mapping):
+  if isinstance(obj, collections.abc.Mapping):
     return dict(obj)
 
   if obj is Ellipsis:

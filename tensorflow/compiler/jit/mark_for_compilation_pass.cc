@@ -61,7 +61,6 @@ namespace {
 using DeadnessPredicate = DeadnessAnalysis::DeadnessPredicate;
 using jit::DeviceId;
 using jit::DeviceSet;
-using xla::StatusOr;
 
 // The clusters we create here are eventually lowered into an
 // _XlaCompile/_XlaRun pair with a TF executor "fallback" that uses the
@@ -1697,9 +1696,15 @@ Status MarkForCompilation(
   // So fix up the source and sink edges before calling into deadness analysis.
   FixupSourceAndSinkEdges(graph);
 
-  // See explanation on `kXlaAlreadyClustered`.
   for (Node* n : graph->nodes()) {
+    // See explanation on `kXlaAlreadyClustered`.
     if (n->attrs().Find(kXlaAlreadyClustered)) {
+      return Status::OK();
+    }
+    // Skip the pass if we found TPUExecute ops in the graph, which indicates
+    // the graph is produced by TPU TF-XLA bridge and doesn't require auto
+    // clustering.
+    if (n->type_string() == "TPUExecute") {
       return Status::OK();
     }
   }
@@ -1840,6 +1845,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "AvgPoolGrad",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
+                                     "BatchMatMulV3",
                                      "BatchToSpace",
                                      "BatchToSpaceND",
                                      "BesselI0e",
@@ -1937,6 +1943,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Qr",
                                      "QuantizeAndDequantizeV2",
                                      "QuantizeAndDequantizeV3",
+                                     "QuantizeAndDequantizeV4",
                                      "RFFT",
                                      "RFFT2D",
                                      "RFFT3D",

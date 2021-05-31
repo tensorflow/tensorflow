@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/single_threaded_executor.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -872,6 +874,7 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
 }
 
 namespace {
+
 // Removes all stateless nodes that do not contribute to a return
 // value from the function body. Unlike `RemoveDeadNodes()`, which is
 // triggered by `OptimizerOptions.do_function_inlining`, this pass
@@ -911,6 +914,81 @@ void PruneFunctionBody(const FunctionDef& fdef, Graph* g) {
     FixupSourceAndSinkEdges(g);
   }
 }
+
+constexpr int kMaxNodesForSingleThreadedExecutor = 32;
+
+// Returns true if the given operation is suitable to execute via
+// SingleThreadedExecutor. This is an intentional subset of the ops which
+// technically can be run via single-threaded execution to avoid issues with
+// recursion or function invocation.
+//
+// SingleThreadedExecutor runs asynchronous kernels synchronously: this can lead
+// to deadlocks. This function attempts to exclude all async kernels in lieu of
+// kernel instantiation.
+bool IsOpSingleThreadedExecutorCompatible(const Node& n) {
+  if (n.IsFunctionCall() || n.IsPartitionedCall() || n.IsIfNode() ||
+      n.IsWhileNode() || n.IsCaseNode()) {
+    return false;
+  }
+  if (n.IsControlFlow()) {
+    return false;
+  }
+  if (n.IsSend() || n.IsHostSend() || n.IsRecv() || n.IsHostRecv()) {
+    return false;
+  }
+  if (n.IsCollective()) {
+    return false;
+  }
+  for (DataType dt : n.output_types()) {
+    if (IsRefType(dt)) {
+      return false;
+    }
+  }
+  std::string lower = str_util::Lowercase(n.op_def().name());
+  if (str_util::StrContains(lower, "pyfunc") ||
+      str_util::StrContains(lower, "queue") ||
+      str_util::StrContains(lower, "rpc")) {
+    return false;
+  }
+
+  return true;
+}
+
+// Returns true if the given Graph is safe & efficient to run via the single
+// threaded executor. The single-threaded executor has lower dispatch overhead
+// for simple functions.
+//
+// This currently specializes for the case of a single operation, as created
+// via eager execution.
+bool IsSingleThreadedExecutorCompatible(const Graph* g) {
+  // TODO(b/187729969): Temporarily disabled due to b/187306798.
+  return false;
+
+  // Not worth analyzing large graphs.
+  if (g->num_nodes() > kMaxNodesForSingleThreadedExecutor) {
+    return false;
+  }
+
+  int count = 0;
+  for (Node* n : g->nodes()) {
+    if (!IsOpSingleThreadedExecutorCompatible(*n)) {
+      return false;
+    }
+    if (n->op_def().name() == "_Arg" || n->op_def().name() == "_Retval" ||
+        n->op_def().name() == "NoOp") {
+      continue;
+    }
+
+    count += 1;
+  }
+
+  if (count == 1) {
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
@@ -954,6 +1032,10 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   };
   params.session_metadata = session_metadata_;
   std::unique_ptr<Executor> exec;
+
+  if (executor_type.empty() && IsSingleThreadedExecutorCompatible(g.get())) {
+    executor_type = "SINGLE_THREADED_EXECUTOR";
+  }
   TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, *g, &exec));
   {
     // Guard item since it is already inserted in items_.

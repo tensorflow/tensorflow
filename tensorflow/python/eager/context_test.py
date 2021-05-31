@@ -128,28 +128,28 @@ class ContextTest(test.TestCase):
 
   @test_util.run_gpu_only
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
-  def testGetMemoryUsage(self):
-    array_ops.zeros([10]) # Allocate some memory on the GPU.
-    self.assertGreater(
-        context.context().get_total_memory_usage('GPU:0'), 0)
+  def testGetMemoryInfo(self):
+    array_ops.zeros([10])  # Allocate some memory on the GPU.
+    self.assertGreater(context.context().get_memory_info('GPU:0')['current'], 0)
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
-  def testGetMemoryUsageCPU(self):
-    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
-      context.context().get_total_memory_usage('CPU:0')
+  def testGetMemoryInfoCPU(self):
+    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
+      context.context().get_memory_info('CPU:0')
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
-  def testGetMemoryUsageUnknownDevice(self):
+  def testGetMemoryInfoUnknownDevice(self):
+    with self.assertRaisesRegex(ValueError, 'No matching devices found'):
+      context.context().get_memory_info('unknown_device:0')
+
+  @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
+  def testGetMemoryInfoUnparsableDevice(self):
     with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
-      context.context().get_total_memory_usage('unknown_device')
-
-  @test_util.run_gpu_only
-  @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
-  def testGetMemoryUsageAmbiguousDevice(self):
-    if len(context.context().list_physical_devices('GPU')) < 2:
-      self.skipTest('Need at least 2 GPUs')
-    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
-      context.context().get_total_memory_usage('GPU')
+      context.context().get_memory_info('GPU')
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().get_memory_info('GPU:')
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().get_memory_info('GPU:CPU')
 
   def testListFunctionNames(self):
 
@@ -160,6 +160,15 @@ class ContextTest(test.TestCase):
     concrete = f.get_concrete_function()
     self.assertIn(concrete.name.decode(),
                   context.context().list_function_names())
+
+  def testSetLogicalDeviceAfterContextInitialization(self):
+    ctx = context.Context()
+    ctx.set_logical_cpu_devices(4)
+    self.assertIs(len(ctx.list_logical_devices('CPU')), 4)
+
+    # Cannot set logical device twice.
+    with self.assertRaisesRegex(RuntimeError, 'Virtual CPUs already set'):
+      ctx.set_logical_cpu_devices(8)
 
 
 if __name__ == '__main__':

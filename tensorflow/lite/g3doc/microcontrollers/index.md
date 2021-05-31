@@ -6,6 +6,12 @@ core runtime just fits in 16 KB on an Arm Cortex M3 and can run many basic
 models. It doesn't require operating system support, any standard C or C++
 libraries, or dynamic memory allocation.
 
+Note: The
+[TensorFlow Lite for Microcontrollers Experiments](https://experiments.withgoogle.com/collection/tfliteformicrocontrollers)
+features work by developers combining Arduino and TensorFlow to create awesome
+experiences and tools. Check out the site for inspiration to create your own
+TinyML projects.
+
 ## Why microcontrollers are important
 
 Microcontrollers are typically small, low-powered computing devices that are
@@ -56,7 +62,7 @@ platform, as given below:
 *   [Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world) -
     Demonstrates the absolute basics of using TensorFlow Lite for
     Microcontrollers
-    *   [Tutorial using any supported device](get_started.md)
+    *   [Tutorial using any supported device](get_started_low_level.md)
 *   [Micro speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech) -
     Captures audio with a microphone to detect the words "yes" and "no"
     *   [Tutorial using SparkFun Edge](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0)
@@ -100,8 +106,8 @@ The following limitations should be considered:
 
 ## Next steps
 
-*   [Get started with microcontrollers](get_started.md) to try the example
-    application and learn how to use the API.
+*   [Get started with microcontrollers](get_started_low_level.md) to try the
+    example application and learn how to use the API.
 *   [Understand the C++ library](library.md) to learn how to use the library in
     your own project.
 *   [Build and convert models](build_convert.md) to learn more about training

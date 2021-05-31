@@ -21,20 +21,18 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// TODO(jsimsa): Provide class-level documentation for this and the other ops.
-class FinalizeDatasetOp : public DatasetOpKernel {
+class FinalizeDatasetOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "Finalize";
   static constexpr const char* const kInputDataset = "input_dataset";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
-  // TODO(wilsin): Implement has_captured_ref using GraphDef representation
-  // rather than relying on python check.
   static constexpr const char* const kHasCapturedRef = "has_captured_ref";
 
   explicit FinalizeDatasetOp(OpKernelConstruction* ctx);
 
-  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override;
 
  private:
   class Dataset;

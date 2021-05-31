@@ -7288,7 +7288,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["TopKV2"] = ConvertTopK;
   (*registration)["Transpose"] = ConvertTranspose;
   (*registration)["Unpack"] = ConvertUnpack;
-
+  (*registration)["_CopyFromHostToGpu"] = ConvertIdentity;
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
         "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxArgs"}) {
@@ -7549,6 +7549,11 @@ Status ConvertSegmentToGraphDef(
     }
   }  // for each connection.
 
+  std::set<string> subgraph_node_names;
+  for (const Node* node : subgraph_nodes) {
+    subgraph_node_names.insert(node->name());
+  }
+
   std::unordered_map<int, int> old_to_new_id_map;
   // Copy internal nodes to new graphdef
   string local_scope = subgraph_nodes.front()->name();
@@ -7557,6 +7562,27 @@ Status ConvertSegmentToGraphDef(
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
     *snode = node->def();
+    if (snode->op() == "Shape") {
+      const std::string copy_op_name = snode->name();
+      std::string shape_op_name = copy_op_name + "_cpu_result";
+
+      // Add a node to copy the Shape OP output to GPU. Use the Shape OP node
+      // name for this new node so that users switch to use the result of this
+      // new node without having to change the name of the value they use.
+      NodeDef* copy_op = segment_def->add_node();
+      copy_op->set_name(copy_op_name);
+      copy_op->set_op("_CopyFromHostToGpu");
+      *copy_op->add_input() = shape_op_name + ":0";
+      tensorflow::DataType type = snode->attr().at("out_type").type();
+      AddNodeAttr("T", type, copy_op);
+      AddNodeAttr("out_type", type, copy_op);
+
+      // Rename the Shape OP node and add the new name to the set of node names
+      // for the engine.
+      snode->set_name(shape_op_name);
+      subgraph_node_names.insert(shape_op_name);
+      VLOG(2) << "Add copy node " << copy_op->DebugString();
+    }
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
@@ -7571,10 +7597,6 @@ Status ConvertSegmentToGraphDef(
             << " from " << snode->input(connection.inside_port) << " to "
             << arg_name;
     snode->set_input(connection.inside_port, arg_name);
-  }
-  std::set<string> subgraph_node_names;
-  for (const Node* node : subgraph_nodes) {
-    subgraph_node_names.insert(node->name());
   }
 
   // Remove control inputs that are not inside the segment.

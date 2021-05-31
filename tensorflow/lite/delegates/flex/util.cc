@@ -130,5 +130,46 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
   }
 }
 
+// Returns the TF data type name to be stored in the FunctionDef.
+const char* TfLiteTypeToTfTypeName(TfLiteType type) {
+  switch (type) {
+    case kTfLiteNoType:
+      return "invalid";
+    case kTfLiteFloat32:
+      return "float";
+    case kTfLiteInt16:
+      return "int16";
+    case kTfLiteInt32:
+      return "int32";
+    case kTfLiteUInt32:
+      return "uint32";
+    case kTfLiteUInt8:
+      return "uint8";
+    case kTfLiteInt8:
+      return "int8";
+    case kTfLiteInt64:
+      return "int64";
+    case kTfLiteUInt64:
+      return "uint64";
+    case kTfLiteBool:
+      return "bool";
+    case kTfLiteComplex64:
+      return "complex64";
+    case kTfLiteComplex128:
+      return "complex128";
+    case kTfLiteString:
+      return "string";
+    case kTfLiteFloat16:
+      return "float16";
+    case kTfLiteFloat64:
+      return "float64";
+    case kTfLiteResource:
+      return "resource";
+    case kTfLiteVariant:
+      return "variant";
+  }
+  return "invalid";
+}
+
 }  // namespace flex
 }  // namespace tflite

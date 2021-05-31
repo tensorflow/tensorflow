@@ -151,7 +151,7 @@ def must_record_gradient():
 
 
 def record_gradient(unused_op_name, unused_inputs, unused_attrs,
-                    unused_results):
+                    unused_outputs):
   """Import backprop if you want gradients recorded."""
   pass
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <cstdlib>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -165,7 +166,16 @@ class DelegatedInterpreter {
     return const_cast<TfLiteRegistration*>(&node_and_registration->second);
   }
 
-  TfLiteIntArray* exec_plan() const { return exec_plan_; }
+  TfLiteIntArray* exec_plan() {
+    // This simulates how TFLite's GetExecutionPlan invalidates previous
+    // output before returning new data.
+    const int num_nodes = exec_plan_->size;
+    TfLiteIntArray* new_array = TfLiteIntArrayCreate(num_nodes);
+    std::memcpy(new_array->data, exec_plan_->data, num_nodes * sizeof(int32_t));
+    TfLiteIntArrayFree(exec_plan_);
+    exec_plan_ = new_array;
+    return exec_plan_;
+  }
   TfLiteDelegateParams* add_delegate_params() {
     delegate_params_.push_back(TfLiteDelegateParams());
     return &delegate_params_.back();
@@ -178,7 +188,7 @@ class DelegatedInterpreter {
 
  private:
   // The manually-set execution plan for this delegated interpreter.
-  TfLiteIntArray* exec_plan_;
+  TfLiteIntArray* exec_plan_ = nullptr;
 
   // The TfLiteDelegateParams object that's manually populated inside the mocked
   // TfLiteContext::PreviewDelegatePartitioning.

@@ -79,7 +79,8 @@ def all_reduce_v2(t,
                   final_op='Id',
                   communication_hint='auto',
                   timeout=0,
-                  ordering_token=None):
+                  ordering_token=None,
+                  max_subdivs_per_device=-1):
   """Reduces tensors collectively, across devices.
 
   Args:
@@ -102,6 +103,11 @@ def all_reduce_v2(t,
     ordering_token: an optional resource tensor to pass to the op as inputs.
       They aren't used by the kernel but allow AutoControlDependency to order
       the collectives with control dependencies.
+    max_subdivs_per_device: int specifying the maximum number of subdivisions a
+      tensor on a device can be divided into. The runtime uses this contraint to
+      parallelize processing of each per-device tensor. Setting to -1 disables
+      subdivision and reverts to previous behavior of not sub-dividing tensor.
+      Setting to 0 uses sytem defaults.
 
   Returns:
     An Op implementing the distributed reduction.
@@ -117,7 +123,8 @@ def all_reduce_v2(t,
       final_op=final_op,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
-      ordering_token=ordering_token or [])
+      ordering_token=ordering_token or [],
+      max_subdivs_per_device=max_subdivs_per_device)
 
 
 def all_gather(t,
@@ -373,4 +380,3 @@ def broadcast_recv_v2(shape,
       shape=shape,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout)
-

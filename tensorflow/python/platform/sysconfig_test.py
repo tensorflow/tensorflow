@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
@@ -32,6 +34,19 @@ class SysconfigTest(googletest.TestCase):
     build_info = sysconfig.get_build_info()
     self.assertEqual(build_info["is_rocm_build"], test.is_built_with_rocm())
     self.assertEqual(build_info["is_cuda_build"], test.is_built_with_cuda())
+
+  def test_compile_flags(self):
+    # Must contain an include directory, and define _GLIBCXX_USE_CXX11_ABI,
+    # EIGEN_MAX_ALIGN_BYTES
+    compile_flags = sysconfig.get_compile_flags()
+
+    def list_contains(items, regex_str):
+      regex = re.compile(regex_str)
+      return any(regex.match(item) for item in items)
+
+    self.assertTrue(list_contains(compile_flags, ".*/include"))
+    self.assertTrue(list_contains(compile_flags, ".*_GLIBCXX_USE_CXX11_ABI.*"))
+    self.assertTrue(list_contains(compile_flags, ".*EIGEN_MAX_ALIGN_BYTES.*"))
 
 
 if __name__ == "__main__":

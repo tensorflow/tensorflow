@@ -34,7 +34,6 @@ from tensorflow.python.training.proximal_adagrad import ProximalAdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
 from tensorflow.python.training.experimental.loss_scale_optimizer import MixedPrecisionLossScaleOptimizer
-from tensorflow.python.training.experimental.mixed_precision import enable_mixed_precision_graph_rewrite
 from tensorflow.python.training.experimental.mixed_precision import enable_mixed_precision_graph_rewrite_v1
 from tensorflow.python.training.momentum import MomentumOptimizer
 from tensorflow.python.training.moving_averages import ExponentialMovingAverage

@@ -27,12 +27,13 @@ namespace graph_tests_utils {
 
 NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
                         StringPiece batch_size_node_name,
-                        StringPiece drop_remainder_node_name) {
+                        StringPiece drop_remainder_node_name,
+                        bool parallel_copy) {
   return test::function::NDef(
       name, "BatchDatasetV2",
       {string(input_node_name), string(batch_size_node_name),
        string(drop_remainder_node_name)},
-      {{"parallel_copy", false},
+      {{"parallel_copy", parallel_copy},
        {"output_shapes", gtl::ArraySlice<TensorShape>{}},
        {"output_types", gtl::ArraySlice<DataType>{}}});
 }
