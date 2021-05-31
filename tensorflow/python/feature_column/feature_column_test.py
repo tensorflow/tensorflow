@@ -3256,14 +3256,14 @@ class MakeParseExampleSpecTest(test.TestCase):
         ValueError,
         'All feature_columns must be _FeatureColumn instances.*invalid_column'):
       fc.make_parse_example_spec(
-          (self._TestFeatureColumn({key1: parse_spec1}), 'invalid_column'))
+          (self._TestFeatureColumn({key1: parse_spec1}), 'invalid_column'))  # pylint: disable=abstract-class-instantiated
 
   def test_one_feature_column(self):
     key1 = 'key1'
     parse_spec1 = parsing_ops.FixedLenFeature(
         shape=(2,), dtype=dtypes.float32, default_value=0.)
     actual = fc.make_parse_example_spec(
-        (self._TestFeatureColumn({key1: parse_spec1}),))
+        (self._TestFeatureColumn({key1: parse_spec1}),))  # pylint: disable=abstract-class-instantiated
     self.assertDictEqual({key1: parse_spec1}, actual)
 
   def test_two_feature_columns(self):
@@ -3272,9 +3272,9 @@ class MakeParseExampleSpecTest(test.TestCase):
         shape=(2,), dtype=dtypes.float32, default_value=0.)
     key2 = 'key2'
     parse_spec2 = parsing_ops.VarLenFeature(dtype=dtypes.string)
-    actual = fc.make_parse_example_spec(
-        (self._TestFeatureColumn({key1: parse_spec1}),
-         self._TestFeatureColumn({key2: parse_spec2})))
+    actual = fc.make_parse_example_spec((
+        self._TestFeatureColumn({key1: parse_spec1}),  # pylint: disable=abstract-class-instantiated
+        self._TestFeatureColumn({key2: parse_spec2})))  # pylint: disable=abstract-class-instantiated
     self.assertDictEqual({key1: parse_spec1, key2: parse_spec2}, actual)
 
   def test_equal_keys_different_parse_spec(self):
@@ -3285,17 +3285,17 @@ class MakeParseExampleSpecTest(test.TestCase):
     with self.assertRaisesRegex(
         ValueError,
         'feature_columns contain different parse_spec for key key1'):
-      fc.make_parse_example_spec(
-          (self._TestFeatureColumn({key1: parse_spec1}),
-           self._TestFeatureColumn({key1: parse_spec2})))
+      fc.make_parse_example_spec((
+          self._TestFeatureColumn({key1: parse_spec1}),  # pylint: disable=abstract-class-instantiated
+          self._TestFeatureColumn({key1: parse_spec2})))  # pylint: disable=abstract-class-instantiated
 
   def test_equal_keys_equal_parse_spec(self):
     key1 = 'key1'
     parse_spec1 = parsing_ops.FixedLenFeature(
         shape=(2,), dtype=dtypes.float32, default_value=0.)
-    actual = fc.make_parse_example_spec(
-        (self._TestFeatureColumn({key1: parse_spec1}),
-         self._TestFeatureColumn({key1: parse_spec1})))
+    actual = fc.make_parse_example_spec((
+        self._TestFeatureColumn({key1: parse_spec1}),  # pylint: disable=abstract-class-instantiated
+        self._TestFeatureColumn({key1: parse_spec1})))  # pylint: disable=abstract-class-instantiated
     self.assertDictEqual({key1: parse_spec1}, actual)
 
   def test_multiple_features_dict(self):
@@ -3307,9 +3307,13 @@ class MakeParseExampleSpecTest(test.TestCase):
     parse_spec2 = parsing_ops.VarLenFeature(dtype=dtypes.string)
     key3 = 'key3'
     parse_spec3 = parsing_ops.VarLenFeature(dtype=dtypes.int32)
-    actual = fc.make_parse_example_spec(
-        (self._TestFeatureColumn({key1: parse_spec1}),
-         self._TestFeatureColumn({key2: parse_spec2, key3: parse_spec3})))
+    # pylint: disable=abstract-class-instantiated
+    actual = fc.make_parse_example_spec((
+        self._TestFeatureColumn({key1: parse_spec1}),
+        self._TestFeatureColumn({
+            key2: parse_spec2,
+            key3: parse_spec3
+        })))
     self.assertDictEqual(
         {key1: parse_spec1, key2: parse_spec2, key3: parse_spec3}, actual)
 

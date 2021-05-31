@@ -1642,6 +1642,9 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
 
 Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding();
+  if (sharding.HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   // Special handling for sort in TopK when first operand partitioined at
   // sort dimension.
   auto k = GetKValueInTopKWhenPartitionSortDim(hlo);
@@ -2558,6 +2561,9 @@ Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   int64 input_count = 1;
   auto per_input_sharding = hlo->sharding();
   if (hlo->shape().IsTuple()) {
@@ -3658,9 +3664,19 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
     const HloComputation* entry = module->entry_computation();
     TF_RET_CHECK(entry->root_instruction()->has_sharding());
     const HloSharding& root_sharding = entry->root_instruction()->sharding();
-    TF_RET_CHECK(root_sharding.IsReplicated() ||
-                 root_sharding.UniqueDevice().has_value())
-        << "Unsupported entry root sharding: " << root_sharding.ToString();
+    if (!root_sharding.UniqueDevice().has_value()) {
+      if (root_sharding.IsTuple()) {
+        TF_RET_CHECK(absl::c_all_of(root_sharding.tuple_elements(),
+                                    [](const HloSharding& s) {
+                                      return s.IsReplicated() || s.IsManual();
+                                    }))
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+
+      } else {
+        TF_RET_CHECK(root_sharding.IsReplicated() || root_sharding.IsManual())
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+      }
+    }
 
     for (const HloInstruction* param : entry->parameter_instructions()) {
       TF_RET_CHECK(param->has_sharding());

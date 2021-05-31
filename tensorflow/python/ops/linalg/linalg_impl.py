@@ -532,6 +532,7 @@ def tridiagonal_solve(diagonals,
 
   Returns:
     A `Tensor` of shape [..., M] or [..., M, K] containing the solutions.
+    If the input matrix is singular, the result is undefined.
 
   Raises:
     ValueError: An unsupported type is provided as input, or when the input
@@ -1256,6 +1257,11 @@ def eigh_tridiagonal(alpha,
   This op implements a subset of the functionality of
   scipy.linalg.eigh_tridiagonal.
 
+  Note: The result is undefined if the input contains +/-inf or NaN, or if
+  any value in beta has a magnitude greater than
+  `numpy.sqrt(numpy.finfo(beta.dtype.as_numpy_dtype).max)`.
+
+
   TODO(b/187527398):
     a) Complete scipy.linalg.compatibility:
       1. Add support for computing eigenvectors.
@@ -1342,17 +1348,19 @@ def eigh_tridiagonal(alpha,
 
     # Estimate the largest and smallest eigenvalues of T using the Gershgorin
     # circle theorem.
+    finfo = np.finfo(alpha.dtype.as_numpy_dtype)
     off_diag_abs_row_sum = array_ops.concat(
         [beta_abs[:1], beta_abs[:-1] + beta_abs[1:], beta_abs[-1:]], axis=0)
-    lambda_est_max = math_ops.reduce_max(alpha + off_diag_abs_row_sum)
-    lambda_est_min = math_ops.reduce_min(alpha - off_diag_abs_row_sum)
+    lambda_est_max = math_ops.minimum(
+        finfo.max, math_ops.reduce_max(alpha + off_diag_abs_row_sum))
+    lambda_est_min = math_ops.maximum(
+        finfo.min, math_ops.reduce_min(alpha - off_diag_abs_row_sum))
     # Upper bound on 2-norm of T.
     t_norm = math_ops.maximum(
         math_ops.abs(lambda_est_min), math_ops.abs(lambda_est_max))
 
     # Compute the smallest allowed pivot in the Sturm sequence to avoid
     # overflow.
-    finfo = np.finfo(alpha.dtype.as_numpy_dtype)
     one = np.ones([], dtype=alpha.dtype.as_numpy_dtype)
     safemin = np.maximum(one / finfo.max, (one + finfo.eps) * finfo.tiny)
     pivmin = safemin * math_ops.maximum(one, math_ops.reduce_max(beta_sq))
@@ -1406,27 +1414,34 @@ def eigh_tridiagonal(alpha,
 
     # Pre-broadcast the scalars used in the Sturm sequence for improved
     # performance.
+    upper = math_ops.minimum(upper, finfo.max)
+    lower = math_ops.maximum(lower, finfo.min)
     target_shape = array_ops.shape(target_counts)
     lower = array_ops.broadcast_to(lower, shape=target_shape)
     upper = array_ops.broadcast_to(upper, shape=target_shape)
-    mid = 0.5 * (upper + lower)
     pivmin = array_ops.broadcast_to(pivmin, target_shape)
     alpha0_perturbation = array_ops.broadcast_to(alpha0_perturbation,
                                                  target_shape)
 
-    # Start parallel binary searches.
-    def cond(i, lower, _, upper):
+    # We compute the midpoint as 0.5*lower + 0.5*upper to avoid overflow in
+    # (lower + upper) or (upper - lower) when the matrix has eigenvalues
+    # with magnitude greater than finfo.max / 2.
+    def midpoint(lower, upper):
+      return (0.5 * lower) + (0.5 * upper)
+
+    def cond(i, lower, upper):
       return math_ops.logical_and(
           math_ops.less(i, max_it),
           math_ops.less(abs_tol, math_ops.reduce_max(upper - lower)))
 
-    def body(i, lower, mid, upper):
+    def body(i, lower, upper):
+      mid = midpoint(lower, upper)
       counts = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, mid)
       lower = array_ops.where(counts <= target_counts, mid, lower)
       upper = array_ops.where(counts > target_counts, mid, upper)
-      mid = 0.5 * (lower + upper)
-      return i + 1, lower, mid, upper
+      return i + 1, lower, upper
 
-    _, _, mid, _ = control_flow_ops.while_loop(cond, body,
-                                               [0, lower, mid, upper])
-    return mid
+    # Start parallel binary searches.
+    _, lower, upper = control_flow_ops.while_loop(cond, body, [0, lower, upper])
+    eigvals = midpoint(lower, upper)
+    return eigvals

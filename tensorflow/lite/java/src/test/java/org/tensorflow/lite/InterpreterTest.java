@@ -25,6 +25,7 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -59,6 +60,11 @@ public final class InterpreterTest {
   private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
   private static final ByteBuffer MODEL_WITH_SIGNATURE_BUFFER =
       TestUtils.getTestFileAsBuffer(MODEL_WITH_SIGNATURE_PATH);
+
+  @Before
+  public void setUp() {
+    TestInit.init();
+  }
 
   @Test
   public void testInterpreter() throws Exception {
@@ -536,36 +542,6 @@ public final class InterpreterTest {
     // provided for the inputs/outputs (as the client can reference the buffer directly).
     interpreter.run(new float[2][8][8][3], null);
     interpreter.run(null, new float[2][8][8][3]);
-    interpreter.close();
-  }
-
-  @Test
-  // modifyGraphWithDelegate(...) is deprecated, suppress the warning to allow testing.
-  @SuppressWarnings("deprecation")
-  public void testModifyGraphWithDelegate() throws Exception {
-    System.loadLibrary("tensorflowlite_test_jni");
-    Delegate delegate =
-        new Delegate() {
-          @Override
-          public long getNativeHandle() {
-            return getNativeHandleForDelegate();
-          }
-        };
-    Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(false));
-    interpreter.modifyGraphWithDelegate(delegate);
-
-    // The native delegate stubs out the graph with a single op that produces the scalar value 7.
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {7.0f, 7.0f, 7.0f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-
     interpreter.close();
   }
 

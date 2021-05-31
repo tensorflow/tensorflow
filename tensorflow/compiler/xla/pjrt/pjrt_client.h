@@ -413,9 +413,6 @@ class PjRtBuffer {
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
 
-  // Returns the size of the on-device representation of this buffer in bytes.
-  virtual int64 OnDeviceSizeInBytes() const = 0;
-
   // ExternalReference is a potentially long-lived reference held while a buffer
   // is being shared by an external framework, e.g., NumPy. A client acquires an
   // external reference by calling PjRtBuffer::AcquireExternalReference() and

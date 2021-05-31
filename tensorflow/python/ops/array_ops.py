@@ -2697,6 +2697,9 @@ def matrix_diag_part(
 
   Returns:
     A Tensor containing diagonals of `input`. Has the same type as `input`.
+
+  Raises:
+    InvalidArgumentError: When `k` is out of bound or when `k[0]>k[1:]`.
   """
   # Special case to sidestep the tf.constant conversion error:
   # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -4648,21 +4651,33 @@ def where_v2(condition, x=None, y=None, name=None):
   dtype=int32)>
 
   Note that if the gradient of either branch of the tf.where generates
-  a NaN, then the gradient of the entire tf.where will be NaN.
+  a NaN, then the gradient of the entire tf.where will be NaN. This is because
+  the gradient calculation for tf.where combines the two branches, for
+  performance reasons.
+
   A workaround is to use an inner tf.where to ensure the function has
   no asymptote, and to avoid computing a value whose gradient is NaN by
   replacing dangerous inputs with safe inputs.
 
   Instead of this,
 
-  >>> y = tf.constant(-1, dtype=tf.float32)
-  >>> tf.where(y > 0, tf.sqrt(y), y)
-  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+  >>> x = tf.constant(0., dtype=tf.float32)
+  >>> with tf.GradientTape() as tape:
+  ...   tape.watch(x)
+  ...   y = tf.where(x < 1., 0., 1. / x)
+  >>> print(tape.gradient(y, x))
+  tf.Tensor(nan, shape=(), dtype=float32)
 
-  Use this
+  Although, the `1. / x` values are never used, its gradient is a NaN when x =
+  0. Instead, we should guard that with another `tf.where`
 
-  >>> tf.where(y > 0, tf.sqrt(tf.where(y > 0, y, 1)), y)
-  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+  >>> x = tf.constant(0., dtype=tf.float32)
+  >>> with tf.GradientTape() as tape:
+  ...   tape.watch(x)
+  ...   safe_x = tf.where(tf.equal(x, 0.), 1., x)
+  ...   y = tf.where(x < 1., 0., 1. / safe_x)
+  >>> print(tape.gradient(y, x))
+  tf.Tensor(0.0, shape=(), dtype=float32)
 
   Args:
     condition: A `tf.Tensor` of type `bool`
@@ -6572,3 +6587,23 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     input = reshape(input, [-1])
     axis = 0
   return repeat_with_axis(input, repeats, axis, name)
+
+
+@tf_export("guarantee_const")
+@deprecation.deprecated(None, "Not for public use.")
+def guarantee_const(input, name=None):    # pylint: disable=redefined-builtin
+  """Promise to the TF runtime that the input tensor is a constant.
+
+  The runtime is then free to make optimizations based on this.
+
+  Returns the input tensor without modification.
+
+  Args:
+    input: A `Tensor`.
+    name: A name for this operation.
+
+  Returns:
+    A `Tensor`. Has the same dtype as `input`.
+  """
+  return gen_array_ops.guarantee_const(input=input, name=name)
+

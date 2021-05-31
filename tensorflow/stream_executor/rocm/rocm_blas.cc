@@ -1827,6 +1827,18 @@ port::Status ROCMBlas::DoBlasGemmWithAlgorithm(
   return port::InternalError("Not implemented on ROCm");
 }
 
+port::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
+    blas::DataType type_a, int lda, int64 stride_a, const DeviceMemoryBase &b,
+    blas::DataType type_b, int ldb, int64 stride_b, const void *beta,
+    DeviceMemoryBase *c, blas::DataType type_c, int ldc, int64 stride_c,
+    int batch_count, blas::ComputationType computation_type,
+    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+  // ROCM TODO: properly implement the interface
+  return port::InternalError("Not implemented on ROCm");
+}
+
 bool ROCMBlas::GetBlasGemmAlgorithms(
     std::vector<blas::AlgorithmType> *out_algorithms) {
   // ROCM TODO: properly implement the interface

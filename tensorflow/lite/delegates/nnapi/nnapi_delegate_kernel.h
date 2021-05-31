@@ -188,6 +188,9 @@ class NNMemory {
   size_t byte_size_ = 0;
   uint8_t* data_ptr_ = nullptr;
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
+#ifndef __ANDROID__
+  std::string shm_region_name_;
+#endif
 };
 
 // LINT.IfChange
@@ -370,7 +373,7 @@ class NNAPIDelegateKernel {
   std::vector<int> nnapi_to_tflite_op_mapping_;
 
   // Fully initialized in NNAPIDelegateKernel::AddOpsAndTensors
-  int target_sdk_version_ = 27;  // kMinSdkVersionForNNAPI13
+  int target_feature_level_ = 27;  // kMinSdkVersionForNNAPI10
 
   void AddDequantizeOperatorsWhereNeeded(
       const TfLiteContext* context, int builtin_code, const TfLiteNode* node,

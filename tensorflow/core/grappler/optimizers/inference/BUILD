@@ -5,6 +5,7 @@ DEFAULT_VISIBILITY = [
     "//tensorflow/core/grappler/optimizers/inference:__subpackages__",
     "//learning/serving:__subpackages__",
     "//tensorflow_serving:__subpackages__",
+    "//tensorflow:__subpackages__",
 ]
 
 package(
@@ -33,6 +34,7 @@ cc_library(
         "//tensorflow/tools/graph_transforms:transform_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
         "@com_google_protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
@@ -51,6 +53,8 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:graph_optimizer",
         "//tensorflow/tools/graph_transforms:transform_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
     ],
 )

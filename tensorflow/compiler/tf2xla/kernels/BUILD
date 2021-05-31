@@ -358,6 +358,7 @@ tf_kernel_library(
         "check_numerics_op.cc",
     ],
     deps = [
+        "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:array_ops_op_lib",

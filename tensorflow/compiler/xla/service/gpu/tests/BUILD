@@ -17,6 +17,10 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load(
+    "//tensorflow/compiler/xla/service/gpu:thunk_config.bzl",
+    "if_using_bef_thunks",
+)
 
 package(
     default_visibility = [":friends"],
@@ -83,6 +87,39 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "pred_arithmetic_test",
+    srcs = ["pred_arithmetic_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+# Target that injects a tfrt::ExecutionContext to execute BefThunks.
+cc_library(
+    name = "tfrt_exec_ctx_injector",
+    testonly = True,
+    srcs = ["tfrt_exec_ctx_injector.cc"],
+    deps = [
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        # copybara:uncomment_begin(target not open-sourced yet)
+        # "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        # copybara:uncomment_end
+        "@tf_runtime//:basic_kernels_alwayslink",
+        "@tf_runtime//:core_runtime",
+        "@tf_runtime//:hostcontext",
+        "@com_google_googletest//:gtest",
+    ] + if_cuda_is_configured([
+        # copybara:uncomment_begin(breaks bazel query)
+        # "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+        # copybara:uncomment_end
+    ]),
+    alwayslink = True,
+)
+
+tf_cc_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -91,7 +128,9 @@ tf_cc_test(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
+    ] + if_using_bef_thunks([
+        ":tfrt_exec_ctx_injector",
+    ]),
 )
 
 tf_cc_test(
@@ -134,6 +173,21 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_spmd_single_partition_test",
+    size = "small",
+    srcs = ["gpu_spmd_single_partition_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -633,6 +687,7 @@ glob_lit_tests(
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
+        "element_wise_row_vectorization.hlo": ["no_rocm"],
     },
     test_file_exts = [
         "hlo",

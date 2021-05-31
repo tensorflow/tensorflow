@@ -558,6 +558,40 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "sharding_remover",
+    srcs = [
+        "sharding_remover.cc",
+    ],
+    hdrs = [
+        "sharding_remover.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "sharding_remover_test",
+    size = "small",
+    srcs = [
+        "sharding_remover_test.cc",
+    ],
+    deps = [
+        ":sharding_remover",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "dot_as_convolution_util",
     srcs = [
         "dot_as_convolution_util.cc",
@@ -941,6 +975,7 @@ cc_library(
         ":computation_placer",
         ":dump",
         ":dynamic_dimension_inference",
+        ":dynamic_padder",
         ":executable",
         ":execution_tracker",
         ":hlo",
@@ -3933,6 +3968,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_matchers",
         ":memory_space_assignment",
+        ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -4560,6 +4596,7 @@ cc_library(
     deps = [
         ":computation_layout",
         ":computation_placer",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -5072,6 +5109,7 @@ cc_library(
     hdrs = ["while_loop_invariant_code_motion.h"],
     deps = [
         ":hlo",
+        ":hlo_dce",
         ":hlo_pass",
         ":tuple_util",
         ":while_loop_analysis",

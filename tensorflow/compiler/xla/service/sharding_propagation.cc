@@ -236,6 +236,8 @@ const HloInstruction* PickRepresentativeOperand(
     // There is no suitable operand for the rest of the opcodes.
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -326,6 +328,7 @@ bool SupportSpatialPartitioning(const HloInstruction* instruction,
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
     case HloOpcode::kReduce:
+    case HloOpcode::kRngBitGenerator:
       return true;
     case HloOpcode::kAllReduce:
       // Only if channel_id is not specified.

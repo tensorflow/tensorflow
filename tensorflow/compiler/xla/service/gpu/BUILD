@@ -590,7 +590,11 @@ cc_library(
     ] + if_cuda_is_configured([
         "cholesky_thunk.h",
     ]),
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_using_bef_thunks(["-DBEF_THUNKS=1"]),
+    local_defines = if_cuda_is_configured([
+        "GOOGLE_CUDA=1",
+    ]) + if_using_bef_thunks([
+        "BEF_THUNKS=1",
+    ]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -663,25 +667,21 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-    ]) + if_using_bef_thunks(
-        [
-            "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
-            "//tensorflow/stream_executor/cuda:cublas_plugin",
-            "//tensorflow/stream_executor/cuda:cuda_driver",
-            "//tensorflow/stream_executor/gpu:gpu_executor_header",
-            "@tf_runtime//:basic_kernels_alwayslink",
-            "@tf_runtime//:befexecutor",
-            "@tf_runtime//:core_runtime",
-            "@tf_runtime//:hostcontext",
-            "@tf_runtime//:mlirtobef_translate",
-            "@tf_runtime//:support",
-        ] + if_cuda_is_configured([
-            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
-            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-            "@tf_runtime//backends/gpu:gpu_system",
-            "@tf_runtime//backends/gpu:gpu_types",
-        ]),
-    ),
+    ]) + if_using_bef_thunks([
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:Pass",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/stream_executor/cuda:cuda_driver",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
+        "@tf_runtime//:befexecutor",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:mlirtobef_translate",
+        "@tf_runtime//:support",
+        "@tf_runtime//backends/gpu:gpu_types",
+    ]),
 )
 
 cc_library(
@@ -1372,6 +1372,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:sharding_propagation",
+        "//tensorflow/compiler/xla/service:sharding_remover",
         "//tensorflow/compiler/xla/service:slice_sinker",
         "//tensorflow/compiler/xla/service:slow_operation_alarm",
         "//tensorflow/compiler/xla/service:sort_simplifier",
@@ -1473,6 +1474,7 @@ tf_cc_test(
     ],
     tags = [
         "gpu",
+        "no_rocm",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
         # positives in msan.
     ],
@@ -1702,6 +1704,8 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
+        "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:kernel_spec",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/memory",

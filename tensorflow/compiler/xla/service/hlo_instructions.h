@@ -422,7 +422,8 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
 class HloAllReduceInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllReduceInstruction(
-      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
@@ -1537,6 +1538,12 @@ class HloCustomCallInstruction : public HloInstruction {
           aliasing) {
     output_to_operand_aliasing_ = std::move(aliasing);
   }
+  void set_custom_call_schedule(CustomCallSchedule custom_call_schedule) {
+    custom_call_schedule_ = custom_call_schedule;
+  }
+  CustomCallSchedule custom_call_schedule() const {
+    return custom_call_schedule_;
+  }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -1575,6 +1582,8 @@ class HloCustomCallInstruction : public HloInstruction {
   std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
       output_to_operand_aliasing_;
   absl::optional<Literal> literal_;
+  // A custom-call schedule hint.
+  CustomCallSchedule custom_call_schedule_;
 };
 
 class HloPadInstruction : public HloInstruction {

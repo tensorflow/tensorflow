@@ -81,7 +81,7 @@ tf_cc_test(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -172,7 +172,7 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -226,7 +226,7 @@ tf_cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -258,7 +258,7 @@ tf_cc_test(
         ":delegate",
         ":delegate_data",
         ":test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -306,7 +306,7 @@ tf_cc_test(
         ":util",
         "//tensorflow/lite:string",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -343,7 +343,7 @@ tf_cc_test(
     deps = [
         ":delegate",
         ":allowlisted_flex_ops_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",

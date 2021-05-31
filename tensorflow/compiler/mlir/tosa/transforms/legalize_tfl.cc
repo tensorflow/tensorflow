@@ -176,10 +176,10 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
         "be all quantized or all floating-point.");
   }
 
-  Value output;
+  int64_t clamp_min = 0;
+  Value clamp_in = tfl_relu_op.x();
+
   if (output_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
     UniformQuantizedType input_qtype =
         input_type.getElementType()
             .dyn_cast<mlir::quant::UniformQuantizedType>();
@@ -187,29 +187,20 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
         output_type.getElementType()
             .dyn_cast<mlir::quant::UniformQuantizedType>();
 
-    Value op1_rescale_in =
-        buildRescaleToInt32(rewriter, op, tfl_relu_op.x(),
-                            input_qtype.getScale() / output_qtype.getScale(),
-                            input_qtype.getZeroPoint());
-    auto op2_relun_op1 = rewriter.create<tosa::ReluNOp>(
-        op->getLoc(), rescale_type, op1_rescale_in,
-        rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-        rewriter.getF32FloatAttr(0.0f));
-    Value op3_rescale_op2 = buildRescaleFromInt32(
-        rewriter, op, output_type, op2_relun_op1.getResult(), 1.0f,
-        output_qtype.getZeroPoint());
-
-    output = op3_rescale_op2;
-  } else {
-    auto op1_relun_in = rewriter.create<tosa::ReluNOp>(
-        op->getLoc(), output_type, tfl_relu_op.x(),
-        rewriter.getI64IntegerAttr(0),
-        rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
-
-    output = op1_relun_in.getResult();
+    clamp_min = output_qtype.getZeroPoint();
+    clamp_in =
+        buildRescale(rewriter, op, output_type, tfl_relu_op.x(),
+                     input_qtype.getScale() / output_qtype.getScale(),
+                     input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
+                     /*double_round=*/false, /*scale32=*/true);
   }
 
-  rewriter.replaceOp(op, {output});
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      op, output_type, clamp_in, rewriter.getI64IntegerAttr(clamp_min),
+      rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
+      rewriter.getF32FloatAttr(0.0f),
+      rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
+
   return success();
 }
 
@@ -235,10 +226,11 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
         "be all quantized or all floating-point.");
   }
 
-  Value output;
+  int64_t clamp_min = 0;
+  int64_t clamp_max = 6;
+  Value clamp_in = tfl_relu6_op.x();
+
   if (output_is_qtype && input_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
     UniformQuantizedType input_qtype =
         input_type.getElementType()
             .dyn_cast<mlir::quant::UniformQuantizedType>();
@@ -246,29 +238,22 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
         output_type.getElementType()
             .dyn_cast<mlir::quant::UniformQuantizedType>();
 
-    int64_t rescaled_6 = std::llround(6.0f / output_qtype.getScale());
+    clamp_min = output_qtype.getZeroPoint();
+    clamp_max = std::llround(6.0f / output_qtype.getScale()) +
+                output_qtype.getZeroPoint();
 
-    Value op1_rescale_in =
-        buildRescaleToInt32(rewriter, op, tfl_relu6_op.x(),
-                            input_qtype.getScale() / output_qtype.getScale(),
-                            input_qtype.getZeroPoint());
-    auto op2_relun_op1 = rewriter.create<tosa::ReluNOp>(
-        op->getLoc(), rescale_type, op1_rescale_in,
-        rewriter.getI64IntegerAttr(rescaled_6), rewriter.getF32FloatAttr(0.0f));
-    Value op3_rescale_op2 = buildRescaleFromInt32(
-        rewriter, op, output_type, op2_relun_op1.getResult(), 1.0f,
-        output_qtype.getZeroPoint());
-
-    output = op3_rescale_op2;
-  } else {
-    auto op1_relun_in = rewriter.create<tosa::ReluNOp>(
-        op->getLoc(), output_type, tfl_relu6_op.x(),
-        rewriter.getI64IntegerAttr(0), rewriter.getF32FloatAttr(6.0f));
-
-    output = op1_relun_in.getResult();
+    clamp_in =
+        buildRescale(rewriter, op, output_type, tfl_relu6_op.x(),
+                     input_qtype.getScale() / output_qtype.getScale(),
+                     input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
+                     /*double_round=*/false, /*scale32=*/true);
   }
 
-  rewriter.replaceOp(op, {output});
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      op, output_type, clamp_in, rewriter.getI64IntegerAttr(clamp_min),
+      rewriter.getI64IntegerAttr(clamp_max), rewriter.getF32FloatAttr(0.0f),
+      rewriter.getF32FloatAttr(6.0f));
+
   return success();
 }
 
@@ -992,7 +977,7 @@ LogicalResult ConvertTFLAddNOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  SmallVector<Value, 4> inputs(tfl_addn_op.inputs());
+  SmallVector<Value> inputs(tfl_addn_op.inputs());
 
   assert(inputs.size() >= 2);
 
@@ -1046,7 +1031,7 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
     ArrayAttr dilation = rewriter.getI64ArrayAttr({1, 1});
 
     RankedTensorType filter_type = RankedTensorType::get(
-        llvm::makeArrayRef<int64_t>(i64array), rewriter.getIntegerType(64));
+        llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
 
     // TFLite doesn't support explicit padding
     if (!getPaddingValuesFromPadType(
@@ -1099,8 +1084,8 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
     // Pooling has no non-unit dilation
     ArrayAttr dilation = rewriter.getI64ArrayAttr({1, 1});
 
-    RankedTensorType filter_type = RankedTensorType::get(
-        llvm::makeArrayRef<int64_t>(i64array), rewriter.getIntegerType(64));
+    RankedTensorType filter_type =
+        RankedTensorType::get(i64array, rewriter.getIntegerType(64));
 
     // TFLite doesn't support explicit padding
     if (!getPaddingValuesFromPadType(
@@ -1265,7 +1250,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     // Match from input_size tensor first
     if (matchPattern(tfl_conv_op.output_shape(),
                      m_Constant(&output_shape_elems))) {
-      llvm::SmallVector<int64_t, 4> shape_vec;
+      SmallVector<int64_t> shape_vec;
       for (int i = 0; i < output_shape_elems.getNumElements(); i++)
         shape_vec.push_back(
             output_shape_elems.getValue<IntegerAttr>(i).getInt());
@@ -1276,7 +1261,9 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     }
   }
 
-  Value zero_bias;
+  int output_channel = output_type.getShape()[3];
+
+  llvm::Optional<Value> zero_bias;
   if (input_is_qtype) {
     uint32_t input_bits = input_type.getElementType()
                               .dyn_cast<mlir::quant::QuantizedType>()
@@ -1286,24 +1273,22 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
                                .getStorageTypeIntegralWidth();
 
     if (input_bits == 16 && weight_bits == 8) {
-      std::vector<APInt> zero_bias_vec(output_type.getShape()[3],
-                                       APInt(48, 0, true));
-      ArrayRef<APInt> zero_bias_ref = llvm::makeArrayRef<APInt>(zero_bias_vec);
-      zero_bias = get1DConstTensorInt48(rewriter, op, zero_bias_ref);
+      SmallVector<APInt> vec(output_channel, APInt(48, 0, true));
+      zero_bias = getConstTensor<APInt>(rewriter, op, vec, {output_channel});
     } else {
-      SmallVector<int32_t, 8> zero_bias_vec(output_type.getShape()[3], 0);
-      zero_bias =
-          get1DConstTensor<tosa::ConstOp, int32_t>(rewriter, op, zero_bias_vec);
+      SmallVector<int32_t> vec(output_channel, 0);
+      zero_bias = getConstTensor<int32_t>(rewriter, op, vec, {output_channel});
     }
   } else {
-    SmallVector<float, 8> zero_bias_vec(output_type.getShape()[3], 0.0f);
-    zero_bias =
-        get1DConstTensor<tosa::ConstOp, float>(rewriter, op, zero_bias_vec);
+    SmallVector<float> vec(output_channel, 0.0f);
+    zero_bias = getConstTensor<float>(rewriter, op, vec, {output_channel});
   }
+
+  if (!zero_bias) return failure();
 
   auto a1_conv2d_op = rewriter.create<tosa::TransposeConv2DOp>(
       op->getLoc(), output_type, tfl_conv_op.input(), tfl_conv_op.weights(),
-      zero_bias, outpad, stride, dilation, output_shape);
+      zero_bias.getValue(), outpad, stride, dilation, output_shape);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -1389,25 +1374,28 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
       return failure();
   }
 
-  llvm::SmallVector<int64_t, 4> a1_transpose_dims;
+  SmallVector<int64_t, 4> a1_transpose_dims;
   a1_transpose_dims.push_back(filter_shape[1]);
   a1_transpose_dims.push_back(filter_shape[2]);
   a1_transpose_dims.push_back(filter_shape[3]);
   a1_transpose_dims.push_back(filter_shape[0]);
 
-  llvm::SmallVector<int64_t, 4> a2_reshape_dims;
+  SmallVector<int64_t, 4> a2_reshape_dims;
   a2_reshape_dims.push_back(a1_transpose_dims[0]);
   a2_reshape_dims.push_back(a1_transpose_dims[1]);
   a2_reshape_dims.push_back(a1_transpose_dims[2] / depth_multiplier.getInt());
   a2_reshape_dims.push_back(depth_multiplier.getInt());
 
-  Value a1_filter_transpose_perms =
-      get1DConstTensor<tosa::ConstOp, int32_t>(rewriter, op, {1, 2, 3, 0});
+  llvm::Optional<Value> a1_filter_transpose_perms = getConstTensor<int32_t>(
+      rewriter, op, /*vec=*/{1, 2, 3, 0}, /*shape=*/{4});
+
+  if (!a1_filter_transpose_perms) return failure();
+
   auto a1_filter_transpose_op = rewriter.create<tosa::TransposeOp>(
       op->getLoc(),
       RankedTensorType::get(ArrayRef<int64_t>(a1_transpose_dims),
                             filter_type.getElementType()),
-      tfl_conv2d_op.filter(), a1_filter_transpose_perms);
+      tfl_conv2d_op.filter(), a1_filter_transpose_perms.getValue());
 
   auto a2_filter_reshape_op = rewriter.create<tosa::ReshapeOp>(
       op->getLoc(),
@@ -1496,8 +1484,8 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
     int64_t num_batch = input_type.getNumElements() / num_elems;
     SmallVector<int64_t, 2> shape_vals({num_batch, num_elems});
 
-    RankedTensorType reshape_type = RankedTensorType::get(
-        ArrayRef<int64_t>(shape_vals), input_type.getElementType());
+    RankedTensorType reshape_type =
+        RankedTensorType::get(shape_vals, input_type.getElementType());
     auto reshape_op = rewriter.create<tosa::ReshapeOp>(
         op->getLoc(), reshape_type, tfl_fc_op.input(),
         rewriter.getI64ArrayAttr(shape_vals));
@@ -1511,28 +1499,26 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
     // value. TOSA requires bias to be an array of output_channel_count values,
     // so create a constant of the appropriate number and type of zeros.
     SmallVector<int64_t, 1> bias_shape({filter_type.getShape()[0]});
-    RankedTensorType bias_type = RankedTensorType::get(
-        ArrayRef<int64_t>(bias_shape), input_type.getElementType());
+    RankedTensorType bias_type =
+        RankedTensorType::get(bias_shape, input_type.getElementType());
 
     DenseElementsAttr bias_attr;
     if (input_type.getElementType().isa<FloatType>()) {
-      SmallVector<float, 2> bias_arr(bias_shape[0]);
+      SmallVector<float> bias_arr(bias_shape[0]);
 
       for (int i = 0; i < bias_shape[0]; i++) {
         bias_arr[i] = 0.0;
       }
-      // TODO: implicit cast suggest instead of makeArrayRef but triggers
-      // build error.
-      bias_attr = DenseElementsAttr::get(bias_type,
-                                         llvm::makeArrayRef<float>(bias_arr));
+      bias_attr =
+          DenseElementsAttr::get(bias_type, llvm::makeArrayRef(bias_arr));
     } else {
-      SmallVector<int32_t, 2> bias_arr(bias_shape[0]);
+      SmallVector<int32_t> bias_arr(bias_shape[0]);
 
       for (int i = 0; i < bias_shape[0]; i++) {
         bias_arr[i] = 0;
       }
-      bias_attr = DenseElementsAttr::get(bias_type,
-                                         llvm::makeArrayRef<int32_t>(bias_arr));
+      bias_attr =
+          DenseElementsAttr::get(bias_type, llvm::makeArrayRef(bias_arr));
     }
     auto bias_op =
         rewriter.create<tosa::ConstOp>(op->getLoc(), bias_type, bias_attr);
@@ -1573,7 +1559,7 @@ LogicalResult ConvertTFLConcatenationOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_concat_op = cast<TFL::ConcatenationOp>(op);
 
-  SmallVector<Value, 8> values(tfl_concat_op.values());
+  SmallVector<Value> values(tfl_concat_op.values());
 
   IntegerAttr axis_attr;
   {
@@ -1603,7 +1589,7 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  SmallVector<int64_t, 8> shape_vals;
+  SmallVector<int64_t> shape_vals;
   for (int i = 0; i < output_type.getShape().size(); i++) {
     shape_vals.push_back(output_type.getShape()[i]);
   }
@@ -1650,15 +1636,15 @@ LogicalResult ConvertTFLShapeOp::matchAndRewrite(
 
   auto input_shape = input_type.getShape();
 
-  SmallVector<int32_t, 8> shape_arr;
+  SmallVector<int32_t> shape_arr;
   for (int i = 0; i < input_shape.size(); i++) {
     shape_arr.emplace_back(input_shape[i]);
   }
 
   RankedTensorType shape_type = RankedTensorType::get(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
-  auto shape_attr = DenseElementsAttr::get(
-      shape_type, llvm::makeArrayRef<int32_t>(shape_arr));
+  auto shape_attr =
+      DenseElementsAttr::get(shape_type, llvm::makeArrayRef(shape_arr));
   auto shape_const =
       rewriter.create<tosa::ConstOp>(op->getLoc(), shape_type, shape_attr);
 
@@ -1688,7 +1674,7 @@ LogicalResult ConvertTFLSqueezeOp::matchAndRewrite(
 
   // Copy squeeze_dims into int32_t array
   auto squeeze_dims_attr = tfl_squeeze_op.squeeze_dimsAttr();
-  SmallVector<int32_t, 8> squeeze_dims;
+  SmallVector<int32_t> squeeze_dims;
   for (auto& squeeze_dim : squeeze_dims_attr) {
     squeeze_dims.emplace_back(squeeze_dim.dyn_cast<IntegerAttr>().getInt());
   }
@@ -1716,7 +1702,7 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
   ElementsAttr dims_elems;
   if (!matchPattern(tfl_fill_op.dims(), m_Constant(&dims_elems)))
     return failure();
-  SmallVector<int64_t, 4> dims_vals;
+  SmallVector<int64_t> dims_vals;
   uint32_t total_size = 1;
   for (int i = 0; i < dims_elems.getNumElements(); i++) {
     dims_vals.push_back(dims_elems.getValue<IntegerAttr>(i).getInt());
@@ -1733,17 +1719,15 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
 
   // Convert to a compatible zero type.
   if (value_elem.getType().getElementType().isa<FloatType>()) {
-    llvm::SmallVector<float, 4> fill_arr(
+    SmallVector<float> fill_arr(
         total_size,
         value_elem.getValue<FloatAttr>(0).getValue().convertToFloat());
-    fill_attr =
-        DenseElementsAttr::get(fill_type, llvm::makeArrayRef<float>(fill_arr));
+    fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
   } else {
-    llvm::SmallVector<int32_t, 4> fill_arr(
+    SmallVector<int32_t> fill_arr(
         total_size,
         value_elem.getValue<IntegerAttr>(0).getValue().getLimitedValue());
-    fill_attr = DenseElementsAttr::get(fill_type,
-                                       llvm::makeArrayRef<int32_t>(fill_arr));
+    fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
   }
   auto fill_const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), fill_type, fill_attr);
@@ -1962,7 +1946,7 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
 
   ElementsAttr begin_elems, size_elems;
 
-  SmallVector<int64_t, 4> begin_vals, size_vals;
+  SmallVector<int64_t> begin_vals, size_vals;
 
   if (!matchPattern(tfl_slice_op.begin(), m_Constant(&begin_elems)) ||
       !matchPattern(tfl_slice_op.size(), m_Constant(&size_elems))) {
@@ -1995,7 +1979,7 @@ LogicalResult ConvertTFLTileOp::matchAndRewrite(
   ElementsAttr multiples_elems;
   if (!matchPattern(tfl_tile_op.multiples(), m_Constant(&multiples_elems)))
     return failure();
-  SmallVector<int64_t, 4> multiples_vals;
+  SmallVector<int64_t> multiples_vals;
   for (int i = 0; i < multiples_elems.getNumElements(); i++)
     multiples_vals.push_back(multiples_elems.getValue<IntegerAttr>(i).getInt());
 
@@ -2025,7 +2009,7 @@ LogicalResult ConvertTFLPackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_pack_op = cast<TFL::PackOp>(op);
 
-  SmallVector<Value, 8> inputs(tfl_pack_op.values());
+  SmallVector<Value> inputs(tfl_pack_op.values());
   assert(inputs.size() >= 2);
 
   IntegerAttr axis_attr;
@@ -2109,7 +2093,7 @@ LogicalResult ConvertTFLSplitVOp::matchAndRewrite(
   auto tfl_splitv_op = cast<TFL::SplitVOp>(op);
 
   // Get the size_splits array
-  SmallVector<int32_t, 4> size_split;
+  SmallVector<int32_t> size_split;
   ElementsAttr size_split_elems;
   if (!matchPattern(tfl_splitv_op.size_splits(),
                     m_Constant(&size_split_elems))) {
@@ -2541,7 +2525,7 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
   } else {
     // op1 = constop(3)
     // op2 = add(x, op1)
-    // op3 = reluN(op2, 6)
+    // op3 = clamp(op2, 0, 6)
     // op4 = mul(x, op3)
     // op5 = reciprocal(6)
     // op6 = mul (op4, op5)
@@ -2551,9 +2535,10 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
     auto op2_add_x_op1 = rewriter.create<tosa::AddOp>(
         op->getLoc(), output_type, tfl_hardswish_op.input(), op1_value);
 
-    auto op3_relu_op2_6 = rewriter.create<tosa::ReluNOp>(
+    auto op3_relu_op2_6 = rewriter.create<tosa::ClampOp>(
         op->getLoc(), output_type, op2_add_x_op1.getResult(),
-        rewriter.getI64IntegerAttr(0), rewriter.getF32FloatAttr(6.0));
+        rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(0),
+        rewriter.getF32FloatAttr(0.0f), rewriter.getF32FloatAttr(6.0f));
 
     auto op4_mul_x_op3 = rewriter.create<tosa::MulOp>(
         op->getLoc(), output_type, tfl_hardswish_op.input(),

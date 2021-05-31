@@ -38,6 +38,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_GRAPH_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -520,6 +521,9 @@ class Graph {
   explicit Graph(const FunctionLibraryDefinition& flib_def);
 
   ~Graph();
+
+  // Clone the current graph into a new one.
+  std::unique_ptr<Graph> Clone();
 
   static const int kControlSlot;
 

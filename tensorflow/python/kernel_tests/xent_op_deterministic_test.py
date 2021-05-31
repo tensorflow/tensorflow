@@ -40,7 +40,7 @@ class SoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(test.TestCase):
   appropriate, by the GPU code-paths for SoftmaxCrossEntropyWithLogits when
   deterministic ops are enabled.
 
-  This test assumes that the base op test runs all the same test cases when
+  This test assumes that xent_op_test.py runs all the same test cases when
   deterministic ops are not enabled and will therefore detect erroneous
   exception throwing in those cases.
   """
@@ -62,7 +62,14 @@ class SoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(test.TestCase):
 
 
 class SoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
-  """Test that SoftmaxCrossEntropyWithLogits operates reproducibly."""
+  """Test that SoftmaxCrossEntropyWithLogits operates reproducibly.
+
+  Note that the deterministic functionality currently tested by this class is
+  always activated (not enabled by TF_DETERMINISTIC_OPS), so this class does not
+  currently need to inherit from a base op test class derived from
+  xent_op_test.py (to ensure that the op still functions correctly when
+  determinism is enabled).
+  """
 
   def _randomFloats(self, shape, dtype, normalized_rows=False):
     a = (2 * np.random.random_sample(shape) - 1).astype(dtype)

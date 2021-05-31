@@ -77,8 +77,11 @@ def GenerateModelV2(tf_saved_model_dir, tftrt_saved_model_dir):
   root = SimpleModel()
 
   # Saved TF model
-  save(root, tf_saved_model_dir,
-       {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: root.run})
+  # pylint: disable=not-callable
+  save(
+      root,
+      tf_saved_model_dir,
+      {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: root.run})
 
   # Convert TF model to TensorRT
   converter = trt_convert.TrtGraphConverterV2(

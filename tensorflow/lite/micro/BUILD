@@ -68,6 +68,19 @@ cc_library(
 )
 
 cc_library(
+    name = "mock_micro_graph",
+    srcs = ["mock_micro_graph.cc"],
+    hdrs = ["mock_micro_graph.h"],
+    deps = [
+        ":micro_allocator",
+        ":micro_graph",
+        ":test_helpers",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
     name = "micro_allocator",
     srcs = [
         "micro_allocator.cc",

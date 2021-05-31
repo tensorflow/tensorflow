@@ -445,7 +445,7 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
 
 template <typename T>
 T baseline_inv(T x) {
-  return 1 / x;
+  return T(1) / x;
 }
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
@@ -460,6 +460,16 @@ GENERATE_DEFAULT_TEST(Inv, DT_DOUBLE, DT_DOUBLE, baseline_inv,
 
 GENERATE_DEFAULT_TEST_2(Inv, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, baseline_inv,
                         test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Inv, DT_COMPLEX64, DT_COMPLEX64,
+    test::DefaultInputNonZero<std::complex<float>>(), baseline_inv,
+    test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Inv, DT_COMPLEX128, DT_COMPLEX128,
+    test::DefaultInputNonZero<std::complex<double>>(), baseline_inv,
+    test::OpsTestConfig())
 
 /// Test `tf.Invert`.
 
@@ -655,7 +665,7 @@ GENERATE_DEFAULT_TEST(Real, DT_COMPLEX128, DT_DOUBLE, baseline_real,
 
 template <typename T>
 T baseline_reciprocal(T x) {
-  return 1 / x;
+  return T(1) / x;
 }
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
@@ -670,6 +680,16 @@ GENERATE_DEFAULT_TEST(Reciprocal, DT_DOUBLE, DT_DOUBLE, baseline_reciprocal,
 
 GENERATE_DEFAULT_TEST_2(Reciprocal, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_reciprocal, test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Reciprocal, DT_COMPLEX64, DT_COMPLEX64,
+    test::DefaultInputNonZero<std::complex<float>>(), baseline_reciprocal,
+    test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Reciprocal, DT_COMPLEX128, DT_COMPLEX128,
+    test::DefaultInputNonZero<std::complex<double>>(), baseline_reciprocal,
+    test::OpsTestConfig())
 
 /// Test `tf.Relu`.
 

@@ -151,7 +151,7 @@ add_subdirectory(
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
 
 add_executable(minimal minimal.cc)
-target_link_libraries(minimal tensorflow-lite ${CMAKE_DL_LIBS}
+target_link_libraries(minimal tensorflow-lite)
 ```
 
 ## Build TensorFlow Lite C library

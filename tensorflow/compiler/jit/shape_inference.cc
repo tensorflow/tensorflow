@@ -270,8 +270,8 @@ Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
   return StoreOutputShapes(*graph, shape_refiner, shape_info);
 }
 
-xla::StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
-                                                 const InferredShape& b) {
+StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
+                                            const InferredShape& b) {
   InferredShape result;
   TF_RETURN_IF_ERROR(a.shape.MergeWith(b.shape, &result.shape));
 

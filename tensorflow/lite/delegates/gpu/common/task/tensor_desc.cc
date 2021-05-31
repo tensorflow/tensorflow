@@ -94,7 +94,7 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
   return *this;
 }
 
-GPUResources TensorDescriptor::GetGPUResources() const {
+GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   GPUResources resources;
   resources.ints.push_back("slice_stride");
   if (HasAxis(Axis::WIDTH)) {

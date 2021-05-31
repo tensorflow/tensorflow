@@ -39,14 +39,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Builds a custom call to a method named 'softmax' or 'log_softmax'.
-xla::StatusOr<xla::XlaOp> BuildSoftmaxCustomCall(xla::XlaBuilder* b,
-                                                 xla::XlaOp logits, bool log) {
-  TF_ASSIGN_OR_RETURN(xla::Shape logits_shape, b->GetShape(logits));
-  return xla::CustomCallWithLayout(b, log ? "log_softmax" : "softmax", {logits},
-                                   logits_shape, {logits_shape});
-}
-
 REGISTER_XLA_OP(Name("Softmax"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("LogSoftmax"), MlirXlaOpKernel);
 

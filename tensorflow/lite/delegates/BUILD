@@ -108,7 +108,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -135,7 +135,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )

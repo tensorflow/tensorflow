@@ -28,7 +28,7 @@ from tensorflow.python.platform import gfile
 
 @ds_combinations.generate(
     combinations.combine(
-        strategy=strategy_combinations.parameter_server_strategies,
+        strategy=strategy_combinations.parameter_server_strategies_multi_worker,
         mode="eager"))
 class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
     test_base.DatasetCreatorModelFitTestBase):
@@ -51,10 +51,9 @@ class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
 
   def testModelPredict(self, strategy):
     model, _ = self._model_compile(strategy)
-    with self.assertRaisesRegex(
-        NotImplementedError, "`model.predict` is not yet supported with "
-        "`ParameterServerStrategy`."):
-      model.predict(x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
+    test_data = dataset_ops.DatasetV2.from_tensor_slices(
+        [1., 2., 3., 1., 5., 1.]).repeat().batch(2)
+    model.predict(x=test_data, steps=3)
 
   def testClusterCoordinatorSingleInstance(self, strategy):
     model = self._model_fit(strategy)
@@ -108,6 +107,29 @@ class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
     self.assertTrue(gfile.Exists(log_dir))
     files = gfile.ListDirectory(log_dir)
     self.assertGreaterEqual(len(files), 1)
+
+  def testModelEvaluateWithDatasetInstance(self, strategy):
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        "Only `tf.keras.utils.experimental.DatasetCreator` input is supported "
+        "with `ParameterServerStrategy` at this time. Please see "
+        "`tf.keras.utils.experimental.DatasetCreator` class docstring for more "
+        "information."):
+      self._model_evaluate(
+          strategy,
+          validation_data=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
+
+  def testModelEvaluateErrorOnBatchLevelCallbacks(self, strategy):
+
+    class BatchLevelCallback(callbacks_lib.Callback):
+
+      def on_train_batch_end(self, batch, logs=None):
+        pass
+
+    with self.assertRaisesRegex(ValueError,
+                                "Batch-level `Callback`s are not supported"):
+      callbacks = [BatchLevelCallback()]
+      self._model_evaluate(strategy, callbacks=callbacks)
 
 
 if __name__ == "__main__":

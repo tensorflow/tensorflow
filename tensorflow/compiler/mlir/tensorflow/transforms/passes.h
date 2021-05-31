@@ -75,6 +75,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 
+// Performs checks that the whole module does not contain dynamic shapes.
+std::unique_ptr<OperationPass<FuncOp>> CreateTFEnsureStaticShapesPass();
+
 // Guarantee that all FuncOp's have a single use.
 std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass();
 
@@ -228,6 +231,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 // TensorFlow.
 std::unique_ptr<OperationPass<FuncOp>>
 CreatePrepareTpuComputationForTfExportPass();
+
+// Rewrites ops that require quantized inputs or outputs to ops that allow
+// non-quantized inputs and outputs.
+std::unique_ptr<OperationPass<FuncOp>> CreateLowerQuantizedPass();
 }  // namespace TF
 
 namespace tf_executor {
@@ -284,6 +291,13 @@ std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
 // transformations like resource op lifting.
 std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeResourceOpsPass();
 
+// A pass that decomposes composite resource operations in device cluster
+// (tf_device.cluster op) into primitive ones like ReadVariableOp,
+// AssignVariableOp and other computations to facilitate transformations like
+// resource op lifting.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateDecomposeResourceOpsInClusterPass();
+
 // Creates a pass that marks TPU cluster input-output pairs reading and writing
 // to same resource variable as aliases.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMarkInputOutputAliasesPass();
@@ -294,6 +308,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateMarkInputOutputAliasesPass();
 // variable store operations are all after device computation. After this pass,
 // device computation no longer interacts with external resource variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateResourceOpLiftingPass();
+
+// Creates a pass that lifts operations from the main function.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateResourceOpLiftingForMainFunctionPass();
 
 // Lifts resource operations from tf_device.launch_func ops nested in `op`
 // outside. Returns a failure if there are remaining resource-type values that
@@ -449,6 +467,11 @@ CreateTPUCompileOpReplicationPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+namespace TFDevice {
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+}  // namespace TFDevice
 
 }  // namespace mlir
 

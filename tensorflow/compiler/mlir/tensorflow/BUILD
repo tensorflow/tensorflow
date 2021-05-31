@@ -16,11 +16,13 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
+        "//learning/brain/mlir/bridge/...",
         "//learning/brain/experimental/dtensor/...",
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/mobile/lite/tf_runtime/...",
         "//learning/pathways/data_parallel/tf2xla/...",
+        "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
@@ -658,6 +660,7 @@ cc_library(
         "ir/tf_executor.cc.inc",
         "ir/tf_executor.h.inc",
         "ir/tf_saved_model.cc",
+        "transforms/tf_device_passes.h.inc",
     ],
     hdrs = [
         "dialect_registration.h",
@@ -977,6 +980,29 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "tf_device_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TensorFlowDevice",
+            ],
+            "transforms/tf_device_passes.h.inc",
+        ),
+        (
+            ["-gen-pass-doc"],
+            "g3doc/includes/tf_device_passes.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/tf_device_passes.td",
+    td_srcs = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
     name = "tf_savedmodel_pass_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -1019,6 +1045,7 @@ cc_library(
         "transforms/device_index_selector.cc",
         "transforms/drop_while_shape_invariant.cc",
         "transforms/einsum.cc",
+        "transforms/ensure_static_shapes_pass.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
         "transforms/executor_tpuv1_island_coarsening.cc",
@@ -1037,6 +1064,7 @@ cc_library(
         "transforms/init_text_file_to_import.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
+        "transforms/lower_quantized.cc",
         "transforms/mark_input_output_aliases.cc",
         "transforms/mark_ops_for_outside_compilation.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
@@ -1107,6 +1135,8 @@ cc_library(
         "ir/tf_ops_helpers.inc",
         "transforms/passes_detail.h",
         "transforms/savedmodel_passes_detail.h",
+        "transforms/tf_device_passes_detail.h",
+        "transforms/tf_device_passes.h.inc",
         "transforms/tf_passes.h.inc",
         "transforms/tf_savedmodel_passes.h.inc",
     ],
@@ -1855,6 +1885,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core/platform:logging",
     "//tensorflow/core/tpu:tpu_defs",
     "//tensorflow/stream_executor/lib",
+    "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary
@@ -2174,6 +2205,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

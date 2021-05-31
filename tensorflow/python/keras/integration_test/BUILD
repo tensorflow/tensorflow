@@ -4,6 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = [
@@ -119,7 +120,7 @@ tf_py_test(
     name = "multi_worker_tutorial_test",
     srcs = ["multi_worker_tutorial_test.py"],
     python_version = "PY3",
-    shard_count = 3,
+    shard_count = 6,
     tags = [
         "no_windows",  # TODO(b/183102726)
         "noasan",  # TODO(b/156029134)
@@ -130,5 +131,56 @@ tf_py_test(
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "parameter_server_keras_preprocessing_test",
+    srcs = ["parameter_server_keras_preprocessing_test.py"],
+    python_version = "PY3",
+    shard_count = 4,  # TODO(b/184290570): Investigate why only 1 shard times out.
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "distributed_training_test",
+    srcs = ["distributed_training_test.py"],
+    python_version = "PY3",
+    shard_count = 50,
+    tags = [
+        "multi_gpu",
+        "no_oss",  # TODO(b/183640564): Reenable
+        "no_rocm",
+        "noasan",  # TODO(b/184542721)
+        "nomsan",  # TODO(b/184542721)
+        "nomultivm",  # TODO(b/170502145)
+        "notsan",  # TODO(b/184542721)
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)
+
+distribute_py_test(
+    name = "parameter_server_custom_training_loop_test",
+    srcs = ["parameter_server_custom_training_loop_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_gpu",
+        "no_oss",  # TODO(b/183640564): Reenable
+        "no_rocm",
+        "noasan",  # TODO(b/184542721)
+        "nomsan",  # TODO(b/184542721)
+        "nomultivm",  # TODO(b/170502145)
+        "notsan",  # TODO(b/184542721)
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )

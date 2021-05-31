@@ -29,11 +29,16 @@ namespace cl {
 class InferenceContext;
 
 flatbuffers::Offset<data::InferenceContext> Encode(
-    const InferenceContext& inference, flatbuffers::FlatBufferBuilder* builder);
+    const InferenceContext& inference, const std::vector<int64_t>& in_refs,
+    std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
 
 absl::Status Decode(CLContext* context,
                     const data::InferenceContext* fb_inference,
                     InferenceContext* inference);
+
+absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
+                          std::vector<int64_t>* in_refs,
+                          std::vector<int64_t>* out_refs);
 
 }  // namespace cl
 }  // namespace gpu

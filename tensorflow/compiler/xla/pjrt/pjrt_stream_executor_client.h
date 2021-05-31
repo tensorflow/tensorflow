@@ -275,6 +275,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
 
+  // Device memory allocator. If owned, the allocator must outlive the devices,
+  // because it is the device destructor that waits for any outstanding work to
+  // complete.
+  se::DeviceMemoryAllocator* allocator_;
+  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
+
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> owned_devices_;
   // Pointers to `owned_devices_`.
@@ -284,9 +290,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
   int process_index_;
-
-  se::DeviceMemoryAllocator* allocator_;
-  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
   // Should we always prefer to stage host-to-device transfers via memory
   // allocated on host_memory_allocator_? True only on GPU, where we prefer to
@@ -499,8 +502,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     return on_device_shape_.IsTuple() &&
            on_device_shape_.tuple_shapes_size() == 0;
   }
-
-  int64 OnDeviceSizeInBytes() const override;
 
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;

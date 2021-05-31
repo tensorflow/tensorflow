@@ -132,6 +132,7 @@ tf_py_test(
     deps = [
         ":platform",
         ":test",
+        "//tensorflow:tensorflow_py",
     ],
 )
 

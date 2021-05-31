@@ -801,6 +801,14 @@ tf_module {
     argspec: "args=[\'x\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
+    name: "CompositeTensorVariantFromComponents"
+    argspec: "args=[\'components\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "CompositeTensorVariantToComponents"
+    argspec: "args=[\'encoded\', \'metadata\', \'Tcomponents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "CompressElement"
     argspec: "args=[\'components\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -4415,6 +4423,10 @@ tf_module {
   member_method {
     name: "SparseSegmentSum"
     argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseSegmentSumGrad"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "SparseSegmentSumWithNumSegments"

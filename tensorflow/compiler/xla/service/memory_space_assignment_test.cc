@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -74,6 +75,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
       HloModule* module, int64 max_outstanding_async_copies = -1,
       int64 max_prefetch_interval = 10, int64 min_prefetch_interval = 2,
       absl::optional<MemorySpaceAssignment::Options> options = absl::nullopt) {
+    MemorySpaceAssignmentUtils::HoistConstantOperations(*module);
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
         min_prefetch_interval, max_prefetch_interval);
     return AssignMemorySpace(module, max_outstanding_async_copies,
@@ -4577,6 +4579,70 @@ ENTRY entry {
   EXPECT_TRUE(get_memory_space("c") == kDefaultMemorySpace);
   EXPECT_TRUE(get_memory_space("d") == kAlternateMemorySpace);
   EXPECT_TRUE(get_memory_space("e") == kAlternateMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, ConstantAllocationFar) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,4] parameter(0)
+  const = f32[2,4] constant({...})
+  a = f32[2,4] negate(param0)
+  b = f32[2,4] negate(a)
+  c = f32[2,4] negate(b)
+  d = f32[2,4] negate(c)
+  e = f32[2,4] negate(d)
+  ROOT negate = f32[2,4] add(const, e)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  EXPECT_TRUE(module->entry_computation()
+                  ->GetInstructionWithName("const")
+                  ->shape()
+                  .layout()
+                  .memory_space() == kDefaultMemorySpace);
+  EXPECT_TRUE(module->entry_computation()
+                  ->GetInstructionWithName("negate")
+                  ->operand(0)
+                  ->shape()
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, ConstantAllocationNear) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,4] parameter(0)
+  a = f32[2,4] negate(param0)
+  b = f32[2,4] negate(a)
+  c = f32[2,4] negate(b)
+  d = f32[2,4] negate(c)
+  e = f32[2,4] negate(d)
+  const = f32[2,4] constant({...})
+  ROOT negate = f32[2,4] add(const, e)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  EXPECT_TRUE(module->entry_computation()
+                  ->GetInstructionWithName("const")
+                  ->shape()
+                  .layout()
+                  .memory_space() == kDefaultMemorySpace);
+  EXPECT_TRUE(module->entry_computation()
+                  ->GetInstructionWithName("negate")
+                  ->operand(0)
+                  ->shape()
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
 }
 
 // A mock MemorySpaceAssignmentRepacker class that accepst a map of

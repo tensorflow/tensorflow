@@ -11,6 +11,7 @@ generates
 whose `ExecuteOnStream` interface will be called by the XLA service at runtime.
 The figure below shows the work flow of `GpuCompiler`.
 
+<!--*
 ```dot
 strict digraph {
   compound=true;
@@ -51,6 +52,9 @@ strict digraph {
   ir_emitter -> { thunk0 thunk1 }
 }
 ```
+*-->
+
+<center><img style="width:25%" src="./images/gpu_backend_chart.svg"></img></center>
 
 ### Optimization
 

@@ -109,10 +109,10 @@ void DefaultQuantParamsPass::runOnFunction() {
   }
 
   func.walk([&](Operation *op) {
-    if (op->hasTrait<OpTrait::IsTerminator>() ||
-        op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-        llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op))
+    if (quant::IsOpNotQuantizable(op) ||
+        op->getParentOfType<TFL::CustomTfOp>()) {
       return;
+    }
 
     for (auto res : op->getResults()) {
       if (UsedAsBias(res)) {

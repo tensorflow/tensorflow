@@ -41,6 +41,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
@@ -345,6 +346,27 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
   return CheckShape(hlo, ShapeInference::InferAllReduceShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandleAllReduceStart(HloInstruction* hlo) {
+  auto ar = Cast<HloAllReduceInstruction>(hlo);
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                               ar->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(
+      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
+
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(hlo,
+                    ShapeInference::InferAllReduceStartShape(operand_shapes));
+}
+
+Status ShapeVerifier::HandleAllReduceDone(HloInstruction* hlo) {
+  return CheckShape(
+      hlo, ShapeInference::InferAllReduceDoneShape(hlo->operand(0)->shape()));
+}
+
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   auto* all_to_all = Cast<HloAllToAllInstruction>(hlo);
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
@@ -597,7 +619,10 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
 }
 
 Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
-  if (!hlo->shape().IsTuple() || hlo->shape().tuple_shapes_size() != 2) {
+  if (!hlo->shape().IsTuple()) {
+    return Status::OK();
+  }
+  if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() != 2) {
     return InternalError(
         "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
         hlo->shape().ToString());
@@ -1174,6 +1199,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
@@ -1572,6 +1599,16 @@ Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
+        case HloOpcode::kAllReduceStart: {
+          TF_RETURN_IF_ERROR(
+              VerifySingleUser(instruction, HloOpcode::kAllReduceDone));
+          break;
+        }
+        case HloOpcode::kAllReduceDone: {
+          TF_RETURN_IF_ERROR(
+              VerifySingleOperand(instruction, HloOpcode::kAllReduceStart));
+          break;
+        }
         case HloOpcode::kCopyStart: {
           TF_RETURN_IF_ERROR(
               VerifySingleUser(instruction, HloOpcode::kCopyDone));
@@ -1606,7 +1643,8 @@ Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
   const HloAllReduceInstruction* reference = nullptr;
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kAllReduce) {
+      if ((instruction->opcode() != HloOpcode::kAllReduce) &&
+          (instruction->opcode() != HloOpcode::kAllReduceStart)) {
         continue;
       }
       auto all_reduce = DynCast<HloAllReduceInstruction>(instruction);

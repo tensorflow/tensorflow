@@ -800,6 +800,7 @@ cc_library(
         "graph_constructor.h",
         "graph_runner.h",
         "shape_refiner.h",
+        ":core_cpu_lib_headers",
     ],
     copts = tf_copts(),
     visibility = default_package_visibility + [
@@ -809,22 +810,23 @@ cc_library(
     deps = [
         ":device",
         ":device_factory",
-        ":executor",
         ":function_utils",
         ":memory_types",
-        ":rendezvous_mgr",
         ":session_options",
         ":single_threaded_cpu_device",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + if_static([
+        ":executor",
+        ":rendezvous_mgr",
+    ]),
 )
 
 cc_library(

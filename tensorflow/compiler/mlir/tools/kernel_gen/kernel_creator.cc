@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
@@ -167,10 +168,23 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
     llvm::SmallVector<ParallelOp, 2> innermostPloops;
     mlir::getInnermostParallelLoops(this->getFunction().getOperation(),
                                     innermostPloops);
+    auto is_simple_access_pattern = [](ParallelOp ploop) {
+      for (mlir::Operation& nested : ploop.getBody()->without_terminator()) {
+        if (auto load_op = llvm::dyn_cast<mlir::memref::LoadOp>(nested)) {
+          if (!load_op.getMemRefType().getAffineMaps().empty() ||
+              (!load_op.getIndices().empty() &&
+               load_op.getIndices() != ploop.getInductionVars())) {
+            return false;
+          }
+        }
+      }
+      return true;
+    };
+
     for (ParallelOp ploop : innermostPloops) {
-      // Support unrolling only for the simple shapes (same shapes or when one
-      // of the arguments is a constant), i.e. it's not inside `shape.assuming`.
-      if (ploop->getParentOfType<mlir::shape::AssumingOp>() != nullptr) {
+      // Support unrolling only for simple memory access patterns (that result
+      // from same shape operands, scalar operands, and/or constant operands).
+      if (!is_simple_access_pattern(ploop)) {
         tileParallelLoop(ploop, tile_sizes_);
         continue;
       }
@@ -200,19 +214,27 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
 
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createTransformUnrankedHloPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createRankSpecializationClusterPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createRankSpecializationToSCFPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLowerComplexPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateShapeSimplification());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createMoveUpDynamicBroadcastsForFusionPass());
 
   // Transform HLO operations to LinAlg.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+
+  // Convert operations from the Complex dialect to the Standard/Math dialects.
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createConvertComplexToStandardPass());
+
   // Fuse linalg operations.
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgFusionOfTensorOpsPass());
 
@@ -237,6 +259,9 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   if (cpu_codegen) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateVectorizationPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createBufferLoopHoistingPass());
+    pm.addNestedPass<::mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateShapeSimplification());
     pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
     pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
     pm.addNestedPass<mlir::FuncOp>(

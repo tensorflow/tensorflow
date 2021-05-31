@@ -1186,7 +1186,8 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
 
     cropped = array_ops.slice(
         image, array_ops.stack([0, offset_height, offset_width, 0]),
-        array_ops.stack([-1, target_height, target_width, -1]))
+        array_ops.stack([array_ops.shape(image)[0], target_height, target_width,
+                         array_ops.shape(image)[3]]))
 
     cropped_shape = [
         None if _is_tensor(i) else i

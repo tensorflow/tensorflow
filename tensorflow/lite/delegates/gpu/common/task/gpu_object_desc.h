@@ -180,7 +180,9 @@ class GPUObjectDescriptor {
       std::string* result) const {
     return absl::UnimplementedError("No implementation of perform selector");
   }
-  virtual GPUResources GetGPUResources() const { return GPUResources(); }
+  virtual GPUResources GetGPUResources(const GpuInfo& gpu_info) const {
+    return GPUResources();
+  }
 
   virtual void Release() {}
 

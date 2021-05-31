@@ -417,135 +417,55 @@ BB2_11:
  ret;
 }
 
- // .globl __xla_int8_comparison
 .visible .entry __xla_int8_comparison(
- .param .u64 __xla_int8_comparison_param_0,
- .param .u64 __xla_int8_comparison_param_1,
- .param .f32 __xla_int8_comparison_param_2,
- .param .u64 __xla_int8_comparison_param_3,
- .param .u64 __xla_int8_comparison_param_4
+.param .u64 __xla_int8_comparison_param_0,
+.param .u64 __xla_int8_comparison_param_1,
+.param .f32 __xla_int8_comparison_param_2,
+.param .u64 __xla_int8_comparison_param_3,
+.param .u64 __xla_int8_comparison_param_4
 )
 {
- .reg .pred  %p<10>;
- .reg .f32  %f<42>;
- .reg .b32  %r<23>;
- .reg .b64  %rd<12>;
+  .reg .pred %p<5>;
+  .reg .f32 %f<12>;
+  .reg .b32 %r<8>;
+  .reg .b64 %rd<11>;
 
-
- ld.param.u64  %rd2, [__xla_int8_comparison_param_0];
- ld.param.u64  %rd3, [__xla_int8_comparison_param_1];
- ld.param.f32  %f5, [__xla_int8_comparison_param_2];
- ld.param.u64  %rd4, [__xla_int8_comparison_param_3];
- ld.param.u64  %rd5, [__xla_int8_comparison_param_4];
- cvta.to.global.u64  %rd1, %rd5;
- mov.u32  %r4, %ntid.x;
- mov.u32  %r5, %ctaid.x;
- mov.u32  %r6, %tid.x;
- mad.lo.s32  %r1, %r4, %r5, %r6;
- cvt.s64.s32 %rd6, %r1;
- setp.ge.u64 %p1, %rd6, %rd4;
- @%p1 bra  BB3_13;
-
- cvta.to.global.u64  %rd7, %rd2;
- mul.wide.s32  %rd8, %r1, 4;
- add.s64  %rd9, %rd7, %rd8;
- cvta.to.global.u64  %rd10, %rd3;
- add.s64  %rd11, %rd10, %rd8;
- ld.global.u32  %r2, [%rd9];
- cvt.s32.s8  %r7, %r2;
- cvt.rn.f32.s32 %f6, %r7;
- ld.global.u32  %r3, [%rd11];
- cvt.s32.s8  %r8, %r3;
- cvt.rn.f32.s32 %f7, %r8;
- sub.f32  %f8, %f6, %f7;
- abs.f32  %f9, %f8;
- abs.f32  %f10, %f6;
- abs.f32  %f11, %f7;
- max.f32  %f12, %f10, %f11;
- add.f32  %f13, %f12, 0f3F800000;
- div.rn.f32  %f1, %f9, %f13;
- setp.gt.f32 %p2, %f1, %f5;
- @%p2 bra  BB3_3;
-
- abs.f32  %f14, %f1;
- setp.le.f32 %p3, %f14, 0f7F800000;
- @%p3 bra  BB3_4;
-
-BB3_3:
- atom.global.add.u32  %r9, [%rd1], 1;
-
-BB3_4:
- shr.u32  %r10, %r3, 8;
- shr.u32  %r11, %r2, 8;
- cvt.s32.s8  %r12, %r11;
- cvt.rn.f32.s32 %f15, %r12;
- cvt.s32.s8  %r13, %r10;
- cvt.rn.f32.s32 %f16, %r13;
- sub.f32  %f17, %f15, %f16;
- abs.f32  %f18, %f17;
- abs.f32  %f19, %f15;
- abs.f32  %f20, %f16;
- max.f32  %f21, %f19, %f20;
- add.f32  %f22, %f21, 0f3F800000;
- div.rn.f32  %f2, %f18, %f22;
- setp.gt.f32 %p4, %f2, %f5;
- @%p4 bra  BB3_6;
-
- abs.f32  %f23, %f2;
- setp.le.f32 %p5, %f23, 0f7F800000;
- @%p5 bra  BB3_7;
-
-BB3_6:
- atom.global.add.u32  %r14, [%rd1], 1;
-
-BB3_7:
- shr.u32  %r15, %r3, 16;
- shr.u32  %r16, %r2, 16;
- cvt.s32.s8  %r17, %r16;
- cvt.rn.f32.s32 %f24, %r17;
- cvt.s32.s8  %r18, %r15;
- cvt.rn.f32.s32 %f25, %r18;
- sub.f32  %f26, %f24, %f25;
- abs.f32  %f27, %f26;
- abs.f32  %f28, %f24;
- abs.f32  %f29, %f25;
- max.f32  %f30, %f28, %f29;
- add.f32  %f31, %f30, 0f3F800000;
- div.rn.f32  %f3, %f27, %f31;
- setp.gt.f32 %p6, %f3, %f5;
- @%p6 bra  BB3_9;
-
- abs.f32  %f32, %f3;
- setp.le.f32 %p7, %f32, 0f7F800000;
- @%p7 bra  BB3_10;
-
-BB3_9:
- atom.global.add.u32  %r19, [%rd1], 1;
-
-BB3_10:
- shr.s32  %r20, %r2, 24;
- cvt.rn.f32.s32 %f33, %r20;
- shr.s32  %r21, %r3, 24;
- cvt.rn.f32.s32 %f34, %r21;
- sub.f32  %f35, %f33, %f34;
- abs.f32  %f36, %f35;
- abs.f32  %f37, %f33;
- abs.f32  %f38, %f34;
- max.f32  %f39, %f37, %f38;
- add.f32  %f40, %f39, 0f3F800000;
- div.rn.f32  %f4, %f36, %f40;
- setp.gt.f32 %p8, %f4, %f5;
- @%p8 bra  BB3_12;
-
- abs.f32  %f41, %f4;
- setp.le.f32 %p9, %f41, 0f7F800000;
- @%p9 bra  BB3_13;
-
-BB3_12:
- atom.global.add.u32  %r22, [%rd1], 1;
-
-BB3_13:
- ret;
+  ld.param.u64 %rd8, [__xla_int8_comparison_param_3];
+  mov.u32 %r1, %tid.x;
+  mov.u32 %r2, %ctaid.x;
+  mov.u32 %r3, %ntid.x;
+  mad.lo.s32 %r4, %r3, %r2, %r1;
+  cvt.s64.s32 %rd4, %r4;
+  setp.ge.u64 %p1, %rd4, %rd8;
+  @%p1 bra LBB7_3;
+  ld.param.f32 %f1, [__xla_int8_comparison_param_2];
+  ld.param.u64 %rd5, [__xla_int8_comparison_param_0];
+  ld.param.u64 %rd7, [__xla_int8_comparison_param_1];
+  cvta.to.global.u64 %rd2, %rd7;
+  cvta.to.global.u64 %rd3, %rd5;
+  add.s64 %rd9, %rd3, %rd4;
+  ld.global.s8 %r5, [%rd9];
+  add.s64 %rd10, %rd2, %rd4;
+  ld.global.s8 %r6, [%rd10];
+  cvt.rn.f32.s32 %f2, %r5;
+  cvt.rn.f32.s32 %f3, %r6;
+  sub.f32 %f4, %f2, %f3;
+  abs.f32 %f5, %f4;
+  abs.f32 %f6, %f2;
+  abs.f32 %f7, %f3;
+  max.f32 %f8, %f6, %f7;
+  add.f32 %f9, %f8, 0f3F800000;
+  div.rn.f32 %f10, %f5, %f9;
+  setp.leu.f32 %p2, %f10, %f1;
+  abs.f32 %f11, %f10;
+  setp.le.f32 %p3, %f11, 0f7F800000;
+  and.pred %p4, %p2, %p3;
+  @%p4 bra LBB7_3;
+  ld.param.u64 %rd6, [__xla_int8_comparison_param_4];
+  cvta.to.global.u64 %rd1, %rd6;
+  atom.global.add.u32 %r7, [%rd1], 1;
+LBB7_3:
+  ret;
 }
 )";
 
@@ -704,7 +624,8 @@ static StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
 
   TF_ASSIGN_OR_RETURN(bool host_return,
                       (HostCompare<ElementT, ComparisonT>(stream, lhs, rhs)));
-  CHECK(host_return == result) << "Different comparison result on GPU vs host";
+  CHECK_EQ(host_return, result)
+      << "Host comparison succeeded even though GPU comparison failed.";
 
   return false;
 }

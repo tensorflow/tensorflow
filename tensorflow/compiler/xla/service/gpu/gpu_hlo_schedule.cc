@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
+
 #include <deque>
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
-
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
@@ -184,6 +185,86 @@ void BFSLaunchOrder(const HloComputation* computation,
   }
 }
 
+bool CustomCallWithSchedule(const HloInstruction* instr,
+                            CustomCallSchedule schedule) {
+  return instr->opcode() == HloOpcode::kCustomCall &&
+         static_cast<const HloCustomCallInstruction*>(instr)
+                 ->custom_call_schedule() == schedule;
+}
+
+// Schedules EARLIEST and LATEST custom-calls. This supports a custom-call use
+// case, where a logical operation is lowered into two HLOs (e.g., PerformX and
+// PerformXDone). We utilize this mechanism to either hide host latencies
+// between the pair of the custom-calls or more accurately identify the def-use
+// relationship of the two calls (typically PerformX is scheduled right after
+// all of its producers have been scheduled and PerformXDone is scheduled right
+// before its first consumer.)
+HloInstructionSequence PostprocessorToCustomSchedule(
+    const HloInstructionSequence& input) {
+  // Schedule `EARLIEST`.
+  std::deque<HloInstruction*> earliest_scheduled;
+  {
+    absl::flat_hash_set<HloInstruction*> scheduled;
+    auto is_scheduled = [&](const HloInstruction* instr) -> bool {
+      return scheduled.contains(instr);
+    };
+    for (HloInstruction* instr : input.instructions()) {
+      if (is_scheduled(instr)) {
+        continue;
+      }
+
+      earliest_scheduled.push_back(instr);
+      scheduled.insert(instr);
+
+      for (HloInstruction* user : instr->users()) {
+        // Schedule any user who has the attribute `EARLIEST` and all
+        // of its producers and control_predecessors have been scheduled.
+        if (CustomCallWithSchedule(user,
+                                   CustomCallSchedule::SCHEDULE_EARLIEST) &&
+            absl::c_all_of(user->operands(), is_scheduled) &&
+            absl::c_all_of(user->control_predecessors(), is_scheduled)) {
+          earliest_scheduled.push_back(user);
+          scheduled.insert(user);
+        }
+      }
+    }
+  }
+
+  // Schedule `LATEST`.
+  std::deque<HloInstruction*> latest_scheduled;
+  {
+    absl::flat_hash_set<HloInstruction*> scheduled;
+    auto is_scheduled = [&](const HloInstruction* instr) -> bool {
+      return scheduled.contains(instr);
+    };
+    for (auto it = earliest_scheduled.rbegin(); it != earliest_scheduled.rend();
+         it++) {
+      if (is_scheduled(*it)) {
+        continue;
+      }
+
+      latest_scheduled.push_front(*it);
+      scheduled.insert(*it);
+
+      for (HloInstruction* opnd : (*it)->unique_operands()) {
+        // Schedule any opnd who has the attribute `LATEST` if all of
+        // its users and control_successors have been scheduled.
+        if (CustomCallWithSchedule(opnd, CustomCallSchedule::SCHEDULE_LATEST) &&
+            absl::c_all_of(opnd->users(), is_scheduled) &&
+            absl::c_all_of(opnd->control_successors(), is_scheduled)) {
+          latest_scheduled.push_front(opnd);
+          scheduled.insert(opnd);
+        }
+      }
+    }
+  }
+
+  HloInstructionSequence result;
+  absl::c_for_each(latest_scheduled,
+                   [&](HloInstruction* i) { result.push_back(i); });
+  return result;
+}
+
 }  // end namespace
 
 GpuHloSchedule::GpuHloSchedule() {}
@@ -206,7 +287,8 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
             [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             },
-            ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler)));
+            ComputationSchedulerToModuleScheduler(
+                DefaultMemoryScheduler, PostprocessorToCustomSchedule)));
     schedule->thunk_launch_order_ =
         sequences.sequence(entry_computation).instructions();
     schedule->hlo_ordering_ =

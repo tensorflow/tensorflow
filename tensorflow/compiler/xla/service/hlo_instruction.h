@@ -698,6 +698,25 @@ class HloInstruction {
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
+  // Creates an asynchronous cross replica reduction op.
+  //
+  // `reduction_computation`: the reduction function.
+  //
+  // `replica_groups`: each ReplicaGroup contains a list of replica id. If
+  // empty, all replicas belong to one group in the order of 0 - (n-1).
+  // Allreduce will be applied within subgroups.
+  // For example, we have 4 replicas, then replica_groups={{0,2},{1,3}} means,
+  // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
+  //
+  // `channel_id`: for Allreduce nodes from different modules, if
+  // they have the same channel_id, they will be 'Allreduce'd. If
+  // empty, Allreduce will not be applied cross modules.
+  static std::unique_ptr<HloInstruction> CreateAllReduceStart(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
   //
@@ -2234,6 +2253,7 @@ string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
+StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

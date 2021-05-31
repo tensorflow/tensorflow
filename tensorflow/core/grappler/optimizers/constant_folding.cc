@@ -1138,10 +1138,12 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
   *t->mutable_tensor_shape() = shape;
   switch (type) {
     case DT_HALF:
-      t->add_half_val(static_cast<Eigen::half>(value).x);
+      t->add_half_val(
+          Eigen::numext::bit_cast<uint16>(static_cast<Eigen::half>(value)));
       break;
     case DT_BFLOAT16:
-      t->add_half_val(static_cast<bfloat16>(value).value);
+      t->add_half_val(
+          Eigen::numext::bit_cast<uint16>(static_cast<bfloat16>(value)));
       break;
       SET_TENSOR_VAL_CASE(DT_FLOAT, float, float);
       SET_TENSOR_VAL_CASE(DT_DOUBLE, double, double);
@@ -1355,9 +1357,12 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
-    CHECK(value->FromProto(raw_val))
-        << "Unable to make Tensor from proto for " << node.name()
-        << " with shape " << raw_val.tensor_shape().DebugString();
+    if (!value->FromProto(raw_val)) {
+      delete (value);
+      return errors::InvalidArgument("Unable to make Tensor from proto for ",
+                                     node.name(), " with shape ",
+                                     raw_val.tensor_shape().DebugString());
+    }
     inputs.emplace_back(value);
     total_inputs_size += value->TotalBytes();
   }

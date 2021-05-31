@@ -355,7 +355,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
-    deps = ["//tensorflow/core/kernels:quantization_utils"] + MKL_DEPS,
+    deps = [
+        "//tensorflow/core/kernels:no_op",
+        "//tensorflow/core/kernels:quantization_utils",
+    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(

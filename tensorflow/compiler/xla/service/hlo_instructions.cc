@@ -666,12 +666,13 @@ bool HloAllGatherInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 }
 
 HloAllReduceInstruction::HloAllReduceInstruction(
-    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids)
-    : HloCollectiveInstruction(HloOpcode::kAllReduce, shape, operands,
-                               replica_groups, constrain_layout, channel_id),
+    : HloCollectiveInstruction(opcode, shape, operands, replica_groups,
+                               constrain_layout, channel_id),
       use_global_device_ids_(use_global_device_ids) {
   AppendComputation(reduce_computation);
 }
@@ -705,6 +706,9 @@ bool HloAllReduceInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
+  if (opcode() != other.opcode()) {
+    return false;
+  }
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
              other, eq_computations) &&
@@ -718,8 +722,8 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, new_operands, to_apply(), replica_groups(), constrain_layout(),
-      channel_id(), use_global_device_ids());
+      opcode(), shape, new_operands, to_apply(), replica_groups(),
+      constrain_layout(), channel_id(), use_global_device_ids());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(
@@ -2428,7 +2432,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       batch_group_count_(1),
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2445,7 +2450,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       batch_group_count_(1),
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2463,7 +2469,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       batch_group_count_(1),
       layout_constrained_(false),
       padding_type_(PaddingType::PADDING_INVALID),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2485,7 +2492,8 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       padding_type_(PaddingType::PADDING_INVALID),
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
                                   operand_shapes_with_layout.end()),
-      custom_call_has_side_effect_(false) {
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2526,6 +2534,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
       aliasing->add_operand_shape_index(index);
     }
   }
+  proto.set_custom_call_schedule(custom_call_schedule_);
   return proto;
 }
 
@@ -2582,6 +2591,10 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     }
     extra.push_back(StrCat("output_to_operand_aliasing={",
                            StrJoin(pair_strings, ", "), "}"));
+  }
+  if (custom_call_schedule_ != CustomCallSchedule::SCHEDULE_NONE) {
+    extra.push_back(
+        StrCat("schedule=", CustomCallSchedule_Name(custom_call_schedule_)));
   }
   return extra;
 }
@@ -2649,6 +2662,9 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       return false;
     }
   }
+  if (custom_call_schedule_ != casted_other.custom_call_schedule()) {
+    return false;
+  }
   if (HasLiteral() == casted_other.HasLiteral()) {
     if (HasLiteral() && literal() == casted_other.literal()) {
       return false;
@@ -2656,7 +2672,6 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   } else {
     return true;
   }
-
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
   return custom_call_target_ == casted_other.custom_call_target_;
@@ -2687,6 +2702,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   cloned->set_output_to_operand_aliasing(output_to_operand_aliasing_);
   cloned->set_padding_type(padding_type_);
   *cloned->mutable_precision_config() = precision_config();
+  cloned->set_custom_call_schedule(custom_call_schedule_);
   return std::move(cloned);
 }
 

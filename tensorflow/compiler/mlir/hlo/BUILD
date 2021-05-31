@@ -324,6 +324,7 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"],
     includes = ["include"],
     deps = [
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -578,6 +579,7 @@ cc_library(
         ":hlo",
         ":hlo_ops_base_enums",
         ":hlo_ops_base_structs",
+        ":hlo_ops_common",
         ":infer_fusibility_op_interface",
         ":lhlo_gpu_ops_enums",
         ":lhlo_gpu_ops_inc_gen",

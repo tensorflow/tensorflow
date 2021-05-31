@@ -426,7 +426,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.constrain_layout(), channel_id, proto.use_global_device_ids());
       break;
     }
-    case HloOpcode::kAllReduce: {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "AllReduce should have 1 called computation but sees "
           << proto.called_computation_ids_size();
@@ -439,14 +440,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      instruction = CreateAllReduce(
-          shape, all_operands(), computations(0),
-          /*replica_groups=*/
-          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
-                                    proto.replica_groups().end()),
-          /*constrain_layout=*/proto.constrain_layout(),
-          /*channel_id=*/channel_id,
-          /*use_global_device_ids=*/proto.use_global_device_ids());
+      std::vector<ReplicaGroup> replica_groups(proto.replica_groups().begin(),
+                                               proto.replica_groups().end());
+      if (opcode == HloOpcode::kAllReduce) {
+        instruction =
+            CreateAllReduce(shape, all_operands(), computations(0),
+                            replica_groups, proto.constrain_layout(),
+                            channel_id, proto.use_global_device_ids());
+      } else {
+        instruction =
+            CreateAllReduceStart(shape, all_operands(), computations(0),
+                                 replica_groups, proto.constrain_layout(),
+                                 channel_id, proto.use_global_device_ids());
+      }
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -657,6 +663,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       custom_call_instr->set_output_to_operand_aliasing(
           std::move(output_to_operand_aliasing));
+      custom_call_instr->set_custom_call_schedule(proto.custom_call_schedule());
       break;
     }
     case HloOpcode::kPad:
@@ -928,6 +935,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
   // instructions with no auxiliary fields.
   switch (opcode) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
@@ -1098,8 +1106,19 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
     const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids) {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, operands, reduce_computation, replica_groups, constrain_layout,
-      channel_id, use_global_device_ids);
+      HloOpcode::kAllReduce, shape, operands, reduce_computation,
+      replica_groups, constrain_layout, channel_id, use_global_device_ids);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateAllReduceStart(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+  return absl::make_unique<HloAllReduceInstruction>(
+      HloOpcode::kAllReduceStart, shape, operands, reduce_computation,
+      replica_groups, constrain_layout, channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
@@ -1598,6 +1617,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
@@ -1757,6 +1778,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
@@ -1782,6 +1804,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
@@ -2188,6 +2211,7 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kAtan2:
     case HloOpcode::kAdd:
     case HloOpcode::kBitcast:
@@ -2297,6 +2321,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kOutfeed:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
@@ -2502,6 +2527,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
     case HloOpcode::kCustomCall:
@@ -2523,6 +2549,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
     case HloOpcode::kCustomCall:
@@ -2917,6 +2944,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kReduceWindow ||
                opcode() == HloOpcode::kReduce ||
                opcode() == HloOpcode::kAllReduce ||
+               opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
       extra.push_back(
@@ -2979,6 +3007,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kReduceWindow:
       case HloOpcode::kReduce:
       case HloOpcode::kAllReduce:
+      case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
         extra.push_back(
@@ -3228,6 +3257,10 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAllGather(this);
     case HloOpcode::kAllReduce:
       return visitor->HandleAllReduce(this);
+    case HloOpcode::kAllReduceStart:
+      return visitor->HandleAllReduceStart(this);
+    case HloOpcode::kAllReduceDone:
+      return visitor->HandleAllReduceDone(this);
     case HloOpcode::kAllToAll:
       return visitor->HandleAllToAll(this);
     case HloOpcode::kCollectivePermute:
@@ -3798,25 +3831,44 @@ string PrecisionToString(const PrecisionConfig::Precision& precision) {
   return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
 }
 
+static string CustomCallScheduleToString(const CustomCallSchedule& schedule) {
+  return absl::AsciiStrToLower(CustomCallSchedule_Name(schedule));
+}
+
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
+  auto len_required = [](int64 a, int64 b, absl::Span<const int64> cs) {
+    return std::max({a, b, cs.empty() ? 0 : *absl::c_max_element(cs)}) + 1;
+  };
+
   // lhs_dims[i] is the symbol of the logical dimension i for the lhs
   // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
-  std::vector<string> lhs_dims(2 + dnums.input_spatial_dimensions().size());
+  std::vector<string> lhs_dims(len_required(dnums.input_batch_dimension(),
+                                            dnums.input_feature_dimension(),
+                                            dnums.input_spatial_dimensions()),
+                               "?");
   lhs_dims[dnums.input_batch_dimension()] = 'b';
   lhs_dims[dnums.input_feature_dimension()] = 'f';
   for (int64 i = 0; i < dnums.input_spatial_dimensions().size(); ++i) {
     lhs_dims[dnums.input_spatial_dimensions(i)] = StrCat(i);
   }
 
-  std::vector<string> rhs_dims(2 + dnums.kernel_spatial_dimensions().size());
+  std::vector<string> rhs_dims(
+      len_required(dnums.kernel_input_feature_dimension(),
+                   dnums.kernel_output_feature_dimension(),
+                   dnums.kernel_spatial_dimensions()),
+      "?");
   rhs_dims[dnums.kernel_input_feature_dimension()] = "i";
   rhs_dims[dnums.kernel_output_feature_dimension()] = "o";
   for (int64 i = 0; i < dnums.kernel_spatial_dimensions().size(); ++i) {
     rhs_dims[dnums.kernel_spatial_dimensions(i)] = StrCat(i);
   }
 
-  std::vector<string> output_dims(2 + dnums.output_spatial_dimensions().size());
+  std::vector<string> output_dims(
+      len_required(dnums.output_batch_dimension(),
+                   dnums.output_feature_dimension(),
+                   dnums.output_spatial_dimensions()),
+      "?");
   output_dims[dnums.output_batch_dimension()] = 'b';
   output_dims[dnums.output_feature_dimension()] = 'f';
   for (int64 i = 0; i < dnums.output_spatial_dimensions().size(); ++i) {
@@ -3888,6 +3940,25 @@ StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown distribution");
+  }
+  return found->second;
+}
+
+StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
+    absl::string_view name) {
+  static const absl::flat_hash_map<string, CustomCallSchedule>* map = [] {
+    static auto* map = new absl::flat_hash_map<string, CustomCallSchedule>;
+    for (int i = 0; i < CustomCallSchedule_ARRAYSIZE; i++) {
+      if (CustomCallSchedule_IsValid(i)) {
+        auto value = static_cast<CustomCallSchedule>(i);
+        (*map)[CustomCallScheduleToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(absl::AsciiStrToLower(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown schedule");
   }
   return found->second;
 }

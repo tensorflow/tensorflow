@@ -175,6 +175,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":convert",
+        ":convert_phase",
         ":convert_saved_model",
         ":interpreter",
         ":lite_constants",
@@ -182,7 +183,6 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
-        "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/saved_model:constants",
@@ -360,6 +360,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":convert_phase",
         ":lite_constants",
         ":util",
         ":wrap_toco",
@@ -413,6 +414,7 @@ py_library(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
+        ":convert_phase",
         ":util",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
@@ -555,6 +557,22 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
         "//tensorflow/lite/tools:visualize",
+    ],
+)
+
+py_test(
+    name = "analyzer_test",
+    srcs = ["analyzer_test.py"],
+    data = [
+        "//tensorflow/lite:testdata/conv_huge_im2col.bin",
+        "//tensorflow/lite/python/testdata:interpreter_test_data",
+    ],
+    python_version = "PY3",
+    deps = [
+        ":analyzer",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )

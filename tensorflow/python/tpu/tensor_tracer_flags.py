@@ -452,8 +452,8 @@ class TTParameters(object):
     """Returns True if TensorTracer is enabled."""
 
     if self.is_flag_on(FLAG_NAME_ENABLE):
-      logging.info('Tensor Tracer is enabled with flags %s.' %
-                   self._env.get(FLAGS_ENV_VAR))
+      logging.debug('Tensor Tracer is enabled with flags %s.',
+                    self._env.get(FLAGS_ENV_VAR))
       return True
     else:
       return False
