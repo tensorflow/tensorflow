@@ -168,10 +168,23 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
     llvm::SmallVector<ParallelOp, 2> innermostPloops;
     mlir::getInnermostParallelLoops(this->getFunction().getOperation(),
                                     innermostPloops);
+    auto is_simple_access_pattern = [](ParallelOp ploop) {
+      for (mlir::Operation& nested : ploop.getBody()->without_terminator()) {
+        if (auto load_op = llvm::dyn_cast<mlir::memref::LoadOp>(nested)) {
+          if (!load_op.getMemRefType().getAffineMaps().empty() ||
+              (!load_op.getIndices().empty() &&
+               load_op.getIndices() != ploop.getInductionVars())) {
+            return false;
+          }
+        }
+      }
+      return true;
+    };
+
     for (ParallelOp ploop : innermostPloops) {
-      // Support unrolling only for the simple shapes (same shapes or when one
-      // of the arguments is a constant), i.e. it's not inside `shape.assuming`.
-      if (ploop->getParentOfType<mlir::shape::AssumingOp>() != nullptr) {
+      // Support unrolling only for simple memory access patterns (that result
+      // from same shape operands, scalar operands, and/or constant operands).
+      if (!is_simple_access_pattern(ploop)) {
         tileParallelLoop(ploop, tile_sizes_);
         continue;
       }
