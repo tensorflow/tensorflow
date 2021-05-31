@@ -822,6 +822,10 @@ TfLiteTensor* MicroAllocator::AllocateTempTfLiteTensor(
     // point the corresponding buffer to the new TfLiteTensor data value.
     tensor->data.data =
         subgraph_allocations[subgraph_index].tensors[tensor_index].data.data;
+    // TfLiteEvalTensor structs must also be the source of truth for the
+    // TfLiteTensor dims.
+    tensor->dims =
+        subgraph_allocations[subgraph_index].tensors[tensor_index].dims;
   }
   return tensor;
 }
