@@ -19,6 +19,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
+#include <limits>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -69,6 +71,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, t->type, input_type);
     for (int d = 0; d < t0->dims->size; ++d) {
       if (d == axis) {
+        // Avoid integer overflow in sum_axis below
+        TF_LITE_ENSURE(context, t->dims->data[axis] >= 0);
+        TF_LITE_ENSURE(context, t->dims->data[axis] <=
+                                    std::numeric_limits<int>::max() - sum_axis);
         sum_axis += t->dims->data[axis];
       } else {
         TF_LITE_ENSURE_EQ(context, t->dims->data[d], t0->dims->data[d]);
