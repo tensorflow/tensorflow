@@ -747,6 +747,16 @@ func @broadcast_to_with_unknown_shape_and_output(%arg0: tensor<1x2x3x4x5x6xf32>,
 // CHECK:  "tf.BroadcastTo"(%arg0, %arg1)
 }
 
+func @broadcast_to_ui32(%arg0: tensor<ui32>, %arg1: tensor<1xi64>) -> tensor<10xui32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<ui32>, tensor<1xi64>) -> tensor<10xui32>
+  return %0: tensor<10xui32>
+
+// CHECK-LABEL: broadcast_to_ui32
+// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<10xui32>
+// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<ui32>, tensor<10xui32>) -> tensor<10xui32>
+// CHECK:  return [[MUL]] : tensor<10xui32>
+}
+
 // CHECK-LABEL: xla_conv
 func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<3x3x16x16xf32>} : () -> tensor<3x3x16x16xf32> loc("Const_1")
