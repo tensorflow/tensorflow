@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_xla_available", "py_test", "py_tests", "tf_enable_mlir_bridge")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -170,7 +170,6 @@ py_library(
         ":standard_ops",
         ":state_ops",
         ":string_ops",
-        ":summary",
         ":tensor_array_ops",
         ":training",
         ":weights_broadcast_ops",
@@ -225,6 +224,8 @@ py_library(
         "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/summary",
+        "//tensorflow/python/summary/writer",
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
         "//tensorflow/python/tpu:tpu_noestimator",
@@ -638,6 +639,8 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/summary:__pkg__",
+        "//tensorflow/python/summary/writer:__pkg__",
     ],
     deps = [
         "//tensorflow/c/kernels:histogram_summary_op_lib",
@@ -3374,73 +3377,16 @@ py_library(
     ],
 )
 
-py_library(
+alias(
     name = "summary",
-    srcs = glob(
-        ["summary/**/*.py"],
-        exclude = [
-            "**/fake*",
-            "**/*test*",
-        ],
-    ),
-    srcs_version = "PY3",
+    actual = "//tensorflow/python/summary:summary",
     visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":logging_ops_gen",
-        ":platform",
-        ":protos_all_py",
-        ":pywrap_tensorflow",
-        ":summary_op_util",
-        ":summary_ops_gen",
-        ":summary_ops_v2",
-        "//tensorflow/python/client",
-        "//tensorflow/python/distribute:summary_op_util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/util",
-        "@six_archive//:six",
-    ],
 )
 
-py_library(
+alias(
     name = "fake_summary_writer",
-    testonly = 1,
-    srcs = ["summary/writer/fake_summary_writer.py"],
-    srcs_version = "PY3",
+    actual = "//tensorflow/python/summary/writer:fake_summary_writer",
     visibility = ["//visibility:public"],
-    deps = [
-        ":protos_all_py",
-        ":summary",
-        "//tensorflow/python/framework:test_lib",
-    ],
-)
-
-py_tests(
-    name = "summary_tests",
-    size = "small",
-    srcs = [
-        "summary/plugin_asset_test.py",
-        "summary/summary_iterator_test.py",
-        "summary/summary_test.py",
-        "summary/writer/writer_test.py",
-    ],
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":platform",
-        ":platform_test",
-        ":summary",
-        ":summary_ops_v2",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/framework:test_lib",
-    ],
 )
 
 # -----------------------------------------------------------------------------
