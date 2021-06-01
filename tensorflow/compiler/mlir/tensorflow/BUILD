@@ -23,6 +23,7 @@ package_group(
         "//learning/brain/mobile/lite/tf_runtime/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//learning/serving/contrib/tfrt/mlir/...",
+        "//platforms/darwinn/contrib/waymo/...",
         "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
