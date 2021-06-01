@@ -62,7 +62,7 @@ class NumpyFunctionTest(test.TestCase):
       constant_op.constant(1),
       constant_op.constant(2),
     )
-    self.assertEqual(call_count, 1)  # +1 as only the first one was executed
+    self.assertEqual(call_count, 1)  # +1 as only the first encounter was executed
 
     @def_function.function(autograph=False)
     def tensor_double_plus_stateful(a, b):
@@ -74,7 +74,7 @@ class NumpyFunctionTest(test.TestCase):
       constant_op.constant(3),
       constant_op.constant(4),
                           )
-    self.assertEqual(call_count, 3)  # +2 as it is stateful, both were executed
+    self.assertEqual(call_count, 3)  # +2 as it is stateful, func was both times executed
 
 
 if __name__ == "__main__":
