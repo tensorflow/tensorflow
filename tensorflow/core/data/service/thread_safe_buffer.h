@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// A thread-safe queue with cancellation support.
+// A thread-safe bounded buffer with cancellation support.
 template <class T>
 class ThreadSafeBuffer final {
  public:
