@@ -640,6 +640,31 @@ tensorflow::Status PrepareToUpdateVariable(TF_OpKernelContext* ctx, tensorflow::
   return Status::OK();
 }
 
+tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
+                                            int32_t input,
+                                            bool sparse,
+                                  void (*copyFunc)(TF_OpKernelContext * ctx,
+                                                   TF_Tensor *source,
+                                                   TF_Tensor *dest),
+                                            tensorflow::Var** maybe_resource) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  *maybe_resource = nullptr;
+  if (ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
+    if (LookupResource(cc_ctx, HandleFromInput(cc_ctx, input), maybe_resource).ok()) {
+      if (sparse) {
+        EnsureSparseVariableAccess(ctx, false, copyFunc, *maybe_resource)
+      }
+      return (*maybe_resource)->mu();
+    } else {
+      cc_ctx->CtxFailureWithWarning(
+          tensorflow::errors::Internal("Invalid variable reference."));
+      return nullptr;
+    }
+  }
+  return cc_ctx->input_ref_mutex(input);
+}
+
+
 void TF_AssignVariable(TF_OpKernelContext* ctx,
                        int input_index,
                        int value_index,
@@ -649,8 +674,6 @@ void TF_AssignVariable(TF_OpKernelContext* ctx,
   tensorflow::AllocatorAttributes allocator_attr;
   tensorflow::core::RefCountPtr<tensorflow::Var> variable;
   const tensorflow::Tensor& value = cc_ctx->input(value_index);
-  auto c_stream = static_cast<stream_executor::CStream*>(
-      cc_ctx->op_device_context()->stream()->implementation());
   OP_REQUIRES_OK(cc_ctx, LookupOrCreateResource<tensorflow::Var>(
                                 cc_ctx, HandleFromInput(cc_ctx, input_index), &variable,
                                 [&value](tensorflow::Var** ptr) {
@@ -681,27 +704,13 @@ void TF_AssignVariable(TF_OpKernelContext* ctx,
   TF_SetStatus(status, TF_OK, "");
 }
 
-tensorflow::mutex* TF_GetTrainingVariableMutex(tensorflow::OpKernelContext* ctx,
-                                               int32_t input,
-                                               bool sparse,
-                                               tensorflow::Var** maybe_resource) {
-  *maybe_resource = nullptr;
-  if (ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
-    if (LookupResource(ctx, HandleFromInput(ctx, input), maybe_resource).ok()) {
-      return (*maybe_resource)->mu();
-    } else {
-      ctx->CtxFailureWithWarning(
-          tensorflow::errors::Internal("Invalid variable reference."));
-      return nullptr;
-    }
-  }
-  return ctx->input_ref_mutex(input);
-}
-
 void TF_MaybeLockVariableInputMutexesInOrder(
     TF_OpKernelContext* ctx, bool do_lock, bool sparse,
     const int* const inputs,
     size_t len,
+    void (*copyFunc)(TF_OpKernelContext * ctx,
+                     TF_Tensor *source,
+                     TF_Tensor *dest),
     TF_VariableInputLockHolder** lockHolder,
     TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
@@ -725,7 +734,7 @@ void TF_MaybeLockVariableInputMutexesInOrder(
   for (auto input : input_ids) {
     tensorflow::Var* var;
     tensorflow::mutex* mutex =
-        TF_GetTrainingVariableMutex(cc_ctx, input, sparse, &var);
+        GetTrainingVariableMutex(ctx, input, sparse, &var);
     if (var) vars.push_back(var);
     // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
     if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
@@ -742,7 +751,7 @@ void TF_MaybeLockVariableInputMutexesInOrder(
 
   for (auto input : acquire_order) {
     tensorflow::Var* var;
-    tensorflow::mutex* mu = TF_GetTrainingVariableMutex(cc_ctx, input, sparse, &var);
+    tensorflow::mutex* mu = GetTrainingVariableMutex(ctx, input, sparse, &var);
     tensorflow::core::ScopedUnref scoped_unref(var);
     if (mu != nullptr) {
       if (do_lock) {
@@ -763,12 +772,12 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx,
                                   bool lock_held,
                                   bool isVariantType,
                                   bool sparse,
-                                  void (*copyFunc)(TF_OpKernelContext * ctx, TF_Tensor *source, TF_Tensor *dest),
+                                  void (*copyFunc)(TF_OpKernelContext * ctx,
+                                                   TF_Tensor *source,
+                                                   TF_Tensor *dest),
                                   TF_Tensor** out,
                                   TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-  auto c_stream = static_cast<stream_executor::CStream*>(
-        cc_ctx->op_device_context()->stream()->implementation());
   tensorflow::Status s;
   if (cc_ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
     tensorflow::core::RefCountPtr<tensorflow::Var> var;

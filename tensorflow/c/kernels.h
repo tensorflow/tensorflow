@@ -380,9 +380,13 @@ TF_CAPI_EXPORT extern void TF_AssignVariable(
 // LockHolder handle back to plugin. This handle is passed to the Release API for 
 // releasing the locks when the weight update is done.
 TF_CAPI_EXPORT extern void TF_MaybeLockVariableInputMutexesInOrder(
-                                    TF_OpKernelContext* ctx, bool do_lock, bool sparse,
+                                    TF_OpKernelContext* ctx,
+                                    bool do_lock, bool sparse,
                                     const int* const input_ids,
                                     size_t len,
+                                    void (*copyFunc)(TF_OpKernelContext * ctx,
+                                                     TF_Tensor *source,
+                                                     TF_Tensor *dest),
                                     TF_VariableInputLockHolder** lockHolder,
                                     TF_Status* status);
 
@@ -402,7 +406,8 @@ TF_CAPI_EXPORT extern void TF_GetInputTensorFromVariable(
 
 // This interface forwards the reference from input to the output tensors
 // corresponding to the indices provided with `input_index` and `output_index` 
-TF_CAPI_EXPORT extern void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKernelContext* ctx,
+TF_CAPI_EXPORT extern void TF_OpKernelContext_ForwardRefInputToRefOutput(
+                                                   TF_OpKernelContext* ctx,
                                                    int32_t input_index,
                                                    int32_t output_index);
 
@@ -412,9 +417,10 @@ TF_CAPI_EXPORT extern void TF_ReleaseVariableInputLockHolder(
                                   TF_VariableInputLockHolder* lockHolder);
 
 // Allows plugin to get TF_Tensor when passed its input_name
-TF_CAPI_EXPORT extern void TF_GetInputByName(TF_OpKernelContext* ctx, const char *inputName,
-                                       TF_Tensor** tensor, TF_Status* status);
-
+TF_CAPI_EXPORT extern void TF_GetInputByName(TF_OpKernelContext* ctx,
+                                             const char *inputName,
+                                             TF_Tensor** tensor,
+                                             TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */
