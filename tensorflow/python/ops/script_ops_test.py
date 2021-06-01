@@ -43,7 +43,7 @@ class NumpyFunctionTest(test.TestCase):
       call_count += 1
       return a + b
 
-    @def_function.function(autograph=False)
+    @def_function.function
     def tensor_double_plus_stateless(a, b):
       sum1 = numpy_function(plus, [a, b], dtypes.int32, stateful=False)
       sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=False)
@@ -56,7 +56,7 @@ class NumpyFunctionTest(test.TestCase):
     )
     self.assertEqual(call_count, 1)  # +1 as only the first encounter was executed
 
-    @def_function.function(autograph=False)
+    @def_function.function
     def tensor_double_plus_stateful(a, b):
       sum1 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
       sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
