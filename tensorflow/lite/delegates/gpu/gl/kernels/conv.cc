@@ -149,6 +149,9 @@ class Convolution : public NodeShader {
 int SelectMultiplier(int32_t input_width,
                      const NodeShader::GenerationContext& ctx) {
   std::vector<int> multipliers = {4, 2};
+  if (ctx.gpu_info->IsAMD()) {
+    return 1;
+  }
   if (!ctx.compiler_options.allow_precision_loss && ctx.gpu_info->IsMali()) {
     multipliers = {2};
   }

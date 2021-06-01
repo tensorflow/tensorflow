@@ -75,6 +75,11 @@ class NnapiPlugin : public DelegatePluginInterface {
     options_.execution_priority =
         ConvertExecutionPriority(nnapi_settings->execution_priority());
     options_.allow_fp16 = nnapi_settings->allow_fp16_precision_for_fp32();
+    options_.use_burst_computation = nnapi_settings->use_burst_computation();
+    if (tflite_settings.max_delegated_partitions() >= 0) {
+      options_.max_number_delegated_partitions =
+          tflite_settings.max_delegated_partitions();
+    }
   }
   const tflite::StatefulNnApiDelegate::Options& Options() { return options_; }
 

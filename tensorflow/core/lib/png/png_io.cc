@@ -113,7 +113,7 @@ void StringWriter(png_structp png_ptr, png_bytep data, png_size_t length) {
 
 void StringWriterFlush(png_structp png_ptr) {}
 
-char* check_metadata_string(const string& s) {
+char* check_metadata_string(const std::string& s) {
   const char* const c_string = s.c_str();
   const size_t length = s.size();
   if (strlen(c_string) != length) {
@@ -138,7 +138,7 @@ void CommonFreeDecode(DecodeContext* context) {
 
 bool DecodeHeader(StringPiece png_string, int* width, int* height,
                   int* components, int* channel_bit_depth,
-                  std::vector<std::pair<string, string> >* metadata) {
+                  std::vector<std::pair<std::string, std::string> >* metadata) {
   DecodeContext context;
   // Ask for 16 bits even if there may be fewer.  This assures that sniffing
   // the metadata will succeed in all cases.
@@ -345,7 +345,7 @@ template <typename T>
 bool WriteImageToBuffer(
     const void* image, int width, int height, int row_bytes, int num_channels,
     int channel_bits, int compression, T* png_string,
-    const std::vector<std::pair<string, string> >* metadata) {
+    const std::vector<std::pair<std::string, std::string> >* metadata) {
   CHECK_NOTNULL(image);
   CHECK_NOTNULL(png_string);
   // Although this case is checked inside png.cc and issues an error message,
@@ -420,14 +420,14 @@ bool WriteImageToBuffer(
   return true;
 }
 
-template bool WriteImageToBuffer<string>(
+template bool WriteImageToBuffer<std::string>(
     const void* image, int width, int height, int row_bytes, int num_channels,
-    int channel_bits, int compression, string* png_string,
-    const std::vector<std::pair<string, string> >* metadata);
+    int channel_bits, int compression, std::string* png_string,
+    const std::vector<std::pair<std::string, std::string> >* metadata);
 template bool WriteImageToBuffer<tstring>(
     const void* image, int width, int height, int row_bytes, int num_channels,
     int channel_bits, int compression, tstring* png_string,
-    const std::vector<std::pair<string, string> >* metadata);
+    const std::vector<std::pair<std::string, std::string> >* metadata);
 
 }  // namespace png
 }  // namespace tensorflow

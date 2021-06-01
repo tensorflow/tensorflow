@@ -32,7 +32,6 @@ import time
 import weakref
 from six.moves import queue
 
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import metric_utils
@@ -278,7 +277,7 @@ def _maybe_get_remote_value(val):
 
 
 def _maybe_as_type_spec(val):
-  if isinstance(val, RemoteValue):
+  if isinstance(val, (RemoteValue, PerWorkerValues)):
     if val._type_spec is None:  # pylint: disable=protected-access
       raise ValueError("Output of a scheduled function that is not "
                        "tf.function cannot be the input of another function.")
@@ -641,7 +640,11 @@ class WorkerPreemptionHandler(object):
 
   def _validate_preemption_failure(self, e):
     """Validates that the given exception represents worker preemption."""
-    if _is_worker_failure(e):
+
+    # Only categorize the failure as a worker preemption if the cancellation
+    # manager did not attempt to cancel the blocking operations.
+    if _is_worker_failure(e) and (
+        not self._cluster._closure_queue._cancellation_mgr.is_cancelled):  # pylint: disable=protected-access
       return
     raise e
 
@@ -674,7 +677,7 @@ class WorkerPreemptionHandler(object):
         return
 
       self._validate_preemption_failure(e)
-      logging.error("Worker %s failed with error: %s", worker_device_name, e)
+      logging.error("Worker %s failed with %r:%s", worker_device_name, e, e)
       if on_failure_fn:
         on_failure_fn()
 
@@ -728,10 +731,10 @@ class WorkerPreemptionHandler(object):
         except Exception as e:  # pylint: disable=broad-except
           try:
             self._validate_preemption_failure(e)
-          except Exception as e:  # pylint: disable=broad-except
+          except Exception as ps_e:  # pylint: disable=broad-except
             # In this case, a parameter server fails. So we raise this error to
             # the caller of `wait_on_failure`.
-            self._error_from_recovery = e
+            self._error_from_recovery = ps_e
             self._worker_up_cond.notify_all()
             if self._should_preemption_thread_run:
               self._cluster_due_for_update_or_finish.clear()
@@ -1249,9 +1252,9 @@ class ClusterCoordinator(object):
       a `tf.distribute.experimental.coordinator.PerWorkerValues` of the
       iterators (that are on the workers).
     """
-    input_workers = input_lib.InputWorkers([
-        (w.device_name, [w.device_name]) for w in self._cluster.workers
-    ])
+    input_workers = input_lib.InputWorkers(
+        [(w.device_name, [w.device_name]) for w in self._cluster.workers],
+        False)
 
     return _PerWorkerDistributedDataset(dataset_fn, input_workers, self)
 
@@ -1383,9 +1386,10 @@ class _PerWorkerDistributedDataset(object):
     # Setting type_spec of each RemoteValue so that functions taking these
     # RemoteValues as inputs can be traced.
     for iterator_remote_value in per_worker_iterator._values:
-      iterator_remote_value._type_spec = (  # pylint: disable=protected-access
-          iterator_ops.IteratorSpec(
-              self._dataset_fn.structured_outputs.element_spec))
+      iterator_remote_value._type_spec = (
+          input_lib.get_iterator_spec_from_dataset(
+              self._coordinator.strategy, self._dataset_fn.structured_outputs))
+
     return _PerWorkerDistributedIterator(per_worker_iterator._values)
 
   @property
@@ -1456,5 +1460,12 @@ def _is_worker_failure(error):
     if ("is neither a type of a primitive operation nor a name of a function "
         "registered" in str(error)):
       return True
+
+  # NOTE(b/179061495): During worker preemptions, if multiple functions are
+  # running concurrently (especially with subfunctions spanning chief/PS),
+  # CancelledError can be returned due to chief/PS cancelling outstanding RPCs
+  # to the failing workers.
+  if isinstance(error, errors.CancelledError):
+    return True
 
   return False

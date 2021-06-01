@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for MirroredStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -130,7 +126,7 @@ class MirroredStrategyDefunTest(test.TestCase, parameterized.TestCase):
       num_epochs = 4
       num_steps = 7
       for _ in range(num_epochs):
-        accuracy.reset_states()
+        accuracy.reset_state()
         for _ in range(num_steps):
           train_step(distributed_iterator)
 

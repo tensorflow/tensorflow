@@ -262,7 +262,7 @@ class ConstantTest(test.TestCase):
       def __init__(self):
         super(BadList, self).__init__([1, 2, 3])  # pylint: disable=invalid-length-returned
 
-      def __len__(self):
+      def __len__(self):  # pylint: disable=invalid-length-returned
         return -1
 
     with self.assertRaisesRegex(ValueError, "should return >= 0"):

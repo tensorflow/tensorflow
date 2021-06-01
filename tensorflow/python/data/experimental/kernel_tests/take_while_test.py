@@ -127,8 +127,8 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, np.tile([0, 1], 5))
 
 
-class TakeWhileDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                     parameterized.TestCase):
+class TakeWhileCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                              parameterized.TestCase):
 
   def _build_dataset(self, num_elements, upper_bound):
     return dataset_ops.Dataset.range(num_elements).apply(

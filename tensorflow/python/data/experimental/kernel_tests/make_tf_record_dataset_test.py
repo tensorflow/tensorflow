@@ -19,9 +19,9 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
@@ -30,16 +30,25 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
-class MakeTFRecordDatasetTest(
-    reader_dataset_ops_test_base.TFRecordDatasetTestBase,
-    parameterized.TestCase):
+class MakeTFRecordDatasetTest(tf_record_test_base.TFRecordTestBase,
+                              parameterized.TestCase):
 
-  def _read_test(self, batch_size, num_epochs, file_index=None,
-                 num_parallel_reads=1, drop_final_batch=False, parser_fn=False):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              batch_size=[1, 2],
+              num_epochs=[1, 3],
+              file_index=[None, 1],
+              num_parallel_reads=[1, 8],
+              drop_final_batch=[False, True],
+              parser_fn=[True, False])))
+  def testRead(self, batch_size, num_epochs, file_index, num_parallel_reads,
+               drop_final_batch, parser_fn):
     if file_index is None:
-      file_pattern = self.test_filenames
+      file_pattern = self._filenames
     else:
-      file_pattern = self.test_filenames[file_index]
+      file_pattern = self._filenames[file_index]
 
     if parser_fn:
       fn = lambda x: string_ops.substr(x, 1, 999)
@@ -66,52 +75,19 @@ class MakeTFRecordDatasetTest(
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(outputs())
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRead(self):
-    for batch_size in [1, 2]:
-      for num_epochs in [1, 3]:
-        # Basic test: read from file 0.
-        self._read_test(batch_size, num_epochs, 0)
-
-        # Basic test: read from file 1.
-        self._read_test(batch_size, num_epochs, 1)
-
-        # Basic test: read from both files.
-        self._read_test(batch_size, num_epochs)
-
-        # Basic test: read from both files, with parallel reads.
-        self._read_test(batch_size, num_epochs, num_parallel_reads=8)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testDropFinalBatch(self):
-    for batch_size in [1, 2, 10]:
-      for num_epochs in [1, 3]:
-        # Read from file 0.
-        self._read_test(batch_size, num_epochs, 0, drop_final_batch=True)
-
-        # Read from both files.
-        self._read_test(batch_size, num_epochs, drop_final_batch=True)
-
-        # Read from both files, with parallel reads.
-        self._read_test(batch_size, num_epochs, num_parallel_reads=8,
-                        drop_final_batch=True)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testParserFn(self):
-    for batch_size in [1, 2]:
-      for num_epochs in [1, 3]:
-        for drop_final_batch in [False, True]:
-          self._read_test(batch_size, num_epochs, parser_fn=True,
-                          drop_final_batch=drop_final_batch)
-          self._read_test(batch_size, num_epochs, num_parallel_reads=8,
-                          parser_fn=True, drop_final_batch=drop_final_batch)
-
-  def _shuffle_test(self, batch_size, num_epochs, num_parallel_reads=1,
-                    seed=None):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              batch_size=[1, 2],
+              num_epochs=[1, 3],
+              num_parallel_reads=[1, 2],
+              seed=[None, 21345])))
+  def testShuffle(self, batch_size, num_epochs, num_parallel_reads, seed):
 
     def dataset_fn():
       return readers.make_tf_record_dataset(
-          file_pattern=self.test_filenames,
+          file_pattern=self._filenames,
           num_epochs=num_epochs,
           batch_size=batch_size,
           num_parallel_reads=num_parallel_reads,
@@ -152,21 +128,9 @@ class MakeTFRecordDatasetTest(
       self.assertAllEqual(sorted(expected), sorted(actual))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testShuffle(self):
-    for batch_size in [1, 2]:
-      for num_epochs in [1, 3]:
-        for num_parallel_reads in [1, 2]:
-          # Test that all expected elements are produced
-          self._shuffle_test(batch_size, num_epochs, num_parallel_reads)
-          # Test that elements are produced in a consistent order if
-          # you specify a seed.
-          self._shuffle_test(batch_size, num_epochs, num_parallel_reads,
-                             seed=21345)
-
-  @combinations.generate(test_base.default_test_combinations())
   def testIndefiniteRepeatShapeInference(self):
     dataset = readers.make_tf_record_dataset(
-        file_pattern=self.test_filenames, num_epochs=None, batch_size=32)
+        file_pattern=self._filenames, num_epochs=None, batch_size=32)
     for shape in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)):
       self.assertEqual(32, shape[0])
 

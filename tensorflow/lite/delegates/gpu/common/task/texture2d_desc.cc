@@ -22,7 +22,8 @@ namespace gpu {
 
 void Texture2DDescriptor::Release() { data.clear(); }
 
-GPUResources Texture2DDescriptor::GetGPUResources() const {
+GPUResources Texture2DDescriptor::GetGPUResources(
+    const GpuInfo& gpu_info) const {
   GPUResources resources;
   GPUImage2DDescriptor desc;
   desc.data_type = element_type;
@@ -30,6 +31,10 @@ GPUResources Texture2DDescriptor::GetGPUResources() const {
   desc.normalized_type = normalized_type;
   desc.access_type = access_type_;
   resources.images2d.push_back({"tex2d", desc});
+  if (gpu_info.IsApiOpenGl() && gpu_info.opengl_info.major_version < 3) {
+    resources.floats.push_back("inv_tex_width");
+    resources.floats.push_back("inv_tex_height");
+  }
   return resources;
 }
 
@@ -93,6 +98,16 @@ absl::Status Texture2DDescriptor::PerformReadSelector(
     *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0],
                            ", " + args[1] + "))");
     return absl::OkStatus();
+  } else if (gpu_info.IsApiOpenGl()) {
+    if (gpu_info.opengl_info.major_version < 3) {
+      *result = absl::StrCat("texture2D(tex2d, vec2(float(", args[0],
+                             ") * inv_tex_width, float(", args[1],
+                             ") * inv_tex_height))");
+      return absl::OkStatus();
+    } else {
+      *result = "texelFetch(tex2d, ivec2(" + args[0] + ", " + args[1] + "), 0)";
+      return absl::OkStatus();
+    }
   } else {
     return absl::UnimplementedError(
         "No implementation of Texture2D.Read for this API.");

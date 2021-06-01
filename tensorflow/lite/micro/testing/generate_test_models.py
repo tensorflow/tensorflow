@@ -28,7 +28,7 @@ from __future__ import print_function
 
 from absl import app
 import numpy as np
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 
 def generate_conv_model():

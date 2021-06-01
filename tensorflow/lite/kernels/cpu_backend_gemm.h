@@ -120,6 +120,13 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
           CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
+  if (!IsValidGemm(lhs_params, rhs_params, dst_params)) {
+    // For now, assert in debug mode, return in opt.
+    // TODO(b/183099395) Eliminate debug/release discrepancy by plumbing in
+    // TFLiteStatus so we can return an error here.
+    TFLITE_DCHECK(false);
+    return;
+  }
   // In some cases we want to unconditionally use ruy as the backend, overriding
   // the `tflite_with_ruy` setting and the platform default.
   bool must_use_ruy = false;

@@ -37,15 +37,15 @@ ConvolutionTransposed::ConvolutionTransposed(
       block_size_(2, 2, 1, 2) {
   if (weights_are_buffer) {
     if (gpu_info.IsApple()) {
-      weights_layout_ = WeightsLayout::kOHWIOGroupO4I4;
+      weights_layout_ = WeightsLayout::kOSpatialIOGroupO4I4;
     } else {
-      weights_layout_ = WeightsLayout::kOHWIOGroupI4O4;
+      weights_layout_ = WeightsLayout::kOSpatialIOGroupI4O4;
     }
   } else {
     if (gpu_info.IsApple()) {
-      weights_layout_ = WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4;
+      weights_layout_ = WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4;
     } else {
-      weights_layout_ = WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4;
+      weights_layout_ = WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4;
     }
   }
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
@@ -83,15 +83,15 @@ ConvolutionTransposed::ConvolutionTransposed(
       block_size_(2, 2, 1, 2) {
   if (weights_are_buffer) {
     if (gpu_info.IsApple()) {
-      weights_layout_ = WeightsLayout::kOHWIOGroupO4I4;
+      weights_layout_ = WeightsLayout::kOSpatialIOGroupO4I4;
     } else {
-      weights_layout_ = WeightsLayout::kOHWIOGroupI4O4;
+      weights_layout_ = WeightsLayout::kOSpatialIOGroupI4O4;
     }
   } else {
     if (gpu_info.IsApple()) {
-      weights_layout_ = WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4;
+      weights_layout_ = WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4;
     } else {
-      weights_layout_ = WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4;
+      weights_layout_ = WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4;
     }
   }
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
@@ -134,8 +134,8 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
 
   if (op_def.src_tensors.size() != 1) {
     // dynamic weights
-    if (weights_layout_ == WeightsLayout::kOHWIOGroupI4O4 ||
-        weights_layout_ == WeightsLayout::kOHWIOGroupO4I4) {
+    if (weights_layout_ == WeightsLayout::kOSpatialIOGroupI4O4 ||
+        weights_layout_ == WeightsLayout::kOSpatialIOGroupO4I4) {
       BufferDescriptor desc;
       desc.element_type = op_def.src_tensors[1].data_type;
       desc.element_size = 16;

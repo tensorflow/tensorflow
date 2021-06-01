@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -82,7 +83,8 @@ void PrintCantFindCudaMessage(absl::string_view msg,
          "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
 }
 
-// Returns the directory containing nvvm libdevice files.
+}  // namespace
+
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
     string libdevice_dir =
@@ -103,8 +105,6 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
-
-}  // namespace
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
@@ -197,6 +197,11 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
   if (user->opcode() == HloOpcode::kCustomCall &&
       user->custom_call_target() == kCusolverCholeskyCallTarget) {
     return user_index.size() == 1 && user_index[0] == 0;
+  }
+  // NCCL all-reduce can be performed in-place.
+  if (user->opcode() == HloOpcode::kAllReduce && user_index.size() == 1 &&
+      user->operand(user_index[0]) == operand) {
+    return true;
   }
   return absl::nullopt;
 }

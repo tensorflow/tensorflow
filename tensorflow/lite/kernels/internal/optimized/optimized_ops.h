@@ -1152,9 +1152,9 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_width = input_shape.Dims(2);
   const float num_elements_in_axis = input_width * input_height;
 
-  int32 bias =
-      output_zero_point -
-      static_cast<int32>(input_zero_point * input_scale / output_scale);
+  float temp = input_zero_point * input_scale / output_scale;
+  temp = temp > 0 ? temp + 0.5f : temp - 0.5f;
+  int32_t bias = output_zero_point - static_cast<int32_t>(temp);
   float real_scale = input_scale / (num_elements_in_axis * output_scale);
 
   int32 multiplier, shift;
@@ -2134,33 +2134,37 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
-inline void Add(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int32* input1_data,
-                const RuntimeShape& input2_shape, const int32* input2_data,
-                const RuntimeShape& output_shape, int32* output_data) {
-  ruy::profiler::ScopeLabel label("Add/int32");
+template <typename T>
+inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Add/int32or64");
+
+  T activation_min, activation_max;
+  GetActivationParams(params, &activation_min, &activation_max);
 
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   if (input1_shape == input2_shape) {
     output_map.array() = (input1_map.array() + input2_map.array())
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else if (input2_shape.FlatSize() == 1) {
     auto scalar = input2_data[0];
     output_map.array() = (input1_map.array() + scalar)
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else if (input1_shape.FlatSize() == 1) {
     auto scalar = input1_data[0];
     output_map.array() = (scalar + input2_map.array())
-                             .cwiseMax(params.quantized_activation_min)
-                             .cwiseMin(params.quantized_activation_max);
+                             .cwiseMax(activation_min)
+                             .cwiseMin(activation_max);
   } else {
-    reference_ops::BroadcastAdd4DSlow(params, input1_shape, input1_data,
-                                      input2_shape, input2_data, output_shape,
-                                      output_data);
+    reference_ops::BroadcastAdd4DSlow<T>(params, input1_shape, input1_data,
+                                         input2_shape, input2_data,
+                                         output_shape, output_data);
   }
 }
 
@@ -2659,7 +2663,7 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   NDOpsHelper<N>(output_desc, div_func);
 }
 
-// TODO: BroadcastDiv is intentionally duplicated from reference_ops.h.
+// BroadcastDiv is intentionally duplicated from reference_ops.h.
 // For more details see the comment above the generic version of
 // BroadcastDivSlow.
 template <int N = 5>
@@ -4122,10 +4126,6 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
   const int32_t clamp_max = std::numeric_limits<T>::max();
   const int32_t clamp_min = std::numeric_limits<T>::min();
 
-  int32_t zero_point_offset = 0;
-  if (std::is_same<T, int8_t>::value) {
-    zero_point_offset = 128;
-  }
   for (int i = 0; i < excluding_last_dim; ++i) {
     T max_val = std::numeric_limits<T>::min();
     // Find max quantized value.
@@ -4134,10 +4134,10 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     }
 
     float sum_exp = 0.0f;
-    const int32_t max_q8 = std::numeric_limits<T>::max();
+    const int32_t max_uint8 = std::numeric_limits<uint8>::max();
     // Offset into table to compute exp(scale*(x - xmax)) instead of
     // exp(scale*(x)) to prevent overflow.
-    const float* table_offset = &params.table[max_q8 - max_val];
+    const float* table_offset = &params.table[max_uint8 - max_val];
     // Calculate sum(exp(scale*(x - x_max))).
     for (int j = 0; j < last_dim; ++j) {
       sum_exp += table_offset[input_data[j]];
@@ -4147,8 +4147,7 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     // params.scale is the output scale.
     const float scale = input_scale / params.scale;
     const float precomputed =
-        (input_scale * (max_val + zero_point_offset) + log_sum_exp) /
-        params.scale;
+        (input_scale * max_val + log_sum_exp) / params.scale;
     for (int j = 0; j < last_dim; ++j) {
       // Equivalent to (input_scale * (input_data[j] - max_val) - log_sum_exp) /
       // output_scale.
@@ -4622,104 +4621,131 @@ inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const P* pad_value_ptr, const RuntimeShape& output_shape,
                     T* output_data) {
-  ruy::profiler::ScopeLabel label("Pad4DSlowImpl");
+  ruy::profiler::ScopeLabel label("PadImpl");
+  const int max_supported_dims = 5;
   const RuntimeShape ext_input_shape =
-      RuntimeShape::ExtendedShape(4, input_shape);
+      RuntimeShape::ExtendedShape(max_supported_dims, input_shape);
   const RuntimeShape ext_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
-  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
+      RuntimeShape::ExtendedShape(max_supported_dims, output_shape);
+  TFLITE_DCHECK_LE(op_params.left_padding_count, max_supported_dims);
+  TFLITE_DCHECK_LE(op_params.right_padding_count, max_supported_dims);
 
   // Pad kernels are limited to max 4 dimensions. Copy inputs so we can pad them
   // to 4 dims (yes, we are "padding the padding").
-  std::vector<int> left_padding_copy(4, 0);
-  const int left_padding_extend = 4 - op_params.left_padding_count;
+  std::vector<int> left_padding_copy(max_supported_dims, 0);
+  const int left_padding_extend =
+      max_supported_dims - op_params.left_padding_count;
   for (int i = 0; i < op_params.left_padding_count; ++i) {
     left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
   }
-  std::vector<int> right_padding_copy(4, 0);
-  const int right_padding_extend = 4 - op_params.right_padding_count;
+  std::vector<int> right_padding_copy(max_supported_dims, 0);
+  const int right_padding_extend =
+      max_supported_dims - op_params.right_padding_count;
   for (int i = 0; i < op_params.right_padding_count; ++i) {
     right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
   }
 
   const int output_batch = ext_output_shape.Dims(0);
-  const int output_height = ext_output_shape.Dims(1);
-  const int output_width = ext_output_shape.Dims(2);
-  const int output_depth = ext_output_shape.Dims(3);
+  const int output_spatial_dim1 = ext_output_shape.Dims(1);
+  const int output_spatial_dim2 = ext_output_shape.Dims(2);
+  const int output_spatial_dim3 = ext_output_shape.Dims(3);
+  const int output_channel = ext_output_shape.Dims(4);
 
   const int left_b_padding = left_padding_copy[0];
-  const int left_h_padding = left_padding_copy[1];
-  const int left_w_padding = left_padding_copy[2];
-  const int left_d_padding = left_padding_copy[3];
+  const int left_s1_padding = left_padding_copy[1];
+  const int left_s2_padding = left_padding_copy[2];
+  const int left_s3_padding = left_padding_copy[3];
+  const int left_c_padding = left_padding_copy[4];
 
   const int right_b_padding = right_padding_copy[0];
-  const int right_h_padding = right_padding_copy[1];
-  const int right_w_padding = right_padding_copy[2];
-  const int right_d_padding = right_padding_copy[3];
+  const int right_s1_padding = right_padding_copy[1];
+  const int right_s2_padding = right_padding_copy[2];
+  const int right_s3_padding = right_padding_copy[3];
+  const int right_c_padding = right_padding_copy[4];
 
-  const int input_depth = ext_input_shape.Dims(3);
+  const int input_depth = ext_input_shape.Dims(4);
   const T pad_value = *pad_value_ptr;
 
   if (left_b_padding != 0) {
-    TypedMemset<T>(
-        output_data, pad_value,
-        left_b_padding * output_height * output_width * output_depth);
+    TypedMemset<T>(output_data, pad_value,
+                   left_b_padding * output_spatial_dim1 * output_spatial_dim2 *
+                       output_spatial_dim3 * output_channel);
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
-    if (left_h_padding != 0) {
-      TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, 0, 0, 0),
-                     pad_value, left_h_padding * output_width * output_depth);
+    if (left_s1_padding != 0) {
+      TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, 0, 0, 0, 0),
+                     pad_value,
+                     left_s1_padding * output_spatial_dim2 *
+                         output_spatial_dim3 * output_channel);
     }
-    for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
-         ++out_h) {
-      if (left_w_padding != 0) {
+    for (int out_p = left_s1_padding;
+         out_p < output_spatial_dim1 - right_s1_padding; ++out_p) {
+      if (left_s2_padding != 0) {
         TypedMemset<T>(
-            output_data + Offset(ext_output_shape, out_b, out_h, 0, 0),
-            pad_value, left_w_padding * output_depth);
+            output_data + Offset(ext_output_shape, out_b, out_p, 0, 0, 0),
+            pad_value, left_s2_padding * output_spatial_dim3 * output_channel);
       }
-      for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
-           ++out_w) {
-        if (left_d_padding != 0) {
+      for (int out_h = left_s2_padding;
+           out_h < output_spatial_dim2 - right_s2_padding; ++out_h) {
+        if (left_s3_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(ext_output_shape, out_b, out_h, out_w, 0),
-              pad_value, left_d_padding);
+              output_data + Offset(ext_output_shape, out_b, out_p, out_h, 0, 0),
+              pad_value, left_s3_padding * output_channel);
         }
+        for (int out_w = left_s3_padding;
+             out_w < output_spatial_dim3 - right_s3_padding; ++out_w) {
+          if (left_c_padding != 0) {
+            TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, out_p,
+                                                out_h, out_w, 0),
+                           pad_value, left_c_padding);
+          }
 
-        T* out = output_data +
-                 Offset(ext_output_shape, out_b, out_h, out_w, left_d_padding);
-        const T* in = input_data +
-                      Offset(ext_input_shape, out_b - left_b_padding,
-                             out_h - left_h_padding, out_w - left_w_padding, 0);
-        memcpy(out, in, input_depth * sizeof(T));
+          T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                        out_w, left_c_padding);
+          const T* in = input_data +
+                        Offset(ext_input_shape, out_b - left_b_padding,
+                               out_p - left_s1_padding, out_h - left_s2_padding,
+                               out_w - left_s3_padding, 0);
+          memcpy(out, in, input_depth * sizeof(T));
 
-        if (right_d_padding != 0) {
+          if (right_c_padding != 0) {
+            TypedMemset<T>(
+                output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                     out_w, output_channel - right_c_padding),
+                pad_value, right_c_padding);
+          }
+        }
+        if (right_s3_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(ext_output_shape, out_b, out_h, out_w,
-                                   output_depth - right_d_padding),
-              pad_value, right_d_padding);
+              output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                   output_spatial_dim3 - right_s3_padding, 0),
+              pad_value, right_s3_padding * output_channel);
         }
       }
-      if (right_w_padding != 0) {
-        TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, out_h,
-                                            output_width - right_w_padding, 0),
-                       pad_value, right_w_padding * output_depth);
+      if (right_s2_padding != 0) {
+        TypedMemset<T>(
+            output_data + Offset(ext_output_shape, out_b, out_p,
+                                 output_spatial_dim2 - right_s2_padding, 0, 0),
+            pad_value, right_s2_padding * output_spatial_dim3 * output_channel);
       }
     }
-    if (right_h_padding != 0) {
+    if (right_s1_padding != 0) {
       TypedMemset<T>(
           output_data + Offset(ext_output_shape, out_b,
-                               output_height - right_h_padding, 0, 0),
-          pad_value, right_h_padding * output_width * output_depth);
+                               output_spatial_dim1 - right_s1_padding, 0, 0, 0),
+          pad_value,
+          right_s1_padding * output_spatial_dim2 * output_spatial_dim3 *
+              output_channel);
     }
   }
   if (right_b_padding != 0) {
     TypedMemset<T>(
-        output_data +
-            Offset(ext_output_shape, output_batch - right_b_padding, 0, 0, 0),
+        output_data + Offset(ext_output_shape, output_batch - right_b_padding,
+                             0, 0, 0, 0),
         pad_value,
-        right_b_padding * output_height * output_width * output_depth);
+        right_b_padding * output_spatial_dim1 * output_spatial_dim2 *
+            output_spatial_dim3 * output_channel);
   }
 }
 
@@ -7872,6 +7898,104 @@ inline int ArgMaxVector(const float* input_data, int size) {
   return max_index;
 }
 
+template <>
+inline int ArgMaxVector(const int8_t* input_data, int size) {
+  int32_t max_index = 0;
+  int8_t max_value = input_data[0];
+  int32_t i = 0;
+#ifdef USE_NEON
+  constexpr int VECTOR_SIZE = 16;
+  if (size >= VECTOR_SIZE) {
+    int8x16_t max_value_s8x16;
+    for (; i <= size - VECTOR_SIZE; i += VECTOR_SIZE) {
+      max_value_s8x16 = vld1q_s8(input_data + i);
+      int8_t max_from_vec;
+#ifdef __aarch64__
+      max_from_vec = vmaxvq_s8(max_value_s8x16);
+#else   // 32 bit
+      int8x8_t max_val_s8x8 =
+          vpmax_s8(vget_low_s8(max_value_s8x16), vget_high_s8(max_value_s8x16));
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_val_s8x8 = vpmax_s8(max_val_s8x8, max_val_s8x8);
+      max_from_vec = vget_lane_s8(max_val_s8x8, 0);
+#endif  // __aarch64__
+      if (max_from_vec > max_value) {
+        max_value = max_from_vec;
+        max_index = i;
+      }
+    }
+  }
+  for (int start_idx = max_index; start_idx < max_index + VECTOR_SIZE;
+       start_idx++) {
+    if (input_data[start_idx] == max_value) {
+      max_index = start_idx;
+      break;
+    }
+  }
+
+#endif  // USE_NEON
+  // Leftover loop.
+  for (; i < size; ++i) {
+    const int8_t curr_value = input_data[i];
+    if (curr_value > max_value) {
+      max_value = curr_value;
+      max_index = i;
+    }
+  }
+
+  return max_index;
+}
+
+template <>
+inline int ArgMaxVector(const uint8_t* input_data, int size) {
+  int32_t max_index = 0;
+  uint8_t max_value = input_data[0];
+  int32_t i = 0;
+#ifdef USE_NEON
+  constexpr int VECTOR_SIZE = 16;
+  if (size >= VECTOR_SIZE) {
+    uint8x16_t max_value_u8x16;
+    for (; i <= size - VECTOR_SIZE; i += VECTOR_SIZE) {
+      max_value_u8x16 = vld1q_u8(input_data + i);
+      uint8_t max_from_vec;
+#ifdef __aarch64__
+      max_from_vec = vmaxvq_u8(max_value_u8x16);
+#else   // 32 bit
+      uint8x8_t max_val_u8x8 =
+          vpmax_u8(vget_low_u8(max_value_u8x16), vget_high_u8(max_value_u8x16));
+      max_val_u8x8 = vpmax_u8(max_val_u8x8, max_val_u8x8);
+      max_val_u8x8 = vpmax_u8(max_val_u8x8, max_val_u8x8);
+      max_val_u8x8 = vpmax_u8(max_val_u8x8, max_val_u8x8);
+      max_from_vec = vget_lane_u8(max_val_u8x8, 0);
+#endif  // __aarch64__
+      if (max_from_vec > max_value) {
+        max_value = max_from_vec;
+        max_index = i;
+      }
+    }
+  }
+  for (int start_idx = max_index; start_idx < max_index + VECTOR_SIZE;
+       start_idx++) {
+    if (input_data[start_idx] == max_value) {
+      max_index = start_idx;
+      break;
+    }
+  }
+
+#endif  // USE_NEON
+  // Leftover loop.
+  for (; i < size; ++i) {
+    const uint8_t curr_value = input_data[i];
+    if (curr_value > max_value) {
+      max_value = curr_value;
+      max_index = i;
+    }
+  }
+
+  return max_index;
+}
+
 // Specializes ArgMinMax function with axis=dims-1.
 // In this case, ArgMinMax reduction is applied on contiguous memory.
 template <typename T1, typename T2, bool is_arg_max>
@@ -7926,7 +8050,9 @@ inline void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
 
   // Call specialized function when axis=dims-1. So far, only float32 is
   // optimized so reroute to specialized function only when T1 is float32.
-  if (inner_size == 1 && std::is_same<T1, float>::value) {
+  if (inner_size == 1 &&
+      (std::is_same<T1, float>::value || std::is_same<T1, int8_t>::value ||
+       std::is_same<T1, uint8_t>::value)) {
     if (is_arg_max) {
       ArgMinMaxLastAxis<T1, T2, /*is_arg_max=*/true>(
           {outer_size, axis_size}, input1_data, {outer_size}, output_data);
@@ -7958,6 +8084,98 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
                    const RuntimeShape& output_shape, T2* output_data) {
   // Drop shape of second input: not needed.
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
+}
+
+inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
+                   const float* input_data, const RuntimeShape& filter_shape,
+                   const float* filter_data, const RuntimeShape& bias_shape,
+                   const float* bias_data, const RuntimeShape& output_shape,
+                   float* output_data, const RuntimeShape& im2col_shape,
+                   float* im2col_data,
+                   const RuntimeShape& transposed_filter_shape,
+                   float* transposed_filter_data,
+                   CpuBackendContext* cpu_backend_context) {
+  const int stride_depth = params.stride_depth;
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
+  const int dilation_depth_factor = params.dilation_depth;
+  const int dilation_height_factor = params.dilation_height;
+  const int dilation_width_factor = params.dilation_width;
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 5);
+
+  ruy::profiler::ScopeLabel label("Conv3D");
+
+  // NB: the float 0.0f value is represented by all zero bytes.
+  const uint8 float_zero_byte = 0x00;
+  const float* gemm_input_data = nullptr;
+  const RuntimeShape* gemm_input_shape = nullptr;
+  const int filter_width = filter_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_depth = filter_shape.Dims(0);
+  const bool need_dilated_im2col = dilation_width_factor != 1 ||
+                                   dilation_height_factor != 1 ||
+                                   dilation_depth_factor != 1;
+  const bool need_im2col = stride_depth != 1 || stride_height != 1 ||
+                           stride_width != 1 || filter_depth != 1 ||
+                           filter_height != 1 || filter_width != 1;
+
+  if (need_dilated_im2col) {
+    DilatedIm2col3D(params, filter_depth, filter_height, filter_width,
+                    float_zero_byte, input_shape, input_data, im2col_shape,
+                    im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_shape = &im2col_shape;
+  } else if (need_im2col) {
+    TFLITE_DCHECK(im2col_data);
+    Im2col3D(params, filter_depth, filter_height, filter_width, float_zero_byte,
+             input_shape, input_data, im2col_shape, im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_shape = &im2col_shape;
+  } else {
+    TFLITE_DCHECK(!im2col_data);
+    gemm_input_data = input_data;
+    gemm_input_shape = &input_shape;
+  }
+
+  // Transpose the filter tensor.
+  TransposeParams transpose_params;
+  transpose_params.perm_count = 5;
+  transpose_params.perm[0] = 4;
+  transpose_params.perm[1] = 0;
+  transpose_params.perm[2] = 1;
+  transpose_params.perm[3] = 2;
+  transpose_params.perm[4] = 3;
+  Transpose<float, 5>(transpose_params, filter_shape, filter_data,
+                      transposed_filter_shape, transposed_filter_data);
+
+  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
+  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
+  int n = output_shape.Dims(4);
+  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
+
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n;
+  lhs_params.cols = k;
+  cpu_backend_gemm::MatrixParams<float> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = k;
+  rhs_params.cols = m;
+  cpu_backend_gemm::MatrixParams<float> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n;
+  dst_params.cols = m;
+  cpu_backend_gemm::GemmParams<float, float> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  cpu_backend_gemm::Gemm(lhs_params, transposed_filter_data, rhs_params,
+                         gemm_input_data, dst_params, output_data, gemm_params,
+                         cpu_backend_context);
 }
 
 }  // namespace optimized_ops

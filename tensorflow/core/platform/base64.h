@@ -37,11 +37,13 @@ template <typename T>
 Status Base64Decode(StringPiece data, T* decoded);
 
 // Explicit instantiations defined in base64.cc.
-extern template Status Base64Decode<string>(StringPiece data, string* decoded);
-extern template Status Base64Encode<string>(StringPiece source,
-                                            string* encoded);
-extern template Status Base64Encode<string>(StringPiece source,
-                                            bool with_padding, string* encoded);
+extern template Status Base64Decode<std::string>(StringPiece data,
+                                                 std::string* decoded);
+extern template Status Base64Encode<std::string>(StringPiece source,
+                                                 std::string* encoded);
+extern template Status Base64Encode<std::string>(StringPiece source,
+                                                 bool with_padding,
+                                                 std::string* encoded);
 
 extern template Status Base64Decode<tstring>(StringPiece data,
                                              tstring* decoded);

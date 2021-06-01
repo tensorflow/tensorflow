@@ -1206,6 +1206,34 @@ ENTRY %CustomCallWithLayoutConstraints (p0: f32[4,4], p1: f32[2,3]) -> f32[1,2,3
   ExpectLayoutIs(custom_call->operand(1)->shape(), {1, 0});
 }
 
+TEST_F(LayoutAssignmentTest, CustomCallLayoutConstrainedAliasedOutput) {
+  const char* module_str = R"(
+HloModule customcall.4
+
+ENTRY %customcall.4 (parameter.1: f32[8,128], parameter.2: f32[8,128]) -> f32[8,128] {
+  %parameter.1 = f32[8,128]{1,0} parameter(0)
+  %parameter.2 = f32[8,128]{1,0} parameter(1)
+  ROOT %custom-call.3 = f32[8,128]{1,0} custom-call(f32[8,128]{1,0} %parameter.1, f32[8,128]{1,0} %parameter.2), custom_call_target="gpu_example_custom_call", operand_layout_constraints={f32[8,128]{1,0}, f32[8,128]{1,0}}, custom_call_has_side_effect=true, output_to_operand_aliasing={{}: (0, {})}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {8, 128}, {1, 0}));
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {8, 128}, {1, 0}));
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {8, 128}, {1, 0}));
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* custom_call =
+      m->entry_computation()->root_instruction();
+  ExpectLayoutIs(custom_call->shape(), {1, 0});
+  ExpectLayoutIs(custom_call->operand(0)->shape(), {1, 0});
+  ExpectLayoutIs(custom_call->operand(1)->shape(), {1, 0});
+}
+
 TEST_F(LayoutAssignmentTest, CustomCallLayoutConstrainedZeroOperands) {
   const char* module_str = R"(
 HloModule CustomCallLayoutConstrainedZeroOperands
@@ -1444,6 +1472,69 @@ ENTRY entry_computation {
   ExpectLayoutIs(abs->operand(0)->shape(), {0, 1});
   ExpectLayoutIs(abs->shape(), {0, 1});
   EXPECT_TRUE(abs->shape().is_dynamic_dimension(1));
+}
+
+// Test the ability to avoid copying across computations by reversing
+// computation traversal order.
+TEST_F(LayoutAssignmentTest, ReverseComputationOrderAvoidCopy) {
+  const char* module_str = R"(
+HloModule ComputationLayoutAvoidCopy
+
+call_1 {
+  %arg_tuple.1 = (f32[93184,4]) parameter(0)
+  %get-tuple-element.1 = f32[93184,4] get-tuple-element(%arg_tuple.1), index=0
+  ROOT %reshape.8494 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0}%get-tuple-element.1)
+}
+
+on_true {
+  %arg_tuple.1 = (f32[93184,4]) parameter(0)
+  %get-tuple-element.1 = f32[93184,4] get-tuple-element(%arg_tuple.1), index=0
+  ROOT %reshape.8493 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0}%get-tuple-element.1)
+}
+
+on_false {
+  %arg_tuple.2 = (f32[93184,4]) parameter(0)
+  %get-tuple-element.3 = f32[93184,4] get-tuple-element(%arg_tuple.2), index=0
+  %reshape.9717 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0}%get-tuple-element.3)
+  ROOT %add = f32[2,512,364] add(%reshape.9717, %reshape.9717)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg.2 = f32[93184,4]{1,0} parameter(1)
+  arg_tuple.11 = (f32[93184,4]{1,0}) tuple(arg.2)
+  call.1 = f32[2,512,364] call(arg_tuple.11), to_apply=call_1
+  conditional = f32[2,512,364] conditional(pred.1, arg_tuple.11, arg_tuple.11),
+                     true_computation=on_true, false_computation=on_false
+  ROOT add = f32[2,512,364] add(call.1, conditional)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  std::cerr << m->ToString();
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShape(PRED, {}));
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {93184, 4}, {0, 1}));
+  *computation_layout.mutable_result_layout() = ShapeLayout(
+      ShapeUtil::MakeShapeWithLayout(F32, {2, 512, 364}, {0, 1, 2}));
+  std::cerr << computation_layout.ToString();
+  ChannelLayoutConstraints channel_constraints;
+  LayoutAssignment layout_assignment(
+      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      /*channel_constraints=*/&channel_constraints,
+      /* reverse_computation_order = */ true);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  std::cerr << m->ToString();
+  const HloInstruction* call_1 = FindInstruction(m.get(), "reshape.8494");
+  ExpectLayoutIs(call_1->shape(), {0, 1, 2});
+  const HloInstruction* on_true = FindInstruction(m.get(), "reshape.8493");
+  ExpectLayoutIs(on_true->shape(), {0, 1, 2});
+  const HloInstruction* on_false = FindInstruction(m.get(), "reshape.9717");
+  ExpectLayoutIs(on_false->shape(), {0, 1, 2});
 }
 
 }  // namespace

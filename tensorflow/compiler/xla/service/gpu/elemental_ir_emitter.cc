@@ -20,7 +20,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "llvm/IR/DerivedTypes.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
@@ -29,12 +28,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -157,6 +158,23 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
   return EmitDeviceFunctionCall(
       callee_name, operands, input_types, output_type,
       {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b(), name);
+}
+
+llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
+    const llvm_ir::IrArray::Index& index, const HloInstruction* hlo) {
+  Shape shape = hlo->shape();
+  Shape operand_shape = hlo->operand(0)->shape();
+
+  // Decode the layout of the shape from the Protobugs attached to
+  // backend_config_.
+  BitcastBackendConfig bitcast_config;
+  CHECK(bitcast_config.ParseFromString(hlo->raw_backend_config_string()));
+
+  *shape.mutable_layout() =
+      xla::Layout::CreateFromProto(bitcast_config.result_layout());
+  *operand_shape.mutable_layout() =
+      xla::Layout::CreateFromProto(bitcast_config.source_layout());
+  return index.SourceIndexOfBitcast(shape, operand_shape, b());
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(

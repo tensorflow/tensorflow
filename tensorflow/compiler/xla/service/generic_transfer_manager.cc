@@ -76,7 +76,11 @@ void GenericTransferManager::TransferLiteralFromDevice(
             stream->ThenMemcpy(
                 /*host_dst=*/literal.untyped_data(index),
                 /*gpu_src=*/device_buffer.buffer(index),
-                /*size=*/GetByteSizeRequirement(subshape));
+                // With bounded dynamic shapes, the shape of the device buffer
+                // (bounded allocation) can be bigger than the literal.
+                /*size=*/
+                GetByteSizeRequirement(
+                    ShapeUtil::GetSubshape(literal.shape(), index)));
           }
           return Status::OK();
         }));

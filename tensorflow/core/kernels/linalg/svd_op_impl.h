@@ -91,20 +91,33 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
       options = full_matrices_ ? Eigen::ComputeFullU | Eigen::ComputeFullV
                                : Eigen::ComputeThinU | Eigen::ComputeThinV;
     }
-    if (!empty) {
-      Eigen::BDCSVD<Matrix> svd(inputs[0], options);
+
+    if (empty) {
+      // For an empty matrix where only one dimension is zero, we still set
+      // U or V to the unit matrix for the dimension that is non-zero.
+      if (compute_uv_ && full_matrices_) {
+        if (m > 0) {
+          outputs->at(1) = Matrix::Identity(m, m);
+        } else {
+          outputs->at(2) = Matrix::Identity(n, n);
+        }
+      }
+      return;
+    }
+
+    Eigen::BDCSVD<Matrix> svd(inputs[0], options);
+    if (svd.info() != Eigen::Success) {
+      LOG(ERROR) << "Eigen::BDCSVD failed with error code " << svd.info();
+      outputs->at(0).fill(std::numeric_limits<Scalar>::quiet_NaN());
+      if (compute_uv_) {
+        outputs->at(1).fill(std::numeric_limits<Scalar>::quiet_NaN());
+        outputs->at(2).fill(std::numeric_limits<Scalar>::quiet_NaN());
+      }
+    } else {
       outputs->at(0) = svd.singularValues().template cast<Scalar>();
       if (compute_uv_) {
         outputs->at(1) = svd.matrixU();
         outputs->at(2) = svd.matrixV();
-      }
-    } else if (compute_uv_ && full_matrices_) {
-      // For an empty matrix where only one dimension is zero, we still set
-      // U or V to the unit matrix for the dimension that is non-zero.
-      if (m > 0) {
-        outputs->at(1) = Matrix::Identity(m, m);
-      } else {
-        outputs->at(2) = Matrix::Identity(n, n);
       }
     }
   }

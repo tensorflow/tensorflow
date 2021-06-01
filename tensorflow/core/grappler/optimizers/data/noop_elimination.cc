@@ -40,12 +40,16 @@ bool IsTakeAll(const NodeDef& take_node, const MutableGraphView& graph) {
   const auto& count_node = *graph.GetNode(take_node.input(1));
   if (count_node.op() != "Const") return false;
   // We are looking only for 'take' with negative count.
-  return count_node.attr().at("value").tensor().int64_val(0) < 0;
+  const auto& tensor = count_node.attr().at("value").tensor();
+  if (tensor.int64_val_size()) return tensor.int64_val(0) < 0;
+  return false;
 }
 
 bool IsConstNodeWithValue(const NodeDef& node, int value) {
   if (node.op() != "Const") return false;
-  return node.attr().at("value").tensor().int64_val(0) == value;
+  const auto& tensor = node.attr().at("value").tensor();
+  if (tensor.int64_val_size()) return tensor.int64_val(0) == value;
+  return value == 0;
 }
 
 bool IsSkipNone(const NodeDef& skip_node, const MutableGraphView& graph) {
@@ -65,6 +69,12 @@ bool IsPrefetchZero(const NodeDef& prefetch_node,
   if (prefetch_node.op() != "PrefetchDataset") return false;
   // We are looking only for prefetch(0) nodes.
   return IsConstNodeWithValue(*graph.GetNode(prefetch_node.input(1)), 0);
+}
+
+bool IsShardOne(const NodeDef& shard_node, const MutableGraphView& graph) {
+  if (shard_node.op() != "ShardDataset") return false;
+  // We are looking only for shard(0) nodes.
+  return IsConstNodeWithValue(*graph.GetNode(shard_node.input(1)), 1);
 }
 
 bool IsOutputIdentityOfInput(const FunctionDef& fdef, const string& output_arg,
@@ -131,7 +141,7 @@ bool IsMapIdentity(const NodeDef& map_node, const MutableGraphView& graph) {
 bool IsNoOp(const NodeDef& node, const MutableGraphView& graph) {
   return IsTakeAll(node, graph) || IsSkipNone(node, graph) ||
          IsRepeatOne(node, graph) || IsPrefetchZero(node, graph) ||
-         IsMapIdentity(node, graph);
+         IsShardOne(node, graph) || IsMapIdentity(node, graph);
 }
 
 }  // namespace

@@ -76,6 +76,12 @@ class Delegate {
  public:
   explicit Delegate(const TfLiteGpuDelegateOptionsV2* options)
       : num_delegate_kernels_(0) {
+    delegate_.data_ = reinterpret_cast<void*>(this);
+    delegate_.Prepare = DelegatePrepare;
+    delegate_.CopyFromBufferHandle = nullptr;
+    delegate_.CopyToBufferHandle = nullptr;
+    delegate_.FreeBufferHandle = nullptr;
+    delegate_.flags = kTfLiteDelegateFlagsNone;
     options_ = options ? *options : TfLiteGpuDelegateOptionsV2Default();
     if (options_.max_delegated_partitions <= 0) {
       options_.max_delegated_partitions = 1;
@@ -95,15 +101,7 @@ class Delegate {
   int num_delegate_kernels() const { return num_delegate_kernels_; }
 
  private:
-  TfLiteDelegate delegate_ = {
-      .data_ = reinterpret_cast<void*>(this),
-      .Prepare = DelegatePrepare,
-      .CopyFromBufferHandle = nullptr,
-      .CopyToBufferHandle = nullptr,
-      .FreeBufferHandle = nullptr,
-      .flags = kTfLiteDelegateFlagsNone,
-  };
-
+  TfLiteDelegate delegate_;
   TfLiteGpuDelegateOptionsV2 options_;
   int num_delegate_kernels_ = 0;
 
@@ -334,8 +332,10 @@ class DelegateKernel {
     enforce_same_thread_ = true;
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenGL-based API.");
-#endif
     return absl::OkStatus();
+#else
+    return absl::UnavailableError("OpenGL-based API disabled");
+#endif
   }
 
   // The Delegate instance that's shared across all DelegateKernel instances.
@@ -440,17 +440,16 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace tflite
 
 TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
-  TfLiteGpuDelegateOptionsV2 options = {
-      // set it to -1 to detect whether it was later adjusted.
-      .is_precision_loss_allowed = -1,
-      .inference_preference =
-          TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
-      .inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION,
-      .inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO,
-      .inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO,
-      .experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT,
-      .max_delegated_partitions = 1,
-  };
+  TfLiteGpuDelegateOptionsV2 options;
+  // set it to -1 to detect whether it was later adjusted.
+  options.is_precision_loss_allowed = -1;
+  options.inference_preference =
+      TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+  options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+  options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
+  options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
+  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+  options.max_delegated_partitions = 1;
   return options;
 }
 

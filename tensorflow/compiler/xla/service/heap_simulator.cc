@@ -184,19 +184,19 @@ Status HeapSimulator::RunComputation(
   std::vector<const HloValue*> values_to_assign;
   values_to_assign.reserve(dataflow_analysis.values().size());
 
+  auto& buffer_live_ranges = hlo_live_range->buffer_live_ranges();
+
   for (const HloValue* value : dataflow_analysis.values()) {
     // Ignore buffers that are not tracked.
-    if (hlo_live_range->instruction_schedule().count(
-            value->defining_instruction()) == 0) {
+    if (!buffer_live_ranges.contains(value)) {
       continue;
     }
     if (IgnoreBuffer(value)) {
       continue;
     }
+
     values_to_assign.push_back(value);
   }
-
-  auto& buffer_live_ranges = hlo_live_range->buffer_live_ranges();
 
   absl::c_sort(values_to_assign,
                [&](const HloValue* value1, const HloValue* value2) {

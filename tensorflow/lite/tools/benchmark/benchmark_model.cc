@@ -34,13 +34,14 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
   params.AddParam("max_secs", BenchmarkParam::Create<float>(150.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("run_frequency", BenchmarkParam::Create<float>(-1.0f));
-  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(-1));
   params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
   params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   params.AddParam("verbose", BenchmarkParam::Create<bool>(false));
+  params.AddParam("dry_run", BenchmarkParam::Create<bool>(false));
   return params;
 }
 
@@ -112,6 +113,10 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
                        "Whether to log parameters whose values are not set. "
                        "By default, only log those parameters that are set by "
                        "parsing their values from the commandline flags."),
+      CreateFlag<bool>("dry_run", &params_,
+                       "Whether to run the tool just with simply loading the "
+                       "model, allocating tensors etc. but without actually "
+                       "invoking any op kernels."),
   };
 }
 
@@ -134,6 +139,7 @@ void BenchmarkModel::LogParams() {
   LOG_BENCHMARK_PARAM(int32_t, "warmup_runs", "Min warmup runs", verbose);
   LOG_BENCHMARK_PARAM(float, "warmup_min_secs",
                       "Min warmup runs duration (seconds)", verbose);
+  LOG_BENCHMARK_PARAM(bool, "dry_run", "Run w/o invoking kernels", verbose);
 }
 
 TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }
@@ -221,6 +227,15 @@ TfLiteStatus BenchmarkModel::Run() {
 
   TfLiteStatus status = kTfLiteOk;
   uint64_t input_bytes = ComputeInputBytes();
+
+  // Overwrite certain parameters when --dry_run=true is set.
+  if (params_.Get<bool>("dry_run")) {
+    params_.Set("warmup_runs", 0);
+    params_.Set("warmup_min_secs", -1.0f);
+    params_.Set("num_runs", 0);
+    params_.Set("min_secs", -1.0f);
+  }
+
   listeners_.OnBenchmarkStart(params_);
   Stat<int64_t> warmup_time_us =
       Run(params_.Get<int32_t>("warmup_runs"),
@@ -246,9 +261,16 @@ TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
       Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
-  if (!parse_result) {
+  // "--help" flag is added in tools/delegates/default_execution_provider.cc. As
+  // this is an optional dependency, we need to check whether "--help" exists or
+  // not first.
+  if (!parse_result ||
+      (params_.HasParam("help") && params_.Get<bool>("help"))) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
+    // Returning kTfLiteError intentionally when "--help=true" is specified so
+    // that the caller could check the return value to decide stopping the
+    // execution.
     return kTfLiteError;
   }
 

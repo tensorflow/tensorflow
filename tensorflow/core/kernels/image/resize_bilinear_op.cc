@@ -54,16 +54,16 @@ class ResizeBilinearOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
     ImageResizerState st(align_corners_, half_pixel_centers_);
-    st.ValidateAndCreateOutput(context, input);
+    st.ValidateAndCreateOutput(context);
 
     if (!context->status().ok()) return;
 
     // Return if the output is empty.
     if (st.output->NumElements() == 0) return;
 
-    typename TTypes<T, 4>::ConstTensor image_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::ConstTensor image_data(
+        context->input(0).tensor<T, 4>());
     TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
     functor::ResizeBilinear<Device, T>()(
@@ -342,16 +342,14 @@ class ResizeBilinearOpGrad : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // Validate input.
-    // First argument is gradient with respect to resized image.
-    const Tensor& input = context->input(0);
-    const Tensor& original_image = context->input(1);
-
     ImageResizerGradientState st(align_corners_, half_pixel_centers_);
-    st.ValidateAndCreateOutput(context, input, original_image);
+    st.ValidateAndCreateOutput(context);
 
     if (!context->status().ok()) return;
 
-    TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
+    // First argument is gradient with respect to resized image.
+    TTypes<float, 4>::ConstTensor input_grad =
+        context->input(0).tensor<float, 4>();
 
     if (!std::is_same<T, Eigen::half>::value &&
         !std::is_same<T, Eigen::bfloat16>::value) {

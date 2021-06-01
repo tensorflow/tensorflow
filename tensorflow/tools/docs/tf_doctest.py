@@ -44,15 +44,14 @@ flags.DEFINE_list('module_prefix_skip', [],
                   'A list of modules to ignore when resolving modules.')
 flags.DEFINE_boolean('list', None,
                      'List all the modules in the core package imported.')
-flags.DEFINE_string('file', None, 'A specific file to run doctest on.')
 flags.DEFINE_integer('required_gpus', 0,
                      'The number of GPUs required for the tests.')
 
-flags.mark_flags_as_mutual_exclusive(['module', 'file'])
-flags.mark_flags_as_mutual_exclusive(['list', 'file'])
-
 # Both --module and --module_prefix_skip are relative to PACKAGE.
-PACKAGE = 'tensorflow.python.'
+PACKAGES = [
+    'tensorflow.python.',
+    'tensorflow.lite.python.',
+]
 
 
 def recursive_import(root):
@@ -78,8 +77,10 @@ def find_modules():
 
   tf_modules = []
   for name, module in sys.modules.items():
-    if name.startswith(PACKAGE):
-      tf_modules.append(module)
+    # The below for loop is a constant time loop.
+    for package in PACKAGES:
+      if name.startswith(package):
+        tf_modules.append(module)
 
   return tf_modules
 
@@ -99,34 +100,16 @@ def filter_on_submodules(all_modules, submodules):
     All the modules in the submodule.
   """
 
-  filtered_modules = [
-      mod for mod in all_modules
-      if any(PACKAGE + submodule in mod.__name__ for submodule in submodules)
-  ]
+  filtered_modules = []
+
+  for mod in all_modules:
+    for submodule in submodules:
+      # The below for loop is a constant time loop.
+      for package in PACKAGES:
+        if package + submodule in mod.__name__:
+          filtered_modules.append(mod)
+
   return filtered_modules
-
-
-def get_module_and_inject_docstring(file_path):
-  """Replaces the docstring of the module with the changed file's content.
-
-  Args:
-    file_path: Path to the file
-
-  Returns:
-    A list containing the module changed by the file.
-  """
-
-  file_path = os.path.abspath(file_path)
-  mod_index = file_path.find(PACKAGE.replace('.', os.sep))
-  file_mod_name, _ = os.path.splitext(file_path[mod_index:])
-  file_module = sys.modules[file_mod_name.replace(os.sep, '.')]
-
-  with open(file_path, 'r') as f:
-    content = f.read()
-
-  file_module.__doc__ = content
-
-  return [file_module]
 
 
 def setup_gpu(required_gpus):
@@ -185,13 +168,12 @@ def load_tests(unused_loader, tests, unused_ignore):
     print('**************************************************')
     return tests
 
-  if FLAGS.file:
-    tf_modules = get_module_and_inject_docstring(FLAGS.file)
-
   for module in tf_modules:
+    # If I break the loop comprehension, then the test times out in `small`
+    # size.
     if any(
-        module.__name__.startswith(PACKAGE + prefix)
-        for prefix in FLAGS.module_prefix_skip):
+        module.__name__.startswith(package + prefix)  # pylint: disable=g-complex-comprehension
+        for prefix in FLAGS.module_prefix_skip for package in PACKAGES):
       continue
     testcase = TfTestCase()
     tests.addTests(
@@ -224,6 +206,6 @@ if __name__ == '__main__':
   # Use importlib to import python submodule of tensorflow.
   # We delete python submodule in root __init__.py file. This means
   # normal import won't work for some Python versions.
-  tf_python_root = importlib.import_module(PACKAGE[:-1])
-  recursive_import(tf_python_root)
+  for pkg in PACKAGES:
+    recursive_import(importlib.import_module(pkg[:-1]))
   absltest.main()

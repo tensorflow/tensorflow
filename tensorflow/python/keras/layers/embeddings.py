@@ -12,16 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Embedding layer.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Embedding layer."""
+# pylint: disable=g-classes-have-attributes
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
@@ -85,6 +79,28 @@ class Embedding(Layer):
 
   Output shape:
     3D tensor with shape: `(batch_size, input_length, output_dim)`.
+
+  **Note on variable placement:**
+  By default, if a GPU is available, the embedding matrix will be placed on
+  the GPU. This achieves the best performance, but it might cause issues:
+
+  - You may be using an optimizer that does not support sparse GPU kernels.
+  In this case you will see an error upon training your model.
+  - Your embedding matrix may be too large to fit on your GPU. In this case
+  you will see an Out Of Memory (OOM) error.
+
+  In such cases, you should place the embedding matrix on the CPU memory.
+  You can do so with a device scope, as such:
+
+  ```python
+  with tf.device('cpu:0'):
+    embedding_layer = Embedding(...)
+    embedding_layer.build()
+  ```
+
+  The pre-built `embedding_layer` instance can then be added to a `Sequential`
+  model (e.g. `model.add(embedding_layer)`), called in a Functional model
+  (e.g. `x = embedding_layer(x)`), or used in a subclassed model.
   """
 
   def __init__(self,
@@ -110,7 +126,7 @@ class Embedding(Layer):
         'dtype' not in kwargs):
       # In TF1, the dtype defaults to the input dtype which is typically int32,
       # so explicitly set it to floatx
-      kwargs['dtype'] = K.floatx()
+      kwargs['dtype'] = backend.floatx()
     # We set autocast to False, as we do not want to cast floating- point inputs
     # to self.dtype. In call(), we cast to int32, and casting to self.dtype
     # before casting to int32 might cause the int32 values to be different due
@@ -129,36 +145,19 @@ class Embedding(Layer):
     self.input_length = input_length
 
   @tf_utils.shape_type_conversion
-  def build(self, input_shape):
-    # Note: most sparse optimizers do not have GPU kernels defined. When
-    # building graphs, the placement algorithm is able to place variables on CPU
-    # since it knows all kernels using the variable only exist on CPU.
-    # When eager execution is enabled, the placement decision has to be made
-    # right now. Checking for the presence of GPUs to avoid complicating the
-    # TPU codepaths which can handle sparse optimizers.
-    if context.executing_eagerly() and tf_config.list_logical_devices('GPU'):
-      with ops.device('cpu:0'):
-        self.embeddings = self.add_weight(
-            shape=(self.input_dim, self.output_dim),
-            initializer=self.embeddings_initializer,
-            name='embeddings',
-            regularizer=self.embeddings_regularizer,
-            constraint=self.embeddings_constraint,
-            experimental_autocast=False)
-    else:
-      self.embeddings = self.add_weight(
-          shape=(self.input_dim, self.output_dim),
-          initializer=self.embeddings_initializer,
-          name='embeddings',
-          regularizer=self.embeddings_regularizer,
-          constraint=self.embeddings_constraint,
-          experimental_autocast=False)
+  def build(self, input_shape=None):
+    self.embeddings = self.add_weight(
+        shape=(self.input_dim, self.output_dim),
+        initializer=self.embeddings_initializer,
+        name='embeddings',
+        regularizer=self.embeddings_regularizer,
+        constraint=self.embeddings_constraint,
+        experimental_autocast=False)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
     if not self.mask_zero:
       return None
-
     return math_ops.not_equal(inputs, 0)
 
   @tf_utils.shape_type_conversion
@@ -186,7 +185,7 @@ class Embedding(Layer):
       return (input_shape[0],) + tuple(in_lens) + (self.output_dim,)
 
   def call(self, inputs):
-    dtype = K.dtype(inputs)
+    dtype = backend.dtype(inputs)
     if dtype != 'int32' and dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
     out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)

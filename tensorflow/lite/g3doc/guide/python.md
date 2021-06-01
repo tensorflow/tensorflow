@@ -46,7 +46,7 @@ echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | sud
 For all other systems, you can install with pip:
 
 <pre class="devsite-terminal devsite-click-to-copy">
-pip3 install --extra-index-url https://google-coral.github.io/py-repo/ tflite_runtime
+pip3 install --index-url https://google-coral.github.io/py-repo/ tflite_runtime
 </pre>
 
 If you'd like to manually install a Python wheel, you can select one from
@@ -109,3 +109,6 @@ If you're using a Coral ML accelerator, check out the
 
 To convert other TensorFlow models to TensorFlow Lite, read about the
 the [TensorFlow Lite Converter](../convert/).
+
+If you want to build `tflite_runtime` wheel, read
+[Build TensorFlow Lite Python Wheel Package](build_cmake_pip.md)

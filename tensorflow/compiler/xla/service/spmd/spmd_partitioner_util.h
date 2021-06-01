@@ -417,6 +417,31 @@ GatherOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
     const hlo_sharding_util::GatherParallelDims& parallel_dims);
 
+// Pattern rewrite preprocessing utilities.
+
+// Returns rotate_amount if the concat(lhs, rhs) is equivalent to rotating the
+// elements along the concat dimension to the right by rotate_amount, where the
+// input of rotation is the shard operand of lhs and rhs. Returns -1 if the
+// pattern is not found.
+int64 FindRotateRightPattern(const HloInstruction* concat,
+                             const HloInstruction* lhs,
+                             const HloInstruction* rhs);
+
+// Describes the pad with wrap pattern.
+struct PadWithWrapPattern {
+  int64 lhs_slice_start;
+  int64 rhs_slice_start;
+  std::vector<const HloInstruction*> lhs_modifiers;
+  std::vector<const HloInstruction*> rhs_modifiers;
+};
+
+// Returns the `PadWithWrapPattern` if the concat(lhs,mid,rhs) is equivalent to
+// padding mid with wrapping (i.e., padding mid with slices of itself). Return
+// absl::nullopt if the pattern is not found.
+absl::optional<PadWithWrapPattern> FindPadWithWrapPattern(
+    const HloInstruction* concat, const HloInstruction* lhs,
+    const HloInstruction* mid, const HloInstruction* rhs);
+
 }  // namespace spmd
 }  // namespace xla
 

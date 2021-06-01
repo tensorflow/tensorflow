@@ -118,3 +118,10 @@ opt<std::string> select_user_tf_ops(
     llvm::cl::desc(
         "<list of custom tf ops created by the user (comma separated)>"),
     llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<bool> unfold_batchmatmul(
+    "unfold_batchmatmul",
+    llvm::cl::desc(
+        "Whether to unfold TF BatchMatMul to a set of TFL FullyConnected ops."),
+    llvm::cl::init(true));

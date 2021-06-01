@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/None.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -24,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/variables_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
@@ -107,14 +107,12 @@ class InitializeVariablesPass
         if (!exported_names) continue;
         for (auto exported_name : exported_names) {
           if (auto name = exported_name.dyn_cast_or_null<StringAttr>())
-            if (name.getValue() == kTfSavedModelSessionInitNameAttr)
+            if (name.getValue().startswith(kTfSavedModelSessionInitNameAttr))
               session_init_func = func;
         }
         if (session_init_func) break;
       }
     }
-    // TODO(b/149099381): Refactor to separate function in saved model util.
-    if (!session_init_func) session_init_func = CreateSessionInitFunc();
 
     std::set<tf_saved_model::GlobalTensorOp> tensors_to_initialize;
     for (auto func : module.getOps<FuncOp>()) {
@@ -123,10 +121,20 @@ class InitializeVariablesPass
         // with ops that accepts resource as input.
         if (!llvm::isa<TF::ReadVariableOp, TF::AssignVariableOp>(op))
           return WalkResult::advance();
-        tensors_to_initialize.insert(GetGlobalTensorOp(op, symbol_table, func));
+        if (!utils::IsSupportedVariableType(op)) return WalkResult::advance();
+        auto global_tensor = GetGlobalTensorOp(op, symbol_table, func);
+        // In case the function doesn't have bound_input to a resource
+        // then we return nullptr.
+        // We need only to initialize the variables that are bounded.
+        if (global_tensor) tensors_to_initialize.insert(global_tensor);
         return WalkResult::advance();
       });
     }
+    if (tensors_to_initialize.empty()) return;
+
+    // TODO(b/149099381): Refactor to separate function in saved model util.
+    if (!session_init_func) session_init_func = CreateSessionInitFunc();
+
     for (auto global_tensor : tensors_to_initialize) {
       InitializeVariable(global_tensor_id.at(global_tensor.sym_name().str()),
                          global_tensor.value(), session_init_func);
@@ -154,9 +162,9 @@ class InitializeVariablesPass
 
   void runOnOperation() override {
     auto module = getOperation();
-    // Use ordered container to make sure ids are deterministic if we got tensor
-    // ids from different part, since we have different passes that touches
-    // variables.
+    // Use ordered container to make sure ids are deterministic if we got
+    // tensor ids from different part, since we have different passes that
+    // touches variables.
     // TODO(b/149099381): Remove integer IDs after adding the new variable
     // handle type.
     std::map<std::string, int> global_tensor_id;

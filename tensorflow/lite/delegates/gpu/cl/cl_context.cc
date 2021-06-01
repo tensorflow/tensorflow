@@ -46,7 +46,7 @@ std::vector<cl_image_format> GetSupportedImage2DFormats(cl_context context,
 bool IsEqualToImageFormat(cl_image_format image_format, DataType data_type,
                           int num_channels) {
   return image_format.image_channel_data_type ==
-             ToImageChannelType(data_type) &&
+             DataTypeToChannelType(data_type) &&
          image_format.image_channel_order == ToChannelOrder(num_channels);
 }
 
@@ -131,7 +131,7 @@ bool CLContext::IsFloatTexture2DSupported(int num_channels, DataType data_type,
                                           cl_mem_flags flags) const {
   auto supported_formats = GetSupportedImage2DFormats(context_, flags);
   for (auto format : supported_formats) {
-    if (format.image_channel_data_type == ToImageChannelType(data_type) &&
+    if (format.image_channel_data_type == DataTypeToChannelType(data_type) &&
         format.image_channel_order == ToChannelOrder(num_channels)) {
       return true;
     }

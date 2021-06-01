@@ -31,7 +31,7 @@ struct TestMaterializeBroadcastsPass
     : public PassWrapper<TestMaterializeBroadcastsPass, FunctionPass> {
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns;
+    OwningRewritePatternList conversionPatterns(&getContext());
 
     // Consider the mhlo dialect legal for tests.
     conversionTarget.addLegalDialect<MhloDialect>();

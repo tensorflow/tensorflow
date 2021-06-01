@@ -8,8 +8,8 @@
 // CHECK-SAME:    [[SIZE_2:%.*]]: index) -> index attributes {tf_entry} {
 func @tf_entry(%size_0 : index , %size_2 : index) -> index
     attributes {tf_entry} {
-  %buf = alloc(%size_0, %size_2)[] : memref<?x10x?xf32>
-  dealloc %buf : memref<?x10x?xf32>
+  %buf = memref.alloc(%size_0, %size_2)[] : memref<?x10x?xf32>
+  memref.dealloc %buf : memref<?x10x?xf32>
   std.return %size_0 : index
 }
 // CHECK-NEXT: [[VAL_3:%.*]] = tf_framework.alloc
@@ -29,8 +29,8 @@ func @non_tf_entry(%size_0 : index , %size_2 : index) -> index {
 
 // CHECK-LABEL: func @tf_entry(
 func @tf_entry(%size : index) attributes {tf_entry} {
-  %buf = alloc()[%size] : memref<64xf32, affine_map<(d0)[s0] -> (d0 + s0)>>
-  dealloc %buf : memref<64xf32, affine_map<(d0)[s0] -> (d0 + s0)>>
+  %buf = memref.alloc()[%size] : memref<64xf32, affine_map<(d0)[s0] -> (d0 + s0)>>
+  memref.dealloc %buf : memref<64xf32, affine_map<(d0)[s0] -> (d0 + s0)>>
   std.return
 }
 // CHECK_NOT: alloc_raw
@@ -46,19 +46,19 @@ func @assert(%arg0: !tf_framework.op_kernel_context)
        -> (memref<*xf32>, memref<*xi32>) attributes {tf_entry} {
   %true = constant true
   assert %true, "the one and only"
-  %buf_f32 = alloc() : memref<2xf32>
-  %unranked_f32 = memref_cast %buf_f32 : memref<2xf32> to memref<*xf32>
-  %buf_i32 = alloc() : memref<3xi32>
-  %unranked_i32 = memref_cast %buf_i32 : memref<3xi32> to memref<*xi32>
+  %buf_f32 = memref.alloc() : memref<2xf32>
+  %unranked_f32 = memref.cast %buf_f32 : memref<2xf32> to memref<*xf32>
+  %buf_i32 = memref.alloc() : memref<3xi32>
+  %unranked_i32 = memref.cast %buf_i32 : memref<3xi32> to memref<*xi32>
   return %unranked_f32, %unranked_i32 : memref<*xf32>, memref<*xi32>
 }
 // CHECK:   [[TRUE:%.*]] = constant true
 // CHECK:   cond_br [[TRUE]], ^bb1, ^bb2
 // CHECK: ^bb1:
 // CHECK:   [[BUF_F32:%.*]] = tf_framework.alloc([[CTX]]) : memref<2xf32>
-// CHECK:   [[OUT_F32:%.*]] = memref_cast [[BUF_F32]]
+// CHECK:   [[OUT_F32:%.*]] = memref.cast [[BUF_F32]]
 // CHECK:   [[BUF_I32:%.*]] = tf_framework.alloc([[CTX]]) : memref<3xi32>
-// CHECK:   [[OUT_I32:%.*]] = memref_cast [[BUF_I32]]
+// CHECK:   [[OUT_I32:%.*]] = memref.cast [[BUF_I32]]
 // CHECK:   return [[OUT_F32]], [[OUT_I32]] : memref<*xf32>, memref<*xi32>
 // CHECK: ^bb2:
 // CHECK:   tf_framework.report_error [[CTX]], INVALID_ARGUMENT,
@@ -77,8 +77,8 @@ func @double_assert(%arg0: !tf_framework.op_kernel_context)
   %false = constant false
   assert %true, "first assertion"
   assert %false, "second assertion"
-  %buf = alloc() : memref<2xf32>
-  %unranked_buf = memref_cast %buf : memref<2xf32> to memref<*xf32>
+  %buf = memref.alloc() : memref<2xf32>
+  %unranked_buf = memref.cast %buf : memref<2xf32> to memref<*xf32>
   return %unranked_buf : memref<*xf32>
 }
 // CHECK:   [[TRUE:%.*]] = constant true
@@ -88,7 +88,7 @@ func @double_assert(%arg0: !tf_framework.op_kernel_context)
 // CHECK:   cond_br [[FALSE]], ^bb2, ^bb4
 // CHECK: ^bb2:
 // CHECK:   [[BUF:%.*]] = tf_framework.alloc([[CTX]]) : memref<2xf32>
-// CHECK:   [[OUT:%.*]] = memref_cast [[BUF]]
+// CHECK:   [[OUT:%.*]] = memref.cast [[BUF]]
 // CHECK:   return [[OUT]] : memref<*xf32>
 // CHECK: ^bb3:
 // CHECK:   tf_framework.report_error [[CTX]], INVALID_ARGUMENT,

@@ -12,15 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras convolution layers and image transformation layers.
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Keras convolution layers and image transformation layers."""
 
 import functools
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
@@ -64,7 +58,8 @@ class Conv(Layer):
   Args:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
     filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
+      of filters in the convolution). Could be "None", eg in the case of
+      depth wise convolution.
     kernel_size: An integer or tuple/list of n integers, specifying the
       length of the convolution window.
     strides: An integer or tuple/list of n integers,
@@ -141,6 +136,9 @@ class Conv(Layer):
 
     if isinstance(filters, float):
       filters = int(filters)
+    if filters is not None and filters < 0:
+      raise ValueError(f'Received a negative value for `filters`.'
+                       f'Was expecting a positive value, got {filters}.')
     self.filters = filters
     self.groups = groups or 1
     self.kernel_size = conv_utils.normalize_tuple(
@@ -226,7 +224,7 @@ class Conv(Layer):
     # Convert Keras formats to TF native formats.
     if self.padding == 'causal':
       tf_padding = 'VALID'  # Causal padding handled in `call`.
-    elif isinstance(self.padding, six.string_types):
+    elif isinstance(self.padding, str):
       tf_padding = self.padding.upper()
     else:
       tf_padding = self.padding
@@ -2112,7 +2110,8 @@ class SeparableConv2D(SeparableConv):
     strides: An integer or tuple/list of 2 integers,
       specifying the strides of the convolution along the height and width.
       Can be a single integer to specify the same value for
-      all spatial dimensions.
+      all spatial dimensions. Current implementation only supports equal 
+      length strides in the row and column dimensions.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
@@ -2261,11 +2260,22 @@ class SeparableConv2D(SeparableConv):
 
 @keras_export('keras.layers.DepthwiseConv2D')
 class DepthwiseConv2D(Conv2D):
-  """Depthwise separable 2D convolution.
+  """Depthwise 2D convolution.
 
-  Depthwise Separable convolutions consist of performing
-  just the first step in a depthwise spatial convolution
-  (which acts on each input channel separately).
+  Depthwise convolution is a type of convolution in which a single convolutional
+  filter is apply to each input channel (i.e. in a depthwise way).
+  You can understand depthwise convolution as being
+  the first step in a depthwise separable convolution.
+
+  It is implemented via the following steps:
+
+  - Split the input into individual channels.
+  - Convolve each input with the layer's kernel (called a depthwise kernel).
+  - Stack the convolved outputs together (along the channels axis).
+
+  Unlike a regular 2D convolution, depthwise convolution does not mix
+  information across different input channels.
+
   The `depth_multiplier` argument controls how many
   output channels are generated per input channel in the depthwise step.
 
@@ -2333,10 +2343,11 @@ class DepthwiseConv2D(Conv2D):
 
   Output shape:
     4D tensor with shape:
-    `[batch_size, filters, new_rows, new_cols]` if data_format='channels_first'
-    or 4D tensor with shape:
-    `[batch_size, new_rows, new_cols, filters]` if data_format='channels_last'.
-    `rows` and `cols` values might have changed due to padding.
+    `[batch_size, channels * depth_multiplier, new_rows, new_cols]` if
+    data_format='channels_first' or 4D tensor with shape:
+    `[batch_size, new_rows, new_cols, channels * depth_multiplier]` if
+    data_format='channels_last'. `rows` and `cols` values might have
+    changed due to padding.
 
   Returns:
     A tensor of rank 4 representing

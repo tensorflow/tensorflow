@@ -560,8 +560,11 @@ class MemoryUsageTracker {
   // max_block_size (both inclusive) with the lowest rematerialization cost is
   // selected among those candidates which reduce memory use at the program
   // point of the current instruction as indicated by memory_tracker. Returns an
-  // empty vector if no candidates are found.
-  std::pair<std::vector<Item*>, RematStrategy> PickRematerializationCandidates(
+  // empty vector if no candidates are found. Also returns an integer that
+  // represents the amount of "effort" expended to find the candidate
+  // instructions.
+  std::tuple<std::vector<Item*>, RematStrategy, int>
+  PickRematerializationCandidates(
       const InstructionList& instruction_list, int64 memory_limit_bytes,
       absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
       int min_block_size, int max_block_size);
@@ -1368,7 +1371,7 @@ bool AnyDenylistedOrNonRematerializable(
   return false;
 }
 
-std::pair<std::vector<Item*>, RematStrategy>
+std::tuple<std::vector<Item*>, RematStrategy, int>
 MemoryUsageTracker::PickRematerializationCandidates(
     const InstructionList& instruction_list, int64 memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
@@ -1377,6 +1380,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
   int64 best_cost = 0;
   RematStrategy best_strategy;
 
+  int effort = 0;
   VLOG(5) << "Picking candidate block with size in [" << min_block_size << ", "
           << max_block_size << "]";
 
@@ -1418,6 +1422,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
                   GetCompactShape(item->instruction).ValueOrDie();
               const int64 memory_reduced =
                   MemoryReducedIfCompressed(item, compact_shape);
+              effort++;
               if (memory_reduced > 0) {
                 const int64 cost = memory_limit_bytes / memory_reduced;
                 if (best_items.empty() || cost < best_cost) {
@@ -1465,7 +1470,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
         VLOG(5) << hlo->instruction->name();
       }
       const int64 memory_reduced = MemoryReducedIfRematerialized(block);
-
+      effort++;
       if (memory_reduced > 0) {
         const int cost =
             RematerializationCost(block, memory_reduced, memory_limit_bytes);
@@ -1496,7 +1501,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
       block.push_back(next_item);
     }
   }
-  return {best_items, best_strategy};
+  return {best_items, best_strategy, effort};
 }
 
 bool MemoryUsageTracker::HasUnplacedUsers(Item* item) const {
@@ -1741,6 +1746,8 @@ struct InstructionsAdded {
   // Total count of instructions rematerialized minus number of original
   // instructions that are now dead.
   int net_instructions_added;
+  // Amount of effort expended to find the instructions to rematerialize.
+  int effort;
 };
 
 // Rematerializes the best block of instructions of size between min_block_size
@@ -1755,12 +1762,14 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
 
   std::vector<Item*> best_items;
   RematStrategy best_strategy;
-  std::tie(best_items, best_strategy) =
+  int effort;
+  std::tie(best_items, best_strategy, effort) =
       memory_tracker->PickRematerializationCandidates(
           *instruction_list, memory_limit_bytes, rematerializable_map,
           min_block_size, max_block_size);
   InstructionsAdded num_instructions_added;
   num_instructions_added.remat_count = best_items.size();
+  num_instructions_added.effort = effort;
   if (best_items.empty()) {
     num_instructions_added.net_instructions_added = 0;
     return num_instructions_added;
@@ -1891,6 +1900,14 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
     int max_block_size = 1;
     // Only trigger rematerialization when the memory usage changes.
     if (memory_tracker.AllocatedSize(item) + callee_usage > 0) {
+      // Finding larger blocks of instructions to rematerialize can be time
+      // consuming. To limit the amount of time spent attempting to find such
+      // large blocks, count the amount of effort expended to find single
+      // instructions to rematerialize and then limit the total amount of effort
+      // to at most a factor of block_rematerialization_factor_ more.
+      bool is_first_phase = true;
+      int64 first_phase_effort = 0;
+      int64 second_phase_effort = 0;
       while (memory_tracker.memory_usage() + callee_usage >
              memory_limit_bytes) {
         VLOG(2) << "Over memory limit at instruction " << instruction->name()
@@ -1907,7 +1924,11 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
                                    &remat_move_instructions));
         net_instructions_added += instructions_added.net_instructions_added;
         remat_count += instructions_added.remat_count;
-
+        if (is_first_phase) {
+          first_phase_effort += instructions_added.effort;
+        } else {
+          second_phase_effort += instructions_added.effort;
+        }
         VLOG(1) << "memory_usage after rematerialization = "
                 << HumanReadableNumBytes(memory_tracker.memory_usage());
         if (instructions_added.remat_count == 0) {
@@ -1915,6 +1936,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
           // Consider doubling the block size.
           min_block_size = max_block_size + 1;
           max_block_size = 2 * max_block_size;
+          is_first_phase = false;
         } else {
           // Found a valid block. Reset to start looking for single instructions
           // again.
@@ -1924,7 +1946,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
           min_block_size = 1;
           max_block_size = 1;
         }
-        if (max_block_size > block_size_limit_) {
+        if (max_block_size > block_size_limit_ ||
+            second_phase_effort >
+                block_rematerialization_factor_ * first_phase_effort) {
           break;
         }
       }

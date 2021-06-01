@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -81,7 +82,9 @@ class BinaryOpsTestBase : public OpsTestBase {
                            expected_shape);
     test::FillValues<OutT>(&expected_tensor, expected_output);
     if (config.expect_strictly_equal) {
-      test::ExpectEqual(expected_tensor, *GetOutput(0));
+      test::ExpectEqual(expected_tensor, *GetOutput(0),
+                        config.supress_tolerance ? test::Tolerance::kNone
+                                                 : test::Tolerance::kDefault);
     } else {
       test::ExpectClose(expected_tensor, *GetOutput(0), config.atol,
                         config.rtol);

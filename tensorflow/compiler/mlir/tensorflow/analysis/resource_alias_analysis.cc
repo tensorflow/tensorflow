@@ -173,7 +173,8 @@ BacktrackAnalysis::BacktrackAnalysis(ModuleOp module) {
 
   // This above call graph analysis will cover all regions attached to functions
   // but we also need to analyze regions attached to other ops.
-  module.walk([this](Operation* op) {
+  module->walk([this](Operation* op) {
+    if (op->hasTrait<OpTrait::NoTerminator>()) return;
     for (Region& region : op->getRegions()) GetOrCreateAnalysis(region);
   });
 }
@@ -219,6 +220,7 @@ BacktrackAnalysisInfo::BacktrackAnalysisInfo(
   if (region.empty()) return;
 
   assert(llvm::hasSingleElement(region.getBlocks()));
+
   auto results = region.front().getTerminator()->getOperands();
   if (results.empty()) return;
 

@@ -55,7 +55,7 @@ class LogMemory {
   static const std::string kLogMemoryLabel;
 
   // Test to see if memory logging is enabled. For now, logging is
-  // enabled whenever VLOG_IS_ON(1) for the log_memory module.
+  // enabled whenever VLOG_IS_ON(2) for the log_memory module.
   static bool IsEnabled();
 
   // Log the beginning of a step.

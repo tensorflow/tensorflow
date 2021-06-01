@@ -131,6 +131,10 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
       options.device_type() != ProfileOptions::UNSPECIFIED) {
     return nullptr;
   }
+  // Don't attempt to create a TpuTracer if the TPU C API isn't initialized.
+  if (tpu::OpsApiFn()->TpuProfiler_CreateFn == nullptr) {
+    return nullptr;
+  }
   return absl::make_unique<TpuTracer>();
 }
 

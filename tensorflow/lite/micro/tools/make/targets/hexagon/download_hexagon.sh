@@ -24,18 +24,17 @@
 # Clone hexagon kernels to temp directory and check out known-good commit.
 HEXAGON_DIR=/tmp/hexagon_optimized
 
-mkdir -p ${HEXAGON_DIR}
+if [ ! -d ${HEXAGON_DIR} ]; then
+  mkdir -p ${HEXAGON_DIR}
+  git clone -b release_v2 https://source.codeaurora.org/quic/embedded_ai/tensorflow ${HEXAGON_DIR}
+fi
 
-git clone -b release_v2 https://source.codeaurora.org/quic/embedded_ai/tensorflow ${HEXAGON_DIR}
-pushd ${HEXAGON_DIR}
+pushd ${HEXAGON_DIR} > /dev/null
 git checkout 2d052806c211144875c89315a4fc6f1393064cf6
-popd
+popd > /dev/null
 
 # Copy optimized kernels from checkout, copy prebuilt lib.
 rm -rf tensorflow/lite/micro/kernels/hexagon
 cp -R ${HEXAGON_DIR}/tensorflow/lite/micro/kernels/hexagon tensorflow/lite/micro/kernels/hexagon
-cp -R ${HEXAGON_DIR}/tensorflow/lite/micro/hexagon tensorflow/lite/micro
-cp ${HEXAGON_DIR}/tensorflow/lite/micro/tools/make/ext_libs/hexagon_library.inc tensorflow/lite/micro/tools/make/ext_libs/hexagon_library.inc
-cp ${HEXAGON_DIR}/tensorflow/lite/micro/tools/make/targets/hexagon_makefile.inc tensorflow/lite/micro/tools/make/targets/hexagon_makefile.inc
 mkdir tensorflow/lite/micro/kernels/hexagon/lib
 cp ${1} tensorflow/lite/micro/kernels/hexagon/lib/

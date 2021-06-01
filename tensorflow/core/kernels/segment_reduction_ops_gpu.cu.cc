@@ -23,8 +23,9 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 // clang-format on
 
-#include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/segment_reduction_ops.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 
 namespace tensorflow {
@@ -126,6 +127,29 @@ __global__ void UnsortedSegmentCustomKernel(
   }
 }
 
+// TODO(duncanriach): move this into a utility and share it
+bool RequireDeterminism() {
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    return deterministic_ops;
+  }();
+  return require_determinism;
+}
+
+bool DisableSegmentReductionOpDeterminismExceptions() {
+  static bool cached_disable = [] {
+    bool disable = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_DISABLE_SEGMENT_REDUCTION_OP_DETERMINISM_EXCEPTIONS",
+        /*default_val=*/false, &disable));
+    return disable;
+  }();
+  return cached_disable;
+}
+
 namespace functor {
 
 template <typename T, typename Index, typename InitialValueF,
@@ -141,6 +165,7 @@ void SegmentReductionFunctor<
   if (output.size() == 0) {
     return;
   }
+
   // Set 'output' to initial value.
   GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
   const T InitialValue = InitialValueF()();
@@ -188,6 +213,16 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     if (output.size() == 0) {
       return;
     }
+
+    bool determinism_requirement_met =
+        ReductionF::is_associative || !RequireDeterminism() ||
+        DisableSegmentReductionOpDeterminismExceptions();
+    OP_REQUIRES(
+        ctx, determinism_requirement_met,
+        errors::Unimplemented(
+            "Deterministic GPU implementation of unsorted segment reduction op"
+            " not available."));
+
     // Set 'output' to initial value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
     GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);

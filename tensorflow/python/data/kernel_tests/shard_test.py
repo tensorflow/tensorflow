@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -93,6 +94,22 @@ class ShardTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testNumShardsLargerThanDataset(self):
     dataset = dataset_ops.Dataset.range(10).shard(20, 5)
     self.assertDatasetProduces(dataset, expected_output=[5])
+
+
+class ShardCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
+
+  def _build_dataset(self, num_elements, num_shards, index):
+    return dataset_ops.Dataset.range(num_elements).shard(num_shards, index)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              elems=[10, 100], num_shards=[2, 5], index=[0, 1])))
+  def testCore(self, elems, num_shards, index):
+    self.run_core_tests(lambda: self._build_dataset(elems, num_shards, index),
+                        elems // num_shards)
 
 
 if __name__ == "__main__":

@@ -34,7 +34,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-static const char* const kGradientOp = FunctionLibraryDefinition::kGradientOp;
+static constexpr const char* const kGradientOp =
+    FunctionLibraryDefinition::kGradientOp;
 
 ArgOp::ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
@@ -93,7 +94,6 @@ REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceRetOp).Device(DEVICE_CPU), RetvalOp);
 // TPU runtime, and does not need to be registered when selective registration
 // is turned on.
 REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
-
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
@@ -202,7 +202,6 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         PassOn);
-
 
 class SymbolicGradientOp : public AsyncOpKernel {
  public:

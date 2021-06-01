@@ -12,8 +12,9 @@ package(
         "//tensorflow/core/framework:__subpackages__",
         # tensorflow/core/platform still references some of the headers in this package
         "//tensorflow/core/platform:__subpackages__",
+        "//tensorflow/core/tpu:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.

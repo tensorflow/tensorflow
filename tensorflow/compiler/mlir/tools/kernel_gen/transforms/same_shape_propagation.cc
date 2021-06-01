@@ -198,11 +198,11 @@ class ShapeEqualityKnowledge {
   /// results.
   void build(FuncOp function) {
     function.walk([&](Operation *op) {
-      if (auto reshape = dyn_cast<MemRefReshapeOp>(op)) {
+      if (auto reshape = dyn_cast<memref::ReshapeOp>(op)) {
         registerAssociation(ShapeValue{reshape.shape()}, reshape.result());
         return;
       }
-      if (auto cast = dyn_cast<MemRefReinterpretCastOp>(op)) {
+      if (auto cast = dyn_cast<memref::ReinterpretCastOp>(op)) {
         // Only support fully dynamic sizes for now.
         // TODO(herhut): Fix once the op has canonicalizers that break this.
         for (unsigned int p = 0, e = cast.getResultRank(); p < e; ++p) {
@@ -213,7 +213,7 @@ class ShapeEqualityKnowledge {
         registerAssociation(ShapeValue{cast.sizes()}, cast.result());
         return;
       }
-      if (auto alloc = dyn_cast<AllocOp>(op)) {
+      if (auto alloc = dyn_cast<memref::AllocOp>(op)) {
         SmallVector<ValueOrConst, 4> shape;
         ShapedType type = alloc.getResult().getType().cast<ShapedType>();
         fillShapeFromAllocLike(alloc.getDynamicSizes(), type, shape);
@@ -288,7 +288,7 @@ class ShapeEqualityKnowledge {
           llvm::all_of(llvm::enumerate(shape.scalars()), [&candidate](auto p) {
             ValueOrConst val = p.value();
             if (val.isConstant()) return false;
-            auto dimOp = val.value().getDefiningOp<DimOp>();
+            auto dimOp = val.value().getDefiningOp<memref::DimOp>();
             if (!dimOp) return false;
             if (!candidate) candidate = dimOp.memrefOrTensor();
             auto index = dimOp.getConstantIndex();

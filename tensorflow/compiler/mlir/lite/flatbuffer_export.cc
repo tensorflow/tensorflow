@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -37,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -100,6 +102,7 @@ using mlir::TensorType;
 using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
+using mlir::WalkResult;
 using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
@@ -219,10 +222,29 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
   std::string op_str;
   llvm::raw_string_ostream os(op_str);
   inst->getName().print(os);
+  os << "(";
+  if (!inst->getOperandTypes().empty()) {
+    bool first = true;
+    for (Type operand_type : inst->getOperandTypes()) {
+      os << (!first ? ", " : "");
+      first = false;
+      os << operand_type;
+    }
+  }
+  os << ") -> (";
+  if (!inst->getResultTypes().empty()) {
+    bool first = true;
+    for (Type result_type : inst->getResultTypes()) {
+      os << (!first ? ", " : "");
+      first = false;
+      os << result_type;
+    }
+  }
+  os << ")";
   // Print out attributes except for large elementsattributes (which should
   // rarely be the cause why the legalization didn't happen).
   if (!inst->getAttrDictionary().empty()) {
-    os << " {";
+    os << " : {";
     bool first = true;
     for (auto& named_attr : inst->getAttrDictionary()) {
       os << (!first ? ", " : "");
@@ -310,9 +332,20 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
   // Verify that module has a function named main.
   FuncOp main_fn = module.lookupSymbol<FuncOp>("main");
   if (!main_fn) {
-    return emitError(UnknownLoc::get(context),
-                     "should have a function named 'main'"),
-           false;
+    int entry_func_count = 0;
+    for (auto fn : module.getOps<FuncOp>()) {
+      auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+      if (attrs && !attrs.empty()) {
+        ++entry_func_count;
+      }
+    }
+
+    // Verify that module has a least one enrty function.
+    if (entry_func_count == 0) {
+      return emitError(UnknownLoc::get(context),
+                       "should have a least one entry function"),
+             false;
+    }
   }
 
   for (auto fn : module.getOps<FuncOp>()) {
@@ -503,13 +536,10 @@ class Translator {
       const Optional<BufferOffset<tflite::QuantizationParameters>>&
           quant_parameters);
 
-  // TODO(b/137395003): Legalize control flow ops to TFLite dialect, and remove
-  // these 2 functions here.
+  // TODO(b/137395003): Legalize tf.IfOp to TFLite dialect, and change the
+  // following method to handle TFL::IfOp.
   BufferOffset<tflite::Operator> BuildIfOperator(
       mlir::TF::IfOp op, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-  BufferOffset<tflite::Operator> BuildWhileOperator(
-      mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   // Build while operator where cond & body are regions.
@@ -602,6 +632,8 @@ class Translator {
   BufferOffset<tflite::SparsityParameters> BuildSparsityParameters(
       const mlir::TFL::SparsityParameterAttr& s_attr);
 
+  bool EstimateArithmeticCount(int64_t* count);
+
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -643,6 +675,22 @@ class Translator {
   // User's defined ops allowed with Flex.
   const std::unordered_set<std::string> select_user_tf_ops_;
 };
+
+bool Translator::EstimateArithmeticCount(int64_t* count) {
+  int64_t result = 0;
+  bool encounter_undetermined_mac = false;
+  module_->walk([&](mlir::TFL::TflArithmeticCountOpInterface op) {
+    int64_t mac_count = op.GetArithmeticCount(op);
+    if (mac_count < 0) {
+      encounter_undetermined_mac = true;
+      return;
+    }
+    result += mac_count;
+  });
+
+  *count = result;
+  return !encounter_undetermined_mac;
+}
 
 std::string Translator::UniqueName(mlir::Value val) {
   return std::string(name_mapper_.GetUniqueName(val));
@@ -801,9 +849,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   BufferOffset<tflite::QuantizationParameters> q_params;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
     q_params = tflite::CreateQuantizationParameters(
-        // TODO(fengliuai): min and max values are not stored in the
-        // quantized type, so both are set to 0. The model couldn't be imported
-        // to TensorFlow because of this.
+        // min and max values are not stored in the quantized type from MLIR, so
+        // both are set to 0 in the flatbuffer when they are exported.
         builder_, /*min=*/0, /*max=*/0,
         builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
         builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
@@ -876,22 +923,6 @@ BufferOffset<tflite::Operator> Translator::BuildCallOnceOperator(
   auto outputs = builder_.CreateVector(results);
   return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
                                 tflite::BuiltinOptions_CallOnceOptions,
-                                builtin_options);
-}
-
-BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
-    mlir::TF::WhileOp op, const std::vector<int32_t>& operands,
-    const std::vector<int32_t>& results) {
-  auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
-  int cond_subgraph_index = subgraph_index_map_.at(op.cond().str());
-  int body_subgraph_index = subgraph_index_map_.at(op.body().str());
-  auto builtin_options = tflite::CreateWhileOptions(
-                             builder_, cond_subgraph_index, body_subgraph_index)
-                             .Union();
-  auto inputs = builder_.CreateVector(operands);
-  auto outputs = builder_.CreateVector(results);
-  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
-                                tflite::BuiltinOptions_WhileOptions,
                                 builtin_options);
 }
 
@@ -1167,8 +1198,6 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
   if (dialect == tf_dialect_) {
     if (auto ifOp = dyn_cast<mlir::TF::IfOp>(inst)) {
       return BuildIfOperator(ifOp, operands, results);
-    } else if (auto whileOp = dyn_cast<mlir::TF::WhileOp>(inst)) {
-      return BuildWhileOperator(whileOp, operands, results);
     }
 
     CustomOptionsOffset custom_options;
@@ -1451,18 +1480,6 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       results.push_back(tensor_index_map.lookup(result));
     }
     Operation* real_inst = &inst;
-    // CustomTfOp is just a wrapper around a TF op, we export the custom Op
-    // not the wrapper, so we fetch the op from the region.
-    if (auto custom_op = dyn_cast<mlir::TFL::CustomTfOp>(inst)) {
-      // If we have custom op with a region, then use the first op in the
-      // region, if it exists, otherwise just use params for custom op.
-      if (!custom_op.body().empty()) {
-        real_inst = &custom_op.body().front().front();
-      } else {
-        module_.emitError(
-            "Invalid CustomTfOp: Custom TF Op have empty region.");
-      }
-    }
     std::vector<int32_t> operands;
     operands.reserve(real_inst->getNumOperands());
     for (auto operand : real_inst->getOperands()) {
@@ -1474,6 +1491,19 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
         operands.push_back(tensor_index_map.lookup(stats_op.arg()));
       else
         operands.push_back(tensor_index_map.lookup(operand));
+    }
+
+    // CustomTfOp is just a wrapper around a TF op, we export the custom Op
+    // not the wrapper, so we fetch the op from the region.
+    if (auto custom_op = dyn_cast<mlir::TFL::CustomTfOp>(inst)) {
+      // If we have custom op with a region, then use the first op in the
+      // region, if it exists, otherwise just use params for custom op.
+      if (!custom_op.body().empty()) {
+        real_inst = &custom_op.body().front().front();
+      } else {
+        module_.emitError(
+            "Invalid CustomTfOp: Custom TF Op have empty region.");
+      }
     }
 
     if (auto tfl_operator =
@@ -1572,7 +1602,8 @@ std::vector<std::string> GetStringsFromDictionaryAttr(
 }
 
 std::vector<SignatureDefData> BuildSignaturedef(
-    FuncOp main_op, const std::string& saved_model_tag) {
+    FuncOp main_op, const std::string& saved_model_tag,
+    tensorflow::OpOrArgNameMapper& name_mapper) {
   static const char kSignatureDefIndexPath[] = "tf_saved_model.index_path";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
@@ -1636,7 +1667,11 @@ std::vector<SignatureDefData> BuildSignaturedef(
     result[0].inputs[sig_def_inputs[i]] = input_names[i].str();
   }
   for (int i = 0; i < output_names.size(); ++i) {
-    result[0].outputs[sig_def_outputs[i]] = output_names[i].str();
+    // Fetch the name from the actual operand and not rely on names from
+    // outputs as deduping can make them invalid after conversion.
+    auto& operand = term->getOpOperand(i);
+    auto unique_name = std::string(name_mapper.GetUniqueName(operand.get()));
+    result[0].outputs[sig_def_outputs[i]] = unique_name;
   }
   if (auto name_attr = exported_name[0].dyn_cast_or_null<StringAttr>())
     result[0].method_name = name_attr.getValue().str();
@@ -1691,17 +1726,18 @@ bool UpdateEntryFunction(ModuleOp module) {
   FuncOp entry_func = nullptr;
   for (auto fn : module.getOps<FuncOp>()) {
     auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
-    if (attrs && !attrs.empty()) {
-      entry_func_count++;
-      entry_func = fn;
-    }
+    if (!attrs || attrs.empty()) continue;
+    ++entry_func_count;
+    entry_func = fn;
   }
 
-  // We should have one & only have one entry function.
-  if (entry_func_count != 1) return false;
+  // We should have at least one entry function.
+  if (entry_func_count == 0) return false;
 
-  // Update the entry func to main.
-  entry_func.setName("main");
+  if (entry_func_count == 1) {
+    // Update the entry func to main when the entry func is only & one.
+    entry_func.setName("main");
+  }
   return true;
 }
 
@@ -1730,16 +1766,45 @@ Optional<std::string> Translator::TranslateInternal() {
   named_regions.reserve(std::distance(module_.begin(), module_.end()));
 
   int subgraph_idx = 0;
+
+  // Entry functions for signature defs.
+  std::vector<FuncOp> entry_functions;
+  std::vector<FuncOp> non_entry_functions;
   FuncOp main_fn = module_.lookupSymbol<FuncOp>("main");
-  subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
-  named_regions.emplace_back("main", &main_fn.getBody());
+  if (main_fn != nullptr) {
+    // Treat the main function as a signature def when the given main function
+    // contains on the tf.entry_function attribute.
+    auto attrs =
+        main_fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+    if (attrs && !attrs.empty()) {
+      entry_functions.push_back(main_fn);
+    } else {
+      non_entry_functions.push_back(main_fn);
+    }
+  }
+
   // Walk over the module collection ops with functions and while ops.
   module_.walk([&](FuncOp fn) {
-    if (fn != main_fn) {
-      subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
-      named_regions.emplace_back(fn.getName().str(), &fn.getBody());
+    if (main_fn == fn) return WalkResult::advance();
+    auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+    if (attrs && !attrs.empty()) {
+      entry_functions.push_back(fn);
+    } else {
+      non_entry_functions.push_back(fn);
     }
+    return WalkResult::advance();
   });
+
+  // Assign the subgraph index. Among the given functions, it will put entry
+  // functions at the beginning of the list of the subgrahs.
+  for (auto fn : entry_functions) {
+    subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
+    named_regions.emplace_back(fn.getName().str(), &fn.getBody());
+  }
+  for (auto fn : non_entry_functions) {
+    subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
+    named_regions.emplace_back(fn.getName().str(), &fn.getBody());
+  }
 
   // Build subgraph for each of the named regions.
   std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
@@ -1812,6 +1877,31 @@ Optional<std::string> Translator::TranslateInternal() {
            llvm::None;
   }
 
+  // Log MAC count.
+  int64_t ops_count;
+  if (EstimateArithmeticCount(&ops_count)) {
+    const int64_t million = 1e6;
+    const int64_t billion = 1e9;
+    std::string flops_str;
+    std::string mac_str;
+    if (ops_count < 10000) {
+      flops_str = absl::StrFormat("%ld ", ops_count);
+      mac_str = absl::StrFormat("%ld ", ops_count / 2);
+    } else if (ops_count < billion) {
+      flops_str =
+          absl::StrFormat("%.3f M ", static_cast<double>(ops_count) / million);
+      mac_str = absl::StrFormat("%.3f M ",
+                                static_cast<double>(ops_count / 2) / million);
+    } else {
+      flops_str =
+          absl::StrFormat("%.3f G ", static_cast<double>(ops_count) / billion);
+      mac_str = absl::StrFormat("%.3f G ",
+                                static_cast<double>(ops_count / 2) / billion);
+    }
+    LOG(INFO) << "Estimated count of arithmetic ops: " << flops_str
+              << " ops, equivalently " << mac_str << " MACs";
+  }
+
   std::string model_description;
   if (auto attr = module_->getAttrOfType<StringAttr>("tfl.description")) {
     model_description = attr.getValue().str();
@@ -1825,11 +1915,17 @@ Optional<std::string> Translator::TranslateInternal() {
   auto metadata = CreateMetadataVector();
   if (!metadata) return llvm::None;
 
-  // Build SignatureDef
-  // We only have 1 entry point 'main' function, so build only 1 signature def.
-  auto main_fn_signature_def = BuildSignaturedef(
-      main_fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin());
-  auto signature_defs = CreateSignatureDefs(main_fn_signature_def);
+  std::vector<SignatureDefData> signature_defs_vec;
+  // Build SignatureDefs for the tf.entry_function based func ops.
+  for (auto fn : entry_functions) {
+    auto signature_defs = BuildSignaturedef(
+        fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin(),
+        name_mapper_);
+    for (const auto& signature_def : signature_defs) {
+      signature_defs_vec.push_back(signature_def);
+    }
+  }
+  auto signature_defs = CreateSignatureDefs(signature_defs_vec);
 
   auto model = tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
                                    builder_.CreateVector(opcodes_),

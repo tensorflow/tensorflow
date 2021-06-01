@@ -431,5 +431,14 @@ TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
                                    "contains 3 elements, but shape is rank 1"));
 }
 
+TEST_F(LayoutUtilTest, MoveDimToMajor) {
+  const Layout layout = LayoutUtil::MakeLayout({2, 1, 0});
+  Layout new_layout = LayoutUtil::MoveDimToMajor(layout, 0);
+  EXPECT_EQ(new_layout, layout);
+
+  new_layout = LayoutUtil::MoveDimToMajor(layout, 1);
+  EXPECT_EQ(new_layout, LayoutUtil::MakeLayout({2, 0, 1}));
+}
+
 }  // namespace
 }  // namespace xla

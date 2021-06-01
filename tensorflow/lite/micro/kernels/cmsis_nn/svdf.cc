@@ -296,13 +296,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // [4] = Activation State (variable),
   //         {2, batch_size, memory_size * num_filters}
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* weights_feature =
       GetInput(context, node, kWeightsFeatureTensor);
+  TF_LITE_ENSURE(context, weights_feature != nullptr);
   const TfLiteTensor* weights_time =
       GetInput(context, node, kWeightsTimeTensor);
+  TF_LITE_ENSURE(context, weights_time != nullptr);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   const TfLiteTensor* activation_state =
       GetInput(context, node, kInputActivationStateTensor);
+  TF_LITE_ENSURE(context, activation_state != nullptr);
 
   // Define input constants based on input tensor definition above:
   const int rank = params->rank;

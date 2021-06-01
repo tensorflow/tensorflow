@@ -112,7 +112,6 @@ def main(enable_v2_behavior=True, config_logical_devices=True):
     v2_compat.enable_v2_behavior()
   else:
     v2_compat.disable_v2_behavior()
-  # TODO(b/131360402): configure default logical devices.
   multi_process_runner.test_main()
 
 

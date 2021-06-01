@@ -163,6 +163,7 @@ void AllocateAndParseFlags() {
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
+  ops_flags->tf_xla_async_compilation = false;
 
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
@@ -178,6 +179,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge = false;
   bool enable_mlir_bridge_is_explicit = false;
   bool mlir_bridge_safe_mode = false;
+  bool enable_mlir_merge_control_flow_pass = false;
 
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
@@ -216,6 +218,10 @@ void AllocateAndParseFlags() {
 
        Flag("tf_xla_always_defer_compilation",
             &ops_flags->tf_xla_always_defer_compilation, ""),
+       Flag("tf_xla_async_compilation", &ops_flags->tf_xla_async_compilation,
+            "When lazy compilation is enabled, asynchronous compilation starts "
+            "the cluster compilation in the background, and the fallback path "
+            "is executed until the compilation has finished."),
 
        Flag("tf_introduce_floating_point_jitter_to_tensors",
             setter_for_jitter_tensor_names, "",
@@ -229,6 +235,10 @@ void AllocateAndParseFlags() {
        Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
             "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",
             &enable_mlir_bridge_is_explicit),
+       Flag("tf_mlir_enable_merge_control_flow_pass",
+            &enable_mlir_merge_control_flow_pass,
+            "Enables MergeControlFlow pass for MLIR-Based TensorFlow Compiler "
+            "Bridge."),
        Flag(
            "tf_mlir_bridge_safe_mode", &mlir_bridge_safe_mode,
            "When tf_mlir_enable_mlir_bridge is true, this field can enable "
@@ -255,6 +265,8 @@ void AllocateAndParseFlags() {
     mlir_flags->tf_mlir_enable_mlir_bridge =
         ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
   }
+  mlir_flags->tf_mlir_enable_merge_control_flow_pass =
+      enable_mlir_merge_control_flow_pass;
 }
 
 }  // namespace

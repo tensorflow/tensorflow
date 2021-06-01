@@ -243,12 +243,15 @@ class TransferManager {
   virtual StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
 
+  typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+
   // Allocates a ScopedShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
   StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
-      int device_ordinal);
+      int device_ordinal,
+      DeviceShapeRepresentationFn shape_representation_fn = nullptr);
 
   // The given ShapedBuffer holds a handle to allocated memory, but it is not
   // in the general case legal to immediately copy or access that allocated

@@ -704,19 +704,6 @@ TEST_F(OpCompatibilityTest, OutputAddRef) {
 
 // Negative tests -------------------------------------------------------------
 
-// Can't remove an attr.
-REGISTER_OP("RemoveAttr");
-
-TEST_F(OpCompatibilityTest, RemoveAttrFails) {
-  OpRegistrationData old_op;
-  TF_ASSERT_OK(OpDefBuilder("RemoveAttr").Attr("a: int").Finalize(&old_op));
-  TF_ASSERT_OK(NodeDefBuilder("fails", &old_op.op_def)
-                   .Attr("a", 3)
-                   .Finalize(node_def()));
-  ExpectInvalid(old_op.op_def, "NodeDef mentions attr 'a' not in",
-                "Attr 'a' removed");
-}
-
 // Can't add an attr without a default.
 REGISTER_OP("AddAttrNoDefault").Attr("a: int");
 

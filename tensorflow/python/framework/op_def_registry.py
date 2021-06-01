@@ -22,7 +22,7 @@ from __future__ import print_function
 import threading
 
 from tensorflow.core.framework import op_def_pb2
-from tensorflow.python import _op_def_registry
+from tensorflow.python.framework import _op_def_registry
 
 # The cache amortizes ProtoBuf serialization/deserialization overhead
 # on the language boundary. If an OpDef has been looked up, its Python

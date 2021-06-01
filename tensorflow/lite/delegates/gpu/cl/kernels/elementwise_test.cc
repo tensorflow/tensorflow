@@ -52,6 +52,21 @@ TEST_F(OpenCLOperationTest, Exp) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, Floor) {
+  auto status = FloorTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, FloorDiv) {
+  auto status = FloorDivTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, FloorMod) {
+  auto status = FloorModTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 TEST_F(OpenCLOperationTest, HardSwish) {
   auto status = HardSwishTest(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();

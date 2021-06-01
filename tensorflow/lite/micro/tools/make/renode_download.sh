@@ -48,34 +48,10 @@ DOWNLOADED_RENODE_PATH=${DOWNLOADS_DIR}/renode
 if [ -d ${DOWNLOADED_RENODE_PATH} ]; then
   echo >&2 "${DOWNLOADED_RENODE_PATH} already exists, skipping the download."
 else
-  # Colours
-  ORANGE="\033[33m"
-  RED="\033[31m"
-  NC="\033[0m"
-
-  # Target version
-  RENODE_VERSION='1.11.0'
-
-  echo >&2 "Downloading Renode portable in version ${RENODE_VERSION}"
-
-  # Get link to requested version
-  RELEASES_JSON=`curl https://api.github.com/repos/renode/renode/releases 2>/dev/null`
-  LINUX_PORTABLE_URL=`echo "${RELEASES_JSON}" |grep 'browser_download_url'|\
-      grep --extended-regexp --only-matching "https://.*${RENODE_VERSION}.*linux-portable.*tar.gz"`
-  if [ -z "${LINUX_PORTABLE_URL}" ]; then
-    echo -e "${RED}Portable version of release v${RENODE_VERSION} not found. Please make sure you use correct version format ('[0-9]+.[0-9]+.[0-9]+')${NC}"
-    exit 1
-  fi
-
-  # Check if newer version available
-  LATEST_RENODE_VERSION=`echo "${RELEASES_JSON}" |grep 'tag_name' |\
-      head --lines 1 | grep --extended-regexp --only-matching '[0-9]+\.[0-9]+\.[0-9]+'`
-  if [ "${RENODE_VERSION}" != "${LATEST_RENODE_VERSION}" ]; then
-    echo -e "${ORANGE}Latest available version is ${LATEST_RENODE_VERSION}, please consider using it.${NC}" &>2
-  fi
-  echo >&2 "Downloading from url: ${LINUX_PORTABLE_URL}"
-
+  LINUX_PORTABLE_URL="https://github.com/renode/renode/releases/download/v1.11.0/renode-1.11.0.linux-portable.tar.gz"
   TEMP_ARCHIVE="/tmp/renode.tar.gz"
+
+  echo >&2 "Downloading from url: ${LINUX_PORTABLE_URL}"
   wget ${LINUX_PORTABLE_URL} -O ${TEMP_ARCHIVE} >&2
 
   EXPECTED_MD5="8415361f5caa843f1e31b59c50b2858f"

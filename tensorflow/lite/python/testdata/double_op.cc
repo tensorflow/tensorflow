@@ -19,13 +19,15 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_OP("Double")
-    .Input("input: int32")
-    .Output("doubled: int32")
+    .Input("input: T")
+    .Output("doubled: T")
+    .Attr("T: {int32, float}")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       return Status::OK();
     });
 
+template <typename T>
 class DoubleOp : public OpKernel {
  public:
   explicit DoubleOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -33,13 +35,13 @@ class DoubleOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Grab the input tensor
     const Tensor& input_tensor = context->input(0);
-    auto input_flat = input_tensor.flat<int32>();
+    auto input_flat = input_tensor.flat<T>();
 
     // Create an output tensor
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output_flat = output_tensor->flat<int32>();
+    auto output_flat = output_tensor->flat<T>();
 
     // Set all but the first element of the output tensor to 0.
     const int N = input_flat.size();
@@ -49,5 +51,10 @@ class DoubleOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("Double").Device(DEVICE_CPU), DoubleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("Double").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+    DoubleOp<int32>);
+REGISTER_KERNEL_BUILDER(
+    Name("Double").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DoubleOp<float>);
 }  // namespace tensorflow

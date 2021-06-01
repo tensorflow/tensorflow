@@ -502,7 +502,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
         constant_op.constant(shape, dtypes.int64))
 
   def testFillNumber(self):
-    with test_util.force_cpu():
+    with test_util.use_gpu():
       for sp_input in (self._SparseTensorValue_5x6(), self._SparseTensor_5x6()):
         sp_output, empty_row_indicator = (
             sparse_ops.sparse_fill_empty_rows(sp_input, -1))
@@ -520,7 +520,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testFillFloat(self):
-    with self.session(use_gpu=False):
+    with self.session():
       values = constant_op.constant(
           [0.0, 10.0, 13.0, 14.0, 32.0, 33.0], dtype=dtypes.float64)
       default_value = constant_op.constant(-1.0, dtype=dtypes.float64)
@@ -572,7 +572,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
                           np.array([0, 0, 1, 0, 1]).astype(np.bool))
 
   def testNoEmptyRows(self):
-    with test_util.force_cpu():
+    with test_util.use_gpu():
       sp_input = self._SparseTensor_2x6()
       sp_output, empty_row_indicator = (
           sparse_ops.sparse_fill_empty_rows(sp_input, -1))
@@ -586,7 +586,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
 
   def testNoEmptyRowsAndUnordered(self):
-    with test_util.force_cpu():
+    with test_util.use_gpu():
       sp_input = sparse_tensor.SparseTensor(
           indices=np.array([[1, 2], [1, 3], [0, 1], [0, 3]]),
           values=np.array([1, 3, 2, 4]),
@@ -601,6 +601,69 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.values, [2, 4, 1, 3])
       self.assertAllEqual(output.dense_shape, [2, 5])
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
+
+  def testUnordered(self):
+    with test_util.use_gpu():
+      sp_input = sparse_tensor.SparseTensor(
+          indices=np.array([[2, 3], [2, 2], [0, 1], [0, 3]]),
+          values=np.array([1, 3, 2, 4]),
+          dense_shape=np.array([3, 5]))
+      sp_output, empty_row_indicator = (
+          sparse_ops.sparse_fill_empty_rows(sp_input, -1))
+
+      output, empty_row_indicator_out = self.evaluate(
+          [sp_output, empty_row_indicator])
+
+      self.assertAllEqual(output.indices,
+                          [[0, 1], [0, 3], [1, 0], [2, 3], [2, 2]])
+      self.assertAllEqual(output.values, [2, 4, -1, 1, 3])
+      self.assertAllEqual(output.dense_shape, [3, 5])
+      self.assertAllEqual(empty_row_indicator_out, [False, True, False])
+
+  def testEmptyIndicesTensor(self):
+    with test_util.use_gpu():
+      sp_input = sparse_tensor.SparseTensor(
+          indices=np.ones([0, 2]),
+          values=np.ones([0]),
+          dense_shape=np.array([2, 5]))
+      sp_output, empty_row_indicator = (
+          sparse_ops.sparse_fill_empty_rows(sp_input, -1))
+
+      output, empty_row_indicator_out = self.evaluate(
+          [sp_output, empty_row_indicator])
+
+      self.assertAllEqual(output.indices, [[0, 0], [1, 0]])
+      self.assertAllEqual(output.values, [-1, -1])
+      self.assertAllEqual(output.dense_shape, [2, 5])
+      self.assertAllEqual(empty_row_indicator_out, np.ones(2).astype(np.bool))
+
+  def testEmptyOutput(self):
+    with test_util.use_gpu():
+      sp_input = sparse_tensor.SparseTensor(
+          indices=np.ones([0, 2]),
+          values=np.ones([0]),
+          dense_shape=np.array([0, 3]))
+      sp_output, empty_row_indicator = (
+          sparse_ops.sparse_fill_empty_rows(sp_input, -1))
+
+      output, empty_row_indicator_out = self.evaluate(
+          [sp_output, empty_row_indicator])
+
+      self.assertAllEqual(output.indices, np.ones([0, 2]))
+      self.assertAllEqual(output.values, np.ones([0]))
+      self.assertAllEqual(output.dense_shape, [0, 3])
+      self.assertAllEqual(empty_row_indicator_out, [])
+
+  def testInvalidIndices(self):
+    with test_util.use_gpu():
+      sp_input = sparse_tensor.SparseTensor(
+          indices=np.array([[1, 2], [1, 3], [99, 1], [99, 3]]),
+          values=np.array([1, 3, 2, 4]),
+          dense_shape=np.array([2, 5]))
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r"indices\(2, 0\) is invalid"):
+        self.evaluate(sparse_ops.sparse_fill_empty_rows(sp_input, -1))
 
 
 class SparseAddTest(test_util.TensorFlowTestCase):

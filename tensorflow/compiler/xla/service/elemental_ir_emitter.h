@@ -57,6 +57,12 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Module* module() { return module_; }
 
  protected:
+  virtual llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
+      const llvm_ir::IrArray::Index& index, const HloInstruction* hlo) {
+    return index.SourceIndexOfBitcast(hlo->shape(), hlo->operand(0)->shape(),
+                                      b_);
+  }
+
   virtual StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                                    llvm::Value* lhs_value,
                                                    llvm::Value* rhs_value);
@@ -94,6 +100,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                     bool is_signed);
   llvm::Value* EmitIntegerPow(llvm::Value* lhs, llvm::Value* rhs,
                               bool is_signed);
+
+  virtual StatusOr<llvm::Value*> EmitPredBinaryOp(const HloInstruction* op,
+                                                  llvm::Value* lhs_value,
+                                                  llvm::Value* rhs_value);
 
   virtual StatusOr<llvm::Value*> EmitIntegerBinaryOp(const HloInstruction* op,
                                                      llvm::Value* lhs_value,

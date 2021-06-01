@@ -162,9 +162,7 @@ transforms are in there so that both styles are recognized and optimized.
 The mobile version of TensorFlow is focused on inference, and so by default the
 list of supported ops (defined in
 [tensorflow/core/kernels/BUILD:android_extended_ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/BUILD)
-for Bazel and
-[tensorflow/contrib/makefile/tf_op_files.txt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/makefile/tf_op_files.txt)
-for make builds) doesn't include a lot that are training related. This can cause
+for Bazel doesn't include a lot that are training related. This can cause
 `No OpKernel was registered to support Op` errors when a GraphDef is loaded,
 even if the op isn't going to be executed.
 

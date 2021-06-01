@@ -146,13 +146,11 @@ class InitializeTRTResource : public OpKernel {
         // it is a no-op in implicit batch mode.
         OP_REQUIRES_OK(ctx, resource->profiles_.RestoreProfiles(raw_engine));
         OP_REQUIRES_OK(ctx, resource->profiles_.CreateExecutionContexts(
-                                raw_engine, ctx_vec, allocator));
+                                raw_engine, &ctx_vec));
       } else {
         // Multiple engines are only available in static mode. For each engine
         // we have only a single execution context.
-        auto exec_ctx_status = ExecutionContext::Create(raw_engine, allocator);
-        OP_REQUIRES_OK(ctx, exec_ctx_status.status());
-        ctx_vec.push_back(std::move(exec_ctx_status.ValueOrDie()));
+        ctx_vec.push_back(ExecutionContext::Create(raw_engine));
       }
       resource->cache_.emplace(engine_input_shapes,
                                absl::make_unique<EngineContext>(

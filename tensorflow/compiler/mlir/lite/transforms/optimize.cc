@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -357,6 +359,11 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
   });
 }
 
+// Returns true if the value's element type is F32.
+bool IsF32Value(Value value) {
+  return value.getType().cast<ShapedType>().getElementType().isF32();
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
@@ -490,6 +497,15 @@ struct FuseAddAndFullyConnected
       // TODO(b/180752069): Figure out new bias' type when old bias is empty.
       return failure();
     }
+
+    // The FC relies on constant folding, which is implemented on F32. Checks
+    // types to be F32.
+    {
+      if (!IsF32Value(add_op.rhs()) || !IsF32Value(fc_op.filter()) ||
+          !IsF32Value(old_bias))
+        return failure();
+    }
+
     auto new_bias = rewriter.create<TFL::FullyConnectedOp>(
         fc_op.getLoc(), old_bias.getType(),
         /*input=*/add_op.rhs(),
@@ -506,6 +522,62 @@ struct FuseAddAndFullyConnected
         /*input=*/add_op.lhs(),
         /*filter=*/fc_op.filter(),
         /*bias=*/*new_bias.output().begin(),
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(fc_op.fused_activation_function()),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+    rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
+
+    return success();
+  }
+};
+
+// Replace ..
+// FC(Mul(lhs, rhs), filter, bias)
+// .. with ..
+// FC(lhs, Mul(filter, rhs), bias)
+// .. if rhs, filter, and bias are all constants.
+// The generated Mul will be constant folded to a single matrix.
+struct FuseMulAndFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc_op,
+                                PatternRewriter &rewriter) const override {
+    // This only works with default format.
+    if (fc_op.weights_format() != "DEFAULT") return failure();
+
+    // Match Mul.
+    auto mul_op = dyn_cast_or_null<TFL::MulOp>(fc_op.input().getDefiningOp());
+    if (!mul_op) return failure();
+    if (mul_op.fused_activation_function() != "NONE") return failure();
+
+    // Don't match muls where the multiplier constant is not 1D.
+    {
+      auto multiplier_shape = mul_op.rhs().getType().cast<ShapedType>();
+      if (!multiplier_shape.hasStaticShape()) return failure();
+      if (multiplier_shape.getShape().size() != 1) return failure();
+    }
+
+    // We rely on constant folding, implemented only for F32. Check types.
+    if (!IsF32Value(mul_op.rhs()) || !IsF32Value(fc_op.filter())) {
+      return failure();
+    }
+
+    auto location =
+        FusedLoc::get(mul_op.getContext(), {mul_op.getLoc(), fc_op.getLoc()});
+
+    auto new_filter = rewriter.create<TFL::MulOp>(
+        location,
+        /*lhs=*/fc_op.filter(),
+        /*rhs=*/mul_op.rhs(),
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+    // Create the updated FC.
+    auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
+        location, fc_op.output().getTypes(),
+        /*input=*/mul_op.lhs(),
+        /*filter=*/new_filter,
+        /*bias=*/fc_op.bias(),
         /*fused_activation_function=*/
         rewriter.getStringAttr(fc_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
@@ -792,7 +864,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // dimension of the weight.
       SmallVector<APFloat, 4> new_bias_values;
       if (bias.getType().isa<NoneType>()) {  // none bias, a list of zeros
-        new_bias_values.resize(bias_size, APFloat(0.0));
+        new_bias_values.resize(bias_size,
+                               APFloat::getZero(cst_value.getSemantics()));
       } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
         new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
       } else if (bias_cst.getNumElements() == bias_size) {  // 1-d bias, copy it
@@ -1117,6 +1190,119 @@ struct RemoveReshapeBeforeFullyConnected
   }
 };
 
+// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshaoe
+// does not alter the last dimension and it restores the batch dimensions
+// collapsed by the FullyConnected op due to `keep_num_dims=false`. For example,
+//
+//   // %input: tensor<4x16x32xf32>
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
+//   %shape = constant dense<[4, 16, 32]> : tensor<3xi32>
+//   %rs = tfl.reshape(%fc, %shape)
+//
+// can be canonicalized to
+//
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = true, weights_format = "DEFAULT"}
+struct RemoveReshapeAfterFullyConnected
+    : public OpRewritePattern<TFL::ReshapeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape_op,
+                                PatternRewriter &rewriter) const override {
+    auto fully_connected_op = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
+        reshape_op.input().getDefiningOp());
+    if (!fully_connected_op || fully_connected_op.getNumResults() != 1 ||
+        fully_connected_op.weights_format() != "DEFAULT" ||
+        fully_connected_op.keep_num_dims())
+      return failure();
+    if (!reshape_op.input().getUseList()->hasOneUse()) return failure();
+
+    auto input_shape = fully_connected_op.input().getType().cast<ShapedType>();
+    auto output_shape = fully_connected_op.getType(0).cast<ShapedType>();
+    auto reshape_shape = reshape_op.getType().cast<ShapedType>();
+    if (!input_shape.hasStaticShape() || !output_shape.hasStaticShape() ||
+        !reshape_shape.hasStaticShape())
+      return failure();
+
+    // Check that the reshape doesn't modify the last dimension and it restores
+    // the input (batch) dimension with the exception of the feature (last)
+    // dimension.
+    if (output_shape.getShape().back() != reshape_shape.getShape().back() ||
+        input_shape.getShape().drop_back() !=
+            reshape_shape.getShape().drop_back())
+      return failure();
+
+    llvm::SmallVector<Type, 1> output_type{reshape_op.getType()};
+    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
+        reshape_op, output_type, fully_connected_op.input(),
+        fully_connected_op.filter(), fully_connected_op.bias(),
+        fully_connected_op.fused_activation_function(),
+        fully_connected_op.weights_format(), /*keep_num_dims=*/true);
+    return success();
+  }
+};
+
+// Fuses Unpack with proceeding Concatenation to Reshape if output type has
+// static shape and activation function is none. For example:
+//
+//   // %input: tensor<1x3x2xf32>
+//   %unpack:3 = "tfl.unpack"(%input) {axis = 1 : i32, num = 3 : i32}
+//   %res = "tfl.concatenation"(%unpack#0, %unpack#1, %unpack#2)
+//        {axis = -1 : i32, fused_activation_function = "NONE"}
+//
+// can be optimized to
+//
+//   %cst = constant dense<[1, 6]> : tensor<2xi32>
+//   %res = "tfl.reshape"(%input, %cst)
+struct FuseUnpackAndConcatToReshape
+    : public OpRewritePattern<TFL::ConcatenationOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::ConcatenationOp concat_op,
+                                PatternRewriter &rewriter) const override {
+    if (concat_op.fused_activation_function() != "NONE") {
+      return failure();
+    }
+
+    // Checks all operands come from the same unpack op.
+    auto first_operand = concat_op.values().front();
+    auto unpack_op =
+        dyn_cast_or_null<TFL::UnpackOp>(first_operand.getDefiningOp());
+    if (!unpack_op || unpack_op.getNumResults() != concat_op.getNumOperands()) {
+      return failure();
+    }
+    for (auto &index_and_value : llvm::enumerate(concat_op.values())) {
+      if (index_and_value.value() !=
+          unpack_op.getResult(index_and_value.index())) {
+        return failure();
+      }
+    }
+
+    auto output_type = concat_op.getType().cast<ShapedType>();
+    if (!output_type.hasStaticShape()) {
+      return failure();
+    }
+
+    auto new_shape_array = output_type.getShape();
+    // This is to workaround the unnecessary cast i64 -> i32.
+    SmallVector<int32_t, 4> new_shape_array_i32;
+    for (auto size : new_shape_array) {
+      new_shape_array_i32.push_back(static_cast<int32_t>(size));
+    }
+    auto new_shape = rewriter.create<TFL::ConstOp>(
+        concat_op.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get(new_shape_array_i32.size(),
+                                  rewriter.getIntegerType(32)),
+            new_shape_array_i32));
+
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(concat_op, output_type,
+                                                unpack_op.input(), new_shape);
+    return success();
+  }
+};
+
 using FuseBinaryOpToFollowingFullyConnected =
     FuseBinaryOpToFollowingAffineOp<FullyConnectedOp>;
 using FuseBinaryOpToFollowingDepthwiseConv2D =
@@ -1131,37 +1317,45 @@ void AddCanonicalizationPatterns(MLIRContext *context,
 }
 
 void OptimizePass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto *ctx = &getContext();
   auto func = getFunction();
+
+  // Merge reshapes into fully connected ops before we start moving them past
+  // binary ops.
+  OwningRewritePatternList phase_0_patterns(&getContext());
+  phase_0_patterns.insert<RemoveReshapeAfterFullyConnected,
+                          RemoveReshapeBeforeFullyConnected>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+                  FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
-                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-                  FuseFullyConnectedAndMul>(ctx);
+                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
   if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
-  OwningRewritePatternList phase_2_patterns;
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  OwningRewritePatternList phase_2_patterns(&getContext());
+  TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.insert<
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
       ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
       FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
       FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-      FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
-      FuseBinaryOpToFollowingDepthwiseConv2D,
+      FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
-      RemoveReshapeBeforeFullyConnected>(ctx);
+      RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
+      FuseUnpackAndConcatToReshape>(ctx);
   if (enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));

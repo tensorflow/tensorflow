@@ -202,6 +202,12 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     Status CheckExternalState() const override { return Status::OK(); }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->clear();
+      return Status::OK();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -898,7 +904,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
           TF_GUARDED_BY(mu_);  // must outlive input_stream_
-    };                      // class Iterator
+    };                         // class Iterator
 
     const std::vector<string> filenames_;
     const bool header_;

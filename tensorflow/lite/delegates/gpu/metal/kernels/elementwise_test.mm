@@ -51,6 +51,21 @@ limitations under the License.
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testFloorUnit {
+  auto status = FloorTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testFloorDivUnit {
+  auto status = FloorDivTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testFloorModUnit {
+  auto status = FloorModTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 - (void)testHardSwishUnit {
   auto status = HardSwishTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());

@@ -13,16 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Convolutional-recurrent layers.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=g-classes-have-attributes
+"""Convolutional-recurrent layers."""
 
 import numpy as np
 
 from tensorflow.python.keras import activations
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
@@ -276,9 +273,9 @@ class ConvRNN2D(RNN):
 
   def get_initial_state(self, inputs):
     # (samples, timesteps, rows, cols, filters)
-    initial_state = K.zeros_like(inputs)
+    initial_state = backend.zeros_like(inputs)
     # (samples, rows, cols, filters)
-    initial_state = K.sum(initial_state, axis=1)
+    initial_state = backend.sum(initial_state, axis=1)
     shape = list(self.cell.kernel_shape)
     shape[-1] = self.cell.filters
     initial_state = self.cell.input_conv(initial_state,
@@ -304,7 +301,7 @@ class ConvRNN2D(RNN):
 
     if isinstance(mask, list):
       mask = mask[0]
-    timesteps = K.int_shape(inputs)[1]
+    timesteps = backend.int_shape(inputs)[1]
 
     kwargs = {}
     if generic_utils.has_arg(self.cell.call, 'training'):
@@ -322,16 +319,16 @@ class ConvRNN2D(RNN):
       def step(inputs, states):
         return self.cell.call(inputs, states, **kwargs)
 
-    last_output, outputs, states = K.rnn(step,
-                                         inputs,
-                                         initial_state,
-                                         constants=constants,
-                                         go_backwards=self.go_backwards,
-                                         mask=mask,
-                                         input_length=timesteps)
+    last_output, outputs, states = backend.rnn(step,
+                                               inputs,
+                                               initial_state,
+                                               constants=constants,
+                                               go_backwards=self.go_backwards,
+                                               mask=mask,
+                                               input_length=timesteps)
     if self.stateful:
       updates = [
-          K.update(self_state, state)
+          backend.update(self_state, state)
           for self_state, state in zip(self.states, states)
       ]
       self.add_update(updates)
@@ -387,17 +384,17 @@ class ConvRNN2D(RNN):
     # initialize state if None
     if self.states[0] is None:
       if hasattr(self.cell.state_size, '__len__'):
-        self.states = [K.zeros(get_tuple_shape(dim))
+        self.states = [backend.zeros(get_tuple_shape(dim))
                        for dim in self.cell.state_size]
       else:
-        self.states = [K.zeros(get_tuple_shape(self.cell.state_size))]
+        self.states = [backend.zeros(get_tuple_shape(self.cell.state_size))]
     elif states is None:
       if hasattr(self.cell.state_size, '__len__'):
         for state, dim in zip(self.states, self.cell.state_size):
-          K.set_value(state, np.zeros(get_tuple_shape(dim)))
+          backend.set_value(state, np.zeros(get_tuple_shape(dim)))
       else:
-        K.set_value(self.states[0],
-                    np.zeros(get_tuple_shape(self.cell.state_size)))
+        backend.set_value(self.states[0],
+                          np.zeros(get_tuple_shape(self.cell.state_size)))
     else:
       if not isinstance(states, (list, tuple)):
         states = [states]
@@ -418,7 +415,7 @@ class ConvRNN2D(RNN):
                            str(get_tuple_shape(dim)) +
                            ', found shape=' + str(value.shape))
         # TODO(anjalisridhar): consider batch calls to `set_value`.
-        K.set_value(state, value)
+        backend.set_value(state, value)
 
 
 class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
@@ -570,7 +567,7 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
       if self.unit_forget_bias:
 
         def bias_initializer(_, *args, **kwargs):
-          return K.concatenate([
+          return backend.concatenate([
               self.bias_initializer((self.filters,), *args, **kwargs),
               initializers.get('ones')((self.filters,), *args, **kwargs),
               self.bias_initializer((self.filters * 2,), *args, **kwargs),
@@ -648,19 +645,19 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
     return h, [h, c]
 
   def input_conv(self, x, w, b=None, padding='valid'):
-    conv_out = K.conv2d(x, w, strides=self.strides,
-                        padding=padding,
-                        data_format=self.data_format,
-                        dilation_rate=self.dilation_rate)
+    conv_out = backend.conv2d(x, w, strides=self.strides,
+                              padding=padding,
+                              data_format=self.data_format,
+                              dilation_rate=self.dilation_rate)
     if b is not None:
-      conv_out = K.bias_add(conv_out, b,
-                            data_format=self.data_format)
+      conv_out = backend.bias_add(conv_out, b,
+                                  data_format=self.data_format)
     return conv_out
 
   def recurrent_conv(self, x, w):
-    conv_out = K.conv2d(x, w, strides=(1, 1),
-                        padding='same',
-                        data_format=self.data_format)
+    conv_out = backend.conv2d(x, w, strides=(1, 1),
+                              padding='same',
+                              data_format=self.data_format)
     return conv_out
 
   def get_config(self):
@@ -698,10 +695,16 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
 
 @keras_export('keras.layers.ConvLSTM2D')
 class ConvLSTM2D(ConvRNN2D):
-  """Convolutional LSTM.
+  """2D Convolutional LSTM layer.
 
-  It is similar to an LSTM layer, but the input transformations
-  and recurrent transformations are both convolutional.
+  A convolutional LSTM is similar to an LSTM, but the input transformations
+  and recurrent transformations are both convolutional. This layer is typically
+  used to process timeseries of images (i.e. video-like data).
+
+  It is known to perform well for weather data forecasting,
+  using inputs that are timeseries of 2D grids of sensor values.
+  It isn't usually applied to regular video data, due to its high computational
+  cost.
 
   Args:
     filters: Integer, the dimensionality of the output space
@@ -713,8 +716,8 @@ class ConvLSTM2D(ConvRNN2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
@@ -775,7 +778,7 @@ class ConvLSTM2D(ConvRNN2D):
       the linear transformation of the recurrent state.
 
   Call arguments:
-    inputs: A 5D tensor.
+    inputs: A 5D float tensor (see input shape description below).
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
       a given timestep should be masked.
     training: Python boolean indicating whether the layer should behave in
@@ -823,6 +826,20 @@ class ConvLSTM2D(ConvRNN2D):
     - [Shi et al., 2015](http://arxiv.org/abs/1506.04214v1)
     (the current implementation does not include the feedback loop on the
     cells output).
+
+  Example:
+
+  ```python
+  steps = 10
+  height = 32
+  width = 32
+  input_channels = 3
+  output_channels = 6
+
+  inputs = tf.keras.Input(shape=(steps, height, width, input_channels))
+  layer = tf.keras.layers.ConvLSTM2D(filters=output_channels, kernel_size=3)
+  outputs = layer(inputs)
+  ```
   """
 
   def __init__(self,

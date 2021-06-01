@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/allocator.h"
@@ -31,34 +31,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Helper class for converting MKL tensors to TF tensors and comparing to
-// expected values
-
-static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const TensorShape dummy_shape({8});
-
-class ConvMklToTF : public OpsTestBase {
- public:
-  template <typename T>
-  void ConvertMKL2TF(DataType dtype, const Tensor& first, const Tensor& second,
-                     Tensor& output) {
-    // Create an MKL to TF conversion node and execute it
-    TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
-                     .Input(FakeInput(dtype))     // Input
-                     .Input(FakeInput(DT_UINT8))  // Mkl second tensor
-                     .Attr("T", dtype)
-                     .Attr("_kernel", "MklLayoutDependentOp")
-                     .Finalize(node_def()));
-    TF_EXPECT_OK(InitOp());
-    AddInputFromArray<T>(first.shape(), first.flat<T>());
-    AddInputFromArray<uint8>(second.shape(), second.flat<uint8>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    output = *GetOutput(0);
-  }
-  void TestBody(){};
-};
-
 class QuantizedPoolingTest : public OpsTestBase {};
 
 TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
@@ -68,9 +40,6 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("ksize", {1, ksize, ksize, 1})
                    .Attr("strides", {1, stride, stride, 1})
@@ -109,23 +78,14 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
                             input_quantized.flat<quint8>());
   AddInputFromArray<float>(TensorShape({1}), {input_min});
   AddInputFromArray<float>(TensorShape({1}), {input_max});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
 
   TF_ASSERT_OK(RunOpKernel());
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& mkl_shape_tensor = *GetOutput(3);
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMKL2TF<quint8>(DT_QUINT8, output, mkl_shape_tensor,
-                                  output_quantized);
-
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
   Tensor output_float =
-      QuantizedTensorToFloat<quint8>(output_quantized, output_min, output_max);
+      QuantizedTensorToFloat<quint8>(output, output_min, output_max);
 
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
 }
@@ -137,9 +97,6 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("ksize", {1, ksize, ksize, 1})
                    .Attr("strides", {1, stride, stride, 1})
@@ -177,25 +134,18 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
                             input_quantized.flat<quint8>());
   AddInputFromArray<float>(TensorShape({1}), {input_min});
   AddInputFromArray<float>(TensorShape({1}), {input_max});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
 
   TF_ASSERT_OK(RunOpKernel());
 
   const Tensor& output = *GetOutput(0);
-  const Tensor& mkl_shape_tensor = *GetOutput(3);
-  ConvMklToTF conv_comp;
-  Tensor output_quantized;
-  conv_comp.ConvertMKL2TF<quint8>(DT_QUINT8, output, mkl_shape_tensor,
-                                  output_quantized);
-
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
   Tensor output_float =
-      QuantizedTensorToFloat<quint8>(output_quantized, output_min, output_max);
+      QuantizedTensorToFloat<quint8>(output, output_min, output_max);
 
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
 }
+
 }  // namespace tensorflow
-#endif
+
+#endif  // defined(INTEL_MKL) && defined(ENABLE_MKL)

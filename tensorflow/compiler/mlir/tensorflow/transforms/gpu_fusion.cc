@@ -117,7 +117,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
 
 void GpuOpFusionPass::runOnFunction() {
   FuncOp func = getFunction();
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   patterns.insert<ReluToFusedBatchNorm>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

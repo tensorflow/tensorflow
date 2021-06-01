@@ -125,6 +125,7 @@ void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   dst->AppendEvents(src.Events());
   dst->AppendCollectives(src.Collectives());
   dst->AggregateDeviceMemoryTransfers(src.DeviceMemoryTransfers());
+  if (dst->StepName().empty()) dst->SetStepName(src.StepName());
 }
 
 EventType ClassifyDeviceCompute(absl::string_view event_name,
@@ -320,6 +321,7 @@ StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
         step_details.Collectives();
     *non_overlapped_step_events[step_id].MutableDeviceMemoryTransfers() =
         step_details.DeviceMemoryTransfers();
+    non_overlapped_step_events[step_id].SetStepName(step_details.StepName());
   }
   return non_overlapped_step_events;
 }

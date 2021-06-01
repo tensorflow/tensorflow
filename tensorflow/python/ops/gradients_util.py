@@ -28,7 +28,6 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
@@ -172,9 +171,8 @@ def _DefaultGradYs(grad_ys,
               "Gradients of complex tensors must set grad_ys (y.dtype = %r)" %
               y.dtype)
         new_grad_ys.append(
-            array_ops.fill(
-                array_ops.shape(y),
-                constant_op.constant(1, dtype=y.dtype, name="grad_ys_%d" % i)))
+            array_ops.ones(
+                array_ops.shape(y), dtype=y.dtype, name="grad_ys_%d" % i))
         continue
       if y.dtype.is_floating or y.dtype.is_integer:
         if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:

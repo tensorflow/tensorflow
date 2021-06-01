@@ -18,7 +18,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -108,7 +108,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -135,7 +135,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )

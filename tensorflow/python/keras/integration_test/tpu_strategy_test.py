@@ -14,16 +14,13 @@
 # ==============================================================================
 """Tests for TPUStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import tempfile
 
 from absl import flags
 
 import tensorflow as tf
+from tensorflow.python.framework import test_util
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -115,6 +112,7 @@ class TpuStrategyTest(tf.test.TestCase):
         for i in dataset:
           strategy.run(step_fn, args=(i,))
 
+  @test_util.disable_mlir_bridge("TODO(b/168036682): Support dynamic padder")
   def test_train_and_serve(self):
     strategy = get_tpu_strategy()
     use_adapt = False
@@ -186,7 +184,7 @@ class TpuStrategyTest(tf.test.TestCase):
       num_epochs = 4
       num_steps = 7
       for _ in range(num_epochs):
-        accuracy.reset_states()
+        accuracy.reset_state()
         for _ in range(num_steps):
           train_step(distributed_iterator)
 

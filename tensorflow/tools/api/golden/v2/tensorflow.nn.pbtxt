@@ -106,7 +106,7 @@ tf_module {
   }
   member_method {
     name: "ctc_greedy_decoder"
-    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\', \'blank_index\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "ctc_loss"
@@ -186,7 +186,7 @@ tf_module {
   }
   member_method {
     name: "l2_normalize"
-    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\'], "
+    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\', \'None\'], "
   }
   member_method {
     name: "leaky_relu"

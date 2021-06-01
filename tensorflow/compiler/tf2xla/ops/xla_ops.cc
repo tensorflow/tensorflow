@@ -466,13 +466,13 @@ REGISTER_OP("XlaPad")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle input_shape_handle = c->input(0);
-      if (!c->FullyDefined(input_shape_handle)) {
+      if (!c->RankKnown(input_shape_handle)) {
         return UnchangedRank(c);
       }
       const int32 op_rank = c->Rank(input_shape_handle);
 
       shape_inference::ShapeHandle padding_shape_handle = c->input(1);
-      if (!c->RankKnown(padding_shape_handle) ||
+      if (c->RankKnown(padding_shape_handle) &&
           c->Rank(padding_shape_handle) != 0) {
         return errors::InvalidArgument(
             "padding_value input must be scalar, found rank ",

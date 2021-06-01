@@ -54,6 +54,10 @@ struct OpData {
   int32_t input1_offset;
   int32_t input2_offset;
   int32_t output_offset;
+
+  // Used only for float evals:
+  float output_activation_min_f32;
+  float output_activation_max_f32;
 };
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
@@ -91,6 +95,10 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
+  } else if (output->type == kTfLiteFloat32) {
+    CalculateActivationRange(params->activation,
+                             &data->output_activation_min_f32,
+                             &data->output_activation_max_f32);
   }
 
   return kTfLiteOk;
@@ -99,11 +107,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
 void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
              const OpData* data, const TfLiteEvalTensor* input1,
              const TfLiteEvalTensor* input2, TfLiteEvalTensor* output) {
-  float output_activation_min, output_activation_max;
-  CalculateActivationRange(params->activation, &output_activation_min,
-                           &output_activation_max);
   tflite::ArithmeticParams op_params;
-  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+  SetActivationParams(data->output_activation_min_f32,
+                      data->output_activation_max_f32, &op_params);
 #define TF_LITE_ADD(opname)                                               \
   reference_ops::opname(op_params, tflite::micro::GetTensorShape(input1), \
                         tflite::micro::GetTensorData<float>(input1),      \
@@ -189,8 +195,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->builtin_data != nullptr);
 
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  TF_LITE_ENSURE(context, input1 != nullptr);
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TF_LITE_ENSURE(context, input2 != nullptr);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   OpData* data = static_cast<OpData*>(node->user_data);
   auto* params = reinterpret_cast<TfLiteAddParams*>(node->builtin_data);

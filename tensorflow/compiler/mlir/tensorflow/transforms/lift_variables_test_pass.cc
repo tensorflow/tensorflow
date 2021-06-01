@@ -17,106 +17,17 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/threadpool_options.h"
-#include "tensorflow/core/public/session.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
 namespace mlir {
 namespace {
-
-using ::tensorflow::DeviceMgr;
 using ::tensorflow::Session;
-using ::tensorflow::Status;
-using ::tensorflow::Tensor;
-
-// FakeSession is for testing only.
-class FakeSession : public tensorflow::Session {
- public:
-  FakeSession() {}
-  ~FakeSession() override = default;
-
-  Status Create(const tensorflow::GraphDef& graph) override {
-    return tensorflow::errors::Unimplemented("not available");
-  }
-  Status Extend(const tensorflow::GraphDef& graph) override {
-    return tensorflow::errors::Unimplemented("not available");
-  }
-
-  Status Close() override {
-    return tensorflow::errors::Unimplemented("not available");
-  }
-
-  Status ListDevices(
-      std::vector<tensorflow::DeviceAttributes>* response) override {
-    return tensorflow::errors::Unimplemented("not available");
-  }
-
-  Status LocalDeviceManager(
-      const tensorflow::DeviceMgr** deviceMgrPtr) override {
-    // This method returns a null device manager without making an error.
-    // Users of this method will be notified since it will have a fake data.
-    *deviceMgrPtr = nullptr;
-    return Status::OK();
-  }
-
-  Status Run(const std::vector<std::pair<std::string, Tensor>>& inputs,
-             const std::vector<std::string>& output_names,
-             const std::vector<std::string>& target_nodes,
-             std::vector<Tensor>* outputs) override {
-    tensorflow::RunMetadata run_metadata;
-    return Run(tensorflow::RunOptions(), inputs, output_names, target_nodes,
-               outputs, &run_metadata);
-  }
-
-  Status Run(const tensorflow::RunOptions& run_options,
-             const std::vector<std::pair<std::string, Tensor>>& inputs,
-             const std::vector<std::string>& output_names,
-             const std::vector<std::string>& target_nodes,
-             std::vector<Tensor>* outputs,
-             tensorflow::RunMetadata* run_metadata) override {
-    return Run(run_options, inputs, output_names, target_nodes, outputs,
-               run_metadata, tensorflow::thread::ThreadPoolOptions());
-  }
-
-  Status Run(const tensorflow::RunOptions& run_options,
-             const std::vector<std::pair<std::string, Tensor>>& inputs,
-             const std::vector<std::string>& output_names,
-             const std::vector<std::string>& target_nodes,
-             std::vector<Tensor>* outputs,
-             tensorflow::RunMetadata* run_metadata,
-             const tensorflow::thread::ThreadPoolOptions& thread_pool_options)
-      override {
-    for (const std::string& output_name : output_names) {
-      Tensor output;
-      if (output_name == "dense/bias") {
-        Tensor t = Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({50}));
-        t.flat<float>().setZero();
-        outputs->push_back(t);
-      } else if (output_name == "dense/kernel") {
-        Tensor t =
-            Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({100, 50}));
-        t.flat<float>().setZero();
-        outputs->push_back(t);
-      } else {
-        // Create a scalar float tensor.
-        Tensor t = Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({}));
-        t.flat<float>()(0) = 1.0f;
-        outputs->push_back(t);
-      }
-    }
-    return Status::OK();
-  }
-};
 
 // This pass is only available in the tf-opt binary for testing.
 class LiftVariablesTestPass
     : public PassWrapper<LiftVariablesTestPass, OperationPass<ModuleOp>> {
  public:
-  LiftVariablesTestPass() { session_ = new FakeSession(); }
+  LiftVariablesTestPass() { session_ = new TF::test_util::FakeSession(); }
 
   ~LiftVariablesTestPass() override { delete session_; }
 

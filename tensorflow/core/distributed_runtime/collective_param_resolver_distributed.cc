@@ -192,6 +192,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   cp->instance.instance_key = request->instance_key();
   cp->instance.data_type = request->data_type();
   cp->instance.shape = TensorShape(request->shape());
+  cp->is_source = request->is_source();
   for (int32 offset : request->subdiv_offset()) {
     cp->instance.impl_details.subdiv_offsets.push_back(offset);
   }

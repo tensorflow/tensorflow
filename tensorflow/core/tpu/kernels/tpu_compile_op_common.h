@@ -202,7 +202,7 @@ class TpuCompileOpKernelCommon {
       std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
       std::vector<std::vector<xla::Shape>>* per_core_arg_shapes);
 
-  const tpu::TPUCompileMetadataProto metadata_;
+  tpu::TPUCompileMetadataProto metadata_;
 
   // Whether to compile given MLIR module in `mlir_module` instead of
   // TensorFlow function referenced in `function_`.

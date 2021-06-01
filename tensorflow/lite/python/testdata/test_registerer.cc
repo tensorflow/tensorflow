@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/python/testdata/test_registerer.h"
 
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+
 namespace tflite {
 
 namespace {
+
 static int num_test_registerer_calls = 0;
 
 TfLiteRegistration* GetFakeRegistration() {
@@ -24,6 +28,63 @@ TfLiteRegistration* GetFakeRegistration() {
   return &fake_op;
 }
 
+namespace double_op {
+
+constexpr int kInputTensor = 0;
+constexpr int kOutputTensor = 0;
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+
+  TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
+
+  return context->ResizeTensor(context, output, output_shape);
+}
+
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
+
+  const size_t size = GetTensorShape(input).FlatSize();
+
+  if (input->type == kTfLiteFloat32) {
+    const float* input_ptr = input->data.f;
+    float* output_ptr = output->data.f;
+    for (int i = 0; i < size; ++i) {
+      output_ptr[i] = input_ptr[i] + input_ptr[i];
+    }
+  } else if (input->type == kTfLiteInt32) {
+    const int32_t* input_ptr = input->data.i32;
+    int32_t* output_ptr = output->data.i32;
+    for (int i = 0; i < size; ++i) {
+      output_ptr[i] = input_ptr[i] + input_ptr[i];
+    }
+  } else {
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+}  // namespace double_op
+
+TfLiteRegistration* GetDoubleRegistration() {
+  static TfLiteRegistration double_op = {nullptr, nullptr, double_op::Prepare,
+                                         double_op::Eval};
+  return &double_op;
+}
 }  // namespace
 
 // Dummy registerer function with the correct signature. Registers a fake custom
@@ -32,6 +93,7 @@ TfLiteRegistration* GetFakeRegistration() {
 // build.
 extern "C" void TF_TestRegisterer(tflite::MutableOpResolver *resolver) {
   resolver->AddCustom("FakeOp", GetFakeRegistration());
+  resolver->AddCustom("Double", GetDoubleRegistration());
   num_test_registerer_calls++;
 }
 

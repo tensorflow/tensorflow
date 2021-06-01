@@ -110,6 +110,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("workspace_size_bytes", 1 << 20)
                      .Attr("precision_mode", "FP32")
                      .Attr("use_calibration", false)
+                     .Attr("profile_strategy", "optimal")
                      .Attr("_use_implicit_batch", use_implicit_batch)
                      .Attr("_allow_build_at_runtime", allow_build_at_runtime)
                      .Attr("_allow_soft_placement", false)

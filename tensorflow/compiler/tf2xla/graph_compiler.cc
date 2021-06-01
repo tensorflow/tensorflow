@@ -79,14 +79,13 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
         if (arg_must_be_compile_time_constant[i]) {
           TF_ASSIGN_OR_RETURN(absl::optional<Tensor> value,
                               expressions[i]->ResolveConstant(client));
-          if (!value.has_value()) {
-            return errors::InvalidArgument(absl::StrCat(
-                "Argument ", i, " to function '", func.name(),
-                "' must be a compile-time constant, but ",
-                "unable to resolve argument value to a constant."));
+          if (value.has_value()) {
+            arg.kind = XlaCompiler::Argument::kConstant;
+            arg.constant_value = *value;
+          } else {
+            arg.kind = XlaCompiler::Argument::kParameter;
           }
-          arg.kind = XlaCompiler::Argument::kConstant;
-          arg.constant_value = *value;
+
         } else {
           arg.kind = XlaCompiler::Argument::kParameter;
         }

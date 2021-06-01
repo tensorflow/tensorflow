@@ -125,6 +125,9 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
   bool may_modify_variables(int index) const override;
 
+  const std::vector<std::string>& fingerprints() const;
+  void set_fingerprints();
+
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
   std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
   const XLA_TpuProgram* tpu_program(int index) const override;
@@ -168,6 +171,7 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   void RefreshHloMetadatasPtrs();
 
   std::vector<bool> may_modify_variables_;
+  std::vector<std::string> tpu_program_fingerprints_;
 
   std::vector<XLA_TpuProgram*> tpu_programs_;  // Not owned.
   std::vector<TPUExecutableInfoProto> executable_infos_;

@@ -80,11 +80,11 @@ func @prepareStatisticsNudge(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
 
 // CHECK-LABEL: preparePrelu
 func @preparePrelu(%arg0: tensor<1x10x10x3xf32>) -> tensor<1x10x10x3xf32> {
-  %cst = "tfl.pseudo_const"() {value = dense<[[[1.66394591, 3.61694336, 2.0382936]]]> : tensor<1x1x3xf32>} : () -> tensor<1x1x3xf32>
+  %cst = "std.constant"() {value = dense<[[[1.66394591, 3.61694336, 2.0382936]]]> : tensor<1x1x3xf32>} : () -> tensor<1x1x3xf32>
   %prelu = "tfl.prelu"(%arg0, %cst) : (tensor<1x10x10x3xf32>, tensor<1x1x3xf32>) -> tensor<1x10x10x3xf32>
   return %prelu : tensor<1x10x10x3xf32>
 
-// CHECK: %[[cst:.*]] = constant dense<[{{\[\[}}1.66394591, 3.61694336, 2.0382936]]]> : tensor<1x1x3xf32>
+// CHECK: %[[cst:.*]] = constant dense<[{{\[}}[1.66394591, 3.61694336, 2.0382936]]]> : tensor<1x1x3xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<1x1x3x!quant.uniform<i8<-127:127>:f32, 0.028479868971456691>>, volatile} : (tensor<1x1x3xf32>) -> tensor<1x1x3x!quant.uniform<i8<-127:127>:f32, 0.028479868971456691>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<1x1x3x!quant.uniform<i8<-127:127>:f32, 0.028479868971456691>>) -> tensor<1x1x3xf32>
 // CHECK: %[[p:.*]] = "tfl.prelu"(%arg0, %[[dq]]) : (tensor<1x10x10x3xf32>, tensor<1x1x3xf32>) -> tensor<1x10x10x3xf32>

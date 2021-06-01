@@ -49,8 +49,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
   outputSize->data[0] = 1;
-  // TODO(jaesung): Make output size be changeable depending on user's input to
-  // make it generic.
   return context->ResizeTensor(context, output, outputSize);
 }
 

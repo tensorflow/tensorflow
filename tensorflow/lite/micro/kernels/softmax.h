@@ -25,6 +25,21 @@ void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length);
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node);
 
+// This is the most generic TfLiteRegistration. The actual supported types may
+// still be target dependent. The only requirement is that every implementation
+// (reference or optimized) must define this function.
+TfLiteRegistration Register_SOFTMAX();
+
+#if defined(XTENSA)
+// Returns a TfLiteRegistration struct for kernel variant that only supports
+// int8 input and int16 output.
+TfLiteRegistration Register_SOFTMAX_INT8_INT16();
+#else
+inline TfLiteRegistration Register_SOFTMAX_INT8_INT16() {
+  return Register_SOFTMAX();
+}
+#endif
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_KERNELS_SOFTMAX_H_

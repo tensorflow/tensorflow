@@ -25,7 +25,6 @@ import gzip
 import numpy as np
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -330,7 +329,7 @@ def make_csv_dataset_v2(
     use_quote_delim=True,
     na_value="",
     header=True,
-    num_epochs=None,
+    num_epochs=None,  # TODO(aaudibert): Change default to 1 when graduating.
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
@@ -644,7 +643,47 @@ _DEFAULT_READER_BUFFER_SIZE_BYTES = 4 * 1024 * 1024  # 4 MB
 
 @tf_export("data.experimental.CsvDataset", v1=[])
 class CsvDatasetV2(dataset_ops.DatasetSource):
-  """A Dataset comprising lines from one or more CSV files."""
+  r"""A Dataset comprising lines from one or more CSV files.
+
+  The `tf.data.experimental.CsvDataset` class provides a minimal CSV Dataset
+  interface. There is also a richer `tf.data.experimental.make_csv_dataset`
+  function which provides additional convenience features such as column header
+  parsing, column type-inference, automatic shuffling, and file interleaving.
+
+  The elements of this dataset correspond to records from the file(s).
+  RFC 4180 format is expected for CSV files
+  (https://tools.ietf.org/html/rfc4180)
+  Note that we allow leading and trailing spaces for int or float fields.
+
+  For example, suppose we have a file 'my_file0.csv' with four CSV columns of
+  different data types:
+
+  >>> with open('/tmp/my_file0.csv', 'w') as f:
+  ...   f.write('abcdefg,4.28E10,5.55E6,12\n')
+  ...   f.write('hijklmn,-5.3E14,,2\n')
+
+  We can construct a CsvDataset from it as follows:
+
+  >>> dataset = tf.data.experimental.CsvDataset(
+  ...   "/tmp/my_file0.csv",
+  ...   [tf.float32,  # Required field, use dtype or empty tensor
+  ...    tf.constant([0.0], dtype=tf.float32),  # Optional field, default to 0.0
+  ...    tf.int32,  # Required field, use dtype or empty tensor
+  ...   ],
+  ...   select_cols=[1,2,3]  # Only parse last three columns
+  ... )
+
+  The expected output of its iterations is:
+
+  >>> for element in dataset.as_numpy_iterator():
+  ...   print(element)
+  (4.28e10, 5.55e6, 12)
+  (-5.3e14, 0.0, 2)
+
+  See
+  https://www.tensorflow.org/tutorials/load_data/csv#tfdataexperimentalcsvdataset
+  for more in-depth example usage.
+  """
 
   def __init__(self,
                filenames,
@@ -658,55 +697,6 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
                select_cols=None,
                exclude_cols=None):
     """Creates a `CsvDataset` by reading and decoding CSV files.
-
-    The elements of this dataset correspond to records from the file(s).
-    RFC 4180 format is expected for CSV files
-    (https://tools.ietf.org/html/rfc4180)
-    Note that we allow leading and trailing spaces with int or float field.
-
-
-    For example, suppose we have a file 'my_file0.csv' with four CSV columns of
-    different data types:
-    ```
-    abcdefg,4.28E10,5.55E6,12
-    hijklmn,-5.3E14,,2
-    ```
-
-    We can construct a CsvDataset from it as follows:
-
-    ```python
-     dataset = tf.data.experimental.CsvDataset(
-        "my_file*.csv",
-        [tf.float32,  # Required field, use dtype or empty tensor
-         tf.constant([0.0], dtype=tf.float32),  # Optional field, default to 0.0
-         tf.int32,  # Required field, use dtype or empty tensor
-         ],
-        select_cols=[1,2,3]  # Only parse last three columns
-    )
-    ```
-
-    The expected output of its iterations is:
-
-    ```python
-    for element in dataset:
-      print(element)
-
-    >> (4.28e10, 5.55e6, 12)
-    >> (-5.3e14, 0.0, 2)
-    ```
-
-
-    Alternatively, suppose we have a CSV file of floats with 200 columns,
-    and we want to use all columns besides the first. We can construct a
-    CsvDataset from it as follows:
-
-    ```python
-    dataset = tf.data.experimental.CsvDataset(
-        "my_file.csv",
-        [tf.float32] * 199,  # Parse 199 required columns as floats
-        exclude_cols=[0]  # Parse all columns except the first
-    )
-    ```
 
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
@@ -789,31 +779,18 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     )
     self._element_spec = tuple(
         tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
-    if compat.forward_compatible(2020, 7, 3) or exclude_cols is not None:
-      variant_tensor = gen_experimental_dataset_ops.csv_dataset_v2(
-          filenames=self._filenames,
-          record_defaults=self._record_defaults,
-          buffer_size=self._buffer_size,
-          header=self._header,
-          output_shapes=self._flat_shapes,
-          field_delim=self._field_delim,
-          use_quote_delim=self._use_quote_delim,
-          na_value=self._na_value,
-          select_cols=self._select_cols,
-          exclude_cols=self._exclude_cols,
-          compression_type=self._compression_type)
-    else:
-      variant_tensor = gen_experimental_dataset_ops.csv_dataset(
-          filenames=self._filenames,
-          record_defaults=self._record_defaults,
-          buffer_size=self._buffer_size,
-          header=self._header,
-          output_shapes=self._flat_shapes,
-          field_delim=self._field_delim,
-          use_quote_delim=self._use_quote_delim,
-          na_value=self._na_value,
-          select_cols=self._select_cols,
-          compression_type=self._compression_type)
+    variant_tensor = gen_experimental_dataset_ops.csv_dataset_v2(
+        filenames=self._filenames,
+        record_defaults=self._record_defaults,
+        buffer_size=self._buffer_size,
+        header=self._header,
+        output_shapes=self._flat_shapes,
+        field_delim=self._field_delim,
+        use_quote_delim=self._use_quote_delim,
+        na_value=self._na_value,
+        select_cols=self._select_cols,
+        exclude_cols=self._exclude_cols,
+        compression_type=self._compression_type)
     super(CsvDatasetV2, self).__init__(variant_tensor)
 
   @property
@@ -1154,22 +1131,23 @@ def _get_file_names(file_pattern, shuffle):
 
 @tf_export("data.experimental.SqlDataset", v1=[])
 class SqlDatasetV2(dataset_ops.DatasetSource):
-  """A `Dataset` consisting of the results from a SQL query."""
+  """A `Dataset` consisting of the results from a SQL query.
+
+  `SqlDataset` allows a user to read data from the result set of a SQL query.
+  For example:
+
+  ```python
+  dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
+                                            "SELECT name, age FROM people",
+                                            (tf.string, tf.int32))
+  # Prints the rows of the result set of the above query.
+  for element in dataset:
+    print(element)
+  ```
+  """
 
   def __init__(self, driver_name, data_source_name, query, output_types):
     """Creates a `SqlDataset`.
-
-    `SqlDataset` allows a user to read data from the result set of a SQL query.
-    For example:
-
-    ```python
-    dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
-                                              "SELECT name, age FROM people",
-                                              (tf.string, tf.int32))
-    # Prints the rows of the result set of the above query.
-    for element in dataset:
-      print(element)
-    ```
 
     Args:
       driver_name: A 0-D `tf.string` tensor containing the database type.

@@ -26,10 +26,7 @@ install_bazelisk
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.9'
-
-# Run configure.
-export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
-yes "" | "$PYTHON_BIN_PATH" configure.py
+export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh

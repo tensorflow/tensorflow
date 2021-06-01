@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // from @llvm-project
+#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -48,9 +49,11 @@ class GpuKernelToNVVMPass
   void runOnOperation() override {
     GPUModuleOp m = getOperation();
 
-    OwningRewritePatternList patterns;
-    mlir::LowerToLLVMOptions llvm_opts;
-    llvm_opts.indexBitwidth = 32;
+    RewritePatternSet patterns(&getContext());
+    mlir::LowerToLLVMOptions llvm_opts(
+        m.getContext(),
+        DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
+    llvm_opts.overrideIndexBitwidth(32);
     LLVMTypeConverter converter(m.getContext(), llvm_opts);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
@@ -75,7 +78,7 @@ class GpuKernelToROCDLPass
   void runOnOperation() override {
     gpu::GPUModuleOp m = getOperation();
 
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToROCDLConversionPatterns(converter, patterns);

@@ -141,6 +141,15 @@ static Type InferReductionOpType(Value input, Value reduction_indices,
   return RankedTensorType::get(out_shape, element_ty);
 }
 
+// Returns the equivalent Value skipping through identity nodes.
+Value LookThroughIdentity(Value result) {
+  while (isa_and_nonnull<IdentityOp, IdentityNOp>(result.getDefiningOp())) {
+    auto op_result = result.cast<OpResult>();
+    result = op_result.getOwner()->getOperand(op_result.getResultNumber());
+  }
+  return result;
+}
+
 // Verifies that the given types are cast compatible. If not, emits appropriate
 // error for the given op. If mask_one_dim is set to true, then the types are
 // allowed to have one mismatching dimension. Masking one of the dimensions is
@@ -275,7 +284,7 @@ SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
 // on outer dimension only.
 ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
                            int inner_size = 1) {
-  if (attr.size() == 0) return attr;
+  if (attr.empty()) return attr;
 
   assert(attr.size() % inner_size == 0);
   assert(attr.size() / inner_size == permutation.size());
@@ -548,7 +557,7 @@ struct DropAttributes : public OpRewritePattern<Op> {
   // Drop the "output_shapes" attribute.
   LogicalResult matchAndRewrite(Op op,
                                 PatternRewriter &rewriter) const override {
-    bool found = !!op.removeAttr("output_shapes");
+    bool found = !!op->removeAttr("output_shapes");
     return success(found);
   }
 };
@@ -580,4 +589,24 @@ ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
   // New ID created, increment next_id.
   if (emplace_res.second) ++next_id;
   return {resource, emplace_res.first->second};
+}
+
+// Helper function to create TF op while copying all underscore attributes from
+// another TF op.
+// TODO(jpienaar): This is a workaround until behavior is established.
+template <typename OpTy, typename... Args>
+OpTy CreateTfOp(RewriterBase& b, Operation *op, Args &&... args) {
+  auto ret = b.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
+  CopyDeviceAndUnderscoredAttributes(op, ret.getOperation());
+  return ret;
+}
+
+// Helper function to replace TF op with another op while copying all underscore
+// attributes from the TF op.
+// TODO(jpienaar): This is a workaround until behavior is established.
+template <typename OpTy, typename... Args>
+OpTy ReplaceTfOpWithNewOp(RewriterBase& b, Operation *op, Args &&... args) {
+  auto ret = CreateTfOp<OpTy>(b, op, std::forward<Args>(args)...);
+  b.replaceOp(op, ret.getOperation()->getResults());
+  return ret;
 }

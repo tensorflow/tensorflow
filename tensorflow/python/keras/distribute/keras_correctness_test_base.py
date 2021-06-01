@@ -13,15 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Correctness tests for tf.keras using DistributionStrategy."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
-
 from absl.testing import parameterized
 import numpy as np
-import six
+
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import strategy_combinations
@@ -170,7 +166,7 @@ def get_data_size(data):
   if isinstance(data, (list, tuple)):
     return len(data[0])
 
-  return len(six.next(six.itervalues(data)))
+  return len(data.values())
 
 
 def get_shapes(data):

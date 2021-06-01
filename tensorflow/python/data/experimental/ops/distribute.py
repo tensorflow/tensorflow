@@ -335,20 +335,10 @@ def replicate(dataset, devices):
     return datasets
 
   with ops.colocate_with(dataset._variant_tensor):
-    # We apply options before replicating the dataset because options are
-    # currently not automatically preserved through dataset serialization and
-    # thus an explicit application of options here is needed to avoid losing
-    # `dataset` options.
-    #
-    # TODO(b/147325552): Propagating options to C++ upon their setting would
-    # allow us to preserve the options across both variant and GraphDef based
-    # serialization, avoiding the need to explicitly apply options here.
-    dataset = dataset._apply_options()
-    policy = dataset.options().experimental_external_state_policy
-    if policy is None:
-      policy = ExternalStatePolicy.WARN
+    dataset = dataset._apply_debug_options()
     graph_def = dataset._as_serialized_graph(
-        strip_device_assignment=True, external_state_policy=policy)
+        strip_device_assignment=True,
+        external_state_policy=ExternalStatePolicy.WARN)
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)
     datasets[device] = ds

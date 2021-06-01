@@ -285,5 +285,45 @@ TEST_P(ArgMinMaxOpTest, GetMinArgFloatLastAxis) {
   }
 }
 
+TEST_P(ArgMinMaxOpTest, GetMaxArgInt8LastAxis) {
+  // Vector size for int8 is 16 elements, so 35 covers two SIMD widths
+  // Plus extras for testing
+  constexpr int INPUT_SIZE = 35;
+  std::vector<int8_t> input;
+  input.reserve(INPUT_SIZE);
+  for (int i = 0; i < INPUT_SIZE; i++) {
+    input.push_back(INPUT_SIZE - i);
+  }
+  for (int i = 1; i < INPUT_SIZE; ++i) {
+    ArgMinOpModel model({i}, TensorType_INT8, 0, AxisType(), ConstantAxis(),
+                        OutputType());
+    model.PopulateTensor<int8_t>(
+        model.input(), std::vector<int8_t>(input.begin(), input.begin() + i));
+    model.Invoke();
+
+    ValidateOutput(model, {i - 1});
+  }
+}
+
+TEST_P(ArgMinMaxOpTest, GetMaxArgUInt8LastAxis) {
+  // Vector size for int8 is 16 elements, so 35 covers two SIMD widths
+  // Plus extras for testing
+  constexpr int INPUT_SIZE = 35;
+  std::vector<uint8_t> input;
+  input.reserve(INPUT_SIZE);
+  for (unsigned int i = 0; i < INPUT_SIZE; i++) {
+    input.push_back(INPUT_SIZE - i);
+  }
+  for (int i = 1; i < INPUT_SIZE; ++i) {
+    ArgMinOpModel model({i}, TensorType_UINT8, 0, AxisType(), ConstantAxis(),
+                        OutputType());
+    model.PopulateTensor<uint8_t>(
+        model.input(), std::vector<uint8_t>(input.begin(), input.begin() + i));
+    model.Invoke();
+
+    ValidateOutput(model, {i - 1});
+  }
+}
+
 }  // namespace
 }  // namespace tflite

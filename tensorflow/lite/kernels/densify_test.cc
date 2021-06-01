@@ -52,7 +52,9 @@ class DensifyOpModel : public SingleOpModel {
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_DENSIFY, ops::builtin::Register_DENSIFY(), version);
 
-    BuildInterpreter({input.shape});
+    BuildInterpreter({input.shape}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/true);
   }
 
   std::vector<T> GetInput() { return ExtractVector<T>(input_); }

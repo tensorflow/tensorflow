@@ -16,9 +16,6 @@
 
 These are the private constants that have not been exported.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 # LINT.IfChange
 DEFAULT_TRAIN_SIGNATURE_DEF_KEY = "train"

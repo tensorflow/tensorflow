@@ -68,8 +68,8 @@ Status GpuTransferManager::TransferLiteralToInfeed(
 
 Status GpuTransferManager::EnqueueBuffersToInfeed(
     se::StreamExecutor* executor, ShapeTree<InfeedBuffer> buffers) {
-  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
-  se::Stream* stream = infeed_manager->GetStream(executor);
+  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager(executor);
+  se::Stream* stream = infeed_manager->GetStream();
 
   // TODO(b/30467474): Since this stream is shared across different
   // infeed requests, blocking on the stream might be
@@ -99,8 +99,8 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
     return InvalidArgument("Infeed shape needs 0 bytes");
   }
 
-  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
-  se::Stream* stream = infeed_manager->GetStream(executor);
+  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager(executor);
+  se::Stream* stream = infeed_manager->GetStream();
   if (stream == nullptr) {
     return InternalError("Failed to obtain a stream");
   }
@@ -114,7 +114,7 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
 }
 
 Status GpuTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* /*executor*/, MutableBorrowingLiteral literal) {
+    se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
       &literal.shape());
 
@@ -129,7 +129,8 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 
   // Give the tree of buffers to the outfeed manager. The device will fill it
   // while we're waiting for it below.
-  gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
+  gpu::OutfeedManager* outfeed_manager =
+      gpu::GetOrCreateOutfeedManager(executor);
   outfeed_manager->EnqueueDestination(&outfeed_buffers);
 
   // Now wait till all the buffers are written.

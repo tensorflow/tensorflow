@@ -9,7 +9,7 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 glob_lit_tests(

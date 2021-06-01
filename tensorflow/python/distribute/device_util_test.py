@@ -105,6 +105,11 @@ class DeviceUtilTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         device_util.canonicalize("/cpu:0", default="/job:worker"),
         "/job:worker/replica:0/task:0/device:CPU:0")
+    self.assertEqual(
+        device_util.canonicalize(
+            "/job:worker/replica:0/task:1/device:CPU:0",
+            default="/job:chief/replica:0/task:1/device:CPU:0"),
+        "/job:worker/replica:0/task:1/device:CPU:0")
 
   def testResolveWithDeviceScope(self):
     with ops.device("/gpu:0"):

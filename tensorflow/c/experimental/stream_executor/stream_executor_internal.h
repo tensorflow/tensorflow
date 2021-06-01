@@ -31,12 +31,17 @@ namespace stream_executor {
 typedef void (*SEInitPluginFn)(SE_PlatformRegistrationParams* const,
                                TF_Status* const);
 
-// Registers StreamExecutor platform.
-port::Status InitStreamExecutorPlugin(void* dso_handle);
+// Registers StreamExecutor platform. `device_type` and `platform_name` are
+// output parameters.
+port::Status InitStreamExecutorPlugin(void* dso_handle,
+                                      std::string* device_type,
+                                      std::string* platform_name);
 
 // Allow registering a StreamExecutor plugin using a function (used for
 // testing).
-port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn);
+port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
+                                      std::string* device_type,
+                                      std::string* platform_name);
 
 struct TFStatusDeleter {
   void operator()(TF_Status* s) const { TF_DeleteStatus(s); }
@@ -68,6 +73,7 @@ class CPlatform : public Platform {
     }
     return visible_device_count;
   }
+  bool UseBfcAllocator() const { return platform_.use_bfc_allocator; }
   port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;

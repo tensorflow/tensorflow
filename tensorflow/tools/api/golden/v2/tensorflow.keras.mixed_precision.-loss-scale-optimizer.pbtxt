@@ -42,7 +42,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "learning_rate"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "loss_scale"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "lr"
     mtype: "<type \'property\'>"
   }
   member {

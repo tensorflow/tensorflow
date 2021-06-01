@@ -331,8 +331,8 @@ PyObject* PyBfloat16_Str(PyObject* self) {
 // Hash function for PyBfloat16. We use the identity function, which is a weak
 // hash function.
 Py_hash_t PyBfloat16_Hash(PyObject* self) {
-  bfloat16 x = reinterpret_cast<PyBfloat16*>(self)->value;
-  return x.value;
+  return Eigen::numext::bit_cast<uint16_t>(
+      reinterpret_cast<PyBfloat16*>(self)->value);
 }
 
 // Python type for PyBfloat16 objects.
@@ -1350,6 +1350,16 @@ bool Initialize() {
   npy_bfloat16 = PyArray_RegisterDataType(&NPyBfloat16_Descr);
   bfloat16_type_ptr = &bfloat16_type;
   if (npy_bfloat16 < 0) {
+    return false;
+  }
+
+  Safe_PyObjectPtr typeDict_obj =
+      make_safe(PyObject_GetAttrString(numpy.get(), "typeDict"));
+  if (!typeDict_obj) return false;
+  // Add the type object to `numpy.typeDict`: that makes
+  // `numpy.dtype('bfloat16')` work.
+  if (PyDict_SetItemString(typeDict_obj.get(), "bfloat16",
+                           reinterpret_cast<PyObject*>(&bfloat16_type)) < 0) {
     return false;
   }
 

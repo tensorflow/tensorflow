@@ -35,15 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
-#if GOOGLE_CUDA
-// Required for sorting Eigen::half
-namespace cub {
-template <>
-struct NumericTraits<Eigen::half>
-    : BaseTraits<FLOATING_POINT, true, false, uint16_t, Eigen::half> {};
-}  // namespace cub
-#endif  // GOOGLE_CUDA
-
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;

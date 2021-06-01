@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras hashing preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import numpy as np
@@ -26,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -37,7 +35,7 @@ _DEFAULT_SALT_KEY = [0xDECAFCAFFE, 0xDECAFCAFFE]
 
 
 @keras_export('keras.layers.experimental.preprocessing.Hashing')
-class Hashing(base_preprocessing_layer.PreprocessingLayer):
+class Hashing(base_layer.Layer):
   """Implements categorical feature hashing, also known as "hashing trick".
 
   This layer transforms single or multiple categorical inputs to hashed output.
@@ -121,7 +119,6 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
       These should be non-zero. Defaults to `None` (in that
       case, the FarmHash64 hash function is used). It also supports
       tuple/list of 2 unsigned integer numbers, see reference paper for details.
-    name: Name to give to the layer.
     **kwargs: Keyword arguments to construct a layer.
 
   Input shape: A single or list of string, int32 or int64 `Tensor`,
@@ -134,10 +131,10 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   """
 
-  def __init__(self, num_bins, mask_value=None, salt=None, name=None, **kwargs):
+  def __init__(self, num_bins, mask_value=None, salt=None, **kwargs):
     if num_bins is None or num_bins <= 0:
       raise ValueError('`num_bins` cannot be `None` or non-positive values.')
-    super(Hashing, self).__init__(name=name, **kwargs)
+    super(Hashing, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('Hashing').set(True)
     self.num_bins = num_bins
     self.mask_value = mask_value

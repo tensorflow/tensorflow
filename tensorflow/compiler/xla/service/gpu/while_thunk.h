@@ -42,9 +42,7 @@ class WhileThunk : public Thunk {
   WhileThunk(ThunkInfo thunk_info,
              const BufferAllocation::Slice& condition_result_buffer_index,
              std::unique_ptr<ThunkSequence> condition_thunk_sequence,
-             std::unique_ptr<ThunkSequence> body_thunk_sequence,
-             absl::optional<size_t> condition_profile_index,
-             absl::optional<size_t> body_profile_index);
+             std::unique_ptr<ThunkSequence> body_thunk_sequence);
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
 
@@ -56,8 +54,6 @@ class WhileThunk : public Thunk {
   const BufferAllocation::Slice condition_result_buffer_index_;
   std::unique_ptr<SequentialThunk> condition_thunk_sequence_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
-  const absl::optional<size_t> condition_profile_index_;
-  const absl::optional<size_t> body_profile_index_;
 };
 
 }  // namespace gpu

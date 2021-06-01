@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/env.h"
 
 // Tests cross-GPU operations.
 //
@@ -38,6 +39,14 @@ namespace {
 using ::testing::IsSupersetOf;
 
 class CollectiveOpsTest : public HloTestBase {
+ public:
+  static void SetUpTestSuite() {
+    // Not needed structly, since this test exercises cross replica collective
+    // permute which does not use NCCL. But keeping it here for testing.
+    tensorflow::setenv("NCCL_LAUNCH_MODE", "PARALLEL", /*overwrite=*/1);
+    HloTestBase::SetUpTestSuite();
+  }
+
  protected:
   std::unique_ptr<HloModule> MakeCrsModule(
       const Shape& shape, std::vector<std::vector<int64>> replica_groups,
@@ -617,6 +626,106 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
                                      results[3]));
 }
 
+XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degnerate) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    sum = u32[] add(replica, ten)
+    p = u32[2] broadcast(sum), dimensions={}
+    permute = u32[2] collective-permute(p), source_target_pairs={{0,0}, {1,1}, {2,2}, {3,3}}
+    ROOT copy = u32[2] copy(permute)
+  }
+  )";
+  const int64 kNumReplicas = 4;
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({11, 11}),
+                                     results[1]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({12, 12}),
+                                     results[2]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({13, 13}),
+                                     results[3]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, CollectivePermute_NoDegnerate) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    sum = u32[] add(replica, ten)
+    p = u32[2] broadcast(sum), dimensions={}
+    permute = u32[2] collective-permute(p), source_target_pairs={{0,0}, {1,1}, {2,2}}
+    ROOT copy = u32[2] copy(permute)
+  }
+  )";
+  const int64 kNumReplicas = 4;
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({11, 11}),
+                                     results[1]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({12, 12}),
+                                     results[2]));
+  // Nothing writes to replica 3, so it is memzero'ed.
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({0, 0}),
+                                     results[3]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    sum = u32[] add(replica, ten)
+    p = u32[2] broadcast(sum), dimensions={}
+    permute = u32[2] collective-permute(p), source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
+    ROOT copy = u32[2] copy(permute)
+  }
+  )";
+  const int64 kNumReplicas = 4;
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({13, 13}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({10, 10}),
+                                     results[1]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({11, 11}),
+                                     results[2]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({12, 12}),
+                                     results[3]));
+}
+
 XLA_TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
   const char* const kModuleStr = R"(
   HloModule test
@@ -861,6 +970,38 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
                                              ErrorSpec{1e-5, 1e-5}));
     EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected1_literal, rs[1],
                                              ErrorSpec{1e-5, 1e-5}));
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    p0 = u32[2, 1] broadcast(id), dimensions={}
+    p1 = f32[2, 1] convert(p0)
+    allgather = (u32[2, 2], f32[2, 2]) all-gather(p0, p1), dimensions={1}
+    ag0 = u32[2, 2] get-tuple-element(allgather), index=0
+    ag1 = f32[2, 2] get-tuple-element(allgather), index=1
+    r0 = u32[4] reshape(ag0)
+    r1 = f32[4] reshape(ag1)
+    ROOT out = (u32[4], f32[4]) tuple(r0, r1)
+  }
+  )";
+  const int64 kNumReplicas = 2;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
+    auto rs = results[replica_idx].DecomposeTuple();
+    LiteralTestUtil::ExpectR1Equal<uint32>({0, 1, 0, 1}, rs[0]);
+    LiteralTestUtil::ExpectR1Near<float>({0.0, 1.0, 0.0, 1.0}, rs[1],
+                                         ErrorSpec{1e-5, 1e-5});
   }
 }
 

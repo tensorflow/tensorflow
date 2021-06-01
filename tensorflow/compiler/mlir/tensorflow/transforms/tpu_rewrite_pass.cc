@@ -231,6 +231,8 @@ LogicalResult SetMetadataProtoArgs(
                       op.getNumOperands(), input_shardings.size()));
 
   // Set args metadata in proto.
+  mlir::Identifier replication_attr_name = mlir::Identifier::get(
+      "mhlo.is_same_data_across_replicas", op.getContext());
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int index = operand_type_and_idx.index();
@@ -264,6 +266,13 @@ LogicalResult SetMetadataProtoArgs(
                              tensorflow::kInputShardingAttr, index,
                              arg->mutable_sharding())))
       return failure();
+
+    // Populate set_is_same_data_across_replicas
+    // Note: this information is duplicated and can be removed from the proto
+    // and here once MLIR bridge phase 2 doesn't fallback to the old bridge.
+    mlir::UnitAttr attr = op.getFunc().getArgAttrOfType<mlir::UnitAttr>(
+        index, replication_attr_name);
+    arg->set_is_same_data_across_replicas(attr != nullptr);
   }
 
   return success();

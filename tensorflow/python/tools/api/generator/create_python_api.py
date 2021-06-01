@@ -119,7 +119,7 @@ class _ModuleInitCodeBuilder(object):
         lambda: collections.defaultdict(set))
     self._dest_import_to_id = collections.defaultdict(int)
     # Names that start with underscore in the root module.
-    self._underscore_names_in_root = []
+    self._underscore_names_in_root = set()
     self._api_version = api_version
     # Controls whether or not exported symbols are lazily loaded or statically
     # imported.
@@ -162,7 +162,7 @@ class _ModuleInitCodeBuilder(object):
     self._check_already_imported(symbol_id, full_api_name)
 
     if not dest_module_name and dest_name.startswith('_'):
-      self._underscore_names_in_root.append(dest_name)
+      self._underscore_names_in_root.add(dest_name)
 
     # The same symbol can be available in multiple modules.
     # We store all possible ways of importing this symbol and later pick just
@@ -248,7 +248,7 @@ class _ModuleInitCodeBuilder(object):
     root_module_footer = ''
     if not self._lazy_loading:
       underscore_names_str = ', '.join(
-          '\'%s\'' % name for name in self._underscore_names_in_root)
+          '\'%s\'' % name for name in sorted(self._underscore_names_in_root))
 
       root_module_footer = """
 _names_with_underscore = [%s]

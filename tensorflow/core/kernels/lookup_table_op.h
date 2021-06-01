@@ -23,10 +23,12 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -41,15 +43,15 @@ class LookupTableOp : public OpKernel {
  public:
   // ctx is not owned by this class.
   explicit LookupTableOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), table_handle_set_(false) {
+      : OpKernel(ctx), table_set_(false) {
     if (ctx->output_type(0) == DT_RESOURCE) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_RESOURCE,
-                                                   tensorflow::TensorShape({}),
-                                                   &table_handle_, nullptr));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(tensorflow::DT_RESOURCE,
+                                        tensorflow::TensorShape({}), &table_));
     } else {
-      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
-                                                   tensorflow::TensorShape({2}),
-                                                   &table_handle_, nullptr));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(tensorflow::DT_STRING,
+                                        tensorflow::TensorShape({2}), &table_));
     }
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
@@ -59,7 +61,7 @@ class LookupTableOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(mu_);
 
-    if (!table_handle_set_) {
+    if (!table_set_) {
       OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
                                       use_node_name_sharing_));
     }
@@ -74,7 +76,7 @@ class LookupTableOp : public OpKernel {
               }
               if (ctx->track_allocations()) {
                 ctx->record_persistent_memory_allocation(
-                    container->MemoryUsed() + table_handle_.AllocatedBytes());
+                    container->MemoryUsed() + table_.AllocatedBytes());
               }
               *ret = container;
               return Status::OK();
@@ -92,27 +94,26 @@ class LookupTableOp : public OpKernel {
                             DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
 
     if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
-      if (!table_handle_set_) {
-        auto h =
-            table_handle_.AccessTensor(ctx)->template scalar<ResourceHandle>();
+      if (!table_set_) {
+        auto h = table_.template scalar<ResourceHandle>();
         h() = MakeResourceHandle<lookup::LookupInterface>(
             ctx, cinfo_.container(), cinfo_.name());
       }
-      ctx->set_output(0, *table_handle_.AccessTensor(ctx));
+      ctx->set_output(0, table_);
     } else {
-      if (!table_handle_set_) {
-        auto h = table_handle_.AccessTensor(ctx)->template flat<tstring>();
+      if (!table_set_) {
+        auto h = table_.template flat<tstring>();
         h(0) = cinfo_.container();
         h(1) = cinfo_.name();
       }
-      ctx->set_output_ref(0, &mu_, table_handle_.AccessTensor(ctx));
+      ctx->set_output_ref(0, &mu_, &table_);
     }
-    table_handle_set_ = true;
+    table_set_ = true;
   }
 
   ~LookupTableOp() override {
     // If the table object was not shared, delete it.
-    if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
+    if (table_set_ && cinfo_.resource_is_private_to_kernel()) {
       if (!cinfo_.resource_manager()
                ->template Delete<lookup::LookupInterface>(cinfo_.container(),
                                                           cinfo_.name())
@@ -124,8 +125,8 @@ class LookupTableOp : public OpKernel {
 
  private:
   mutex mu_;
-  PersistentTensor table_handle_ TF_GUARDED_BY(mu_);
-  bool table_handle_set_ TF_GUARDED_BY(mu_);
+  Tensor table_ TF_GUARDED_BY(mu_);
+  bool table_set_ TF_GUARDED_BY(mu_);
   ContainerInfo cinfo_;
   bool use_node_name_sharing_;
 
@@ -162,6 +163,9 @@ inline const ResourceHandle& SubtleMustCopyIfIntegral(
   return value;
 }
 
+// Returns a unique node name starting with "base".
+std::string UniqueNodeName(const std::string& base);
+
 // Lookup table that wraps an flat_hash_map, where the key and value data type
 // is specified.
 //
@@ -180,6 +184,39 @@ template <class K, class V>
 class HashTable : public InitializableLookupTable {
  public:
   HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
+
+  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
+    // We set use_node_name_sharing with a unique node name so that the resource
+    // can outlive the HashTableV2 kernel. This means that the lifetime of the
+    // HashTable resource will be tied to the lifetime of the resource manager
+    // it is created in.
+    // TODO(b/181695913): Provide a mechanism for deleting this resource
+    // earlier when appropriate.
+    Node* hash_table_node = ops::SourceOp(
+        "HashTableV2", builder->opts()
+                           .WithName(UniqueNodeName("HashTableFromGraphDef"))
+                           .WithAttr("key_dtype", key_dtype())
+                           .WithAttr("value_dtype", value_dtype())
+                           .WithAttr("use_node_name_sharing", true));
+    if (table_.empty()) {
+      *out = hash_table_node;
+      return Status::OK();
+    }
+
+    if (initializer_serializer_ == nullptr) {
+      std::string message =
+          "Failed to serialize lookup table: no initialization function was "
+          "specified. Falling back to serializing a handle to the table.";
+      LOG(WARNING) << message;
+      return errors::Unimplemented(message);
+    }
+    Node* initializer;
+    TF_RETURN_IF_ERROR(initializer_serializer_->AsGraphDef(
+        builder, hash_table_node, &initializer));
+    *out = ops::UnaryOp("Identity", hash_table_node,
+                        builder->opts().WithControlInput(initializer));
+    return Status::OK();
+  }
 
   size_t size() const override {
     if (!is_initialized())

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
@@ -33,7 +34,7 @@ namespace gpu {
 // notification when that triggers when the transfer is done.
 class OutfeedBuffer {
  public:
-  OutfeedBuffer(int64 length) : length_(length) {}
+  explicit OutfeedBuffer(int64 length) : length_(length) {}
 
   // Waits for the device transfer to be finished.
   void WaitUntilAvailable() { done_.WaitForNotification(); }
@@ -57,8 +58,8 @@ class OutfeedBuffer {
 // produced by the transfer manager and consumed by the device.
 using OutfeedManager = XfeedQueue<ShapeTree<std::unique_ptr<OutfeedBuffer>>*>;
 
-// Singleton creator-or-accessor: Returns the GPU outfeed manager.
-OutfeedManager* GetOrCreateOutfeedManager();
+// Returns the GPU outfeed manager for the given stream executor.
+OutfeedManager* GetOrCreateOutfeedManager(se::StreamExecutor* executor);
 
 }  // namespace gpu
 }  // namespace xla

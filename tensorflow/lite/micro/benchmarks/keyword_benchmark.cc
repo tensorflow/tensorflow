@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h"
 #include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
 #include "tensorflow/lite/micro/kernels/fully_connected.h"
+#include "tensorflow/lite/micro/kernels/softmax.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
-#include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/micro/system_setup.h"
@@ -37,9 +37,16 @@ namespace tflite {
 using KeywordBenchmarkRunner = MicroBenchmarkRunner<int16_t>;
 using KeywordOpResolver = MicroMutableOpResolver<6>;
 
+#if defined(HEXAGON)
+// TODO(b/174781826): reduce arena usage for optimized Hexagon kernels.
+constexpr int kOptimizedKernelArenaIncrement = 21000;
+#else
+constexpr int kOptimizedKernelArenaIncrement = 0;
+#endif
+
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
-constexpr int kTensorArenaSize = 21 * 1024;
+constexpr int kTensorArenaSize = 21 * 1024 + kOptimizedKernelArenaIncrement;
 alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
 uint8_t benchmark_runner_buffer[sizeof(KeywordBenchmarkRunner)];
@@ -54,7 +61,7 @@ KeywordBenchmarkRunner* CreateBenchmarkRunner(MicroProfiler* profiler) {
   KeywordOpResolver* op_resolver = new (op_resolver_buffer) KeywordOpResolver();
   op_resolver->AddFullyConnected(tflite::Register_FULLY_CONNECTED_INT8());
   op_resolver->AddQuantize();
-  op_resolver->AddSoftmax();
+  op_resolver->AddSoftmax(tflite::Register_SOFTMAX_INT8_INT16());
   op_resolver->AddSvdf();
 
   return new (benchmark_runner_buffer)
@@ -96,4 +103,6 @@ int main(int argc, char** argv) {
   tflite::KeywordRunNIerations(10, "KeywordRunNIerations(10)",
                                *benchmark_runner, profiler);
   MicroPrintf("");  // null MicroPrintf serves as a newline.
+
+  benchmark_runner->PrintAllocations();
 }

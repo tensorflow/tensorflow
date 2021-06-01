@@ -718,11 +718,7 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
   return true;
 }
 
-}  // namespace
-
-bool Verify(const void* buf, size_t len, const OpResolver& resolver,
-            ErrorReporter* error_reporter) {
-  const Model* model = VerifyFlatbufferAndGetModel(buf, len);
+bool VerifyModel(const Model* model, ErrorReporter* error_reporter) {
   if (model == nullptr) {
     ReportError(error_reporter, "Invalid flatbuffer format");
     return false;
@@ -735,6 +731,23 @@ bool Verify(const void* buf, size_t len, const OpResolver& resolver,
     return false;
   }
   if (!VerifyTensors(*model, error_reporter)) {
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter) {
+  const Model* model = VerifyFlatbufferAndGetModel(buf, len);
+  return VerifyModel(model, error_reporter);
+}
+
+// Deprecated: see comments in header.
+bool Verify(const void* buf, size_t len, const OpResolver& resolver,
+            ErrorReporter* error_reporter) {
+  const Model* model = VerifyFlatbufferAndGetModel(buf, len);
+  if (!VerifyModel(model, error_reporter)) {
     return false;
   }
   if (!VerifyOps(*model, resolver, error_reporter)) {

@@ -30,11 +30,8 @@ install_macos_pip_deps_no_venv python3.7
 export OS_TYPE="MACOS"
 export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.7'
+export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
 export TF_BUILD_BOTH_CPU_PACKAGES=1
-
-# Run configure.
-export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
-yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Export optional variables for running pip.sh
 export TF_BUILD_FLAGS="--config=release_cpu_macos"

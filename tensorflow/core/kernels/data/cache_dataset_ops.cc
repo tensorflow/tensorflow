@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/cache_ops.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
@@ -51,10 +51,6 @@ constexpr char kShardId[] = "shard_id";
 constexpr char kCreatedAt[] = "Created at";
 constexpr char kMemoryDatasetPrefix[] = "Memory";
 constexpr char kMemoryCache[] = "MemoryCache";
-constexpr char kCacheClaimed[] = "cache_claimed";
-constexpr char kCacheSize[] = "cache_size";
-constexpr char kCache[] = "cache";
-constexpr char kSizeSuffix[] = ".size";
 constexpr char kCacheCompleted[] = "cache_completed";
 constexpr char kIndex[] = "index";
 constexpr char kImpl[] = "Impl";

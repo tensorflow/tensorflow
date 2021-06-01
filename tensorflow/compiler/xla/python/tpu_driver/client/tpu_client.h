@@ -40,9 +40,11 @@ namespace xla {
 
 constexpr char kTpuPlatform[] = "tpu";
 
+class PyTpuClient;
+
 class TpuDevice : public PjRtDevice {
  public:
-  TpuDevice(int id, int task_id, const std::array<int, 3>& coords,
+  TpuDevice(int id, int process_index, const std::array<int, 3>& coords,
             int core_on_chip);
 
   const std::array<int, 3>& coords() const { return coords_; }
@@ -54,12 +56,14 @@ class TpuDevice : public PjRtDevice {
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
 
   PjRtClient* client() const override { return nullptr; }
+  PyTpuClient* tpu_client() const { return tpu_client_; }
+  void set_tpu_client(PyTpuClient* tpu_client) { tpu_client_ = tpu_client; }
 
   bool IsAddressable() const override { return false; }
 
   int id() const override { return id_; }
 
-  int task_id() const override { return task_id_; }
+  int process_index() const override { return process_index_; }
 
   int local_hardware_id() const override { return -1; }
 
@@ -75,15 +79,16 @@ class TpuDevice : public PjRtDevice {
 
  private:
   const int id_;
-  const int task_id_;
+  const int process_index_;
   const std::array<int, 3> coords_;
   const std::string device_kind_ = "Cloud TPU";
   // Index of the core of the same chip.
   int core_on_chip_;
+  PyTpuClient* tpu_client_;
 };
 
 // Encapsulates the state of Python session with XLA.
-class PyTpuClient {
+class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
  public:
   // Initializes a local XLA client for `platform_name`. Returns an error if no
   // such platform exists, or if the platform has no visible devices.
@@ -92,7 +97,7 @@ class PyTpuClient {
   explicit PyTpuClient(std::string platform_name,
                        std::unique_ptr<tpu_driver::TpuDriver> driver,
                        std::vector<std::shared_ptr<PjRtDevice>> devices,
-                       int task_id);
+                       int process_index);
   virtual ~PyTpuClient() = default;
 
   PyTpuClient(const PyTpuClient&) = delete;
@@ -115,7 +120,7 @@ class PyTpuClient {
   const std::map<int, std::shared_ptr<PjRtDevice>>& id_to_device() const {
     return id_to_device_;
   }
-  int task_id() const { return task_id_; }
+  int process_index() const { return process_index_; }
   const absl::string_view platform_name() const { return platform_name_; }
   const absl::string_view platform_version() const { return "<unknown>"; }
 
@@ -141,7 +146,7 @@ class PyTpuClient {
   std::map<int, std::shared_ptr<PjRtDevice>> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<std::shared_ptr<PjRtDevice>> local_devices_;
-  int task_id_;
+  int process_index_;
 
   // A thread pool for scheduling core executions in parallel.
   std::unique_ptr<tensorflow::thread::ThreadPool> pool_;

@@ -16,6 +16,10 @@ def tf_additional_cupti_deps():
 def tf_additional_cudnn_plugin_deps():
     return []
 
+def tf_additional_cudnn_plugin_copts():
+    # TODO(timshen): remove TF_ENABLE_CUDNN_FRONTEND once cudnn-frontend is imported.
+    return ["-DNV_CUDNN_DISABLE_EXCEPTION", "-DTF_ENABLE_CUDNN_FRONTEND"]
+
 # Returns whether any GPU backend is configuered.
 def if_gpu_is_configured(x):
     return if_cuda_is_configured(x) + if_rocm_is_configured(x)

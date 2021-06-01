@@ -370,34 +370,40 @@ TEST(ThreadPool, Parallelism) {
   }
 }
 
-static void BM_Sequential(int iters) {
-  ThreadPool pool(Env::Default(), "test", kNumThreads);
-  // Decrement count sequentially until 0.
-  int count = iters;
-  mutex done_lock;
-  bool done_flag = false;
-  std::function<void()> work = [&pool, &count, &done_lock, &done_flag,
-                                &work]() {
-    if (count--) {
-      pool.Schedule(work);
-    } else {
-      mutex_lock l(done_lock);
-      done_flag = true;
-    }
-  };
-  work();
-  mutex_lock l(done_lock);
-  done_lock.Await(Condition(&done_flag));
-}
-BENCHMARK(BM_Sequential);
+static void BM_Sequential(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    state.PauseTiming();
+    ThreadPool pool(Env::Default(), "test", kNumThreads);
+    // Decrement count sequentially until 0.
+    int count = state.range(0);
+    mutex done_lock;
+    bool done_flag = false;
+    std::function<void()> work = [&pool, &count, &done_lock, &done_flag,
+                                  &work]() {
+      if (count--) {
+        pool.Schedule(work);
+      } else {
+        mutex_lock l(done_lock);
+        done_flag = true;
+      }
+    };
 
-static void BM_Parallel(int iters) {
+    state.ResumeTiming();
+    work();
+    mutex_lock l(done_lock);
+    done_lock.Await(Condition(&done_flag));
+  }
+}
+BENCHMARK(BM_Sequential)->Arg(200)->Arg(300);
+
+static void BM_Parallel(::testing::benchmark::State& state) {
   ThreadPool pool(Env::Default(), "test", kNumThreads);
   // Decrement count concurrently until 0.
-  std::atomic_int_fast32_t count(iters);
+  std::atomic_int_fast32_t count(state.max_iterations);
   mutex done_lock;
   bool done_flag = false;
-  for (int i = 0; i < iters; ++i) {
+
+  for (auto s : state) {
     pool.Schedule([&count, &done_lock, &done_flag]() {
       if (count.fetch_sub(1) == 1) {
         mutex_lock l(done_lock);
@@ -410,13 +416,16 @@ static void BM_Parallel(int iters) {
 }
 BENCHMARK(BM_Parallel);
 
-static void BM_ParallelFor(int iters, int total, int cost_per_unit) {
+static void BM_ParallelFor(::testing::benchmark::State& state) {
+  int total = state.range(0);
+  int cost_per_unit = state.range(1);
   ThreadPool pool(Env::Default(), "test", kNumThreads);
   // Decrement count concurrently until 0.
-  std::atomic_int_fast32_t count(iters);
+  std::atomic_int_fast32_t count(state.max_iterations);
   mutex done_lock;
   bool done_flag = false;
-  for (int i = 0; i < iters; ++i) {
+
+  for (auto s : state) {
     pool.ParallelFor(total, cost_per_unit,
                      [&count, &done_lock, &done_flag](int64 begin, int64 end) {
                        for (int64 i = begin; i < end; ++i) {
@@ -426,9 +435,10 @@ static void BM_ParallelFor(int iters, int total, int cost_per_unit) {
                          }
                        }
                      });
+
+    mutex_lock l(done_lock);
+    done_lock.Await(Condition(&done_flag));
   }
-  mutex_lock l(done_lock);
-  done_lock.Await(Condition(&done_flag));
 }
 BENCHMARK(BM_ParallelFor)
     ->ArgPair(1 << 10, 1)

@@ -23,7 +23,7 @@ import pickle
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
-from tensorflow.python import _errors_test_helper
+from tensorflow.python.framework import _errors_test_helper
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl

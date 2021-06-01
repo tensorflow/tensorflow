@@ -7,7 +7,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -38,6 +38,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -73,10 +74,11 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AffineToStandardTransforms",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",

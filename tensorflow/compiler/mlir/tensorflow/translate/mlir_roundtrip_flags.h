@@ -38,6 +38,9 @@ struct ArrayInfo {
 struct GraphImportConfig {
   using InputArrays =
       llvm::MapVector<string, ArrayInfo, llvm::StringMap<unsigned>>;
+  // The name assigned to the function which is the import result of the given
+  // graph. If empty, a default one will be used.
+  std::string graph_func_name;
   // Maps input node names to node data types and shapes.
   InputArrays inputs;
   // name:index strings for the data outputs.

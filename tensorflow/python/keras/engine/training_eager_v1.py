@@ -12,12 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras training and evaluation routines for eager execution.
-"""
+"""Keras training and evaluation routines for eager execution."""
 # pylint: disable=protected-access
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 

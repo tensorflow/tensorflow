@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -402,7 +403,9 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
   // TODO(ashankar): Instead of a allowlist here, perhaps we could query
   // the kernel registry for _Arg and _Retval kernels instead.
   if (device_type == DEVICE_CPU) return true;
-  if (device_type != DEVICE_GPU) return false;
+  if (device_type != DEVICE_GPU &&
+      !DeviceFactory::IsPluggableDevice(device_type))
+    return false;
   switch (dtype) {
     case DT_BFLOAT16:
     case DT_BOOL:
@@ -640,7 +643,9 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
 }
 
 Status GraphExecutionState::OptimizeGraph(
-    const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
+    const BuildGraphOptions& options, const Graph& graph,
+    const FunctionLibraryDefinition* flib_def,
+    std::unique_ptr<Graph>* optimized_graph,
     std::unique_ptr<FunctionLibraryDefinition>* optimized_flib) {
 #ifdef IS_MOBILE_PLATFORM
   return errors::InvalidArgument("Mobile platforms not supported");
@@ -711,8 +716,8 @@ Status GraphExecutionState::OptimizeGraph(
 
       // For feeds with tensor index == 0 we try to infer data type and tensor
       // shape from the graph, by looking at the fed node attributes.
-      node_names.reserve(graph_->num_nodes());
-      for (const Node* node : graph_->nodes()) {
+      node_names.reserve(graph.num_nodes());
+      for (const Node* node : graph.nodes()) {
         node_names.insert(node->name());
         if (feed_nodes.find(node->name()) == feed_nodes.end()) continue;
 
@@ -761,8 +766,8 @@ Status GraphExecutionState::OptimizeGraph(
     // Validate that the feeds and fetches are valid.
     if (node_names.empty()) {
       // Collect all node names in the graph if we didn't already.
-      node_names.reserve(graph_->num_nodes());
-      for (const Node* node : graph_->nodes()) {
+      node_names.reserve(graph.num_nodes());
+      for (const Node* node : graph.nodes()) {
         node_names.insert(node->name());
       }
     }
@@ -782,10 +787,10 @@ Status GraphExecutionState::OptimizeGraph(
     }
 
     // Convert Graph to GraphDef and add it to the GrapplerItem.
-    graph_->ToGraphDef(&item.graph);
+    graph.ToGraphDef(&item.graph);
     // TODO(b/114748242): Add a unit test to test this bug fix.
-    if (flib_def_) {
-      *item.graph.mutable_library() = flib_def_->ToProto();
+    if (flib_def) {
+      *item.graph.mutable_library() = flib_def->ToProto();
     }
 
     // Construct a virtual cluster and find the cpu_device, which the
@@ -810,7 +815,7 @@ Status GraphExecutionState::OptimizeGraph(
     // Optimized graph might have new functions specialized for it's
     // instantiation context (see Grappler function optimizer), and modified
     // function body for the existing functions.
-    optimized_flib->reset(new FunctionLibraryDefinition(*flib_def_));
+    optimized_flib->reset(new FunctionLibraryDefinition(*flib_def));
 
     for (const FunctionDef& fdef : new_graph.library().function()) {
       const string& func_name = fdef.signature().name();
@@ -860,7 +865,8 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   std::unique_ptr<Graph> optimized_graph;
   std::unique_ptr<FunctionLibraryDefinition> optimized_flib;
 
-  Status s = OptimizeGraph(options, &optimized_graph, &optimized_flib);
+  Status s = OptimizeGraph(options, *graph_, flib_def_.get(), &optimized_graph,
+                           &optimized_flib);
   if (!s.ok()) {
     VLOG(2) << "Grappler optimization failed. Error: " << s.error_message();
     // Simply copy the original graph and the function library if we couldn't

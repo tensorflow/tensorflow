@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import functools
 
 from absl.testing import parameterized
@@ -520,6 +521,11 @@ class LocalCollectiveAllReduceStrategy(
     self._test_numpy_dataset(
         strategy, session=self.cached_session(config=config, target=target))
 
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testDeepCopy(self):
+    distribution, _, _ = self._get_test_object(None, None)
+    copy.deepcopy(distribution)
+
 
 class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -552,6 +558,7 @@ class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
         ],
         mode=['eager']))
 class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
@@ -568,6 +575,19 @@ class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         list(range(len(strategy.extended.worker_devices))) *
         strategy.extended._num_workers, results[1].numpy())
+
+  def test_deep_copy_not_allowed(self, strategy):
+    # Check health is disabled in tests by default. We need to enable it for
+    # this test to simulate the real world.
+    strategy.extended._start_check_health_thread()
+    try:
+      with self.assertRaisesRegex(ValueError, 'cannot be deep copied'):
+        copy.deepcopy(strategy)
+      with self.assertRaisesRegex(ValueError, 'cannot be deep copied'):
+        with ops.Graph().as_default():
+          copy.deepcopy(strategy)
+    finally:
+      strategy.extended._stop_check_health_thread()
 
 
 class ExperimentalCompatibilityTest(test.TestCase):

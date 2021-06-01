@@ -1063,6 +1063,8 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kGray;
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:

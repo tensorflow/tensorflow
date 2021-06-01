@@ -73,10 +73,10 @@ Status InputBuffer::ReadLine(T* result) {
   return s;
 }
 
-template Status InputBuffer::ReadLine<string>(string* result);
+template Status InputBuffer::ReadLine<std::string>(std::string* result);
 template Status InputBuffer::ReadLine<tstring>(tstring* result);
 
-Status InputBuffer::ReadNBytes(int64 bytes_to_read, string* result) {
+Status InputBuffer::ReadNBytes(int64 bytes_to_read, std::string* result) {
   result->clear();
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",

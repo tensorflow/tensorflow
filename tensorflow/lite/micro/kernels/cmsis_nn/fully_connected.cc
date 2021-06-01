@@ -56,11 +56,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input =
       GetInput(context, node, kFullyConnectedInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* filter =
       GetInput(context, node, kFullyConnectedWeightsTensor);
+  TF_LITE_ENSURE(context, filter != nullptr);
   const TfLiteTensor* bias =
       GetOptionalInputTensor(context, node, kFullyConnectedBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kFullyConnectedOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
+
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
@@ -202,19 +206,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8: {
       return EvalQuantizedInt8(context, node, data, input, filter, bias,
                                output);
-    }
-    case kTfLiteUInt8: {
-      tflite::reference_ops::FullyConnected(
-          FullyConnectedParamsQuantized(data.reference_op_data),
-          tflite::micro::GetTensorShape(input),
-          tflite::micro::GetTensorData<uint8_t>(input),
-          tflite::micro::GetTensorShape(filter),
-          tflite::micro::GetTensorData<uint8_t>(filter),
-          tflite::micro::GetTensorShape(bias),
-          tflite::micro::GetTensorData<int32_t>(bias),
-          tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<uint8_t>(output));
-      break;
     }
     default: {
       TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",

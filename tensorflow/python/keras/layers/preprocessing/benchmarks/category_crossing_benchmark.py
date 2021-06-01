@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmark for Keras categorical_encoding preprocessing layer."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import itertools
 import time

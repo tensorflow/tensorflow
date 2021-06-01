@@ -273,13 +273,16 @@ string ProfileStrategyToName(const ProfileStrategy strategy) {
 }
 
 Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy) {
-  if (name == "range") {
+  string name_lowercase(name);
+  std::transform(name.begin(), name.end(), name_lowercase.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  if (name_lowercase == "range") {
     *strategy = ProfileStrategy::kRange;
-  } else if (name == "optimal") {
+  } else if (name_lowercase == "optimal") {
     *strategy = ProfileStrategy::kOptimal;
-  } else if (name == "range+optimal") {
+  } else if (name_lowercase == "range+optimal") {
     *strategy = ProfileStrategy::kRangeOptimal;
-  } else if (name == "implicitbatchmodecompatible") {
+  } else if (name_lowercase == "implicitbatchmodecompatible") {
     *strategy = ProfileStrategy::kImplicitBatchModeCompatible;
   } else {
     return errors::InvalidArgument("Invalid profile strategy: ", name);

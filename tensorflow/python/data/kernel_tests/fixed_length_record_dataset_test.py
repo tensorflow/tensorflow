@@ -24,6 +24,7 @@ import zlib
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
@@ -32,11 +33,11 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class FixedLengthRecordDatasetTest(test_base.DatasetTestBase,
-                                   parameterized.TestCase):
+class FixedLengthRecordDatasetTestBase(test_base.DatasetTestBase):
+  """Base class for setting up and testing FixedLengthRecordDataset."""
 
   def setUp(self):
-    super(FixedLengthRecordDatasetTest, self).setUp()
+    super(FixedLengthRecordDatasetTestBase, self).setUp()
     self._num_files = 2
     self._num_records = 7
     self._header_bytes = 5
@@ -73,6 +74,10 @@ class FixedLengthRecordDatasetTest(test_base.DatasetTestBase,
         raise ValueError("Unsupported compression_type", compression_type)
 
     return filenames
+
+
+class FixedLengthRecordDatasetTest(FixedLengthRecordDatasetTestBase,
+                                   parameterized.TestCase):
 
   def _testFixedLengthRecordDataset(self, compression_type=None):
     test_filenames = self._createFiles(compression_type=compression_type)
@@ -208,6 +213,24 @@ class FixedLengthRecordDatasetTest(test_base.DatasetTestBase,
           [self._record(j, i) for i in range(self._num_records)])
     self.assertDatasetProduces(dataset, expected_output=expected_output,
                                assert_items_equal=True)
+
+
+class FixedLengthRecordDatasetCheckpointTest(
+    FixedLengthRecordDatasetTestBase, checkpoint_test_base.CheckpointTestBase,
+    parameterized.TestCase):
+
+  def _build_iterator_graph(self, num_epochs, compression_type=None):
+    filenames = self._createFiles()
+    return readers.FixedLengthRecordDataset(
+        filenames, self._record_bytes, self._header_bytes,
+        self._footer_bytes).repeat(num_epochs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFixedLengthRecordCore(self):
+    num_epochs = 5
+    num_outputs = num_epochs * self._num_files * self._num_records
+    self.run_core_tests(lambda: self._build_iterator_graph(num_epochs),
+                        num_outputs)
 
 
 if __name__ == "__main__":

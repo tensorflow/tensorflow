@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import copy
 import warnings
 
@@ -202,9 +203,19 @@ class CapturableResource(base.Trackable):
     """
     self._resource_handle = None
     self._resource_device = device
-    self._destruction_context = (
+    self._self_destruction_context = (
         context.eager_mode if context.executing_eagerly()
         else ops.get_default_graph().as_default)
+
+  @property
+  def _destruction_context(self):
+    return getattr(self, "_self_destruction_context",
+                   # no-op context
+                   contextlib.suppress)
+
+  @_destruction_context.setter
+  def _destruction_context(self, destruction_context):
+    self._self_destruction_context = destruction_context
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -273,17 +284,53 @@ class CapturableResource(base.Trackable):
         # cycle, the __del__ for `ScopedTFFunction` can be collected before
         # this method is called. In that case, we can't do much but
         # continue.
-        try:
-          self._destroy_resource()
-
-        except defun.FunctionAlreadyGarbageCollectedError:
-          pass
-    except TypeError:
+        self._destroy_resource()
+    except Exception:  # pylint: disable=broad-except
+      # Silence all error logs that occur when attempting to destroy this
+      # resource.
       pass
 
 
+@tf_export("saved_model.experimental.TrackableResource")
 class TrackableResource(CapturableResource):
-  """Adds scope tracking to CapturableResource."""
+  """Holds a Tensor which a tf.function can capture.
+
+  A TrackableResource is most useful for stateful Tensors that require
+  initialization, such as `tf.lookup.StaticHashTable`. `TrackableResource`s
+  are discovered by traversing the graph of object attributes, e.g. during
+  `tf.saved_model.save`.
+
+  A TrackableResource has three methods to override:
+
+  * `_create_resource` should create the resource tensor handle.
+  * `_initialize` should initialize the resource held at `self.resource_handle`.
+  * `_destroy_resource` is called upon a `TrackableResource`'s destruction
+    and should decrement the resource's ref count. For most resources, this
+    should be done with a call to `tf.raw_ops.DestroyResourceOp`.
+
+  Example usage:
+
+  >>> class DemoResource(tf.saved_model.experimental.TrackableResource):
+  ...   def __init__(self):
+  ...     super().__init__()
+  ...     self._initialize()
+  ...   def _create_resource(self):
+  ...     return tf.raw_ops.VarHandleOp(dtype=tf.float32, shape=[2])
+  ...   def _initialize(self):
+  ...     tf.raw_ops.AssignVariableOp(
+  ...         resource=self.resource_handle, value=tf.ones([2]))
+  ...   def _destroy_resource(self):
+  ...     tf.raw_ops.DestroyResourceOp(resource=self.resource_handle)
+  >>> class DemoModule(tf.Module):
+  ...   def __init__(self):
+  ...     self.resource = DemoResource()
+  ...   def increment(self, tensor):
+  ...     return tensor + tf.raw_ops.ReadVariableOp(
+  ...         resource=self.resource.resource_handle, dtype=tf.float32)
+  >>> demo = DemoModule()
+  >>> demo.increment([5, 1])
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 2.], dtype=float32)>
+  """
 
   def __init__(self, device=""):
     """Initialize the `TrackableResource`.

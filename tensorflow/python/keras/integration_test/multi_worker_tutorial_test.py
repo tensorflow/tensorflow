@@ -13,9 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test for multi-worker training tutorial."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+
 import contextlib
 import os
 import re
@@ -317,7 +315,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, tf.test.TestCase):
           logging.info('Epoch: %d, accuracy: %f, train_loss: %f.',
                        epoch.numpy(), train_accuracy.result(), train_loss)
 
-          train_accuracy.reset_states()
+          train_accuracy.reset_state()
 
           checkpoint_manager.save()
           if not _is_chief(task_type, task_id):

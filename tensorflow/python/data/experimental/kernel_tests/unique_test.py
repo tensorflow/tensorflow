@@ -95,8 +95,8 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                dtype).apply(unique.unique())
 
 
-class UniqueDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                  parameterized.TestCase):
+class UniqueCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                           parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testUnique(self):

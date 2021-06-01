@@ -60,6 +60,7 @@ struct OpsTestConfig {
   // Only used for gpu_unary_ops_test.
   bool expect_buffer_reuse = true;
   bool expect_strictly_equal = false;
+  bool supress_tolerance = false;
   // Negative atol/rtol will make ExpectClose use the default.
   double atol = -1;
   double rtol = -1;
@@ -68,6 +69,11 @@ struct OpsTestConfig {
   OpsTestConfig ExpectStrictlyEqual() {
     OpsTestConfig config = *this;
     config.expect_strictly_equal = true;
+    return config;
+  }
+  OpsTestConfig SuppressTolerance() {
+    OpsTestConfig config = *this;
+    config.supress_tolerance = true;
     return config;
   }
   OpsTestConfig NoBufferReuse() {
@@ -243,6 +249,17 @@ absl::InlinedVector<T, 10> ComplexInputFromValues(
     complex_input.emplace_back(real[i], imag[i]);
   }
   return complex_input;
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
+                                           std::complex<double>>::value,
+                           bool> = true>
+absl::InlinedVector<T, 10> DefaultInputNonZero() {
+  auto real = test::DefaultInputNonZero<typename T::value_type>();
+  auto imag = real;
+  std::reverse(imag.begin(), imag.end());
+  return test::ComplexInputFromValues<T>(real, imag);
 }
 
 template <typename T,

@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -354,6 +355,48 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
+
+
+class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                      parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              cycle_length=2,
+              block_length=[1, 3],
+              num_parallel_calls=[None, 1, 2])))
+  def testCore(self, cycle_length, block_length, num_parallel_calls):
+
+    num_repeats = 2
+    input_values = np.array([2, 3], dtype=np.int64)
+
+    def _build_dataset():
+      return dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
+          num_repeats).interleave(
+              lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
+              cycle_length, block_length, num_parallel_calls)
+
+    num_outputs = np.sum(input_values) * num_repeats
+    self.run_core_tests(_build_dataset, num_outputs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSparseCore(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
+
+    def _interleave_fn(x):
+      return dataset_ops.Dataset.from_tensor_slices(
+          sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
+
+    def _build_dataset():
+      return dataset_ops.Dataset.range(10).map(_map_fn).interleave(
+          _interleave_fn, cycle_length=1)
+
+    self.run_core_tests(_build_dataset, 20)
 
 
 if __name__ == "__main__":

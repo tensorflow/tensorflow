@@ -297,13 +297,10 @@ Status UpdateOutputVariables(
   };
 
   for (int i = 0; i < variables.size(); ++i) {
-    PersistentTensor unused;
-    Tensor* output_tensor;
-    TF_RETURN_IF_ERROR(context->allocate_persistent(
-        variables[i].var()->tensor()->dtype(), output_tensor_shapes[i], &unused,
-        &output_tensor));
-    *variables[i].var()->tensor() = *output_tensor;
-    transfer_buffers(i, output_tensor);
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        variables[i].var()->tensor()->dtype(), output_tensor_shapes[i],
+        variables[i].var()->tensor()));
+    transfer_buffers(i, variables[i].var()->tensor());
   }
   return allocator->Deallocate(output_buffers.device_ordinal(),
                                output_buffers.buffer({}));

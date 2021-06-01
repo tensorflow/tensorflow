@@ -22,7 +22,7 @@ include(FetchContent)
 OverridableFetchContent_Declare(
   opencl_headers
   GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-Headers
-  # GIT_TAG must keep in sync with tensorflow/third_party/opencl_headers/workspace.bzl
+  # Sync with tensorflow/third_party/opencl_headers/workspace.bzl
   GIT_TAG 0d5f18c6e7196863bc1557a693f1509adfcee056
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"

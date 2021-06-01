@@ -36,7 +36,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 # Run bazel test command.
 "${BAZEL_WRAPPER_PATH}" \
   test \
-  --config=rbe_linux_cuda11.0_nvcc_py3.6 \
+  --config=rbe_linux_cuda_nvcc_py36 \
   --config=tensorflow_testing_rbe_linux \
   --test_tag_filters="${tag_filters}" \
   --build_tag_filters="${tag_filters}" \

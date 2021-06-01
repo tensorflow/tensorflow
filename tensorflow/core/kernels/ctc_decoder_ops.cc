@@ -70,6 +70,9 @@ class CTCDecodeHelper {
     if (inputs_shape.dims() != 3) {
       return errors::InvalidArgument("inputs is not a 3-Tensor");
     }
+    if (inputs_shape.num_elements() == 0) {
+      return errors::InvalidArgument("inputs must not be empty");
+    }
 
     const int64 max_time = inputs_shape.dim_size(0);
     const int64 batch_size = inputs_shape.dim_size(1);
@@ -184,6 +187,7 @@ class CTCGreedyDecoderOp : public OpKernel {
  public:
   explicit CTCGreedyDecoderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("merge_repeated", &merge_repeated_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("blank_index", &blank_index_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -220,8 +224,12 @@ class CTCGreedyDecoderOp : public OpKernel {
 
     log_prob_t.setZero();
 
-    // Assumption: the blank index is num_classes - 1
-    int blank_index = num_classes - 1;
+    int blank_index =
+        (blank_index_ < 0) ? num_classes + blank_index_ : blank_index_;
+    OP_REQUIRES(ctx, FastBoundsCheck(blank_index, num_classes),
+                errors::InvalidArgument("blank_index expected to be between ",
+                                        -num_classes, " and ", num_classes - 1,
+                                        " but was ", blank_index_));
 
     // Perform best path decoding
     std::vector<std::vector<std::vector<int> > > sequences(batch_size);
@@ -232,6 +240,8 @@ class CTCGreedyDecoderOp : public OpKernel {
         int prev_indices = -1;
         for (int t = 0; t < seq_len_t(b); ++t) {
           int max_class_indices;
+          OP_REQUIRES(ctx, input_list_t[t].dimension(1) > 0,
+                      errors::InvalidArgument("Invalid input dimensions."));
           log_prob_t(b, 0) +=
               -RowMax<T>(input_list_t[t], b, &max_class_indices);
           if (max_class_indices != blank_index &&
@@ -258,6 +268,7 @@ class CTCGreedyDecoderOp : public OpKernel {
  private:
   CTCDecodeHelper decode_helper_;
   bool merge_repeated_;
+  int blank_index_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CTCGreedyDecoderOp);
 };

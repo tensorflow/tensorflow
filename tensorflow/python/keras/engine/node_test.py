@@ -14,17 +14,13 @@
 #,============================================================================
 """Tests for layer graphs construction & handling."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.platform import test
 
 
-class DummyTensor(object):
+class DummyTensor:
 
   def __init__(self, shape=None):
     self.shape = shape

@@ -9,7 +9,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Since all ops need to have a graph created before being fuzzed, we define

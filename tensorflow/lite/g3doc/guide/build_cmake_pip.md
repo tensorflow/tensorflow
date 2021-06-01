@@ -4,7 +4,7 @@ This page describes how to build the TensorFlow Lite `tflite_runtime` Python
 library for x86_64 and various ARM devices.
 
 The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
-, TensorFlow devel Docker image
+, macOS Catalina (x86_64) and TensorFlow devel Docker image
 [tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 **Note:** This feature is currently experimental and available since version 2.4
@@ -29,12 +29,14 @@ higher)
 
 ## ARM cross compilation
 
-For ARM cross compilation, it's recommanded to use Docker since it makes easier
+For ARM cross compilation, it's recommended to use Docker since it makes easier
 to setup cross build environment. Also you needs a `target` option to figure out
 the target architecture.
 
-With the `container` name and the `target` name, you can run the build command
-as followings.
+There is a helper script `tensorflow/tools/ci_build/ci_build.sh` available to
+invoke a build command using a pre-defined Docker container. On a Docker host
+machine, you can run a build command with the `container` name and the `target`
+name as followings.
 
 ```sh
 tensorflow/tools/ci_build/ci_build.sh <container> \
@@ -46,7 +48,7 @@ tensorflow/tools/ci_build/ci_build.sh <container> \
 You need to select ARM cross build container for your target Python interpreter
 version. Here is the list of supported containers.
 
-Conainter   | Supported Python version
+Container   | Supported Python version
 ----------- | ------------------------
 PI          | Python 3.5
 PI-PYTHON37 | Python 3.7
@@ -60,8 +62,8 @@ targets.
 
 Target    | Target architecture  | Comments
 --------- | -------------------- | --------
-armhf     | ARMv7 VFP with Neon  | Compatibile with Raspberry Pi 3 and 4
-rpi0      | ARMv6                | Compatibile with Raspberry Pi Zero
+armhf     | ARMv7 VFP with Neon  | Compatible with Raspberry Pi 3 and 4
+rpi0      | ARMv6                | Compatible with Raspberry Pi Zero
 aarch64   | aarch64 (ARM 64-bit) | [Coral Mendel Linux 4.0](https://coral.ai/) <br/> Raspberry Pi with [Ubuntu Server 20.04.01 LTS 64-bit](https://ubuntu.com/download/raspberry-pi)
 native    | Your workstation     | It builds with "-mnative" optimization
 <default> | Your workstation     | Default target
@@ -86,7 +88,7 @@ tensorflow/tools/ci_build/ci_build.sh PI-PYTHON38 \
 
 #### How to use a custom toolchain?
 
-If the generated binaries are not compatibile with your target, you need to use
+If the generated binaries are not compatible with your target, you need to use
 your own toolchain or provide custom build flags. (Check
 [this](https://www.tensorflow.org/lite/guide/build_cmake_arm#check_your_target_environment)
 to understand your target environment) In that case, you need to modify

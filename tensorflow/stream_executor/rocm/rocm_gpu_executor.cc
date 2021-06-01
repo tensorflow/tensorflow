@@ -96,10 +96,6 @@ GpuContext* ExtractGpuContext(GpuExecutor* rocm_exec) {
   return rocm_exec->gpu_context();
 }
 
-GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {
-  return static_cast<GpuExecutor*>(stream_exec->implementation());
-}
-
 GpuExecutor::~GpuExecutor() {
   for (auto& it : disk_modules_) {
     GpuDriver::UnloadModule(context_, it.second);

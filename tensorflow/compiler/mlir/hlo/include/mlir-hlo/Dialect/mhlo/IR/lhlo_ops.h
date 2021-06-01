@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -30,7 +31,9 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/CopyOpInterface.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 

@@ -66,7 +66,7 @@ CPU revision    : 3
 
 ## Build for AArch64 (ARM64)
 
-This instruction shows how to build AArch64 binary which is compatibile with
+This instruction shows how to build AArch64 binary which is compatible with
 [Coral Mendel Linux 4.0](https://coral.ai/), Raspberry Pi (with
 [Ubuntu Server 20.04.01 LTS 64-bit](https://ubuntu.com/download/raspberry-pi)
 installed).
@@ -106,7 +106,7 @@ target device supports OpenCL 1.2 or higher.
 ## Build for ARMv7 NEON enabled
 
 This instruction shows how to build ARMv7 with VFPv4 and NEON enabled binary
-which is compatibile with Raspberry Pi 3 and 4.
+which is compatible with Raspberry Pi 3 and 4.
 
 #### Download toolchain
 
@@ -142,7 +142,7 @@ ARMCC_FLAGS for your target device profiles.
 
 ## Build for Raspberry Pi Zero (ARMv6)
 
-This instruction shows how to build ARMv6 binary which is compatibile with
+This instruction shows how to build ARMv6 binary which is compatible with
 Raspberry Pi Zero.
 
 #### Download toolchain

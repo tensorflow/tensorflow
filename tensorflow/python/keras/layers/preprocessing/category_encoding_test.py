@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras text category_encoding preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -88,7 +84,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
 
     layer = category_encoding.CategoryEncoding(
-        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
+        num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -199,7 +195,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
 
     layer = category_encoding.CategoryEncoding(
-        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
+        num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
     int_data = layer(input_data)
 
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -291,7 +287,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = category_encoding.CategoryEncoding(
-        max_tokens=num_tokens, output_mode=category_encoding.BINARY)
+        max_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -300,7 +296,6 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_output, output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
 @keras_parameterized.run_all_keras_modes
 class CategoryEncodingOutputTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
@@ -318,7 +313,7 @@ class CategoryEncodingOutputTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = category_encoding.CategoryEncoding(
-        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
+        num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -359,7 +354,7 @@ class CategoryEncodingModelBuildingTest(
       }, {
           "testcase_name": "binary_output",
           "num_tokens": 5,
-          "output_mode": category_encoding.BINARY
+          "output_mode": category_encoding.MULTI_HOT
       })
   def test_end_to_end_bagged_modeling(self, output_mode, num_tokens):
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])

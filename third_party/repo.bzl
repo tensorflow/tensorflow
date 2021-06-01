@@ -31,10 +31,10 @@ def _get_link_dict(ctx, link_files, build_file):
     if build_file:
         # Use BUILD.bazel because it takes precedence over BUILD.
         link_files = dict(link_files, **{build_file: "BUILD.bazel"})
-    return {ctx.path(v): Label(k) for k, v in link_files.items()}
+    return {ctx.path(v): ctx.path(Label(k)) for k, v in link_files.items()}
 
 def _tf_http_archive_impl(ctx):
-    # Construct all labels early on to prevent rule restart. We want the
+    # Construct all paths early on to prevent rule restart. We want the
     # attributes to be strings instead of labels because they refer to files
     # in the TensorFlow repository, not files in repos depending on TensorFlow.
     # See also https://github.com/bazelbuild/bazel/issues/10515.
@@ -48,7 +48,7 @@ def _tf_http_archive_impl(ctx):
         ))
     else:
         patch_file = ctx.attr.patch_file
-        patch_file = Label(patch_file) if patch_file else None
+        patch_file = ctx.path(Label(patch_file)) if patch_file else None
         ctx.download_and_extract(
             url = ctx.attr.urls,
             sha256 = ctx.attr.sha256,
@@ -58,9 +58,9 @@ def _tf_http_archive_impl(ctx):
         if patch_file:
             ctx.patch(patch_file, strip = 1)
 
-    for path, label in link_dict.items():
-        ctx.delete(path)
-        ctx.symlink(label, path)
+    for dst, src in link_dict.items():
+        ctx.delete(dst)
+        ctx.symlink(src, dst)
 
 _tf_http_archive = repository_rule(
     implementation = _tf_http_archive_impl,

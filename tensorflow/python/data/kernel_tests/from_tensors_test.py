@@ -17,11 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from absl.testing import parameterized
+
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -36,6 +39,11 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -122,6 +130,27 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(components)
 
     self.assertDatasetProduces(dataset, expected_output=[components])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsNamedTuple(self):
+    Foo = collections.namedtuple("Foo", ["x", "y"])
+    element = Foo(x=1, y=2)
+    dataset = dataset_ops.Dataset.from_tensors(element)
+    self.assertDatasetProduces(dataset, expected_output=[element])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsAttrs(self):
+    if attr is None:
+      self.skipTest("attr module is not available.")
+
+    @attr.s
+    class Foo(object):
+      x = attr.ib()
+      y = attr.ib()
+
+    element = Foo(x=1, y=2)
+    dataset = dataset_ops.Dataset.from_tensors(element)
+    self.assertDatasetProduces(dataset, expected_output=[element])
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsMixedRagged(self):
@@ -265,12 +294,21 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       self.assertEqual(sess.run(iterator.get_next()), 2)
 
+
+class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
+
+  def _build_tensor_dataset(self, variable_array):
+    components = (variable_array, np.array([1, 2, 3]), np.array(37.0))
+
+    return dataset_ops.Dataset.from_tensors(components)
+
   @combinations.generate(test_base.default_test_combinations())
-  def testDatasetInputSerialization(self):
-    dataset = dataset_ops.Dataset.range(100)
-    dataset = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
-    dataset = self.graphRoundTrip(dataset)
-    self.assertDatasetProduces(dataset, range(100))
+  def testFromTensorsCore(self):
+    # Equal length components
+    arr = np.array(1)
+    num_outputs = 1
+    self.run_core_tests(lambda: self._build_tensor_dataset(arr), num_outputs)
 
 
 if __name__ == "__main__":

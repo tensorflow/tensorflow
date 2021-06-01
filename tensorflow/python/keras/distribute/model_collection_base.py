@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """A base class to provide a model and corresponding input data for testing."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 
-class ModelAndInput(object):
+class ModelAndInput:
   """Base class to provide model and its corresponding inputs."""
 
   def get_model(self):

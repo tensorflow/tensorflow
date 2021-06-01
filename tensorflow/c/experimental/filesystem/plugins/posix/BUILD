@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filesystem implementation for POSIX environments: Linux, MacOS, Android, etc.

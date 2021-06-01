@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 namespace {
 // Returns the shape of the given value if it's ranked; returns llvm::None
@@ -408,6 +409,14 @@ Type DropSubTypes(Type ty) {
 Type DropRefType(Type ty) { return DropTypeHelper<TF::TensorFlowRefType>(ty); }
 
 Type DropRefAndSubTypes(Type ty) { return DropRefType(DropSubTypes(ty)); }
+
+void TensorFlowDialect::registerTypes() {
+  addTypes<
+#define HANDLE_TF_TYPE(tftype, enumerant, name) tftype##Type,
+#define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
+      >();
+}
 
 }  // namespace TF
 }  // namespace mlir

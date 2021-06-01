@@ -36,6 +36,18 @@ using EdgeShapes = absl::flat_hash_map<const Edge*, std::vector<int>>;
 using GroupedEdges =
     absl::flat_hash_map<std::string, std::vector<const Edge*>>;
 
+// Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op that
+// we find as part of searching for inputs to models that are replicated.
+using XlaShardingInfoMap = absl::flat_hash_map<
+    std::string, std::tuple<tensorflow::DataType, std::string, std::string>>;
+
+// Contains attrs "T", and a pointer to tpu_replicated_metadata for ctrl dep
+// for each TpuReplicatedInput op that we find as part of searching for inputs
+// to models that are replicated.
+using TpuReplicatedInputInfoMap =
+    absl::flat_hash_map<std::string,
+                           std::tuple<tensorflow::DataType, Node*>>;
+
 namespace tpu_functional_internal {
 
 // Helper functions for graph rewrites.
@@ -51,14 +63,17 @@ Status CreateConcatAndSplitNodesForInputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_input_shapes,
     const absl::flat_hash_map<std::string, std::vector<const Edge*>>&
         grouped_input_edges,
-    int32_t minimum_input_tensors_packing);
+    int32_t minimum_input_tensors_packing, bool xla_spmd_input_sharded,
+    const XlaShardingInfoMap& xla_sharding_info,
+    const TpuReplicatedInputInfoMap& tpu_replicated_input_info);
 Status CreateConcatAndSplitNodesForOutputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_output_shapes,
     GraphShapeInfo* tpu_inferred_info, GroupedEdges shape_to_output,
-    int32_t minimimum_output_tensors_packing);
+    int32_t minimum_output_tensors_packing);
 
 Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
-                              EdgeShapes* tpu_input_shapes);
+                              EdgeShapes* tpu_input_shapes,
+                              int num_cores_per_replica);
 
 }  // namespace tpu_functional_internal
 
@@ -106,7 +121,17 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
  private:
-  typedef std::pair<std::string, FHandle> DeviceAndFHandle;
+  struct DeviceAndFHandle {
+    std::string device;
+    FHandle handle;
+
+    // The FLD passed to `library_runtime_` as an overlay function library for
+    // instantiation of function `handle`. This is a snapshot of the currrent
+    // `flib_def_`. Since `flib_def_` can be changed concurrently by another
+    // graph rewrite when executing `handle`, we need to make sure each
+    // `handle` uses a different FLD to avoid races. See b/181149591.
+    std::unique_ptr<FunctionLibraryDefinition> flib_def;
+  };
 
   Status GetTpuCoreOrdinal(OpKernelContext* ctx, uint64 input_hash,
                            int64_t* ordinal_selector_req_id,
@@ -156,12 +181,15 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
       ResourceHandle& handle, Node* variable, int num_cores_per_replica)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  Status ShardInputsWithXlaSharding(Graph* graph, int num_cores_per_replica,
+                                    OpKernelContext* ctx)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Rewrite the graph for input and output optimiazations.
   // TODO(ylc): Move this function to Graph optimization pass.
   Status OptimizeTpuInputOutputTensors(
-      Graph* graph, GraphShapeInfo& tpu_inferred_info,
-      std::map<int, InferredShape>& arg_shapes, EdgeShapes& tpu_input_shapes,
-      absl::flat_hash_map<const Edge*, DataType>& tpu_input_dtypes,
+      Graph* graph, bool enable_spmd_xla_partitioning,
+      int num_cores_per_replica,
       std::map<std::string, std::vector<int>>& named_input_shapes,
       OpKernelContext* ctx) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -190,8 +218,12 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
 
   // Adds and instantiates a function backed by `graph` with name
   // `function_name` on device `target_device`, storing the handle in `handle`.
-  Status InstantiatePartition(const Graph& graph, const string& function_name,
-                              const string& target_device, FHandle* handle)
+  // If `out_flib_def` is not null, it will be set to a copy of `flib_def_` and
+  // used for instantiation.
+  Status InstantiatePartition(
+      const Graph& graph, const string& function_name,
+      const string& target_device, FHandle* handle,
+      std::unique_ptr<FunctionLibraryDefinition>* out_flib_def)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Adds and instantiates functions for each subgraph in `subgraphs` after
   // rewriting nodes' `device_ordinal` attributes to match `replica_id` when
@@ -281,9 +313,9 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   std::vector<bool> replaced_input_indices_;
 
   absl::Mutex mu_;
-  // Function shards are added to the `flib_def_`, and `flib_def` later on
-  // passed to `library_runtime_` as an overlay function library for
-  // instantiation.
+  // Function shards are added to the `flib_def_`, and later on it'll create
+  // a copy of `flib_def_` to pass to `library_runtime_` as an overlay function
+  // library for instantiation.
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   FunctionLibraryRuntime* library_runtime_;
 

@@ -4,7 +4,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cuda_py_test(
@@ -57,7 +57,6 @@ cuda_py_test(
     name = "gather_op_test",
     size = "medium",
     srcs = ["gather_op_test.py"],
-    tags = ["no_cuda_asan"],  # b/173806733
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

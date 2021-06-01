@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace functor {
@@ -63,6 +64,11 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
 
     for (int64 i = 0; i < total_nnz; ++i) {
       // For now, the rows pointers store the corresponding row counts.
+      int64 ix = indices(i, 0) + 1;
+      if (ix >= csr_row_ptr.size()) {
+        return errors::InvalidArgument("Got an index ", ix,
+                                       " that is outside of csr_row_ptr");
+      }
       csr_row_ptr(indices(i, 0) + 1) += 1;
       csr_col_ind(i) = indices(i, 1);
     }

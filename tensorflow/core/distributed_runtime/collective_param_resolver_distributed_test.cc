@@ -176,29 +176,36 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   void DefineCollectiveParams(int num_workers, int num_devices,
-                              const string& device_type) {
+                              const string& device_type,
+                              CollectiveType coll_type = REDUCTION_COLLECTIVE,
+                              int source_rank = 0) {
     for (int wi = 0; wi < num_workers; ++wi) {
       string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
       for (int di = 0; di < num_devices; ++di) {
+        int idx = wi * num_devices + di;
         string device_name =
             strings::StrCat(task_name, "/device:", device_type, ":", di);
         cp_[device_name] =
-            CreateCollectiveParams(num_workers, num_devices, device_type);
+            CreateCollectiveParams(num_workers, num_devices, device_type,
+                                   coll_type, idx == source_rank);
       }
     }
   }
 
   CollectiveParams* CreateCollectiveParams(int num_workers, int num_devices,
-                                           const string& device_type) {
+                                           const string& device_type,
+                                           CollectiveType coll_type,
+                                           bool is_source) {
     const int kGroupKey = 5;
     const int kInstanceKey = 3;
     auto* cp = new CollectiveParams();
+    cp->is_source = is_source;
     cp->group.group_key = kGroupKey;
     cp->group.group_size = num_workers * num_devices;
     cp->group.device_type = DeviceType(device_type);
     cp->group.num_tasks = num_workers;
     cp->instance.instance_key = kInstanceKey;
-    cp->instance.type = REDUCTION_COLLECTIVE;
+    cp->instance.type = coll_type;
     cp->instance.data_type = DT_FLOAT;
     cp->instance.shape = TensorShape({64});
     cp->instance.impl_details.subdiv_offsets.push_back(0);
@@ -287,7 +294,9 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   void RestartWorker(int worker_idx, int num_workers, int num_devices,
-                     const string& device_type, bool nccl) {
+                     const string& device_type, bool nccl,
+                     CollectiveType coll_type = REDUCTION_COLLECTIVE,
+                     bool is_source = false) {
     string worker_name =
         strings::StrCat("/job:worker/replica:0/task:", worker_idx);
     DefineWorker(worker_name, device_type, num_devices, nccl);
@@ -297,8 +306,8 @@ class DeviceResDistTest : public ::testing::Test {
       if (cp_.find(device_name) != cp_.end()) {
         cp_[device_name]->Unref();
       }
-      cp_[device_name] =
-          CreateCollectiveParams(num_workers, num_devices, device_type);
+      cp_[device_name] = CreateCollectiveParams(
+          num_workers, num_devices, device_type, coll_type, is_source);
       status_.erase(device_name);
     }
   }
@@ -351,6 +360,28 @@ TEST_F(DeviceResDistTest, DifferentIncarnation) {
   const string device_name = absl::StrCat(task_name, "/device:CPU:0");
   IssueRequest(task_name, device_name, num_workers * num_devices);
   EXPECT_TRUE(errors::IsFailedPrecondition(status_[device_name]));
+}
+
+TEST_F(DeviceResDistTest, BroadcastSourceRank0) {
+  const int num_workers = 2;
+  const int num_devices = 2;
+  const int source_rank = 0;
+  DefineWorkers(num_workers, num_devices, "CPU", /*nccl*/ false);
+  DefineCollectiveParams(num_workers, num_devices, "CPU", BROADCAST_COLLECTIVE,
+                         source_rank);
+  IssueRequests(num_workers, num_devices);
+  ValidateCollectiveParams(num_workers, num_devices);
+}
+
+TEST_F(DeviceResDistTest, BroadcastSourceRank3) {
+  const int num_workers = 2;
+  const int num_devices = 2;
+  const int source_rank = 3;
+  DefineWorkers(num_workers, num_devices, "CPU", /*nccl*/ false);
+  DefineCollectiveParams(num_workers, num_devices, "CPU", BROADCAST_COLLECTIVE,
+                         source_rank);
+  IssueRequests(num_workers, num_devices);
+  ValidateCollectiveParams(num_workers, num_devices);
 }
 
 #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM

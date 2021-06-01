@@ -138,6 +138,14 @@ class DispatcherState {
 
     bool IsRoundRobin() const { return num_consumers.has_value(); }
 
+    std::string DebugString() const {
+      if (named_job_key.has_value()) {
+        return absl::StrCat(named_job_key.value().name, "_",
+                            named_job_key.value().index);
+      }
+      return absl::StrCat(job_id);
+    }
+
     const int64 job_id;
     const int64 dataset_id;
     const ProcessingMode processing_mode;
@@ -148,6 +156,8 @@ class DispatcherState {
     int64 num_clients = 0;
     int64 last_client_released_micros = -1;
     bool finished = false;
+    // Indicates whether the job was garbage collected.
+    bool garbage_collected = false;
   };
 
   struct Task {
@@ -221,6 +231,7 @@ class DispatcherState {
   void ProduceSplit(const ProduceSplitUpdate& produce_split);
   void AcquireJobClient(const AcquireJobClientUpdate& acquire_job_client);
   void ReleaseJobClient(const ReleaseJobClientUpdate& release_job_client);
+  void GarbageCollectJob(const GarbageCollectJobUpdate& garbage_collect_job);
   void RemoveTask(const RemoveTaskUpdate& remove_task);
   void CreatePendingTask(const CreatePendingTaskUpdate& create_pending_task);
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);

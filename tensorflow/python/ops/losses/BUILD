@@ -5,7 +5,7 @@ package(
         "//engedu/ml/tf_from_scratch:__pkg__",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(

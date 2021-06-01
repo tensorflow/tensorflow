@@ -547,19 +547,14 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
     }
     ++compiled_update_index;
     const int variable_index = input_buffers->variable_index.at(input_index);
-    PersistentTensor unused;
-    Tensor* output_tensor;
     if (variable_index >= 0) {
       // This output corresponds to a DT_RESOURCE input to the TPUExecute
       // operator. Update the corresponding variable.
       VariableInfo& var = input_buffers->variables[variable_index];
-      // TODO(b/35625933): the correct thing to do would be to transfer
-      // ownership of the PersistentTensor into the Var object. However, Var
-      // contains a Tensor so we can't.
-      TF_RETURN_IF_ERROR(context->allocate_persistent(
-          var.var()->tensor()->dtype(), output_tensor_shapes[i], &unused,
-          &output_tensor));
-      *var.var()->tensor() = *output_tensor;
+      TF_RETURN_IF_ERROR(context->allocate_temp(var.var()->tensor()->dtype(),
+                                                output_tensor_shapes[i],
+                                                var.var()->tensor()));
+      transfer_buffers(i, var.var()->tensor());
     } else {
       // This output corresponds to a non-resource input to the TPUExecute
       // operator. This case occurs for the distributed TPU rewrite which
@@ -569,11 +564,12 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
       // TODO(phawkins): remove this case when placement of variables on TPU
       // devices is well supported and we no longer need to place "remote"
       // variables on CPU devices.
+      Tensor* output_tensor;
       TF_RETURN_IF_ERROR(context->allocate_output(
           op_output_index, output_tensor_shapes[i], &output_tensor));
       ++op_output_index;
+      transfer_buffers(i, output_tensor);
     }
-    transfer_buffers(i, output_tensor);
   }
 
   // Process any remaining non-updated variables.

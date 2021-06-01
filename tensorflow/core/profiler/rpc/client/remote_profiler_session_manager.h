@@ -54,7 +54,7 @@ class RemoteProfilerSessionManager {
 
   // Not copyable or movable.
   RemoteProfilerSessionManager(const RemoteProfilerSessionManager&) = delete;
-  RemoteProfilerSessionManager operator=(const RemoteProfilerSessionManager&) =
+  RemoteProfilerSessionManager& operator=(const RemoteProfilerSessionManager&) =
       delete;
 
   ~RemoteProfilerSessionManager();

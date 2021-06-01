@@ -4,7 +4,7 @@ package(
     default_visibility = [
         "//tensorflow/tools/tensorflow_builder/config_detector:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(

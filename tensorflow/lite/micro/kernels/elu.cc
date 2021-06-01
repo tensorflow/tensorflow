@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/elu.h"
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -54,7 +54,7 @@ void PopulateLookupTable(const TfLiteTensor* input, const TfLiteTensor* output,
     const float dequantized =
         input->params.scale * (val - input->params.zero_point);
     const float transformed = transform(dequantized);
-    const float rescaled = std::round(transformed * inverse_scale);
+    const float rescaled = TfLiteRound(transformed * inverse_scale);
     const int32_t quantized =
         static_cast<int32_t>(rescaled + output->params.zero_point);
     data->table[static_cast<uint8_t>(static_cast<T>(val))] =

@@ -780,7 +780,10 @@ class WritableFile {
 #if defined(TF_CORD_SUPPORT)
   // \brief Append 'data' to the file.
   virtual tensorflow::Status Append(const absl::Cord& cord) {
-    return errors::Unimplemented("Append(absl::Cord) is not implemented");
+    for (StringPiece chunk : cord.Chunks()) {
+      TF_RETURN_IF_ERROR(Append(chunk));
+    }
+    return tensorflow::Status::OK();
   }
 #endif
 

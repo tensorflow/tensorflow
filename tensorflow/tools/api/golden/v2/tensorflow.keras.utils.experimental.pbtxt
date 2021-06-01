@@ -1,0 +1,7 @@
+path: "tensorflow.keras.utils.experimental"
+tf_module {
+  member {
+    name: "DatasetCreator"
+    mtype: "<type \'type\'>"
+  }
+}

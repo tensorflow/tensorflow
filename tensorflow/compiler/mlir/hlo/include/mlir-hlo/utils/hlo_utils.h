@@ -71,7 +71,7 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value);
 // Enum type used to specify scalar argument to GetScalarLimitOfType.
 enum ScalarLimit {
   kLowest,          // The scalar corresponding to numeric_limits<T>::lowest.
-  kInfinityLowest,  // Like kMax, but returns -infinity where available.
+  kInfinityLowest,  // Like kLowest, but returns -infinity where available.
   kMax,             // The scalar corresponding to numeric_limits<T>::max.
   kInfinityMax,     // Like kMax, but returns infinity where available.
 };

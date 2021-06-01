@@ -53,8 +53,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = static_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, kConvInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* filter = GetInput(context, node, kConvWeightsTensor);
+  TF_LITE_ENSURE(context, filter != nullptr);
   const TfLiteTensor* output = GetOutput(context, node, kConvOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   RuntimeShape input_shape = GetTensorShape(input);
   RuntimeShape output_shape = GetTensorShape(output);
@@ -240,9 +243,6 @@ TfLiteStatus EvalQuantizedPerChannel(
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const auto& params =
-      *(reinterpret_cast<TfLiteConvParams*>(node->builtin_data));
-
   const TfLiteEvalTensor* input =
       tflite::micro::GetEvalInput(context, node, kConvInputTensor);
   const TfLiteEvalTensor* filter =
@@ -254,6 +254,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kConvOutputTensor);
 
+  TFLITE_DCHECK(node->builtin_data != nullptr);
+  const auto& params =
+      *(reinterpret_cast<TfLiteConvParams*>(node->builtin_data));
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
@@ -280,20 +283,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalQuantizedPerChannel(context, node, params, data, input, filter,
                                      bias, output, nullptr);
       break;
-    case kTfLiteUInt8: {
-      reference_ops::Conv(ConvParamsQuantized(params, data.reference_op_data),
-                          tflite::micro::GetTensorShape(input),
-                          tflite::micro::GetTensorData<uint8_t>(input),
-                          tflite::micro::GetTensorShape(filter),
-                          tflite::micro::GetTensorData<uint8_t>(filter),
-                          tflite::micro::GetTensorShape(bias),
-                          tflite::micro::GetTensorData<int32_t>(bias),
-                          tflite::micro::GetTensorShape(output),
-                          tflite::micro::GetTensorData<uint8_t>(output),
-                          tflite::micro::GetTensorShape(nullptr), nullptr,
-                          nullptr);
-      break;
-    }
     default:
       TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                          TfLiteTypeGetName(input->type), input->type);

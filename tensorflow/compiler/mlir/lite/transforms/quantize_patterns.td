@@ -34,12 +34,3 @@ def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
 def : Pat<(TFL_DequantizeOp
              (TFL_QuantizeOp (ConstantOp F32ElementsAttr:$cst), $qt)),
           (TFL_ConstOp $cst)>;
-
-// Quantize the value of a constant op if the quantization parameters have been
-// propagated to the output.
-def : Pat<(TFL_QuantizeOp
-              (ConstantOp ElementsAttr:$value),
-              $qtype),
-          (TFL_QConstOp
-              $qtype,
-              (QuantizeByQuantizedType $value, $qtype))>;

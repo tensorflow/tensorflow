@@ -40,6 +40,25 @@ func @read_only_resource(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor
   return %2 : tensor<i32>
 }
 
+func private @computation_two_args(%arg0: tensor<i32>, %arg1: tensor<i32>)
+
+// CHECK-LABEL: func @partitioned_variable_multiple_users
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<!tf.resource<tensor<i32>>>, [[ARG1:%.+]]: tensor<!tf.resource<tensor<i32>>>)
+func @partitioned_variable_multiple_users(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
+  // CHECK-DAG:  [[READ0:%.+]] = "tf.ReadVariableOp"([[ARG0]])
+  // CHECK-DAG:  [[READ1:%.+]] = "tf.ReadVariableOp"([[ARG1]])
+  // CHECK:      [[INPUT0:%.+]] = "tf.TPUPartitionedInput"([[READ0]], [[READ1]])
+  // CHECK-DAG:  [[READ2:%.+]] = "tf.ReadVariableOp"([[ARG0]])
+  // CHECK-DAG:  [[READ3:%.+]] = "tf.ReadVariableOp"([[ARG1]])
+  // CHECK:      [[INPUT1:%.+]] = "tf.TPUPartitionedInput"([[READ2]], [[READ3]])
+  %0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<i32>>>, tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+  %2 = "tf.ReadVariableOp"(%0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+  // CHECK:      "tf_device.cluster_func"([[INPUT0]], [[INPUT1]])
+  "tf_device.cluster_func"(%1, %2) {func = @computation_two_args, use_spmd_for_xla_partitioning = true} : (tensor<i32>, tensor<i32>) -> ()
+  return
+}
+
 // Tests unsupported cases and IR are not modified.
 
 // CHECK-LABEL: func @no_spmd
@@ -84,16 +103,6 @@ func @resource_read_multiple_users(%arg0: tensor<!tf.resource<tensor<i32>>>, %ar
   %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
   %2 = "tf_device.cluster_func"(%1) {func = @computation} : (tensor<i32>) -> tensor<i32>
   return %1 : tensor<i32>
-}
-
-// CHECK-LABEL: func @partitioned_variable_multiple_users
-// CHECK-SAME: ([[ARG0:%.+]]: tensor<!tf.resource<tensor<i32>>>, [[ARG1:%.+]]: tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
-func @partitioned_variable_multiple_users(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>> {
-  // CHECK:      "tf.TPUPartitionedInput"([[ARG0]], [[ARG1]])
-  %0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<i32>>>, tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
-  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
-  %2 = "tf_device.cluster_func"(%1) {func = @computation} : (tensor<i32>) -> tensor<i32>
-  return %0 : tensor<!tf.resource<tensor<i32>>>
 }
 
 // CHECK-LABEL: func @non_resource_read_input_write_output

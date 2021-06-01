@@ -16,7 +16,7 @@ package(
         "//tensorflow/core/lib/io:__pkg__",
         "//tensorflow/core/lib/strings:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.

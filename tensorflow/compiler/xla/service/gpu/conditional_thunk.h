@@ -34,13 +34,7 @@ struct ConditionalThunkConfig {
   bool branch_index_is_bool;
   int64 branch_count;
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
-  std::vector<absl::optional<size_t>> branch_profile_indices;
 };
-
-ConditionalThunkConfig GetConditionalThunkConfig(
-    const HloInstruction* instr,
-    std::vector<ThunkSequence> branch_thunk_sequences,
-    std::vector<absl::optional<size_t>> branch_profile_indices);
 
 // ConditionalThunk implements the conditional instruction on GPU by reading the
 // predicate of the conditional and executing the true or the false computation

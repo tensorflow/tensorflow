@@ -6,12 +6,13 @@ package(
     default_visibility = [
         "//learning/brain/experimental/dtensor:__subpackages__",
         "//tensorflow/compiler/jit:__subpackages__",
+        "//tensorflow/compiler/mlir:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/profiler/internal/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -274,9 +275,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_executable",
-    srcs = ["tpu_executable.cc"],
-    hdrs = ["tpu_executable.h"],
+    name = "tpu_op_executable",
+    srcs = ["tpu_op_executable.cc"],
+    hdrs = ["tpu_op_executable.h"],
     deps = [
         ":c_api_conversions",
         ":proto_helper",

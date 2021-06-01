@@ -99,6 +99,7 @@ class BaseLinearOperatorIdentity(linear_operator.LinearOperator):
 
 
 @tf_export("linalg.LinearOperatorIdentity")
+@linear_operator.make_composite_tensor
 class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   """`LinearOperator` acting like a [batch] square identity matrix.
 
@@ -405,7 +406,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       mat = ops.convert_to_tensor_v2_with_dispatch(mat, name="mat")
       mat_diag = array_ops.matrix_diag_part(mat)
       new_diag = 1 + mat_diag
@@ -482,8 +483,17 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       raise ValueError("Argument batch_shape must be non-negative.  Found:"
                        "%s" % self._batch_shape_static)
 
+  @property
+  def _composite_tensor_prefer_static_fields(self):
+    return ("num_rows", "batch_shape")
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("num_rows", "batch_shape", "dtype", "assert_proper_shapes")
+
 
 @tf_export("linalg.LinearOperatorScaledIdentity")
+@linear_operator.make_composite_tensor
 class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
   """`LinearOperator` acting like a scaled [batch] identity matrix `A = c I`.
 
@@ -738,7 +748,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       # Shape [B1,...,Bb, 1]
       multiplier_vector = array_ops.expand_dims(self.multiplier, -1)
 
@@ -768,3 +778,11 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
   def multiplier(self):
     """The [batch] scalar `Tensor`, `c` in `cI`."""
     return self._multiplier
+
+  @property
+  def _composite_tensor_prefer_static_fields(self):
+    return ("num_rows",)
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("num_rows", "multiplier", "assert_proper_shapes")

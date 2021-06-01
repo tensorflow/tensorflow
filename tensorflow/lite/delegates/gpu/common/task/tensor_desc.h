@@ -65,7 +65,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources() const override;
+  GPUResources GetGPUResources(const GpuInfo& gpu_info) const override;
 
   void Release() override { data.clear(); }
 
@@ -144,8 +144,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool IsBatchedWidth() const;
 
-  std::string GetWidth() const;
-
   AddressMode AddressModeFromState() const;
 
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
@@ -186,13 +184,13 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const float* src);
 };
 
-template <typename T>
-void DataFromBHWDC(const float* src, const BHWDC& shape,
-                   const TensorDescriptor& desc, T* dst);
+template <typename FromType, typename ToType>
+void DataFromBHWDC(const FromType* src, const BHWDC& shape,
+                   const TensorDescriptor& desc, ToType* dst);
 
-template <typename T>
-void DataToBHWDC(const T* src, const BHWDC& shape, const TensorDescriptor& desc,
-                 float* dst);
+template <typename FromType, typename ToType>
+void DataToBHWDC(const FromType* src, const BHWDC& shape,
+                 const TensorDescriptor& desc, ToType* dst);
 
 std::string ToString(TensorStorageType type);
 

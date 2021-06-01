@@ -15,6 +15,7 @@ limitations under the License.
 // See docs in ../ops/data_flow_ops.cc.
 
 #include <limits.h>
+
 #include <unordered_map>
 #include <vector>
 
@@ -311,7 +312,7 @@ class Barrier : public ResourceBase {
     auto keys_vec = keys.flat<tstring>();
     auto values_matrix = values.flat_outer_dims<T>();
 
-    PersistentTuple* element_ptr;
+    TensorTuple* element_ptr;
     if (closed_) {
       element_ptr = gtl::FindOrNull(incomplete_, keys_vec(i));
       if (element_ptr == nullptr) {
@@ -325,9 +326,9 @@ class Barrier : public ResourceBase {
       }
     } else {
       element_ptr =
-          &gtl::LookupOrInsert(&incomplete_, keys_vec(i), PersistentTuple());
+          &gtl::LookupOrInsert(&incomplete_, keys_vec(i), TensorTuple());
     }
-    PersistentTuple& element = *element_ptr;
+    TensorTuple& element = *element_ptr;
 
     if (element.empty()) {  // Never seen before key
       // Added a new element, for keeping track of the insertion index
@@ -339,24 +340,22 @@ class Barrier : public ResourceBase {
       // The first entry in element is the priority: the
       // input_index_, so that tensors that entered the Barrier
       // earlier have higher priority in the queue.
-      PersistentTensor index_persistent_tensor;
-      Tensor* allocate_index_tensor;
-      TF_RETURN_IF_ERROR(ctx->allocate_persistent(DT_INT64, TensorShape({}),
-                                                  &index_persistent_tensor,
-                                                  &allocate_index_tensor));
+      Tensor allocate_index_tensor;
+      TF_RETURN_IF_ERROR(ctx->allocate_temp(DT_INT64, TensorShape({}),
+                                            &allocate_index_tensor));
 
       Tensor index_tensor(DT_INT64, TensorShape({}));
-      allocate_index_tensor->scalar<int64>()() = input_index_;
-      element.push_back(index_persistent_tensor);
+      allocate_index_tensor.scalar<int64>()() = input_index_;
+      element.push_back(allocate_index_tensor);
 
       // The rest of the element stores uninitialized Tensors with
       // the appropriate dtype.
       for (int j = 0; j < num_components(); ++j) {
         Tensor uninitialized(component_type(j));
-        element.push_back(PersistentTensor(uninitialized));
+        element.push_back(Tensor(uninitialized));
       }
     }
-    const PersistentTensor& component = element[1 + component_index];
+    const Tensor& component = element[1 + component_index];
     if (component.IsInitialized() && component.NumElements() > 0) {
       return errors::InvalidArgument("Key ", keys_vec(i),
                                      " already has a value for component ",
@@ -365,12 +364,11 @@ class Barrier : public ResourceBase {
 
     // Extract the slice corresponding to the value from the value Tensor,
     // and store it in the incomplete tuple at component_index.
-    PersistentTensor next_element;
-    Tensor* allocated_element;
-    TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-        values.dtype(), element_shape, &next_element, &allocated_element));
+    Tensor next_element;
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_temp(values.dtype(), element_shape, &next_element));
     element[1 + component_index] = next_element;
-    allocated_element->flat<T>() = values_matrix.template chip<0>(i);
+    next_element.flat<T>() = values_matrix.template chip<0>(i);
 
     // Check the components of the tuple to see if it has become complete
     // (i.e. all of its components are initialized). If so, add it to the
@@ -386,15 +384,13 @@ class Barrier : public ResourceBase {
       Tuple ready_tuple;
       ready_tuple.reserve(2 + num_components());  // index, key, rest
       // Build a tensor for the key. TODO(mrry): Something more efficient.
-      PersistentTensor key;
-      Tensor* allocated_key;
-      TF_RETURN_IF_ERROR(ctx->allocate_persistent(DT_STRING, TensorShape({}),
-                                                  &key, &allocated_key));
-      ready_tuple.push_back(*element[0].AccessTensor(ctx));  // index
-      ready_tuple.push_back(*allocated_key);                 // key
-      ready_tuple[1].scalar<tstring>()() = keys_vec(i);      // set the key
+      Tensor key;
+      TF_RETURN_IF_ERROR(ctx->allocate_temp(DT_STRING, TensorShape({}), &key));
+      ready_tuple.push_back(element[0]);                 // index
+      ready_tuple.push_back(key);                        // key
+      ready_tuple[1].scalar<tstring>()() = keys_vec(i);  // set the key
       for (int j = 1; j < num_components() + 1; ++j) {
-        ready_tuple.push_back(*element[j].AccessTensor(ctx));
+        ready_tuple.push_back(element[j]);
       }
       incomplete_.erase(incomplete_.find(keys_vec(i)));
       TF_RETURN_IF_ERROR(ready_queue_->ValidateTuple(ready_tuple));
@@ -423,7 +419,7 @@ class Barrier : public ResourceBase {
   }
 
  private:
-  typedef std::vector<PersistentTensor> PersistentTuple;
+  typedef std::vector<Tensor> TensorTuple;
   mutex mu_;
   bool closed_ TF_GUARDED_BY(mu_);
   bool queue_closed_ TF_GUARDED_BY(mu_);
@@ -433,7 +429,7 @@ class Barrier : public ResourceBase {
   const std::vector<TensorShape>& value_component_shapes_;
   const string name_;
   int64 input_index_ TF_GUARDED_BY(mu_);
-  std::unordered_map<string, PersistentTuple> incomplete_ TF_GUARDED_BY(mu_);
+  std::unordered_map<string, TensorTuple> incomplete_ TF_GUARDED_BY(mu_);
   PriorityQueue* ready_queue_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Barrier);

@@ -20,6 +20,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+namespace tf_device {
+class TensorFlowDeviceDialect;
+}
 namespace TF {
 
 #define GEN_PASS_CLASSES

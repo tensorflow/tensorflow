@@ -400,8 +400,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
 
-class MapAndBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                       parameterized.TestCase):
+class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testNumParallelBatches(self):

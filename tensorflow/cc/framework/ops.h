@@ -73,7 +73,9 @@ class Output {
   Node* node() const { return op().node(); }
   int32 index() const { return index_; }
   DataType type() const { return op_.output_type(index_); }
-  string name() const { return strings::StrCat(node()->name(), ":", index()); }
+  std::string name() const {
+    return strings::StrCat(node()->name(), ":", index());
+  }
   bool operator==(const Output& other) const {
     return op_ == other.op_ && index_ == other.index_;
   }
@@ -107,7 +109,7 @@ class Input {
     /// be converted to a string (eg. a string literal).
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, string>::value>::type>
+                              std::is_convertible<T, std::string>::value>::type>
     Initializer(const T& v) {  // NOLINT(runtime/explicit)
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), TensorShape());
@@ -120,7 +122,7 @@ class Input {
     /// Construct from a scalar value and an explicit shape
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, string>::value>::type>
+                              std::is_convertible<T, std::string>::value>::type>
     Initializer(const T& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
@@ -133,7 +135,7 @@ class Input {
     /// Construct from a initializer list of scalars (a one-dimensional tensor).
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, string>::value>::type>
+                              std::is_convertible<T, std::string>::value>::type>
     Initializer(
         const std::initializer_list<T>& v) {  // NOLINT(runtime/explicit)
       typedef typename RealType<T>::type RealT;
@@ -146,7 +148,7 @@ class Input {
     /// Construct from a initializer list of scalars and an explicit shape.
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
-                              std::is_convertible<T, string>::value>::type>
+                              std::is_convertible<T, std::string>::value>::type>
     Initializer(const std::initializer_list<T>& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
@@ -168,7 +170,7 @@ class Input {
     Initializer(const std::initializer_list<Initializer>& v);
 
     // START_SKIP_DOXYGEN
-    template <typename T, bool = std::is_convertible<T, string>::value>
+    template <typename T, bool = std::is_convertible<T, std::string>::value>
     struct RealType {
       typedef tstring type;
     };
@@ -205,7 +207,7 @@ class Input {
 
   template <typename T, typename = typename std::enable_if<
                             std::is_arithmetic<T>::value ||
-                            std::is_convertible<T, string>::value>::type>
+                            std::is_convertible<T, std::string>::value>::type>
   Input(const T& v)  // NOLINT(runtime/explicit)
       : Input(Initializer(v)) {}
 
@@ -230,11 +232,11 @@ class Input {
 
   /// Constructor specifying a node name, index and datatype. This should only
   /// be used for specifying a backward edge, needed by control flow.
-  Input(const string& name, int32 i, DataType dt)
+  Input(const std::string& name, int32 i, DataType dt)
       : node_name_(name), index_(i), data_type_(dt) {}
 
   Node* node() const { return output_.node(); }
-  string node_name() const { return node_name_; }
+  std::string node_name() const { return node_name_; }
   int32 index() const { return node_name_.empty() ? output_.index() : index_; }
   DataType data_type() const { return data_type_; }
   Status status() const { return status_; }
@@ -244,7 +246,7 @@ class Input {
   Status status_;
   Output output_ = Output(Operation(nullptr), 0);
   Tensor tensor_;
-  const string node_name_ = "";
+  const std::string node_name_ = "";
   int32 index_ = 0;
   DataType data_type_ = DT_INVALID;
 };

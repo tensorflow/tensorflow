@@ -100,7 +100,7 @@ struct DecomposeTFOpsPass
 
 void DecomposeTFOpsPass::ApplyCanonicalization() {
   FuncOp func = getFunction();
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
 
   populateCanonicalizationPatterns(func, patterns);
 

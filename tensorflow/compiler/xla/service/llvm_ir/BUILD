@@ -10,7 +10,7 @@ load(
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -85,6 +85,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:IR",
     ],
 )
 

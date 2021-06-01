@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -144,7 +143,8 @@ TfLiteStatus EvalXtensa(TfLiteContext* context, TfLiteNode* node) {
 #else
     static_assert(false, "Unsupported xtensa architecture.");
 #endif
-  } else if (output->type == kTfLiteInt32 && input->type == kTfLiteInt16) {
+  } else if (output->type == kTfLiteInt32 &&
+             (input->type == kTfLiteInt16 || input->type == kTfLiteInt8)) {
     int size = ElementCount(*input->dims);
 
     // This ifdef is only needed because the hifimini code is not following the
@@ -155,11 +155,19 @@ TfLiteStatus EvalXtensa(TfLiteContext* context, TfLiteNode* node) {
 #elif defined(FUSION_F1)
     int32_t zero_point = op_data->quantization_params.zero_point;
 #endif
-    reference_ops::Requantize(tflite::micro::GetTensorData<int16_t>(input),
-                              size, op_data->requantize_output_multiplier,
-                              op_data->requantize_output_shift,
-                              op_data->input_zero_point, zero_point,
-                              tflite::micro::GetTensorData<int32_t>(output));
+    if (input->type == kTfLiteInt16) {
+      reference_ops::Requantize(tflite::micro::GetTensorData<int16_t>(input),
+                                size, op_data->requantize_output_multiplier,
+                                op_data->requantize_output_shift,
+                                op_data->input_zero_point, zero_point,
+                                tflite::micro::GetTensorData<int32_t>(output));
+    } else {
+      reference_ops::Requantize(tflite::micro::GetTensorData<int8_t>(input),
+                                size, op_data->requantize_output_multiplier,
+                                op_data->requantize_output_shift,
+                                op_data->input_zero_point, zero_point,
+                                tflite::micro::GetTensorData<int32_t>(output));
+    }
   } else {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
                        TfLiteTypeGetName(input->type),

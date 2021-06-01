@@ -308,7 +308,9 @@ class MultiDeviceSaver(object):
       options: Optional `CheckpointOptions` object.
 
     Returns:
-      A dictionary mapping from SaveableObject names to restore operations.
+      When not run eagerly or when saving on a single device, returns a
+      dictionary mapping from SaveableObject names to restore operations;
+      otherwise, returns an empty dict.
     """
     options = options or checkpoint_options.CheckpointOptions()
 
@@ -327,18 +329,10 @@ class MultiDeviceSaver(object):
     # device savers. Note that the retrace is needed to ensure we pickup the
     # latest values of options like experimental_io_device.
     if context.executing_eagerly() and len(self._single_device_savers) > 1:
-      first_device, _ = list(self._single_device_savers.items())[0]
       @def_function.function(jit_compile=False)
       def tf_function_restore():
-        restore_ops = restore_fn()
-        restore_tensors = {}
-        # tf.functions must return tensors, thus we use control dependencies so
-        # that we can return a tensor which depends on the given op.
-        with ops.device(saveable_object_util.set_cpu0(first_device)):
-          for name, op in restore_ops.items():
-            with ops.control_dependencies([op]):
-              restore_tensors[name] = array_ops.identity(file_prefix)
-        return restore_tensors
+        restore_fn()
+        return {}
 
       restore_ops = tf_function_restore()
     else:

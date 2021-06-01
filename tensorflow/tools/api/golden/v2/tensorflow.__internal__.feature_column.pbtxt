@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FeatureTransformationCache"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SequenceDenseColumn"
     mtype: "<type \'type\'>"
   }
