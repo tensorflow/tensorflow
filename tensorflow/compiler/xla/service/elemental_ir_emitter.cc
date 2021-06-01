@@ -1260,15 +1260,21 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       // Case 2. Infinite numerator, finite denominator.
       auto b_r_finite = FCmpONE(b_r_abs, inf);
       auto b_i_finite = FCmpONE(b_i_abs, inf);
-      auto inf_num_finite_denom = And(Or(FCmpOEQ(a_r, inf), FCmpOEQ(a_i, inf)),
-                                      And(b_r_finite, b_i_finite));
+      auto a_r_abs = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {a_r},
+                                                  {type}, b_);
+      auto a_i_abs = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {a_i},
+                                                  {type}, b_);
+      auto a_r_infinite = FCmpOEQ(a_r_abs, inf);
+      auto a_i_infinite = FCmpOEQ(a_i_abs, inf);
+      auto inf_num_finite_denom =
+          And(Or(a_r_infinite, a_i_infinite), And(b_r_finite, b_i_finite));
 
       auto a_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign,
-          {Select(FCmpOEQ(a_r, inf), one, zero), a_r}, {type}, b_);
+          llvm::Intrinsic::copysign, {Select(a_r_infinite, one, zero), a_r},
+          {type}, b_);
       auto a_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign,
-          {Select(FCmpOEQ(a_i, inf), one, zero), a_i}, {type}, b_);
+          llvm::Intrinsic::copysign, {Select(a_i_infinite, one, zero), a_i},
+          {type}, b_);
       auto inf_num_finite_denom_result =
           EmitComposeComplex(op,
                              FMul(inf, FAdd(FMul(a_r_inf_with_sign, b_r),
@@ -1277,21 +1283,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
                                             FMul(a_r_inf_with_sign, b_i))));
 
       // Case 3. Finite numerator, infinite denominator.
-      auto a_r_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
-                                    llvm::Intrinsic::fabs, {a_r}, {type}, b_),
-                                inf);
-      auto a_i_finite = FCmpONE(llvm_ir::EmitCallToIntrinsic(
-                                    llvm::Intrinsic::fabs, {a_i}, {type}, b_),
-                                inf);
-      auto finite_num_inf_denom = And(Or(FCmpOEQ(b_r, inf), FCmpOEQ(b_i, inf)),
-                                      And(a_r_finite, a_i_finite));
+      auto a_r_finite = FCmpONE(a_r_abs, inf);
+      auto a_i_finite = FCmpONE(a_i_abs, inf);
+      auto b_r_infinite = FCmpOEQ(b_r_abs, inf);
+      auto b_i_infinite = FCmpOEQ(b_i_abs, inf);
+      auto finite_num_inf_denom =
+          And(Or(b_r_infinite, b_i_infinite), And(a_r_finite, a_i_finite));
 
       auto b_r_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign,
-          {Select(FCmpOEQ(b_r, inf), one, zero), b_r}, {type}, b_);
+          llvm::Intrinsic::copysign, {Select(b_r_infinite, one, zero), b_r},
+          {type}, b_);
       auto b_i_inf_with_sign = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::copysign,
-          {Select(FCmpOEQ(b_i, inf), one, zero), b_i}, {type}, b_);
+          llvm::Intrinsic::copysign, {Select(b_i_infinite, one, zero), b_i},
+          {type}, b_);
       auto finite_num_inf_denom_result =
           EmitComposeComplex(op,
                              FMul(zero, FAdd(FMul(a_r, b_r_inf_with_sign),
