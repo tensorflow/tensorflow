@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,12 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/microfrontend/lib/log_scale_io.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
 
-void LogScaleWriteMemmap(FILE* fp, const struct LogScaleState* state,
-                         const char* variable) {
-  MICROFRONTEND_FPRINTF(fp, "%s->enable_log = %d;\n", variable,
-                        state->enable_log);
-  MICROFRONTEND_FPRINTF(fp, "%s->scale_shift = %d;\n", variable,
-                        state->scale_shift);
+#include "tensorflow/lite/micro/testing/micro_test.h"
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(MemoryUtil_CheckAlloc) {
+  TF_LITE_MICRO_EXPECT_NE(nullptr, microfrontend_alloc(256));
 }
+
+TF_LITE_MICRO_TEST(MemoryUtil_CheckFree) {
+  void* ptr = microfrontend_alloc(128);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, ptr);
+  microfrontend_free(ptr);
+}
+
+TF_LITE_MICRO_TESTS_END
