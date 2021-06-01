@@ -169,9 +169,6 @@ INCLUDES += \
   -I$(CMSIS_PATH)/Device/ARM/$(ARM_CPU)/Include \
   -I$(CMSIS_PATH)/CMSIS/Core/Include
 
-# TODO(#47071): Examine why Micro benchmarks fails.
-MICRO_LITE_BENCHMARKS := $(filter-out tensorflow/lite/micro/benchmarks/Makefile.inc, $(MICRO_LITE_BENCHMARKS))
-
 # TODO(#47070): Examine why some tests fail here.
 EXCLUDED_TESTS := \
   tensorflow/lite/micro/micro_interpreter_test.cc \
