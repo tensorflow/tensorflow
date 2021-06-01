@@ -36,8 +36,11 @@ class NumpyFunctionTest(test.TestCase):
     self.assertAllEqual(actual_result, expect_result)
 
   def test_stateless_flag(self):
+    call_count = 0
 
     def plus(a, b):
+      global call_count
+      call_count += 1
       return a + b
 
     @def_function.function
@@ -49,21 +52,30 @@ class NumpyFunctionTest(test.TestCase):
       return numpy_function(plus, [a, b], dtypes.int32, stateful=False)
 
     @def_function.function(autograph=False)
-    def tensor_double_plus(a, b, c, d):
-      sum_stateful = tensor_plus_stateful(a, b)
-      assert sum_stateful.op.op_def.is_stateful
+    def tensor_double_plus_stateless(a, b):
+      sum1 = tensor_plus_stateless(a, b)
+      sum2 = tensor_plus_stateless(a, b)
+      return sum1 + sum2
 
-      sum_stateless = tensor_plus_stateless(c, d)
-      assert not sum_stateless.op.op_def.is_stateful
-
-      return sum_stateful, sum_stateless
-
-    tensor_double_plus(
+    # different argument
+    tensor_double_plus_stateless(
       constant_op.constant(1, dtype=dtypes.int32),
       constant_op.constant(2, dtype=dtypes.int32),
+    )
+    assert call_count == 1  # +1 as only the first one was executed
+
+    @def_function.function(autograph=False)
+    def tensor_double_plus_stateful(a, b):
+      sum1 = tensor_plus_stateful(a, b)
+      sum2 = tensor_plus_stateful(a, b)
+      return sum1 + sum2
+
+    tensor_double_plus_stateful(
       constant_op.constant(3, dtype=dtypes.int32),
       constant_op.constant(4, dtype=dtypes.int32),
-    )
+                          )
+    assert call_count == 3  # +2 as it is stateful, both were executed
+
 
 
 if __name__ == "__main__":
