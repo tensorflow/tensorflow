@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_simple_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -91,7 +93,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
   AllocatorParts& allocator_parts =
       pluggable_device_allocators_[tf_device_id.value()];
   if (allocator_parts.allocator == nullptr) {
-    if (!allocator_type.empty() && allocator_type != "BFC") {
+    if (!allocator_type.empty()) {
       LOG(ERROR) << "Invalid allocator type: " << allocator_type;
       return nullptr;
     }
@@ -114,14 +116,22 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
         platform_device_id, use_unified_memory,
         pluggable_device_visitors_[bus_id], {});
 
-    PluggableDeviceBFCAllocator* device_bfc_allocator =
-        new PluggableDeviceBFCAllocator(
-            sub_allocator, total_bytes, options,
-            strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"));
-    Allocator* device_allocator = device_bfc_allocator;
+    Allocator* device_allocator = nullptr;
+    auto cplatform = dynamic_cast<se::CPlatform*>(platform);
+    if (cplatform == nullptr) {
+      LOG(FATAL) << "PluggableDevice's platform must be of type "  // Crash OK
+                 << "stream_executor::CPlatform";
+    }
+    if (cplatform->UseBfcAllocator()) {
+      device_allocator = new PluggableDeviceBFCAllocator(
+          sub_allocator, total_bytes, options,
+          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"));
+    } else {
+      device_allocator = new PluggableDeviceSimpleAllocator(sub_allocator);
+    }
 
     allocator_parts = {std::unique_ptr<Allocator>(device_allocator),
-                       device_bfc_allocator, sub_allocator};
+                       device_allocator, sub_allocator};
   }
   return allocator_parts.allocator.get();
 }

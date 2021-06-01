@@ -366,8 +366,20 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
           indices_sharding.ReplicateOnLastTileDim()
               ? HloSharding::PartialTile(output_tile_assignment)
               : HloSharding::Tile(output_tile_assignment);
-      // Shape of the partitioned gather
-      Shape pshape = MakePartitionedShape(output_shape, gather_output_sharding);
+      // Refine output sharding from the operand. it should be inferred from
+      // operand sharding, so that the partitioned gather can be either 1)
+      // directly created on the partitioned operand, or 2) recursively created
+      // without aligning the groups.
+      if (auto maybe_passthrough =
+              hlo_sharding_util::GatherOutputShardingFromDataOperand(
+                  hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+                      operand_sharding, operand_parallel_dims),
+                  *gather, output_shape, operand.base_shape())) {
+        hlo_sharding_util::MergeShardingIfCompatible(
+            *maybe_passthrough,
+            /*minimum_tiles=*/gather_output_sharding.NumTiles() + 1,
+            &gather_output_sharding);
+      }
       // Construct the offsets for the operand sharding to be used to adjust
       // the indices. Because we know the only dimensions partitioned are the
       // parallel ones and because the partitioning is the same across indices
@@ -426,6 +438,9 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
               operand_sharding.NumTiles(operand_parallel_dims) &&
           indices_sharding.NumTiles() ==
               indices_sharding.NumTiles(indices_parallel_dims)) {
+        // Shape of the partitioned gather
+        Shape pshape =
+            MakePartitionedShape(output_shape, gather_output_sharding);
         pgather = b->AddInstruction(HloInstruction::CreateGather(
             pshape, operand.hlo(), adjusted_indices, dnums,
             gather->gather_slice_sizes(), gather->indices_are_sorted()));
@@ -440,10 +455,11 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
             per_group_partitioner_state);
         GroupedSharding grouped_output =
             GroupShardingOnDims(gather_output_sharding, output_parallel_dims);
-        TF_ASSIGN_OR_RETURN(pgather, PartitionGather(gather, per_group_operand,
-                                                     per_group_indices, pshape,
-                                                     grouped_output.sharding,
-                                                     batch_dims, visitor));
+        TF_ASSIGN_OR_RETURN(
+            pgather,
+            PartitionGather(gather, per_group_operand, per_group_indices,
+                            GetPerGroupBaseShape(grouped_output, output_shape),
+                            grouped_output.sharding, batch_dims, visitor));
       }
       if (pgather) {
         pgather->set_sharding(gather_output_sharding);
@@ -505,6 +521,9 @@ StatusOr<HloInstruction*> PartitionGather(const HloGatherInstruction* gather,
 }  // namespace
 
 Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   auto scatter = Cast<HloScatterInstruction>(hlo);
   auto dnums = scatter->scatter_dimension_numbers();
   auto operand = GetPartitionedHlo(scatter->operand(0));
@@ -669,6 +688,9 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   auto gather = Cast<HloGatherInstruction>(hlo);
   const auto& dnums = gather->gather_dimension_numbers();
   auto operand = GetPartitionedHlo(gather->operand(0));

@@ -96,8 +96,12 @@ std::string ToString(enum OperationType op) {
       return "copy";
     case OperationType::COS:
       return "cos";
+    case OperationType::DENSIFY:
+      return "densify";
     case OperationType::DEPTHWISE_CONVOLUTION:
       return "depthwise_convolution";
+    case OperationType::DEPTH_TO_SPACE:
+      return "depth_to_space";
     case OperationType::DIV:
       return "div";
     case OperationType::ELU:
@@ -106,10 +110,18 @@ std::string ToString(enum OperationType op) {
       return "equal";
     case OperationType::EXP:
       return "exp";
+    case OperationType::FLOOR:
+      return "floor";
+    case OperationType::FLOOR_DIV:
+      return "floor_div";
+    case OperationType::FLOOR_MOD:
+      return "floor_mod";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
     case OperationType::FULLY_CONNECTED_INT8:
       return "fully_connected_int8";
+    case OperationType::GATHER:
+      return "gather";
     case OperationType::GREATER:
       return "greater";
     case OperationType::GREATER_EQUAL:
@@ -160,6 +172,8 @@ std::string ToString(enum OperationType op) {
       return "reduce_sum";
     case OperationType::RELU:
       return "relu";
+    case OperationType::RESAMPLER:
+      return "resampler";
     case OperationType::RESHAPE:
       return "reshape";
     case OperationType::RESIZE:
@@ -190,6 +204,8 @@ std::string ToString(enum OperationType op) {
       return "subtract";
     case OperationType::TANH:
       return "tanh";
+    case OperationType::TILE:
+      return "tile";
     case OperationType::TRANSPOSE:
       return "transpose";
     case OperationType::UNKNOWN:
@@ -210,13 +226,19 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
           {"copy", OperationType::COPY},
           {"cos", OperationType::COS},
+          {"densify", OperationType::DENSIFY},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
+          {"depth_to_space", OperationType::DEPTH_TO_SPACE},
           {"div", OperationType::DIV},
           {"elu", OperationType::ELU},
           {"equal", OperationType::EQUAL},
           {"exp", OperationType::EXP},
+          {"floor", OperationType::FLOOR},
+          {"floor_div", OperationType::FLOOR_DIV},
+          {"floor_mod", OperationType::FLOOR_MOD},
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"fully_connected_int8", OperationType::FULLY_CONNECTED_INT8},
+          {"gather", OperationType::GATHER},
           {"greater", OperationType::GREATER},
           {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},
@@ -243,6 +265,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"reduce_product", OperationType::REDUCE_PRODUCT},
           {"reduce_sum", OperationType::REDUCE_SUM},
           {"relu", OperationType::RELU},
+          {"resampler", OperationType::RESAMPLER},
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
           {"rsqrt", OperationType::RSQRT},
@@ -257,6 +280,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"squared_diff", OperationType::SQUARED_DIFF},
           {"subtract", OperationType::SUB},
           {"tanh", OperationType::TANH},
+          {"tile", OperationType::TILE},
           {"transpose", OperationType::TRANSPOSE},
       });
   auto op = operations->find(name);

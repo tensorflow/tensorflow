@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for distributed training utility functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.optimizer_v2 import adam

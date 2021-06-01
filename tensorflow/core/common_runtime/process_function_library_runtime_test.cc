@@ -224,13 +224,10 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     TF_CHECK_OK(pflr->IsCrossProcess(handle, &is_cross_process));
     EXPECT_FALSE(is_cross_process);
 
-    std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
-        [&call_count](std::function<void()> fn) {
-          ++call_count;
+        [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
         };
-
     Notification done;
     opts.runner = &runner;
     std::vector<K> out;
@@ -246,8 +243,6 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-
-    EXPECT_GE(call_count, 1);  // Test runner is used.
 
     // Release the handle and then try running the function. It shouldn't
     // succeed.
@@ -290,10 +285,8 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                          FunctionLibraryRuntime::Options opts,
                          const std::vector<Tensor>& args,
                          std::vector<Tensor*> rets) {
-    std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
-        [&call_count](std::function<void()> fn) {
-          ++call_count;
+        [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
         };
 
@@ -313,7 +306,6 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-    EXPECT_GE(call_count, 1);  // Test runner is used.
     return Status::OK();
   }
 

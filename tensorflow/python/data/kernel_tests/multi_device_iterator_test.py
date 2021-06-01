@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the non-public `MultiDeviceIterator` API."""
+"""Tests for the `MultiDeviceIterator` and `OwnedMultiDeviceIterator` API."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,309 +21,188 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 
 
-# TODO(b/121264236): Support v2 behavior for these tests.
 class MultiDeviceIteratorTest(test_base.DatasetTestBase,
                               parameterized.TestCase):
 
+  def setUp(self):
+    super(MultiDeviceIteratorTest, self).setUp()
+    self._devices = self.configureDevicesForMultiDeviceTest(3)
+
   @combinations.generate(
-      combinations.times(test_base.v1_only_combinations(),
+      combinations.times(test_base.default_test_combinations(),
                          combinations.combine(num_inits=[0, 1, 42])))
   def testInitOnly(self, num_inits):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
+        dataset, [self._devices[1], self._devices[2]])
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
-      for _ in range(num_inits):
-        self.evaluate(multi_device_iterator.initializer)
+    for _ in range(num_inits):
+      self.evaluate(multi_device_iterator.initializer)
 
   @combinations.generate(
       combinations.times(
-          test_base.v1_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(
               max_buffer_size=[0, 1, 10], prefetch_buffer_size=[0, 1, 10])))
   def testBasic(self, prefetch_buffer_size, max_buffer_size):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"],
+        dataset, [self._devices[1], self._devices[2]],
         max_buffer_size=max_buffer_size,
         prefetch_buffer_size=prefetch_buffer_size)
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 10, 2):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.assertEqual(i, self.evaluate(elem_on_1))
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
+    self.evaluate(multi_device_iterator.initializer)
+    for i in range(0, 10, 2):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.assertEqual(i, self.evaluate(elem_on_1))
+      self.assertEqual(i + 1, self.evaluate(elem_on_2))
+    with self.assertRaises(errors.OutOfRangeError):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.evaluate(elem_on_1)
+      self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testOneOnSameDevice(self):
-    with ops.device("/cpu:0"):
-      dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset_ops.Dataset.range(12)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:0", "/cpu:1"])
+        dataset, [self._devices[0], self._devices[1], self._devices[2]])
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 10, 2):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.assertEqual(i, self.evaluate(elem_on_1))
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
+    self.evaluate(multi_device_iterator.initializer)
+    for i in range(0, 12, 3):
+      elem_on_0, elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.assertEqual(i, self.evaluate(elem_on_0))
+      self.assertEqual(i + 1, self.evaluate(elem_on_1))
+      self.assertEqual(i + 2, self.evaluate(elem_on_2))
+    with self.assertRaises(errors.OutOfRangeError):
+      elem_on_0, elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.evaluate(elem_on_0)
+      self.evaluate(elem_on_1)
+      self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testRepeatDevices(self):
-    with ops.device("/cpu:0"):
-      dataset = dataset_ops.Dataset.range(20)
+    dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2", "/cpu:1", "/cpu:2"])
+        dataset, [self._devices[1], self._devices[1]])
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 20, 4):
-        elements = multi_device_iterator.get_next()
-        elem_on_1, elem_on_2, elem_on_3, elem_on_4 = elements
-        self.assertEqual(i, self.evaluate(elem_on_1))
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-        self.assertEqual(i + 2, self.evaluate(elem_on_3))
-        self.assertEqual(i + 3, self.evaluate(elem_on_4))
-      with self.assertRaises(errors.OutOfRangeError):
-        elements = multi_device_iterator.get_next()
-        elem_on_1, elem_on_2, elem_on_3, elem_on_4 = elements
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
-        self.evaluate(elem_on_3)
-        self.evaluate(elem_on_4)
+    self.evaluate(multi_device_iterator.initializer)
+    for i in range(0, 10, 2):
+      elements = multi_device_iterator.get_next()
+      elem_on_1, elem_on_2 = elements
+      self.assertEqual(i, self.evaluate(elem_on_1))
+      self.assertEqual(i + 1, self.evaluate(elem_on_2))
+    with self.assertRaises(errors.OutOfRangeError):
+      elements = multi_device_iterator.get_next()
+      elem_on_1, elem_on_2 = elements
+      self.evaluate(elem_on_1)
+      self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testNotFullyDivisible(self):
     dataset = dataset_ops.Dataset.range(9)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
+        dataset, [self._devices[1], self._devices[2]])
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 8, 2):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.assertEqual(i, self.evaluate(elem_on_1))
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      elem_on_1 = multi_device_iterator.get_next("/cpu:1")
-      self.assertEqual(8, self.evaluate(elem_on_1))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
+    self.evaluate(multi_device_iterator.initializer)
+    for i in range(0, 8, 2):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.assertEqual(i, self.evaluate(elem_on_1))
+      self.assertEqual(i + 1, self.evaluate(elem_on_2))
+    elem_on_1 = multi_device_iterator.get_next(self._devices[1])
+    self.assertEqual(8, self.evaluate(elem_on_1))
+    with self.assertRaises(errors.OutOfRangeError):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.evaluate(elem_on_1)
+      self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testGetNextAsOptional(self):
-    if context.executing_eagerly():
-      return
-
-    dataset = dataset_ops.Dataset.range(9)
+    dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
+        dataset, [self._devices[1], self._devices[2]])
+
+    self.evaluate(multi_device_iterator.initializer)
+    for i in range(0, 10, 2):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next_as_optional()
+      has_elem_1, get_elem_1 = self.evaluate(
+          [elem_on_1.has_value(), elem_on_1.get_value()])
+      has_elem_2, get_elem_2 = self.evaluate(
+          [elem_on_2.has_value(), elem_on_2.get_value()])
+      self.assertTrue(has_elem_1)
+      self.assertEqual(i, get_elem_1)
+      self.assertTrue(has_elem_2)
+      self.assertEqual(i + 1, get_elem_2)
     elem_on_1, elem_on_2 = multi_device_iterator.get_next_as_optional()
-    elem_on_1_has_value_t = elem_on_1.has_value()
-    elem_on_1_t = elem_on_1.get_value()
-    elem_on_2_has_value_t = elem_on_2.has_value()
-    elem_on_2_t = elem_on_2.get_value()
+    has_elem_1 = elem_on_1.has_value()
+    has_elem_2 = elem_on_2.has_value()
+    self.assertFalse(self.evaluate(has_elem_1))
+    self.assertFalse(self.evaluate(has_elem_2))
+    with self.assertRaises(errors.InvalidArgumentError):
+      elem_1 = elem_on_1.get_value()
+      self.evaluate(elem_1)
+    with self.assertRaises(errors.InvalidArgumentError):
+      elem_2 = elem_on_2.get_value()
+      self.evaluate(elem_2)
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config) as sess:
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 8, 2):
-        elem_on_1_has_value, elem_on_1_value = sess.run(
-            [elem_on_1_has_value_t, elem_on_1_t])
-        self.assertTrue(elem_on_1_has_value)
-        self.assertEqual(i, elem_on_1_value)
-        elem_on_2_has_value, elem_on_2_value = sess.run(
-            [elem_on_2_has_value_t, elem_on_2_t])
-        self.assertTrue(elem_on_2_has_value)
-        self.assertEqual(i + 1, elem_on_2_value)
-      elem_on_1_has_value, elem_on_1_value = sess.run(
-          [elem_on_1_has_value_t, elem_on_1_t])
-      self.assertTrue(elem_on_1_has_value)
-      self.assertEqual(8, elem_on_1_value)
-      self.assertFalse(self.evaluate(elem_on_1_has_value_t))
-      self.assertFalse(self.evaluate(elem_on_2_has_value_t))
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(elem_on_1_t)
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(elem_on_2_t)
-
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testUneven(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"], max_buffer_size=4)
+        dataset, [self._devices[1], self._devices[2]], max_buffer_size=4)
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 10, 2):
-        elem_on_1 = multi_device_iterator.get_next("/cpu:1")
-        self.assertEqual(i, self.evaluate(elem_on_1))
-      for i in range(0, 10, 2):
-        elem_on_2 = multi_device_iterator.get_next("/cpu:2")
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
+    self.evaluate(multi_device_iterator.initializer)
+    for i in range(0, 10, 2):
+      elem_on_1 = multi_device_iterator.get_next(self._devices[1])
+      self.assertEqual(i, self.evaluate(elem_on_1))
+    for i in range(0, 10, 2):
+      elem_on_2 = multi_device_iterator.get_next(self._devices[2])
+      self.assertEqual(i + 1, self.evaluate(elem_on_2))
+    with self.assertRaises(errors.OutOfRangeError):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.evaluate(elem_on_1)
+      self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.graph_only_combinations())
   def testMultipleInitializationsGraph(self):
-    if context.executing_eagerly():
-      return
-
-    with ops.device("/cpu:0"):
-      epoch = array_ops.placeholder(dtypes.int64, shape=[])
-      dataset1 = dataset_ops.Dataset.from_tensors(epoch).repeat(1000)
-      dataset2 = dataset_ops.Dataset.range(1000)
-      dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset2 = dataset_ops.Dataset.range(1000)
+    dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"], prefetch_buffer_size=4)
+        dataset, [self._devices[1], self._devices[2]], prefetch_buffer_size=4)
     elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-    init_op = multi_device_iterator.initializer
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    pool = config.session_inter_op_thread_pool.add()
-    pool.num_threads = 2
-    with session.Session(config=config) as sess:
-      for i in range(1000):
-        sess.run(init_op, feed_dict={epoch: i})
-        self.assertEqual([(i, 0), (i, 1)], self.evaluate([elem_on_1,
-                                                          elem_on_2]))
+    for _ in range(5):
+      self.evaluate(multi_device_iterator.initializer)
+      self.assertEqual([(0, 0), (1, 1)], self.evaluate([elem_on_1, elem_on_2]))
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.eager_only_combinations())
   def testMultipleInitializationsEager(self):
-    if not context.executing_eagerly():
-      return
-
-    with ops.device("/cpu:0"):
-      dataset1 = dataset_ops.Dataset.range(1000)
-      dataset2 = dataset_ops.Dataset.range(1000)
-      dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset2 = dataset_ops.Dataset.range(1000)
+    dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
 
     for _ in range(5):
       multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-          dataset, ["/cpu:1", "/cpu:2"], prefetch_buffer_size=4)
+          dataset, [self._devices[1], self._devices[2]], prefetch_buffer_size=4)
+      self.evaluate(multi_device_iterator.initializer)
       elem_on_1, elem_on_2 = multi_device_iterator.get_next()
       self.assertEqual([(0, 0), (1, 1)], self.evaluate([elem_on_1, elem_on_2]))
 
-  @combinations.generate(test_base.v1_only_combinations())
-  def testBasicGpu(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    dataset = dataset_ops.Dataset.range(10)
-    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/gpu:0"])
-
-    config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 10, 2):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.assertEqual(i, self.evaluate(elem_on_1))
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
-
-  @combinations.generate(test_base.v1_only_combinations())
-  def testUnevenGpu(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    dataset = dataset_ops.Dataset.range(10)
-    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/gpu:0"], max_buffer_size=4)
-
-    config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 10, 2):
-        elem_on_1 = multi_device_iterator.get_next("/cpu:1")
-        self.assertEqual(i, self.evaluate(elem_on_1))
-      for i in range(0, 10, 2):
-        elem_on_2 = multi_device_iterator.get_next("/gpu:0")
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
-
-  @combinations.generate(test_base.v1_only_combinations())
-  def testGetNextAsOptionalGpu(self):
-    if not test_util.is_gpu_available() or context.executing_eagerly():
-      self.skipTest("No GPU available")
-
-    dataset = dataset_ops.Dataset.range(9)
-    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/gpu:0"])
-    elem_on_1, elem_on_2 = multi_device_iterator.get_next_as_optional()
-    elem_on_1_has_value_t = elem_on_1.has_value()
-    elem_on_1_t = elem_on_1.get_value()
-    elem_on_2_has_value_t = elem_on_2.has_value()
-    elem_on_2_t = elem_on_2.get_value()
-
-    config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})
-    with self.test_session(config=config) as sess:
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 8, 2):
-        elem_on_1_has_value, elem_on_1_value = sess.run(
-            [elem_on_1_has_value_t, elem_on_1_t])
-        self.assertTrue(elem_on_1_has_value)
-        self.assertEqual(i, elem_on_1_value)
-        elem_on_2_has_value, elem_on_2_value = sess.run(
-            [elem_on_2_has_value_t, elem_on_2_t])
-        self.assertTrue(elem_on_2_has_value)
-        self.assertEqual(i + 1, elem_on_2_value)
-      elem_on_1_has_value, elem_on_1_value = sess.run(
-          [elem_on_1_has_value_t, elem_on_1_t])
-      self.assertTrue(elem_on_1_has_value)
-      self.assertEqual(8, elem_on_1_value)
-      self.assertFalse(self.evaluate(elem_on_1_has_value_t))
-      self.assertFalse(self.evaluate(elem_on_2_has_value_t))
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(elem_on_1_t)
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(elem_on_2_t)
-
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testOptimization(self):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
@@ -335,57 +214,52 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
     dataset = dataset.with_options(options)
 
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
+        dataset, [self._devices[1], self._devices[2]])
 
-    config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
-      self.evaluate(multi_device_iterator.initializer)
-      for i in range(0, 10, 2):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.assertEqual(i, self.evaluate(elem_on_1))
-        self.assertEqual(i + 1, self.evaluate(elem_on_2))
-      with self.assertRaises(errors.OutOfRangeError):
-        elem_on_1, elem_on_2 = multi_device_iterator.get_next()
-        self.evaluate(elem_on_1)
-        self.evaluate(elem_on_2)
+    self.evaluate(multi_device_iterator.initializer)
+    for i in range(0, 10, 2):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.assertEqual(i, self.evaluate(elem_on_1))
+      self.assertEqual(i + 1, self.evaluate(elem_on_2))
+    with self.assertRaises(errors.OutOfRangeError):
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.evaluate(elem_on_1)
+      self.evaluate(elem_on_2)
 
 
 class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
                                    parameterized.TestCase):
 
+  def setUp(self):
+    super(OwnedMultiDeviceIteratorTest, self).setUp()
+    self._devices = self.configureDevicesForMultiDeviceTest(3)
+
   @combinations.generate(
       combinations.times(
-          test_base.v2_eager_only_combinations(),
+          test_base.eager_only_combinations(),
           combinations.combine(
               max_buffer_size=[0, 1, 10], prefetch_buffer_size=[0, 1, 10])))
   def testBasic(self, max_buffer_size, prefetch_buffer_size):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    with ops.device("/cpu:0"):
-      dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset_ops.Dataset.range(1000)
 
     mdi = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-        dataset, ["/cpu:0", "/gpu:0"],
+        dataset, [self._devices[1], self._devices[2]],
         max_buffer_size=max_buffer_size,
         prefetch_buffer_size=prefetch_buffer_size)
 
     for i, el in enumerate(mdi):
       self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
 
-  @combinations.generate(test_base.v2_eager_only_combinations())
+  @combinations.generate(test_base.eager_only_combinations())
   def testBasicFunction(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
     queue = data_flow_ops.FIFOQueue(10, dtypes.int64)
 
     @def_function.function
     def fn():
-      with ops.device("/cpu:0"):
+      with ops.device(self._devices[0]):
         dataset = dataset_ops.Dataset.range(10)
       iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-          dataset, ["/cpu:0", "/gpu:0"])
+          dataset, [self._devices[1], self._devices[2]])
       for _ in range(5):
         el0, el1 = next(iterator)
         queue.enqueue(el0)
@@ -396,11 +270,8 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
     for i in range(10):
       self.assertEqual(queue.dequeue().numpy(), i)
 
-  @combinations.generate(test_base.v2_eager_only_combinations())
+  @combinations.generate(test_base.eager_only_combinations())
   def testFunctionError(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
     # In this test we verify that a function that raises an error ends up
     # properly deallocating the iterator resource.
 
@@ -427,7 +298,7 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
           finalize_fn,
           output_signature=tensor_spec.TensorSpec([], dtypes.int64))
       iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-          dataset, ["/cpu:0", "/gpu:0"])
+          dataset, [self._devices[1], self._devices[2]])
       next(iterator)
 
     with self.assertRaises(errors.OutOfRangeError):
@@ -435,26 +306,19 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
 
     self.assertEqual(queue.size().numpy(), 2)
 
-  @combinations.generate(test_base.v2_eager_only_combinations())
+  @combinations.generate(test_base.eager_only_combinations())
   def testMultipleInitializations(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    with ops.device("/cpu:0"):
-      dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset_ops.Dataset.range(1000)
 
     for _ in range(5):
       multi_device_iterator = (
           multi_device_iterator_ops.OwnedMultiDeviceIterator(
-              dataset, ["/cpu:0", "/gpu:0"]))
+              dataset, [self._devices[1], self._devices[2]]))
       for i, el in enumerate(multi_device_iterator):
         self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
 
-  @combinations.generate(test_base.v2_eager_only_combinations())
+  @combinations.generate(test_base.eager_only_combinations())
   def testLimitedRetracing(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
     trace_count = [0]
 
     @def_function.function
@@ -473,16 +337,14 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
     for _ in range(10):
       multi_device_iterator = (
           multi_device_iterator_ops.OwnedMultiDeviceIterator(
-              dataset, ["/cpu:0", "/gpu:0"]))
+              dataset, [self._devices[1], self._devices[2]]))
       self.assertEqual(self.evaluate(f(multi_device_iterator)), 45)
       multi_device_iterator2 = (
           multi_device_iterator_ops.OwnedMultiDeviceIterator(
-              dataset2, ["/cpu:0", "/gpu:0"]))
+              dataset2, [self._devices[1], self._devices[2]]))
       self.assertEqual(self.evaluate(f(multi_device_iterator2)), 45)
       self.assertEqual(trace_count[0], 1)
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={"CPU": 3, "GPU": 1}))
   test.main()

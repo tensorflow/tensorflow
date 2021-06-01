@@ -383,6 +383,8 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
     ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
+    buildinop_resolver_->AddCustom("IRFFT2D",
+                                   tflite::ops::custom::Register_IRFFT2D());
     tflite::ops::custom::AddGradientOps(buildinop_resolver_);
     tflite::ops::custom::AddParseExampleOp(buildinop_resolver_);
     tflite::ops::custom::AddPerceptionOps(buildinop_resolver_);
@@ -443,7 +445,8 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   } else {
     auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
     for (auto& one : delegate_providers->CreateAllDelegates()) {
-      if (interpreter_->ModifyGraphWithDelegate(std::move(one)) != kTfLiteOk) {
+      if (interpreter_->ModifyGraphWithDelegate(std::move(one.delegate)) !=
+          kTfLiteOk) {
         Invalidate(
             "Unable to the build graph using the delegate initialized from "
             "tflite::KernelTestDelegateProviders");

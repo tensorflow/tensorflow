@@ -575,7 +575,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return per_table_gradients
 
-  def apply_gradients(self, gradients, name: Text = None):
+  def apply_gradients(self, gradients, name: Optional[Text] = None):
     """Applies the gradient update to the embedding tables.
 
     If a gradient of `None` is passed in any position of the nested structure,
@@ -670,7 +670,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     if name is not None:
       _add_key_attr(op, name)
 
-  def dequeue(self, name: Text = None):
+  def dequeue(self, name: Optional[Text] = None):
     """Get the embedding results.
 
     Returns a nested structure of `tf.Tensor` objects, matching the structure of
@@ -1093,7 +1093,7 @@ class TPUEmbedding(tracking.AutoTrackable):
                                                  input_tensor.op.name,
                                                  input_tensor.op.type))
 
-  def _raise_error_for_inputs_not_on_cpu(self, features):
+  def _raise_error_for_inputs_not_on_cpu(self, flat_inputs, flat_paths):
     """Checks all tensors in features to see are placed on the CPU."""
 
     def check_device(path, device_string):
@@ -1109,14 +1109,18 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     # expand_composites here is important, we need to check the device of each
     # underlying tensor.
-    for path, input_tensor in nest.flatten_with_joined_string_paths(
-        features, expand_composites=True):
-      if (input_tensor.op.type == "Identity" and
-          input_tensor.op.inputs[0].op.type == "TPUReplicatedInput"):
-        for tensor in input_tensor.op.inputs[0].op.inputs:
-          check_device(path, tensor.device)
+    for input_tensor, input_path in zip(flat_inputs, flat_paths):
+      if nest.is_sequence_or_composite(input_tensor):
+        input_tensors = nest.flatten(input_tensor, expand_composites=True)
       else:
-        check_device(path, input_tensor.device)
+        input_tensors = [input_tensor]
+      for t in input_tensors:
+        if (t.op.type == "Identity" and
+            t.op.inputs[0].op.type == "TPUReplicatedInput"):
+          for tensor in t.op.inputs[0].op.inputs:
+            check_device(input_path, tensor.device)
+        else:
+          check_device(input_path, t.device)
 
   def enqueue(
       self,
@@ -1263,8 +1267,9 @@ class TPUEmbedding(tracking.AutoTrackable):
       nest.assert_same_structure(self._feature_config, weights)
       flat_weights = nest.flatten(weights)
     flat_features = nest.flatten_with_joined_string_paths(self._feature_config)
+    flat_paths, _ = zip(*flat_features)
 
-    self._raise_error_for_inputs_not_on_cpu(features)
+    self._raise_error_for_inputs_not_on_cpu(flat_inputs, flat_paths)
     # If we are in a tpu_context, automatically apply outside compilation.
     if in_tpu_context:
       self._raise_error_for_non_direct_inputs(features)
@@ -1626,8 +1631,22 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
                 inp.indices, array_ops.gather(table, truncated_inp.values),
                 dense_output_shape))
       else:
-        outputs.append(embedding_ops.safe_embedding_lookup_sparse_v2(
-            table, inp, sparse_weights=weight, combiner=feature.table.combiner))
+        inp_rank = inp.dense_shape.get_shape()[0]
+        if (not feature.validate_weights_and_indices and
+            inp_rank is not None and inp_rank <= 2):
+          outputs.append(
+              embedding_ops.embedding_lookup_sparse_v2(
+                  table,
+                  inp,
+                  sp_weights=weight,
+                  combiner=feature.table.combiner))
+        else:
+          outputs.append(
+              embedding_ops.safe_embedding_lookup_sparse_v2(
+                  table,
+                  inp,
+                  sparse_weights=weight,
+                  combiner=feature.table.combiner))
 
     elif isinstance(inp, ragged_tensor.RaggedTensor):
       if feature.max_sequence_length > 0:

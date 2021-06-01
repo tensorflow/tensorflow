@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
 
@@ -59,12 +60,12 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
   explicit PjRtStreamExecutorDevice(
       int id, std::unique_ptr<LocalDeviceState> local_device_state,
-      std::string device_kind, int task_id = 0)
+      std::string device_kind, int process_index = 0)
       : id_(id),
         device_ordinal_(
             local_device_state ? local_device_state->device_ordinal() : -1),
         local_device_state_(std::move(local_device_state)),
-        task_id_(task_id),
+        process_index_(process_index),
         device_kind_(std::move(device_kind)) {}
   ~PjRtStreamExecutorDevice() override {}
 
@@ -74,7 +75,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
     client_ = client;
   }
 
-  int task_id() const override { return task_id_; }
+  int process_index() const override { return process_index_; }
 
   // Return `platform_id` from client.
   PjRtPlatformId platform_id() const;
@@ -114,7 +115,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   const int id_;
   const int device_ordinal_;  // -1 means not local.
   const std::unique_ptr<LocalDeviceState> local_device_state_;
-  const int task_id_;
+  const int process_index_;
   const std::string device_kind_;
   PjRtClient* client_ = nullptr;
 };
@@ -125,13 +126,13 @@ class PjRtStreamExecutorClient : public PjRtClient {
   explicit PjRtStreamExecutorClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      int task_id, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   ~PjRtStreamExecutorClient() override = default;
 
-  int task_id() const override { return task_id_; }
+  int process_index() const override { return process_index_; }
 
   int device_count() const override { return devices_.size(); }
   int addressable_device_count() const override {
@@ -157,6 +158,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "<unknown>"; }
+  PjRtRuntimeType runtime_type() const override { return kStreamExecutor; }
 
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
@@ -185,6 +187,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device,
       std::shared_ptr<BufferSequencingEvent> definition_event);
+
+  StatusOr<std::unique_ptr<PjRtClient::AsyncBufferTransferManager>>
+  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
+                                PjRtDevice* device) override {
+    return Unimplemented("Async transfer to buffers not implemented");
+  };
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
@@ -241,6 +249,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
  protected:
   friend class PjRtStreamExecutorBuffer;
+
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
@@ -253,12 +262,24 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return Unimplemented("Cross host sends not implemented.");
   }
 
+  virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
+                                        int64 offset, int64 transfer_size,
+                                        std::function<void(Status)> on_ready) {
+    return Unimplemented("Raw copies to host not implemented.");
+  }
+
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   LocalClient* client_;
 
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
+
+  // Device memory allocator. If owned, the allocator must outlive the devices,
+  // because it is the device destructor that waits for any outstanding work to
+  // complete.
+  se::DeviceMemoryAllocator* allocator_;
+  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> owned_devices_;
@@ -268,10 +289,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   std::map<int, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
-  int task_id_;
-
-  se::DeviceMemoryAllocator* allocator_;
-  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
+  int process_index_;
 
   // Should we always prefer to stage host-to-device transfers via memory
   // allocated on host_memory_allocator_? True only on GPU, where we prefer to
@@ -485,8 +503,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
            on_device_shape_.tuple_shapes_size() == 0;
   }
 
-  int64 OnDeviceSizeInBytes() const override;
-
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
@@ -496,6 +512,11 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   using PjRtBuffer::ToLiteral;
   void ToLiteral(MutableLiteralBase* literal,
                  std::function<void(Status)> on_ready) override;
+
+  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
+
+  Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+                       std::function<void(Status)> on_ready) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async

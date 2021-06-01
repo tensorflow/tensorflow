@@ -19,9 +19,6 @@ Reference:
   - [Identity Mappings in Deep Residual Networks]
     (https://arxiv.org/abs/1603.05027) (CVPR 2016)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.applications import resnet

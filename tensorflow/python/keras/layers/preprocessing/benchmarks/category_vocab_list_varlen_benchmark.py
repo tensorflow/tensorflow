@@ -19,7 +19,6 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager.def_function import function as tf_function
 from tensorflow.python.feature_column import feature_column_v2 as fcv2
 from tensorflow.python.feature_column import sequence_feature_column
-
 from tensorflow.python.framework import dtypes as dt
 from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.layers.preprocessing.benchmarks import feature_column_benchmark as fc_bm

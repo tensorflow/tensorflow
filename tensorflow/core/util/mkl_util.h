@@ -469,7 +469,6 @@ class MklDnnShape {
     } else {
       auto format_tag =
           MklTensorFormatToMklDnnDataFormat(data_.tf_data_format_);
-      DCHECK_NE(format_tag, memory::format_tag::undef);
       return memory::desc(dims, data_.T_, format_tag);
     }
   }
@@ -707,14 +706,21 @@ inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
 }
 
 inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
-                            MklDnnShapeList* mkl_shapes) {
-  OpInputList input_mkl_tensors;
-  GetMklInputList(ctext, strings::StrCat("mkl_", name), &input_mkl_tensors);
+                            MklDnnShapeList* mkl_shapes,
+                            bool native_format = false) {
+  if (!native_format) {
+    OpInputList input_mkl_tensors;
+    GetMklInputList(ctext, strings::StrCat("mkl_", name), &input_mkl_tensors);
 
-  for (int i = 0; i < input_mkl_tensors.size(); i++) {
-    (*mkl_shapes)[i].DeSerializeMklDnnShape(
-        input_mkl_tensors[i].flat<uint8>().data(),
-        input_mkl_tensors[i].flat<uint8>().size() * sizeof(uint8));
+    for (int i = 0; i < input_mkl_tensors.size(); i++) {
+      (*mkl_shapes)[i].DeSerializeMklDnnShape(
+          input_mkl_tensors[i].flat<uint8>().data(),
+          input_mkl_tensors[i].flat<uint8>().size() * sizeof(uint8));
+    }
+  } else {
+    for (int i = 0; i < mkl_shapes->size(); ++i) {
+      (*mkl_shapes)[i].SetMklTensor(false);
+    }
   }
 }
 
@@ -1861,6 +1867,12 @@ class FactoryKeyCreator {
   void AddAsKey(const T data) {
     auto buffer = reinterpret_cast<const char*>(&data);
     Append(StringPiece(buffer, sizeof(T)));
+  }
+
+  // generalisation to handle pointers
+  void AddAsKey(const void* data) {
+    auto buffer = reinterpret_cast<const char*>(&data);
+    Append(StringPiece(buffer, sizeof(data)));
   }
 
   string GetKey() { return key_; }

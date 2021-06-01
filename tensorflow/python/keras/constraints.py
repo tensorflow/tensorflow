@@ -13,16 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""Constraints: functions that impose constraints on weight values.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
+# pylint: disable=g-classes-have-attributes
+"""Constraints: functions that impose constraints on weight values."""
 
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
@@ -33,7 +28,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.constraints.Constraint')
-class Constraint(object):
+class Constraint:
   """Base class for weight constraints.
 
   A `Constraint` instance works like a stateless function.
@@ -115,10 +110,10 @@ class MaxNorm(Constraint):
 
   @doc_controls.do_not_generate_docs
   def __call__(self, w):
-    norms = K.sqrt(
+    norms = backend.sqrt(
         math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True))
-    desired = K.clip(norms, 0, self.max_value)
-    return w * (desired / (K.epsilon() + norms))
+    desired = backend.clip(norms, 0, self.max_value)
+    return w * (desired / (backend.epsilon() + norms))
 
   @doc_controls.do_not_generate_docs
   def get_config(self):
@@ -133,7 +128,7 @@ class NonNeg(Constraint):
   """
 
   def __call__(self, w):
-    return w * math_ops.cast(math_ops.greater_equal(w, 0.), K.floatx())
+    return w * math_ops.cast(math_ops.greater_equal(w, 0.), backend.floatx())
 
 
 @keras_export('keras.constraints.UnitNorm', 'keras.constraints.unit_norm')
@@ -162,7 +157,7 @@ class UnitNorm(Constraint):
   @doc_controls.do_not_generate_docs
   def __call__(self, w):
     return w / (
-        K.epsilon() + K.sqrt(
+        backend.epsilon() + backend.sqrt(
             math_ops.reduce_sum(
                 math_ops.square(w), axis=self.axis, keepdims=True)))
 
@@ -211,12 +206,12 @@ class MinMaxNorm(Constraint):
 
   @doc_controls.do_not_generate_docs
   def __call__(self, w):
-    norms = K.sqrt(
+    norms = backend.sqrt(
         math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True))
     desired = (
-        self.rate * K.clip(norms, self.min_value, self.max_value) +
+        self.rate * backend.clip(norms, self.min_value, self.max_value) +
         (1 - self.rate) * norms)
-    return w * (desired / (K.epsilon() + norms))
+    return w * (desired / (backend.epsilon() + norms))
 
   @doc_controls.do_not_generate_docs
   def get_config(self):
@@ -268,32 +263,32 @@ class RadialConstraint(Constraint):
           'The weight tensor must be of rank 4, but is of shape: %s' % w_shape)
 
     height, width, channels, kernels = w_shape
-    w = K.reshape(w, (height, width, channels * kernels))
-    # TODO(cpeter): Switch map_fn for a faster tf.vectorized_map once K.switch
-    # is supported.
-    w = K.map_fn(
+    w = backend.reshape(w, (height, width, channels * kernels))
+    # TODO(cpeter): Switch map_fn for a faster tf.vectorized_map once
+    # backend.switch is supported.
+    w = backend.map_fn(
         self._kernel_constraint,
-        K.stack(array_ops.unstack(w, axis=-1), axis=0))
-    return K.reshape(K.stack(array_ops.unstack(w, axis=0), axis=-1),
-                     (height, width, channels, kernels))
+        backend.stack(array_ops.unstack(w, axis=-1), axis=0))
+    return backend.reshape(backend.stack(array_ops.unstack(w, axis=0), axis=-1),
+                           (height, width, channels, kernels))
 
   def _kernel_constraint(self, kernel):
     """Radially constraints a kernel with shape (height, width, channels)."""
-    padding = K.constant([[1, 1], [1, 1]], dtype='int32')
+    padding = backend.constant([[1, 1], [1, 1]], dtype='int32')
 
-    kernel_shape = K.shape(kernel)[0]
-    start = K.cast(kernel_shape / 2, 'int32')
+    kernel_shape = backend.shape(kernel)[0]
+    start = backend.cast(kernel_shape / 2, 'int32')
 
-    kernel_new = K.switch(
-        K.cast(math_ops.floormod(kernel_shape, 2), 'bool'),
+    kernel_new = backend.switch(
+        backend.cast(math_ops.floormod(kernel_shape, 2), 'bool'),
         lambda: kernel[start - 1:start, start - 1:start],
-        lambda: kernel[start - 1:start, start - 1:start] + K.zeros(  # pylint: disable=g-long-lambda
+        lambda: kernel[start - 1:start, start - 1:start] + backend.zeros(  # pylint: disable=g-long-lambda
             (2, 2), dtype=kernel.dtype))
-    index = K.switch(
-        K.cast(math_ops.floormod(kernel_shape, 2), 'bool'),
-        lambda: K.constant(0, dtype='int32'),
-        lambda: K.constant(1, dtype='int32'))
-    while_condition = lambda index, *args: K.less(index, start)
+    index = backend.switch(
+        backend.cast(math_ops.floormod(kernel_shape, 2), 'bool'),
+        lambda: backend.constant(0, dtype='int32'),
+        lambda: backend.constant(1, dtype='int32'))
+    while_condition = lambda index, *args: backend.less(index, start)
 
     def body_fn(i, array):
       return i + 1, array_ops.pad(
@@ -344,7 +339,7 @@ def get(identifier):
     return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     config = {'class_name': str(identifier), 'config': {}}
     return deserialize(config)
   elif callable(identifier):

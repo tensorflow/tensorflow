@@ -62,6 +62,7 @@ StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64 step_num,
   step_info.mutable_step_breakdown()->PackFrom(generic);
   if (well_formed_step) {
     step_info.set_step_num(step_num);
+    step_info.set_step_name(step_details.StepName());
     step_info.set_begin_ps(step_time.begin_ps());
     step_info.set_duration_ps(step_time.duration_ps());
   } else {

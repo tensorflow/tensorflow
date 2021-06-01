@@ -13,10 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
+# pylint: disable=g-classes-have-attributes
 """Contains the `Node` class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import copy
@@ -34,7 +32,7 @@ from tensorflow.python.util import nest
 _CONSTANT_VALUE = '_CONSTANT_VALUE'
 
 
-class Node(object):
+class Node:
   """A `Node` describes the connectivity between two layers.
 
   Each time a layer is connected to some new input,

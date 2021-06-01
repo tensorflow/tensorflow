@@ -73,6 +73,12 @@ class DrawBoundingBoxesOp : public OpKernel {
         errors::InvalidArgument("Channel depth should be either 1 (GRY), "
                                 "3 (RGB), or 4 (RGBA)"));
 
+    OP_REQUIRES(
+        context, boxes.dim_size(2) == 4,
+        errors::InvalidArgument(
+            "The size of the third dimension of the box must be 4. Received: ",
+            boxes.dim_size(2)));
+
     const int64 batch_size = images.dim_size(0);
     const int64 height = images.dim_size(1);
     const int64 width = images.dim_size(2);
@@ -147,22 +153,46 @@ class DrawBoundingBoxesOp : public OpKernel {
 
         // At this point, {min,max}_box_{row,col}_clamp are inside the
         // image.
-        CHECK_GE(min_box_row_clamp, 0);
-        CHECK_GE(max_box_row_clamp, 0);
-        CHECK_LT(min_box_row_clamp, height);
-        CHECK_LT(max_box_row_clamp, height);
-        CHECK_GE(min_box_col_clamp, 0);
-        CHECK_GE(max_box_col_clamp, 0);
-        CHECK_LT(min_box_col_clamp, width);
-        CHECK_LT(max_box_col_clamp, width);
+        OP_REQUIRES(
+            context, min_box_row_clamp >= 0,
+            errors::InvalidArgument("Min box row clamp is less than 0."));
+        OP_REQUIRES(
+            context, max_box_row_clamp >= 0,
+            errors::InvalidArgument("Max box row clamp is less than 0."));
+        OP_REQUIRES(context, min_box_row_clamp <= height,
+                    errors::InvalidArgument(
+                        "Min box row clamp is greater than height."));
+        OP_REQUIRES(context, max_box_row_clamp <= height,
+                    errors::InvalidArgument(
+                        "Max box row clamp is greater than height."));
+
+        OP_REQUIRES(
+            context, min_box_col_clamp >= 0,
+            errors::InvalidArgument("Min box col clamp is less than 0."));
+        OP_REQUIRES(
+            context, max_box_col_clamp >= 0,
+            errors::InvalidArgument("Max box col clamp is less than 0."));
+        OP_REQUIRES(context, min_box_col_clamp <= width,
+                    errors::InvalidArgument(
+                        "Min box col clamp is greater than width."));
+        OP_REQUIRES(context, max_box_col_clamp <= width,
+                    errors::InvalidArgument(
+                        "Max box col clamp is greater than width."));
 
         // At this point, the min_box_row and min_box_col are either
         // in the image or above/left of it, and max_box_row and
         // max_box_col are either in the image or below/right or it.
-        CHECK_LT(min_box_row, height);
-        CHECK_GE(max_box_row, 0);
-        CHECK_LT(min_box_col, width);
-        CHECK_GE(max_box_col, 0);
+
+        OP_REQUIRES(
+            context, min_box_row <= height,
+            errors::InvalidArgument("Min box row is greater than height."));
+        OP_REQUIRES(context, max_box_row >= 0,
+                    errors::InvalidArgument("Max box row is less than 0."));
+        OP_REQUIRES(
+            context, min_box_col <= width,
+            errors::InvalidArgument("Min box col is greater than width."));
+        OP_REQUIRES(context, max_box_col >= 0,
+                    errors::InvalidArgument("Max box col is less than 0."));
 
         // Draw top line.
         if (min_box_row >= 0) {

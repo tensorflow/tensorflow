@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -36,6 +37,8 @@ class NnapiDelegateProvider : public DelegateProvider {
                              ToolParam::Create<bool>(true));
     default_params_.AddParam("nnapi_allow_fp16",
                              ToolParam::Create<bool>(false));
+    default_params_.AddParam("nnapi_use_burst_mode",
+                             ToolParam::Create<bool>(false));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -43,6 +46,8 @@ class NnapiDelegateProvider : public DelegateProvider {
   void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
 
   std::string GetName() const final { return "NNAPI"; }
 };
@@ -65,7 +70,13 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
       CreateFlag<bool>("disable_nnapi_cpu", params,
                        "Disable the NNAPI CPU device"),
       CreateFlag<bool>("nnapi_allow_fp16", params,
-                       "Allow fp32 computation to be run in fp16")};
+                       "Allow fp32 computation to be run in fp16"),
+      CreateFlag<bool>(
+          "nnapi_use_burst_mode", params,
+          "use NNAPI Burst mode if supported. Burst mode allows accelerators "
+          "to efficiently manage resources, which would significantly reduce "
+          "overhead especially if the same delegate instance is to be used for "
+          "multiple inferences.")};
 
   return flags;
 }
@@ -93,6 +104,8 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params,
                  verbose);
   LOG_TOOL_PARAM(params, bool, "nnapi_allow_fp16", "Allow fp16 in NNAPI",
                  verbose);
+  LOG_TOOL_PARAM(params, bool, "nnapi_use_burst_mode",
+                 "Use burst mode in NNAPI", verbose);
 }
 
 TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
@@ -110,6 +123,10 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
 
     if (params.Get<bool>("nnapi_allow_fp16")) {
       options.allow_fp16 = true;
+    }
+
+    if (params.Get<bool>("nnapi_use_burst_mode")) {
+      options.use_burst_computation = true;
     }
 
     std::string string_execution_preference =
@@ -186,6 +203,13 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
                      << ") to be used.";
   }
   return delegate;
+}
+
+std::pair<TfLiteDelegatePtr, int>
+NnapiDelegateProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  return std::make_pair(std::move(ptr), params.GetPosition<bool>("use_nnapi"));
 }
 
 }  // namespace tools

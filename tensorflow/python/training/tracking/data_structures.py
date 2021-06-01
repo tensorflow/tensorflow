@@ -27,7 +27,7 @@ try:
   import wrapt
 except ImportError:
   # Fall back to the build-time dependency if the system package is not available.
-  from .....third_party import wrapt
+  from .....third_party import wrapt  # pylint: disable=relative-beyond-top-level
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -1072,6 +1072,11 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     return super(_TupleWrapper, self)._checkpoint_dependencies
 
   def __getattribute__(self, name):
+    if name != "__wrapped__" and hasattr(self.__wrapped__, name):
+      # Prefer attributes on the wrapped object when they conflict with
+      # attributes on the wrapper object.
+      return getattr(self.__wrapped__, name)
+
     if (hasattr(type(self), name)
         and isinstance(getattr(type(self), name), property)):
       # Bypass ObjectProxy for properties. Whether this workaround is necessary

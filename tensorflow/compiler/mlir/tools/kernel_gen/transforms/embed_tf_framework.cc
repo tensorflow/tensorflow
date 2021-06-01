@@ -169,13 +169,13 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
 }  // namespace
 
 void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns) {
+    MLIRContext *context, RewritePatternSet *patterns) {
   patterns->insert<TFAllocOpConverter, TFDeallocOpConverter, FuncOpConverter>(
       context);
 }
 
 void PopulateEmbedTFFrameworkAssertConversionPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns) {
+    MLIRContext *context, RewritePatternSet *patterns) {
   patterns->insert<TFAssertOpConverter, FuncOpConverter>(context);
 }
 

@@ -41,6 +41,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
@@ -276,11 +277,20 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
                                                ag->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
-  TF_RET_CHECK(ag->all_gather_dimension() < ag->shape().rank());
-  TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(0)->shape().rank());
+
+  for (int64_t i = 0; i < ag->operand_count(); ++i) {
+    TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(i)->shape().rank());
+
+    const Shape& output_shape =
+        (ag->operand_count() == 1) ? ag->shape() : ag->shape().tuple_shapes(i);
+    TF_RET_CHECK(ag->all_gather_dimension() < output_shape.rank());
+  }
+
+  const Shape& output0_shape =
+      (ag->operand_count() == 1) ? ag->shape() : ag->shape().tuple_shapes(0);
 
   int64 shard_count = CeilOfRatio(
-      ag->shape().dimensions(ag->all_gather_dimension()),
+      output0_shape.dimensions(ag->all_gather_dimension()),
       ag->operand(0)->shape().dimensions(ag->all_gather_dimension()));
   const HloModuleConfig& config = hlo->GetModule()->config();
   // empty replica groups imply all replicas form a single group.
@@ -312,9 +322,13 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
       << "shard_count = " << shard_count
       << ", subgroup_size = " << subgroup_size << ", " << hlo->ToString();
 
-  return CheckShape(ag, ShapeInference::InferAllGatherShape(
-                            ag->operand(0)->shape(), ag->all_gather_dimension(),
-                            shard_count));
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(
+      ag, ShapeInference::InferAllGatherShape(
+              operand_shapes, ag->all_gather_dimension(), shard_count));
 }
 
 Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
@@ -330,6 +344,27 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
     operand_shapes.push_back(&operand->shape());
   }
   return CheckShape(hlo, ShapeInference::InferAllReduceShape(operand_shapes));
+}
+
+Status ShapeVerifier::HandleAllReduceStart(HloInstruction* hlo) {
+  auto ar = Cast<HloAllReduceInstruction>(hlo);
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                               ar->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(
+      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
+
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(hlo,
+                    ShapeInference::InferAllReduceStartShape(operand_shapes));
+}
+
+Status ShapeVerifier::HandleAllReduceDone(HloInstruction* hlo) {
+  return CheckShape(
+      hlo, ShapeInference::InferAllReduceDoneShape(hlo->operand(0)->shape()));
 }
 
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
@@ -438,8 +473,12 @@ Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
       GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
                                /*use_global_device_ids=*/absl::nullopt));
   TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
-  return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
-                             hlo->operand(0)->shape()));
+  std::vector<const Shape*> operand_shapes;
+  absl::c_transform(
+      hlo->operands(), std::back_inserter(operand_shapes),
+      [](const HloInstruction* operand) { return &(operand->shape()); });
+  return CheckShape(
+      hlo, ShapeInference::InferCollectivePermuteShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
@@ -448,15 +487,17 @@ Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
       GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
                                /*use_global_device_ids=*/absl::nullopt));
   TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
+  std::vector<const Shape*> operand_shapes;
+  absl::c_transform(
+      hlo->operands(), std::back_inserter(operand_shapes),
+      [](const HloInstruction* operand) { return &(operand->shape()); });
   return CheckShape(
-      hlo, ShapeUtil::MakeTupleShape(
-               {hlo->operand(0)->shape(), hlo->operand(0)->shape(),
-                ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})}));
+      hlo, ShapeInference::InferCollectivePermuteStartShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandleCollectivePermuteDone(HloInstruction* hlo) {
-  return CheckShape(
-      hlo, ShapeUtil::GetTupleElementShape(hlo->operand(0)->shape(), 0));
+  return CheckShape(hlo, ShapeInference::InferCollectivePermuteDoneShape(
+                             hlo->operand(0)->shape()));
 }
 
 Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
@@ -578,7 +619,10 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
 }
 
 Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
-  if (!hlo->shape().IsTuple() || hlo->shape().tuple_shapes_size() != 2) {
+  if (!hlo->shape().IsTuple()) {
+    return Status::OK();
+  }
+  if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() != 2) {
     return InternalError(
         "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
         hlo->shape().ToString());
@@ -966,7 +1010,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
   VLOG(2) << "Verify reduce window:" << reduce_window->ToString() << "\n";
   auto reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
-  auto input_shapes = reduce_window_instr->input_array_shapes();
+  auto input_shapes = reduce_window_instr->input_shapes();
   VLOG(2) << "reduce window input shape count: " << input_shapes.size() << "\n";
   auto init_shapes = reduce_window_instr->init_value_shapes();
   VLOG(2) << "reduce instruction is :" << reduce_window->ToString() << "\n";
@@ -1155,6 +1199,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
@@ -1553,6 +1599,16 @@ Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
+        case HloOpcode::kAllReduceStart: {
+          TF_RETURN_IF_ERROR(
+              VerifySingleUser(instruction, HloOpcode::kAllReduceDone));
+          break;
+        }
+        case HloOpcode::kAllReduceDone: {
+          TF_RETURN_IF_ERROR(
+              VerifySingleOperand(instruction, HloOpcode::kAllReduceStart));
+          break;
+        }
         case HloOpcode::kCopyStart: {
           TF_RETURN_IF_ERROR(
               VerifySingleUser(instruction, HloOpcode::kCopyDone));
@@ -1587,7 +1643,8 @@ Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
   const HloAllReduceInstruction* reference = nullptr;
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kAllReduce) {
+      if ((instruction->opcode() != HloOpcode::kAllReduce) &&
+          (instruction->opcode() != HloOpcode::kAllReduceStart)) {
         continue;
       }
       auto all_reduce = DynCast<HloAllReduceInstruction>(instruction);

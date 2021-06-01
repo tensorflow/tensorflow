@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
@@ -42,9 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/profiler.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
-#include "tensorflow/compiler/xla/python/py_traceback.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -111,12 +112,14 @@ PYBIND11_MODULE(xla_extension, m) {
           "id", &PjRtDevice::id,
           "Integer ID of this device.\n\nUnique across all available devices "
           "of this type, including remote devices on multi-host platforms.")
-      .def_property_readonly("host_id", &PjRtDevice::task_id,
-                             "Integer ID of this device's task.\n\n"
-                             "This is always 0 except on multi-task platforms.")
-      .def_property_readonly("task_id", &PjRtDevice::task_id,
-                             "Integer ID of this device's task.\n\n"
-                             "This is always 0 except on multi-task platforms.")
+      .def_property_readonly(
+          "process_index", &PjRtDevice::process_index,
+          "Integer index of this device's process.\n\n"
+          "This is always 0 except on multi-process platforms.")
+      .def_property_readonly("host_id", &PjRtDevice::process_index,
+                             "Deprecated; please use process_index")
+      .def_property_readonly("task_id", &PjRtDevice::process_index,
+                             "Deprecated; please use process_index")
       .def_property_readonly("platform",
                              [](const PjRtDevice& device) {
                                return device.client()->platform_name();
@@ -158,8 +161,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def("__repr__", [](const GpuDevice& device) {
-        return absl::StrFormat("GpuDevice(id=%i, task=%i)", device.id(),
-                               device.task_id());
+        return absl::StrFormat("GpuDevice(id=%i, process_index=%i)",
+                               device.id(), device.process_index());
       });
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
@@ -175,9 +178,9 @@ PYBIND11_MODULE(xla_extension, m) {
           "The index of this TpuDevice's core on the TPU chip.")
       .def("__repr__", [](const PjRtTpuDevice& device) {
         return absl::StrFormat(
-            "TpuDevice(id=%i, task=%i, coords=(%s), core_on_chip=%i)",
-            device.id(), device.task_id(), absl::StrJoin(device.coords(), ","),
-            device.core_on_chip());
+            "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
+            device.id(), device.process_index(),
+            absl::StrJoin(device.coords(), ","), device.core_on_chip());
       });
 
   // Local XLA client methods.
@@ -203,13 +206,15 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
       .def_property_readonly("platform_version", &PyClient::platform_version)
+      .def_property_readonly("runtime_type", &PyClient::runtime_type)
       .def("device_count", &PyClient::device_count)
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
       .def("live_buffers", &PyClient::LiveBuffers)
-      .def("host_id", &PyClient::task_id)
-      .def("task_id", &PyClient::task_id)
+      .def("process_index", &PyClient::process_index)
+      .def("host_id", &PyClient::process_index)
+      .def("task_id", &PyClient::process_index)
       .def("get_default_device_assignment",
            &PyClient::GetDefaultDeviceAssignment)
       // TODO(skye): delete after all callers can handle 2D output
@@ -238,6 +243,14 @@ PYBIND11_MODULE(xla_extension, m) {
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true);
+  m.def(
+      "get_tfrt_cpu_client",
+      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                            GetTfrtCpuClient(asynchronous));
+        return std::make_shared<PyClient>(std::move(client));
+      },
+      py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
@@ -259,92 +272,14 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
   m.def(
       "get_tpu_client",
-      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+      [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
-                            GetTpuClient(asynchronous));
+                            GetTpuClient(max_inflight_computations));
         return std::make_shared<PyClient>(std::move(client));
       },
-      py::arg("asynchronous") = true);
+      py::arg("max_inflight_computations") = 32);
 
-  py::class_<DeviceArrayBase> device_array_base(m, "DeviceArrayBase");
-  device_array_base.def(py::init<>());
-
-  py::class_<PyBuffer, DeviceArrayBase, std::unique_ptr<PyBuffer>> buffer(
-      m, "DeviceArray");
-  // TODO(phawkins): alias for backward compatibility. Remove after JAX no
-  // longer uses this name.
-  m.add_object("PyLocalBuffer", buffer);
-  m.add_object("Buffer", buffer);
-  buffer
-      .def_property_readonly("__array_priority__",
-                             [](py::object) { return 100; })
-      .def_property(
-          "_device",
-          [](const PyBuffer& buffer) -> ClientAndPtr<PjRtDevice> {
-            return WrapWithClient(buffer.client(), buffer.sticky_device());
-          },
-          &PyBuffer::set_sticky_device)
-      .def_property("aval", &PyBuffer::GetAval, &PyBuffer::SetAval)
-      .def_property("weak_type", &PyBuffer::weak_type, &PyBuffer::set_weak_type)
-      .def_property_readonly("_lazy_expr",
-                             [](py::object buffer) { return py::none(); })
-      .def_property_readonly("device_buffer",
-                             [](py::object buffer) { return buffer; })
-      .def_property_readonly(
-          "shape",
-          [](const PyBuffer& pybuffer) -> pybind11::tuple {
-            return IntSpanToTuple(
-                pybuffer.buffer()->on_device_shape().dimensions());
-          })
-      .def_property_readonly(
-          "dtype",
-          [](const PyBuffer& buffer) {
-            PrimitiveType primitive =
-                buffer.buffer()->on_device_shape().element_type();
-            return PrimitiveTypeToDtype(primitive).ValueOrDie();
-          })
-      .def_property_readonly("size", &PyBuffer::size)
-      .def_property_readonly("ndim", &PyBuffer::ndim)
-      .def_property_readonly(
-          "_value",
-          [](py::handle buffer_obj) -> StatusOr<pybind11::object> {
-            GlobalPyRefManager()->CollectGarbage();
-            PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
-            return buffer->AsNumPyArray(buffer_obj);
-          })
-      .def("copy_to_device", &PyBuffer::CopyToDevice)
-      .def("on_device_size_in_bytes", &PyBuffer::OnDeviceSizeInBytes)
-      .def("delete", &PyBuffer::Delete)
-      // The GIL is released within BlockHostUntilReady.
-      .def("block_until_ready",
-           [](py::object buffer_obj) -> xla::StatusOr<py::object> {
-             PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
-             TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
-             return buffer_obj;
-           })
-      .def("block_host_until_ready", &PyBuffer::BlockHostUntilReady)
-      .def("copy_to_host_async", &PyBuffer::CopyToHostAsync)
-      .def("to_py",
-           [](py::handle buffer_obj) {
-             PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
-             return buffer->AsNumPyArray(buffer_obj);
-           })
-      .def("xla_shape", &PyBuffer::shape)
-      .def("xla_dynamic_shape", &PyBuffer::xla_dynamic_shape)
-      .def_property_readonly("client", &PyBuffer::client)
-      .def("device", &PyBuffer::device)
-      .def("platform", &PyBuffer::platform_name)
-      .def("is_deleted", &PyBuffer::is_deleted)
-      .def("unsafe_buffer_pointer", &PyBuffer::UnsafeBufferPointer)
-      .def_property_readonly("__cuda_array_interface__",
-                             &PyBuffer::CudaArrayInterface)
-      .def_property_readonly("traceback", &PyBuffer::traceback)
-      .def("clone", &PyBuffer::Clone);
-
-  // pybind11's implementation of the buffer protocol doesn't allow for correct
-  // error handling. We bypass it and implement the buffer protocol ourselves.
-  PyTypeObject* buffer_type = reinterpret_cast<PyTypeObject*>(buffer.ptr());
-  buffer_type->tp_as_buffer = PyBuffer::BufferProtocol();
+  TF_CHECK_OK(PyBuffer::RegisterTypes(m));
 
   py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");
@@ -368,7 +303,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute_sharded_on_local_devices",
            &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
-      .def_property_readonly("traceback", &PyExecutable::traceback);
+      .def_property_readonly("traceback", &PyExecutable::traceback)
+      .def_property_readonly("fingerprint",
+                             [](PyExecutable* exec) -> py::object {
+                               if (exec->fingerprint().has_value()) {
+                                 return py::bytes(*exec->fingerprint());
+                               } else {
+                                 return py::none();
+                               }
+                             });
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);

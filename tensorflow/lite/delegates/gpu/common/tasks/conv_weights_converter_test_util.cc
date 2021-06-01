@@ -57,8 +57,8 @@ absl::Status ConvolutionWeightsConverterTest(
                    absl::MakeSpan(weights_data));
 
   std::vector<TensorFloat32> dst_tensors;
-  if (weight_desc.layout == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4 ||
-      weight_desc.layout == WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
+  if (weight_desc.layout == WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
+      weight_desc.layout == WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
     dst_tensors.resize(4);
     const int dst_depth = AlignByN(DivideRoundUp(weights.shape.o, 4),
                                    weight_desc.output_group_size);
@@ -120,8 +120,8 @@ absl::Status ConverterToConvWeights1x1OutX4Test(TestExecutionEnvironment* env) {
 
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
-      for (auto weights_layout :
-           {WeightsLayout::kOHWIOGroupI4O4, WeightsLayout::kOHWIOGroupO4I4}) {
+      for (auto weights_layout : {WeightsLayout::kOSpatialIOGroupI4O4,
+                                  WeightsLayout::kOSpatialIOGroupO4I4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
@@ -154,8 +154,8 @@ absl::Status ConverterToConvWeights1x1OutX4UnalignedTest(
 
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
-      for (auto weights_layout :
-           {WeightsLayout::kOHWIOGroupI4O4, WeightsLayout::kOHWIOGroupO4I4}) {
+      for (auto weights_layout : {WeightsLayout::kOSpatialIOGroupI4O4,
+                                  WeightsLayout::kOSpatialIOGroupO4I4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
@@ -187,8 +187,8 @@ absl::Status ConverterToConvWeights1x1OutX2Test(TestExecutionEnvironment* env) {
 
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
-      for (auto weights_layout :
-           {WeightsLayout::kOHWIOGroupI4O4, WeightsLayout::kOHWIOGroupO4I4}) {
+      for (auto weights_layout : {WeightsLayout::kOSpatialIOGroupI4O4,
+                                  WeightsLayout::kOSpatialIOGroupO4I4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
@@ -220,8 +220,8 @@ absl::Status ConverterToConvWeightsOutX2Test(TestExecutionEnvironment* env) {
 
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
-      for (auto weights_layout :
-           {WeightsLayout::kOHWIOGroupI4O4, WeightsLayout::kOHWIOGroupO4I4}) {
+      for (auto weights_layout : {WeightsLayout::kOSpatialIOGroupI4O4,
+                                  WeightsLayout::kOSpatialIOGroupO4I4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
@@ -290,8 +290,8 @@ absl::Status ConverterToConvWeights4xTexturesTest(
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       for (auto weights_layout :
-           {WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4,
-            WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4}) {
+           {WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4,
+            WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;

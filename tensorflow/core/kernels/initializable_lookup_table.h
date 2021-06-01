@@ -28,9 +28,7 @@ namespace lookup {
 class InitializableLookupTable : public LookupInterface {
  public:
   class InitTableIterator;
-  typedef std::function<Status(GraphDefBuilder* builder, Node* table,
-                               Node** out)>
-      InitializerAsGraphDefFunc;
+  class InitializerSerializer;
 
   // Performs batch lookups, for every element in the key tensor, Find returns
   // the corresponding value into the values tensor.
@@ -95,12 +93,12 @@ class InitializableLookupTable : public LookupInterface {
   //   specific to their failure modes.
   Status Initialize(InitTableIterator& iter);
 
-  // Initializes the table from the given init table iterator. `func` may
-  // specify how to represent the initializer as a graphdef, so that the table
-  // can be serialized using its metadata (as opposed to serializing a handle to
-  // the table).
+  // Initializes the table from the given init table iterator. `serializer` may
+  // specify how to serialize the table initializer, so that the table can be
+  // serialized using its metadata (as opposed to serializing a handle to the
+  // table).
   Status Initialize(InitTableIterator& iter,
-                    absl::optional<InitializerAsGraphDefFunc>&& func);
+                    std::unique_ptr<InitializerSerializer> serializer);
 
   // Basic iterator to initialize lookup tables.
   // It yields a sequence of pairs of `keys()` and `values()` Tensors, so that
@@ -143,6 +141,39 @@ class InitializableLookupTable : public LookupInterface {
     return this;
   }
 
+  // Logic specifying how to represent an initializer as a GraphDef, so that a
+  // lookup table can be serialized using its metadata (as opposed to
+  // serializing the content of the table, or a handle to the table).
+  class InitializerSerializer {
+   public:
+    // A function which builds a graph so that executing `*out` will initialize
+    // `table`.
+    using SerializeFn = std::function<Status(GraphDefBuilder* builder,
+                                             Node* table, Node** out)>;
+    // A function which performs any necessary cleanup for the serializer.
+    using CleanupFn = std::function<void()>;
+
+    // Wraps serialization logic that requires no cleanup.
+    explicit InitializerSerializer(SerializeFn serialize)
+        : serialize_(std::move(serialize)), cleanup_([] {}) {}
+
+    // Wraps serialization logic along with a cleanup function. `cleanup` will
+    // be run when the serializer is destroyed.
+    explicit InitializerSerializer(SerializeFn serialize, CleanupFn cleanup)
+        : serialize_(std::move(serialize)), cleanup_(std::move(cleanup)) {}
+
+    ~InitializerSerializer() { cleanup_(); }
+
+    // Builds a graph so that executing `*out` will initialize `table`.
+    Status AsGraphDef(GraphDefBuilder* builder, Node* table, Node** out) {
+      return serialize_(builder, table, out);
+    }
+
+   private:
+    SerializeFn serialize_;
+    CleanupFn cleanup_;
+  };
+
  protected:
   // Prepares and allocates the underlying data structure to store the given
   // number of expected elements.
@@ -172,7 +203,9 @@ class InitializableLookupTable : public LookupInterface {
   mutex mu_;
 
  protected:
-  absl::optional<InitializerAsGraphDefFunc> initializer_as_graphdef_func_;
+  // When set, provides a mechanism for serializing the table initializer as
+  // GraphDef.
+  std::unique_ptr<InitializerSerializer> initializer_serializer_;
 
  private:
   std::atomic<bool> is_initialized_{false};

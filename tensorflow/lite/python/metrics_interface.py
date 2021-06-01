@@ -39,3 +39,7 @@ class TFLiteMetricsInterface(metaclass=abc.ABCMeta):
   @abc.abstractmethod
   def set_converter_param(self, name, value):
     raise NotImplementedError
+
+  @abc.abstractmethod
+  def set_converter_error(self, error_data):
+    raise NotImplementedError

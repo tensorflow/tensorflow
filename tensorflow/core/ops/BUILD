@@ -3,7 +3,6 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_chromiumos",
     "tf_cc_test",
 )
 
@@ -34,7 +33,7 @@ package(
         "//visibility:public",
     ],
     features = ["-parse_headers"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Export the BUILD file so automated tooling can check licenses
@@ -81,7 +80,6 @@ tf_gen_op_libs(
         "random_ops",
         "special_math_ops",
         "stateful_random_ops",
-        "remote_fused_graph_ops",
         "risc_ops",
         "rnn_ops",
         "scoped_allocator_ops",
@@ -219,6 +217,14 @@ tf_gen_op_libs(
     ],
 )
 
+tf_gen_op_libs(
+    op_lib_names = ["composite_tensor_ops"],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
 cc_library(
     name = "ragged_ops",
     deps = [
@@ -260,6 +266,7 @@ cc_library(
         ":decode_proto_ops_op_lib",
         ":encode_proto_ops_op_lib",
         ":experimental_dataset_ops_op_lib",
+        ":composite_tensor_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
         ":image_ops_op_lib",
@@ -281,7 +288,6 @@ cc_library(
         ":rnn_ops_op_lib",
         ":special_math_ops_op_lib",
         ":stateful_random_ops_op_lib",
-        ":remote_fused_graph_ops_op_lib",
         ":resource_variable_ops_op_lib",
         ":scoped_allocator_ops_op_lib",
         ":script_ops_op_lib",
@@ -298,10 +304,11 @@ cc_library(
         ":string_ops_op_lib",
         ":training_ops_op_lib",
         ":word2vec_ops",
-    ] + if_chromiumos(
-        [],
+    ] + select({
         # Non-tpu platforms don't need tpu dependency.
-        [
+        "//tensorflow:chromiumos": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
             ":tpu_configuration_ops_op_lib",
             ":tpu_cross_replica_ops_op_lib",
             ":tpu_embedding_ops_op_lib",
@@ -314,7 +321,7 @@ cc_library(
             ":tpu_ordinal_selector_ops_op_lib",
             ":tpu_replication_ops_op_lib",
         ],
-    ) + if_mkl([
+    }) + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
     ]),
@@ -379,7 +386,7 @@ cc_library(
 
 filegroup(
     name = "portable_op_registrations_and_gradients",
-    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
+    srcs = ["//tensorflow/c/kernels:portable_all_ops"] + glob(
         [
             "**/*.cc",
             "**/*.h",
@@ -464,28 +471,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "ops_remote_fused_graph_ops_test",
-    size = "small",
-    srcs = ["remote_fused_graph_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":ops",
-        "//tensorflow/core",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:remote_fused_graph_ops",
     ],
 )
 

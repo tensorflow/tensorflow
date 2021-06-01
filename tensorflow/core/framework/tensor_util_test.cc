@@ -461,38 +461,38 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
       tensor::CreateTensorProto(std::vector<float>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<float>::NumValues(tensor_proto),
-            1);
+            0);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<int>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<int>::NumValues(tensor_proto),
-            1);
+            0);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<uint8>::NumValues(tensor_proto),
-            1);
+            0);
   tensor_proto =
       tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<bool>::NumValues(tensor_proto),
-            1);
+            0);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(
       tensor::internal::TensorProtoHelper<Eigen::half>::NumValues(tensor_proto),
-      1);
+      0);
 
   tensor_proto = tensor::CreateTensorProto(
       std::vector<std::complex<float>>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<std::complex<float>>::NumValues(
                 tensor_proto),
-            1);
+            0);
 }
 
 template <typename T>

@@ -25,6 +25,7 @@ _DNNL_RUNTIME_OMP = {
     "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_OMP",
     "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_OMP",
     "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+    "#cmakedefine DNNL_USE_RT_OBJECTS_IN_PRIMITIVE_CACHE": "#undef DNNL_USE_RT_OBJECTS_IN_PRIMITIVE_CACHE",
     "#cmakedefine DNNL_WITH_SYCL": "#undef DNNL_WITH_SYCL",
     "#cmakedefine DNNL_WITH_LEVEL_ZERO": "#undef DNNL_WITH_LEVEL_ZERO",
     "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
@@ -34,6 +35,7 @@ _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_THREADPOOL",
     "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_THREADPOOL",
     "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+    "#cmakedefine DNNL_USE_RT_OBJECTS_IN_PRIMITIVE_CACHE": "#undef DNNL_USE_RT_OBJECTS_IN_PRIMITIVE_CACHE",
     "#cmakedefine DNNL_WITH_SYCL": "#undef DNNL_WITH_SYCL",
     "#cmakedefine DNNL_WITH_LEVEL_ZERO": "#undef DNNL_WITH_LEVEL_ZERO",
     "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
@@ -62,7 +64,7 @@ template_rule(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "2",
-        "@DNNL_VERSION_MINOR@": "1",
+        "@DNNL_VERSION_MINOR@": "2",
         "@DNNL_VERSION_PATCH@": "0",
         "@DNNL_VERSION_HASH@": "N/A",
     },
@@ -81,6 +83,7 @@ _INCLUDES_LIST = [
     "include",
     "src",
     "src/common",
+    "src/common/ittnotify",
     "src/cpu",
     "src/cpu/gemm",
     "src/cpu/x64/xbyak",
@@ -89,9 +92,10 @@ _INCLUDES_LIST = [
 _TEXTUAL_HDRS_LIST = glob([
     "include/**/*",
     "src/common/*.hpp",
+    "src/common/ittnotify/**/*.h",
     "src/cpu/*.hpp",
     "src/cpu/**/*.hpp",
-    "src/cpu/x64/jit_utils/jitprofiling/*.h",
+    "src/cpu/jit_utils/**/*.hpp",
     "src/cpu/x64/xbyak/*.h",
 ]) + [
     ":dnnl_config_h",
@@ -120,7 +124,8 @@ cc_library(
             "src/common/*.cpp",
             "src/cpu/*.cpp",
             "src/cpu/**/*.cpp",
-            "src/cpu/x64/jit_utils/jitprofiling/*.c",
+            "src/common/ittnotify/*.c",
+            "src/cpu/jit_utils/**/*.cpp",
         ],
         exclude = [
             "src/cpu/aarch64/**",
@@ -129,43 +134,17 @@ cc_library(
     ),
     copts = _COPTS_LIST,
     includes = _INCLUDES_LIST,
+    # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
+    linkopts = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": ["-lrt"],
+        "@org_tensorflow//tensorflow:linux_x86_64": ["-lrt"],
+        "@org_tensorflow//tensorflow:linux_ppc64le": ["-lrt"],
+        "//conditions:default": [],
+    }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
     deps = [":onednn_autogen"] + if_mkl_ml(
         ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
         [],
     ),
-)
-
-cc_library(
-    name = "mkl_dnn_aarch64",
-    srcs = glob([
-        "src/common/*.cpp",
-        "src/common/*.hpp",
-        "src/cpu/*.cpp",
-        "src/cpu/*.hpp",
-        "src/cpu/rnn/*.cpp",
-        "src/cpu/rnn/*.hpp",
-        "src/cpu/matmul/*.cpp",
-        "src/cpu/matmul/*.hpp",
-        "src/cpu/gemm/**/*",
-    ]) + [
-        ":dnnl_config_h",
-        ":dnnl_version_h",
-    ],
-    hdrs = glob(["include/*"]),
-    copts = [
-        "-fexceptions",
-        "-UUSE_MKL",
-        "-UUSE_CBLAS",
-    ],
-    includes = [
-        "include",
-        "src",
-        "src/common",
-        "src/cpu",
-        "src/cpu/gemm",
-    ],
-    linkopts = ["-lgomp"],
-    visibility = ["//visibility:public"],
 )

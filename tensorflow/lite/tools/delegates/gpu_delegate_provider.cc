@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
@@ -42,6 +43,8 @@ class GpuDelegateProvider : public DelegateProvider {
                              ToolParam::Create<bool>(true));
 #endif
 #if TFLITE_SUPPORTS_GPU_DELEGATE
+    default_params_.AddParam("gpu_inference_for_sustained_speed",
+                             ToolParam::Create<bool>(false));
     default_params_.AddParam("gpu_backend", ToolParam::Create<std::string>(""));
 #endif
 #if defined(REAL_IPHONE_DEVICE)
@@ -55,6 +58,8 @@ class GpuDelegateProvider : public DelegateProvider {
   void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
 
   std::string GetName() const final { return "GPU"; }
 };
@@ -72,6 +77,11 @@ std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
                      "models or not. By default, it's enabled."),
 #endif
 #if TFLITE_SUPPORTS_GPU_DELEGATE
+    CreateFlag<bool>("gpu_inference_for_sustained_speed", params,
+                     "Whether to prefer maximizing the throughput. This mode "
+                     "will help when the same delegate will be used repeatedly "
+                     "on multiple inputs. This is supported on non-iOS "
+                     "platforms. By default, it's disabled."),
     CreateFlag<std::string>(
         "gpu_backend", params,
         "Force the GPU delegate to use a particular backend for execution, and "
@@ -97,6 +107,8 @@ void GpuDelegateProvider::LogParams(const ToolParams& params,
                  "Enable running quant models in gpu", verbose);
 #endif
 #if TFLITE_SUPPORTS_GPU_DELEGATE
+  LOG_TOOL_PARAM(params, bool, "gpu_inference_for_sustained_speed",
+                 "Prefer maximizing the throughput in gpu", verbose);
   LOG_TOOL_PARAM(params, std::string, "gpu_backend", "GPU backend", verbose);
 #endif
 #if defined(REAL_IPHONE_DEVICE)
@@ -121,6 +133,10 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     }
     if (params.Get<bool>("gpu_experimental_enable_quant")) {
       gpu_opts.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+    }
+    if (params.Get<bool>("gpu_inference_for_sustained_speed")) {
+      gpu_opts.inference_preference =
+          TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
     }
     std::string gpu_backend = params.Get<std::string>("gpu_backend");
     if (!gpu_backend.empty()) {
@@ -170,5 +186,11 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
   return delegate;
 }
 
+std::pair<TfLiteDelegatePtr, int>
+GpuDelegateProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  return std::make_pair(std::move(ptr), params.GetPosition<bool>("use_gpu"));
+}
 }  // namespace tools
 }  // namespace tflite

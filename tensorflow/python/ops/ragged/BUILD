@@ -3,10 +3,8 @@ load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 #-------------------------------------------------------------------------------
 # RaggedTensor
@@ -1331,6 +1329,21 @@ py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_matmul_op_test",
+    srcs = ["ragged_matmul_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_concat_ops",
+        ":ragged_math_ops",
+        ":ragged_tensor",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

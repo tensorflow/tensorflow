@@ -18,8 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 
-from tensorflow.python.data.experimental.ops import map_defun
 from tensorflow.python.data.benchmarks import benchmark_base
+from tensorflow.python.data.experimental.ops import map_defun
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
@@ -31,7 +31,7 @@ from tensorflow.python.ops import math_ops
 class MapDefunBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for MapDefunOp."""
 
-  def _run(self, op, name=None, num_iters=3000):
+  def _run(self, op, name, num_iters, benchmark_id):
 
     wall_time = self.run_op_benchmark(op=op, iters=num_iters, warmup=True)
     zero_division_delta = 1e-100
@@ -40,7 +40,11 @@ class MapDefunBenchmark(benchmark_base.DatasetBenchmarkBase):
         name=name,
         iters=num_iters,
         wall_time=wall_time,
-        extras={"examples_per_sec": 1 / float(wall_time)})
+        extras={
+            "examples_per_sec": 1 / float(wall_time),
+            "model_name": "map_defun.benchmark.%d" % benchmark_id,
+            "parameters": "%d" % num_iters,
+        })
 
   def benchmark_defun_vs_map_fn(self):
     """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""
@@ -61,11 +65,13 @@ class MapDefunBenchmark(benchmark_base.DatasetBenchmarkBase):
       self._run(
           op=map_defun_op,
           name="with_defun_size_%d" % input_size,
-          num_iters=num_iters)
+          num_iters=num_iters,
+          benchmark_id=1)
       self._run(
           op=map_fn_op,
           name="without_defun_size_%d" % input_size,
-          num_iters=num_iters)
+          num_iters=num_iters,
+          benchmark_id=2)
 
 
 if __name__ == "__main__":

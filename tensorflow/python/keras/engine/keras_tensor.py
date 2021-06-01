@@ -14,10 +14,6 @@
 # ==============================================================================
 """Keras Input Tensor used to track functional API Topology."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -466,6 +462,10 @@ class RaggedKerasTensor(KerasTensor):
   def ragged_rank(self):
     return self.type_spec.ragged_rank
 
+# Overload slicing
+RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__getitem__')  # pylint: disable=protected-access
+
+# Overload math ops
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__add__')  # pylint: disable=protected-access
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__radd__')  # pylint: disable=protected-access
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__mul__')  # pylint: disable=protected-access
@@ -549,8 +549,6 @@ class _KerasTensorIterator(object):
     result = self._tensor[self._index]
     self._index += 1
     return result
-
-  next = __next__  # python2.x compatibility.
 
 
 # Specify the mappings of tensor class to KerasTensor class.

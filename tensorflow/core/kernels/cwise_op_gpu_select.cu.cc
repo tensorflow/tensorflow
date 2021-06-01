@@ -23,6 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 template <typename T, int NDIMS>
 struct BCastSelectFunctor<GPUDevice, T, NDIMS> {
   void operator()(const GPUDevice& d,
@@ -38,6 +39,7 @@ struct BCastSelectFunctor<GPUDevice, T, NDIMS> {
                                           else_tensor.broadcast(else_bcast));
   }
 };
+#endif
 
 template <typename T>
 struct SelectFunctor<GPUDevice, T> {
@@ -105,10 +107,12 @@ struct BatchSelectFunctor<GPUDevice, T> {
   }
 };
 
-#define SELECT_FUNCTOR(T)                              \
-  template struct SelectFunctor<GPUDevice, T>;         \
-  template struct SelectScalarFunctor<GPUDevice, T>;   \
-  template struct BatchSelectFunctor<GPUDevice, T>;    \
+#define SELECT_FUNCTOR(T)                            \
+  template struct SelectFunctor<GPUDevice, T>;       \
+  template struct SelectScalarFunctor<GPUDevice, T>; \
+  template struct BatchSelectFunctor<GPUDevice, T>;
+
+#define SELECT_AND_BCAST_SELECT_FUNCTOR(T)             \
   template struct BCastSelectFunctor<GPUDevice, T, 1>; \
   template struct BCastSelectFunctor<GPUDevice, T, 2>; \
   template struct BCastSelectFunctor<GPUDevice, T, 3>; \
@@ -116,8 +120,10 @@ struct BatchSelectFunctor<GPUDevice, T> {
   template struct BCastSelectFunctor<GPUDevice, T, 5>; \
   template struct BCastSelectFunctor<GPUDevice, T, 6>; \
   template struct BCastSelectFunctor<GPUDevice, T, 7>; \
-  template struct BCastSelectFunctor<GPUDevice, T, 8>;
+  template struct BCastSelectFunctor<GPUDevice, T, 8>; \
+  SELECT_FUNCTOR(T)
 
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 SELECT_FUNCTOR(bool);
 SELECT_FUNCTOR(Eigen::half);
 SELECT_FUNCTOR(float);
@@ -126,6 +132,16 @@ SELECT_FUNCTOR(int32);
 SELECT_FUNCTOR(int64);
 SELECT_FUNCTOR(complex64);
 SELECT_FUNCTOR(complex128);
+#else
+SELECT_AND_BCAST_SELECT_FUNCTOR(bool);
+SELECT_AND_BCAST_SELECT_FUNCTOR(Eigen::half);
+SELECT_AND_BCAST_SELECT_FUNCTOR(float);
+SELECT_AND_BCAST_SELECT_FUNCTOR(double);
+SELECT_AND_BCAST_SELECT_FUNCTOR(int32);
+SELECT_AND_BCAST_SELECT_FUNCTOR(int64);
+SELECT_AND_BCAST_SELECT_FUNCTOR(complex64);
+SELECT_AND_BCAST_SELECT_FUNCTOR(complex128);
+#endif
 
 #undef SELECT_FUNCTOR
 

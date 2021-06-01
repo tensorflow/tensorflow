@@ -13,11 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for stateful tf.keras LSTM models using DistributionStrategy."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations

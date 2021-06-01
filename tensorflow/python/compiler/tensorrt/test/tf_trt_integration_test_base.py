@@ -121,7 +121,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   @property
   def trt_incompatible_op(self):
-    return math_ops.erf
+    return math_ops.erfc
 
   @property
   def precision_modes(self):
@@ -503,6 +503,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     converter.save(trt_saved_model_dir)
     return trt_saved_model_dir
 
+  def _ShouldConverterBuild(self, run_params):
+    return True
+
   def _GetInferGraph(self, run_params, saved_model_dir):
     """Return trt converted graphdef."""
     conversion_params = self.GetConversionParams(run_params)
@@ -512,7 +515,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                       conversion_params)
     converter.convert()
 
-    if not self._use_implicit_batch:
+    if not self._use_implicit_batch and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")
 
       def _BuildInputFn():

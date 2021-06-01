@@ -59,7 +59,7 @@ namespace {
 
 void PopulateComplexLoweringPatterns(MLIRContext* context,
                                      OwningRewritePatternList* patterns) {
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
 }
 }  // end namespace mhlo
 }  // end namespace mlir
@@ -67,7 +67,7 @@ void PopulateComplexLoweringPatterns(MLIRContext* context,
 // Lowers the complex operations that can be represented using other operations.
 void LowerComplexPass::runOnFunction() {
   // Add lowering patterns to the list.
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
   (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));

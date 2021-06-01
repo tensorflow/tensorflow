@@ -130,7 +130,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'data_format\'], varargs=None, keywords=kwargs, defaults=[\'channels_last\'], "
+    argspec: "args=[\'self\', \'data_format\', \'keepdims\'], varargs=None, keywords=kwargs, defaults=[\'channels_last\', \'False\'], "
   }
   member_method {
     name: "add_loss"
@@ -178,6 +178,10 @@ tf_class {
   }
   member_method {
     name: "count_params"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "finalize_state"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

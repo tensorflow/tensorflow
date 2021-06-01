@@ -20,12 +20,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/logging.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/gpu/xla_executor_state.h"
+#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 namespace xla {
 namespace gpu {
 
-OutfeedManager* GetOrCreateOutfeedManager() {
-  static auto* manager = new OutfeedManager;
-  return manager;
+OutfeedManager *GetOrCreateOutfeedManager(se::StreamExecutor *executor) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  stream_executor::gpu::GpuExecutor *gpu_executor =
+      stream_executor::gpu::ExtractGpuExecutor(executor);
+  auto *xla_state =
+      gpu_executor->getOrCreateXLAState<GpuExecutorXLAState>(executor);
+  return xla_state->getOrCreateOutfeedManager(executor);
+#else   // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return nullptr;
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 }  // namespace gpu

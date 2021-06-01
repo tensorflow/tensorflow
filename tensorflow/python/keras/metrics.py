@@ -12,22 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=unused-import
 # pylint: disable=g-classes-have-attributes
 # pylint: disable=g-doc-return-or-yield
-"""Built-in metrics.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Built-in metrics."""
 
 import abc
-import math
 import types
 import warnings
 
 import numpy as np
-import six
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
@@ -38,9 +31,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import activations
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import keras_tensor
@@ -61,7 +53,6 @@ from tensorflow.python.keras.saving.saved_model import metric_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
-from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -69,13 +60,11 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -83,8 +72,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.metrics.Metric')
-@six.add_metaclass(abc.ABCMeta)
-class Metric(base_layer.Layer):
+class Metric(base_layer.Layer, metaclass=abc.ABCMeta):
   """Encapsulates metric logic and state.
 
   Args:
@@ -163,7 +151,8 @@ class Metric(base_layer.Layer):
     if not base_layer_utils.v2_dtype_behavior_enabled():
       # We only do this when the V2 behavior is not enabled, as when it is
       # enabled, the dtype already defaults to floatx.
-      self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
+      self._dtype = (backend.floatx() if dtype is None
+                     else dtypes.as_dtype(dtype).name)
 
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
@@ -262,7 +251,7 @@ class Metric(base_layer.Layer):
                     'consistency.' % (self.__class__.__name__,))
       return self.reset_states()
     else:
-      K.batch_set_value([(v, 0) for v in self.variables])
+      backend.batch_set_value([(v, 0) for v in self.variables])
 
   @abc.abstractmethod
   def update_state(self, *args, **kwargs):
@@ -295,13 +284,14 @@ class Metric(base_layer.Layer):
 
   ### For use by subclasses ###
   @doc_controls.for_subclass_implementers
-  def add_weight(self,
-                 name,
-                 shape=(),
-                 aggregation=tf_variables.VariableAggregation.SUM,
-                 synchronization=tf_variables.VariableSynchronization.ON_READ,
-                 initializer=None,
-                 dtype=None):
+  def add_weight(
+      self,
+      name,
+      shape=(),
+      aggregation=variables_module.VariableAggregation.SUM,
+      synchronization=variables_module.VariableSynchronization.ON_READ,
+      initializer=None,
+      dtype=None):
     """Adds state variable. Only for use by subclasses."""
     if distribute_ctx.has_strategy():
       strategy = distribute_ctx.get_strategy()
@@ -309,8 +299,8 @@ class Metric(base_layer.Layer):
       strategy = None
 
     # TODO(b/120571621): Make `ON_READ` work with Keras metrics on TPU.
-    if K.is_tpu_strategy(strategy):
-      synchronization = tf_variables.VariableSynchronization.ON_WRITE
+    if backend.is_tpu_strategy(strategy):
+      synchronization = variables_module.VariableSynchronization.ON_WRITE
 
     with ops.init_scope():
       return super(Metric, self).add_weight(
@@ -394,7 +384,15 @@ class Reduce(Metric):
     [values], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [values], sample_weight)
-    values = math_ops.cast(values, self._dtype)
+    try:
+      values = math_ops.cast(values, self._dtype)
+    except (ValueError, TypeError):
+      msg = ('The output of a metric function can only be a single Tensor. '
+             'Got: %s' % (values,))
+      if isinstance(values, dict):
+        msg += ('. To return a dict of values, implement a custom Metric '
+                'subclass.')
+      raise RuntimeError(msg)
     if sample_weight is not None:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
       # Update dimensions of weights to match with values if possible.
@@ -406,8 +404,8 @@ class Reduce(Metric):
             sample_weight, values)
       except ValueError:
         # Reduce values to same ndim as weight array
-        ndim = K.ndim(values)
-        weight_ndim = K.ndim(sample_weight)
+        ndim = backend.ndim(values)
+        weight_ndim = backend.ndim(sample_weight)
         if self.reduction == metrics_utils.Reduction.SUM:
           values = math_ops.reduce_sum(
               values, axis=list(range(weight_ndim, ndim)))
@@ -606,20 +604,37 @@ class MeanRelativeError(Mean):
 
   def get_config(self):
     n = self.normalizer
-    config = {'normalizer': K.eval(n) if is_tensor_or_variable(n) else n}
+    config = {'normalizer': backend.eval(n) if is_tensor_or_variable(n) else n}
     base_config = super(MeanRelativeError, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.metrics.MeanMetricWrapper')
 class MeanMetricWrapper(Mean):
   """Wraps a stateless metric function with the Mean metric.
+
+  You could use this class to quickly build a mean metric from a function. The
+  function needs to have the signature `fn(y_true, y_pred)` and return a
+  per-sample loss array. `MeanMetricWrapper.result()` will return
+  the average metric value across all samples seen so far.
+
+  For example:
+
+  ```python
+  def accuracy(y_true, y_pred):
+    return tf.cast(tf.math.equal(y_true, y_pred), tf.float32)
+
+  accuracy_metric = tf.keras.metrics.MeanMetricWrapper(fn=accuracy)
+
+  keras_model.compile(..., metrics=accuracy_metric)
+  ```
 
   Args:
     fn: The metric function to wrap, with signature `fn(y_true, y_pred,
       **kwargs)`.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
-    **kwargs: The keyword arguments that are passed on to `fn`.
+    **kwargs: Keyword arguments to pass on to `fn`.
   """
 
   def __init__(self, fn, name=None, dtype=None, **kwargs):
@@ -650,9 +665,9 @@ class MeanMetricWrapper(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    [y_true, y_pred], sample_weight = \
+    [y_true, y_pred], sample_weight = (
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
-            [y_true, y_pred], sample_weight)
+            [y_true, y_pred], sample_weight))
     y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
@@ -669,8 +684,8 @@ class MeanMetricWrapper(Mean):
       # and not a subclass.
       config['fn'] = self._fn
 
-    for k, v in six.iteritems(self._fn_kwargs):
-      config[k] = K.eval(v) if is_tensor_or_variable(v) else v
+    for k, v in self._fn_kwargs.items():
+      config[k] = backend.eval(v) if is_tensor_or_variable(v) else v
     base_config = super(MeanMetricWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -975,6 +990,8 @@ class _ConfusionMatrixConditionCount(Metric):
     self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.accumulator = self.add_weight(
         'accumulator',
         shape=(len(self.thresholds),),
@@ -998,6 +1015,7 @@ class _ConfusionMatrixConditionCount(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         sample_weight=sample_weight)
 
   def result(self):
@@ -1009,7 +1027,7 @@ class _ConfusionMatrixConditionCount(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    K.batch_set_value(
+    backend.batch_set_value(
         [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
@@ -1297,6 +1315,8 @@ class Precision(Metric):
     default_threshold = 0.5 if top_k is None else metrics_utils.NEG_INF
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=default_threshold)
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(len(self.thresholds),),
@@ -1328,6 +1348,7 @@ class Precision(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         top_k=self.top_k,
         class_id=self.class_id,
         sample_weight=sample_weight)
@@ -1339,8 +1360,9 @@ class Precision(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    K.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    backend.batch_set_value([(v, np.zeros((num_thresholds,)))
+                             for v in (self.true_positives,
+                                       self.false_positives)])
 
   def get_config(self):
     config = {
@@ -1422,6 +1444,8 @@ class Recall(Metric):
     default_threshold = 0.5 if top_k is None else metrics_utils.NEG_INF
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=default_threshold)
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(len(self.thresholds),),
@@ -1453,6 +1477,7 @@ class Recall(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         top_k=self.top_k,
         class_id=self.class_id,
         sample_weight=sample_weight)
@@ -1464,8 +1489,9 @@ class Recall(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    K.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    backend.batch_set_value([(v, np.zeros((num_thresholds,)))
+                             for v in (self.true_positives,
+                                       self.false_negatives)])
 
   def get_config(self):
     config = {
@@ -1477,8 +1503,7 @@ class Recall(Metric):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@six.add_metaclass(abc.ABCMeta)
-class SensitivitySpecificityBase(Metric):
+class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
   """Abstract base class for computing sensitivity and specificity.
 
   For additional information about specificity and sensitivity, see
@@ -1516,10 +1541,12 @@ class SensitivitySpecificityBase(Metric):
     # Compute `num_thresholds` thresholds in [0, 1]
     if num_thresholds == 1:
       self.thresholds = [0.5]
+      self._thresholds_distributed_evenly = False
     else:
       thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                     for i in range(num_thresholds - 2)]
       self.thresholds = [0.0] + thresholds + [1.0]
+      self._thresholds_distributed_evenly = True
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates confusion matrix statistics.
@@ -1544,13 +1571,17 @@ class SensitivitySpecificityBase(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         class_id=self.class_id,
         sample_weight=sample_weight)
 
   def reset_state(self):
     num_thresholds = len(self.thresholds)
-    K.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    confusion_matrix_variables = (self.true_positives, self.true_negatives,
+                                  self.false_positives, self.false_negatives)
+    backend.batch_set_value([
+        (v, np.zeros((num_thresholds,))) for v in confusion_matrix_variables
+    ])
 
   def get_config(self):
     config = {'class_id': self.class_id}
@@ -1572,13 +1603,11 @@ class SensitivitySpecificityBase(Metric):
 
     Returns maximal dependent value, if no value satiesfies the constraint 0.0.
     """
-    feasible = array_ops.where(predicate(constrained, self.value))
+    feasible = array_ops.where_v2(predicate(constrained, self.value))
     feasible_exists = math_ops.greater(array_ops.size(feasible), 0)
+    max_dependent = math_ops.reduce_max(array_ops.gather(dependent, feasible))
 
-    def get_max():
-      return math_ops.reduce_max(array_ops.gather(dependent, feasible))
-
-    return control_flow_ops.cond(feasible_exists, get_max, lambda: 0.0)
+    return array_ops.where_v2(feasible_exists, max_dependent, 0.0)
 
 
 @keras_export('keras.metrics.SensitivityAtSpecificity')
@@ -2000,7 +2029,7 @@ class AUC(Metric):
       case, when multilabel data is passed to AUC, each label-prediction pair
       is treated as an individual data point. Should be set to False for
       multi-class data.
-    num_labels: (Optional) The number of labels, used when `multi_label' is
+    num_labels: (Optional) The number of labels, used when `multi_label` is
       True. If `num_labels` is not specified, then state variables get created
       on the first call to `update_state`.
     label_weights: (Optional) list, array, or tensor of non-negative weights
@@ -2024,8 +2053,8 @@ class AUC(Metric):
   >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
   >>> # threshold values are [0 - 1e-7, 0.5, 1 + 1e-7]
   >>> # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
-  >>> # recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
-  >>> # auc = ((((1+0.5)/2)*(1-0))+ (((0.5+0)/2)*(0-0))) = 0.75
+  >>> # tp_rate = recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
+  >>> # auc = ((((1+0.5)/2)*(1-0)) + (((0.5+0)/2)*(0-0))) = 0.75
   >>> m.result().numpy()
   0.75
 
@@ -2079,6 +2108,9 @@ class AUC(Metric):
       # If specified, use the supplied thresholds.
       self.num_thresholds = len(thresholds) + 2
       thresholds = sorted(thresholds)
+      self._thresholds_distributed_evenly = (
+          metrics_utils.is_evenly_distributed_thresholds(
+              np.array([0.0] + thresholds + [1.0])))
     else:
       if num_thresholds <= 1:
         raise ValueError('`num_thresholds` must be > 1.')
@@ -2088,11 +2120,12 @@ class AUC(Metric):
       self.num_thresholds = num_thresholds
       thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                     for i in range(num_thresholds - 2)]
+      self._thresholds_distributed_evenly = True
 
     # Add an endpoint "threshold" below zero and above one for either
     # threshold method to account for floating point imprecisions.
-    self._thresholds = np.array([0.0 - K.epsilon()] + thresholds +
-                                [1.0 + K.epsilon()])
+    self._thresholds = np.array([0.0 - backend.epsilon()] + thresholds +
+                                [1.0 + backend.epsilon()])
 
     if isinstance(curve, metrics_utils.AUCCurve):
       self.curve = curve
@@ -2176,7 +2209,7 @@ class AUC(Metric):
         # should be initialized outside of any tf.functions, and therefore in
         # eager mode.
         if not context.executing_eagerly():
-          K._initialize_variables(K._get_session())  # pylint: disable=protected-access
+          backend._initialize_variables(backend._get_session())  # pylint: disable=protected-access
 
     self._built = True
 
@@ -2240,6 +2273,7 @@ class AUC(Metric):
           y_true,
           y_pred,
           self._thresholds,
+          thresholds_distributed_evenly=self._thresholds_distributed_evenly,
           sample_weight=sample_weight,
           multi_label=self.multi_label,
           label_weights=label_weights)
@@ -2378,17 +2412,20 @@ class AUC(Metric):
           name=self.name)
 
   def reset_state(self):
-    if self.multi_label:
-      K.batch_set_value([(v, np.zeros((self.num_thresholds, self._num_labels)))
-                         for v in self.variables])
-    else:
-      K.batch_set_value([
-          (v, np.zeros((self.num_thresholds,))) for v in self.variables
-      ])
+    if self._built:
+      confusion_matrix_variables = (self.true_positives, self.true_negatives,
+                                    self.false_positives, self.false_negatives)
+      if self.multi_label:
+        backend.batch_set_value(
+            [(v, np.zeros((self.num_thresholds, self._num_labels)))
+             for v in confusion_matrix_variables])
+      else:
+        backend.batch_set_value([(v, np.zeros((self.num_thresholds,)))
+                                 for v in confusion_matrix_variables])
 
   def get_config(self):
     if is_tensor_or_variable(self.label_weights):
-      label_weights = K.eval(self.label_weights)
+      label_weights = backend.eval(self.label_weights)
     else:
       label_weights = self.label_weights
     config = {
@@ -2425,8 +2462,8 @@ class CosineSimilarity(MeanMetricWrapper):
 
   Standalone usage:
 
-  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
-  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
+  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414, 1./1.414]]
+  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414, 1./1.414]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
   >>> # result = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
   >>> #        = ((0. + 0.) +  (0.5 + 0.5)) / 2
@@ -2994,7 +3031,8 @@ class MeanIoU(Metric):
         math_ops.reduce_sum(iou, name='mean_iou'), num_valid_entries)
 
   def reset_state(self):
-    K.set_value(self.total_cm, np.zeros((self.num_classes, self.num_classes)))
+    backend.set_value(
+        self.total_cm, np.zeros((self.num_classes, self.num_classes)))
 
   def get_config(self):
     config = {'num_classes': self.num_classes}
@@ -3058,7 +3096,7 @@ class MeanTensor(Metric):
         'count', shape=shape, initializer=init_ops.zeros_initializer)
     with ops.init_scope():
       if not context.executing_eagerly():
-        K._initialize_variables(K._get_session())  # pylint: disable=protected-access
+        backend._initialize_variables(backend._get_session())  # pylint: disable=protected-access
     self._built = True
 
   @property
@@ -3100,8 +3138,8 @@ class MeanTensor(Metric):
             sample_weight, values)
       except ValueError:
         # Reduce values to same ndim as weight array
-        ndim = K.ndim(values)
-        weight_ndim = K.ndim(sample_weight)
+        ndim = backend.ndim(values)
+        weight_ndim = backend.ndim(sample_weight)
         values = math_ops.reduce_mean(
             values, axis=list(range(weight_ndim, ndim)))
 
@@ -3122,7 +3160,7 @@ class MeanTensor(Metric):
 
   def reset_state(self):
     if self._built:
-      K.batch_set_value(
+      backend.batch_set_value(
           [(v, np.zeros(self._shape.as_list())) for v in self.variables])
 
 
@@ -3366,8 +3404,8 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
 
   def get_config(self):
     config = {}
-    for k, v in six.iteritems(self._fn_kwargs):
-      config[k] = K.eval(v) if is_tensor_or_variable(v) else v
+    for k, v in self._fn_kwargs.items():
+      config[k] = backend.eval(v) if is_tensor_or_variable(v) else v
     base_config = super(SumOverBatchSizeMetricWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -3376,10 +3414,10 @@ def accuracy(y_true, y_pred):
   [y_pred, y_true], _ = \
       metrics_utils.ragged_assert_compatible_and_get_flat_values(
           [y_pred, y_true])
-  y_pred.shape.assert_is_compatible_with(y_true.shape)
+  y_true.shape.assert_is_compatible_with(y_pred.shape)
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
-  return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
+  return math_ops.cast(math_ops.equal(y_true, y_pred), backend.floatx())
 
 
 @keras_export('keras.metrics.binary_accuracy')
@@ -3407,7 +3445,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   threshold = math_ops.cast(threshold, y_pred.dtype)
   y_pred = math_ops.cast(y_pred > threshold, y_pred.dtype)
-  return K.mean(math_ops.equal(y_true, y_pred), axis=-1)
+  return backend.mean(math_ops.equal(y_true, y_pred), axis=-1)
 
 
 @keras_export('keras.metrics.categorical_accuracy')
@@ -3436,7 +3474,7 @@ def categorical_accuracy(y_true, y_pred):
   return math_ops.cast(
       math_ops.equal(
           math_ops.argmax(y_true, axis=-1), math_ops.argmax(y_pred, axis=-1)),
-      K.floatx())
+      backend.floatx())
 
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
@@ -3468,16 +3506,16 @@ def sparse_categorical_accuracy(y_true, y_pred):
   y_true_rank = y_true.shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
-      K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+      backend.int_shape(y_true)) == len(backend.int_shape(y_pred))):
     y_true = array_ops.squeeze(y_true, [-1])
   y_pred = math_ops.argmax(y_pred, axis=-1)
 
   # If the predicted output and actual output types don't match, force cast them
   # to match.
-  if K.dtype(y_pred) != K.dtype(y_true):
-    y_pred = math_ops.cast(y_pred, K.dtype(y_true))
+  if backend.dtype(y_pred) != backend.dtype(y_true):
+    y_pred = math_ops.cast(y_pred, backend.dtype(y_true))
 
-  return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
+  return math_ops.cast(math_ops.equal(y_true, y_pred), backend.floatx())
 
 
 @keras_export('keras.metrics.top_k_categorical_accuracy')
@@ -3503,7 +3541,8 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
     Top K categorical accuracy value.
   """
   return math_ops.cast(
-      nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), K.floatx())
+      nn.in_top_k(
+          y_pred, math_ops.argmax(y_true, axis=-1), k), backend.floatx())
 
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
@@ -3539,7 +3578,7 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
       y_true = array_ops.reshape(y_true, [-1])
 
   return math_ops.cast(
-      nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), K.floatx())
+      nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), backend.floatx())
 
 
 def cosine_proximity(y_true, y_pred, axis=-1):
@@ -3626,7 +3665,7 @@ def get(identifier):
   <class 'function'>
   >>> metric = tf.keras.metrics.get("CategoricalCrossentropy")
   >>> type(metric)
-  <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
+  <class '...keras.metrics.CategoricalCrossentropy'>
 
   You can also specify `config` of the metric to this function by passing dict
   containing `class_name` and `config` as an identifier. Also note that the
@@ -3636,7 +3675,7 @@ def get(identifier):
   ...               "config": {"from_logits": True}}
   >>> metric = tf.keras.metrics.get(identifier)
   >>> type(metric)
-  <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
+  <class '...keras.metrics.CategoricalCrossentropy'>
 
   Args:
     identifier: A metric identifier. One of None or string name of a metric
@@ -3651,7 +3690,7 @@ def get(identifier):
   """
   if isinstance(identifier, dict):
     return deserialize(identifier)
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     return deserialize(str(identifier))
   elif callable(identifier):
     return identifier

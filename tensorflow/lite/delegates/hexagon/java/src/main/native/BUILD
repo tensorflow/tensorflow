@@ -2,11 +2,11 @@
 # Java Native Interface (JNI) library intended for implementing the
 # TensorFlow Lite Hexagon delegate Java API using the TensorFlow Lite CC library.
 
-package(default_visibility = ["//tensorflow/lite/delegates/hexagon/java:__subpackages__"])
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
-licenses(["notice"])  # Apache 2.0
+package(default_visibility = ["//tensorflow/lite/delegates/hexagon/java:__subpackages__"])
+
+licenses(["notice"])
 
 cc_library(
     name = "native",

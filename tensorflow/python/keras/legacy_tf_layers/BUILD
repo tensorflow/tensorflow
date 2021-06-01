@@ -9,7 +9,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -71,7 +71,7 @@ py_library(
         ":layers_base",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/keras/layers:normalization",
+        "//tensorflow/python/keras/layers/normalization",
     ],
 )
 

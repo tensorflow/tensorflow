@@ -104,6 +104,7 @@ DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
 
 Status DeviceFactory::ListAllPhysicalDevices(std::vector<string>* devices) {
   // CPU first. A CPU device is required.
+  // TODO(b/183974121): Consider merge the logic into the loop below.
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
     return errors::NotFound(
@@ -128,6 +129,18 @@ Status DeviceFactory::ListAllPhysicalDevices(std::vector<string>* devices) {
   return Status::OK();
 }
 
+Status DeviceFactory::ListPluggablePhysicalDevices(
+    std::vector<string>* devices) {
+  tf_shared_lock l(*get_device_factory_lock());
+  for (auto& p : device_factories()) {
+    if (p.second.is_pluggable_device) {
+      auto factory = p.second.factory.get();
+      TF_RETURN_IF_ERROR(factory->ListPhysicalDevices(devices));
+    }
+  }
+  return Status::OK();
+}
+
 Status DeviceFactory::GetAnyDeviceDetails(
     int device_index, std::unordered_map<string, string>* details) {
   if (device_index < 0) {
@@ -143,6 +156,7 @@ Status DeviceFactory::GetAnyDeviceDetails(
         "CPU Factory not registered. Did you link in threadpool_device?");
   }
 
+  // TODO(b/183974121): Consider merge the logic into the loop below.
   std::vector<string> devices;
   TF_RETURN_IF_ERROR(cpu_factory->ListPhysicalDevices(&devices));
   if (device_index < devices.size()) {
@@ -170,10 +184,9 @@ Status DeviceFactory::GetAnyDeviceDetails(
                                  orig_device_index);
 }
 
-Status DeviceFactory::AddDevices(
+Status DeviceFactory::AddCpuDevices(
     const SessionOptions& options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
-  // CPU first. A CPU device is required.
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
     return errors::NotFound(
@@ -185,6 +198,17 @@ Status DeviceFactory::AddDevices(
     return errors::NotFound("No CPU devices are available in this process");
   }
 
+  return Status::OK();
+}
+
+Status DeviceFactory::AddDevices(
+    const SessionOptions& options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
+  // CPU first. A CPU device is required.
+  // TODO(b/183974121): Consider merge the logic into the loop below.
+  TF_RETURN_IF_ERROR(AddCpuDevices(options, name_prefix, devices));
+
+  auto cpu_factory = GetFactory("CPU");
   // Then the rest (including GPU).
   mutex_lock l(*get_device_factory_lock());
   for (auto& p : device_factories()) {

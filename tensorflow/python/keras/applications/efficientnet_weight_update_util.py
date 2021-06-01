@@ -34,12 +34,7 @@ python efficientnet_weight_update_util.py --model b0 --notop \
 # to update weight with top layers, saving to efficientnetb3_new.h5
 python efficientnet_weight_update_util.py --model b3 --notop \
     --ckpt noisy_student_efficientnet-b3/model.ckpt --o efficientnetb3_new.h5
-
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import argparse
 import warnings

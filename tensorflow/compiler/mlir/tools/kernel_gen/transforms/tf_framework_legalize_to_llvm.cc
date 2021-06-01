@@ -382,7 +382,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
 }  // namespace
 
 void PopulateTFFrameworkToLLVMConversionPatterns(
-    LLVMTypeConverter *converter, OwningRewritePatternList *patterns) {
+    LLVMTypeConverter *converter, RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
       NullContextOpConverter,

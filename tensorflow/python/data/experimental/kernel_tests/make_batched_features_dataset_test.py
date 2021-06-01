@@ -38,54 +38,55 @@ from tensorflow.python.platform import test
 class MakeBatchedFeaturesDatasetTest(tf_record_test_base.FeaturesTestBase,
                                      parameterized.TestCase):
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRead(self):
-    for batch_size in [1, 2]:
-      for num_epochs in [1, 10]:
-        # Basic test: read from file 0.
-        self.outputs = self.getNext(
-            self.make_batch_feature(
-                filenames=self._filenames[0],
-                label_key="label",
-                num_epochs=num_epochs,
-                batch_size=batch_size))
-        self._verify_records(
-            batch_size, 0, num_epochs=num_epochs, label_key_provided=True)
-        with self.assertRaises(errors.OutOfRangeError):
-          self._next_actual_batch(label_key_provided=True)
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(batch_size=[1, 2], num_epochs=[1, 10]),
+          test_base.default_test_combinations()))
+  def testRead(self, batch_size, num_epochs):
+    # Basic test: read from file 0.
+    self.outputs = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames[0],
+            label_key="label",
+            num_epochs=num_epochs,
+            batch_size=batch_size))
+    self._verify_records(
+        batch_size, 0, num_epochs=num_epochs, label_key_provided=True)
+    with self.assertRaises(errors.OutOfRangeError):
+      self._next_actual_batch(label_key_provided=True)
 
-          # Basic test: read from file 1.
-        self.outputs = self.getNext(
-            self.make_batch_feature(
-                filenames=self._filenames[1],
-                label_key="label",
-                num_epochs=num_epochs,
-                batch_size=batch_size))
-        self._verify_records(
-            batch_size, 1, num_epochs=num_epochs, label_key_provided=True)
-        with self.assertRaises(errors.OutOfRangeError):
-          self._next_actual_batch(label_key_provided=True)
+      # Basic test: read from file 1.
+    self.outputs = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames[1],
+            label_key="label",
+            num_epochs=num_epochs,
+            batch_size=batch_size))
+    self._verify_records(
+        batch_size, 1, num_epochs=num_epochs, label_key_provided=True)
+    with self.assertRaises(errors.OutOfRangeError):
+      self._next_actual_batch(label_key_provided=True)
 
-        # Basic test: read from both files.
-        self.outputs = self.getNext(
-            self.make_batch_feature(
-                filenames=self._filenames,
-                label_key="label",
-                num_epochs=num_epochs,
-                batch_size=batch_size))
-        self._verify_records(
-            batch_size, num_epochs=num_epochs, label_key_provided=True)
-        with self.assertRaises(errors.OutOfRangeError):
-          self._next_actual_batch(label_key_provided=True)
-        # Basic test: read from both files.
-        self.outputs = self.getNext(
-            self.make_batch_feature(
-                filenames=self._filenames,
-                num_epochs=num_epochs,
-                batch_size=batch_size))
-        self._verify_records(batch_size, num_epochs=num_epochs)
-        with self.assertRaises(errors.OutOfRangeError):
-          self._next_actual_batch()
+    # Basic test: read from both files.
+    self.outputs = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames,
+            label_key="label",
+            num_epochs=num_epochs,
+            batch_size=batch_size))
+    self._verify_records(
+        batch_size, num_epochs=num_epochs, label_key_provided=True)
+    with self.assertRaises(errors.OutOfRangeError):
+      self._next_actual_batch(label_key_provided=True)
+    # Basic test: read from both files.
+    self.outputs = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames,
+            num_epochs=num_epochs,
+            batch_size=batch_size))
+    self._verify_records(batch_size, num_epochs=num_epochs)
+    with self.assertRaises(errors.OutOfRangeError):
+      self._next_actual_batch()
 
   @combinations.generate(test_base.default_test_combinations())
   def testReadWithEquivalentDataset(self):
@@ -106,106 +107,119 @@ class MakeBatchedFeaturesDatasetTest(tf_record_test_base.FeaturesTestBase,
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testReadWithFusedShuffleRepeatDataset(self):
-    num_epochs = 5
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(batch_size=[1, 2], num_epochs=[5]),
+          test_base.default_test_combinations()))
+  def testReadWithFusedShuffleRepeatDatasetSameSeed(self, batch_size,
+                                                    num_epochs):
     total_records = num_epochs * self._num_records
-    for batch_size in [1, 2]:
-      # Test that shuffling with same seed produces the same result.
-      outputs1 = self.getNext(
-          self.make_batch_feature(
-              filenames=self._filenames[0],
-              num_epochs=num_epochs,
-              batch_size=batch_size,
-              shuffle=True,
-              shuffle_seed=5))
-      outputs2 = self.getNext(
-          self.make_batch_feature(
-              filenames=self._filenames[0],
-              num_epochs=num_epochs,
-              batch_size=batch_size,
-              shuffle=True,
-              shuffle_seed=5))
-      for _ in range(total_records // batch_size):
-        batch1 = self._run_actual_batch(outputs1)
-        batch2 = self._run_actual_batch(outputs2)
-        for i in range(len(batch1)):
-          self.assertAllEqual(batch1[i], batch2[i])
+    # Test that shuffling with same seed produces the same result.
+    outputs1 = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames[0],
+            num_epochs=num_epochs,
+            batch_size=batch_size,
+            shuffle=True,
+            shuffle_seed=5))
+    outputs2 = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames[0],
+            num_epochs=num_epochs,
+            batch_size=batch_size,
+            shuffle=True,
+            shuffle_seed=5))
+    for _ in range(total_records // batch_size):
+      batch1 = self._run_actual_batch(outputs1)
+      batch2 = self._run_actual_batch(outputs2)
+      for i in range(len(batch1)):
+        self.assertAllEqual(batch1[i], batch2[i])
 
-      # Test that shuffling with different seeds produces a different order.
-      outputs1 = self.getNext(
-          self.make_batch_feature(
-              filenames=self._filenames[0],
-              num_epochs=num_epochs,
-              batch_size=batch_size,
-              shuffle=True,
-              shuffle_seed=5))
-      outputs2 = self.getNext(
-          self.make_batch_feature(
-              filenames=self._filenames[0],
-              num_epochs=num_epochs,
-              batch_size=batch_size,
-              shuffle=True,
-              shuffle_seed=15))
-      all_equal = True
-      for _ in range(total_records // batch_size):
-        batch1 = self._run_actual_batch(outputs1)
-        batch2 = self._run_actual_batch(outputs2)
-        for i in range(len(batch1)):
-          all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
-      self.assertFalse(all_equal)
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(batch_size=[1, 2], num_epochs=[5]),
+          test_base.default_test_combinations()))
+  def testReadWithFusedShuffleRepeatDatasetDifferentSeed(
+      self, batch_size, num_epochs):
+    total_records = num_epochs * self._num_records
+    # Test that shuffling with different seeds produces a different order.
+    outputs1 = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames[0],
+            num_epochs=num_epochs,
+            batch_size=batch_size,
+            shuffle=True,
+            shuffle_seed=5))
+    outputs2 = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames[0],
+            num_epochs=num_epochs,
+            batch_size=batch_size,
+            shuffle=True,
+            shuffle_seed=15))
+    all_equal = True
+    for _ in range(total_records // batch_size):
+      batch1 = self._run_actual_batch(outputs1)
+      batch2 = self._run_actual_batch(outputs2)
+      for i in range(len(batch1)):
+        all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
+    self.assertFalse(all_equal)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testParallelReadersAndParsers(self):
-    num_epochs = 5
-    for batch_size in [1, 2]:
-      for reader_num_threads in [2, 4]:
-        for parser_num_threads in [2, 4]:
-          self.outputs = self.getNext(
-              self.make_batch_feature(
-                  filenames=self._filenames,
-                  label_key="label",
-                  num_epochs=num_epochs,
-                  batch_size=batch_size,
-                  reader_num_threads=reader_num_threads,
-                  parser_num_threads=parser_num_threads))
-          self._verify_records(
-              batch_size,
-              num_epochs=num_epochs,
-              label_key_provided=True,
-              interleave_cycle_length=reader_num_threads)
-          with self.assertRaises(errors.OutOfRangeError):
-            self._next_actual_batch(label_key_provided=True)
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(
+              batch_size=[1, 2],
+              num_epochs=[5],
+              reader_num_threads=[2, 4],
+              parser_num_threads=[2, 4]),
+          test_base.default_test_combinations()))
+  def testParallelReadersAndParsers(self, batch_size, num_epochs,
+                                    reader_num_threads, parser_num_threads):
+    self.outputs = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames,
+            label_key="label",
+            num_epochs=num_epochs,
+            batch_size=batch_size,
+            reader_num_threads=reader_num_threads,
+            parser_num_threads=parser_num_threads))
+    self._verify_records(
+        batch_size,
+        num_epochs=num_epochs,
+        label_key_provided=True,
+        interleave_cycle_length=reader_num_threads)
+    with self.assertRaises(errors.OutOfRangeError):
+      self._next_actual_batch(label_key_provided=True)
 
-          self.outputs = self.getNext(
-              self.make_batch_feature(
-                  filenames=self._filenames,
-                  num_epochs=num_epochs,
-                  batch_size=batch_size,
-                  reader_num_threads=reader_num_threads,
-                  parser_num_threads=parser_num_threads))
-          self._verify_records(
-              batch_size,
-              num_epochs=num_epochs,
-              interleave_cycle_length=reader_num_threads)
-          with self.assertRaises(errors.OutOfRangeError):
-            self._next_actual_batch()
+    self.outputs = self.getNext(
+        self.make_batch_feature(
+            filenames=self._filenames,
+            num_epochs=num_epochs,
+            batch_size=batch_size,
+            reader_num_threads=reader_num_threads,
+            parser_num_threads=parser_num_threads))
+    self._verify_records(
+        batch_size,
+        num_epochs=num_epochs,
+        interleave_cycle_length=reader_num_threads)
+    with self.assertRaises(errors.OutOfRangeError):
+      self._next_actual_batch()
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testDropFinalBatch(self):
-    for batch_size in [1, 2]:
-      for num_epochs in [1, 10]:
-        with ops.Graph().as_default():
-          # Basic test: read from file 0.
-          outputs = self.make_batch_feature(
-              filenames=self._filenames[0],
-              label_key="label",
-              num_epochs=num_epochs,
-              batch_size=batch_size,
-              drop_final_batch=True)
-          for tensor in nest.flatten(outputs):
-            if isinstance(tensor, ops.Tensor):  # Guard against SparseTensor.
-              self.assertEqual(tensor.shape[0], batch_size)
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(batch_size=[1, 2], num_epochs=[1, 10]),
+          test_base.default_test_combinations()))
+  def testDropFinalBatch(self, batch_size, num_epochs):
+    # Basic test: read from file 0.
+    outputs = self.make_batch_feature(
+        filenames=self._filenames[0],
+        label_key="label",
+        num_epochs=num_epochs,
+        batch_size=batch_size,
+        drop_final_batch=True)
+    for tensor in nest.flatten(outputs):
+      if isinstance(tensor, ops.Tensor):  # Guard against SparseTensor.
+        self.assertEqual(tensor.shape[0], batch_size)
 
   @combinations.generate(test_base.default_test_combinations())
   def testIndefiniteRepeatShapeInference(self):

@@ -48,6 +48,8 @@ namespace {
 
 constexpr char kElseFuncNameAttr[] = "_else_func_name";
 constexpr char kThenFuncNameAttr[] = "_then_func_name";
+constexpr char kXlaPropagateCompileTimeConsts[] =
+    "_xla_propagate_compile_time_consts";
 
 struct RegionControlFlowToFunctional
     : public TF::RegionControlFlowToFunctionalPassBase<
@@ -95,6 +97,21 @@ llvm::SmallVector<Value, 4> CollectExternValues(Region& first, Region& second) {
   }
 
   return llvm::to_vector<4>(extern_values);
+}
+
+// Copies over optional attributes from source region op `src` to the given
+// functional op `dst` and appropriately overrides any necessary attributes.
+void CopyAndOverrideAttributes(Operation* src, Operation* dst,
+                               OpBuilder* builder) {
+  CopyDeviceAndUnderscoredAttributes(src, dst);
+
+  // Explicitly override attribute to propagate constants to the functions
+  // before compiling to XLA. This is necessary along with conversion to
+  // functional format because inlined regions may have moved loop invariant ops
+  // outside of the region which may cause some new legalization failures.
+  // TODO(b/126739593): Enable this attribute in TensorFlow by default. Also,
+  // see b/185542519 for the context.
+  dst->setAttr(kXlaPropagateCompileTimeConsts, builder->getBoolAttr(true));
 }
 
 // Extracts the contents of a region with a single block into a new function.
@@ -345,7 +362,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
   auto if_op = builder.create<IfOp>(
       if_region.getLoc(), if_region.getResultTypes(), cond, extern_values,
       then_name, else_name, if_region.is_stateless());
-  CopyDeviceAndUnderscoredAttributes(if_region, if_op);
+  CopyAndOverrideAttributes(if_region, if_op, &builder);
+
   if_region.replaceAllUsesWith(if_op.getResults());
   if_region.erase();
 
@@ -425,7 +443,7 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
       while_region.parallel_iterations(), while_region.is_stateless(),
       while_region.shape_invariant());
-  CopyDeviceAndUnderscoredAttributes(while_region, while_op);
+  CopyAndOverrideAttributes(while_region, while_op, &builder);
 
   // Redirect old results to new results.
   for (auto it : llvm::zip(

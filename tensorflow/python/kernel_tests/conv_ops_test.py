@@ -837,8 +837,13 @@ class Conv2DTest(test.TestCase):
   def testConv2DGroupConvFwd(self):
     if test.is_gpu_available(cuda_only=True):
       data_formats = ["NHWC", "NCHW"]
-    else:
+    # TODO(Intel-tf) Remove this check once group conv is implemented in the
+    # oneDNN based conv2d op kernel.
+    elif (not test_util.IsMklEnabled() and
+          os.getenv("TF_ENABLE_ONEDNN_OPTS", "0") == "0"):
       data_formats = ["NHWC"]
+    else:
+      data_formats = []
     for data_format in data_formats:
       for dilation in [1, 2]:
         for stride in [1, 2]:

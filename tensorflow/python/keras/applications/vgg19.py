@@ -19,9 +19,6 @@ Reference:
   - [Very Deep Convolutional Networks for Large-Scale Image Recognition](
       https://arxiv.org/abs/1409.1556) (ICLR 2015)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils

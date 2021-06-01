@@ -47,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -889,30 +890,35 @@ class StrategyIntegrationTest(test.TestCase):
     per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
 
     @contextlib.contextmanager
-    def _assert_raises_usage_error():
-      with self.assertRaisesRegexp(
-          NotImplementedError,
-          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
-          '`reduce` must be used within a function passed to '
-          '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
-          '.'):
+    def _assert_logs_usage_warning():
+      with self.assertLogs(level='WARNING') as logs:
         yield
 
-    with _assert_raises_usage_error():
-      # Invoking `run` without `coordinator.schedule` should error.
-      # Don't pass input_fn args to account for failure to copy created dataset
-      # on GPU.
-      # Failure: "No unary variant device copy function found for direction .."
-      # For the purpose of this test, input args do not affect the assertion
-      # outcome.
-      self.strategy.run(replica_fn)
+      self.assertIn(
+          'It is detected that a function used with '
+          '`tf.distribute.experimental.ParameterServerStrategy` '
+          'is executed locally on the coordinator. This is inefficient but may '
+          'be valid for one-off tasks such as inferring output signature. '
+          'To properly distribute functions to run on workers, `run` or '
+          '`reduce` should be used within a function passed to `'
+          'tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
+          '.',
+          logs.output[0])
+
+    with _assert_logs_usage_warning():
+      # Invoking `run` without `coordinator.schedule` should result in a
+      # warning.
+      self.strategy.run(
+          replica_fn, args=(constant_op.constant(1, dtype=dtypes.int64),))
 
     # A proper `schedule` should succeed.
     rv = self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
 
-    with _assert_raises_usage_error():
-      # Invoking `run` without `coordinator.schedule` again should error.
-      self.strategy.run(replica_fn)
+    with _assert_logs_usage_warning():
+      # Invoking `run` without `coordinator.schedule` again should result in a
+      # warning.
+      self.strategy.run(
+          replica_fn, args=(constant_op.constant(1, dtype=dtypes.int64),))
 
     all_results = [(2, 0)] * self.strategy.num_replicas_in_sync
     expected_result = []
@@ -978,17 +984,13 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertEqual(result.fetch(), expected_result)
 
   def testRunAndReduceWithAssignAdd(self):
-    if self.strategy.num_replicas_in_sync > 1:
-      self.skipTest(
-          'Skipping test since assign_add performed multiple times per replica.'
-          'It should assign_add variable only once.'
-      )
-
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       v = variables.Variable(initial_value=1.)
-      v1 = variables.Variable(initial_value=0.)
+      v1 = variables.Variable(
+          initial_value=0.,
+          aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
 
       expected_result = (4. * self.strategy.num_replicas_in_sync,
                          2. * self.strategy.num_replicas_in_sync)
@@ -1021,6 +1023,32 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertEqual(result.fetch(), expected_result)
     self.assertEqual(v1, 6.)
 
+  def testVariableAggregation(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(
+          initial_value=1.,
+          aggregation=variable_scope.VariableAggregation.SUM)
+
+      @def_function.function
+      def worker_fn():
+
+        def replica_fn():
+          value = math_ops.cast(
+              distribution_strategy_context.get_replica_context()
+              .replica_id_in_sync_group + 1, v.dtype)
+          v.assign(value)
+
+        self.strategy.run(replica_fn)
+
+      self.coordinator.schedule(worker_fn)
+      self.coordinator.join()
+      expected_result = 0.
+      for i in range(self.strategy.num_replicas_in_sync):
+        expected_result = expected_result + i + 1
+      self.assertEqual(v, expected_result)
+
   def testDistributeDataset(self):
 
     def per_worker_dataset_fn():
@@ -1046,8 +1074,13 @@ class StrategyIntegrationTest(test.TestCase):
   def testDistributeDatasetsFromFunction(self):
 
     def per_worker_dataset_fn():
+
+      def input_worker_device_fn(input_context):
+        self.assertIsNotNone(input_context)
+        return dataset_ops.DatasetV2.range(1, 11).batch(1)
+
       return self.strategy.distribute_datasets_from_function(
-          lambda _: dataset_ops.DatasetV2.range(1, 11).batch(1))
+          input_worker_device_fn)
 
     @def_function.function
     def worker_fn(iterator):
@@ -1168,6 +1201,21 @@ class StrategyIntegrationTest(test.TestCase):
         input_lib._create_distributed_tensor_spec(self.strategy,
                                                   dataset.element_spec),
         per_worker_distribute_dataset.element_spec)
+
+  # TODO(rchao): Enable this once PerWorkerValues is made a CompositeTensor.
+  def DISABLED_testPerWorkerDistributedIteratorTypeSpec(self):
+
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    worker_fn.get_concrete_function(iter(distributed_dataset))
 
 
 if __name__ == '__main__':

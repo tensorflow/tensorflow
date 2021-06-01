@@ -88,7 +88,7 @@ struct BatchMatMulToEinsumPass
 };
 
 void BatchMatMulToEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
 
   patterns.insert<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,

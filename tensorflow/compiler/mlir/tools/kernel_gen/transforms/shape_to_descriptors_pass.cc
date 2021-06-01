@@ -58,12 +58,12 @@ struct ShapeToDescriptorsPass
     // Don't mark the primary Cstr/Assuming ops as illegal, so they can be
     // lowered at a later time to assertions.
     target.addLegalOp<shape::AssumingOp, shape::AssumingYieldOp,
-                      shape::CstrRequireOp>();
+                      shape::AssumingAllOp, shape::CstrRequireOp>();
 
     // Setup conversion patterns.
-    OwningRewritePatternList patterns;
-    populateShapeRewritePatterns(&ctx, patterns);
-    populateShapeToStandardConversionPatterns(patterns, &ctx);
+    RewritePatternSet patterns(&getContext());
+    populateShapeRewritePatterns(patterns);
+    populateShapeToStandardConversionPatterns(patterns);
 
     // Apply conversion.
     auto module = getOperation();

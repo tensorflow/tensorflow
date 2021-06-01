@@ -14,9 +14,6 @@
 # ==============================================================================
 """Tests for saving and loading using keras save/load APIs with DS."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations

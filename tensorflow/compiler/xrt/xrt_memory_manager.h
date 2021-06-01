@@ -56,7 +56,8 @@ class XRTMemoryManager : public ResourceBase {
 
     // Looks up the tuple handle within the memory manager, and pins it to the
     // device (if not already pinned).
-    Status LookupAndPin(xla::Backend* backend, int64 handle);
+    Status LookupAndPin(xla::Backend* backend, int64 handle,
+                        se::DeviceMemoryAllocator* allocator);
 
     const std::vector<RefPtr<XRTTupleAllocation>>& PinnedTuples() const {
       return pinned_tuples_;
@@ -95,7 +96,8 @@ class XRTMemoryManager : public ResourceBase {
   // Tries to compact all the memory allocations on a given device. This is
   // currently done by swapping-out all the existing allocation, and swapping
   // them back in.
-  Status CompactAllocations(xla::Backend* backend, int device_ordinal);
+  Status CompactAllocations(xla::Backend* backend, int device_ordinal,
+                            se::DeviceMemoryAllocator* allocator);
 
   // Releases all the device memory allocated by XRT within the resource
   // manager.
@@ -104,9 +106,9 @@ class XRTMemoryManager : public ResourceBase {
   // Tries to allocate size bytes of device memory from the device_ordinal
   // device. Might attempt to free some unpinned device memory, if the underline
   // allocator call fails, and try the allocation again.
-  xla::StatusOr<se::OwningDeviceMemory> Allocate(xla::Backend* backend,
-                                                 int device_ordinal,
-                                                 size_t size);
+  xla::StatusOr<se::OwningDeviceMemory> Allocate(
+      xla::Backend* backend, int device_ordinal, size_t size,
+      se::DeviceMemoryAllocator* allocator);
 
   // Runs the specified function and handling the error::RESOURCE_EXHAUSTED
   // status code coming out of it. In such cases, we run different memory
@@ -116,7 +118,8 @@ class XRTMemoryManager : public ResourceBase {
   template <typename T>
   xla::StatusOr<T> Run(const std::function<xla::StatusOr<T>()>& runfn,
                        xla::Backend* backend, int device_ordinal,
-                       size_t requested_free_size);
+                       size_t requested_free_size,
+                       se::DeviceMemoryAllocator* allocator);
 
   string DebugString() const override;
 
@@ -129,12 +132,16 @@ class XRTMemoryManager : public ResourceBase {
   // initialized and the passed to the TryFreeMemoryStep() API.
   struct MemoryReclaimContext {
     MemoryReclaimContext(xla::Backend* backend, int device_ordinal,
-                         size_t requested_free_size)
+                         size_t requested_free_size,
+                         se::DeviceMemoryAllocator* specific_allocator)
         : backend(backend),
           device_ordinal(device_ordinal),
-          requested_free_size(requested_free_size) {}
+          requested_free_size(requested_free_size) {
+      allocator = specific_allocator;
+    }
 
     xla::Backend* const backend = nullptr;
+    se::DeviceMemoryAllocator* allocator = nullptr;
     const int device_ordinal = 0;
     const size_t requested_free_size = 0;
     size_t free_size = 0;
@@ -157,8 +164,10 @@ class XRTMemoryManager : public ResourceBase {
 template <typename T>
 xla::StatusOr<T> XRTMemoryManager::Run(
     const std::function<xla::StatusOr<T>()>& runfn, xla::Backend* backend,
-    int device_ordinal, size_t requested_free_size) {
-  MemoryReclaimContext mrctx(backend, device_ordinal, requested_free_size);
+    int device_ordinal, size_t requested_free_size,
+    se::DeviceMemoryAllocator* allocator) {
+  MemoryReclaimContext mrctx(backend, device_ordinal, requested_free_size,
+                             allocator);
   while (true) {
     // We assume that runfn is a relatively fast-fail function compared to the
     // operations required to free up the required memory. Here we call into the

@@ -20,18 +20,12 @@ implementations. It is designed be used as base class for other concrete
 classes, type checks, and python3 type hints.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
-import six
 
 # TODO(scottzhu): Export all the types under this module with API symbol.
 
 
-@six.add_metaclass(abc.ABCMeta)
-class Layer(object):
+class Layer(object, metaclass=abc.ABCMeta):
   """This is the class from which all layers inherit.
 
   A layer is a callable object that takes as input one or more tensors and

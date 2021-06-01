@@ -8,6 +8,7 @@ load(
     "stream_executor_friends",
     "tf_additional_cuda_driver_deps",
     "tf_additional_cuda_platform_deps",
+    "tf_additional_cudnn_plugin_copts",
     "tf_additional_cudnn_plugin_deps",
 )
 load(
@@ -25,7 +26,8 @@ load(
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 package_group(
@@ -118,6 +120,7 @@ cc_library(
         ":cuda_diagnostics",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
@@ -381,9 +384,18 @@ alias(
 )
 
 cc_library(
+    name = "cuda_dnn_headers",
+    textual_hdrs = ["cuda_dnn.h"],
+    deps = if_cuda_is_configured([
+        ":cuda_activation_header",
+    ]),
+)
+
+cc_library(
     name = "cudnn_plugin",
     srcs = if_cuda_is_configured(["cuda_dnn.cc"]),
     hdrs = if_cuda_is_configured(["cuda_dnn.h"]),
+    copts = tf_additional_cudnn_plugin_copts(),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_activation",
@@ -400,6 +412,9 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
+        # copybara:comment_begin(OSS only)
+        "@cudnn_frontend_archive//:cudnn_frontend",
+        # copybara:comment_end
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",

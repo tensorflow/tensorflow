@@ -137,6 +137,8 @@ class ApproximateTanhLowering
         loc, CmpFPredicate::ULT, input,
         rewriter.create<ConstantOp>(
             loc, rewriter.getF32FloatAttr(-7.90531110763549805f)));
+    Value input_is_nan =
+        rewriter.create<CmpFOp>(loc, CmpFPredicate::UNE, input, input);
     approx = rewriter.create<SelectOp>(
         loc, too_large_input,
         rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(1.0)),
@@ -145,6 +147,7 @@ class ApproximateTanhLowering
         loc, too_small_input,
         rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(-1.0)),
         approx);
+    approx = rewriter.create<SelectOp>(loc, input_is_nan, input, approx);
 
     return approx;
   }
@@ -155,7 +158,7 @@ struct LegalizeTrigonometricToApproximationPass
                          FunctionPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }

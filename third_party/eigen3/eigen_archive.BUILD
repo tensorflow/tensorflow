@@ -37,7 +37,7 @@ EIGEN_MPL2_HEADER_FILES = glob(
 )
 
 cc_library(
-    name = "eigen",
+    name = "eigen3",
     hdrs = EIGEN_MPL2_HEADER_FILES,
     defines = [
         # This define (mostly) guarantees we don't link any problematic

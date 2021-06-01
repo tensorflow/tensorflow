@@ -27,11 +27,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-class TransformationReporter;
-
 struct TransformationContext {
   GraphFloat32* graph;
-  TransformationReporter* reporter;
 };
 
 enum class TransformStatus {
@@ -86,25 +83,10 @@ class SequenceTransformation {
       const std::vector<Node*>& sequence, GraphFloat32* graph) = 0;
 };
 
-// A class accumulated decisions or updates done by transformations.
-class TransformationReporter {
- public:
-  virtual ~TransformationReporter() = default;
-
-  virtual void DeclinedTransformation(const std::string& transformation,
-                                      const std::string& node_ids,
-                                      const std::string& message) = 0;
-
-  virtual void AppliedTransformation(const std::string& transformation,
-                                     const std::string& node_ids,
-                                     const std::string& message) = 0;
-};
-
-// A class is designed to perform model transformations.
+// Performs model transformations.
 class ModelTransformer {
  public:
-  ModelTransformer(GraphFloat32* graph, TransformationReporter* reporter)
-      : graph_(graph), reporter_(reporter) {}
+  explicit ModelTransformer(GraphFloat32* graph) : graph_(graph) {}
 
   // @return false if a graph is in the broken states can not be used any more
   bool Apply(const std::string& name, SequenceTransformation* transformation);
@@ -124,21 +106,9 @@ class ModelTransformer {
   }
 
   GraphFloat32* graph_;
-  TransformationReporter* reporter_;
 
   std::deque<NodeId> to_process_;
   absl::flat_hash_set<NodeId> processed_;
-};
-
-class NullTransformationReporter : public TransformationReporter {
- public:
-  void DeclinedTransformation(const std::string& transformation,
-                              const std::string& nodes_id,
-                              const std::string& message) override {}
-
-  void AppliedTransformation(const std::string& transformation,
-                             const std::string& nodes_id,
-                             const std::string& message) override {}
 };
 
 }  // namespace gpu

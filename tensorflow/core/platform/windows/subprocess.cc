@@ -271,7 +271,7 @@ bool SubProcess::Start() {
   // Execute the child program.
   bool bSuccess =
       CreateProcessA(nullptr, const_cast<char*>(command_line.c_str()), nullptr,
-                     nullptr, TRUE, 0, nullptr, nullptr, &si,
+                     nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si,
                      reinterpret_cast<PROCESS_INFORMATION*>(win_pi_));
 
   if (bSuccess) {

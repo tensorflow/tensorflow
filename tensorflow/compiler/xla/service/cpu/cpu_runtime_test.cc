@@ -167,7 +167,7 @@ INSTANTIATE_TEST_SUITE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
                                             ::testing::Bool()),
                          EigenMatMulTest::Name);
 
-#ifdef INTEL_MKL
+#ifdef ENABLE_MKL
 class MKLMatMulTest : public CpuRuntimeTest,
                       public ::testing::WithParamInterface<MatMulTestParam> {
  public:
@@ -234,7 +234,7 @@ INSTANTIATE_TEST_CASE_P(MKLMatMulTestInstantiaion, MKLMatMulTest,
                                            ::testing::Bool(), ::testing::Bool(),
                                            ::testing::Bool()),
                         MKLMatMulTest::Name);
-#endif  // INTEL_MKL
+#endif  // ENABLE_MKL
 
 }  // namespace
 }  // namespace xla

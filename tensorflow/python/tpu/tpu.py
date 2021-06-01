@@ -894,7 +894,7 @@ def replicate(
     infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
     device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
     name: Optional[Text] = None,
-    maximum_shapes: Any = None,
+    maximum_shapes: Optional[Any] = None,
     padding_spec: Optional[PaddingSpec] = None,
     xla_options: Optional[XLAOptions] = None) -> List[Any]:
   """Builds a graph operator that runs a replicated TPU computation.
@@ -1175,8 +1175,7 @@ def _flatten_and_filter_composite(maybe_composite, non_composite_output,
   """
 
   if isinstance(maybe_composite, composite_tensor.CompositeTensor):
-    num_components = len(
-        maybe_composite._type_spec._to_components(maybe_composite))  # pylint: disable=protected-access
+    num_components = len(nest.flatten(maybe_composite, expand_composites=True))
     return (composite_output,) * num_components
   return non_composite_output
 
@@ -1188,7 +1187,7 @@ def split_compile_and_replicate(
     device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
     name: Optional[Text] = None,
     use_tpu: bool = True,
-    maximum_shapes: Any = None,
+    maximum_shapes: Optional[Any] = None,
     padding_spec: Optional[PaddingSpec] = None,
     xla_options: Optional[XLAOptions] = None,
 ) -> List[List[core_types.Tensor]]:
@@ -1718,7 +1717,7 @@ def _postprocess_non_flat_outputs(
 
 def split_compile_and_shard(
     computation: Callable[..., Any],
-    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
     num_shards: int = 1,
     input_shard_axes: Optional[List[int]] = None,
     outputs_from_all_shards: Union[bool, List[bool]] = True,
@@ -1961,7 +1960,7 @@ def shard(
 @tf_export(v1=["tpu.batch_parallel"])
 def batch_parallel(
     computation: Callable[..., Any],
-    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
     num_shards: int = 1,
     infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
     device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
@@ -2023,7 +2022,7 @@ def batch_parallel(
 @tf_export(v1=["tpu.rewrite"])
 def rewrite(
     computation: Callable[..., Any],
-    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
     infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
     device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
     name: Optional[Text] = None,

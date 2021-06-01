@@ -26,6 +26,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_ragged_math_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -415,6 +416,12 @@ _RAGGED_REDUCE_MEAN_EXAMPLE = """
     >>> tf.reduce_mean(rt, axis=1).numpy()
     array([2.66666667, 3.  , 9.  , 4.  ])
 """
+_RAGGED_REDUCE_VARIANCE_EXAMPLE = """
+    >>> rt = tf.ragged.constant([[1, 1, 4], [2, 1], [3], [4, 1]],
+    ...                         dtype=tf.float64)
+    >>> tf.math.reduce_variance(rt, axis=1).numpy()
+    array([2., 0.25, 0., 2.25])
+"""
 _RAGGED_REDUCE_ALL_EXAMPLE = """
     >>> rt = tf.ragged.constant([[True, True], [True, True, False, True], [False, True]])
     >>> tf.reduce_all(rt, axis=0).numpy()
@@ -630,6 +637,16 @@ def reduce_mean(input_tensor, axis=None, keepdims=None, name=None):
       return total / count
 
 
+def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
+  """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
+  with ops.name_scope(name, 'RaggedReduceVariance', [input_tensor, axis]):
+    square_of_input = math_ops.square(input_tensor)
+    mean_of_square = reduce_mean(square_of_input, axis=axis, keepdims=keepdims)
+    mean = reduce_mean(input_tensor, axis=axis, keepdims=keepdims)
+    square_of_mean = math_ops.square(mean)
+    return mean_of_square - square_of_mean
+
+
 def _cast(input_tensor, dtype):
   return ragged_functional_ops.map_flat_values(math_ops.cast, input_tensor,
                                                dtype)
@@ -671,8 +688,242 @@ _set_ragged_reduce_docstring(reduce_max, 'maximum', 'maximized',
                              _RAGGED_REDUCE_MAX_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_mean, 'mean', 'averaged', 'NaN',
                              _RAGGED_REDUCE_MEAN_EXAMPLE)
-
+_set_ragged_reduce_docstring(reduce_variance, 'variance', 'averaged', 'NaN',
+                             _RAGGED_REDUCE_VARIANCE_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_all, 'logical and', 'and-ed', 'True',
                              _RAGGED_REDUCE_ALL_EXAMPLE)
 _set_ragged_reduce_docstring(reduce_any, 'logical or', 'or-ed', 'False',
                              _RAGGED_REDUCE_ANY_EXAMPLE)
+
+
+#===============================================================================
+# ragged.matmul
+#===============================================================================
+def matmul(a,
+           b,
+           transpose_a=False,
+           transpose_b=False,
+           adjoint_a=False,
+           adjoint_b=False,
+           a_is_sparse=False,
+           b_is_sparse=False,
+           output_type=None,
+           name=None):
+  """Multiplies matrix `a` by matrix `b`.
+
+  If all transpose or adjoint attributes are `False` then:
+
+  ```
+  output[..., i, j] = sum_k (a[..., i, k] * b[..., k, j]), for all indices i, j.
+  ```
+
+  The inputs `a` and `b` must have `rank >= 2`, where the outermost `rank - 2`
+  dimensions are batch dimensions.  The inputs must have the same dtype.  See
+  `tf.matmul` for more information.
+
+  Args:
+    a: `tf.Tensor` or `RaggedTensor` with `rank > 1`.
+    b: `tf.Tensor` or `RaggedTensor` with same type and rank as `a`.
+    transpose_a: If `True`, `a` is transposed before multiplication.
+    transpose_b: If `True`, `b` is transposed before multiplication.
+    adjoint_a: If `True`, `a` is conjugated & transposed before multiplication.
+    adjoint_b: If `True`, `b` is conjugated & transposed before multiplication.
+    a_is_sparse: If `True`, optimize assuming `a` is mostly zero.
+    b_is_sparse: If `True`, optimize assuming `b` is mostly zero.
+    output_type: The output datatype (optional).
+    name: Name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `RaggedTensor` with the same rank and shape as `a`, where
+    each inner-most matrix is the product of the corresponding matrices in `a`
+    and `b`.
+  """
+  if transpose_a and adjoint_a:
+    raise ValueError('Only one of transpose_a and adjoint_a can be True.')
+  if transpose_b and adjoint_b:
+    raise ValueError('Only one of transpose_b and adjoint_b can be True.')
+
+  kwargs = dict(
+      transpose_a=transpose_a,
+      transpose_b=transpose_b,
+      adjoint_a=adjoint_a,
+      adjoint_b=adjoint_b,
+      a_is_sparse=a_is_sparse,
+      b_is_sparse=b_is_sparse,
+      output_type=output_type)
+
+  with ops.name_scope(name, 'RaggedMatMul', [a, b]) as name:
+    a = ragged_tensor.convert_to_tensor_or_ragged_tensor(a, name='a')
+    b = ragged_tensor.convert_to_tensor_or_ragged_tensor(b, name='b')
+
+    a_is_ragged = isinstance(a, ragged_tensor.RaggedTensor)
+    b_is_ragged = isinstance(b, ragged_tensor.RaggedTensor)
+    if not (a_is_ragged or b_is_ragged):
+      return math_ops.matmul(a, b, **kwargs)
+
+    if a.dtype != b.dtype:
+      raise ValueError('`a` and `b` must have the same dtype.')
+
+    # TODO(edloper): Support broadcasting inputs.  (Broadcast support is not
+    # documented by https://www.tensorflow.org/api_docs/python/tf/linalg/matmul,
+    # but it is supported by the op.)
+
+    # Find the rank of the input tensors.
+    if a.shape.rank is None:
+      if b.shape.rank is None:
+        raise ValueError('matmul requires at least one input to have known '
+                         'rank if either input is ragged.')
+      rank = b.shape.rank
+    else:
+      if b.shape.rank is not None and a.shape.rank != b.shape.rank:
+        raise ValueError('`a` and `b` must have the same rank.')
+      rank = a.shape.rank
+
+    # At least one of `a` and `b` is ragged; and ragged tensors always have
+    # rank>=2.
+    if rank < 2:
+      # This can happen if e.g. `a` is a 1D dense tensor and `b` is a
+      # ragged tensor with unknown rank.  Since ragged tensors always have
+      # `rank>=2`, this implies that `a` and `b` have different ranks.
+      raise ValueError('`a` and `b` must have the same rank.')
+
+    # Rank>3: We have multiple batch dimensions.  Merge them into a single
+    # batch dimension, recursively call `matmul`, and then restore the original
+    # batch dimension (using a.row_splits).
+    if rank > 3:
+      shape_err = 'Batch dimensions of `a` and `b` do not have the same size.'
+      if not a_is_ragged:
+        a = ragged_tensor.RaggedTensor.from_tensor(a, ragged_rank=1)
+      if not b_is_ragged:
+        b = ragged_tensor.RaggedTensor.from_tensor(b, ragged_rank=1)
+      with ops.control_dependencies([
+          check_ops.assert_equal(a.row_splits, b.row_splits, message=shape_err)
+      ]):
+        flat_result = matmul(a.values, b.values, **kwargs)
+        return a.with_values(flat_result)
+
+    if rank == 2:
+      return _matmul_2d(a, b, **kwargs)
+
+    assert rank == 3  # I.e., we have a single batch dimension.
+
+    a_ragged_rank = a.ragged_rank if a_is_ragged else 0
+    if a_ragged_rank == 1 and not (b_is_ragged or transpose_a or adjoint_a):
+      # If `a.shape=[B, (I), J]` and `b.shape=[B, J, K], then we can compute
+      # the result with a single dense `matmul`.
+      return _matmul_3d_with_batch_dim_folding(a, b, **kwargs)
+    else:
+      # Otherwie, fall back on using `map_fn`.
+      return _matmul_3d_with_map_fn(a, b, **kwargs)
+
+
+def _matmul_2d(a, b, **kwargs):
+  """Multiplies potentially ragged 2D tensors.
+
+  Args:
+    a: A 2D Tensor or RaggedTensor with `shape=[I, J]`
+    b: A 2D Tensor or RaggedTensor with `shape=[J, K]`
+    **kwargs: Additional arguments for `tf.matmul` (e.g. transpose_a).
+
+  Returns:
+    A 2D Tensor with `shape=[I, K]`.
+  """
+  # multiplying `a` and `b` is only well-defined if `a` and `b` are
+  # actually uniform (and just happened to be stored as ragged tensors).
+  # Check that they're uniform, convert them to tf.Tensor.
+  ragged_err = ('The matrices in `a` and `b` may not be '
+                'ragged in their innermost dimension.')
+  checks = []
+  if isinstance(a, ragged_tensor.RaggedTensor):
+    original_size = array_ops.size(a.flat_values)
+    a = a.to_tensor()
+    checks.append(
+        check_ops.assert_equal(
+            original_size, array_ops.size(a), message=ragged_err))
+  if isinstance(b, ragged_tensor.RaggedTensor):
+    original_size = array_ops.size(b.flat_values)
+    b = b.to_tensor()
+    checks.append(
+        check_ops.assert_equal(
+            original_size, array_ops.size(b), message=ragged_err))
+  with ops.control_dependencies(checks):
+    return math_ops.matmul(a, b, **kwargs)
+
+
+def _matmul_3d_with_map_fn(a, b, **kwargs):
+  """Multiplies batches of 2D matrices using map_fn.
+
+  `output[n, i, k]` = sum_j (a[n, i, j] * b[n, j, k])` (for all `n`, `i`, `k`).
+
+  Requires that `a[n, i].nrows()` == `b[n].nrows()` (for all `n` and `i`).
+
+  Args:
+    a: A 3D Tensor or RaggedTensor with `shape=[B, I, J]`, where dimensions `I`
+      and `J` may be ragged.
+    b: A 3D Tensor or RaggedTensor with `shape=[B, J, K]`, where dimensions
+      `J` and `K` may be ragged.
+    **kwargs: Additional arguments for `tf.matmul` (e.g. transpose_a).
+
+  Returns:
+    A 3D RaggedTensor with `shape=[B, (I), (K)]`.
+  """
+  if isinstance(b, ragged_tensor.RaggedTensor) and b.ragged_rank == 2:
+    output_ragged_rank = 2
+  else:
+    output_ragged_rank = 1
+
+  def single_batch_matmul(x):
+    out = _matmul_2d(x[0], x[1], **kwargs)
+    if output_ragged_rank == 2:
+      out = ragged_tensor.RaggedTensor.from_tensor(out)
+    return out
+
+  fn_out_shape = None  # Figure out proper shape.
+  row_splits_dtype = (
+      a.row_splits.dtype
+      if isinstance(a, ragged_tensor.RaggedTensor) else b.row_splits.dtype)
+  output_type = kwargs['output_type']
+  if output_type is None:
+    output_type = a.dtype
+  spec = ragged_tensor.RaggedTensorSpec(
+      shape=fn_out_shape,
+      dtype=output_type,
+      ragged_rank=output_ragged_rank - 1,
+      row_splits_dtype=row_splits_dtype)
+  result = map_fn.map_fn(
+      single_batch_matmul, elems=(a, b), fn_output_signature=spec)
+
+  # map_fn loses shape information; restore it, where possible.
+  # pylint: disable=protected-access
+  if kwargs.get('transpose_a') or kwargs.get('adjoint_a'):
+    result._set_shape(a.shape[:-2] + a.shape[-1:] + [None])
+  else:
+    result._set_shape(a.shape[:-2] + a.shape[-2:-1] + [None])
+  if kwargs.get('transpose_b') or kwargs.get('adjoint_b'):
+    result._set_shape(b.shape[:-2] + [None] + b.shape[-2:-1])
+  else:
+    result._set_shape(b.shape[:-2] + [None] + b.shape[-1:])
+
+  return result
+
+
+def _matmul_3d_with_batch_dim_folding(a, b, **kwargs):
+  """Multiply batches of 2D matrices where only `a.shape[1]` is ragged.
+
+  Args:
+    a: A RaggedTensor with `shape=[B, (I), J]`.  (ragged_rank must be 1.)
+    b: A Tensor with `shape=[B, J, K]`
+    **kwargs: Additional arguments for `tf.matmul` (e.g. transpose_a).
+      transpose_a and adjoint_a must not be true.
+
+  Returns:
+    A RaggedTensor with `shape=[B, (I), K].
+  """
+  # reshaped_a.shape = [sum(i_1, i_2, ..., i_B), 1, J]
+  reshaped_a = array_ops.expand_dims(a.values, 1)
+  # reshaped_b.shape = [sum(i_1, i_2, ..., i_B), J, K]
+  reshaped_b = array_ops.repeat(b, a.row_lengths(), axis=0)
+  # flat_result.shape = [sum(i_1, i_2, ..., i_B), 1, K]
+  flat_result = math_ops.matmul(reshaped_a, reshaped_b, **kwargs)
+  # result.shape = [B, (I), K]
+  return a.with_values(array_ops.squeeze(flat_result, axis=1))

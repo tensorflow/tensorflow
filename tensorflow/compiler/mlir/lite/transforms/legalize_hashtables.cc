@@ -53,7 +53,6 @@ class LegalizeHashTableOpPattern : public OpRewritePattern<TF::HashTableV2Op> {
     // Hash the shared name to generate integer hash table id. The TFLite
     // native resource design is based on integer keys to identify the
     // corresponding resource objects.
-    // TODO(b/180645662): Issue a zero-based integer hash table ID.
     auto table_id =
         static_cast<int32_t>(::llvm::hash_value(hashtable_op.shared_name()));
     auto key_dtype = hashtable_op.key_dtype();
@@ -65,7 +64,6 @@ class LegalizeHashTableOpPattern : public OpRewritePattern<TF::HashTableV2Op> {
   }
 };
 
-// TODO(b/182429294): Move those patterns into the table gen-based patterns.
 class LegalizeHashTableFindOpPattern
     : public OpRewritePattern<TF::LookupTableFindV2Op> {
  public:
@@ -168,6 +166,10 @@ bool checkWhetherGraphHasValidStaticLookupTables(ModuleOp module) {
 // TensorFlow Lite hash table kernels.
 class LegalizeHashTables
     : public PassWrapper<LegalizeHashTables, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TensorFlowLiteDialect>();
+  }
+
  public:
   LegalizeHashTables() = default;
   LegalizeHashTables(const LegalizeHashTables&) {}
@@ -179,7 +181,7 @@ class LegalizeHashTables
       return;
     }
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
                     LegalizeHashTableImportOpPattern,
                     LegalizeHashTableSizeOpPattern>(&getContext());

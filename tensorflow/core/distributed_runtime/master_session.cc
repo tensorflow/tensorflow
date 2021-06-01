@@ -629,9 +629,6 @@ struct RunCallableResponseWrapper {
   Status AddTensorFromRunGraphResponse(
       const string& tensor_name, MutableRunGraphResponseWrapper* worker_resp,
       size_t index) {
-    // TODO(b/74355905): Add a specialized implementation that avoids
-    // copying the tensor into the RunCallableResponse when at least
-    // two of the {client, master, worker} are in the same process.
     return worker_resp->RecvValue(index, &fetch_key_to_protos[tensor_name]);
   }
 };
@@ -855,9 +852,6 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       call_opts, req, &wrapped_resp, cm, false /* is_last_partial_run */));
 
   // Collects fetches.
-  // TODO(b/74355905): Add a specialized implementation that avoids
-  // copying the tensor into the RunCallableResponse when at least
-  // two of the {client, master, worker} are in the same process.
   for (const string& fetch : callable_opts_.fetch()) {
     TensorProto* fetch_proto = resp->mutable_fetch()->Add();
     auto iter = wrapped_resp.fetch_key_to_protos.find(fetch);

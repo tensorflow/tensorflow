@@ -30,6 +30,7 @@ from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import object_identity
+from tensorflow.python.util.tf_export import tf_export
 
 
 _ESCAPE_CHAR = "."  # For avoiding conflicts with user-specified names.
@@ -140,6 +141,7 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
   return slot_variables
 
 
+@tf_export("__internal__.tracking.ObjectGraphView", v1=[])
 class ObjectGraphView(object):
   """Gathers and serializes an object graph."""
 

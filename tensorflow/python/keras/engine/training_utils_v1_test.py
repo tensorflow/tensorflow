@@ -14,17 +14,12 @@
 # ==============================================================================
 """Tests for training utility functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import multiprocessing.pool
 import time
 
 from absl.testing import parameterized
 import numpy as np
-
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers

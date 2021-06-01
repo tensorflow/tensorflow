@@ -89,7 +89,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
         elif x.dtype == np.float16:
           self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
         else:
-          self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
+          self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
 
   def _testBasic(self, value_dtype, indices_dtype=np.int64):
     x = _maybe_complex(np.random.rand(10, 10).astype(value_dtype))
@@ -421,6 +421,6 @@ def main(_):
 if __name__ == "__main__":
   if "--benchmarks" in sys.argv:
     sys.argv.remove("--benchmarks")
-    app.run()
+    app.run()  # pylint: disable=no-value-for-parameter
   else:
     test.main()

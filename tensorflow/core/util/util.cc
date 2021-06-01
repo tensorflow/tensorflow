@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/util/util.h"
 
+#include <string>
+#include <vector>
+
+#include "absl/base/call_once.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -121,19 +127,42 @@ string SliceDebugString(const TensorShape& shape, const int64 flat) {
 }
 
 #ifdef INTEL_MKL
-bool DisableMKL() {
-  enum MklStatus { MKL_DEFAULT = 0, MKL_ON = 1, MKL_OFF = 2 };
-  static MklStatus status = MKL_DEFAULT;
-  if (status == MKL_DEFAULT) {
-    char* tf_disable_mkl = getenv("TF_DISABLE_MKL");
-    if ((tf_disable_mkl != NULL) && (std::stoi(tf_disable_mkl) == 1)) {
-      VLOG(2) << "TF-MKL: Disabling MKL";
-      status = MKL_OFF;
-    } else {
-      status = MKL_ON;
+bool IsMKLEnabled() {
+  static absl::once_flag once;
+#ifdef ENABLE_MKL
+  // Keeping TF_DISABLE_MKL env variable for legacy reasons.
+  static bool oneDNN_disabled = false;
+  absl::call_once(once, [&] {
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_DISABLE_MKL", false, &oneDNN_disabled));
+    if (oneDNN_disabled) VLOG(2) << "TF-MKL: Disabling oneDNN";
+  });
+  return (!oneDNN_disabled);
+#else
+  static bool oneDNN_enabled = false;
+  absl::call_once(once, [&] {
+    TF_CHECK_OK(
+        ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_OPTS", false, &oneDNN_enabled));
+    if (oneDNN_enabled) {
+      // Warn that this is not tested with GPU if there are GPUs available.
+      std::vector<std::string> devices;
+      Status s = DeviceFactory::ListAllPhysicalDevices(&devices);
+      std::string gpu_message = "";
+      for (const auto& device : devices) {
+        if (device.find("GPU") != std::string::npos) {
+          gpu_message =
+              "We do NOT recommend turning them on with GPUs in the system. ";
+          break;
+        }
+      }
+      LOG(INFO) << "Experimental oneDNN custom operations are on. "
+                << gpu_message
+                << "To turn them off, set the environment variable "
+                   "`TF_ENABLE_ONEDNN_OPTS=0`.";
     }
-  }
-  return status == MKL_OFF ? true : false;
+  });
+  return oneDNN_enabled;
+#endif  // ENABLE_MKL
 }
 #endif  // INTEL_MKL
+
 }  // namespace tensorflow

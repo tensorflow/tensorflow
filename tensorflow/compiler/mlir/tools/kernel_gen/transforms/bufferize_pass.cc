@@ -113,31 +113,31 @@ struct ComputeOpAndFuncBufferizePass
 
  public:
   void runOnOperation() override {
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect, math::MathDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
+    target.addIllegalOp<SubTensorOp, SubTensorInsertOp>();
 
     CustomBufferizeTypeConverter converter;
     // Configure bufferize pattern for functions and lhlo.
     mhlo::populateDynamicHLOToLHLOConversionPattern(
         &context, &converter, &patterns, /*insert_copy=*/false);
-    populateFuncOpTypeConversionPattern(patterns, &context, converter);
-    populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceTypeConversionPattern(patterns, &context,
-                                                   converter);
-    populateReturnOpTypeConversionPattern(patterns, &context, converter);
+    populateFuncOpTypeConversionPattern(patterns, converter);
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
 
     // Configure legality and structural patterns.
     populateBufferizeMaterializationLegality(target);
-    linalg::populateLinalgBufferizePatterns(&context, converter, patterns);
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
-    scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
-                                                         patterns, target);
+    linalg::populateLinalgBufferizePatterns(converter, patterns);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
+    scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
+                                                         target);
     // TODO(herhut): Move this legality configuration to bufferize itself?
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
@@ -171,32 +171,32 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
         complex::ComplexDialect, memref::MemRefDialect, StandardOpsDialect,
         scf::SCFDialect, tensor::TensorDialect,
         tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
-        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect>();
-    target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
+        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
+        vector::VectorDialect>();
+    target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
                         tensor::FromElementsOp, tensor::CastOp,
                         chlo::MinimumBroadcastShapesOp, memref::TensorLoadOp,
-                        memref::BufferCastOp>();
+                        memref::BufferCastOp, linalg::TensorReshapeOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, RankOp, SelectOp>(
-        typesAreLegal);
+    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, IndexCastOp, RankOp,
+                                 SelectOp>(typesAreLegal);
 
-    OwningRewritePatternList patterns;
-    populateTensorBufferizePatterns(&context, converter, patterns);
-    populateStdBufferizePatterns(&context, converter, patterns);
-    populateEliminateBufferizeMaterializationsPatterns(&context, converter,
-                                                       patterns);
-    populateExtraStdBufferizePattern(&context, &converter, &patterns);
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
-    scf::populateSCFStructuralTypeConversionsAndLegality(&context, converter,
-                                                         patterns, target);
+    RewritePatternSet patterns(&getContext());
+    populateTensorBufferizePatterns(converter, patterns);
+    populateStdBufferizePatterns(converter, patterns);
+    populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
+    populateExtraStdBufferizePattern(&getContext(), &converter, &patterns);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
+    scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
+                                                         target);
 
     auto module = getOperation();
     if (failed(applyFullConversion(module, target, std::move(patterns)))) {

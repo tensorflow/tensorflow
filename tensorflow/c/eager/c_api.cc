@@ -119,7 +119,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
         opts->session_options.options,
         static_cast<tensorflow::ContextDevicePlacementPolicy>(
             opts->device_placement_policy),
-        opts->async);
+        opts->async, opts->use_tfrt_distributed_runtime);
 #if !defined(IS_MOBILE_PLATFORM)
     tfrt_context->SetDistributedManager(
         tfrt::tf::CreateDistributedManagerContext(
@@ -137,7 +137,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       &devices);
   if (!status->status.ok()) return nullptr;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::StaticDeviceMgr(std::move(devices)));
+      new tensorflow::DynamicDeviceMgr(std::move(devices)));
 
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
@@ -146,7 +146,9 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
       opts->async, device_mgr.release(),
-      /*device_mgr_owned*/ true, r);
+      /*device_mgr_owned*/ true, r,
+      /*cluster_flr=*/nullptr,
+      /*run_eager_op_as_function=*/opts->run_eager_op_as_function);
 #if !defined(IS_MOBILE_PLATFORM)
   eager_context->SetDistributedManager(
       std::make_unique<tensorflow::EagerContextDistributedManager>(
@@ -537,8 +539,7 @@ class CAPICustomDeviceTensorHandle
 TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
     TFE_Context* ctx, const char* device_name, TF_DataType dtype, void* data,
     TFE_CustomDeviceTensorHandleMethods methods, TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  tensorflow::ImmediateExecutionContext* context = tensorflow::unwrap(ctx);
   tensorflow::CustomDevice* device = nullptr;
   if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(device_name,
                                                                     &device)) {

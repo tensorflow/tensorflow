@@ -20,7 +20,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_binary(
@@ -142,7 +142,7 @@ cc_test(
     ],
     deps = [
         "//tensorflow/core/platform",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers//:flatc_library",
     ],
 )

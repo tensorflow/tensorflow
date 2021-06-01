@@ -72,11 +72,6 @@ class Subgraph {
   // interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
 
-  // Ensure the internal node storage memory allocates at least `count`
-  // spots for node. NOTE, this doesn't actually add operators. This is an
-  // efficiency optimization that is subject to change.
-  void ReserveNodes(int count);
-
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
   // `builtin_data` and destroy it with `free`. Ownership of 'init_data'
@@ -137,13 +132,7 @@ class Subgraph {
       bool is_variable = false, const size_t rank_dims_signature = 0,
       const int* dims_signature = nullptr);
 
-  // WARNING: Experimental interface, subject to change
-  // Overrides execution plan. This bounds checks indices sent in.
-  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
-
   // Get a mutable tensor data structure.
-  // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
-  // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
     if (tensor_index < 0 ||
         static_cast<size_t>(tensor_index) >= context_.tensors_size) {
@@ -279,7 +268,6 @@ class Subgraph {
       TF_LITE_ENSURE(&context_, t->delegate != nullptr);
       TF_LITE_ENSURE(&context_, t->buffer_handle != kTfLiteNullBufferHandle);
       TF_LITE_ENSURE(&context_, t->delegate->CopyFromBufferHandle != nullptr);
-      // TODO(b/120420546): we must add a test that exercise this code.
       TF_LITE_ENSURE_STATUS(t->delegate->CopyFromBufferHandle(
           &context_, t->delegate, t->buffer_handle, t));
       t->data_is_stale = false;
@@ -354,6 +342,7 @@ class Subgraph {
   const std::string& GetName() const;
 
  private:
+  friend class InterpreterBuilder;
   friend class TestDelegate;
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
   // BufferedProfiler instance, and takes care of event profiling/tracing in a
@@ -397,6 +386,16 @@ class Subgraph {
     Profiler* const profiler_;
     const int64_t subgraph_index_;
   };
+
+  // Ensure the internal node storage memory allocates at least `count`
+  // spots for node. NOTE, this doesn't actually add operators. This is an
+  // efficiency optimization that is subject to change.
+  // Note: Only used during initialization.
+  void ReserveNodes(int count);
+
+  // Overrides execution plan. This bounds checks indices sent in.
+  // Note: Only used during initialization.
+  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Prevent 'context_' from accessing functions that are only available to
   // delegated kernels.
@@ -612,6 +611,18 @@ class Subgraph {
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
+  // Enables preserving intermediates for debugging.
+  TfLiteStatus PreserveAllTensorsExperimental();
+
+  // Returns true if 'node' could have side effect (e.g. stateful op).
+  // Note that any node that might update other tensors beside op's output
+  // are considered to have side effect.
+  // So control flow ops like 'If' and 'While' are considered to have
+  // side effect because they can have ops that have side effect in the
+  // condition and body subgraphs.
+  bool OpMightHaveSideEffect(const TfLiteNode* node,
+                             const TfLiteRegistration* registration) const;
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.
@@ -744,7 +755,12 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 
+  // Name of the subgraph (analogous to function name).
   std::string name_;
+
+  // Whether memory planner should be instantiated to retain intermediates for
+  // debugging.
+  bool preserve_all_tensors_ = false;
 };
 
 }  // namespace tflite

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -665,19 +666,37 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
 }
 
 namespace {
-bool CompareComputationsByContent(HloComputation* a, HloComputation* b) {
-  if (a->instruction_count() != b->instruction_count()) {
-    return a->instruction_count() < b->instruction_count();
+bool CompareComputationsByContent(const std::pair<HloComputation*, uint64>& a,
+                                  const std::pair<HloComputation*, uint64>& b) {
+  if (a.first->instruction_count() != b.first->instruction_count()) {
+    return a.first->instruction_count() < b.first->instruction_count();
   }
-  return a->ToString(HloPrintOptions::Fingerprint()) <
-         b->ToString(HloPrintOptions::Fingerprint());
+  return a.second < b.second;
 }
+
+void SortComputationsByContent(std::vector<HloComputation*>* computations) {
+  std::vector<std::pair<HloComputation*, uint64>> pairs;
+  pairs.reserve(computations->size());
+  // Iterate and call ToString() once per computation because it is expensive
+  // for a large computation.
+  for (auto* computation : *computations) {
+    pairs.emplace_back(computation,
+                       tensorflow::Fingerprint64(computation->ToString(
+                           HloPrintOptions::Fingerprint())));
+  }
+  absl::c_sort(pairs, CompareComputationsByContent);
+  computations->clear();
+  for (const auto& pair : pairs) {
+    computations->push_back(pair.first);
+  }
+}
+
 }  // anonymous namespace
 
 std::vector<HloComputation*> HloModule::MakeComputationSorted() const {
   std::vector<HloComputation*> result = MakeComputationPostOrder();
   if (config().content_aware_computation_sorting()) {
-    absl::c_sort(result, CompareComputationsByContent);
+    SortComputationsByContent(&result);
   }
   return result;
 }
@@ -695,7 +714,7 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
     const {
   auto result = MakeNonfusionComputations();
   if (config().content_aware_computation_sorting()) {
-    absl::c_sort(result, CompareComputationsByContent);
+    SortComputationsByContent(&result);
   }
   return result;
 }

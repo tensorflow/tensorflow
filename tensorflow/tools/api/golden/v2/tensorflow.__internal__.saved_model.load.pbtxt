@@ -1,0 +1,19 @@
+path: "tensorflow.__internal__.saved_model.load"
+tf_module {
+  member {
+    name: "VersionedTypeRegistration"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "get_setter"
+    argspec: "args=[\'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_revived_type"
+    argspec: "args=[\'identifier\', \'predicate\', \'versions\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "registered_identifiers"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

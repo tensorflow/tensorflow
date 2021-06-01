@@ -209,6 +209,7 @@ class StridedSliceOp : public XlaOpKernel {
     bool begin_is_constant = ctx->ConstantInput(1, &begin_literal).ok();
     bool end_is_constant = ctx->ConstantInput(2, &end_literal).ok();
 
+    // Strides have to be static.
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(3, &strides_literal));
 
     Tensor begin_tensor, end_tensor, strides_tensor;
@@ -301,7 +302,7 @@ class StridedSliceOp : public XlaOpKernel {
         bool backward_slice = sparse_index == -1
                                   ? false
                                   : end_literal.Get<int32>({sparse_index}) < 0;
-        if ((input_is_dynamic && backward_slice) || end_is_dynamic) {
+        if (input_is_dynamic || end_is_dynamic) {
           OP_REQUIRES(
               ctx, strides[input_index] == 1,
               errors::InvalidArgument("XLA has not implemented dynamic "

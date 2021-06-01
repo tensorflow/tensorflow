@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 
 SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
-                                    float tol) {
+                                    float tol, bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
   XlaOp result = builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -81,7 +81,7 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
         {a_shape, ShapeUtil::MakeShape(eigvals_type, eigvals_dims)});
     // TODO(phawkins): upgrade Eigh decomposition to a first-class HLO operator.
     std::string opaque =
-        absl::StrFormat("%d,%d,%f", lower ? 1 : 0, max_iter, tol);
+        absl::StrFormat("%d,%d,%d,%f", lower, sort_eigenvalues, max_iter, tol);
     return CustomCall(a.builder(), "Eigh", {a}, eigh_shape, opaque);
   });
   return SelfAdjointEigResult{GetTupleElement(result, 0),

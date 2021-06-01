@@ -29,6 +29,7 @@ _double_op = load_library.load_op_library(
 
 def double(input_tensor):
   """Double op applies element-wise double to input data."""
-  if input_tensor.dtype != dtypes.int32:
-    raise ValueError('Double op only accept int32 values.')
+  if (input_tensor.dtype != dtypes.int32 and
+      input_tensor.dtype != dtypes.float32):
+    raise ValueError('Double op only accept int32 or float32 values.')
   return double_op_wrapper.double(input_tensor)

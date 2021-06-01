@@ -64,8 +64,8 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
   for (auto *def : defs) {
     Operator op(def);
     for (const auto t : op.getTraits()) {
-      if (auto opTrait = llvm::dyn_cast<mlir::tblgen::NativeOpTrait>(&t)) {
-        auto trait_str = opTrait->getTrait();
+      if (auto opTrait = llvm::dyn_cast<mlir::tblgen::NativeTrait>(&t)) {
+        auto trait_str = opTrait->getFullyQualifiedTraitName();
         if (!llvm::StringRef{trait_str}.consume_front(
                 "::mlir::OpTrait::quant::"))
           continue;

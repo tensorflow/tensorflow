@@ -138,15 +138,18 @@ class SplitVOpBase : public OpKernel {
       (*split_sizes_vec)[neg_one_dim] = input_size_split_dim - determined_size;
     }
 
-    // Special case 2: split along the 1st dimension. We can share the
-    // underlying buffer.
+    // Special case 2: split along the 1st dimension. The requirements are that
+    // either we are splitting the outer dimension of two or more such that
+    // every outer subpart is aligned or that the split sizes mean that they are
+    // always aligned. In these cases, we can share the underlying buffer.
     //
     // Apply this optimization conservatively: if input is aligned,
     // the resulting tensors must be aligned. It's conservative
     // because if the immediate consumer of the resulting tensors are
     // not using eigen for computation, its perfectly fine to avoid
     // the copying.
-    if ((split_dim == 0) && IsInnerDimsSizeAligned<T>(input_shape)) {
+    if (SplitHasAlignedOutputsInFirstDimension(
+            input_shape, split_dim, absl::MakeConstSpan(*split_sizes_vec))) {
       Tlen start = 0;
       for (int i = 0; i < num_split; ++i) {
         context->set_output(i,
@@ -178,6 +181,26 @@ class SplitVOpBase : public OpKernel {
       suffix_dim_size *= static_cast<IndexType>(input_shape.dim_size(i));
     }
     return std::make_tuple(prefix_dim_size, split_dim_size, suffix_dim_size);
+  }
+
+ private:
+  // Determines whether the given split configuration can be done using slicing
+  // on the first dimension of the tensor. The requirement is that each result
+  // tensor from the slice is correctly aligned within the input tensor.
+  static bool SplitHasAlignedOutputsInFirstDimension(
+      const TensorShape& input_shape, int32 split_dim,
+      absl::Span<const Tlen> split_sizes) {
+    if (split_dim != 0) {
+      return false;
+    }
+    Tlen start = 0;
+    for (const Tlen split_size : split_sizes) {
+      if (!IsDim0SliceAligned<T>(input_shape, start, start + split_size)) {
+        return false;
+      }
+      start += split_size;
+    }
+    return true;
   }
 };
 

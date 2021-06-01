@@ -30,10 +30,12 @@ VariableSpec = resource_variable_ops.VariableSpec
 class VariableSpecTest(test.TestCase):
 
   def test_properties(self):
-    spec = VariableSpec(shape=(1, 2, 3), dtype=dtypes.float64, name='vs')
+    spec = VariableSpec(shape=(1, 2, 3), dtype=dtypes.float64, name='vs',
+                        trainable=True)
     self.assertEqual('vs', spec.name)
     self.assertEqual(tensor_shape.TensorShape((1, 2, 3)), spec.shape)
     self.assertEqual(dtypes.float64, spec.dtype)
+    self.assertEqual(True, spec.trainable)
 
   def test_compatibility(self):
     spec = VariableSpec(shape=None)

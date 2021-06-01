@@ -492,6 +492,15 @@ OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// QuantizeAndDequantizeV2Op
+//===----------------------------------------------------------------------===//
+
+void QuantizeAndDequantizeV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // QrOp
 //===----------------------------------------------------------------------===//
 
@@ -536,6 +545,47 @@ static LogicalResult Verify(RandomUniformOp op) {
 // RangeOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// Compute the length of a range (1-D) tensor given `start`, `limit`, `delta`.
+// Template parameter `FloatOrInt` must be standard C integer or floating-point
+// types.
+template <typename FloatOrInt>
+int GetLengthOfRange(FloatOrInt start, FloatOrInt limit, FloatOrInt delta) {
+  // Refer to the implementation in
+  // tensorflow/lite/kernels/range.cc.
+  FloatOrInt diff = limit - start;
+  if (std::is_integral<FloatOrInt>::value) {
+    return ((std::abs(diff) + std::abs(delta) - 1) / std::abs(delta));
+  }
+  return std::ceil(std::abs(diff / delta));
+}
+
+// Builds a constant range tensor of `result_elem_type` elements.
+// Template parameter `FloatOrIntAtrr` must be mlir::IntegerAttr or
+// mlir::FloatAttr.
+template <typename FloatOrIntAtrr>
+DenseElementsAttr BuildConstRangeTensor(Type result_elem_type, int num_elements,
+                                        FloatOrIntAtrr start_attr,
+                                        FloatOrIntAtrr delta_attr) {
+  using ValueType = typename FloatOrIntAtrr::ValueType;  // APInt or APFloat
+  ValueType start = start_attr.getValue();
+  ValueType delta = delta_attr.getValue();
+
+  SmallVector<ValueType, 16> new_values;
+  new_values.reserve(num_elements);
+  ValueType new_value = start;
+  for (int i = 0; i < num_elements; ++i) {
+    new_values.push_back(new_value);
+    new_value = new_value + delta;
+  }
+  // Result is always a 1-D tensor.
+  auto new_result_type =
+      RankedTensorType::get({num_elements}, result_elem_type);
+  return DenseElementsAttr::get(new_result_type, new_values);
+}
+}  // namespace
+
 void RangeOp::build(OpBuilder &builder, OperationState &result, Value start,
                     Value limit, Value delta) {
   assert(start.getType() == limit.getType());
@@ -562,6 +612,53 @@ void RangeOp::build(OpBuilder &builder, OperationState &result, Value start,
           {-1}, start.getType().cast<TensorType>().getElementType()),
       start, limit, delta);
 }
+
+OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 3);
+  auto start_tensor = operands[0].dyn_cast_or_null<ElementsAttr>();
+  auto limit_tensor = operands[1].dyn_cast_or_null<ElementsAttr>();
+  auto delta_tensor = operands[2].dyn_cast_or_null<ElementsAttr>();
+  if (!(start_tensor && limit_tensor && delta_tensor)) return nullptr;
+
+  // Operands should all be scalars
+  assert(start_tensor.getType().getRank() == 0 &&
+         limit_tensor.getType().getRank() == 0 &&
+         delta_tensor.getType().getRank() == 0);
+  Type elem_type = getType().cast<ShapedType>().getElementType();
+  if (elem_type.isSignlessInteger() || elem_type.isUnsignedInteger()) {
+    auto start_attr = start_tensor.getValue<IntegerAttr>({});
+    auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
+    auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
+    int num_elements;
+    if (elem_type.isUnsignedInteger()) {
+      uint64_t start = start_attr.getUInt();
+      uint64_t limit = limit_attr.getUInt();
+      uint64_t delta = delta_attr.getUInt();
+      assert(start <= (uint64_t)INT_MAX);
+      assert(limit <= (uint64_t)INT_MAX);
+      assert(delta <= (uint64_t)INT_MAX);
+      num_elements =
+          GetLengthOfRange(static_cast<int>(start), static_cast<int>(limit),
+                           static_cast<int>(delta));
+    } else {
+      num_elements = GetLengthOfRange(start_attr.getInt(), limit_attr.getInt(),
+                                      delta_attr.getInt());
+    }
+    return BuildConstRangeTensor(elem_type, num_elements, start_attr,
+                                 delta_attr);
+  } else if (elem_type.isa<FloatType>()) {
+    auto start_attr = start_tensor.getValue<FloatAttr>({});
+    auto limit_attr = limit_tensor.getValue<FloatAttr>({});
+    auto delta_attr = delta_tensor.getValue<FloatAttr>({});
+    const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
+                                              limit_attr.getValueAsDouble(),
+                                              delta_attr.getValueAsDouble());
+    return BuildConstRangeTensor(elem_type, num_elements, start_attr,
+                                 delta_attr);
+  }
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // RankOp
 //===----------------------------------------------------------------------===//
@@ -1318,77 +1415,6 @@ static LogicalResult Verify(SpaceToBatchNDOp op) {
     }
   }
 
-  return success();
-}
-
-// Infers returned rank if possible. Further, infers returned dimension sizes
-// when possible. For all dimensions sizes to be inferred, the arguments
-// block_shape and paddings must be constant.
-LogicalResult SpaceToBatchNDOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  const Value input = operands[0];
-  const Value block_shape_val = operands[1];
-  const Value paddings_val = operands[2];
-  const auto input_type = input.getType().cast<TensorType>();
-  const auto block_shape_type = block_shape_val.getType().cast<TensorType>();
-  const auto paddings_type = paddings_val.getType().cast<TensorType>();
-
-  // The return is unranked when the input is unranked.
-  if (!input_type.hasRank()) {
-    inferredReturnTypes.assign(
-        {UnrankedTensorType::get(input_type.getElementType())});
-    return success();
-  }
-
-  const int64_t input_rank = input_type.getRank();
-  const ArrayRef<int64_t> input_shape = input_type.getShape();
-  const int64_t block_rank =
-      SpaceToBatchNDBlockRank(block_shape_type, paddings_type);
-  SmallVector<int64_t, 4> return_shape(input_rank, ShapedType::kDynamicSize);
-
-  // The return has all dimension sizes unknown when block_rank is unknown.
-  if (block_rank == ShapedType::kDynamicSize) {
-    inferredReturnTypes.assign(
-        {RankedTensorType::get(return_shape, input_type.getElementType())});
-    return success();
-  }
-
-  // The return preserves the remaining dimensions after blocked dimensions.
-  for (uint64_t i = 1 + block_rank; i < input_rank; ++i) {
-    return_shape[i] = input_shape[i];
-  }
-
-  // The rest of the dimension sizes can be calculated when block_shape and
-  // paddings arguments are constant.
-  DenseIntElementsAttr block_shape_attr;
-  DenseIntElementsAttr paddings_attr;
-  if (GetValueAsConstant(block_shape_val, block_shape_attr) &&
-      GetValueAsConstant(paddings_val, paddings_attr)) {
-    int64_t return_batch = input_shape[0];
-    for (uint64_t i = 0; i < block_rank; ++i) {
-      // Propagate dynamic dimension.
-      if (input_shape[i + 1] == ShapedType::kDynamicSize) {
-        return_batch = ShapedType::kDynamicSize;
-      }
-      if (return_batch == ShapedType::kDynamicSize) {
-        return_shape[1 + i] = ShapedType::kDynamicSize;
-        continue;
-      }
-      int64_t paddings_sum =
-          paddings_attr.getValue<APInt>({i, 0}).getSExtValue() +
-          paddings_attr.getValue<APInt>({i, 1}).getSExtValue();
-      int64_t block_shape_i =
-          block_shape_attr.getValue<APInt>({i}).getSExtValue();
-      return_batch *= block_shape_i;
-      return_shape[1 + i] = (paddings_sum + input_shape[i + 1]) / block_shape_i;
-    }
-    return_shape[0] = return_batch;
-  }
-
-  inferredReturnTypes.assign(
-      {RankedTensorType::get(return_shape, input_type.getElementType())});
   return success();
 }
 
@@ -3021,7 +3047,7 @@ struct WhileRegionEliminatePassThrough
 
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
       auto body_arg = body_block.getArgument(op_idx);
-      auto yield_operand = yield.getOperand(op_idx);
+      auto yield_operand = LookThroughIdentity(yield.getOperand(op_idx));
       auto while_operand = while_op.getOperand(op_idx);
       if (body_arg == yield_operand || while_operand == yield_operand) {
         // Replace the use of the passthrough value with the while operand
@@ -3208,7 +3234,36 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
     MLIRContext *context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  inferredReturnTypes.assign({operands.front().getType()});
+  auto loc = location ? *location : mlir::UnknownLoc::get(context);
+  XlaSetDynamicDimensionSizeOpAdaptor op(operands, attributes);
+  if (failed(op.verify(loc))) return failure();
+
+  TensorType operand_ty = op.input().getType().cast<TensorType>();
+  Type element_ty = operand_ty.getElementType();
+
+  TensorType result_ty;
+  if (operand_ty.hasRank()) {
+    auto shape = llvm::to_vector<4>(operand_ty.getShape());
+
+    DenseIntElementsAttr dim_index_attr;
+    if (matchPattern(op.dim_index(), m_Constant(&dim_index_attr))) {
+      int64_t dim_index = dim_index_attr.getValue<APInt>({}).getSExtValue();
+
+      int64_t rank = operand_ty.getRank();
+      if (dim_index < 0 || dim_index >= rank) {
+        return emitOptionalError(location, "dim_index (", dim_index,
+                                 ") is out of range [0, ", rank, ")");
+      }
+      shape[dim_index] = RankedTensorType::kDynamicSize;
+    } else {
+      shape.assign(shape.size(), RankedTensorType::kDynamicSize);
+    }
+    result_ty = RankedTensorType::get(shape, element_ty);
+  } else {
+    result_ty = UnrankedTensorType::get(element_ty);
+  }
+
+  inferredReturnTypes.push_back(result_ty);
   return success();
 }
 

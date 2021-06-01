@@ -14,9 +14,6 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Utilities for Keras classes with v1 and v2 versions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops

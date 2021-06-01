@@ -43,42 +43,17 @@ class XStatsBuilder {
       : stats_owner_(stats_owner),
         stats_metadata_owner_(stats_metadata_owner) {}
 
-  void AddStatValue(const XStatMetadata& metadata, uint32 value) {
-    AddStat(metadata)->set_uint64_value(value);
+  // NOTE: A stat shouldn't have existed for the given metadata.
+  // Adds a stat for the given metadata and sets its value.
+  template <typename ValueT>
+  void AddStatValue(const XStatMetadata& metadata, ValueT value) {
+    SetStatValue(value, AddStat(metadata));
   }
-  void AddStatValue(const XStatMetadata& metadata,
-                    unsigned long value) {  // NOLINT
-    AddStat(metadata)->set_uint64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata,
-                    unsigned long long value) {  // NOLINT
-    AddStat(metadata)->set_uint64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, int32 value) {
-    AddStat(metadata)->set_int64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, long value) {  // NOLINT
-    AddStat(metadata)->set_int64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, long long value) {  // NOLINT
-    AddStat(metadata)->set_int64_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, double value) {
-    AddStat(metadata)->set_double_value(value);
-  }
-  void AddStatValue(const XStatMetadata& metadata, absl::string_view value) {
-    AddStat(metadata)->set_str_value(std::string(value));
-  }
-  void AddStatValue(const XStatMetadata& metadata, std::string&& value) {
-    AddStat(metadata)->set_str_value(std::move(value));
-  }
-  void AddStatValue(const XStatMetadata& metadata, const XStatMetadata& value) {
-    AddStat(metadata)->set_ref_value(value.id());
-  }
-  void AddStatValue(const XStatMetadata& metadata,
-                    const protobuf::MessageLite& proto) {
-    auto* bytes = AddStat(metadata)->mutable_bytes_value();
-    proto.SerializeToString(bytes);
+
+  // Adds or finds a stat for the given metadata and sets its value.
+  template <typename ValueT>
+  void SetOrAddStatValue(const XStatMetadata& metadata, ValueT value) {
+    SetStatValue(value, FindOrAddStat(metadata));
   }
 
   // Adds a stat by copying a stat from another XPlane. Does not check if a stat
@@ -114,6 +89,13 @@ class XStatsBuilder {
     stats_owner_->mutable_stats()->Reserve(num_stats);
   }
 
+  template <typename ForEachStatFunc>
+  void ForEachStat(ForEachStatFunc&& for_each_stat) {
+    for (XStat& stat : *stats_owner_->mutable_stats()) {
+      for_each_stat(&stat);
+    }
+  }
+
  private:
   XStat* AddStat(const XStatMetadata& metadata) {
     XStat* stat = stats_owner_->add_stats();
@@ -128,6 +110,41 @@ class XStatsBuilder {
       }
     }
     return AddStat(metadata);
+  }
+
+  static void SetStatValue(uint32 value, XStat* stat) {
+    stat->set_uint64_value(value);
+  }
+  static void SetStatValue(unsigned long value, XStat* stat) {  // NOLINT
+    stat->set_uint64_value(value);
+  }
+  static void SetStatValue(unsigned long long value, XStat* stat) {  // NOLINT
+    stat->set_uint64_value(value);
+  }
+  static void SetStatValue(int32 value, XStat* stat) {
+    stat->set_int64_value(value);
+  }
+  static void SetStatValue(long value, XStat* stat) {  // NOLINT
+    stat->set_int64_value(value);
+  }
+  static void SetStatValue(long long value, XStat* stat) {  // NOLINT
+    stat->set_int64_value(value);
+  }
+  static void SetStatValue(double value, XStat* stat) {
+    stat->set_double_value(value);
+  }
+  static void SetStatValue(absl::string_view value, XStat* stat) {
+    stat->set_str_value(std::string(value));
+  }
+  static void SetStatValue(std::string&& value, XStat* stat) {
+    stat->set_str_value(std::move(value));
+  }
+  static void SetStatValue(const XStatMetadata& value, XStat* stat) {
+    stat->set_ref_value(value.id());
+  }
+  static void SetStatValue(const protobuf::MessageLite& proto, XStat* stat) {
+    auto* bytes = stat->mutable_bytes_value();
+    proto.SerializeToString(bytes);
   }
 
   void CopyStatValue(const XStat& src_stat, const XPlane& src_plane,
@@ -259,6 +276,13 @@ class XLineBuilder {
   XEventBuilder AddEvent(const XEventMetadata& metadata);
   XEventBuilder AddEvent(const XEvent& event);
 
+  template <typename ForEachEventFunc>
+  void ForEachEvent(ForEachEventFunc&& for_each_event) {
+    for (XEvent& event : *line_->mutable_events()) {
+      for_each_event(XEventBuilder(line_, plane_, &event));
+    }
+  }
+
  private:
   XLine* line_;
   XPlaneBuilder* plane_;
@@ -313,11 +337,10 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   }
 
   // Returns event metadata with the given name. Returns nullptr if not found.
-  XEventMetadata* GetEventMetadata(absl::string_view name);
+  XEventMetadata* GetEventMetadata(absl::string_view name) const;
 
-  // Returns event metadata ID with the give name. Returns absl::nullopt if not
-  // found.
-  absl::optional<int64> GetEventMetadataId(absl::string_view name);
+  // Returns stat metadata with the given name. Returns nullptr if not found.
+  XStatMetadata* GetStatMetadata(absl::string_view name) const;
 
   // Returns a new stat metadata with an automatically generated metadata_id.
   // WARNING: If calling this function, don't call GetOrCreateEventMetadata.

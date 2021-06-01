@@ -4234,11 +4234,13 @@ class JpegTest(test_util.TensorFlowTestCase):
         image1_crop = image_ops.crop_to_bounding_box(image1, y, x, h, w)
 
         # Combined decode+crop.
-        image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+        image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window, channels=3)
 
-        # Combined decode+crop should have the same shape inference
-        self.assertAllEqual(image1_crop.get_shape().as_list(),
-                            image2.get_shape().as_list())
+        # Combined decode+crop should have the same shape inference on image
+        # sizes.
+        image1_shape = image1_crop.get_shape().as_list()
+        image2_shape = image2.get_shape().as_list()
+        self.assertAllEqual(image1_shape, image2_shape)
 
         # CropAndDecode should be equal to DecodeJpeg+Crop.
         image1_crop, image2 = self.evaluate([image1_crop, image2])
@@ -4794,7 +4796,7 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     self._test(a + 1, tot_var)
 
     # If we negate all pixel-values then the total variation is unchanged.
-    self._test(-a, tot_var)
+    self._test(-a, tot_var)  # pylint: disable=invalid-unary-operand-type
 
     # Scale the pixel-values by a float. This scales the total variation as
     # well.
@@ -4955,6 +4957,29 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       nms_func(boxes, scores, iou_thres, [[score_thres]])
+
+  @test_util.xla_allow_fallback(
+      "non_max_suppression with dynamic output shape unsupported.")
+  def testTensors(self):
+    with context.eager_mode():
+      boxes_tensor = constant_op.constant([[6.625, 6.688, 272., 158.5],
+                                           [6.625, 6.75, 270.5, 158.4],
+                                           [5.375, 5., 272., 157.5]])
+      scores_tensor = constant_op.constant([0.84, 0.7944, 0.7715])
+      max_output_size = 100
+      iou_threshold = 0.5
+      score_threshold = 0.3
+      soft_nms_sigma = 0.25
+      pad_to_max_output_size = False
+
+      # gen_image_ops.non_max_suppression_v5.
+      for dtype in [np.float16, np.float32]:
+        boxes = math_ops.cast(boxes_tensor, dtype=dtype)
+        scores = math_ops.cast(scores_tensor, dtype=dtype)
+        _, _, num_selected = gen_image_ops.non_max_suppression_v5(
+            boxes, scores, max_output_size, iou_threshold, score_threshold,
+            soft_nms_sigma, pad_to_max_output_size)
+        self.assertEqual(num_selected.numpy(), 1)
 
   @test_util.xla_allow_fallback(
       "non_max_suppression with dynamic output shape unsupported.")

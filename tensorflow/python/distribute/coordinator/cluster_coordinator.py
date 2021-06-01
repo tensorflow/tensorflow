@@ -277,7 +277,7 @@ def _maybe_get_remote_value(val):
 
 
 def _maybe_as_type_spec(val):
-  if isinstance(val, RemoteValue):
+  if isinstance(val, (RemoteValue, PerWorkerValues)):
     if val._type_spec is None:  # pylint: disable=protected-access
       raise ValueError("Output of a scheduled function that is not "
                        "tf.function cannot be the input of another function.")
@@ -640,7 +640,11 @@ class WorkerPreemptionHandler(object):
 
   def _validate_preemption_failure(self, e):
     """Validates that the given exception represents worker preemption."""
-    if _is_worker_failure(e):
+
+    # Only categorize the failure as a worker preemption if the cancellation
+    # manager did not attempt to cancel the blocking operations.
+    if _is_worker_failure(e) and (
+        not self._cluster._closure_queue._cancellation_mgr.is_cancelled):  # pylint: disable=protected-access
       return
     raise e
 
@@ -1456,5 +1460,12 @@ def _is_worker_failure(error):
     if ("is neither a type of a primitive operation nor a name of a function "
         "registered" in str(error)):
       return True
+
+  # NOTE(b/179061495): During worker preemptions, if multiple functions are
+  # running concurrently (especially with subfunctions spanning chief/PS),
+  # CancelledError can be returned due to chief/PS cancelling outstanding RPCs
+  # to the failing workers.
+  if isinstance(error, errors.CancelledError):
+    return True
 
   return False

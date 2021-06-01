@@ -29,11 +29,18 @@ constexpr DataType ToDataType<int8>::value;
 constexpr DataType ToDataType<int32>::value;
 
 uint64 AlgorithmDesc::hash() const {
+  if (IsExecutionPlan()) {
+    auto p = exec_plan_id();
+    return absl::Hash<decltype(p)>()(p);
+  }
   auto p = std::make_pair(algo_id(), tensor_ops_enabled());
   return absl::Hash<decltype(p)>()(p);
 }
 
 std::string AlgorithmDesc::ToString() const {
+  if (IsExecutionPlan()) {
+    return absl::StrCat(exec_plan_id());
+  }
   if (tensor_ops_enabled()) {
     return absl::StrCat(algo_id(), "#TC");
   } else {
@@ -44,6 +51,16 @@ std::string AlgorithmDesc::ToString() const {
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetConvolveExecutionPlans(
+    dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
+    Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
+    const dnn::FilterDescriptor& /*filter_descriptor*/,
+    const dnn::BatchDescriptor& /*output_descriptor*/,
+    const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* /*exec_plans*/) {
   return false;
 }
 
@@ -361,7 +378,7 @@ std::vector<int64> BatchDescriptor::full_strides(
         << "Cannot compute full strides for batch descriptor " << ToString()
         << ", because its layout is kBatchDepthYX4. In fact, "
            "cudnnSetTensorNdDescriptor doesn't work for kBatchDepthYX4 at all. "
-           "Use cudnnSetTensor4DDescriptor to set cudnnTensorDescriptor_t "
+           "Use cudnnSetTensor4dDescriptor to set cudnnTensorDescriptor_t "
            "instead.";
   }
   std::vector<int64> phys_dims = full_dims(this->layout());

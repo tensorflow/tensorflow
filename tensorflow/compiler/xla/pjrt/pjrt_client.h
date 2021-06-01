@@ -56,6 +56,16 @@ static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(kCpuName);
 static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(kGpuName);
 static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(kTpuName);
 
+enum PjRtRuntimeType { kStreamExecutor, kTfrt };
+static constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
+  switch (type) {
+    case kStreamExecutor:
+      return "stream_executor";
+    case kTfrt:
+      return "tfrt";
+  }
+}
+
 class PjRtClient;
 
 class PjRtDevice {
@@ -73,11 +83,15 @@ class PjRtDevice {
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
   virtual int id() const = 0;
 
-  // The task ID of this device according to TpuTopology. This is not always
-  // identical to PjRtClient::task_id() in a multi-task setting, where each
-  // client can see devices from all tasks, but only a subset of them are
-  // addressable and have the same task_id as the client.
-  virtual int task_id() const = 0;
+  // The index of the process that this device belongs to, i.e. is addressable
+  // from. This is not always identical to PjRtClient::process_index() in a
+  // multi-process setting, where each client can see devices from all
+  // processes, but only a subset of them are addressable and have the same
+  // process_index as the client.
+  virtual int process_index() const = 0;
+
+  // Deprecated; please switch to process_index().
+  int task_id() const { return process_index(); }
 
   // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
   // which GPU when interacting with non-JAX code. In general, not guaranteed to
@@ -141,8 +155,12 @@ class PjRtClient {
  public:
   virtual ~PjRtClient() = default;
 
-  // Return the task id of this client. In single-task setting, always 0.
-  virtual int task_id() const = 0;
+  // Return the process index of this client. Always 0 in single-process
+  // settings.
+  virtual int process_index() const = 0;
+
+  // Deprecated; please switch to process_index().
+  int task_id() const { return process_index(); }
 
   // Return the number of devices in the entire computation. In multi-headed
   // client setting, some are addressable by this client, some are not. In a
@@ -174,7 +192,13 @@ class PjRtClient {
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;
 
+  // Returns a string containing human-readable, platform-specific version info
+  // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
+
+  // Returns an enum that identifies the type of runtime being used under this
+  // client.
+  virtual PjRtRuntimeType runtime_type() const = 0;
 
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
@@ -195,6 +219,95 @@ class PjRtClient {
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
+
+  // A client may want to create a buffer, and hand the buffer to other PjRt
+  // methods, before the data to store in the buffer is available to the client.
+  // This is supported using CreateBuffersForAsyncTransfer, which returns an
+  // AsyncBufferTransferManager helper object.
+  //
+  // The PjRtBuffers can be retrieved from the AsyncBufferTransferManager and
+  // safely passed immediately to downstream PjRt method calls. Subsequently the
+  // client can call methods on the AsyncBufferTransferManager object to copy
+  // data into the buffers, and once the data copies are complete, the buffers'
+  // definition events will automatically become ready, unblocking downstream
+  // consumers of the buffers.
+  //
+  // A single call to CreateBuffersForAsyncTransfer creates a "batch" of buffers
+  // that share a single definition event, which may amortize some performance
+  // overheads, but means that none of the buffers are available to downstream
+  // consumers until all the transfers have completed. Multiple calls to
+  // CreateBuffersForAsyncTransfer should be made if it is desirable for buffers
+  // to become available as soon as transfers into them complete.
+
+  // Helper class to all clients to asynchronously transfer data into buffers
+  // that are created uninitialized, see comments immediately above.
+  class AsyncBufferTransferManager {
+   public:
+    virtual ~AsyncBufferTransferManager() = default;
+
+    // Returns the number of buffers managed by this object.
+    virtual size_t buffer_count() const = 0;
+
+    // Returns buffer_index, which can be passed to downstream consumers
+    // immediately and will become available once transfers complete. May not
+    // be called more than once for a given buffer_index.
+    //
+    // RetrieveBuffer can be called at any convenient time; transfer methods
+    // can safely be called for a buffer index after RetrieveBuffer has been
+    // called.
+    virtual std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) = 0;
+
+    // Transfers 'literal' into buffer_index. No transfer calls into
+    // buffer_index can be made after this call. on_done is called when the
+    // transfer is complete but before the buffers are made available to
+    // their consumers. 'literal' must remain in scope until on_done is
+    // called.
+    virtual Status TransferLiteralToBuffer(int buffer_index,
+                                           const LiteralSlice& literal,
+                                           std::function<void()> on_done) = 0;
+
+    // Returns the on-device size in bytes of buffer buffer_index.
+    virtual size_t buffer_size(int buffer_index) const = 0;
+
+    // Transfers 'data' into buffer_index. 'data' must be already laid out in
+    // the correct on-device format, for example returned by a call to
+    // buffer->CopyRawToHost. No transfer calls into buffer_index can be made
+    // after this call. on_done is called when the transfer is complete but
+    // before the buffers are made available to their consumers. 'data' must
+    // remain in scope until on_done is called.
+    virtual Status TransferRawDataToBuffer(int buffer_index,
+                                           absl::string_view data,
+                                           std::function<void()> on_done) = 0;
+
+    // Transfers 'data' into a sub-buffer of buffer_index starting at offset, of
+    // length transfer_size. 'data' must be already laid out in the correct
+    // on-device format, for example returned by a call to
+    // buffer->CopyRawToHost. If is_last_transfer is false then the buffer
+    // remains unavailable to consumers after the transfer completes. If
+    // is_last_transfer is true then the buffer becomes available to consumers
+    // after the transfer completes, and no transfer calls into buffer_index can
+    // be made after this call. on_done is called when the transfer is complete
+    // but before the buffers are made available to their consumers. 'data' must
+    // remain in scope until on_done is called.
+    virtual Status TransferRawDataToSubBuffer(
+        int buffer_index, const void* data, int64 offset, int64 transfer_size,
+        bool is_last_transfer, std::function<void()> on_done) = 0;
+
+    // Indicates that a client error occurred and the transfers will never
+    // complete. Puts all buffers in an error state. For the stream executor
+    // client, since error states are not well supported, this triggers a fatal
+    // error.
+    //
+    // SetTransferError may be called at most once, and may not be called unless
+    // at least one buffer has not yet had its final transfer initiated.
+    virtual void SetTransferError(Status error) = 0;
+  };
+
+  // Returns a manager for async transfers into a set of buffers with on-host
+  // shapes 'shapes'.
+  virtual StatusOr<std::unique_ptr<AsyncBufferTransferManager>>
+  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
+                                PjRtDevice* device) = 0;
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
@@ -300,9 +413,6 @@ class PjRtBuffer {
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
 
-  // Returns the size of the on-device representation of this buffer in bytes.
-  virtual int64 OnDeviceSizeInBytes() const = 0;
-
   // ExternalReference is a potentially long-lived reference held while a buffer
   // is being shared by an external framework, e.g., NumPy. A client acquires an
   // external reference by calling PjRtBuffer::AcquireExternalReference() and
@@ -348,6 +458,17 @@ class PjRtBuffer {
     TF_RETURN_IF_ERROR(ToLiteral(literal.get()));
     return literal;
   }
+
+  // Returns the number of bytes of the buffer storage on the device.
+  virtual StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
+
+  // Transfers a sub-range of the on-device representation of the buffer.
+  // offset+transfer_size must be less than GetOnDeviceSizeInBytes. on_ready
+  // is called if and only if CopyRawToHost returns OK. on_ready will be called
+  // with a non-OK status if the buffer asynchronously transitions to an error
+  // state.
+  virtual Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+                               std::function<void(Status)> on_ready) = 0;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async

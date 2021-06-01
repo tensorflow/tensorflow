@@ -81,6 +81,7 @@ CpuExecutable::CpuExecutable(
   compute_function_ = reinterpret_cast<ComputeFunctionType>(sym->getAddress());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
+  jit_->DoneCompiling();
 }
 
 CpuExecutable::~CpuExecutable() {

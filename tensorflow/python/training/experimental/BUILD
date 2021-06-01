@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -133,6 +133,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["loss_scaling_gradient_tape_test.py"],
     shard_count = 2,
+    tags = ["no_oss"],
     deps = [
         ":loss_scale",
         ":loss_scaling_gradient_tape",

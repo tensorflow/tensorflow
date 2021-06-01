@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests the get_layer_policy function."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.mixed_precision import get_layer_policy

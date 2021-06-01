@@ -1172,7 +1172,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if not isinstance(value, values.DistributedValues):
       return value
 
-    value_list = value.values
+    value_list = list(value.values)
     # pylint: disable=protected-access
     if isinstance(
         value,

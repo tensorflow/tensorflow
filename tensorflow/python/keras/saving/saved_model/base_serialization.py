@@ -19,15 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import six
 
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.training.tracking import tracking
 
 
-@six.add_metaclass(abc.ABCMeta)
-class SavedModelSaver(object):
+class SavedModelSaver(object, metaclass=abc.ABCMeta):
   """Saver defining the methods and properties used to serialize Keras objects.
   """
 

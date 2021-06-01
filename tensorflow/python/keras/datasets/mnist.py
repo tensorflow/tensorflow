@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""MNIST handwritten digits dataset.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""MNIST handwritten digits dataset."""
 
 import numpy as np
 
@@ -77,7 +73,7 @@ def load_data(path='mnist.npz'):
       origin=origin_folder + 'mnist.npz',
       file_hash=
       '731c5ac602752760c8e48fbffcf8c3b850d9dc2a2aedcf2cc48468fc17b673d1')
-  with np.load(path, allow_pickle=True) as f:
+  with np.load(path, allow_pickle=True) as f:  # pylint: disable=unexpected-keyword-arg
     x_train, y_train = f['x_train'], f['y_train']
     x_test, y_test = f['x_test'], f['y_test']
 

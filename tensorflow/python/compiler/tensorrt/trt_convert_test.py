@@ -26,6 +26,7 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEngineInstance  # pylint: disable=g-importing-member
 from tensorflow.core.framework import graph_pb2
@@ -486,6 +487,64 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     del root_with_trt
     gc.collect()  # Force GC to destroy the TRT engine cache.
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_ShapeOp_v2(self):
+    """Test case for TrtGraphConverterV2 with ShapeOp."""
+    if not is_tensorrt_enabled():
+      return
+
+    # TODO(b/185944425): enable the test for TRT before TRT 7.
+    ver = get_linked_tensorrt_version()
+    if ver[0] < 7:
+      return
+
+    class ShapeOpModel(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = None
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[None, None], dtype=dtypes.float32)
+      ])
+      def run(self, x):
+        q = x + 1
+        q_shape = array_ops.shape(q)
+        return array_ops.identity(q_shape, name="output")
+
+    np_input = np.random.random_sample([5, 3]).astype(np.float32)
+
+    def _InputFunc():
+      yield (np_input,)
+
+    # Create the SavedModel.
+    root = ShapeOpModel()
+    expected_output = root.run(np_input)
+    input_saved_model_dir = self.mkdtemp()
+    save.save(root, input_saved_model_dir, signatures=root.run)
+
+    # Convert the graph to TF-TRT.
+    conv_params = trt_convert.TrtConversionParams(minimum_segment_size=2)
+    converter = trt_convert.TrtGraphConverterV2(
+        input_saved_model_dir=input_saved_model_dir,
+        conversion_params=conv_params,
+        use_dynamic_shape=True)
+    converter.convert()
+
+    # Build the graph with the input generator. This runs the TRTEngineOp native
+    # segment.
+    converter.build(_InputFunc)
+    output_saved_model_dir = self.mkdtemp()
+    converter.save(output_saved_model_dir)
+
+    root_with_trt = load.load(output_saved_model_dir)
+    converted_signature = root_with_trt.signatures["serving_default"]
+    # Check that the graph is converted to one TRTEngineOp.
+    self._CheckTrtOps(converted_signature)
+    # Run the graph.
+    output_with_trt = converted_signature(x=ops.convert_to_tensor(np_input))
+    # Check the result of the run.
+    self.assertAllClose(expected_output, list(output_with_trt.values())[0])
 
   @test_util.run_v2_only
   def testTrtGraphConverter_Int8Conversion_v2(self):

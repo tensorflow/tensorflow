@@ -164,8 +164,11 @@ class RPCState : public GrpcClientCQTag {
       response_buf_.Clear();
       VLOG(1) << "Retrying call for " << method_ << "Retry: " << num_retries_
               << " of " << max_retries_;
-      // TODO(b/139945426) Allow user to configure the retry backoff time.
-      StartCall();
+
+      ComputeRetryBackoffMs(/*min_backoff_ms=*/1, /*max_backoff_ms=*/10000);
+      int64 backoff_us = retry_backoff_ms_ * 1000;
+      Env::Default()->SchedClosureAfter(/*micros=*/backoff_us,
+                                        [this]() { StartCall(); });
     } else {
       // Attach additional GRPC error information if any to the final status
       string error_msg = s.error_message();
@@ -197,6 +200,18 @@ class RPCState : public GrpcClientCQTag {
   }
 
  private:
+  void ComputeRetryBackoffMs(int min_backoff_ms, int max_backoff_ms) {
+    constexpr float kBackoffBase = 1.3;
+    if (retry_backoff_ms_ < 0) {
+      retry_backoff_ms_ = min_backoff_ms;
+    } else {
+      retry_backoff_ms_ *= kBackoffBase;
+      if (retry_backoff_ms_ > max_backoff_ms) {
+        retry_backoff_ms_ = max_backoff_ms;
+      }
+    }
+  }
+
   CallOptions* call_opts_;
   std::unique_ptr<::grpc::ClientContext> context_;
   thread::ThreadPool* threadpool_;
@@ -210,6 +225,7 @@ class RPCState : public GrpcClientCQTag {
 
   size_t num_retries_ = 0;
   size_t max_retries_;
+  double retry_backoff_ms_ = -1;
 
   ::grpc::CompletionQueue* cq_;
   ::grpc::GenericStub* stub_;

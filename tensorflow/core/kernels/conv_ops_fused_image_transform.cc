@@ -653,7 +653,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     ImageResizerState st(false, false);
     if (DoResize) {
       st = ImageResizerState(align_corners_, false);
-      st.ValidateAndCalculateOutputSize(context, input);
+      st.ValidateAndCalculateOutputSize(context);
       if (!context->status().ok()) return;
     } else {
       // Set up the resize parameters to do no scaling at all.

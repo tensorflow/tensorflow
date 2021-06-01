@@ -20,9 +20,6 @@ saved_model's load() API is used. Keras's export_save_model() when used with
 tf.saved_model.save().
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations

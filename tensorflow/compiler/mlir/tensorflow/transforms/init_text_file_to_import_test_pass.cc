@@ -25,6 +25,8 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace mlir {
 namespace TF {
@@ -53,11 +55,9 @@ void InitTextFileToImportTestPass::runOnOperation() {
   if (error_code) return signalPassFailure();
 
   llvm::ToolOutputFile temp_file(filename, fd);
-  const char* dictionary_in_lines =
-      "apple\n"
-      "banana\n"
-      "grape";
-  temp_file.os() << dictionary_in_lines;
+  temp_file.os() << "apple\n";
+  temp_file.os() << "banana\n";
+  temp_file.os() << "grape";
   temp_file.os().flush();
 
   // Replace filename constant ops to use the temporary file.
@@ -85,7 +85,49 @@ void InitTextFileToImportTestPass::runOnOperation() {
 
   // Run the lowering pass.
   PassManager pm(context);
-  pm.addNestedPass<FuncOp>(CreateInitTextFileToImportPass());
+  pm.addNestedPass<FuncOp>(CreateInitTextFileToImportPass(""));
+  if (failed(pm.run(module))) return signalPassFailure();
+}
+
+// InitTextFileToImportSavedModelTestPass mimicks a temporary saved model and
+// run the InitTextFileToImportPass for testing purpose.
+class InitTextFileToImportSavedModelTestPass
+    : public mlir::PassWrapper<InitTextFileToImportSavedModelTestPass,
+                               OperationPass<ModuleOp>> {
+ public:
+  explicit InitTextFileToImportSavedModelTestPass() {}
+
+ private:
+  void runOnOperation() override;
+};
+
+void InitTextFileToImportSavedModelTestPass::runOnOperation() {
+  ModuleOp module = getOperation();
+
+  // Create a temporary saved model's asset file.
+  SmallString<256> tempdir;
+  std::error_code error_code =
+      llvm::sys::fs::createUniqueDirectory("saved-model", tempdir);
+  if (error_code) return signalPassFailure();
+  error_code =
+      llvm::sys::fs::create_directories(Twine(tempdir) + "/assets", false);
+  if (error_code) return signalPassFailure();
+
+  std::string filename = std::string(tempdir) + "/assets/tokens.txt";
+
+  std::string error_message;
+  auto temp_file = openOutputFile(filename, &error_message);
+  if (!error_message.empty()) return;
+  temp_file->os() << "apple\n";
+  temp_file->os() << "banana\n";
+  temp_file->os() << "grape";
+  temp_file->os().flush();
+
+  // Run the lowering pass.
+  MLIRContext* context = &getContext();
+  PassManager pm(context);
+  pm.addNestedPass<FuncOp>(
+      CreateInitTextFileToImportPass(std::string(tempdir)));
   if (failed(pm.run(module))) return signalPassFailure();
 }
 
@@ -94,6 +136,11 @@ void InitTextFileToImportTestPass::runOnOperation() {
 static PassRegistration<InitTextFileToImportTestPass> pass(
     "tf-init-text-file-to-import-test",
     "generate a temporary file and invoke InitTextFileToImportPass");
+
+static PassRegistration<InitTextFileToImportSavedModelTestPass>
+    saved_model_pass(
+        "tf-init-text-file-to-import-saved-model-test",
+        "mimick a saved model and invoke InitTextFileToImportPass");
 
 }  // namespace TF
 }  // namespace mlir

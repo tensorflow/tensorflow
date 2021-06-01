@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -65,6 +66,18 @@ void RecordProcessedBatchSize(int32 batch_size, const string& model_name,
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
+}
+
+// Export the exact number instead of the distribution of processed batch size.
+void RecordProcessedBatchSizeV2(int32 batch_size, const string& model_name,
+                                const string& op_name) {
+  static auto* cell = monitoring::Counter<3>::New(
+      "/tensorflow/serving/batching/processed_batch_size_v2",
+      "Tracks the batch size on processing by model_name and op name (if "
+      "available).",
+      "model_name", "op_name", "batch_size");
+  cell->GetCell(model_name, op_name, std::to_string(batch_size))
+      ->IncrementBy(1);
 }
 
 void RecordBatchDelayUs(int64 batch_delay_us, const string& model_name,
@@ -332,6 +345,8 @@ Status BatchResourceBase::ConcatInputTensors(
                     context->op_kernel().name_view().data());
   RecordProcessedBatchSize(padded_batch_size, GetModelName(context),
                            context->op_kernel().name_view().data());
+  RecordProcessedBatchSizeV2(padded_batch_size, GetModelName(context),
+                             string(context->op_kernel().name_view()));
 
   // All tasks should have the same number of input edges.
   const int num_inputs = batch.task(0).inputs.size();

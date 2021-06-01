@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 r"""Benchmarks on Keras components with different Keras model types."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import time
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import tensorflow as tf
 
@@ -91,7 +87,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     if execution_mode == context.ASYNC:
       get_executor().wait()
     start = time.time()
-    for _ in xrange(num_iters):
+    for _ in range(num_iters):
       func()
     if execution_mode == context.ASYNC:
       get_executor().wait()

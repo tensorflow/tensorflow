@@ -35,7 +35,7 @@ TEST(StreamExecutor, SuccessfulRegistration) {
     TF_SetStatus(status, TF_OK, "");
     test_util::PopulateDefaultPlatformRegistrationParams(params);
   };
-  string device_type, platform_name;
+  std::string device_type, platform_name;
   port::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   TF_ASSERT_OK(status);
@@ -59,7 +59,7 @@ TEST(StreamExecutor, NameNotSet) {
     params->platform->name = nullptr;
   };
 
-  string device_type, platform_name;
+  std::string device_type, platform_name;
   port::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
@@ -74,7 +74,7 @@ TEST(StreamExecutor, InvalidNameWithSemicolon) {
     params->platform->name = "INVALID:NAME";
   };
 
-  string device_type, platform_name;
+  std::string device_type, platform_name;
   port::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
@@ -91,7 +91,7 @@ TEST(StreamExecutor, InvalidNameWithSlash) {
     params->platform->name = "INVALID/";
   };
 
-  string device_type, platform_name;
+  std::string device_type, platform_name;
   port::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
@@ -107,7 +107,7 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
     params->platform_fns->create_device = nullptr;
   };
 
-  string device_type, platform_name;
+  std::string device_type, platform_name;
   port::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
@@ -123,7 +123,7 @@ TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
     params->platform->supports_unified_memory = true;
   };
 
-  string device_type, platform_name;
+  std::string device_type, platform_name;
   port::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);

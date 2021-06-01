@@ -21,11 +21,7 @@ and a top-5 validation accuracy of 0.945.
 Reference:
   - [Xception: Deep Learning with Depthwise Separable Convolutions](
       https://arxiv.org/abs/1610.02357) (CVPR 2017)
-
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils

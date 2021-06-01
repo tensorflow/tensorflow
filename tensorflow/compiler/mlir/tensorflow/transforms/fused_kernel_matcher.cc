@@ -106,6 +106,16 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
   LogicalResult matchAndRewrite(SrcOpT contraction,
                                 PatternRewriter &rewriter) const override {
     auto context = rewriter.getContext();
+
+    // We do support fusion only if the contraction operation is inside one of
+    // the expected operations with regions. Other operations can have semantics
+    // that is not compatible with fusion (e.g. region compilation).
+    if (!isa<FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
+      return rewriter.notifyMatchFailure(
+          contraction,
+          "fused operation must be nested inside a function, If or While");
+    }
+
     // If the contraction is used in multiple places, fusing it will only create
     // more contraction nodes, which is slower.
     if (!contraction.getResult().hasOneUse())
@@ -234,7 +244,7 @@ class FuseMatMulBiasAdd
 };
 
 void FusedKernelMatcherPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
   patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 

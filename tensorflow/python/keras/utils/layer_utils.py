@@ -13,17 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Utilities related to layer/model functionality.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Utilities related to layer/model functionality."""
 
 import functools
 import weakref
 
 import numpy as np
-import six
 
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -79,8 +74,7 @@ def validate_string_arg(input_data,
     return
   elif allow_callables and callable(input_data):
     return
-  elif isinstance(input_data,
-                  six.string_types) and input_data in allowable_strings:
+  elif isinstance(input_data, str) and input_data in allowable_strings:
     return
   else:
     allowed_args = '`None`, ' if allow_none else ''

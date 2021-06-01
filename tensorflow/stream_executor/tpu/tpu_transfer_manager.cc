@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/tpu/tpu_api.h"
@@ -320,6 +321,68 @@ Status TpuTransferManager::LinearizeToBuffers(
 
   ApiConverter::Free(&c_literal);
   return status.status();
+}
+
+Status TpuTransferManager::ReadDynamicShapes(se::Stream* stream,
+                                             xla::ShapedBuffer* device_buffer,
+                                             xla::Shape* device_shape) {
+  xla::Shape original_device_shape = *device_shape;
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachMutableElementWithStatus(
+      [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+        const xla::Shape& buffer_shape =
+            xla::ShapeUtil::GetSubshape(*device_shape, index);
+        if (buffer_shape.IsTuple()) {
+          return Status::OK();
+        }
+        xla::Shape& device_sub_shape =
+            *xla::ShapeUtil::GetMutableSubshape(device_shape, index);
+        if (device_sub_shape.is_static()) {
+          return Status::OK();
+        }
+
+        StatusHelper status;
+
+        XLA_Shape c_shape;
+        XLA_Literal c_literal;
+        SE_DeviceMemoryBase c_base;
+        ApiConverter::ToC(buffer_shape, &c_shape);
+        ApiConverter::ToC(*buffer, &c_base);
+        ExecutorApiFn()->TpuTransferManager_ReadMetadataLiteralFn(
+            TpuPlatform::GetRegisteredPlatform()->LookupStream(
+                stream->implementation()),
+            c_shape, &c_base, &c_literal, status.c_status);
+        if (!status.ok()) {
+          return status.status();
+        }
+
+        auto metadata = ApiConverter::FromC(&c_literal);
+        // Update device shape's dimensions using metadata read from device.
+        TF_RETURN_IF_ERROR(
+            UpdateShapesFromMetadata(metadata, &device_sub_shape));
+        ApiConverter::Free(&c_literal);
+        return Status::OK();
+      }));
+  device_shape->clear_dynamic_dimensions();
+
+  TF_RET_CHECK(xla::ShapeUtil::DynamicShapeIsCompatible(*device_shape,
+                                                        original_device_shape));
+  // Dimension has been changed, update layout.
+  XLA_Shape c_shape;
+  ApiConverter::ToC(*device_shape, &c_shape);
+  OpsApiFn()->HardwareLayout_UpdateLayoutFn(c_shape);
+  return Status::OK();
+}
+
+Status TpuTransferManager::UpdateShapesFromMetadata(
+    const xla::MutableBorrowingLiteral& metadata_literal,
+    xla::Shape* device_shape) {
+  for (int64 dim = 0; dim < device_shape->rank(); ++dim) {
+    int64 runtime_size = metadata_literal.Get<int32>({dim});
+    TF_RET_CHECK(device_shape->IsArray());
+    device_shape->set_dimensions(dim, runtime_size);
+  }
+  return Status::OK();
 }
 
 }  // namespace tpu

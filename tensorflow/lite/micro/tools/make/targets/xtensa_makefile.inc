@@ -39,7 +39,8 @@ PLATFORM_FLAGS = \
   -mcoproc \
   -DMAX_RFFT_PWR=9 \
   -DMIN_RFFT_PWR=MAX_RFFT_PWR \
-  $(TARGET_ARCH_DEFINES)
+  $(TARGET_ARCH_DEFINES) \
+  -mlongcalls
 
 ifeq ($(BUILD_TYPE), release)
   PLATFORM_FLAGS += -Wno-unused-private-field
@@ -83,8 +84,5 @@ EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/hello_world/Makefile.inc \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
-  tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
-  tensorflow/lite/micro/examples/network_tester/Makefile.inc \
-  tensorflow/lite/micro/examples/person_detection/Makefile.inc
+  tensorflow/lite/micro/examples/network_tester/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
-

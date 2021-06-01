@@ -13,13 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Utilites for `Model.compile`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import copy
-
-import six
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.keras import losses as losses_mod
@@ -505,7 +500,7 @@ class MetricsContainer(Container):
 
     # Convenience feature for selecting b/t binary, categorical,
     # and sparse categorical.
-    if metric not in ['accuracy', 'acc', 'crossentropy', 'ce']:
+    if str(metric).lower() not in ['accuracy', 'acc', 'crossentropy', 'ce']:
       metric_obj = metrics_mod.get(metric)
     else:
       y_t_rank = len(y_t.shape.as_list())
@@ -517,7 +512,7 @@ class MetricsContainer(Container):
       is_sparse_categorical = (
           y_t_rank < y_p_rank or y_t_last_dim == 1 and y_p_last_dim > 1)
 
-      if metric in ['accuracy', 'acc']:
+      if str(metric).lower() in ['accuracy', 'acc']:
         if is_binary:
           metric_obj = metrics_mod.binary_accuracy
         elif is_sparse_categorical:
@@ -536,7 +531,7 @@ class MetricsContainer(Container):
       metric_obj._allow_sum_over_batch_size = True  # pylint: disable=protected-access
 
     if not isinstance(metric_obj, metrics_mod.Metric):
-      if isinstance(metric, six.string_types):
+      if isinstance(metric, str):
         metric_name = metric
       else:
         metric_name = get_custom_object_name(metric)

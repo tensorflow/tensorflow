@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <iostream>
 #include "tensorflow/core/platform/types.h"
-#ifdef INTEL_MKL
+#ifdef ENABLE_MKL
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"
 
 extern void __xla_cpu_runtime_MKLMatMulF32(
@@ -49,7 +49,7 @@ extern void __xla_cpu_runtime_MKLMatMulF32(
     tensorflow::int64 k, tensorflow::int32 transpose_lhs,
     tensorflow::int32 transpose_rhs) {
   std::cerr << "Attempt to call MKL MatMul runtime library without defining "
-               "INTEL_MKL. Add --config=mkl to build with MKL.";
+               "ENABLE_MKL. Add --config=mkl to build with MKL.";
   exit(1);
 }
 extern void __xla_cpu_runtime_MKLMatMulF64(
@@ -58,7 +58,7 @@ extern void __xla_cpu_runtime_MKLMatMulF64(
     tensorflow::int64 k, tensorflow::int32 transpose_lhs,
     tensorflow::int32 transpose_rhs) {
   std::cerr << "Attempt to call MKL MatMul runtime library without defining "
-               "INTEL_MKL. Add --config=mkl to build with MKL.";
+               "ENABLE_MKL. Add --config=mkl to build with MKL.";
   exit(1);
 }
 extern void __xla_cpu_runtime_MKLSingleThreadedMatMulF32(
@@ -67,7 +67,7 @@ extern void __xla_cpu_runtime_MKLSingleThreadedMatMulF32(
     tensorflow::int64 k, tensorflow::int32 transpose_lhs,
     tensorflow::int32 transpose_rhs) {
   std::cerr << "Attempt to call MKL MatMul runtime library without defining "
-               "INTEL_MKL. Add --config=mkl to build with MKL.";
+               "ENABLE_MKL. Add --config=mkl to build with MKL.";
   exit(1);
 }
 extern void __xla_cpu_runtime_MKLSingleThreadedMatMulF64(
@@ -76,9 +76,9 @@ extern void __xla_cpu_runtime_MKLSingleThreadedMatMulF64(
     tensorflow::int64 k, tensorflow::int32 transpose_lhs,
     tensorflow::int32 transpose_rhs) {
   std::cerr << "Attempt to call MKL MatMul runtime library without defining "
-               "INTEL_MKL. Add --config=mkl to build with MKL.";
+               "ENABLE_MKL. Add --config=mkl to build with MKL.";
   exit(1);
 }
 
-#endif  // INTEL_MKL
+#endif  // ENABLE_MKL
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_MKL_H_

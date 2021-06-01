@@ -1,0 +1,19 @@
+path: "tensorflow.__internal__.train"
+tf_module {
+  member_method {
+    name: "assign_moving_average"
+    argspec: "args=[\'variable\', \'value\', \'decay\', \'zero_debias\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "is_mixed_precision_graph_rewrite_enabled"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_using_mixed_precision_policy"
+    argspec: "args=[\'is_using\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_checkpoint_state"
+    argspec: "args=[\'save_dir\', \'model_checkpoint_path\', \'all_model_checkpoint_paths\', \'latest_filename\', \'save_relative_paths\', \'all_model_checkpoint_timestamps\', \'last_preserved_timestamp\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\', \'None\'], "
+  }
+}

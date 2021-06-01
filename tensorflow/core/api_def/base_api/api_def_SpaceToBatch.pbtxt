@@ -18,6 +18,17 @@ END
 
       height_pad = pad_top + height + pad_bottom
       width_pad = pad_left + width + pad_right
+END
+  }
+  summary: "SpaceToBatch for 4-D tensors of type T."
+  description: <<END
+This is a legacy version of the more general SpaceToBatchND.
+
+Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
+More specifically, this op outputs a copy of the input tensor where values from
+the `height` and `width` dimensions are moved to the `batch` dimension. After
+the zero-padding, both `height` and `width` of the input must be divisible by the
+block size.
 
 The attr `block_size` must be greater than one. It indicates the block size.
 
@@ -94,16 +105,5 @@ x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 
 Among others, this operation is useful for reducing atrous convolution into
 regular convolution.
-END
-  }
-  summary: "SpaceToBatch for 4-D tensors of type T."
-  description: <<END
-This is a legacy version of the more general SpaceToBatchND.
-
-Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
-More specifically, this op outputs a copy of the input tensor where values from
-the `height` and `width` dimensions are moved to the `batch` dimension. After
-the zero-padding, both `height` and `width` of the input must be divisible by the
-block size.
 END
 }

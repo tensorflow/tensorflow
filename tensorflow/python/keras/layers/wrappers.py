@@ -13,17 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Wrapper layers: layers that augment the functionality of another layer.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=g-classes-have-attributes
+"""Wrapper layers: layers that augment the functionality of another layer."""
 
 import copy
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
@@ -156,14 +153,14 @@ class TimeDistributed(Wrapper):
       or `tensor.shape`, where every `None` is replaced by
       the corresponding dimension from `tf.shape(tensor)`.
     """
-    # replace all None in int_shape by K.shape
+    # replace all None in int_shape by backend.shape
     if int_shape is None:
-      int_shape = K.int_shape(tensor)[start_idx:]
+      int_shape = backend.int_shape(tensor)[start_idx:]
     if isinstance(int_shape, tensor_shape.TensorShape):
       int_shape = int_shape.as_list()
     if not any(not s for s in int_shape):
       return init_tuple + tuple(int_shape)
-    shape = K.shape(tensor)
+    shape = backend.shape(tensor)
     int_shape = list(int_shape)
     for i, s in enumerate(int_shape):
       if not s:
@@ -212,11 +209,11 @@ class TimeDistributed(Wrapper):
       kwargs['training'] = training
 
     input_shape = nest.map_structure(
-        lambda x: tensor_shape.TensorShape(K.int_shape(x)), inputs)
+        lambda x: tensor_shape.TensorShape(backend.int_shape(x)), inputs)
     batch_size = tf_utils.convert_shapes(input_shape)
     batch_size = nest.flatten(batch_size)[0]
     if batch_size and not self._always_use_reshape:
-      inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
+      inputs, row_lengths = backend.convert_inputs_if_ragged(inputs)
       is_ragged_input = row_lengths is not None
       input_length = tf_utils.convert_shapes(input_shape)
       input_length = nest.flatten(input_length)[1]
@@ -226,7 +223,7 @@ class TimeDistributed(Wrapper):
         output = self.layer(x, **kwargs)
         return output, []
 
-      _, outputs, _ = K.rnn(
+      _, outputs, _ = backend.rnn(
           step,
           inputs,
           initial_states=[],
@@ -235,8 +232,8 @@ class TimeDistributed(Wrapper):
           unroll=False)
       # pylint: disable=g-long-lambda
       y = nest.map_structure(
-          lambda output: K.maybe_convert_to_ragged(is_ragged_input, output,
-                                                   row_lengths), outputs)
+          lambda output: backend.maybe_convert_to_ragged(
+              is_ragged_input, output, row_lengths), outputs)
     else:
       # No batch size specified, therefore the layer will be able
       # to process batches of any size.
@@ -271,7 +268,7 @@ class TimeDistributed(Wrapper):
         # (num_samples * timesteps, ...)
         if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
           inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
-          kwargs['mask'] = K.reshape(mask, inner_mask_shape)
+          kwargs['mask'] = backend.reshape(mask, inner_mask_shape)
 
         y = self.layer(inputs, **kwargs)
 
@@ -330,7 +327,7 @@ class TimeDistributed(Wrapper):
     # cases need to call the layer.compute_mask when input_mask is None:
     # Masking layer and Embedding layer with mask_zero
     input_shape = nest.map_structure(
-        lambda x: tensor_shape.TensorShape(K.int_shape(x)), inputs)
+        lambda x: tensor_shape.TensorShape(backend.int_shape(x)), inputs)
     input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
     batch_size = tf_utils.convert_shapes(input_shape)
     batch_size = nest.flatten(batch_size)[0]
@@ -344,7 +341,7 @@ class TimeDistributed(Wrapper):
     inner_mask = mask
     if inner_mask is not None:
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
-      inner_mask = K.reshape(inner_mask, inner_mask_shape)
+      inner_mask = backend.reshape(inner_mask, inner_mask_shape)
     inner_input_shape = nest.map_structure(
         lambda tensor: self._get_shape_tuple((-1,), tensor, 2), inputs)
     inner_inputs = nest.map_structure_up_to(inputs, array_ops.reshape, inputs,
@@ -356,27 +353,27 @@ class TimeDistributed(Wrapper):
       # input_mask is not None, and output_mask is None:
       # we should return a not-None mask
       output_mask = mask
-      for _ in range(2, len(K.int_shape(mask))):
-        output_mask = K.any(output_mask, axis=-1)
+      for _ in range(2, len(backend.int_shape(mask))):
+        output_mask = backend.any(output_mask, axis=-1)
     else:
       # output_mask is not None. We need to reshape it
       input_length = tf_utils.convert_shapes(input_shape)
       input_length = nest.flatten(input_length)[1]
       if not input_length:
-        input_length = nest.map_structure(lambda x: K.shape(x)[1], inputs)
+        input_length = nest.map_structure(lambda x: backend.shape(x)[1], inputs)
         input_length = nest.flatten(input_length)[0]
-      output_mask_int_shape = K.int_shape(output_mask)
+      output_mask_int_shape = backend.int_shape(output_mask)
       if output_mask_int_shape is None:
         # if the output_mask does not have a static shape,
         # its shape must be the same as mask's
         if mask is not None:
-          output_mask_int_shape = K.int_shape(mask)
+          output_mask_int_shape = backend.int_shape(mask)
         else:
           input_shape = generic_utils.to_list(nest.flatten(input_shape))[0]
-          output_mask_int_shape = K.compute_output_shape(input_shape)[:-1]
+          output_mask_int_shape = backend.compute_output_shape(input_shape)[:-1]
       output_mask_shape = self._get_shape_tuple(
           (-1, input_length), output_mask, 1, output_mask_int_shape[1:])
-      output_mask = K.reshape(output_mask, output_mask_shape)
+      output_mask = backend.reshape(output_mask, output_mask_shape)
     return output_mask
 
 
@@ -602,7 +599,7 @@ class Bidirectional(Wrapper):
 
       kwargs['initial_state'] = initial_state
       additional_inputs += initial_state
-      state_specs = [InputSpec(shape=K.int_shape(state))
+      state_specs = [InputSpec(shape=backend.int_shape(state))
                      for state in initial_state]
       self.forward_layer.state_spec = state_specs[:num_states // 2]
       self.backward_layer.state_spec = state_specs[num_states // 2:]
@@ -610,7 +607,7 @@ class Bidirectional(Wrapper):
     if constants is not None:
       kwargs['constants'] = constants
       additional_inputs += constants
-      constants_spec = [InputSpec(shape=K.int_shape(constant))
+      constants_spec = [InputSpec(shape=backend.int_shape(constant))
                         for constant in constants]
       self.forward_layer.constants_spec = constants_spec
       self.backward_layer.constants_spec = constants_spec
@@ -620,9 +617,9 @@ class Bidirectional(Wrapper):
       self.forward_layer._num_constants = self._num_constants
       self.backward_layer._num_constants = self._num_constants
 
-    is_keras_tensor = K.is_keras_tensor(additional_inputs[0])
+    is_keras_tensor = backend.is_keras_tensor(additional_inputs[0])
     for tensor in additional_inputs:
-      if K.is_keras_tensor(tensor) != is_keras_tensor:
+      if backend.is_keras_tensor(tensor) != is_keras_tensor:
         raise ValueError('The initial state of a Bidirectional'
                          ' layer cannot be specified with a mix of'
                          ' Keras tensors and non-Keras tensors'
@@ -713,9 +710,9 @@ class Bidirectional(Wrapper):
 
     if self.return_sequences:
       time_dim = 0 if getattr(self.forward_layer, 'time_major', False) else 1
-      y_rev = K.reverse(y_rev, time_dim)
+      y_rev = backend.reverse(y_rev, time_dim)
     if self.merge_mode == 'concat':
-      output = K.concatenate([y, y_rev])
+      output = backend.concatenate([y, y_rev])
     elif self.merge_mode == 'sum':
       output = y + y_rev
     elif self.merge_mode == 'ave':
@@ -739,9 +736,9 @@ class Bidirectional(Wrapper):
     self.backward_layer.reset_states()
 
   def build(self, input_shape):
-    with K.name_scope(self.forward_layer.name):
+    with backend.name_scope(self.forward_layer.name):
       self.forward_layer.build(input_shape)
-    with K.name_scope(self.backward_layer.name):
+    with backend.name_scope(self.backward_layer.name):
       self.backward_layer.build(input_shape)
     self.built = True
 

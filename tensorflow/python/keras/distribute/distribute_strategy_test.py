@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.keras models using tf.distribute.Strategy."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 
@@ -34,7 +31,6 @@ from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import reduce_util
@@ -50,6 +46,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
+from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.distribute.strategy_combinations import multi_worker_mirrored_strategies
@@ -63,6 +60,7 @@ from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
@@ -266,6 +264,7 @@ def all_strategy_minus_default_and_tpu_combinations():
           strategy_combinations.one_device_strategy_gpu,
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           strategy_combinations.mirrored_strategy_with_two_gpus,
+          strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
       ],
       mode=['graph', 'eager'])
 
@@ -1320,7 +1319,9 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_two_gpus
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
           ],
           mode=['graph', 'eager']))
   def test_learning_phase_value(self, distribution):
@@ -1607,7 +1608,7 @@ class TestDistributionStrategyWithDatasetsFile(test.TestCase,
     self.input_file_name = os.path.join(self.get_temp_dir(), 'input.tfrecord')
     inputs = np.zeros((20, 3), dtype=np.float32)
     input_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
-    input_dataset = input_dataset.map(parsing_ops.serialize_tensor)
+    input_dataset = input_dataset.map(io_ops.serialize_tensor)
     writer = writers.TFRecordWriter(self.input_file_name)
     writer.write(input_dataset)
 
@@ -2056,7 +2057,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_two_gpus
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
           ],
           mode=['graph', 'eager'],
           reduction=[
@@ -2213,6 +2216,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
               strategy_combinations.one_device_strategy_gpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
           ],
           mode=['eager']))
   def test_distribution_strategy_with_add_metric_object(
@@ -2425,7 +2430,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
   @ds_combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_unimplemented_parameter_server_strategy(self):
-    cluster_spec = multi_worker_test_base.create_in_process_cluster(
+    cluster_spec = multi_worker_testing_utils.create_in_process_cluster(
         num_workers=3, num_ps=2)
     cluster_resolver = SimpleClusterResolver(
         cluster_spec=server_lib.ClusterSpec(cluster_spec),

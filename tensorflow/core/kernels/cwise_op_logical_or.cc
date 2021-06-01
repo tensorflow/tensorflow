@@ -22,7 +22,6 @@ REGISTER_KERNEL_BUILDER(Name("LogicalOr").Device(DEVICE_CPU),
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER_KERNEL_BUILDER(Name("LogicalOr").Device(DEVICE_GPU),
                         BinaryOp<GPUDevice, functor::logical_or>);
-#endif  // !MLIR_GENERATED_GPU_KERNELS_ENABLED ||
-        // !MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED
+#endif  // !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 #endif
 }  // namespace tensorflow
