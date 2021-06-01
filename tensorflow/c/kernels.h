@@ -410,6 +410,10 @@ TF_CAPI_EXPORT extern void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKe
 TF_CAPI_EXPORT extern void TF_ReleaseVariableInputLockHolder(
                                   TF_VariableInputLockHolder* lockHolder);
 
+// Allows plugin to get TF_Tensor when passed its input_name
+TF_CAPI_EXPORT extern void TF_GetInputByName(TF_OpKernelContext* ctx, const char *inputName,
+                                       TF_Tensor** tensor, TF_Status* status);
+
 
 #ifdef __cplusplus
 } /* end extern "C" */

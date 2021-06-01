@@ -808,3 +808,22 @@ void TF_ReleaseVariableInputLockHolder(TF_VariableInputLockHolder *v) {
     delete v;
   }
 }
+
+void TF_GetInputByName(TF_OpKernelContext* ctx, const char *inputName,
+                                       TF_Tensor** tensor, TF_Status* status)
+{
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  const ::tensorflow::Tensor *cc_tensor = nullptr;
+  tensorflow::Status s = cc_ctx->input(inputName, &cc_tensor);
+
+  if(!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return;
+  }
+  TF_Tensor* result =
+      ::tensorflow::TF_TensorFromTensor(*cc_tensor, &status->status);
+  if (TF_GetCode(status) == TF_OK) {
+    *tensor = result;
+  }
+}
+
