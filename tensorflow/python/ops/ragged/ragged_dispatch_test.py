@@ -596,6 +596,15 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           },
           expected=[1., 6.]),
       dict(
+          op=math_ops.reduce_std,
+          kwargs={
+              'input_tensor':
+                  ragged_factory_ops.constant_value([[1, 3], [1, 2, 2, 1]]),
+              'axis':
+                  1
+          },
+          expected=[1., 0.5]),
+      dict(
           op=math_ops.reduce_any,
           kwargs={
               'input_tensor':
@@ -744,7 +753,8 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'math.maximum', 'math.minimum', 'math.multiply', 'math.negative',
         'math.not_equal', 'math.pow', 'math.real', 'math.reciprocal',
         'math.reduce_any', 'math.reduce_max', 'math.reduce_mean',
-        'math.reduce_variance', 'math.reduce_min', 'math.reduce_prod',
+        'math.reduce_variance', 'math.reduce_std', 'math.reduce_min',
+        'math.reduce_prod',
         'math.reduce_sum', 'math.rint', 'math.round', 'math.rsqrt', 'math.sign',
         'math.sin', 'math.sinh', 'math.sqrt', 'math.square',
         'math.squared_difference', 'math.subtract', 'math.tan', 'math.truediv',
