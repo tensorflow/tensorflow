@@ -208,7 +208,7 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
 
 Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
                       llvm::ArrayRef<int64_t> unroll_factors,
-                      bool cpu_codegen) {
+                      int64_t max_supported_rank, bool cpu_codegen) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -217,7 +217,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(
       mlir::mhlo::createRankSpecializationClusterPass());
   pm.addNestedPass<mlir::FuncOp>(
-      mlir::mhlo::createRankSpecializationToSCFPass());
+      mlir::mhlo::createRankSpecializationToSCFPass(max_supported_rank));
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
 
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
@@ -469,8 +469,8 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    bool embed_memref_prints, bool generate_fatbin, bool print_ptx,
-    bool enable_ftz, bool cpu_codegen) {
+    int64_t max_supported_rank, bool embed_memref_prints, bool generate_fatbin,
+    bool print_ptx, bool enable_ftz, bool cpu_codegen) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
@@ -480,8 +480,8 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   context.appendDialectRegistry(registry);
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
-  TF_RETURN_IF_ERROR(
-      LowerTFtoLoops(module.get(), tile_sizes, unroll_factors, cpu_codegen));
+  TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
+                                    max_supported_rank, cpu_codegen));
   TF_RETURN_IF_ERROR(
       LowerLoopsToGPUorCPU(module.get(), embed_memref_prints, cpu_codegen));
   if (!cpu_codegen) {
