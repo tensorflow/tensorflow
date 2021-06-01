@@ -24,19 +24,15 @@ namespace tflite {
   return providers;
 }
 
-KernelTestDelegateProviders::KernelTestDelegateProviders() {
-  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
-    params_.Merge(one->DefaultParams());
-  }
+KernelTestDelegateProviders::KernelTestDelegateProviders()
+    : delegate_list_util_(&params_) {
+  delegate_list_util_.AddAllDelegateParams();
 }
 
 bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
                                                       const char** argv) {
   std::vector<tflite::Flag> flags;
-  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
-    auto one_flags = one->CreateFlags(&params_);
-    flags.insert(flags.end(), one_flags.begin(), one_flags.end());
-  }
+  delegate_list_util_.AppendCmdlineFlags(&flags);
 
   bool parse_result = tflite::Flags::Parse(argc, argv, flags);
   if (!parse_result || params_.Get<bool>("help")) {
@@ -47,20 +43,5 @@ bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
     parse_result = false;
   }
   return parse_result;
-}
-
-std::vector<tools::TfLiteDelegatePtr>
-KernelTestDelegateProviders::CreateAllDelegates(
-    const tools::ToolParams& params) const {
-  std::vector<tools::TfLiteDelegatePtr> delegates;
-  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
-    auto ptr = one->CreateTfLiteDelegate(params);
-    // It's possible that a delegate of certain type won't be created as
-    // user-specified benchmark params tells not to.
-    if (ptr == nullptr) continue;
-    delegates.emplace_back(std::move(ptr));
-    TFLITE_LOG(INFO) << one->GetName() << " delegate is created.";
-  }
-  return delegates;
 }
 }  // namespace tflite

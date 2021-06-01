@@ -21,10 +21,10 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
-from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.preprocessing import image as preprocessing_image
 from tensorflow.python.platform import test
@@ -55,7 +55,6 @@ def _generate_test_images():
 
 class TestImage(keras_parameterized.TestCase):
 
-  @testing_utils.run_v2_only
   def test_smart_resize(self):
     test_input = np.random.random((20, 40, 3))
     output = preprocessing_image.smart_resize(test_input, size=(50, 50))
@@ -73,7 +72,6 @@ class TestImage(keras_parameterized.TestCase):
       ('size2', (10, 10)),
       ('size3', (100, 50)),
       ('size4', (5, 15)))
-  @testing_utils.run_v2_only
   def test_smart_resize_tf_dataset(self, size):
     test_input_np = np.random.random((2, 20, 40, 3))
     test_ds = dataset_ops.Dataset.from_tensor_slices(test_input_np)
@@ -84,12 +82,21 @@ class TestImage(keras_parameterized.TestCase):
       self.assertIsInstance(sample, np.ndarray)
       self.assertListEqual(list(sample.shape), [size[0], size[1], 3])
 
+  def test_smart_resize_batch(self):
+    img = np.random.random((2, 20, 40, 3))
+    out = preprocessing_image.smart_resize(img, size=(20, 20))
+    self.assertListEqual(list(out.shape), [2, 20, 20, 3])
+    self.assertAllClose(out, img[:, :, 10:-10, :])
+
   def test_smart_resize_errors(self):
     with self.assertRaisesRegex(ValueError, 'a tuple of 2 integers'):
       preprocessing_image.smart_resize(
           np.random.random((20, 20, 2)), size=(10, 5, 3))
     with self.assertRaisesRegex(ValueError, 'incorrect rank'):
-      preprocessing_image.smart_resize(np.random.random((20, 40)), size=(10, 5))
+      preprocessing_image.smart_resize(np.random.random((2, 4)), size=(10, 5))
+    with self.assertRaisesRegex(ValueError, 'incorrect rank'):
+      preprocessing_image.smart_resize(
+          np.random.random((2, 4, 4, 5, 3)), size=(10, 5))
 
   def test_image_data_generator(self):
     if PIL is None:
@@ -438,4 +445,5 @@ class TestImage(keras_parameterized.TestCase):
 
 
 if __name__ == '__main__':
+  v2_compat.enable_v2_behavior()
   test.main()

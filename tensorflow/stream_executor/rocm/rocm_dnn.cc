@@ -3604,13 +3604,11 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
 bool MIOpenSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
     const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::half>& y,
+    const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* x_backprop,
-    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-    DeviceMemory<Eigen::half>* side_input_backprop,
+    DeviceMemory<Eigen::half>* x_backprop, DeviceMemory<float>* scale_backprop,
+    DeviceMemory<float>* offset_backprop,
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<Eigen::half, float>(
@@ -3622,13 +3620,11 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
 bool MIOpenSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<float>& y_backprop,
     const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-    const DeviceMemory<float>& variance, const DeviceMemory<float>& y,
+    const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
-    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-    DeviceMemory<float>* side_input_backprop,
+    DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
+    DeviceMemory<float>* offset_backprop,
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<float, float>(
@@ -3848,14 +3844,16 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     // output=weights*input. So we only need to swap the order of
     // weights and input in the matrix product to correct for the
     // row-major versus column-major difference.
-    const float alpha = 1.0f;  // Take the matrix product without scaling it.
-    const float beta = 0.0f;   // Ignore the original values in output_data.
     const int64 m = output_dimensions.NodesAcrossFeatureMaps();
     const int64 n = input_dimensions.count();
     const int64 k = input_dimensions.NodesAcrossFeatureMaps();
-    stream->ThenBlasGemm(blas::Transpose::kNoTranspose,
-                         blas::Transpose::kNoTranspose, m, n, k, alpha, weights,
-                         m, input_data, k, beta, output_data, m);
+    if (!stream
+             ->ThenBlasGemm(blas::Transpose::kNoTranspose,
+                            blas::Transpose::kNoTranspose, m, n, k, weights, m,
+                            input_data, k, output_data, m)
+             .ok()) {
+      return false;
+    }
   } else {
     // This is a slower and more complex path that supports output
     // width() * height() > 1, though it only supports the

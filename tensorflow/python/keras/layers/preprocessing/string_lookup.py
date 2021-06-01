@@ -15,6 +15,8 @@
 """Keras string lookup preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
@@ -48,7 +50,7 @@ class StringLookup(index_lookup.IndexLookup):
   (which can optionally occupy multiple indices in the vocabulary, as set
   by `num_oov_indices`).
   The position of these tokens in the vocabulary is fixed. When `output_mode` is
-  `"int"`, the vocabulary will begin with the mask token at index 0, followed by
+  `"int"`, the vocabulary will begin with the mask token (if set), followed by
   OOV indices, followed by the rest of the vocabulary. When `output_mode` is
   `"multi_hot"`, `"count"`, or `"tf_idf"` the vocabulary will begin with OOV
   indices and instances of the mask token will be dropped.
@@ -59,13 +61,13 @@ class StringLookup(index_lookup.IndexLookup):
       includes the OOV and mask tokens. Default to None.
     num_oov_indices: The number of out-of-vocabulary tokens to use. If this
       value is more than 1, OOV inputs are hashed to determine their OOV value.
-      If this value is 0, OOV inputs will map to -1 when `output_mode` is
-      `"int"` and are dropped otherwise. Defaults to 1.
+      If this value is 0, OOV inputs will cause an error when calling the layer.
+      Defaults to 1.
     mask_token: A token that represents masked inputs. When `output_mode` is
       `"int"`, the token is included in vocabulary and mapped to index 0. In
       other output modes, the token will not appear in the vocabulary and
       instances of the mask token in the input will be dropped. If set to None,
-      no mask term will be added. Defaults to `""`.
+      no mask term will be added. Defaults to `None`.
     oov_token: Only used when `invert` is True. The token to return for OOV
       indices. Defaults to `"[UNK]"`.
     vocabulary: An optional list of tokens, or a path to a text file containing
@@ -106,8 +108,8 @@ class StringLookup(index_lookup.IndexLookup):
   >>> layer = StringLookup(vocabulary=vocab)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[2, 4, 5],
-         [5, 1, 3]])>
+  array([[1, 3, 4],
+         [4, 0, 2]])>
 
   **Creating a lookup layer with an adapted vocabulary**
 
@@ -118,19 +120,19 @@ class StringLookup(index_lookup.IndexLookup):
   >>> layer = StringLookup()
   >>> layer.adapt(data)
   >>> layer.get_vocabulary()
-  ['', '[UNK]', 'd', 'z', 'c', 'b', 'a']
+  ['[UNK]', 'd', 'z', 'c', 'b', 'a']
 
-  Note how the mask token '' and the OOV token [UNK] have been added to the
-  vocabulary. The remaining tokens are sorted by frequency ('d', which has
-  2 occurrences, is first) then by inverse sort order.
+  Note that the OOV token [UNK] has been added to the vocabulary. The remaining
+  tokens are sorted by frequency ('d', which has 2 occurrences, is first) then
+  by inverse sort order.
 
   >>> data = tf.constant([["a", "c", "d"], ["d", "z", "b"]])
   >>> layer = StringLookup()
   >>> layer.adapt(data)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[6, 4, 2],
-         [2, 3, 5]])>
+  array([[5, 3, 1],
+         [1, 2, 4]])>
 
   **Lookups with multiple OOV indices**
 
@@ -144,12 +146,12 @@ class StringLookup(index_lookup.IndexLookup):
   >>> layer = StringLookup(vocabulary=vocab, num_oov_indices=2)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[3, 5, 6],
-         [1, 2, 4]])>
+  array([[2, 4, 5],
+         [0, 1, 3]])>
 
-  Note that the output for OOV value 'm' is 1, while the output for OOV value
-  'z' is 2. The in-vocab terms have their output index increased by 1 from
-  earlier examples (a maps to 3, etc) in order to make space for the extra OOV
+  Note that the output for OOV value 'm' is 0, while the output for OOV value
+  'z' is 1. The in-vocab terms have their output index increased by 1 from
+  earlier examples (a maps to 2, etc) in order to make space for the extra OOV
   value.
 
   **Multi-hot output**
@@ -222,16 +224,14 @@ class StringLookup(index_lookup.IndexLookup):
   vocab in this example.)
 
   >>> vocab = ["a", "b", "c", "d"]
-  >>> data = tf.constant([[2, 4, 5], [5, 1, 3]])
+  >>> data = tf.constant([[1, 3, 4], [4, 0, 2]])
   >>> layer = StringLookup(vocabulary=vocab, invert=True)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=string, numpy=
   array([[b'a', b'c', b'd'],
          [b'd', b'[UNK]', b'b']], dtype=object)>
 
-  Note that the first two indices correspond to the mask and oov token by
-  default. This behavior can be disabled by setting `mask_token=None` and
-  `num_oov_indices=0`.
+  Note that the first index correspond to the oov token by default.
 
 
   **Forward and inverse lookup pairs**
@@ -253,13 +253,13 @@ class StringLookup(index_lookup.IndexLookup):
   1000 was not in the vocabulary - it got represented as an OOV, and all OOV
   values are returned as '[OOV}' in the inverse layer. Also, note that for the
   inverse to work, you must have already set the forward layer vocabulary
-  either directly or via fit() before calling get_vocabulary().
+  either directly or via adapt() before calling get_vocabulary().
   """
 
   def __init__(self,
                max_tokens=None,
                num_oov_indices=1,
-               mask_token="",
+               mask_token=None,
                oov_token="[UNK]",
                vocabulary=None,
                encoding=None,
@@ -300,10 +300,6 @@ class StringLookup(index_lookup.IndexLookup):
     base_config = super(StringLookup, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  def get_vocabulary(self):
-    vocab = super(StringLookup, self).get_vocabulary()
-    return [compat.as_text(x, self.encoding) for x in vocab]
-
   def set_vocabulary(self, vocabulary, idf_weights=None):
     if isinstance(vocabulary, str):
       if self.output_mode == index_lookup.TF_IDF:
@@ -317,3 +313,8 @@ class StringLookup(index_lookup.IndexLookup):
       vocabulary = table_utils.get_vocabulary_from_file(vocabulary,
                                                         self.encoding)
     super().set_vocabulary(vocabulary, idf_weights=idf_weights)
+
+  # Overriden methods from IndexLookup.
+  def _tensor_vocab_to_numpy(self, vocabulary):
+    vocabulary = vocabulary.numpy()
+    return np.array([compat.as_text(x, self.encoding) for x in vocabulary])

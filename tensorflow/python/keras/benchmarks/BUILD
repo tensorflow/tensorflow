@@ -114,117 +114,6 @@ py_test(
     ],
 )
 
-cuda_py_test(
-    name = "bidirectional_lstm_benchmark_test",
-    srcs = ["keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
-)
-
-cuda_py_test(
-    name = "text_classification_transformer_benchmark_test",
-    srcs = ["keras_examples_benchmarks/text_classification_transformer_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
-)
-
-cuda_py_test(
-    name = "antirectifier_benchmark_test",
-    srcs = ["keras_examples_benchmarks/antirectifier_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
-)
-
-cuda_py_test(
-    name = "mnist_conv_benchmark_test",
-    srcs = ["keras_examples_benchmarks/mnist_conv_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "mnist_hierarchical_rnn_benchmark_test",
-    srcs = ["keras_examples_benchmarks/mnist_hierarchical_rnn_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
-)
-
-cuda_py_test(
-    name = "mnist_irnn_benchmark_test",
-    srcs = ["keras_examples_benchmarks/mnist_irnn_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
-)
-
-cuda_py_test(
-    name = "reuters_mlp_benchmark_test",
-    srcs = ["keras_examples_benchmarks/reuters_mlp_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "cifar10_cnn_benchmark_test",
-    srcs = ["keras_examples_benchmarks/cifar10_cnn_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
-)
-
-cuda_py_test(
-    name = "mnist_conv_custom_training_benchmark_test",
-    srcs = ["keras_examples_benchmarks/mnist_conv_custom_training_benchmark_test.py"],
-    python_version = "PY3",
-    tags = COMMON_TAGS,
-    deps = [
-        ":benchmark_util",
-        ":distribution_util",
-        ":profiler_lib",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
-)
-
 py_library(
     name = "distribution_util",
     srcs = ["distribution_util.py"],
@@ -262,4 +151,14 @@ py_binary(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = ["//tensorflow:tensorflow_py_no_contrib"],
+)
+
+py_test(
+    name = "metrics_memory_benchmark_test",
+    srcs = ["metrics_memory_benchmark_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//third_party/py/numpy",
+    ],
 )

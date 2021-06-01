@@ -16,6 +16,7 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-DAG:       %[[C4:.*]] = constant 4 : index
 // CHECK-DAG:       %[[C0:.*]] = constant 0 : index
 // CHECK-DAG:       %[[FULL_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
+// CHECK-DAG:       %[[STORE_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
 // CHECK-NEXT:      %[[SIZE:.*]] = memref.dim %[[BUF]], %[[C0]] : memref<?xf64>
 // CHECK-NEXT:      %[[REM:.*]] = remi_unsigned %[[SIZE]], %[[C4]] : index
 // CHECK-NEXT:      %[[SPLIT_POINT:.*]] = subi %[[SIZE]], %[[REM]] : index
@@ -34,8 +35,43 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NEXT:        memref.store %[[VAL_20]], %[[VAL_21]][] : memref<vector<4xf64>>
 // CHECK-NEXT:        %[[INPUT_TILE:.*]] = vector.transfer_read %[[FULL_BUF:.*]]{{\[}}%[[C0]]], %[[CF0]] {in_bounds = [true]} : memref<4xf64>, vector<4xf64>
 // CHECK-NEXT:        %[[ABS1:.*]] = absf %[[INPUT_TILE]] : vector<4xf64>
-// CHECK-NEXT:        vector.transfer_write %[[ABS1]], %[[SUBVIEW]]{{\[}}%[[C0]]] : vector<4xf64>, memref<?xf64, #map0>
+// CHECK-NEXT:        vector.transfer_write %[[ABS1]], %[[STORE_BUF]]{{\[}}%[[C0]]] {in_bounds = [true]}
+// CHECK-SAME:            : vector<4xf64>, memref<4xf64>
+// CHECK-NEXT:        %[[VAL_12:.*]] = vector.type_cast %[[STORE_BUF]] : memref<4xf64> to memref<vector<4xf64>>
+// CHECK-NEXT:        %[[VAL_13:.*]] = memref.load %[[VAL_12]][] : memref<vector<4xf64>>
+// CHECK-NEXT:        vector.transfer_write %[[VAL_13]], %[[SUBVIEW]][%[[C0]]] : vector<4xf64>, memref<?xf64, #map0>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      return
 // CHECK-NEXT:    }
 
+// -----
+
+// Check for:
+// 1. Expected tiling of 1x4
+// 2. Expected vectorization of vector<4xf64>
+// 3. Expected removal of  linalg.generic
+// CHECK-LABEL: func @Add(
+// CHECK-NOT:     linalg.generic
+// CHECK:         for{{.*}}%c1
+// CHECK:           for{{.*}}%c4
+// CHECK-NOT:         linalg.generic
+// CHECK:             addf {{.*}}vector<4xf64>
+// CHECK-NOT:     linalg.generic
+func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
+    %rhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
+    %out: memref<?x?xf64>) {
+
+ linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+       affine_map<(d0, d1) -> (d0, d1)>,
+       affine_map<(d0, d1) -> (d0, d1)>],
+     iterator_types = ["parallel", "parallel"]}
+     ins(%lhs, %rhs
+         : memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
+           memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>)
+     outs(%out : memref<?x?xf64>) {
+  ^bb0(%arg2: f64, %arg3: f64, %arg4: f64):  // no predecessors
+    %65 = addf %arg2, %arg3 : f64
+    linalg.yield %65 : f64
+  }
+  return
+}

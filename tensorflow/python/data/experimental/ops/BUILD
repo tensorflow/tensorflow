@@ -283,11 +283,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:random_seed",
-        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:structure",
     ],

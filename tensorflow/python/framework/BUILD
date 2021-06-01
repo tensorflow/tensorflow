@@ -9,6 +9,9 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
@@ -211,8 +214,8 @@ py_library(
         ":tensor_spec",
         ":tensor_util",
         ":type_spec",
-        "//tensorflow/python:_pywrap_debug_events_writer",
-        "//tensorflow/python:_pywrap_events_writer",
+        "//tensorflow/python/client:_pywrap_debug_events_writer",
+        "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         "//tensorflow/python:_pywrap_py_exception_registry",
@@ -434,7 +437,7 @@ py_library(
         ":tensor_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/grappler:tf_optimizer",
     ],
 )
 
@@ -1014,6 +1017,23 @@ cuda_py_test(
     ] + tf_additional_xla_deps_py(),
 )
 
+tpu_py_test(
+    name = "config_test_tpu",
+    size = "small",
+    srcs = ["config_test.py"],
+    main = "config_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],  # test_ops are not available in pip.
+    deps = [
+        ":config",
+        ":constant_op",
+        ":test_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/util",
+    ] + tf_additional_xla_deps_py(),
+)
+
 py_library(
     name = "random_seed",
     srcs = ["random_seed.py"],
@@ -1103,14 +1123,14 @@ py_test(
 )
 
 py_library(
-    name = "tensor_struct",
-    srcs = ["tensor_struct.py"],
+    name = "extension_type",
+    srcs = ["extension_type.py"],
     srcs_version = "PY3",
     deps = [
         ":dtypes",
+        ":extension_type_field",
         ":immutable_dict",
         ":ops",
-        ":struct_field",
         ":tensor_shape",
         ":tensor_spec",
         ":type_spec",
@@ -1118,8 +1138,8 @@ py_library(
 )
 
 py_library(
-    name = "struct_field",
-    srcs = ["struct_field.py"],
+    name = "extension_type_field",
+    srcs = ["extension_type_field.py"],
     srcs_version = "PY3",
     deps = [
         ":dtypes",
@@ -1234,6 +1254,7 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_sanitizers",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
@@ -1650,27 +1671,27 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tensor_struct_test",
+    name = "extension_type_test",
     size = "small",
-    srcs = ["tensor_struct_test.py"],
-    main = "tensor_struct_test.py",
+    srcs = ["extension_type_test.py"],
+    main = "extension_type_test.py",
     python_version = "PY3",
     deps = [
-        ":tensor_struct",
+        ":extension_type",
         ":test_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
 tf_py_test(
-    name = "struct_field_test",
+    name = "extension_type_field_test",
     size = "small",
-    srcs = ["struct_field_test.py"],
-    main = "struct_field_test.py",
+    srcs = ["extension_type_field_test.py"],
+    main = "extension_type_field_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # TODO(b/184565242) Enable pip once we add a module that depends on this.
     deps = [
-        ":struct_field",
+        ":extension_type_field",
         ":test_lib",
         "@absl_py//absl/testing:parameterized",
     ],

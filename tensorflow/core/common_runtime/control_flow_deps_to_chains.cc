@@ -163,7 +163,7 @@ Status ControlFlowDepsToChainsPass::Run(
     for (int i = 0; i < num_new_chains; i++) {
       // Input loop vars.
       // TODO(mdan): Double check that this doesn't clash with names in body.
-      string c_name = g->NewName("acd__chain");
+      string c_name = g->NewName("acd__chainv");
       std::replace(c_name.begin(), c_name.end(), '/', '_');
       auto* new_arg = modified_body.mutable_signature()->add_input_arg();
       new_arg->set_name(c_name);
@@ -279,23 +279,29 @@ Status ControlFlowDepsToChainsPass::Run(
 
     // Commit the new functions.
 
-    // TODO(b/183666205): One of these two should not be necessary.
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         flib_def->AddFunctionDef(modified_body,
                                  flib_def->GetStackTraces(body_name)),
-        "while attaching", body_name, "to flib_def");
+        "while attaching ", new_body_name, " to flib_def");
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         flib_def->AddFunctionDef(modified_cond,
                                  flib_def->GetStackTraces(cond_name)),
-        "while attaching", cond_name, "to flib_def");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        g->mutable_flib_def()->AddFunctionDef(
-            modified_body, flib_def->GetStackTraces(body_name)),
-        "while attaching", body_name, "to graph");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        g->mutable_flib_def()->AddFunctionDef(
-            modified_cond, flib_def->GetStackTraces(cond_name)),
-        "while attaching", cond_name, "to grap");
+        "while attaching ", new_cond_name, " to flib_def");
+
+    // TODO(b/183666205): This should not be necessary.
+    // It's unclear why adding the functions here is also required.
+    // Moreover, it's unclear when graph_lib's parent is flib_def itself.
+    auto* graph_lib = g->mutable_flib_def();
+    if (graph_lib->default_registry() != flib_def) {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          graph_lib->AddFunctionDef(modified_body,
+                                    graph_lib->GetStackTraces(body_name)),
+          "while attaching ", new_body_name, " to graph");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          graph_lib->AddFunctionDef(modified_cond,
+                                    graph_lib->GetStackTraces(cond_name)),
+          "while attaching ", new_cond_name, " to graph");
+    }
   }
 
   if (VLOG_IS_ON(1)) {

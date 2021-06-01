@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -77,49 +78,21 @@ namespace {
 
 constexpr char kShardingAttr[] = "mhlo.sharding";
 
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect,
-                    shape::ShapeDialect, StandardOpsDialect>();
-  }
-
+class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
  public:
-  LegalizeTF() = default;
-  LegalizeTF(const LegalizeTF &) {}
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
-                      llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+                      llvm::Optional<StringRef> tf2xla_fallback_device_type,
+                      bool prefer_tf2xla) {
     allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
+    prefer_tf2xla_ = prefer_tf2xla;
     use_tf2xla_fallback_ = tf2xla_fallback_device_type.hasValue();
     if (tf2xla_fallback_device_type.hasValue()) {
       device_type_ = tf2xla_fallback_device_type.getValue().str();
     }
   }
-
   /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
-
- private:
-  Option<bool> allow_partial_conversion_{
-      *this, "allow-partial-conversion",
-      llvm::cl::desc("Allow operations that can't be legalized."),
-      llvm::cl::init(false)};
-  Option<bool> legalize_chlo_{
-      *this, "legalize-chlo",
-      llvm::cl::desc(
-          "Also legalizes intermediate chlo ops to hlo (default true)"),
-      llvm::cl::init(true)};
-  Option<bool> use_tf2xla_fallback_{
-      *this, "use-tf2xla-fallback",
-      llvm::cl::desc(
-          "Also use TF2XLA fallback for legalization (default false)"),
-      llvm::cl::init(false)};
-  Option<std::string> device_type_{
-      *this, "device-type",
-      llvm::cl::desc(
-          "The device type used by TF2XLA fallback. Must be specified if "
-          "use-tf2xla-fallback is true, otherwise not used."),
-      llvm::cl::init("INVALID_DEVICE_TYPE")};
 };
 
 /// Returns if the given TF data format string is the default format.
@@ -914,11 +887,13 @@ static DenseElementsAttr GetEpsilonValue(Type ty) {
   auto element_ty = ty.cast<TensorType>().getElementType();
   auto scalar_ty = RankedTensorType::get({}, element_ty);
   if (element_ty.isF16()) {
-    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::half>::epsilon().x;
+    uint16_t raw_epsilon = Eigen::numext::bit_cast<uint16_t>(
+        Eigen::NumTraits<Eigen::half>::epsilon());
     auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isBF16()) {
-    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::bfloat16>::epsilon().value;
+    uint16_t raw_epsilon = Eigen::numext::bit_cast<uint16_t>(
+        Eigen::NumTraits<Eigen::bfloat16>::epsilon());
     auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isF32()) {
@@ -3849,20 +3824,30 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
     // The mean op needs to divide by the product of the reduced dimensions.
     if (std::is_same<OpTy, TF::MeanOp>::value) {
-      int64_t divisor_count = 1;
+      Value in_shape = rewriter.create<shape::ShapeOfOp>(loc, op.input());
+      Value divisor_count = rewriter.create<ConstantIndexOp>(loc, 1);
       for (size_t i = 0; i < input_shape.size(); ++i) {
         if (reduced_dimensions_bitmap[i]) {
-          if (TensorType::isDynamic(input_shape[i])) {
-            return failure();
-          }
-          divisor_count *= input_shape[i];
+          Value index = rewriter.create<ConstantIndexOp>(loc, i);
+          auto dim = rewriter.create<tensor::ExtractOp>(loc, in_shape, index);
+          divisor_count = rewriter.create<MulIOp>(loc, divisor_count, dim);
         }
       }
-      auto divisor = GetScalarConstOfType(reduce_element_type, loc,
-                                          divisor_count, &rewriter);
+      // HLO ops are only defined on tensors, so we cast the divisor from
+      // index -> i64 -> tensor<1xi64> -> tensor<i64> -> tensor<reduction type>
+      auto divisor_casted = rewriter.create<IndexCastOp>(
+          loc, rewriter.getI64Type(), divisor_count);
+      auto divisor_tensor = rewriter.create<tensor::FromElementsOp>(
+          loc, rewriter.getI64Type(), ValueRange{divisor_casted});
+      auto divisor_reshaped = rewriter.create<mhlo::ReshapeOp>(
+          loc, RankedTensorType::get({}, rewriter.getI64Type()),
+          divisor_tensor);
+      auto divisor = rewriter.create<ConvertOp>(
+          loc, RankedTensorType::get({}, reduce_element_type),
+          divisor_reshaped);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-      result = rewriter.create<chlo::BroadcastDivOp>(
-          loc, result, divisor.getResult(), broadcast_dims);
+      result = rewriter.create<chlo::BroadcastDivOp>(loc, result, divisor,
+                                                     broadcast_dims);
     }
 
     result = rewriter.create<ConvertOp>(loc, result, element_type);
@@ -3870,7 +3855,24 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // Need to reshape back after the reduction if we're keeping the reduced
     // dimensions.
     if (op.keep_dims()) {
-      result = rewriter.create<ReshapeOp>(loc, op.getType(), result);
+      // Rebuild the result shape by replacing reduced dimensions with '1'.
+      Value in_shape = rewriter.create<shape::ShapeOfOp>(loc, op.input());
+      SmallVector<Value> shape_components;
+      Value one = rewriter.create<ConstantIndexOp>(loc, 1);
+      for (auto dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
+        if (dim_is_reduced.value()) {
+          shape_components.push_back(one);
+        } else {
+          Value index =
+              rewriter.create<ConstantIndexOp>(loc, dim_is_reduced.index());
+          shape_components.push_back(
+              rewriter.create<tensor::ExtractOp>(loc, in_shape, index));
+        }
+      }
+      auto out_shape = rewriter.create<tensor::FromElementsOp>(
+          loc, rewriter.getIndexType(), shape_components);
+      result = rewriter.create<DynamicReshapeOp>(loc, op.getType(), result,
+                                                 out_shape);
     }
     rewriter.replaceOp(op, {result});
 
@@ -5718,7 +5720,6 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
                                 PatternRewriter &rewriter) const override {
     Value input = op.input();
 
-    auto shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), input);
     auto result_ty = op.getResult().getType().dyn_cast<RankedTensorType>();
     if (!result_ty) {
       return failure();
@@ -5726,10 +5727,23 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
 
     auto index_tensor =
         RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
-    auto extent_tensor = rewriter.create<shape::ToExtentTensorOp>(
-        op.getLoc(), index_tensor, shape_op);
+    auto shape_op =
+        rewriter.create<shape::ShapeOfOp>(op.getLoc(), index_tensor, input);
 
-    rewriter.replaceOpWithNewOp<IndexCastOp>(op, result_ty, extent_tensor);
+    // Index cast is not defined on tensors, so we use a tensor.generate to have
+    // it work on scalars.
+    rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
+        op, result_ty,
+        result_ty.hasStaticShape()
+            ? ValueRange{}
+            : ValueRange{rewriter.create<RankOp>(op.getLoc(), input)},
+        [&](OpBuilder &b, Location loc, ValueRange args) {
+          Value dim = args.front();
+          Value extent = b.create<tensor::ExtractOp>(loc, shape_op, dim);
+          Value casted =
+              b.create<IndexCastOp>(loc, extent, result_ty.getElementType());
+          b.create<tensor::YieldOp>(loc, casted);
+        });
     return success();
   }
 };
@@ -6372,23 +6386,116 @@ void LegalizeTF::runOnFunction() {
     tf2xla_fallback_device_type = device_type_;
   }
   if (failed(legalizeTF(getFunction(), allow_partial_conversion_,
-                        legalize_chlo_, tf2xla_fallback_device_type))) {
+                        legalize_chlo_, tf2xla_fallback_device_type,
+                        prefer_tf2xla_))) {
     signalPassFailure();
   }
 }
 
-static PassRegistration<LegalizeTF> pass(
-    "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
+// Patterns whose root op is in the set `include_ops` are moved from the set
+// `from` to the returned set. This is used to partition patterns by op so they
+// can be cleanly migrated from the old bridge to the MLIR bridge.
+OwningRewritePatternList PatternsIncludeOps(
+    OwningRewritePatternList &from,
+    const llvm::DenseSet<mlir::TypeID> &include_ops) {
+  OwningRewritePatternList to(from.getContext());
+  // Filter NativePatterns.
+  for (auto &pattern : from.getNativePatterns()) {
+    Optional<OperationName> pat_op_name = pattern->getRootKind();
+    // If the pattern does not have a specific operation, always include it,
+    // If the pattern is in include_ops then include it.
+    bool include =
+        !pat_op_name ||
+        include_ops.count(pat_op_name->getAbstractOperation()->typeID);
+    if (include) to.add(std::move(pattern));
+  }
+
+  // Don't filter PDLPatterns.
+  to.add(std::move(from.getPDLPatterns()));
+
+  return to;
+}
+
+/// Returns ops that should use MLIR legalization only in the case of
+/// prefer_tf2xla. All other ops not in this list should use XlaOpKernel
+/// legalization only or not be legalized by the new bridge.
+const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
+  // The static variable is a pointer in order to avoid destruction upon thread
+  // termination.
+
+  // clang-format off
+  static const llvm::DenseSet<mlir::TypeID>* ops =
+      new llvm::DenseSet<mlir::TypeID>{
+    // Ops that are legalized in the old bridge using MlirXlaOpKernel
+    TypeID::get<TF::AbsOp>(),
+    TypeID::get<TF::AtanOp>(),
+    TypeID::get<TF::AvgPool3DOp>(),
+    TypeID::get<TF::BiasAddGradOp>(),
+    TypeID::get<TF::CeilOp>(),
+    TypeID::get<TF::CheckNumericsOp>(),
+    TypeID::get<TF::ComplexOp>(),
+    TypeID::get<TF::CosOp>(),
+    TypeID::get<TF::DiagPartOp>(),
+    TypeID::get<TF::DivOp>(),
+    TypeID::get<TF::EinsumOp>(),
+    TypeID::get<TF::ExpOp>(),
+    TypeID::get<TF::Expm1Op>(),
+    TypeID::get<TF::FakeQuantWithMinMaxArgsOp>(),
+    TypeID::get<TF::FloorOp>(),
+    TypeID::get<TF::GreaterEqualOp>(),
+    TypeID::get<TF::IFFTOp>(),
+    TypeID::get<TF::ImagOp>(),
+    TypeID::get<TF::IsFiniteOp>(),
+    TypeID::get<TF::IsInfOp>(),
+    TypeID::get<TF::IsNanOp>(),
+    TypeID::get<TF::LessEqualOp>(),
+    TypeID::get<TF::LgammaOp>(),
+    TypeID::get<TF::Log1pOp>(),
+    TypeID::get<TF::LogicalOrOp>(),
+    TypeID::get<TF::LogSoftmaxOp>(),
+    TypeID::get<TF::MatrixBandPartOp>(),
+    TypeID::get<TF::MaxPool3DGradOp>(),
+    TypeID::get<TF::PreventGradientOp>(),
+    TypeID::get<TF::RandomShuffleOp>(),
+    TypeID::get<TF::RealOp>(),
+    TypeID::get<TF::ReciprocalOp>(),
+    TypeID::get<TF::ReluOp>(),
+    TypeID::get<TF::Relu6Op>(),
+    TypeID::get<TF::ReluGradOp>(),
+    TypeID::get<TF::RsqrtOp>(),
+    TypeID::get<TF::SelectOp>(),
+    TypeID::get<TF::SigmoidOp>(),
+    TypeID::get<TF::SignOp>(),
+    TypeID::get<TF::SoftmaxOp>(),
+    TypeID::get<TF::SqrtOp>(),
+    TypeID::get<TF::SqrtGradOp>(),
+    TypeID::get<TF::SquaredDifferenceOp>(),
+    TypeID::get<TF::TanhOp>(),
+    TypeID::get<TF::TanhGradOp>(),
+    TypeID::get<TF::XlogyOp>(),
+    TypeID::get<TF::ZetaOp>(),
+
+    // Ops that have no XlaOpKernel.
+    TypeID::get<TF::RiscAddOp>(),
+    TypeID::get<TF::RiscDotOp>(),
+
+    // TFXLA fallback doesn't handle const output yet and this is a safe op.
+    TypeID::get<TF::ConstOp>(),
+  };
+  // clang-format on
+  return *ops;
+}
 
 }  // end namespace
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
-LogicalResult legalizeTF(
-    Operation *op, bool allow_partial_conversion, bool legalize_chlo,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
+                         bool legalize_chlo,
+                         llvm::Optional<StringRef> tf2xla_fallback_device_type,
+                         bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns(context);
+  OwningRewritePatternList legalize_lower_patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
   //    to arrive at conversion target). This requires relevant patterns to
@@ -6400,21 +6507,40 @@ LogicalResult legalizeTF(
   // 4) Order of patterns in `OwningRewritePatternList`.
 
   // Add TF->HLO legalization patterns.
-  PopulateLegalizeTfPatterns(context, &patterns);
+  PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
 
   // Add TF->TF lowering patterns.
-  TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
+  TF::PopulateTFLoweringBeforeHLOPatterns(context, &legalize_lower_patterns);
 
-  // Add TF->HLO legalization patterns via TF2XLA fallback.
-  if (tf2xla_fallback_device_type.hasValue()) {
+  if (tf2xla_fallback_device_type && prefer_tf2xla) {
+    VLOG(1) << "TF to XLA legalization patterns are partitioned by op into "
+               "either native MLIR legalization, or TF2XLA fallback "
+               "legalzation, with a preference toward TF2XLA.";
+  } else if (tf2xla_fallback_device_type) {
+    VLOG(1) << "TF to XLA legalization patterns include all native patterns "
+               "and TF2XLA fallback patterns.";
+  } else {
+    VLOG(1) << "TF to XLA legalization patterns are native patterns only.";
+  }
+
+  // Set patterns to legalize_lower_patters, where in the prefer_tf2xla case
+  // only patterns whose ops are in the set MlirPreferredOps are kept.
+  OwningRewritePatternList patterns =
+      (tf2xla_fallback_device_type && prefer_tf2xla)
+          ? PatternsIncludeOps(legalize_lower_patterns, MlirPreferredOps())
+          : std::move(legalize_lower_patterns);
+
+  if (tf2xla_fallback_device_type) {
+    // Add TF->HLO legalization patterns via TF2XLA fallback.
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
-                                         patterns, context);
+                                         patterns, context, prefer_tf2xla);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
   if (legalize_chlo) {
-    chlo::PopulateLegalizeChloToHloPatterns(context, &patterns);
+    chlo::PopulateDecomposeChloPatterns(context, &patterns);
+    chlo::PopulateChloBroadcastingPatterns(context, &patterns);
   }
   // ConstantLike op is convenient to create splat constants, but is
   // canonicalized to plain HLO constant if statically shaped. Add the
@@ -6537,9 +6663,10 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+    llvm::Optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
-                                      tf2xla_fallback_device_type);
+                                      tf2xla_fallback_device_type,
+                                      prefer_tf2xla);
 }
 
 }  // end namespace mhlo

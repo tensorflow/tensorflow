@@ -29,6 +29,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import keras_parameterized
@@ -750,9 +751,11 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
 
   def test_int_output_no_oov(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    input_array = np.array([["earth", "wind", "and", "ohio"],
-                            ["fire", "and", "earth", "michigan"]])
-    expected_output = [[1, 2, 3, -1], [4, 3, 1, -1]]
+    valid_input = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", ""]])
+    invalid_input = np.array([["earth", "wind", "and", "michigan"],
+                              ["fire", "and", "earth", "michigan"]])
+    expected_output = [[1, 2, 3, 4], [4, 3, 1, 0]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = index_lookup.IndexLookup(
@@ -764,8 +767,11 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
+    output_data = model.predict(valid_input)
+    self.assertAllEqual(expected_output, output_data)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "found OOV values.*michigan"):
+      _ = model.predict(invalid_input)
 
   def test_int_output_explicit_vocab(self):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -814,8 +820,10 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
   def test_binary_output_no_oov(self):
     """Check binary output when pad_to_max_tokens=True."""
     vocab_data = ["earth", "wind", "and", "fire"]
-    input_array = np.array([["earth", "wind", "and", "fire", "ohio"],
-                            ["fire", "fire", "and", "earth", "michigan"]])
+    valid_input = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", ""]])
+    invalid_input = np.array([["earth", "wind", "and", "michigan"],
+                              ["fire", "and", "earth", "michigan"]])
     expected_output = [
         [1, 1, 1, 1, 0],
         [1, 0, 1, 1, 0],
@@ -833,8 +841,11 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     layer.set_vocabulary(vocab_data)
     binary_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=binary_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
+    output_data = model.predict(valid_input)
+    self.assertAllEqual(expected_output, output_data)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "found OOV values.*michigan"):
+      _ = model.predict(invalid_input)
 
   def test_binary_output_hard_maximum_multiple_adapts(self):
     input_array = np.array([["earth", "wind", "and", "earth"],

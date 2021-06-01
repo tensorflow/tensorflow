@@ -55,7 +55,8 @@ struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
     if (!shape_origin) return failure();
 
     llvm::SmallVector<Value, 1> reifications;
-    if (failed(shape_origin.reifyReturnTypeShapes(rewriter, reifications)))
+    if (failed(shape_origin.reifyReturnTypeShapes(
+            rewriter, shape_origin->getOperands(), reifications)))
       return failure();
     assert(reifications.size() == 1);
     Value reified_shape = reifications.front();
@@ -275,7 +276,8 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
               llvm::dyn_cast<shape::AssumingYieldOp>(body_a->getTerminator());
           for (auto pair :
                llvm::zip(preceding_op->getResults(), yield_op_a.operands())) {
-            mapping.map(std::get<0>(pair), mapping.lookup(std::get<1>(pair)));
+            mapping.map(std::get<0>(pair),
+                        mapping.lookupOrDefault(std::get<1>(pair)));
           }
 
           // Copy op's body.
@@ -301,31 +303,6 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
     size_t split_at = preceding_op->getNumResults();
     rewriter.replaceOp(preceding_op, new_results.take_front(split_at));
     rewriter.replaceOp(op, new_results.drop_front(split_at));
-    return success();
-  }
-};
-
-// Eliminate casted extent tensors. Instead, produce the concrete extent tensor
-// type where possible.
-struct CanonicalizeCastedShapeOfOpPattern
-    : public OpRewritePattern<tensor::CastOp> {
-  using OpRewritePattern<tensor::CastOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tensor::CastOp op,
-                                PatternRewriter &rewriter) const override {
-    // Only merge tensor cast into `shape_of` ops.
-    auto shape_of_op = op.source().getDefiningOp<shape::ShapeOfOp>();
-    if (!shape_of_op) return failure();
-
-    // Desired type must be an extent tensor type.
-    auto result_ty = op.getType().dyn_cast<RankedTensorType>();
-    if (!result_ty || result_ty.getRank() != 1 ||
-        !result_ty.getElementType().isIndex())
-      return failure();
-
-    rewriter.replaceOpWithNewOp<shape::ShapeOfOp>(op, result_ty,
-                                                  shape_of_op.arg());
-    if (shape_of_op->getUses().empty()) rewriter.eraseOp(shape_of_op);
     return success();
   }
 };
@@ -401,7 +378,6 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
-      CanonicalizeCastedShapeOfOpPattern,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
       MoveIntoAssumingOpPattern<shape::ShapeOfOp>,
@@ -411,6 +387,14 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
       MoveUpBroadcastInDimOpPattern,
       ShapeReificationPattern>(context);
   // clang-format on
+  mhlo::DynamicBroadcastInDimOp::getCanonicalizationPatterns(*patterns,
+                                                             context);
+  mhlo::DynamicReshapeOp::getCanonicalizationPatterns(*patterns, context);
+  shape::AssumingAllOp::getCanonicalizationPatterns(*patterns, context);
+  shape::AssumingOp::getCanonicalizationPatterns(*patterns, context);
+  shape::BroadcastOp::getCanonicalizationPatterns(*patterns, context);
+  shape::CstrBroadcastableOp::getCanonicalizationPatterns(*patterns, context);
+  tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
 std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass() {

@@ -1081,6 +1081,19 @@ ENTRY %CustomCallWithAliasing (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (
 
 )"
 },
+// CustomCall with schedule.
+{
+"CustomCallWithSchedule",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  %custom-call.0 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", schedule=SCHEDULE_EARLIEST
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1,2,3]{0,2,1} %custom-call.0), custom_call_target="bar", schedule=SCHEDULE_LATEST
+}
+
+)"
+},
 // Parse c64 literal
 {
 "ParseC64Literal",
@@ -1604,6 +1617,25 @@ ENTRY CRS {
 
 )"
 },
+// all-reduce start and done
+{
+"AllReduceStartAndDone",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  crs = (f32[8]{0}, f32[8]{0}) all-reduce-start(input), replica_groups={}, to_apply=add
+  ROOT done = f32[8]{0} all-reduce-done(crs)
+}
+
+)"
+},
 // all-gather
 {
 "AllGather",
@@ -1680,7 +1712,51 @@ ENTRY CollectivePermute {
 )",
 /*replica_count=*/4
 },
-// collective-permute-start and -done
+// collective-permute with in-place updates
+{
+"CollectivePermuteInPlaceUpdate",
+R"(HloModule CollectivePermuteInPlaceUpdate
+
+ENTRY CollectivePermuteInPlaceUpdate {
+  input = f32[128,32]{0,1} parameter(0)
+  constant = f32[] constant(1)
+  output = f32[128,128]{0,1} broadcast(constant), dimensions={}
+  constant.1 = s32[] constant(0)
+  tuple.1 = (s32[], s32[]) tuple(constant.1, constant.1)
+  constant.2 = s32[] constant(64)
+  tuple.2 = (s32[], s32[]) tuple(constant.1, constant.2)
+  ROOT root = f32[128,128]{0,1} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,32}}
+}
+
+)",
+/*replica_count=*/4
+},
+// collective-permute tuple with in-place updates
+{
+"CollectivePermuteTupleInPlaceUpdate",
+R"(HloModule CollectivePermuteTupleInPlaceUpdate
+
+ENTRY CollectivePermuteInPlaceUpdate {
+  input = f32[128,32]{0,1} parameter(0)
+  tuple.input = (f32[128,32]{0,1}, f32[128,32]{0,1}) tuple(input, input)
+  constant = f32[] constant(1)
+  output = f32[128,128]{0,1} broadcast(constant), dimensions={}
+  tuple.output = (f32[128,128]{0,1}, f32[128,128]{0,1}) tuple(output, output)
+  constant.1 = s32[] constant(0)
+  tuple.1 = (s32[], s32[]) tuple(constant.1, constant.1)
+  constant.2 = s32[] constant(64)
+  tuple.2 = (s32[], s32[]) tuple(constant.2, constant.1)
+  tuple.3 = ((s32[], s32[]), (s32[], s32[])) tuple(tuple.1, tuple.2)
+  tuple.4 = (s32[], s32[]) tuple(constant.1, constant.1)
+  tuple.5 = (s32[], s32[]) tuple(constant.2, constant.2)
+  tuple.6 = ((s32[], s32[]), (s32[], s32[])) tuple(tuple.4, tuple.5)
+  ROOT root = (f32[128,128]{0,1}, f32[128,128]{0,1}) collective-permute(tuple.input, tuple.output, tuple.3, tuple.6), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{64,32},{64,32}}
+}
+
+)",
+/*replica_count=*/4
+},
+// collective-permute-start and -done with inplace update
 {
 "CollectivePermuteStartAndDone",
 R"(HloModule CollectivePermuteStartAndDone
@@ -1689,6 +1765,26 @@ ENTRY CollectivePermuteStartAndDone {
   input = f32[128,32]{0,1} parameter(0)
   collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}, u32[], u32[]) collective-permute-start(input), source_target_pairs={{0,1},{1,2},{2,3}}
   ROOT collective-permute-done.1 = f32[128,32]{0,1} collective-permute-done(collective-permute-start.1)
+}
+
+)",
+/*replica_count=*/4
+},
+// collective-permute-start and -done
+{
+"CollectivePermuteStartAndDoneInplaceUpdate",
+R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate
+
+ENTRY CollectivePermuteStartAndDoneInplaceUpdate {
+  input = f32[128,32]{0,1} parameter(0)
+  constant = f32[] constant(1)
+  output = f32[128,128]{0,1} broadcast(constant), dimensions={}
+  constant.1 = s32[] constant(0)
+  tuple.1 = (s32[], s32[]) tuple(constant.1, constant.1)
+  constant.2 = s32[] constant(64)
+  tuple.2 = (s32[], s32[]) tuple(constant.1, constant.2)
+  collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,128]{0,1}, u32[], u32[], s32[]) collective-permute-start(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{64,32}}
+  ROOT collective-permute-done.1 = f32[128,128]{0,1} collective-permute-done(collective-permute-start.1)
 }
 
 )",
@@ -2278,16 +2374,22 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 )";
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
-                      absl::StrCat(prefix, ",dim_labels=00_01_10", suffix))
+                      absl::StrCat(prefix, ",dim_labels=00_01->10", suffix))
                       .status()
                       .error_message(),
-                  "expects dim labels pattern");
+                  "expects unique");
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
-                      absl::StrCat(prefix, ",dim_labels=010_1100->010", suffix))
+                      absl::StrCat(prefix, ",dim_labels=012_0123->210", suffix))
                       .status()
                       .error_message(),
-                  "must have the same rank");
+                  "must have same number of spatial dimensions");
+
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(
+                      absl::StrCat(prefix, ",dim_labels=013_0123->210", suffix))
+                      .status()
+                      .error_message(),
+                  "expects [0-2bf?]");
 }
 
 TEST_F(HloParserTest, UnexpectedAttribute) {
@@ -2772,6 +2874,13 @@ TEST_F(HloParserTest, ParseWindow) {
 
 TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   const string original = "b0f_0io->b0f";
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
+                          ParseConvolutionDimensionNumbers(original));
+  EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
+TEST_F(HloParserTest, ParseConvolutionDimensionNumbersWithUnknownDims) {
+  const string original = "b0?f_?0?io->?b?0?f";
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers(original));
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));

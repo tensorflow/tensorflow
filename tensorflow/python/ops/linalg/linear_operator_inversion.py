@@ -27,6 +27,7 @@ __all__ = []
 
 
 @tf_export("linalg.LinearOperatorInversion")
+@linear_operator.make_composite_tensor
 class LinearOperatorInversion(linear_operator.LinearOperator):
   """`LinearOperator` representing the inverse of another operator.
 
@@ -212,3 +213,7 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
 
   def _cond(self):
     return self.operator.cond()
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("operator",)

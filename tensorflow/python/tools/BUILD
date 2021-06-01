@@ -114,7 +114,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -330,7 +330,7 @@ py_library(
         ":saved_model_aot_compile",
         ":saved_model_utils",
         "//tensorflow/python",
-        "//tensorflow/python/debug:local_cli_wrapper",
+        "//tensorflow/python/debug/wrappers:local_cli_wrapper",
     ],
 )
 

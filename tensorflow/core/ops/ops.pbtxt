@@ -2271,14 +2271,20 @@ op {
     type: "type"
     allowed_values {
       list {
-        type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
         type: DT_BOOL
         type: DT_VARIANT
       }
@@ -6953,6 +6959,13 @@ op {
     }
   }
   attr {
+    name: "blank_index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
     name: "T"
     type: "type"
     default_value {
@@ -7872,6 +7885,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_HALF
         type: DT_DOUBLE
@@ -7974,6 +7988,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_HALF
         type: DT_DOUBLE
@@ -8168,6 +8183,46 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+}
+op {
+  name: "CompositeTensorVariantFromComponents"
+  input_arg {
+    name: "components"
+    type_list_attr: "Tcomponents"
+  }
+  output_arg {
+    name: "encoded"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
+  }
+}
+op {
+  name: "CompositeTensorVariantToComponents"
+  input_arg {
+    name: "encoded"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "Tcomponents"
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
   }
 }
 op {
@@ -19353,6 +19408,8 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -19403,6 +19460,8 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -25150,12 +25209,12 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
         type: DT_UINT8
+        type: DT_INT16
         type: DT_UINT16
+        type: DT_INT32
         type: DT_UINT32
+        type: DT_INT64
         type: DT_UINT64
       }
     }
@@ -25410,10 +25469,14 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT8
         type: DT_UINT8
         type: DT_INT16
+        type: DT_UINT16
         type: DT_INT32
+        type: DT_UINT32
         type: DT_INT64
+        type: DT_UINT64
       }
     }
   }
@@ -41737,7 +41800,9 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_INT16
+        type: DT_UINT32
         type: DT_INT32
+        type: DT_UINT64
         type: DT_INT64
         type: DT_BOOL
         type: DT_BFLOAT16
@@ -41831,7 +41896,9 @@ op {
         type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
+        type: DT_UINT32
         type: DT_INT64
+        type: DT_UINT64
         type: DT_BOOL
         type: DT_BFLOAT16
         type: DT_HALF
@@ -46297,6 +46364,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
@@ -50052,6 +50121,66 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SparseSegmentSumGrad"
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tsegmentids"
+  }
+  input_arg {
+    name: "output_dim0"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }

@@ -409,7 +409,7 @@ tf_py_test(
     name = "interleave_test",
     size = "small",
     srcs = ["interleave_test.py"],
-    shard_count = 4,
+    shard_count = 24,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -569,7 +569,7 @@ cuda_py_test(
     name = "memory_cleanup_test",
     size = "small",
     srcs = ["memory_cleanup_test.py"],
-    shard_count = 2,
+    shard_count = 12,
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
         "notsan",  # TODO(b/144706539)
@@ -705,6 +705,20 @@ tf_py_test(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "random_dataset_test",
+    size = "small",
+    srcs = ["random_dataset_test.py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -964,6 +978,7 @@ tf_py_test(
     name = "zip_test",
     size = "small",
     srcs = ["zip_test.py"],
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

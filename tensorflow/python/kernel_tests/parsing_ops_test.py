@@ -446,12 +446,14 @@ class ParseExampleTest(test.TestCase):
 
     serialized = [m.SerializeToString() for m in original]
 
+    # pylint: disable=too-many-function-args
     expected_output = {
         aname:
             np.array([[1, 1], [-1, -1]], dtype=np.float32).reshape(2, 1, 2, 1),
         bname:
             np.array(["b0_str", ""], dtype=bytes).reshape(2, 1, 1, 1, 1),
     }
+    # pylint: enable=too-many-function-args
 
     # No defaults, values required
     self._test(
@@ -498,12 +500,14 @@ class ParseExampleTest(test.TestCase):
         m.SerializeToString() + n.SerializeToString() for (m, n) in original
     ]
 
+    # pylint: disable=too-many-function-args
     expected_output = {
         aname:
             np.array([[1, 1], [-1, -1]], dtype=np.float32).reshape(2, 1, 2, 1),
         bname:
             np.array(["b0_str", "b1"], dtype=bytes).reshape(2, 1, 1, 1, 1),
     }
+    # pylint: enable=too-many-function-args
 
     # No defaults, values required
     self._test(
@@ -557,14 +561,18 @@ class ParseExampleTest(test.TestCase):
 
     serialized = [m.SerializeToString() for m in original]
 
+    # pylint: disable=too-many-function-args
     expected_output = {
         "a":
-            np.array([[1, 1], [3, -3], [3, -3]],
-                     dtype=np.float32).reshape(3, 1, 2, 1),
+            np.array(
+                [[1, 1], [3, -3], [3, -3]],
+                dtype=np.float32).reshape(3, 1, 2, 1),
         "b":
-            np.array(["tmp_str", "b1", "tmp_str"],
-                     dtype=bytes).reshape(3, 1, 1, 1, 1),
+            np.array(
+                ["tmp_str", "b1", "tmp_str"],
+                dtype=bytes).reshape(3, 1, 1, 1, 1),
     }
+    # pylint: enable=too-many-function-args
 
     self._test(
         {
@@ -784,23 +792,27 @@ class ParseExampleTest(test.TestCase):
 
     serialized = [m.SerializeToString() for m in original]
 
+    # pylint: disable=too-many-function-args
     expected_output = {
         aname:
-            np.array([
-                [0, 0, 0, 0],
-                [1, 1, 0, 0],
-                [-1, -1, 2, 2],
-                [0, 0, 0, 0],
-            ],
-                     dtype=np.float32).reshape(4, 2, 2, 1),
+            np.array(
+                [
+                    [0, 0, 0, 0],
+                    [1, 1, 0, 0],
+                    [-1, -1, 2, 2],
+                    [0, 0, 0, 0],
+                ],
+                dtype=np.float32).reshape(4, 2, 2, 1),
         bname:
-            np.array([["", ""], ["b0_str", "b1_str"], ["b1", ""], ["", ""]],
-                     dtype=bytes).reshape(4, 2, 1, 1, 1),
+            np.array(
+                [["", ""], ["b0_str", "b1_str"], ["b1", ""], ["", ""]],
+                dtype=bytes).reshape(4, 2, 1, 1, 1),
         cname:
             np.array([2, 0, 0, 3], dtype=np.int64).reshape(4, 1),
         dname:
             np.empty(shape=(4, 0), dtype=bytes),
     }
+    # pylint: enable=too-many-function-args
 
     self._test(
         {
@@ -824,14 +836,16 @@ class ParseExampleTest(test.TestCase):
 
     # Test with padding values.
     expected_output_custom_padding = dict(expected_output)
-    expected_output_custom_padding[aname] = np.array([
-        [-2, -2, -2, -2],
-        [1, 1, -2, -2],
-        [-1, -1, 2, 2],
-        [-2, -2, -2, -2],
-    ],
-                                                     dtype=np.float32).reshape(
-                                                         4, 2, 2, 1)
+    # pylint: disable=too-many-function-args
+    expected_output_custom_padding[aname] = np.array(
+        [
+            [-2, -2, -2, -2],
+            [1, 1, -2, -2],
+            [-1, -1, 2, 2],
+            [-2, -2, -2, -2],
+        ],
+        dtype=np.float32).reshape(4, 2, 2, 1)
+    # pylint: enable=too-many-function-args
 
     self._test(
         {

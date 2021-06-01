@@ -466,7 +466,7 @@ func @xor(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
 func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %result = "mhlo.add"(%lhs, %rhs)
       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %arg0 : memref<?x?xf32> -> tensor<2xindex>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[INPUT:.*]] : tensor<?x?xf32> -> tensor<2xindex>
   // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xindex>
   // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xindex>
   // CHECK: %[[RESULT:.*]] = memref.alloc(%[[EE0]], %[[EE1]])
@@ -482,7 +482,7 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?x?xf32> {
 func @tanh_dyn(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %result = "mhlo.tanh"(%arg0)
       : (tensor<?x?xf32>) -> tensor<?x?xf32>
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %arg0 : memref<?x?xf32> -> tensor<2xindex>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[INPUT:.*]] : tensor<?x?xf32> -> tensor<2xindex>
   // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xindex>
   // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xindex>
   // CHECK: %[[RESULT:.*]] = memref.alloc(%[[EE0]], %[[EE1]])
@@ -518,11 +518,8 @@ func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
     -> tensor<3x5x5x4xf32> {
   %c0 = constant 0 : index
   // CHECK: %[[OUT:.*]] = memref.alloc() : memref<3x5x5x4xf32>
-  // CHECK: "lmhlo.convolution"(%{{.+}}, %{{.+}}, %[[OUT]])
-  // CHECK-SAME: padding = dense<[
-  // CHECK-SAME:                  [0, 1], [0, 1]]> : tensor<2x2xi64>
-  // CHECK-SAME: rhs_dilation = dense<[1, 2]>
-  // CHECK-SAME: window_strides = dense<[2, 1]>
+  // CHECK: lmhlo.convolution(%{{.+}}, %{{.+}}, %[[OUT]])
+  // CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
   %out = "mhlo.convolution"(%filter, %input) {
     batch_group_count = 1 : i64,
     dimension_numbers = {

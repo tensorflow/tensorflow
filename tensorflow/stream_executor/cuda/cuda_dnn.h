@@ -270,27 +270,22 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
       const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-      const DeviceMemory<float>& inv_var, const DeviceMemory<float>& y,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
-      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-      DeviceMemory<float>* side_input_backprop,
+      DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
+      DeviceMemory<float>* offset_backprop,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
       const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-      const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::half>& y,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      dnn::ActivationMode activation_mode,
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-      DeviceMemory<Eigen::half>* side_input_backprop,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
@@ -646,14 +641,11 @@ class CudnnSupport : public dnn::DnnSupport {
   port::Status DoBatchNormalizationBackwardImpl(
       Stream* stream, int cudnn_input_type, int cudnn_scale_type,
       const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
-      const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
-      const DeviceMemory<U>& mean, const DeviceMemory<U>& inv_var,
-      const DeviceMemory<T>& y, const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
+      const DeviceMemory<U>& inv_var, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      dnn::ActivationMode activation_mode, DeviceMemory<T>* x_backprop,
-      DeviceMemory<U>* scale_backprop, DeviceMemory<U>* offset_backprop,
-      DeviceMemory<T>* side_input_backprop,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
+      DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator);
 
   template <typename ElementType, typename BiasType, typename ScaleType,

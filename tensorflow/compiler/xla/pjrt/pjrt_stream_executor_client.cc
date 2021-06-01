@@ -203,9 +203,9 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
+      owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
       process_index_(process_index),
-      owned_allocator_(std::move(allocator)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
@@ -1044,13 +1044,6 @@ PjRtStreamExecutorBuffer::~PjRtStreamExecutorBuffer() {
   }
 }
 
-int64 PjRtStreamExecutorBuffer::OnDeviceSizeInBytes() const {
-  return client_->client()
-      ->backend()
-      .transfer_manager()
-      ->GetByteSizeRequirement(on_device_shape_);
-}
-
 void PjRtStreamExecutorBuffer::WaitForOutstandingUsageHolds() {
   auto not_in_usage_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return holds_[ScopedHold::kUsage] == 0;
@@ -1175,7 +1168,7 @@ PjRtStreamExecutorBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
     CHECK(device_buffer_ != nullptr);
   } else {
     if (device_buffer_ == nullptr) {
-      return InvalidArgument("Hold requested on deleted or donated buffer");
+      return InvalidArgument("Buffer has been deleted or donated.");
     } else {
       ++holds_[type];
     }

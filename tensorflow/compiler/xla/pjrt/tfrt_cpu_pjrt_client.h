@@ -397,7 +397,6 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   StatusOr<Shape> logical_on_device_shape() override;
 
-  int64 OnDeviceSizeInBytes() const override;
 
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
@@ -409,9 +408,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   void ToLiteral(MutableLiteralBase* literal,
                  std::function<void(Status)> on_ready) override;
 
-  StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
-    return Unimplemented("GetOnDeviceSizeInBytes not implemented");
-  }
+  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
                        std::function<void(Status)> on_ready) override {

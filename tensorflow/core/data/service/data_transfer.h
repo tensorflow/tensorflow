@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -32,6 +33,10 @@ namespace data {
 // true: (1) `components` is nonempty (2) `end_of_sequence` is true (3) `skip`
 // is true.
 struct GetElementResult {
+  GetElementResult() = default;
+  GetElementResult(GetElementResult&&) = default;
+  GetElementResult& operator=(GetElementResult&&) = default;
+
   // A dataset element produced by a GetElement request.
   std::vector<Tensor> components;
   // The element's index within the task it came from.
@@ -42,6 +47,8 @@ struct GetElementResult {
   // reading from the worker. This is used for load balancing when doing round
   // robin reads.
   bool skip;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GetElementResult);
 };
 
 // Client for communicating with the tf.data service transfer server.

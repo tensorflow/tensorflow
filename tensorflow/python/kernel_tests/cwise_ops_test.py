@@ -127,8 +127,8 @@ class ComparisonOpTest(test.TestCase):
     self.assertAllEqual(np_ans, tf_ans)
 
   def testTensorCompareTensor(self):
-    x = np.linspace(-15, 15, 6).reshape(1, 3, 2)
-    y = np.linspace(20, -10, 6).reshape(1, 3, 2)
+    x = np.linspace(-15, 15, 6).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
+    y = np.linspace(20, -10, 6).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
     for t in [np.float16, np.float32, np.float64, np.int32, np.int64]:
       with self.subTest(t=t):
         xt = x.astype(t)
@@ -261,8 +261,8 @@ class LogicalOpTest(test.TestCase):
                                 use_gpu)
 
   def testTensor(self):
-    x = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
-    y = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
+    x = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
+    y = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
     for use_gpu in [True, False]:
       with self.subTest(use_gpu=use_gpu):
         self._not(x, use_gpu)
@@ -297,8 +297,8 @@ class LogicalOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testShapeMismatch(self):
-    x = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
-    y = np.random.randint(0, 2, 6).astype(np.bool).reshape(3, 2, 1)
+    x = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
+    y = np.random.randint(0, 2, 6).astype(np.bool).reshape(3, 2, 1)  # pylint: disable=too-many-function-args
     for f in [math_ops.logical_and, math_ops.logical_or, math_ops.logical_xor]:
       with self.subTest(f=f):
         with self.assertRaisesWithPredicateMatch(
@@ -460,7 +460,7 @@ class SelectOpTest(test.TestCase):
     self._testScalarBroadcast(array_ops.where_v2, c, y, x)
 
   def _testBasic(self, fn):
-    c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
+    c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
     x = np.random.rand(1, 3, 2) * 100
     y = np.random.rand(1, 3, 2) * 100
     for t in [
@@ -491,10 +491,10 @@ class SelectOpTest(test.TestCase):
           self._compare(fn, c, xt, yt, use_gpu=True)
 
   def testBasicBroadcast(self):
-    c0 = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
-    c1 = np.random.randint(0, 2, 2).astype(np.bool).reshape(1, 1, 2)
-    c2 = np.random.randint(0, 2, 3).astype(np.bool).reshape(1, 3, 1)
-    c3 = np.random.randint(0, 2, 1).astype(np.bool).reshape(1, 1, 1)
+    c0 = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
+    c1 = np.random.randint(0, 2, 2).astype(np.bool).reshape(1, 1, 2)  # pylint: disable=too-many-function-args
+    c2 = np.random.randint(0, 2, 3).astype(np.bool).reshape(1, 3, 1)  # pylint: disable=too-many-function-args
+    c3 = np.random.randint(0, 2, 1).astype(np.bool).reshape(1, 1, 1)  # pylint: disable=too-many-function-args
     for c in [c0, c1, c2, c3]:
       # where_v2 only
       with self.subTest(c=c):
@@ -528,7 +528,7 @@ class SelectOpTest(test.TestCase):
         self._testBasicBroadcast(array_ops.where_v2, c, y, x)
 
   def _testGradients(self, fn):
-    c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
+    c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
     x = np.random.rand(1, 3, 2) * 100
     y = np.random.rand(1, 3, 2) * 100
     for t in [np.float16, np.float32, np.float64]:
@@ -554,7 +554,7 @@ class SelectOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientsBroadcast(self):
-    c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
+    c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
     for t in [np.float32, np.float64]:
       # where_v2 only
       with self.subTest(t=t):
@@ -581,7 +581,7 @@ class SelectOpTest(test.TestCase):
         self._compareGradientX(array_ops.where_v2, c, x.astype(t), y.astype(t))
 
   def _testShapeMismatch(self, fn):
-    c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
+    c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)  # pylint: disable=too-many-function-args
     x = np.random.rand(1, 3, 2) * 100
     y = np.random.rand(2, 5, 3) * 100
     for t in [
@@ -600,7 +600,7 @@ class SelectOpTest(test.TestCase):
     self._testShapeMismatch(array_ops.where_v2)
 
   def _testEmptyTensor(self, fn):
-    c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)
+    c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)  # pylint: disable=too-many-function-args
     x = np.random.rand(1, 3, 0) * 100
     y = np.random.rand(1, 3, 0) * 100
     z_expected = np.zeros((1, 3, 0), dtype=np.float32)
@@ -760,8 +760,8 @@ class MinMaxOpTest(test.TestCase):
   def testBasic(self):
     x = np.random.rand(1, 3, 2) * 100.
     y = np.random.rand(1, 3, 2) * 100.
-    for t in [np.float16, np.float32, np.float64, np.uint8, np.int16, np.int32,
-              np.int64]:
+    for t in [np.float16, np.float32, np.float64, np.int8, np.uint8, np.int16,
+              np.uint16, np.int32, np.uint32, np.int64, np.uint64]:
       with self.subTest(t=t):
         self._compare(x.astype(t), y.astype(t), use_gpu=False)
         self._compare(x.astype(t), y.astype(t), use_gpu=True)

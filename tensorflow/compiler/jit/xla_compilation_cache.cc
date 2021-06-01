@@ -136,8 +136,7 @@ uint64 XlaCompilationCache::Signature::Hash::operator()(
   return h;
 }
 
-xla::StatusOr<XlaCompilationCache::Signature>
-XlaCompilationCache::BuildSignature(
+StatusOr<XlaCompilationCache::Signature> XlaCompilationCache::BuildSignature(
     const NameAttrList& function,
     absl::Span<const XlaCompiler::Argument> args) {
   Signature signature;
@@ -226,7 +225,7 @@ static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
          execution_count < kMinExecutionsPerCompile * compile_count;
 }
 
-xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
+StatusOr<std::unique_ptr<Graph>> CreateGraph(
     const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
     absl::Span<const DataType> result_types) {
   // TODO(b/74182462): We implement this by creating a new dummy Graph including
@@ -296,29 +295,46 @@ Status XlaCompilationCache::CompileSingleOp(
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
     const ConfigProto* config = ctx->function_library()->config_proto();
-    // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
-    bool use_mlir = config &&
-                    GetMlirBridgeRolloutPolicy(
-                        *graph, /*function_library=*/nullptr,
-                        *config, /*uses_uninitialized_resource_args=*/
-                        AnyUninitializedResourceArg(args)) ==
-                        MlirBridgeRolloutPolicy::kEnabledByUser &&
-                    node_def.op() != "VarIsInitializedOp";
-    if (!use_mlir) {
+    auto bridge_rollout = GetMlirBridgeRolloutState(
+        config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
+
+    auto compile_with_old_bridge = [&]() {
       return compiler->CompileGraph(compile_options, node_def.name(),
                                     std::move(graph), args, result);
+    };
+
+    if (bridge_rollout ==
+            ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
+        node_def.op() == "VarIsInitializedOp") {
+      return compile_with_old_bridge();
     }
 
-    VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
     std::vector<std::string> control_rets;
     if (result_dtypes.empty()) {
       control_rets.push_back(node_def.name());
     }
-    return CompileGraphToXlaHlo(
+
+    bool mlir_enabled =
+        (bridge_rollout ==
+         ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
+    VLOG(1) << "Attempting MLIR bridge."
+            << (mlir_enabled ? " MLIR is explicitly enabled." : "");
+    auto mlir_result = CompileGraphToXlaHlo(
         *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
         options.device_type.type_string(), compile_options.use_tuple_arg,
-        *options.flib_def, debug_info, options.shape_representation_fn, result);
+        /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
+        options.shape_representation_fn, result);
+
+    if (mlir_result.ok() || mlir_enabled) {
+      return mlir_result;
+    }
+
+    LOG_FIRST_N(WARNING, 5)
+        << "Failed second phase of the MLIR bridge. Will "
+           "retry with the old bridge. MLIR bridge compilation status: "
+        << mlir_result;
+    return compile_with_old_bridge();
   };
   return CompileImpl(options, name, args, compile_op, CompileMode::kStrict,
                      out_compilation_result, out_executable);

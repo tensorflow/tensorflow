@@ -11,6 +11,12 @@
   recommended to use the
   [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
   instead.
+
+* `tf.lite`:
+  * Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell` and
+  `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
+  recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
+
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
@@ -19,6 +25,14 @@
 *<CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
 *<ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 *<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+* TF Core:
+    * A longstanding bug in `tf.while_loop`, which caused it to execute
+      sequentially, even when `parallel_iterations>1`, has now been fixed.
+      However, the increased parallelism may result in increased memory use.
+      Users who experience unwanted regressions should reset their
+      `while_loop`'s `parallel_iterations` value to 1, which is consistent with
+      prior behavior.
 
 ## Major Features and Improvements
 
@@ -29,10 +43,25 @@
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
+    *   Updates to Preprocessing layers API for consistency and clarity:
+        *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
+            to `None`. This matches the default masking behavior of `Hashing`
+            and `Embedding` layers. To keep existing behavior, pass
+            `mask_token=""` during layer creation.
 
 * `tf.lite`:
     *   The recommended Android NDK version for building TensorFlow Lite has
         been changed from r18b to r19c.
+* `tf.saved_model`:
+    *   SavedModels can now save custom gradients. Use the option
+        `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
+        enable this feature. The documentation in [Advanced autodiff]
+        (https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
+        has been updated.
+
+*   TF Core:
+    *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
+        peak memory returned by `tf.config.experimental.get_memory_info`.
 
 ## Bug Fixes and Other Changes
 
@@ -46,16 +75,21 @@
         lower overall memory usage, and a cleaner API. It does not require
         specifying a `delete_key` and `empty_key` that cannot be inserted into
         the table.
-   *    Added support for specifying number of subdivisions in all reduce host
+    *   Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
-   *   SavedModel
+    *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
+        Hermitian tridiagonal matrix.
+    *   SavedModel
         *   Added `tf.saved_model.experimental.TrackableResource`, which allows
             the creation of custom wrapper objects for resource tensors.
         *   Added a SavedModel load option to allow restoring partial
             checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
   (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
             for details.
+    *   Added a new op `SparseSegmentSumGrad` to match the other sparse segment
+        gradient ops and avoid an extra gather operation that was in the
+        previous gradient implementation.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
@@ -66,6 +100,8 @@
     *   Promoting `tf.data.experimental.group_by_window` API to
         `tf.data.Dataset.group_by_window` and deprecating the experimental
         endpoint.
+    *   Promoting `tf.data.experimental.RandomDataset` API to
+        `tf.data.Dataset.random` and deprecating the experimental endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
         `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
         sampling if it encounters an empty dataset. This preserves the sampling
@@ -83,8 +119,17 @@
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
     *   Add `keepdims` argument to all `GlobalPooling` layers.
+    *   Add `include_preprocessing` argument to `MobileNetV3` architectures to
+        control the inclusion of `Rescaling` layer in the model.
+*   `tf.linalg`:
+    *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
+    *   Added `framework_stable` BUILD target, which links in only the
+        non-experimental TF Lite APIs.
+    *   Remove deprecated Java `Interpreter` methods:
+        *    `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
+        *    `setNumThreads` - Use `Interpreter.Options.setNumThreads`
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,
@@ -159,9 +204,8 @@ This release contains contributions from many people at Google, as well as:
     *   `tf.distribute.experimental.ParameterServerStrategy` now supports
         training with Keras `Model.fit` when used with `DatasetCreator`.
 * PluggableDevice
-    * Third-party devices can now connect to TensorFlow
-      [modularly](https://github.com/tensorflow/community/blob/master/rfcs/20190305-modular-tensorflow.md)
-      through [StreamExecutor C API](https://github.com/tensorflow/community/blob/master/rfcs/20200612-stream-executor-c-api.md).
+    * Third-party devices can now connect to TensorFlow as plug-ins through
+      [StreamExecutor C API](https://github.com/tensorflow/community/blob/master/rfcs/20200612-stream-executor-c-api.md)
       and [PluggableDevice](https://github.com/tensorflow/community/blob/master/rfcs/20200624-pluggable-device-for-tensorflow.md) interface.
       * Add custom ops and kernels through
         [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).

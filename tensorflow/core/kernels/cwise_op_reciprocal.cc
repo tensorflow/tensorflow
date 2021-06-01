@@ -23,8 +23,6 @@ REGISTER5(UnaryOp, CPU, "Inv", functor::inverse, float, Eigen::half, double,
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
           int64, complex64, complex128);
-#else
-REGISTER2(UnaryOp, GPU, "Inv", functor::inverse, complex64, complex128);
 #endif
 #endif
 
@@ -42,8 +40,6 @@ REGISTER6(UnaryOp, CPU, "Reciprocal", functor::inverse, float, Eigen::half,
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(UnaryOp, GPU, "Reciprocal", functor::inverse, float, Eigen::half,
           double, int64, complex64, complex128);
-#else
-REGISTER2(UnaryOp, GPU, "Reciprocal", functor::inverse, complex64, complex128);
 #endif
 #endif
 

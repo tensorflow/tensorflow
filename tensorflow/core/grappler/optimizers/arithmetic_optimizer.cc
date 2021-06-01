@@ -4174,10 +4174,20 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
       read_var_node->add_input(gather_node->input(0));
       read_var_node->set_device(variable_node->device());
 
+      // The Variable and the Gather node should have the same
+      // dtype, but it might not be set on both nodes.
       auto attr = read_var_node->mutable_attr();
       if (variable_node->attr().count("dtype")) {
         SetAttrValue(variable_node->attr().at("dtype").type(),
                      &(*attr)["dtype"]);
+      }
+      if (gather_node->attr().count("dtype")) {
+        SetAttrValue(gather_node->attr().at("dtype").type(), &(*attr)["dtype"]);
+      }
+      // Copy the _class attr from the Gather node should it exist in case
+      // of location constraints with the variable.
+      if (gather_node->attr().count("_class")) {
+        (*attr)["_class"] = gather_node->attr().at("_class");
       }
       if (variable_node->attr().count("shape")) {
         SetAttrValue(variable_node->attr().at("shape").shape(),
@@ -4292,6 +4302,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   // name.
   const auto stop = [](const string& result) { return !result.empty(); };
   GraphOptimizerStagePipeline<string> pipeline(stop);
+  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
 
   if (options_.combine_add_to_addn && can_use_shapes)
     pipeline.AddStage<AddOpsRewriteStage>(ctx, ctx_ext);
@@ -4301,7 +4312,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<FoldMultiplyIntoConv>(ctx, ctx_ext);
   if (options_.fold_transpose_into_matmul)
     pipeline.AddStage<FoldTransposeIntoMatMul>(ctx, ctx_ext);
-  if (options_.hoist_common_factor_out_of_aggregation && can_use_shapes)
+  if (is_aggressive && options_.hoist_common_factor_out_of_aggregation &&
+      can_use_shapes)
     pipeline.AddStage<HoistCommonFactorOutOfAggregation>(ctx, ctx_ext);
   if (options_.minimize_broadcasts && can_use_shapes)
     pipeline.AddStage<MinimizeBroadcasts>(ctx, ctx_ext);

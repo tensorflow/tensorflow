@@ -236,6 +236,9 @@ class LiteralBase {
   // Literal consists entirely of an iota.
   bool IsR1Iota() const;
 
+  // Returns the stride if the literal is a strided iota.
+  absl::optional<int64> IsR1StridedIota() const;
+
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
   bool IsZero(absl::Span<const int64> indices) const;
@@ -927,7 +930,7 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
 
 template <typename NativeT>
 NativeT LiteralBase::Piece::Get(absl::Span<const int64> multi_index) const {
-  CHECK(LayoutUtil::IsDenseArray(subshape()));
+  CHECK(LayoutUtil::IsDenseArray(subshape())) << subshape();
   return data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)];
 }

@@ -1262,3 +1262,114 @@ func @arguments_with_unique_ids(
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Predecessors: {7}}}
 }
+
+// -----
+
+// Tests value-based side-effects for non-resource values.
+func @value_based_side_effect_non_resource(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Successors: {7}}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {5}}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        "tf._InternalTestNonResourceValueSideEffects_"(%arg0) : (tensor<!tf.string>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+        // expected-remark@above {{Successors: {3}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Predecessors: {6}}}
+}
+
+// -----
+
+// Tests that the analysis correctly handles a sequence of ops using the
+// `DatasetIterator` resource.
+func @dataset_op_sequence(
+  // expected-remark@above {{ID: 9}}
+  %arg0: tensor<!tf.variant>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 7}}
+    // expected-remark@above {{Successors: {8}}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 5}}
+        // expected-remark@above {{Successors: {6}}}
+        %handle, %deleter = "tf.AnonymousIteratorV2"() {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", output_shapes = [#tf.shape<>], output_types = [!tf.string]} : () -> (tensor<!tf.resource>, tensor<!tf.variant>)
+        // expected-remark@above {{ID: 0}}
+        "tf.MakeIterator"(%arg0, %handle) {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<!tf.variant>, tensor<!tf.resource>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+         %0 = "tf.IteratorGetNext"(%handle) {_class = ["loc:@GeneratorDataset_2"], device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<!tf.resource>) -> tensor<!tf.string>
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+        // expected-remark@above {{Successors: {3}}}
+        "tf.DeleteIterator"(%handle, %deleter) {device = ""} : (tensor<!tf.resource>, tensor<!tf.variant>) -> ()
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {2}}}
+        // expected-remark@above {{Successors: {4}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Predecessors: {3}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Predecessors: {7}}}
+}
+
+// -----
+
+// Tests `tf.GeneratorDataset` with surrounding ops with unknown side-effects.
+func @generator_dataset_with_unknown_side_effect_ops(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Successors: {7}}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {5}}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf.shape<>], output_types = [!tf.string]} : (tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>) -> tensor<!tf.variant>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+        // expected-remark@above {{Successors: {3}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Predecessors: {6}}}
+}

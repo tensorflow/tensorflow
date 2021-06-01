@@ -52,7 +52,11 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   micro_op_resolver.AddSoftmax();
 
   // Create an area of memory to use for input, output, and intermediate arrays.
-  const int tensor_arena_size = 10 * 1024;
+#if defined(XTENSA)
+  constexpr int tensor_arena_size = 15 * 1024;
+#else
+  constexpr int tensor_arena_size = 10 * 1024;
+#endif
   uint8_t tensor_arena[tensor_arena_size];
 
   // Build an interpreter to run the model with.

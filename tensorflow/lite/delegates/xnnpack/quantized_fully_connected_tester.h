@@ -110,6 +110,16 @@ class QuantizedFullyConnectedTester {
 
   inline bool KeepDims() const { return keep_dims_; }
 
+  inline QuantizedFullyConnectedTester& NoBias() {
+    has_bias_ = false;
+    return *this;
+  }
+
+  inline QuantizedFullyConnectedTester& WithBias() {
+    has_bias_ = true;
+    return *this;
+  }
+
   inline QuantizedFullyConnectedTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
     return *this;
@@ -130,6 +140,8 @@ class QuantizedFullyConnectedTester {
  private:
   std::vector<char> CreateTfLiteModel() const;
 
+  inline bool HasBias() const { return has_bias_; }
+
   inline ::tflite::ActivationFunctionType Activation() const {
     return activation_;
   }
@@ -146,6 +158,7 @@ class QuantizedFullyConnectedTester {
   float filter_scale_ = 0.75f;
   float output_scale_ = 1.5f;
   bool keep_dims_ = false;
+  bool has_bias_ = true;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

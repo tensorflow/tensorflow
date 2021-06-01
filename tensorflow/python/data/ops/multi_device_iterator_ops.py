@@ -226,7 +226,7 @@ class MultiDeviceIterator(object):
     options = dataset_ops.Options()
     options.experimental_distribute.num_devices = len(devices)
     dataset = dataset.with_options(options)
-    self._dataset = dataset._apply_options()  # pylint: disable=protected-access
+    self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
     self._experimental_slack = dataset.options().experimental_slack
     self._devices = devices
     self._source_device = source_device
@@ -508,7 +508,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       options = dataset_ops.Options()
       options.experimental_distribute.num_devices = len(devices)
       dataset = dataset.with_options(options)
-      dataset = dataset._apply_options()  # pylint: disable=protected-access
+      dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
       self._element_spec = dataset.element_spec
       experimental_slack = dataset.options().experimental_slack
       self._devices = devices

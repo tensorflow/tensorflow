@@ -91,9 +91,6 @@ void SetAttrValue(const AttrValue& value, AttrValue* out);
 
 void MoveAttrValue(std::vector<string>&& value, AttrValue* out);
 
-// Returns true if a and b have the same value.
-bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
-
 // Returns a hash of `a` that is consistent with AreAttrValuesEqual. In other
 // words, if two AttrValues compare equal according to AreAttrValuesEqual,
 // they will have the same hash value.
@@ -113,7 +110,11 @@ uint64 AttrValueHash(const AttrValue& a);
 // Small (less than 32mb) tensors with different TensorProto representations
 // hashed/compared by their tensor content.
 uint64 FastAttrValueHash(const AttrValue& a);
-bool FastAreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
+// Returns true if a and b have the same value. If false negatives are allowed,
+// then compares proto representation to avoid construction of large (> 32mb)
+// tensors.
+bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
+                        bool allow_false_negatives = false);
 
 // Returns true if "val" has a placeholder.
 bool HasPlaceHolder(const AttrValue& val);

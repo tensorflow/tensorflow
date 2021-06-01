@@ -2263,7 +2263,8 @@ Status TPUPartitionedCallOp::PlacementHelper(
     const string& function_name) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
-  Placer placer(optimization_options.graph->get(), function_name, &device_set);
+  Placer placer(optimization_options.graph->get(), function_name,
+                optimization_options.flib_def, &device_set);
   TF_RETURN_IF_ERROR(placer.Run());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));

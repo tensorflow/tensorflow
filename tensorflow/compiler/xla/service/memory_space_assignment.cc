@@ -114,6 +114,19 @@ FindCrossProgramPrefetchCandidate(
   // worse choices than just picking the largest buffer.
   // TODO(b/152421603): Investigate.
   auto size_compare = [](const auto& x, const auto& y) {
+    if (x.size == y.size) {
+      // When both buffers are of same size, we prefer the one that is used to
+      // produce larger tensors in its consumer instructions.
+      auto get_use_size =
+          [](const MemorySpaceAssignment::BufferInterval& bi) -> int64 {
+        int64 use_size = 0;
+        for (const auto& use : bi.buffer->uses()) {
+          use_size += ShapeUtil::ElementsInRecursive(use.instruction->shape());
+        }
+        return use_size;
+      };
+      return get_use_size(x) < get_use_size(y);
+    }
     return x.size < y.size;
   };
   auto& compare = options.default_cross_program_prefetch_heuristic &&

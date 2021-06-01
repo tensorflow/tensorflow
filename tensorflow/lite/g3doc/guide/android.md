@@ -80,10 +80,10 @@ performance and usability. Task Library works cross-platform and is supported on
 Java, C++, and Swift (coming soon).
 
 To use the Support Library in your Android app, we recommend using the AAR
-hosted at JCenter for
-[Task Vision library](https://bintray.com/google/tensorflow/tensorflow-lite-task-vision)
+hosted at MavenCentral for
+[Task Vision library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-vision)
 and
-[Task Text library](https://bintray.com/google/tensorflow/tensorflow-lite-task-text)
+[Task Text library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-text)
 , respectively.
 
 You can specify this in your `build.gradle` dependencies as follows:
@@ -94,6 +94,9 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
 }
 ```
+
+To use nightly snapshots, make sure that you have added
+[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
 
 See the introduction in the
 [TensorFlow Lite Task Library overview](../inference_with_metadata/task_library/overview.md)
@@ -111,7 +114,7 @@ arrays. It also provides pre- and post-processing units that perform tasks such
 as image resizing and cropping.
 
 To use the Support Library in your Android app, we recommend using the
-[TensorFlow Lite Support Library AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-support).
+[TensorFlow Lite Support Library AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-support).
 
 You can specify this in your `build.gradle` dependencies as follows:
 
@@ -121,13 +124,16 @@ dependencies {
 }
 ```
 
+To use nightly snapshots, make sure that you have added
+[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
+
 To get started, follow the instructions in the
 [TensorFlow Lite Android Support Library](../inference_with_metadata/lite_support.md).
 
-### Use the TensorFlow Lite AAR from JCenter
+### Use the TensorFlow Lite AAR from MavenCentral
 
 To use TensorFlow Lite in your Android app, we recommend using the
-[TensorFlow Lite AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite).
+[TensorFlow Lite AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite).
 
 You can specify this in your `build.gradle` dependencies as follows:
 
@@ -136,6 +142,9 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
 }
 ```
+
+To use nightly snapshots, make sure that you have added
+[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
 
 This AAR includes binaries for all of the
 [Android ABIs](https://developer.android.com/ndk/guides/abis). You can reduce
@@ -168,7 +177,7 @@ There are two ways to use TFLite through C++ if you build your app with the NDK:
 ### Use TFLite C API
 
 This is the *recommended* approach. Download the
-[TensorFlow Lite AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite),
+[TensorFlow Lite AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow/tensorflow-lite),
 rename it to `tensorflow-lite-*.zip`, and unzip it. You must include the four
 header files in `headers/tensorflow/lite/` and `headers/tensorflow/lite/c/`
 folder and the relevant `libtensorflowlite_jni.so` dynamic library in `jni/`

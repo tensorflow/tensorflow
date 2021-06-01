@@ -35,6 +35,7 @@ namespace tflite {
 extern std::unique_ptr<MutableOpResolver> CreateOpResolver();
 }  // namespace tflite
 
+using tflite::OpResolver;
 using tflite::jni::BufferErrorReporter;
 using tflite::jni::ThrowException;
 using tflite_shims::FlatBufferModel;
@@ -573,10 +574,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   BufferErrorReporter* error_reporter =
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return 0;
-  auto resolver = ::tflite::CreateOpResolver();
+  std::unique_ptr<OpResolver> resolver = ::tflite::CreateOpResolver();
+  InterpreterBuilder interpreter_builder(*model, *resolver);
+  interpreter_builder.SetNumThreads(static_cast<int>(num_threads));
   std::unique_ptr<Interpreter> interpreter;
-  TfLiteStatus status = InterpreterBuilder(*model, *(resolver.get()))(
-      &interpreter, static_cast<int>(num_threads));
+  TfLiteStatus status = interpreter_builder(&interpreter);
   if (status != kTfLiteOk) {
     ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Cannot create interpreter: %s",
@@ -646,7 +648,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
   if (is_changed) {
     TfLiteStatus status;
     if (strict) {
-       status = interpreter->ResizeInputTensorStrict(
+      status = interpreter->ResizeInputTensorStrict(
           tensor_idx, convertJIntArrayToVector(env, dims));
     } else {
       status = interpreter->ResizeInputTensor(

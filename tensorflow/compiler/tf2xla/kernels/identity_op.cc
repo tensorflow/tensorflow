@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
@@ -53,7 +54,7 @@ REGISTER_XLA_OP(Name("IdentityN")
                     .CompilationOnly(),
                 IdentityOp);
 REGISTER_XLA_OP(Name("PlaceholderWithDefault"), IdentityOp);
-REGISTER_XLA_OP(Name("PreventGradient"), IdentityOp);
+REGISTER_XLA_OP(Name("PreventGradient"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("StopGradient").AllowVariantTypes(), IdentityOp);
 REGISTER_XLA_OP(Name("Snapshot"), IdentityOp);
 

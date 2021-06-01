@@ -4,7 +4,9 @@ HloModule Test
 
 // CHECK-LABEL: func @main
 ENTRY A {
+  // CHECK: loc(unknown)
   %arg0 = f32[4] parameter(0)
+  // CHECK: loc(unknown)
   %arg1 = f32[4] parameter(1)
 
   // CHECK: loc([[LOC0:.*]])

@@ -42,11 +42,11 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.distribute import values
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_struct
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
@@ -549,7 +549,7 @@ class _TypeSpecCodec(object):
 
     if type_spec_class is None:
       type_spec_class_name = type_spec.get_name(type(type_spec_value))
-      if isinstance(type_spec_value, tensor_struct.StructSpec):
+      if isinstance(type_spec_value, extension_type.ExtensionTypeSpec):
         type_spec_class = struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC
       else:
         type_spec_class = struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC
@@ -589,9 +589,9 @@ class _TypeSpecCodec(object):
       try:
         type_spec_class = type_spec.lookup(class_name)
       except ValueError:
-        type_spec_class = tensor_struct.AnonymousStructSpec
+        type_spec_class = extension_type.AnonymousExtensionTypeSpec
         warnings.warn("The type %r has not been registered.  Falling back to "
-                      "using AnonymousStructSpec instead.")
+                      "using AnonymousExtensionTypeSpec instead.")
     else:
       if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
         raise ValueError(

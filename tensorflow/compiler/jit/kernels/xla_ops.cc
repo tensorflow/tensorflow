@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
@@ -212,7 +213,7 @@ static Status CompileToLocalExecutable(
   compile_options.alias_resource_update = !has_ref_vars &&
                                           may_alias_resource_update;
 
-  xla::StatusOr<std::vector<XlaCompiler::Argument>> args =
+  StatusOr<std::vector<XlaCompiler::Argument>> args =
       XlaComputationLaunchContext::BuildXlaCompilerArguments(
           constants, inputs, variable_infos,
           static_cast<Device*>(ctx->device()));
@@ -223,8 +224,7 @@ static Status CompileToLocalExecutable(
 
 // Resolve the device assignment for the TF single-host MirroredStrategy by
 // calling into TF runtime which in turn would start a rendezvous.
-static xla::StatusOr<absl::optional<xla::DeviceAssignment>>
-ResolveDeviceAssignment(
+static StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
     OpKernelContext* ctx,
     const absl::optional<
         XlaCompiler::CompilationResult::CollectiveReduceV2OpInfo>&
@@ -236,24 +236,24 @@ ResolveDeviceAssignment(
     return {{absl::nullopt}};
   }
 
-  CollectiveParams params;
-  params.name = "xla-reduction-compilation";
-  params.group.device_type =
+  auto params = core::RefCountPtr<CollectiveParams>(new CollectiveParams());
+  params->name = "xla-reduction-compilation";
+  params->group.device_type =
       DeviceType{static_cast<Device*>(ctx->device())->device_type()};
-  params.group.group_size = collective_reduce_info->group_size;
-  params.group.group_key = collective_reduce_info->group_key;
-  params.instance.type = REDUCTION_COLLECTIVE;
-  params.instance.impl_details.communication_hint = "nccl";
-  params.instance.impl_details.timeout_seconds = kTimeoutSeconds;
-  params.instance.impl_details.collective_name = "NcclReduce";
+  params->group.group_size = collective_reduce_info->group_size;
+  params->group.group_key = collective_reduce_info->group_key;
+  params->instance.type = REDUCTION_COLLECTIVE;
+  params->instance.impl_details.communication_hint = "nccl";
+  params->instance.impl_details.timeout_seconds = kTimeoutSeconds;
+  params->instance.impl_details.collective_name = "NcclReduce";
   // TODO(cheshire): Avoid passing a dummy shape, TF runtime does not resolve
   // devices otherwise.
-  params.instance.shape = TensorShape({1});
+  params->instance.shape = TensorShape({1});
 
   Status st;
   absl::Notification n;
   ctx->collective_executor()->CompleteParamsAsync(
-      ctx->device()->attributes(), &params, ctx->cancellation_manager(),
+      ctx->device()->attributes(), params.get(), ctx->cancellation_manager(),
       [&](const Status& s) {
         st = s;
         n.Notify();
@@ -262,7 +262,7 @@ ResolveDeviceAssignment(
     return errors::InvalidArgument("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
-  const std::vector<std::string>& devices = params.group.device_names;
+  const std::vector<std::string>& devices = params->group.device_names;
 
   xla::DeviceAssignment out(devices.size(), 1);
   for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
@@ -328,7 +328,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
       platform_info_.UseMultipleStreams());
   const xla::HloInputOutputAliasConfig& input_output_alias =
       executable->executable()->module().input_output_alias_config();
-  xla::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
+  StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
       launch_context.PopulateInputs(ctx, compilation_result, resource_var_ptrs,
                                     /*missing_ctx_input_prefix=*/0,
                                     input_output_alias);
@@ -336,7 +336,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   // Execute the computation.
   VLOG(2) << "Executing computation.";
-  xla::StatusOr<absl::optional<xla::DeviceAssignment>> device_assignment =
+  StatusOr<absl::optional<xla::DeviceAssignment>> device_assignment =
       ResolveDeviceAssignment(ctx, compilation_result->collective_reduce_info);
   OP_REQUIRES_OK(ctx, device_assignment.status());
 
@@ -358,7 +358,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
-  xla::StatusOr<xla::ExecutionOutput> execution_output;
+  StatusOr<xla::ExecutionOutput> execution_output;
   if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
     execution_output =
         executable->Run(std::move(*execution_inputs), run_options);
@@ -571,7 +571,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   // already been baked into the compiled kernel.
   const xla::HloInputOutputAliasConfig& input_output_alias =
       closure.executable()->executable()->module().input_output_alias_config();
-  xla::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs;
+  StatusOr<std::vector<xla::ExecutionInput>> execution_inputs;
   std::map<int, const Tensor*> snapshot_ptrs;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
@@ -601,7 +601,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
-  xla::StatusOr<xla::ExecutionOutput> execution_output;
+  StatusOr<xla::ExecutionOutput> execution_output;
   if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
     execution_output =
         closure.executable()->Run(std::move(*execution_inputs), run_options);
@@ -621,7 +621,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  xla::StatusOr<std::vector<VariableInfo>> variable_infos = GatherVariableInfo(
+  StatusOr<std::vector<VariableInfo>> variable_infos = GatherVariableInfo(
       ctx, *closure.compilation_result(), closure.num_constant_args());
   OP_REQUIRES_OK(ctx, variable_infos.status());
   OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(*variable_infos)));

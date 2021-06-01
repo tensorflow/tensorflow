@@ -170,7 +170,7 @@ tf_py_test(
 
 tf_py_test(
     name = "directed_interleave_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["directed_interleave_dataset_test.py"],
     shard_count = 24,
     deps = [
@@ -195,6 +195,7 @@ tf_py_test(
     name = "group_by_reducer_test",
     size = "small",
     srcs = ["group_by_reducer_test.py"],
+    shard_count = 12,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -237,6 +238,8 @@ tf_py_test(
     srcs = ["io_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:io",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -501,20 +504,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "random_dataset_test",
-    size = "small",
-    srcs = ["random_dataset_test.py"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "rebatch_dataset_test",
     size = "small",
     srcs = ["rebatch_dataset_test.py"],
@@ -533,9 +522,9 @@ tf_py_test(
 
 tf_py_test(
     name = "rejection_resample_test",
-    size = "small",
+    size = "medium",
     srcs = ["rejection_resample_test.py"],
-    shard_count = 5,
+    shard_count = 10,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",

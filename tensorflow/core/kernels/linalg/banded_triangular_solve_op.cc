@@ -217,6 +217,7 @@ class BandedTriangularSolveOpCpu : public OpKernel {
     const Tensor& in1 = ctx->input(1);
 
     ValidateInputTensors(ctx, in0, in1);
+    if (!ctx->status().ok()) return;
 
     MatMulBCast bcast(in0.shape().dim_sizes(), in1.shape().dim_sizes());
     OP_REQUIRES(

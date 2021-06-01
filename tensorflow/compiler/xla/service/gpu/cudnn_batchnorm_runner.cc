@@ -190,24 +190,19 @@ template <typename ElemType>
 void RunCudnnBatchNormBackwardImpl(CudnnBatchNormBackwardParams* params,
                                    se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
-  se::DeviceMemory<ElemType> null_elem_device_ptr(nullptr);
   auto output_grad_data = se::DeviceMemory<ElemType>(params->output_grad_data);
   stream->ThenBatchNormalizationBackward(
       se::DeviceMemory<ElemType>(params->grad_output),     //
       se::DeviceMemory<ElemType>(params->common.operand),  //
       params->common.scale,                                //
-      /*offset=*/null_device_ptr,                          //
       params->mean,                                        //
       params->inv_stddev,                                  //
-      /*y=*/null_elem_device_ptr,                          //
       params->common.operand_desc,                         //
       params->common.scale_offset_desc,                    //
       params->common.epsilon,                              //
-      se::dnn::ActivationMode::kNone,                      //
       &output_grad_data,                                   //
       &params->output_grad_scale,                          //
       &params->output_grad_offset,                         //
-      /*side_input_backprop=*/&null_elem_device_ptr,       //
       /*reserve_space_allocator=*/nullptr,                 //
       /*workspace_allocator=*/nullptr);
 }

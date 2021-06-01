@@ -290,7 +290,7 @@ TokKind HloLexer::LexIdentifier() {
     absl::string_view consumable =
         StringPieceFromPointers(token_state_.token_start, buf_.end());
     static LazyRE2 dim_labels_pattern = {
-        R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
+        R"([0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,})"};
     if (RE2::Consume(&consumable, *dim_labels_pattern)) {
       current_ptr_ = consumable.begin();
       token_state_.str_val.assign(token_state_.token_start, current_ptr_);

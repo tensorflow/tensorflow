@@ -20,7 +20,9 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -31,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/protobuf.h"
+
 // clang-format on
 
 #include "absl/container/inlined_vector.h"
@@ -385,20 +389,6 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 }
 
 Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
-  for (size_t i = 0; i < opdef.input_arg_size(); i++) {
-    if (!opdef.input_arg(i).type_list_attr().empty()) {
-      return errors::Unimplemented("Input: ", opdef.input_arg(i).name(),
-                                   " of op ", opdef.name(),
-                                   " is of list type.");
-    }
-  }
-  for (size_t i = 0; i < opdef.output_arg_size(); i++) {
-    if (!opdef.output_arg(i).type_list_attr().empty()) {
-      return errors::Unimplemented("Output: ", opdef.output_arg(i).name(),
-                                   " of op ", opdef.name(),
-                                   " is of list type.");
-    }
-  }
   absl::flat_hash_set<string> opdef_attrs;
   for (const auto& attr : opdef.attr()) {
     opdef_attrs.insert(attr.name());
@@ -408,6 +398,313 @@ Status VerifyWrappableInCallOp(const OpDef& opdef, EagerOperation* op) {
     if (opdef_attrs.find(attr.first) == opdef_attrs.end()) {
       return errors::Unimplemented("EagerOperation: ", op->Name(),
                                    " has a private attr '", attr.first, "'.");
+    }
+  }
+  return Status::OK();
+}
+
+using ProtoArgListType = protobuf::RepeatedPtrField<OpDef_ArgDef>;
+
+string EscapeOrigName(const string& orig_name) {
+  // Replace _ with __ in the original name to avoid name conflicts.
+  return absl::StrReplaceAll(orig_name, {{"_", "__"}});
+}
+
+// Variadic args are flattened during wrapping. This utility returns the name
+// of a flattened arg/attr.
+string GetFlatName(const string orig_name, int index) {
+  return absl::StrCat(EscapeOrigName(orig_name), "_", index);
+}
+
+// Builds the name of the wrapping FunctionDef for an eager op.
+//
+// For ops without variadic inputs/outputs, the name is simply __wrapped_OpType.
+//
+// For ops with variadic inputs/outputs, the arity of each variadic attr is
+// encoded in the name. For example:
+//
+// IdentityN[T:[DT_FLOAT, DT_INT64]] -> __wrapped__IdentityN_T_2
+// Concat[N:2, T:DT_FLOAT] -> __wrapped__Concat_N_2
+Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
+                          const AbstractOpAttrs* op_attrs, string* name) {
+  string fname = absl::StrCat("__wrapped__", EscapeOrigName(op->Name()));
+  // For every variadic arg in `args`, populates `attr_to_len` with
+  // (attr_name, len(arg)).
+  auto FillAttrToLen = [op_attrs, op](
+                           const ProtoArgListType& args,
+                           absl::btree_map<string, int>* attr_to_len) {
+    for (const auto& arg : args) {
+      if (!arg.type_list_attr().empty()) {
+        gtl::InlinedVector<DataType, 4> type_list;
+        TF_RETURN_IF_ERROR(
+            op_attrs->GetTypeList(arg.type_list_attr(), &type_list));
+        (*attr_to_len)[arg.type_list_attr()] = type_list.size();
+      } else if (!arg.number_attr().empty()) {
+        int64_t number_attr;
+        if (!op_attrs->GetInt(arg.number_attr(), &number_attr)) {
+          return errors::Internal("Unable to read attr ", arg.number_attr(),
+                                  " for op ", op->Name());
+        }
+        (*attr_to_len)[arg.number_attr()] = number_attr;
+      }
+    }
+    return Status::OK();
+  };
+  absl::btree_map<string, int> attr_to_len;
+  TF_RETURN_IF_ERROR(FillAttrToLen(opdef.input_arg(), &attr_to_len));
+  TF_RETURN_IF_ERROR(FillAttrToLen(opdef.output_arg(), &attr_to_len));
+  for (auto& name_len : attr_to_len) {
+    absl::StrAppend(&fname, "_", name_len.first, "_", name_len.second);
+  }
+  *name = fname;
+  return Status::OK();
+}
+
+// Builds the signature of the wrapping FunctionDef for an eager op.
+//
+// For ops without variadic inputs/outputs, the signature is the same as the
+// OpDef of the original op.
+//
+// Variadic inputs/outputs get flattened since we do not support executing
+// functions with variadic signatures.
+//
+// TODO(srbs): These examples should be tests.
+//
+// Examples:
+//
+// Mixed type list:
+//
+// op {
+//   name: "IdentityN"
+//   input_arg {
+//     name: "input"
+//     type_list_attr: "T"
+//   }
+//   output_arg {
+//     name: "output"
+//     type_list_attr: "T"
+//   }
+//   attr {
+//     name: "T"
+//     type: "list(type)"
+//     has_minimum: true
+//     minimum: 1
+//   }
+// }
+//
+// With two inputs T=[DT_FLOAT, DT_INT64] would convert to
+//
+// op {
+//   name: "__wrapped__IdentityN_T_2"
+//   input_arg {
+//     name: "input_0"
+//     type_attr: "T_0"
+//   }
+//   input_arg {
+//     name: "input_1"
+//     type_attr: "T_1"
+//   }
+//   output_arg {
+//     name: "output_0"
+//     type_attr: "T_0"
+//   }
+//   output_arg {
+//     name: "output_1"
+//     type_attr: "T_1"
+//   }
+//   attr {
+//     name: "T_0"
+//     type: "type"
+//   }
+//   attr {
+//     name: "T_1"
+//     type: "type"
+//   }
+//   attr {
+//     name: "T"
+//     type: "list(type)"
+//     has_minimum: true
+//     minimum: 1
+//   }
+// }
+//
+// Note that the list(type) attr is preserved so that it can get copied to the
+// inner op via a placeholder. This allows additional verification.
+//
+// Single type list:
+//
+// op {
+//   name: "ConcatV2"
+//   input_arg {
+//     name: "values"
+//     type_attr: "T"
+//     number_attr: "N"
+//   }
+//   attr {
+//     name: "N"
+//     type: "int"
+//     has_minimum: true
+//     minimum: 2
+//   }
+//   attr {
+//     name: "T"
+//     type: "type"
+//   }
+//   [axis, output, Tidx are simply copied]
+// }
+//
+// With two inputs N=2 would convert to:
+//
+// op {
+//   name: "__wrapped__ConcatV2_N_2"
+//   input_arg {
+//     name: "values_0"
+//     type_attr: "T"
+//   }
+//   input_arg {
+//     name: "values_1"
+//     type_attr: "T"
+//   }
+//   attr {
+//     name: "N"
+//     type: "int"
+//     has_minimum: true
+//     minimum: 2
+//   }
+//   attr {
+//     name: "T"
+//     type: "type"
+//   }
+//   [axis, output, Tidx are simply copied]
+// }
+//
+// Note that the N attr is preserved so that it can get copied to the
+// inner op via a placeholder. This allows additional verification.
+Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
+                               const string& fname, OpDef& signature) {
+  signature = opdef;
+  signature.clear_input_arg();
+  signature.clear_output_arg();
+  signature.set_name(fname);
+  auto op_attrs = op->GetOpAttrs();
+  auto FillSignatureArgs = [op_attrs, op](
+                               const ProtoArgListType& opdef_args,
+                               ProtoArgListType* sig_args,
+                               absl::flat_hash_set<string>& new_attrs) {
+    for (const auto& arg : opdef_args) {
+      if (!arg.type_list_attr().empty()) {
+        gtl::InlinedVector<DataType, 4> type_list;
+        TF_RETURN_IF_ERROR(
+            op_attrs->GetTypeList(arg.type_list_attr(), &type_list));
+        for (size_t i = 0; i < type_list.size(); i++) {
+          auto arg_def = sig_args->Add();
+          arg_def->set_name(GetFlatName(arg.name(), i));
+          auto attr_name = GetFlatName(arg.type_list_attr(), i);
+          new_attrs.insert(attr_name);
+          arg_def->set_type_attr(std::move(attr_name));
+        }
+      } else if (!arg.number_attr().empty()) {
+        int64_t number_attr;
+        if (!op_attrs->GetInt(arg.number_attr(), &number_attr)) {
+          return errors::Internal("Unable to read attr ", arg.number_attr(),
+                                  " for op ", op->Name());
+        }
+        for (size_t i = 0; i < number_attr; i++) {
+          auto arg_def = sig_args->Add();
+          arg_def->set_name(GetFlatName(arg.name(), i));
+          if (!arg.type_attr().empty()) {
+            arg_def->set_type_attr(arg.type_attr());
+          } else {
+            arg_def->set_type(arg.type());
+          }
+        }
+      } else {
+        auto arg_def = sig_args->Add();
+        *arg_def = arg;
+        arg_def->set_name(EscapeOrigName(arg.name()));
+        if (!arg.type_attr().empty()) {
+          arg_def->set_type_attr(EscapeOrigName(arg.type_attr()));
+        }
+      }
+    }
+    return Status::OK();
+  };
+  absl::flat_hash_set<string> new_attrs;
+  TF_RETURN_IF_ERROR(FillSignatureArgs(
+      opdef.input_arg(), signature.mutable_input_arg(), new_attrs));
+  TF_RETURN_IF_ERROR(FillSignatureArgs(
+      opdef.output_arg(), signature.mutable_output_arg(), new_attrs));
+  for (auto& attr_name : new_attrs) {
+    auto attr_def = signature.mutable_attr()->Add();
+    attr_def->set_name(attr_name);
+    attr_def->set_type("type");
+  }
+  return Status::OK();
+}
+
+// For mixed type inputs "list(type)" we create new attributes in the signature
+// for each element tensor (See examples in BuildWrappedOpSignature). Here
+// we construct the values for those attributes and set them on the wrapped op.
+Status AddMixedTypeListAttrs(EagerOperation* wrapped_op,
+                             const AbstractOpAttrs* op_attrs,
+                             const OpDef& opdef) {
+  auto FillAttrsToAdd =
+      [op_attrs](const ProtoArgListType& opdef_args,
+                 absl::flat_hash_map<string, DataType>* attrs_to_add) {
+        for (const auto& arg : opdef_args) {
+          if (!arg.type_list_attr().empty()) {
+            gtl::InlinedVector<DataType, 4> type_list;
+            TF_RETURN_IF_ERROR(
+                op_attrs->GetTypeList(arg.type_list_attr(), &type_list));
+            for (size_t i = 0; i < type_list.size(); i++) {
+              auto attr_name = GetFlatName(arg.type_list_attr(), i);
+              (*attrs_to_add)[attr_name] = type_list[i];
+            }
+          }
+        }
+        return Status::OK();
+      };
+  absl::flat_hash_map<string, DataType> attrs_to_add;
+  TF_RETURN_IF_ERROR(FillAttrsToAdd(opdef.input_arg(), &attrs_to_add));
+  TF_RETURN_IF_ERROR(FillAttrsToAdd(opdef.output_arg(), &attrs_to_add));
+  for (auto& name_type : attrs_to_add) {
+    TF_RETURN_IF_ERROR(
+        wrapped_op->SetAttrType(name_type.first.data(), name_type.second));
+  }
+  // TODO(srbs): Rename all original attributes using EscapeOrigName.
+  return Status::OK();
+}
+
+// Maps the op's outputs to the function outputs. Mainly useful for variadic
+// outputs which need to be flattened.
+Status PopulateRetMap(FunctionDef* fdef, const AbstractOpAttrs* op_attrs,
+                      const EagerOperation* op, const OpDef& opdef,
+                      const OpDef& signature, const string& node_name) {
+  int next_sig_output = 0;
+  for (size_t i = 0; i < opdef.output_arg_size(); i++) {
+    const auto& output_arg = opdef.output_arg(i);
+    if (!output_arg.type_list_attr().empty()) {
+      gtl::InlinedVector<DataType, 4> type_list;
+      TF_RETURN_IF_ERROR(
+          op_attrs->GetTypeList(output_arg.type_list_attr(), &type_list));
+      for (int j = 0; j < type_list.size(); j++) {
+        (*fdef->mutable_ret())[signature.output_arg(next_sig_output++).name()] =
+            absl::StrCat(node_name, ":", output_arg.name(), ":", j);
+      }
+    } else if (!output_arg.number_attr().empty()) {
+      int64_t number_attr;
+      if (!op_attrs->GetInt(output_arg.number_attr(), &number_attr)) {
+        return errors::Internal("Unable to read attr ",
+                                output_arg.number_attr(), " for op ",
+                                op->Name());
+      }
+      for (int j = 0; j < number_attr; j++) {
+        (*fdef->mutable_ret())[signature.output_arg(next_sig_output++).name()] =
+            absl::StrCat(node_name, ":", output_arg.name(), ":", j);
+      }
+    } else {
+      (*fdef->mutable_ret())[signature.output_arg(next_sig_output++).name()] =
+          absl::StrCat(node_name, ":", output_arg.name(), ":0");
     }
   }
   return Status::OK();
@@ -430,18 +727,21 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   //   ...
   // This can be avoided by introducing a dict in EagerContext that stores a
   // mapping from the eager op's name to its unique FunctionDef name.
-  const string fname = absl::StrCat("__wrapped__", op->Name());
+  auto op_attrs = op->GetOpAttrs();
+  string fname;
+  TF_RETURN_IF_ERROR(BuildWrappedOpName(op, opdef, op_attrs, &fname));
   if (!op->EagerContext().GetFunctionDef(fname)) {
     FunctionDef fdef;
     // Set signature.
-    *fdef.mutable_signature() = opdef;
-    fdef.mutable_signature()->set_name(fname);
+    TF_RETURN_IF_ERROR(
+        BuildWrappedOpSignature(op, opdef, fname, *fdef.mutable_signature()));
     // Add node.
     NodeDef* ndef = fdef.add_node_def();
     ndef->set_op(op->Name());
     ndef->set_name(op->Name());  // This could be anything.
-    for (size_t i = 0; i < opdef.input_arg_size(); i++) {
-      ndef->add_input(absl::StrCat(opdef.input_arg(i).name(), ":0"));
+    const auto& signature = fdef.signature();
+    for (size_t i = 0; i < signature.input_arg_size(); i++) {
+      ndef->add_input(absl::StrCat(fdef.signature().input_arg(i).name(), ":0"));
     }
     // TODO(srbs): Private attrs on the op are dropped here and applied to
     // the call op instead. If this causes problems we might have to copy those
@@ -451,10 +751,8 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
       (*ndef->mutable_attr())[attr.name()].set_placeholder(attr.name());
     }
     // Set `ret` map.
-    for (size_t i = 0; i < opdef.output_arg_size(); i++) {
-      (*fdef.mutable_ret())[opdef.output_arg(i).name()] =
-          absl::StrCat(ndef->name(), ":", opdef.output_arg(i).name(), ":0");
-    }
+    TF_RETURN_IF_ERROR(
+        PopulateRetMap(&fdef, op_attrs, op, opdef, signature, ndef->name()));
     VLOG(1) << fdef.DebugString();
     TF_RETURN_IF_ERROR(op->EagerContext().AddFunctionDef(std::move(fdef)));
   }
@@ -472,8 +770,8 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   // FunctionDef for different attribute values. When the function is
   // instantiated, these attributes get forwarded to the NodeDef. This is done
   // by setting the AttrValue.placeholder field for the NodeDef attrs.
-  (*wrapped_op)->AddAttrs(op->GetOpAttrs());
-  return Status::OK();
+  (*wrapped_op)->AddAttrs(op_attrs);
+  return AddMixedTypeListAttrs(*wrapped_op, op_attrs, opdef);
 }
 
 Status GetOrCreateKernelAndDevice(
@@ -591,8 +889,13 @@ Status GetOrCreateKernelAndDevice(
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
-      TF_RETURN_IF_ERROR(
-          ctx.SelectDevice(op->GetDeviceParsedName(), ndef, &device));
+      // Here in local execute, set preferred device to be on the local task to
+      // avoid placing op on a remote device with higher priority.
+      const DeviceNameUtils::ParsedName& preferred_device =
+          DeviceNameUtils::HasSomeDetails(op->GetDeviceParsedName())
+              ? op->GetDeviceParsedName()
+              : DeviceNameUtils::AddressSpace(ctx.HostCPUParsedName());
+      TF_RETURN_IF_ERROR(ctx.SelectDevice(preferred_device, ndef, &device));
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();
@@ -971,8 +1274,6 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           tensorflow::Device* remote_cpu_device;
           TF_RETURN_IF_ERROR(
               ctx.CPUDeviceOnTask(op_device, &remote_cpu_device));
-          // TODO(b/110044833): It's possible the same tensor gets copied to the
-          // remote device repeatedly.
           // Always copy to the remote CPU so that the actual device can be
           // correctly determined after the kernel is selected/instantiated,
           // since the op might have its inputs on host memory.

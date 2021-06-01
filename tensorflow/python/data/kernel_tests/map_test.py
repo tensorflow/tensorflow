@@ -28,7 +28,6 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -123,40 +122,6 @@ def _short_circuit_test_cases():
         structure=structure, fn=combinations.NamedObject(name, fn))
 
   return functools.reduce(reduce_fn, cases, [])
-
-
-def _make_coordinated_sloppy_dataset(apply_map, num_elements,
-                                     num_parallel_calls):
-  """Produces a dataset iterator and events to control the order of elements.
-
-  Args:
-    apply_map: method that applies the `map` transformation
-    num_elements: the number of input elements
-    num_parallel_calls: the degree of map parallelism
-
-  Returns:
-    A dataset iterator (represented as `get_next` op) and events that can be
-    used to control the order of output elements.
-  """
-
-  # Set up threading events used to sequence when items are produced that
-  # are subsequently interleaved. These events allow us to deterministically
-  # simulate slowdowns and force sloppiness.
-  coordination_events = {i: threading.Event() for i in range(num_elements)}
-
-  def map_py_fn(x):
-    coordination_events[x].wait()
-    coordination_events[x].clear()
-    return x * x
-
-  def fn(x):
-    return script_ops.py_func(map_py_fn, [x], x.dtype)
-
-  options = dataset_ops.Options()
-  options.experimental_deterministic = False
-  dataset = dataset_ops.Dataset.range(num_elements)
-  dataset = apply_map(dataset, fn, num_parallel_calls).with_options(options)
-  return dataset, coordination_events
 
 
 class Foo(object):
@@ -1134,59 +1099,6 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset, requires_initialization=True)
 
     self.assertEqual(42, self.evaluate(get_next()))
-
-  @combinations.generate(
-      combinations.times(
-          _test_combinations(),
-          combinations.combine(num_elements=1, num_parallel_calls=1) +
-          combinations.combine(num_elements=10, num_parallel_calls=1) +
-          combinations.combine(num_elements=10, num_parallel_calls=10) +
-          combinations.combine(num_elements=100, num_parallel_calls=1) +
-          combinations.combine(num_elements=100, num_parallel_calls=10) +
-          combinations.combine(num_elements=100, num_parallel_calls=100)))
-  def testSloppyInterleaveInOrder(self, apply_map, num_elements,
-                                  num_parallel_calls):
-    dataset, coordination_events = _make_coordinated_sloppy_dataset(
-        apply_map, num_elements, num_parallel_calls)
-    options = dataset_ops.Options()
-    options.experimental_threading = threading_options.ThreadingOptions()
-    options.experimental_threading.private_threadpool_size = (
-        num_parallel_calls + 1)
-    dataset = dataset.with_options(options)
-    get_next = self.getNext(dataset, requires_initialization=True)
-    for i in range(num_elements):
-      coordination_events[i].set()
-      self.assertEqual(i * i, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
-
-  @combinations.generate(
-      combinations.times(
-          _test_combinations(),
-          combinations.combine(num_elements=10, num_parallel_calls=10) +
-          combinations.combine(num_elements=100, num_parallel_calls=10) +
-          combinations.combine(num_elements=100, num_parallel_calls=100)))
-  def testSloppyInterleaveOutOfOrder(self, apply_map, num_elements,
-                                     num_parallel_calls):
-    dataset, coordination_events = _make_coordinated_sloppy_dataset(
-        apply_map, num_elements, num_parallel_calls)
-    options = dataset_ops.Options()
-    options.experimental_threading = threading_options.ThreadingOptions()
-    options.experimental_threading.private_threadpool_size = (
-        num_parallel_calls + 1)
-    dataset = dataset.with_options(options)
-
-    get_next = self.getNext(dataset, requires_initialization=True)
-
-    elements = [x for x in range(num_elements)]
-    for i in [1, 4, 7]:
-      elements[i], elements[i + 1] = elements[i + 1], elements[i]
-
-    for element in elements:
-      coordination_events[element].set()
-      self.assertEqual(element * element, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
 
   @combinations.generate(
       combinations.combine(

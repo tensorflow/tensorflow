@@ -52,6 +52,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import composite_tensor_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
@@ -146,7 +147,7 @@ from tensorflow.python.compiler.xla import xla
 from tensorflow.python.compiler.mlir import mlir
 
 # Structs (aka extension types)
-from tensorflow.python.framework import tensor_struct as _tensor_struct
+from tensorflow.python.framework import extension_type as _extension_type
 
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).

@@ -33,6 +33,10 @@ py_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow_text/google:__pkg__",
+    ],
     deps = [
         "//third_party/py/numpy",
     ],

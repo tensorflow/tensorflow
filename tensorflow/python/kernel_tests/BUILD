@@ -550,6 +550,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "composite_tensor_ops_test",
+    size = "small",
+    srcs = ["composite_tensor_ops_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:composite_tensor_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
     name = "fifo_queue_test",
     size = "small",
     srcs = ["fifo_queue_test.py"],
@@ -1309,7 +1321,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:logging_ops",
-        "//tensorflow/python:summary",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -1323,7 +1335,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:summary",
+        "//tensorflow/python/summary",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1855,6 +1867,7 @@ cuda_py_test(
     srcs = ["control_flow_ops_py_test.py"],
     shard_count = 16,
     tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
         "notsan",  # TODO(b/132205147): Re-enable this.
     ],
     deps = [
@@ -2019,7 +2032,10 @@ cuda_py_test(
     name = "depthtospace_op_test",
     size = "medium",
     srcs = ["depthtospace_op_test.py"],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+        "no_windows_gpu",
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -2051,7 +2067,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    # TODO(b/153089059): TFRT: Add support for complex128.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2188,6 +2203,7 @@ cuda_py_test(
     name = "linalg_ops_test",
     size = "medium",
     srcs = ["linalg_ops_test.py"],
+    shard_count = 8,
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -2789,7 +2805,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:summary",
+        "//tensorflow/python/summary",
         "//third_party/py/numpy",
     ],
 )
@@ -2804,7 +2820,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python:summary",
+        "//tensorflow/python/summary",
         "//third_party/py/numpy",
     ],
 )

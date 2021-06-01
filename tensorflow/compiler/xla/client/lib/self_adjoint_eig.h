@@ -33,7 +33,8 @@ struct SelfAdjointEigResult {
 };
 
 SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower = true,
-                                    int64 max_iter = 15, float tol = 1e-7);
+                                    int64 max_iter = 15, float tol = 1e-5,
+                                    bool sort_eigenvalues = true);
 
 }  // namespace xla
 

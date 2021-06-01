@@ -723,7 +723,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     *optimized_graph = item.graph;
-    sleep(1);
+    Env::Default()->SleepForMicroseconds(1000000);
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     optimized_graph->add_node();
     return Status::OK();

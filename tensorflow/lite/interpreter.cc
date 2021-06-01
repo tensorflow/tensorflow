@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
-#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -161,12 +160,6 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
   primary_subgraph().SetExternalContext(type, ctx);
 }
 
-TfLiteStatus Interpreter::SetCustomAllocationForTensor(
-    int tensor_index, const TfLiteCustomAllocation& allocation, int64_t flags) {
-  return primary_subgraph().SetCustomAllocationForTensor(tensor_index,
-                                                         allocation, flags);
-}
-
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
   return primary_subgraph().SetInputs(std::move(inputs));
 }
@@ -236,10 +229,6 @@ TfLiteStatus Interpreter::AllocateTensors() {
   return primary_subgraph().AllocateTensors();
 }
 
-void Interpreter::ReserveNodes(int count) {
-  primary_subgraph().ReserveNodes(count);
-}
-
 void Interpreter::AddSubgraphs(int subgraphs_to_add,
                                int* first_new_subgraph_index) {
   const size_t base_index = subgraphs_.size();
@@ -272,13 +261,6 @@ TfLiteStatus Interpreter::ResizeInputTensorStrict(
   return primary_subgraph().ResizeInputTensorStrict(tensor_index, dims);
 }
 
-TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
-  // TODO(b/138790287): We could do this for all subgraphs whose tensors have
-  // been allocated. However, AllocateTensors() relies on Control Flow ops to
-  // allocate tensors on 'children' subgraphs. Revisit this if required.
-  return primary_subgraph().ReleaseNonPersistentMemory();
-}
-
 TfLiteStatus Interpreter::Invoke() {
   ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
                                                            "invoke");
@@ -305,10 +287,6 @@ TfLiteStatus Interpreter::Invoke() {
 TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
                                      int* first_new_tensor_index) {
   return primary_subgraph().AddTensors(tensors_to_add, first_new_tensor_index);
-}
-
-TfLiteStatus Interpreter::ResetVariableTensors() {
-  return primary_subgraph().ResetVariableTensors();
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
@@ -372,117 +350,6 @@ TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
     if (c && c->Refresh) {
       c->Refresh(context_);
     }
-  }
-  return kTfLiteOk;
-}
-
-void Interpreter::SetAllowFp16PrecisionForFp32(bool allow) {
-  for (auto& subgraph : subgraphs_) {
-    subgraph->context()->allow_fp32_relax_to_fp16 = allow;
-  }
-}
-
-// TODO(b/121264966): Subgraphs added after cancellation is set will not get the
-// cancellation function added to their context.
-void Interpreter::SetCancellationFunction(void* data,
-                                          bool (*check_cancelled_func)(void*)) {
-  for (auto& subgraph : subgraphs_) {
-    subgraph->SetCancellationFunction(data, check_cancelled_func);
-  }
-}
-
-bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
-
-TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
-  TfLiteStatus status = kTfLiteOk;
-  for (auto& subgraph : subgraphs_) {
-    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
-      continue;
-    }
-    status = subgraph->ModifyGraphWithDelegate(delegate);
-    if (status != kTfLiteOk) {
-      break;
-    }
-  }
-  // Delegate-specific errors can be recovered from by restoring Interpreter to
-  // its original state.
-  if (status == kTfLiteDelegateError) {
-    TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
-  }
-  return status;
-}
-
-TfLiteStatus Interpreter::RemoveAllDelegates() {
-  for (auto& subgraph : subgraphs_) {
-    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
-  }
-  return kTfLiteOk;
-}
-
-bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
-
-TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
-                                          TfLiteBufferHandle buffer_handle,
-                                          TfLiteDelegate* delegate) {
-  TF_LITE_ENSURE(context_, tensor_index < tensors_size());
-  TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
-
-  TF_LITE_ENSURE(context_,
-                 tensor->delegate == nullptr || tensor->delegate == delegate);
-  tensor->delegate = delegate;
-  if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
-    TF_LITE_ENSURE(context_, tensor->delegate->FreeBufferHandle != nullptr);
-    tensor->delegate->FreeBufferHandle(context_, tensor->delegate,
-                                       &tensor->buffer_handle);
-  }
-  tensor->buffer_handle = buffer_handle;
-
-  return kTfLiteOk;
-}
-
-TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
-                                          TfLiteBufferHandle* buffer_handle,
-                                          TfLiteDelegate** delegate) {
-  TF_LITE_ENSURE(context_, tensor_index < tensors_size());
-  TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
-
-  *delegate = tensor->delegate;
-  *buffer_handle = tensor->buffer_handle;
-
-  return kTfLiteOk;
-}
-
-void Interpreter::SetProfiler(Profiler* profiler) {
-  // Release resources occupied by owned_profiler_ which is replaced by
-  // caller-owned profiler.
-  owned_profiler_.reset(nullptr);
-  installed_profiler_ = profiler;
-  SetSubgraphProfiler();
-}
-
-void Interpreter::SetProfiler(std::unique_ptr<Profiler> profiler) {
-  owned_profiler_ = std::move(profiler);
-  installed_profiler_ = owned_profiler_.get();
-  SetSubgraphProfiler();
-}
-
-void Interpreter::SetSubgraphProfiler() {
-  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
-       ++subgraph_index) {
-    subgraphs_[subgraph_index]->SetProfiler(installed_profiler_,
-                                            subgraph_index);
-  }
-}
-
-Profiler* Interpreter::GetProfiler() {
-  return primary_subgraph().GetProfiler();
-}
-
-TfLiteStatus Interpreter::PreserveAllTensorsExperimental() {
-  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
-       ++subgraph_index) {
-    TF_LITE_ENSURE_STATUS(
-        subgraphs_[subgraph_index]->PreserveAllTensorsExperimental());
   }
   return kTfLiteOk;
 }

@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-static xla::StatusOr<xla::LocalExecutable*> GetLocalExecutable(
+static StatusOr<xla::LocalExecutable*> GetLocalExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompileOptions& compile_options,
     const NameAttrList& function, XlaCompilationCache* cache,
@@ -47,7 +47,7 @@ static xla::StatusOr<xla::LocalExecutable*> GetLocalExecutable(
   return executable;
 }
 
-xla::StatusOr<std::string> GetCompilerIr(
+StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, Device* dev, EagerContext* context,
     absl::Span<const TensorHandle* const> inputs_handles) {
@@ -113,7 +113,7 @@ xla::StatusOr<std::string> GetCompilerIr(
 
   XlaCompiler compiler(options);
 
-  xla::StatusOr<std::vector<XlaCompiler::Argument>> args =
+  StatusOr<std::vector<XlaCompiler::Argument>> args =
       XlaComputationLaunchContext::BuildXlaCompilerArguments(
           constant_arg_indices, inputs, variable_infos, dev);
   TF_RETURN_IF_ERROR(args.status());
@@ -140,7 +140,7 @@ xla::StatusOr<std::string> GetCompilerIr(
     }
     case IrExportStage::OPTIMIZED_HLO:
     case IrExportStage::OPTIMIZED_HLO_SERIALIZED: {
-      xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
+      StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
           options, compile_options, function, cache, *args, compiler);
       TF_RETURN_IF_ERROR(executable.status());
       xla::Executable* new_executable = (*executable)->executable();
@@ -151,10 +151,10 @@ xla::StatusOr<std::string> GetCompilerIr(
       }
     }
     case IrExportStage::OPTIMIZED_HLO_DOT: {
-      xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
+      StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
           options, compile_options, function, cache, *args, compiler);
       TF_RETURN_IF_ERROR(executable.status());
-      xla::StatusOr<std::string> graph = xla::RenderGraph(
+      StatusOr<std::string> graph = xla::RenderGraph(
           *(*executable)->executable()->module().entry_computation(),
           "Visualization",
           /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,

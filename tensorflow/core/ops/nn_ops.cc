@@ -301,36 +301,6 @@ REGISTER_OP("FusedBatchNormGradV3")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
-
-REGISTER_OP("_FusedBatchNormGradEx")
-    .Input("y_backprop: T")
-    .Input("x: T")
-    .Input("scale: float")
-    .Input("reserve_space_1: U")
-    .Input("reserve_space_2: U")
-    .Input("reserve_space_3: U")
-    .Input("offset: float")
-    .Input("y: T")
-    .Output("x_backprop: T")
-    .Output("scale_backprop: U")
-    .Output("offset_backprop: U")
-    .Output("reserve_space_4: U")
-    .Output("reserve_space_5: U")
-    .Output("side_input_backprop: num_side_inputs * T")
-    .Attr("T: {half, float}")
-    .Attr("U: {float}")
-    .Attr("epsilon: float = 0.0001")
-    .Attr("num_side_inputs: int >= 0 = 0")
-    .Attr("activation_mode: string = \"Identity\"")
-    .Attr(GetConvnetDataFormat2D3DAttrString())
-    .Attr("is_training: bool = true")
-    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
-    .Doc(R"doc(
-Internal FusedBatchNormGrad operation: reserved for internal use.
-
-Do not invoke this operator directly in Python. A fusion optimization is
-expected to create these operators.
-)doc");
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BiasAdd")
@@ -1483,15 +1453,7 @@ REGISTER_OP("QuantizedAvgPool")
     .Attr("ksize: list(int)")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::AvgPoolShape(c));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedAvgPoolShape);
 
 REGISTER_OP("QuantizedBiasAdd")
     .Input("input: T1")
@@ -1534,17 +1496,7 @@ REGISTER_OP("QuantizedConv2D")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::QuantizedConv2DShape);
 
 REGISTER_OP("QuantizedMaxPool")
     .Input("input: T")
@@ -1949,25 +1901,7 @@ REGISTER_OP("_MklConv2DBackpropFilterWithBias")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input_shape;
-      // Fetch the data_format attribute, which may not exist.
-      string data_format;
-      Status s = c->GetAttr("data_format", &data_format);
-
-      if (s.ok() && data_format == "NCHW") {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
-        c->set_output(1, c->Vector(c->Dim(input_shape, -3)));
-      } else {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
-        c->set_output(1, c->Vector(c->Dim(input_shape, -1)));
-      }
-      ShapeHandle sh;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
-      TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
-      c->set_output(0, sh);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::Conv2DBackpropFilterWithBiasShape)
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilterWithBias. Uses MKL DNN APIs to compute the
 gradients of convolution with respect to the filter.

@@ -160,6 +160,23 @@ static LogicalResult Verify(AllReduceOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CaseOp
+//===----------------------------------------------------------------------===//
+
+void CaseOp::getSuccessorRegions(Optional<unsigned> index,
+                                 ArrayRef<Attribute> operands,
+                                 SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the CaseOp, branch to all other branches.
+  if (!index.hasValue()) {
+    for (auto& branch : branches())
+      regions.push_back(RegionSuccessor(&branch, branch.getArguments()));
+  }
+  // If the predecessor is one of the branches, branch back to the parent
+  // operation.
+  regions.push_back(RegionSuccessor());
+}
+
+//===----------------------------------------------------------------------===//
 // CollectivePermuteOp
 //===----------------------------------------------------------------------===//
 
@@ -316,6 +333,41 @@ static LogicalResult Verify(ReduceWindowOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
+void WhileOp::getSuccessorRegions(Optional<unsigned> index,
+                                  ArrayRef<Attribute> operands,
+                                  SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the WhileOp or the body region, branch into the
+  // cond region.
+  if (!index.hasValue() || index.getValue() == 1) {
+    regions.push_back(RegionSuccessor(&cond(), cond().getArguments()));
+    return;
+  }
+  // If the predecessor is the cond region, we can branch to the body region
+  // or back to the parent operation.
+  regions.push_back(RegionSuccessor(&body(), body().getArguments()));
+  regions.push_back(RegionSuccessor());
+}
+
+Region& WhileOp::getLoopBody() { return body(); }
+
+bool WhileOp::isDefinedOutsideOfLoop(Value value) {
+  return !body().isAncestor(value.getParentRegion());
+}
+
+LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
+  for (auto op : ops) op->moveBefore(*this);
+  return success();
+}
+
+// suppress warning.
+
+using mlir::hlo::parseWindowAttributes;
+using mlir::hlo::printWindowAttributes;
+
 }  // namespace lmhlo
 }  // namespace mlir
 
@@ -332,6 +384,19 @@ void FusionOp::build(OpBuilder& builder, OperationState& result,
   result.addAttributes(attributes);
   Region* bodyRegion = result.addRegion();
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
+}
+
+void FusionOp::getSuccessorRegions(Optional<unsigned> index,
+                                   ArrayRef<Attribute> operands,
+                                   SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the fusion region, jump back to the parent op.
+  if (index.hasValue()) {
+    assert(index.getValue() == 0 && "expected fusion region");
+    regions.push_back(RegionSuccessor());
+  } else {
+    // If the predecessor is the FusionOp, branch into the region.
+    regions.push_back(RegionSuccessor(&region(), region().getArguments()));
+  }
 }
 
 }  // namespace lmhlo

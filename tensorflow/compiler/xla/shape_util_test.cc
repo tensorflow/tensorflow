@@ -773,6 +773,15 @@ TEST(ShapeUtilTest, MoveDimToMajor) {
   new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
   EXPECT_EQ(new_shape,
             ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {2, 1, 0}));
+
+  shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {10, 10, 10}),
+       ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 10}, {0, 2, 1})});
+  new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
+  EXPECT_EQ(new_shape,
+            ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {10, 10, 10}),
+                                       ShapeUtil::MakeShapeWithLayout(
+                                           F32, {10, 10, 10}, {2, 1, 0})}));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

@@ -6,7 +6,10 @@ load(
 
 package(
     default_visibility =
-        ["//tensorflow/python/saved_model:__subpackages__"],
+        [
+            "//tensorflow/cc/saved_model:__subpackages__",
+            "//tensorflow/python/saved_model:__subpackages__",
+        ],
     licenses = ["notice"],
 )
 
@@ -39,5 +42,26 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
+    ],
+)
+
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "metrics_test",
+    size = "small",
+    srcs = ["metrics_test.cc"],
+    deps = [
+        ":metrics",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
