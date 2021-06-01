@@ -59,10 +59,10 @@ class NumpyFunctionTest(test.TestCase):
 
     # different argument
     tensor_double_plus_stateless(
-      constant_op.constant(1, dtype=dtypes.int32),
-      constant_op.constant(2, dtype=dtypes.int32),
+      constant_op.constant(1),
+      constant_op.constant(2),
     )
-    assert call_count == 1  # +1 as only the first one was executed
+    self.assertEqual(call_count, 1)  # +1 as only the first one was executed
 
     @def_function.function(autograph=False)
     def tensor_double_plus_stateful(a, b):
@@ -71,11 +71,10 @@ class NumpyFunctionTest(test.TestCase):
       return sum1 + sum2
 
     tensor_double_plus_stateful(
-      constant_op.constant(3, dtype=dtypes.int32),
-      constant_op.constant(4, dtype=dtypes.int32),
+      constant_op.constant(3),
+      constant_op.constant(4),
                           )
-    assert call_count == 3  # +2 as it is stateful, both were executed
-
+    self.assertEqual(call_count, 3)  # +2 as it is stateful, both were executed
 
 
 if __name__ == "__main__":
