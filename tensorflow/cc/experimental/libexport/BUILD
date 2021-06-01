@@ -7,6 +7,7 @@ load(
 package(
     default_visibility =
         [
+            "//tensorflow/cc/experimental/libtf:__subpackages__",
             "//tensorflow/cc/saved_model:__subpackages__",
             "//tensorflow/python/saved_model:__subpackages__",
         ],
@@ -38,6 +39,30 @@ tf_cc_test(
     srcs = ["save_test.cc"],
     deps = [
         ":save",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
+    ],
+)
+
+cc_library(
+    name = "load",
+    srcs = ["load.cc"],
+    hdrs = ["load.h"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "load_test",
+    size = "small",
+    srcs = ["load_test.cc"],
+    deps = [
+        ":load",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
