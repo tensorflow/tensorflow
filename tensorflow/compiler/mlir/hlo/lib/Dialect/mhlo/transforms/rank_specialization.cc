@@ -394,7 +394,7 @@ Value MaterializeEqualShapesRankSpecializationCase(
 Value MaterializeTargetRankSpecializationCase(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
     const SmallVector<Value, 8> &shapes, int64_t target_rank) {
-  // Reshape operands to match the target rank.
+  // Reshape unranked operands to match the target rank.
   RankedTensorType extent_tensor_ty =
       shape::getExtentTensorType(b.getContext(), target_rank);
   Value all_ones_shape = b.create<shape::ConstShapeOp>(

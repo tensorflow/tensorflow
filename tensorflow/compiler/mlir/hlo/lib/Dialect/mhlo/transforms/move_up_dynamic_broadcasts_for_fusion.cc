@@ -387,7 +387,13 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
       MoveUpBroadcastInDimOpPattern,
       ShapeReificationPattern>(context);
   // clang-format on
+  mhlo::DynamicBroadcastInDimOp::getCanonicalizationPatterns(*patterns,
+                                                             context);
+  mhlo::DynamicReshapeOp::getCanonicalizationPatterns(*patterns, context);
+  shape::AssumingAllOp::getCanonicalizationPatterns(*patterns, context);
+  shape::AssumingOp::getCanonicalizationPatterns(*patterns, context);
   shape::BroadcastOp::getCanonicalizationPatterns(*patterns, context);
+  shape::CstrBroadcastableOp::getCanonicalizationPatterns(*patterns, context);
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 

@@ -244,6 +244,7 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_floor_div.cc",
         "gpu_op_squared_difference.cc",
+        "gpu_op_xlogy.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -277,6 +278,7 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":gpu_floor_div_kernels",
         ":gpu_squared_difference_kernels",
+        ":gpu_xlogy_kernels",
     ]),
 )
 
@@ -1331,3 +1333,15 @@ cpu_kernel_library(
         "right_shift",
     ]
 ]
+
+gpu_kernel_library(
+    name = "gpu_xlogy_kernels",
+    op = "xlogy",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
