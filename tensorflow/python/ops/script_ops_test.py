@@ -39,22 +39,14 @@ class NumpyFunctionTest(test.TestCase):
     call_count = 0
 
     def plus(a, b):
-      global call_count
+      nonlocal call_count
       call_count += 1
       return a + b
 
-    @def_function.function
-    def tensor_plus_stateful(a, b):
-      return numpy_function(plus, [a, b], dtypes.int32, stateful=True)
-
-    @def_function.function
-    def tensor_plus_stateless(a, b):
-      return numpy_function(plus, [a, b], dtypes.int32, stateful=False)
-
     @def_function.function(autograph=False)
     def tensor_double_plus_stateless(a, b):
-      sum1 = tensor_plus_stateless(a, b)
-      sum2 = tensor_plus_stateless(a, b)
+      sum1 = numpy_function(plus, [a, b], dtypes.int32, stateful=False)
+      sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=False)
       return sum1 + sum2
 
     # different argument
@@ -66,8 +58,8 @@ class NumpyFunctionTest(test.TestCase):
 
     @def_function.function(autograph=False)
     def tensor_double_plus_stateful(a, b):
-      sum1 = tensor_plus_stateful(a, b)
-      sum2 = tensor_plus_stateful(a, b)
+      sum1 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
+      sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
       return sum1 + sum2
 
     tensor_double_plus_stateful(
