@@ -44,7 +44,8 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
       result = session.run(output, {pa: a, pb: b})
       if equality_test is None:
         equality_test = self.assertAllCloseAccordingToType
-      equality_test(result, expected, rtol=1e-3)
+      equality_test(np.real(result), np.real(expected), rtol=1e-3)
+      equality_test(np.imag(result), np.imag(expected), rtol=1e-3)
 
   def testComplexOps(self):
     for dtype in self.complex_types:
@@ -61,6 +62,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
               complex(np.nan, 1),
               complex(np.nan, np.inf),
               complex(np.nan, np.nan),
+              complex(-np.inf, np.nan),
           ],
                    dtype=dtype),
           np.array([
@@ -73,6 +75,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
               0 + 0j,
               0 + 0j,
               0 + 0j,
+              0.0 + 0j,
           ],
                    dtype=dtype),
           expected=np.array([
@@ -85,6 +88,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
               complex(np.nan, np.inf),
               complex(np.nan, np.inf),
               complex(np.nan, np.nan),
+              complex(-np.inf, np.nan),
           ],
                             dtype=dtype))
 
