@@ -740,9 +740,8 @@ def numpy_function(func, inp, Tout, stateful=True, name=None):
     inp: A list of `tf.Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
-    stateful: (Boolean.) If False, guarantee the runtime that
-      the function is stateless and the runtime is free to make
-      optimizations based on this, otherwise it is considered to be stateful.
+    stateful: (Boolean.) Setting this argument to False tells the runtime to
+      treat the function as stateless, which enables certain optimizations.
       A function is stateless when given the same input it will return the
       same output and have no side effects; its only purpose is to have a
       return value.
