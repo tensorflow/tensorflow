@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,20 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-REGISTER5(BinaryOp, CPU, "Xdivy", functor::xdivy, float, Eigen::half, double,
-          complex64, complex128);
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-REGISTER3(BinaryOp, GPU, "Xdivy", functor::xdivy, float, Eigen::half, double);
-#endif
-REGISTER2(BinaryOp, GPU, "Xdivy", functor::xdivy, complex64, complex128);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Xdivy, DT_HALF);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Xdivy, DT_FLOAT);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(Xdivy, DT_DOUBLE);
 
 }  // namespace tensorflow

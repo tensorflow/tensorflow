@@ -689,6 +689,26 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div);
 
+/// Test `tf.Xdivy`.
+
+template <typename T>
+T baseline_xdivy(T x, T y) {
+  return x == 0 ? x : x / y;
+}
+
+GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Half, Eigen::half, float,
+                         Eigen::half, float, test::DefaultInput<Eigen::half>(),
+                         test::DefaultInput<Eigen::half>(), baseline_xdivy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Float, float, float, float, float,
+                         test::DefaultInput<float>(),
+                         test::DefaultInput<float>(), baseline_xdivy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Double, double, double, double,
+                         double, test::DefaultInput<double>(),
+                         test::DefaultInput<double>(), baseline_xdivy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.Zeta`.
 
 template <typename T>
