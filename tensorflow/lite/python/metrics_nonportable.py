@@ -19,6 +19,7 @@ import uuid
 
 from tensorflow.lite.python import metrics_interface
 from tensorflow.lite.python.metrics_wrapper import _pywrap_tensorflow_lite_metrics_wrapper as _metrics_wrapper
+from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
 from tensorflow.python.eager import monitoring
 
 _counter_debugger_creation = monitoring.Counter(
@@ -46,6 +47,11 @@ _counter_conversion_success = monitoring.Counter(
 _gauge_conversion_params = monitoring.StringGauge(
     '/tensorflow/lite/convert/params',
     'Gauge for keeping conversion parameters.', 'name')
+
+_gauge_conversion_errors = monitoring.StringGauge(
+    '/tensorflow/lite/convert/errors',
+    'Gauge for collecting conversion errors. The value represents the error '
+    'message.', 'component', 'subcomponent', 'op_name', 'error_code')
 
 
 class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
@@ -82,6 +88,17 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
 
   def set_converter_param(self, name, value):
     _gauge_conversion_params.get_cell(name).set(value)
+
+  def set_converter_error(
+      self, error_data: converter_error_data_pb2.ConverterErrorData):
+    error_code_str = converter_error_data_pb2.ConverterErrorData.ErrorCode.Name(
+        error_data.error_code)
+    _gauge_conversion_errors.get_cell(
+        error_data.component,
+        error_data.subcomponent,
+        error_data.operator.name,
+        error_code_str,
+    ).set(error_data.error_message)
 
 
 class TFLiteConverterMetrics(TFLiteMetrics):

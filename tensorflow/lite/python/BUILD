@@ -480,12 +480,17 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
 )
 
-pytype_strict_library(
+# Use py_library since the metrics module is imported in a try-except block,
+# which doesn't work with the pytype_strict_library.
+py_library(
     name = "convert_phase",
     srcs = ["convert_phase.py"],
-    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [
+        ":metrics",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
+    ],
 )
 
 pytype_strict_library(
@@ -496,6 +501,7 @@ pytype_strict_library(
     deps = [
         ":metrics_interface",
         "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python/eager:monitoring",
     ],
 )
