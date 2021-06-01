@@ -93,9 +93,7 @@ TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
           .TypeConstraint<index_type>("Tidx")                           \
           .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
       SparseSegmentSumGradOp<type, index_type, segment_ids_type>);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(float);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \

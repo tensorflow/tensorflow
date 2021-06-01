@@ -1366,7 +1366,7 @@ REGISTER_OP("SparseSegmentSumGrad")
     .Input("segment_ids: Tsegmentids")
     .Input("output_dim0: int32")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
