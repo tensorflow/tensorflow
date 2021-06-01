@@ -74,6 +74,8 @@ std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass();
 ///     specialization cluster.
 ///   - Lower rank specialization clusters to SCF and ranked operations.
 std::unique_ptr<FunctionPass> createRankSpecializationClusterPass();
+std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass(
+    int64_t max_target_rank);
 std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass();
 
 std::unique_ptr<FunctionPass> createOptimizeMhloPass();

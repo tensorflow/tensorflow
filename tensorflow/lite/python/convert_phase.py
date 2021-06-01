@@ -22,6 +22,16 @@ from __future__ import print_function
 import collections
 import enum
 import functools
+from typing import Text
+
+from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
+
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.lite.python import metrics_portable as metrics
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable as metrics
+# pylint: enable=g-import-not-at-top
 
 
 class Component(enum.Enum):
@@ -116,7 +126,18 @@ class SubComponent(enum.Enum):
   SPARSIFY = SubComponentItem("SPARSIFY", Component.OPTIMIZE_TFLITE_MODEL)
 
 
-# TODO(b/183161223) Add logic to collect component and subcomponent.
+class ConverterError(Exception):
+  """Raised when an error occurs during model conversion."""
+
+  def __init__(self, message):
+    super(ConverterError, self).__init__(message)
+    self.errors = []
+
+  def append_error(self,
+                   error_data: converter_error_data_pb2.ConverterErrorData):
+    self.errors.append(error_data)
+
+
 def convert_phase(component, subcomponent=SubComponent.UNSPECIFIED):
   """The decorator to identify converter component and subcomponent.
 
@@ -138,11 +159,36 @@ def convert_phase(component, subcomponent=SubComponent.UNSPECIFIED):
       subcomponent.component != component):
     raise ValueError("component and subcomponent name don't match")
 
+  def report_error(error_data: converter_error_data_pb2.ConverterErrorData):
+    # Always overwrites the component information, but only overwrites the
+    # subcomponent if it is not available.
+    error_data.component = component.value
+    if not error_data.subcomponent:
+      error_data.subcomponent = subcomponent.name
+    tflite_metrics = metrics.TFLiteConverterMetrics()
+    tflite_metrics.set_converter_error(error_data)
+
+  def report_error_message(error_message: Text):
+    error_data = converter_error_data_pb2.ConverterErrorData()
+    error_data.error_message = error_message
+    report_error(error_data)
+
   def actual_decorator(func):
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-      return func(*args, **kwargs)
+      try:
+        return func(*args, **kwargs)
+      except ConverterError as converter_error:
+        if converter_error.errors:
+          for error_data in converter_error.errors:
+            report_error(error_data)
+        else:
+          report_error_message(str(converter_error))
+        raise  # Re-throws the exception.
+      except Exception as error:
+        report_error_message(str(error))
+        raise  # Re-throws the exception.
 
     return wrapper
 

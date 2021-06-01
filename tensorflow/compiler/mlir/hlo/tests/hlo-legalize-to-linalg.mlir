@@ -425,6 +425,28 @@ func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 
 // -----
 
+// CHECK-DAG:   #[[SCALAR_MAP:.*]] = affine_map<(d0, d1) -> ()>
+// CHECK-DAG:   #[[ID_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @select_scalar_pred_dyn
+// CHECK-SAME:  (%[[PRED:.*]]: tensor<i1>, %[[LHS:.*]]: tensor<2x?xf32>, %[[RHS:.*]]: tensor<2x?xf32>)
+func @select_scalar_pred_dyn(%pred : tensor<i1>, %lhs: tensor<2x?xf32>, %rhs: tensor<2x?xf32>) -> tensor<2x?xf32> {
+  %0 = "mhlo.select"(%pred, %lhs, %rhs) : (tensor<i1>, tensor<2x?xf32>, tensor<2x?xf32>) -> (tensor<2x?xf32>)
+  return %0 : tensor<2x?xf32>
+}
+// CHECK-DAG:  %[[C1:.*]] = constant 1
+// CHECK-DAG:  %[[DIM:.*]] = memref.dim %[[LHS]], %[[C1]]
+// CHECK-DAG:  %[[DST:.*]] = linalg.init_tensor [2, %[[DIM]]]
+// CHECK:      linalg.generic
+// CHECK-SAME:   indexing_maps = [#[[SCALAR_MAP]], #[[ID_MAP]], #[[ID_MAP]], #[[ID_MAP]]]
+// CHECK-SAME:   iterator_types = ["parallel", "parallel"]
+// CHECK-SAME:   ins(%[[PRED]], %[[LHS]], %[[RHS]] : tensor<i1>, tensor<2x?xf32>, tensor<2x?xf32>)
+// CHECK-SAME:   outs(%[[DST]] : tensor<2x?xf32>)
+// CHECK:      ^bb0(%[[PRED_:.*]]: i1, %[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32, %{{.*}}: f32):
+// CHECK:        %[[RES:.*]] = select %[[PRED_]], %[[LHS_]], %[[RHS_]] : f32
+// CHECK:        linalg.yield %[[RES]]
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1, d2) -> ()>
 // CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar

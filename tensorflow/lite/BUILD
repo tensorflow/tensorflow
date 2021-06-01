@@ -621,6 +621,9 @@ cc_library(
     # configuration conditions will make TFLite interpreter to apply XNNPACK
     # delegate by default.
     deps = select({
+        # XNNPACK delivers significant benefits w/ WASM and is already in use
+        # by most WASM clients.
+        "//tensorflow:emscripten": [":tflite_with_xnnpack_enabled"],
         "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": [],

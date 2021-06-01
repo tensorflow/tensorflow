@@ -393,7 +393,7 @@ message ConfigProto {
   // The first session created determines the number of threads in this pool.
   // All subsequent sessions reuse/share this one global pool.
   //
-  // There are notable exceptions to the default behavior describe above:
+  // There are notable exceptions to the default behavior described above:
   // 1. There is an environment variable  for overriding this thread pool,
   //    named TF_OVERRIDE_GLOBAL_THREADPOOL.
   // 2. When connecting to a server, such as a remote `tf.train.Server`

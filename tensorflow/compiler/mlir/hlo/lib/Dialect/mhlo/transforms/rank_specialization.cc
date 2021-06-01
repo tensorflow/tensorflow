@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -158,7 +159,7 @@ struct RankSpecializationClusterPattern : public RewritePattern {
 };
 
 struct RankSpecializationClusterPass
-    : public PassWrapper<RankSpecializationClusterPass, FunctionPass> {
+    : public RankSpecializationClusterPassBase<RankSpecializationClusterPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, chlo::HloClientDialect>();
   }
@@ -394,7 +395,7 @@ Value MaterializeEqualShapesRankSpecializationCase(
 Value MaterializeTargetRankSpecializationCase(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
     const SmallVector<Value, 8> &shapes, int64_t target_rank) {
-  // Reshape operands to match the target rank.
+  // Reshape unranked operands to match the target rank.
   RankedTensorType extent_tensor_ty =
       shape::getExtentTensorType(b.getContext(), target_rank);
   Value all_ones_shape = b.create<shape::ConstShapeOp>(
@@ -471,7 +472,7 @@ Value RecusivelyMaterializeTargetRankSpecializationCases(
 
 Value MaterializeGenericRankSpecializationCases(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
-    const SmallVector<Value, 8> &shapes) {
+    const SmallVector<Value, 8> &shapes, int64_t max_target_rank) {
   // Get the minimum broadcast shapes of the operands.
   auto non_scalar_shapes = llvm::to_vector<8>(llvm::make_filter_range(
       shapes, [](Value v) { return !IsScalarShapeType(v.getType()); }));
@@ -505,22 +506,19 @@ Value MaterializeGenericRankSpecializationCases(
     }
   }
 
-  // Materialize rank specialization for ranks 1, ..., 8.
-  // TODO(frgossen): For clusters w/o a select operation, consider only ranks
-  // 1, ..., 5.
-  const int64_t kMinTargetRank = 1;
-  const int64_t kMaxTargetRank = 8;
+  // Materialize rank specialization for ranks 1, ...
   return RecusivelyMaterializeTargetRankSpecializationCases(
-      b, loc, op, reduced_shapes, max_rank, kMinTargetRank, kMaxTargetRank);
+      b, loc, op, reduced_shapes, max_rank, /*min_target_rank=*/1,
+      max_target_rank);
 }
 
 Value MaterializeDefaultRankSpecializationCases(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
-    const SmallVector<Value, 8> &shapes) {
+    const SmallVector<Value, 8> &shapes, int64_t max_target_rank) {
   return MaterializeEqualShapesRankSpecializationCase(
       b, loc, op, shapes, [&](OpBuilder &b, Location loc) {
-        b.create<scf::YieldOp>(
-            loc, MaterializeGenericRankSpecializationCases(b, loc, op, shapes));
+        b.create<scf::YieldOp>(loc, MaterializeGenericRankSpecializationCases(
+                                        b, loc, op, shapes, max_target_rank));
       });
 }
 
@@ -555,7 +553,7 @@ SmallVector<Value, 8> MaterializeRankSpecializationForSingleNonScalarOperand(
 
 Value MaterializeRankSpecializationForTwoNonScalarOperands(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
-    ValueRange non_scalar_operands) {
+    ValueRange non_scalar_operands, int64_t max_target_rank) {
   assert(non_scalar_operands.size() == 2);
 
   auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
@@ -574,7 +572,7 @@ Value MaterializeRankSpecializationForTwoNonScalarOperands(
                      [&](OpBuilder &b, Location loc) {
                        b.create<scf::YieldOp>(
                            loc, MaterializeDefaultRankSpecializationCases(
-                                    b, loc, op, shapes));
+                                    b, loc, op, shapes, max_target_rank));
                      }));
       });
 
@@ -583,15 +581,16 @@ Value MaterializeRankSpecializationForTwoNonScalarOperands(
 }
 
 // Materialize rank generic rank specialization.
-Value MaterializeDefaultRankSpecialization(
-    OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op) {
+Value MaterializeDefaultRankSpecialization(OpBuilder &b, Location loc,
+                                           chlo::RankSpecializationClusterOp op,
+                                           int64_t max_target_rank) {
   auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
     return b.create<shape::ShapeOfOp>(loc, v).result();
   }));
 
   // Materialize all the different cases.
-  Value unshaped_result =
-      MaterializeDefaultRankSpecializationCases(b, loc, op, shapes);
+  Value unshaped_result = MaterializeDefaultRankSpecializationCases(
+      b, loc, op, shapes, max_target_rank);
 
   // Materialize final reshape once and for all rank specialization cases.
   return MaterializeFinalReshape(b, loc, op, unshaped_result).front();
@@ -599,7 +598,10 @@ Value MaterializeDefaultRankSpecialization(
 
 struct LowerRankSpecializationClusterPattern
     : public OpRewritePattern<chlo::RankSpecializationClusterOp> {
-  using OpRewritePattern<chlo::RankSpecializationClusterOp>::OpRewritePattern;
+  LowerRankSpecializationClusterPattern(MLIRContext *ctx,
+                                        int64_t max_target_rank)
+      : OpRewritePattern<chlo::RankSpecializationClusterOp>(ctx, /*benefit=*/1),
+        max_target_rank(max_target_rank) {}
 
   LogicalResult matchAndRewrite(chlo::RankSpecializationClusterOp op,
                                 PatternRewriter &rewriter) const override {
@@ -630,22 +632,33 @@ struct LowerRankSpecializationClusterPattern
         llvm::all_of(non_scalar_operands, [](Value v) {
           return v.getType().isa<UnrankedTensorType>();
         })) {
-      rewriter.replaceOp(op,
-                         MaterializeRankSpecializationForTwoNonScalarOperands(
-                             rewriter, loc, op, non_scalar_operands));
+      rewriter.replaceOp(
+          op, MaterializeRankSpecializationForTwoNonScalarOperands(
+                  rewriter, loc, op, non_scalar_operands, max_target_rank));
       return success();
     }
 
     // For all other cases, reshape the operands to match in rank, apply the
     // operation, and restore the expected shape.
-    rewriter.replaceOp(op,
-                       MaterializeDefaultRankSpecialization(rewriter, loc, op));
+    rewriter.replaceOp(op, MaterializeDefaultRankSpecialization(
+                               rewriter, loc, op, max_target_rank));
     return success();
   }
+
+ private:
+  int64_t max_target_rank;
 };
 
 struct RankSpecializationToSCFPass
-    : public PassWrapper<RankSpecializationToSCFPass, FunctionPass> {
+    : public RankSpecializationToSCFPassBase<RankSpecializationToSCFPass> {
+  using RankSpecializationToSCFPassBase<
+      RankSpecializationToSCFPass>::RankSpecializationToSCFPassBase;
+  explicit RankSpecializationToSCFPass(int64_t max_target_rank)
+      : RankSpecializationToSCFPassBase<
+            RankSpecializationToSCFPass>::RankSpecializationToSCFPassBase() {
+    this->max_target_rank_ = max_target_rank;
+  }
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, chlo::HloClientDialect,
                     shape::ShapeDialect, scf::SCFDialect>();
@@ -654,7 +667,8 @@ struct RankSpecializationToSCFPass
   void runOnFunction() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    PopulateRankSpecializationToSCFPatterns(ctx, &patterns);
+    PopulateRankSpecializationToSCFPatterns(ctx, &patterns,
+                                            this->max_target_rank_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
       return signalPassFailure();
@@ -669,13 +683,20 @@ void PopulateRankSpecializationClusterPatterns(
   patterns->insert<RankSpecializationClusterPattern>(context);
 }
 
-void PopulateRankSpecializationToSCFPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns) {
-  patterns->insert<LowerRankSpecializationClusterPattern>(context);
+void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
+                                             OwningRewritePatternList *patterns,
+                                             int64_t max_target_rank) {
+  patterns->insert<LowerRankSpecializationClusterPattern>(context,
+                                                          max_target_rank);
 }
 
 std::unique_ptr<FunctionPass> createRankSpecializationClusterPass() {
   return std::make_unique<RankSpecializationClusterPass>();
+}
+
+std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass(
+    int64_t max_target_rank) {
+  return std::make_unique<RankSpecializationToSCFPass>(max_target_rank);
 }
 
 std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass() {

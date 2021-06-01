@@ -50,6 +50,8 @@ namespace xla {
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                              \
   V(kAllGather, "all-gather", kHloOpcodeIsVariadic)                            \
   V(kAllReduce, "all-reduce", kHloOpcodeIsVariadic)                            \
+  V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
+  V(kAllReduceDone, "all-reduce-done", 1)                                      \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
   V(kAtan2, "atan2", 2)                                                        \
   V(kBatchNormGrad, "batch-norm-grad", 5)                                      \

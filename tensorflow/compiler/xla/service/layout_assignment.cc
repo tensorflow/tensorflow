@@ -2352,6 +2352,8 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     // AllReduce is variadic so it needs to be careful to assign the same layout
     // to the corresponding input argument and Tuple index.
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
       return false;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:

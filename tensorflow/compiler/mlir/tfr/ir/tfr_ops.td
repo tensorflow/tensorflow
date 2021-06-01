@@ -531,10 +531,12 @@ def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
   }];
 }
 
-def TFR_TFRQuantRawDataOp : TFR_Op<"quant_raw_data", [NoSideEffect]> {
+def TFR_TFRQuantRawDataOp : TFR_Op<"quant_raw_data", [
+    NoSideEffect,
+    SameOperandsAndResultType]> {
   let description = [{
    The `quant_raw_data` removes the quantization parameter from the intput
-   tensor.
+   tensor(s).
 
     Example:
 
@@ -543,9 +545,9 @@ def TFR_TFRQuantRawDataOp : TFR_Op<"quant_raw_data", [NoSideEffect]> {
     ```
   }];
 
-  let arguments = (ins TFR_TensorType:$input);
+  let arguments = (ins TFR_AllTensorTypes:$input);
 
-  let results = (outs TFR_TensorType:$output);
+  let results = (outs TFR_AllTensorTypes:$output);
 
   let assemblyFormat = [{
     `(` $input `)` attr-dict `:` functional-type($input, results)

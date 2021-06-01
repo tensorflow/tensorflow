@@ -59,12 +59,12 @@ pytype_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -139,13 +139,13 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/summary",
         "@six_archive//:six",
     ],
 )

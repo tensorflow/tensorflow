@@ -136,6 +136,13 @@ class ShapeInference {
   static StatusOr<Shape> InferAllReduceShape(
       absl::Span<const Shape* const> operand_shapes);
 
+  // Infers the shape produced by a cross replica sum start.
+  static StatusOr<Shape> InferAllReduceStartShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape produced by a cross replica sum done.
+  static StatusOr<Shape> InferAllReduceDoneShape(const Shape& operand_shape);
+
   // Infers final shape of an Alltoall operation that is created by the xla
   // builder.
   static StatusOr<Shape> InferAllToAllShape(const Shape& shape,

@@ -638,6 +638,46 @@ GENERATE_DEFAULT_TESTS(Sub,
 GENERATE_DEFAULT_TESTS(Sub,
                        /*test_name=*/Int64, int64, int64, baseline_sub)
 
+/// Test `tf.Xlogy`.
+
+template <typename T>
+T baseline_xlogy(T x, T y) {
+  return x == 0 ? x : x * std::log(y);
+}
+
+GENERATE_DEFAULT_TESTS_2(Xlogy, /*test_name=*/Half, Eigen::half, float,
+                         Eigen::half, float, test::DefaultInput<Eigen::half>(),
+                         test::DefaultInput<Eigen::half>(), baseline_xlogy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_2(Xlogy, /*test_name=*/Float, float, float, float, float,
+                         test::DefaultInput<float>(),
+                         test::DefaultInput<float>(), baseline_xlogy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_2(Xlogy, /*test_name=*/Double, double, double, double,
+                         double, test::DefaultInput<double>(),
+                         test::DefaultInput<double>(), baseline_xlogy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+
+/// Test `tf.Xlog1py`.
+
+template <typename T>
+T baseline_xlog1py(T x, T y) {
+  return x == 0 ? x : x * std::log1p(y);
+}
+
+GENERATE_DEFAULT_TESTS_2(Xlog1py, /*test_name=*/Half, Eigen::half, float,
+                         Eigen::half, float, test::DefaultInput<Eigen::half>(),
+                         test::DefaultInput<Eigen::half>(), baseline_xlog1py,
+                         test::OpsTestConfig().RTol(1e-2))
+GENERATE_DEFAULT_TESTS_2(Xlog1py, /*test_name=*/Float, float, float, float,
+                         float, test::DefaultInput<float>(),
+                         test::DefaultInput<float>(), baseline_xlog1py,
+                         test::OpsTestConfig().RTol(1e-2))
+GENERATE_DEFAULT_TESTS_2(Xlog1py, /*test_name=*/Double, double, double, double,
+                         double, test::DefaultInput<double>(),
+                         test::DefaultInput<double>(), baseline_xlog1py,
+                         test::OpsTestConfig().RTol(1e-2))
+
 /// Test `tf.TruncateDiv`.
 
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(

@@ -136,6 +136,7 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/preprocessing:image",
         "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
