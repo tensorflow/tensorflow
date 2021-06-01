@@ -144,10 +144,10 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[9.6875, 0.0, 0.0]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_std,
-          rt_input=[[3, 1, 4], [1, 1], [9], [2, 1]],
+          rt_input=[[3, 1, 4], [3, 1], [2], [2, 1]],
           axis=0,
           keepdims=False,
-          expected=[3.1124749, 0., 0.]),
+          expected=[0.5, 0., 0.]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_any,
           rt_input=[[True, True], [True, True, False, True], [False, True]],
@@ -260,10 +260,10 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[[9.6875, 0., 0.]]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_std,
-          rt_input=[[3, 1, 4], [1, 1], [9], [2, 1]],
+          rt_input=[[3, 1, 4], [3, 1], [2], [2, 1]],
           axis=0,
           keepdims=True,
-          expected=[[3.1124749, 0., 0.]]),
+          expected=[[0.5, 0., 0.]]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_any,
           rt_input=[[True, True], [True, True, False, True], [False, True]],
@@ -383,10 +383,10 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                     variance(1, 1, 1), 0, 0]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_std,
-          rt_input=[[1, 1, 2, 3], [1], [], [2, 1], [1], [1, 1]],
+          rt_input=[[1, 1, 2, 3], [1], [], [1, 1], [1], [1, 1]],
           axis=0,
           keepdims=False,
-          expected=[std(1, 1, 2, 1, 1), std(1, 1, 1), 0, 0]),
+          expected=[std(1, 1, 1, 1, 1), std(1, 1, 1), 0, 0]),
       # axis=1
       # Note: we don't test mean here because it gives a NaN, and this will
       # cause assertEqual to fail (since NaN != NaN).  See testMeanNan().
