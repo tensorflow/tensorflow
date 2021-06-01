@@ -10,8 +10,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("//tensorflow/core/platform/default:cuda_build_defs.bzl",
-     "if_cuda_is_configured")
+load(
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = [":friends"],
@@ -513,6 +515,7 @@ cc_library(
         "stream_executor_pimpl.cc",
     ],
     hdrs = ["stream_executor_pimpl.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":blas",
         ":device_memory",
@@ -543,7 +546,6 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
 )
 
 # The stream_executor_headers target does not prescribe an implementation.
