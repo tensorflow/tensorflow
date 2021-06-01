@@ -13,28 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SCHEDULE_AWARE_ALL_GATHER_CSE_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SCHEDULE_AWARE_ALL_GATHER_CSE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SCHEDULE_AWARE_COLLECTIVE_OPS_CSE_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SCHEDULE_AWARE_COLLECTIVE_OPS_CSE_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
-// Performs CSE for all-gather if their users are within reasonable live range.
-class ScheduleAwareAllGatherCSE : public HloModulePass {
+// Performs CSE for collectives if their users are within reasonable live range.
+class ScheduleAwareCollectiveOpsCSE : public HloModulePass {
  public:
   // distance_threshold: maximum live range (in number of HLO instructions on
   //   the path) to consider CSE.
   // for_replicas: specifies if this pass is for cross-replica or
-  //   cross-partition all-gathers.
-  explicit ScheduleAwareAllGatherCSE(int64 distance_threshold,
-                                     bool for_replicas)
+  //   cross-partition collectives.
+  explicit ScheduleAwareCollectiveOpsCSE(int64 distance_threshold,
+                                         bool for_replicas)
       : distance_threshold_(distance_threshold), for_replicas_(for_replicas) {}
 
-  ~ScheduleAwareAllGatherCSE() override = default;
+  ~ScheduleAwareCollectiveOpsCSE() override = default;
   absl::string_view name() const override {
-    return "schedule-aware-all-gather-cse";
+    return "schedule-aware-collective-cse";
   }
 
   StatusOr<bool> Run(HloModule* module) override;
@@ -46,4 +46,4 @@ class ScheduleAwareAllGatherCSE : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SCHEDULE_AWARE_ALL_GATHER_CSE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SCHEDULE_AWARE_COLLECTIVE_OPS_CSE_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/spmd/schedule_aware_all_gather_cse.h"
+#include "tensorflow/compiler/xla/service/spmd/schedule_aware_collective_ops_cse.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -28,21 +28,21 @@ namespace xla {
 namespace spmd {
 namespace {
 
-class AllGatherCseTest : public HloTestBase {
+class CollectiveOpsCseTest : public HloTestBase {
  public:
   StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module,
                                                int64 distance_threshold = 100) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                          hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pipeline("all-gather-cse");
-    pipeline.AddPass<ScheduleAwareAllGatherCSE>(distance_threshold,
-                                                /*for_replicas=*/false);
+    pipeline.AddPass<ScheduleAwareCollectiveOpsCSE>(distance_threshold,
+                                                    /*for_replicas=*/false);
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
     return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 };
 
-TEST_F(AllGatherCseTest, SimpleCse) {
+TEST_F(CollectiveOpsCseTest, SimpleCseAllGather) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -63,7 +63,28 @@ ENTRY entry {
   EXPECT_EQ(tuple->operand(0), tuple->operand(1));
 }
 
-TEST_F(AllGatherCseTest, SimpleCseReshapeLookthrough) {
+TEST_F(CollectiveOpsCseTest, SimpleCseCollectivePermute) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = s32[2,8]{1,0} parameter(0)
+  cp1 = s32[2,8]{1,0} collective-permute(param0), source_target_pairs={{0,1},{1,0}},
+    channel_id=0
+  cp2 = s32[2,8]{1,0} collective-permute(param0), source_target_pairs={{0,1},{1,0}},
+    channel_id=1
+  ROOT tuple = (s32[2,8]{1,0}, s32[2,8]{1,0}) tuple(cp1, cp2)
+})";
+  auto module_status = RunPass(hlo_string);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = module_status.ConsumeValueOrDie();
+  HloInstruction* tuple = module->entry_computation()->root_instruction();
+  EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(tuple->operand_count(), 2);
+  EXPECT_EQ(tuple->operand(0), tuple->operand(1));
+}
+
+TEST_F(CollectiveOpsCseTest, SimpleCseReshapeLookthroughAllGather) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -86,7 +107,30 @@ ENTRY entry {
   EXPECT_EQ(tuple->operand(0), tuple->operand(1));
 }
 
-TEST_F(AllGatherCseTest, SimpleNoCseInvalidReshapes) {
+TEST_F(CollectiveOpsCseTest, SimpleCseReshapeLookthroughCollectivePermute) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = s32[8]{0} parameter(0)
+  rshp = s32[1,8]{1,0} reshape(param0)
+  rshp2 = s32[1,8]{1,0} reshape(param0)
+  cp1 = s32[1,8]{1,0} collective-permute(rshp), source_target_pairs={{0,1},{1,0}},
+    channel_id=0
+  cp2 = s32[1,8]{1,0} collective-permute(rshp2), source_target_pairs={{0,1},{1,0}},
+    channel_id=1
+  ROOT tuple = (s32[2,8]{1,0}, s32[2,8]{1,0}) tuple(cp1, cp2)
+})";
+  auto module_status = RunPass(hlo_string);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = module_status.ConsumeValueOrDie();
+  HloInstruction* tuple = module->entry_computation()->root_instruction();
+  EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(tuple->operand_count(), 2);
+  EXPECT_EQ(tuple->operand(0), tuple->operand(1));
+}
+
+TEST_F(CollectiveOpsCseTest, SimpleNoCseInvalidReshapes) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -109,7 +153,7 @@ ENTRY entry {
   EXPECT_NE(tuple->operand(0), tuple->operand(1));
 }
 
-TEST_F(AllGatherCseTest, SimpleCseDifferentDim) {
+TEST_F(CollectiveOpsCseTest, SimpleCseDifferentDim) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -130,7 +174,7 @@ ENTRY entry {
   EXPECT_EQ(tuple->operand(0), tuple->operand(1));
 }
 
-TEST_F(AllGatherCseTest, SimpleCseDifferentDimReshapeLookthrough) {
+TEST_F(CollectiveOpsCseTest, SimpleCseDifferentDimReshapeLookthrough) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -153,7 +197,7 @@ ENTRY entry {
   EXPECT_EQ(tuple->operand(0), tuple->operand(1));
 }
 
-TEST_F(AllGatherCseTest, NoCseGlobalDevice) {
+TEST_F(CollectiveOpsCseTest, NoCseGlobalDevice) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -174,7 +218,7 @@ ENTRY entry {
   EXPECT_NE(tuple->operand(0), tuple->operand(1));
 }
 
-TEST_F(AllGatherCseTest, NoCseChannelIdMismatch) {
+TEST_F(CollectiveOpsCseTest, NoCseChannelIdMismatch) {
   absl::string_view hlo_string = R"(
 HloModule module
 
