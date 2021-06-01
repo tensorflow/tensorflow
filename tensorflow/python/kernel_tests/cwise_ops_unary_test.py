@@ -417,7 +417,8 @@ class UnaryOpTest(test.TestCase):
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm,
-      skip_message="On ROCm this test fails, speculation that this will fail with CUDA")
+      skip_message="On ROCm this test fails,
+                    speculation that this will fail with CUDA")
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
     self._compareCpu(x, np.abs, math_ops.abs)
@@ -428,7 +429,8 @@ class UnaryOpTest(test.TestCase):
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm,
-      skip_message="On ROCm this test fails, speculation that this will fail with CUDA")
+      skip_message="On ROCm this test fails,
+                    speculation that this will fail with CUDA")
   def testInt16Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
     self._compareCpu(x, np.abs, math_ops.abs)
