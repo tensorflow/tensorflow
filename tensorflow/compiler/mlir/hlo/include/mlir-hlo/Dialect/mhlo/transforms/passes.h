@@ -111,6 +111,9 @@ std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
+// Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
+
 }  // namespace lmhlo
 
 }  // namespace mlir
