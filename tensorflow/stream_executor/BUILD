@@ -4,16 +4,12 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "filegroup", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
-load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     default_visibility = [":friends"],
@@ -508,14 +504,13 @@ cc_library(
 )
 
 # It implements :stream_executor_pimpl_header
-cc_library(
+tf_cuda_library(
     name = "stream_executor_pimpl",
     srcs = [
         "stream.cc",
         "stream_executor_pimpl.cc",
     ],
     hdrs = ["stream_executor_pimpl.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":blas",
         ":device_memory",
