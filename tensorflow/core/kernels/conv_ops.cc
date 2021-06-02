@@ -173,7 +173,6 @@ struct LaunchConv2DOp<CPUDevice, T> {
     LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
                                   row_dilation, col_dilation, padding,
                                   explicit_paddings, output, data_format);
-
   }
 };
 
