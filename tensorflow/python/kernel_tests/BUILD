@@ -2941,7 +2941,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
     ],
