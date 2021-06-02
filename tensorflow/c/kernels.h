@@ -392,6 +392,7 @@ TF_CAPI_EXPORT extern void TF_GetInputTensorFromVariable(
               TF_OpKernelContext* ctx, 
               int input,
               bool lock_held,
+              bool isVariantType,
               bool sparse,
               void (*copyFunc)(TF_OpKernelContext * ctx,
                                TF_Tensor *source,
