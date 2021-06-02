@@ -17,8 +17,6 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "tensorflow/core/framework/op_requires.h"
-
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/Eigen/Core"

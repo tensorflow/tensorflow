@@ -18,8 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/core/platform/errors.h"
-
 #define EIGEN_USE_THREADS
 
 #define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
