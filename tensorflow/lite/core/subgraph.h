@@ -737,7 +737,7 @@ class Subgraph {
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;
 
-  // True if all tensors in the graph has static size after calling
+  // True if not all tensors in the graph has static size after calling
   // `PrepareOpsStartingAt` function (which is called by the `AllocateTensors`
   // public function).
   // The value is invalid before `PrepareOpStartingAt` is called.
