@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 
+#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -78,6 +79,18 @@ class GrpcWorkerCache : public WorkerCachePartial {
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     eager_client_cache->reset(eager::NewGrpcEagerClientCache(channel_cache_));
     return Status::OK();
+  }
+
+  Status GetCoordinationClientCache(std::unique_ptr<CoordinationClientCache>*
+                                        coordination_client_cache) override {
+#if defined(PLATFORM_GOOGLE)
+    coordination_client_cache->reset(
+        NewGrpcCoordinationClientCache(channel_cache_));
+    return Status::OK();
+#else
+    return errors::Unimplemented(
+        "Coordination service in open source is not yet implemented.");
+#endif
   }
 
   void SetLogging(bool v) override { logger_.SetLogging(v); }

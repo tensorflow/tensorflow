@@ -39,6 +39,7 @@ tf_python_pybind_extension(
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
