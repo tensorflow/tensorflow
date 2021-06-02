@@ -17,10 +17,6 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load(
-    "//tensorflow/compiler/xla/service/gpu:thunk_config.bzl",
-    "if_using_bef_thunks",
-)
 
 package(
     default_visibility = [":friends"],
@@ -128,9 +124,12 @@ tf_cc_test(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ] + if_using_bef_thunks([
-        ":tfrt_exec_ctx_injector",
-    ]),
+    ] + select({
+        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
+            ":tfrt_exec_ctx_injector",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_test(

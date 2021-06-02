@@ -1,6 +1,7 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -26,10 +27,6 @@ load(
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
-)
-load(
-    "//tensorflow/compiler/xla/service/gpu:thunk_config.bzl",
-    "if_using_bef_thunks",
 )
 
 # buildifier: disable=same-origin-load
@@ -541,6 +538,16 @@ alias(
     actual = if_cuda_or_rocm(":nccl_utils", ":empty"),
 )
 
+bool_flag(
+    name = "enable_bef_thunk",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "is_bef_thunk_enabled",
+    flag_values = {":enable_bef_thunk": "True"},
+)
+
 cc_library(
     name = "gpu_executable",
     srcs = [
@@ -592,9 +599,10 @@ cc_library(
     ]),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
-    ]) + if_using_bef_thunks([
-        "BEF_THUNKS=1",
-    ]),
+    ]) + select({
+        ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -667,21 +675,28 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-    ]) + if_using_bef_thunks([
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:GPUTransforms",
-        "@llvm-project//mlir:Pass",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
-        "//tensorflow/stream_executor/cuda:cuda_driver",
-        "//tensorflow/stream_executor/gpu:gpu_executor_header",
-        "@tf_runtime//:befexecutor",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:mlirtobef_translate",
-        "@tf_runtime//:support",
-        "@tf_runtime//backends/gpu:gpu_types",
-    ]),
+    ]) + select({
+        ":is_bef_thunk_enabled": [
+            "@llvm-project//llvm:Support",
+            "@llvm-project//mlir:GPUTransforms",
+            "@llvm-project//mlir:Pass",
+            "//tensorflow/compiler/mlir/hlo:lhlo",
+            # copybara:uncomment_begin(target not open-sourced yet)
+            # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            # copybara:uncomment_end
+            "//tensorflow/stream_executor/cuda:cublas_plugin",
+            "//tensorflow/stream_executor/cuda:cuda_driver",
+            "//tensorflow/stream_executor/gpu:gpu_executor_header",
+            "@tf_runtime//:befexecutor",
+            "@tf_runtime//:hostcontext",
+            "@tf_runtime//:mlirtobef_translate",
+            "@tf_runtime//:support",
+            # copybara:uncomment_begin(breaks bazel query)
+            # "@tf_runtime//backends/gpu:gpu_types",
+            # copybara:uncomment_end
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
