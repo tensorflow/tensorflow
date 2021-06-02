@@ -6321,14 +6321,25 @@ gentbl_cc_library(
     ],
 )
 
+cc_library(
+    name = "Reducer",
+    srcs = glob(["lib/Reducer/*.cpp"]),
+    hdrs = glob(["include/mlir/Reducer/*.h"]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Pass",
+        ":ReducerIncGen",
+        ":Rewrite",
+        ":Support",
+        ":TransformUtils",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 cc_binary(
     name = "mlir-reduce",
-    srcs = glob([
-        "include/mlir/Reducer/*.h",
-        "include/mlir/Reducer/Passes/*.h",
-        "tools/mlir-reduce/*.cpp",
-        "tools/mlir-reduce/Passes/*.cpp",
-    ]) + ["lib/Reducer/Tester.cpp"],
+    srcs = ["tools/mlir-reduce/mlir-reduce.cpp"],
     includes = ["include"],
     local_defines = ["MLIR_INCLUDE_TESTS"],
     stamp = 0,
@@ -6337,7 +6348,7 @@ cc_binary(
         ":IR",
         ":Parser",
         ":Pass",
-        ":ReducerIncGen",
+        ":Reducer",
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:Support",

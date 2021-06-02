@@ -1820,10 +1820,9 @@ struct DepthwiseConvOpOnTensorsConversion
                                          "non-zero padding unsupported yet");
     }
 
-    if ((op.lhs_dilation() && !isSplatValue(*op.lhs_dilation(), 1)) ||
-        (op.rhs_dilation() && !isSplatValue(*op.rhs_dilation(), 1))) {
-      return rewriter.notifyMatchFailure(op,
-                                         "non-one dialation unsupported yet");
+    if ((op.lhs_dilation() && !isSplatValue(*op.lhs_dilation(), 1))) {
+      return rewriter.notifyMatchFailure(
+          op, "non-one lhs- dialation unsupported yet");
     }
 
     if (const mhlo::ConvDimensionNumbers& dimension_numbers =
@@ -1856,6 +1855,13 @@ struct DepthwiseConvOpOnTensorsConversion
       window_strides = op.window_strides().getValue();
     } else {
       window_strides = rewriter.getI64VectorAttr({1, 1});
+    }
+
+    DenseIntElementsAttr rhs_dilation;
+    if (op.rhs_dilation()) {
+      rhs_dilation = op.rhs_dilation().getValue();
+    } else {
+      rhs_dilation = rewriter.getI64VectorAttr({1, 1});
     }
 
     mhlo::ConvOp::Adaptor adaptor(args);
@@ -1895,7 +1901,7 @@ struct DepthwiseConvOpOnTensorsConversion
           reshaped_output_dims, result_type.getElementType());
       auto conv = rewriter.create<linalg::DepthwiseConvInputNHWCFilterHWCFOp>(
           op.getLoc(), reshaped_output_type, ValueRange{input, filter},
-          ValueRange{zero_tensor}, window_strides);
+          ValueRange{zero_tensor}, rhs_dilation, window_strides);
 
       // Create a Linalg reshape op that converts the output from 5 dimensions
       // into 4 dimensions (by collapsing the last two dimensions). This is
@@ -1935,7 +1941,7 @@ struct DepthwiseConvOpOnTensorsConversion
 
       rewriter.replaceOpWithNewOp<linalg::DepthwiseConvInputNHWCFilterHWCOp>(
           op, result_type, ValueRange{input, reshaped_filter},
-          ValueRange{zero_tensor}, window_strides);
+          ValueRange{zero_tensor}, rhs_dilation, window_strides);
     }
 
     return success();
