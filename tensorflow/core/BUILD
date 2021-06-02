@@ -739,7 +739,15 @@ tf_cuda_library(
         ":gpu_runtime",
         ":lib",
         ":ops",
-    ] + tensorflow_opensource_extra_deps(),
+    ] + if_libtpu(
+        [],
+        [":tensorflow_opensource_extra_deps"],
+    ),
+)
+
+cc_library(
+    name = "tensorflow_opensource_extra_deps",
+    deps = tensorflow_opensource_extra_deps(),
 )
 
 cc_library(
