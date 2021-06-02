@@ -6482,6 +6482,10 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // Const op has a simple legalization and it is much more efficient to lower
     // within MLIR.
     TypeID::get<TF::ConstOp>(),
+
+    // TF2XLA fallback pattern doesn't support this op as MLIR hlo builder
+    // doesn't implement the outfeed op builder method.
+    TypeID::get<TF::OutfeedEnqueueTupleOp>(),
   };
   // clang-format on
   return *ops;
