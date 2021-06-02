@@ -189,6 +189,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
                                  SelectOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
+    linalg::populateLinalgBufferizePatterns(converter, patterns);
     populateTensorBufferizePatterns(converter, patterns);
     populateStdBufferizePatterns(converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
