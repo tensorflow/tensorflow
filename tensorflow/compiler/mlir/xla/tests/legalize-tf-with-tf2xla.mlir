@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT %s -verify-diagnostics | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT legalize-test-only-ops" %s -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -350,6 +350,13 @@ func @atan2_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "tf.Atan2"(%arg0, %arg0) {_body = @identity} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
 
   return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: const
+func @const() -> tensor<2xf32> {
+  // CHECK: mhlo.const
+  %cst = "tf.Const"() {value = dense<2.0> : tensor<2xf32>} : () -> tensor<2xf32>
+  return %cst : tensor<2xf32>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
