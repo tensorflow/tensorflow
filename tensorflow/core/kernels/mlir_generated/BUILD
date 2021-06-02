@@ -185,6 +185,7 @@ tf_kernel_library(
     srcs = if_mlir_generated_cpu_kernels_enabled([
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "cpu_op_abs.cc",
+        ":cpu_op_angle.cc",
         "cpu_op_ceil.cc",
         "cpu_op_cos.cc",
         "cpu_op_floor.cc",
@@ -194,12 +195,14 @@ tf_kernel_library(
         "cpu_op_sqrt.cc",
         "cpu_op_square.cc",
         "cpu_op_tan.cc",
+        "cpu_op_tanh.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_cpu_kernels_enabled([
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":base_cpu_op",
         ":cpu_abs_kernels",
+        ":cpu_angle_kernels",
         ":cpu_ceil_kernels",
         ":cpu_cos_kernels",
         ":cpu_floor_kernels",
@@ -209,6 +212,7 @@ tf_kernel_library(
         ":cpu_sqrt_kernels",
         ":cpu_square_kernels",
         ":cpu_tan_kernels",
+        ":cpu_tanh_kernels",
         "//third_party/eigen3",
     ]),
 )
@@ -1368,6 +1372,33 @@ gpu_kernel_library(
     name = "gpu_xlog1py_kernels",
     op = "xlog1py",
     tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_angle_kernels",
+    op = "angle",
+    output_types = [
+        "f32",
+        "f64",
+    ],
+    tile_size = "256",
+    types = [
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "2",
+)
+
+cpu_kernel_library(
+    name = "cpu_tanh_kernels",
+    op = "tanh",
+    tile_size = "256",
     types = [
         "f16",
         "f32",
