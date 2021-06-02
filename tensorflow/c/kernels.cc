@@ -575,6 +575,8 @@ tensorflow::Status EnsureSparseVariableAccess(TF_OpKernelContext* ctx,
     return Status::OK();
   }
   Tensor tmp;
+  TF_Tensor *tf_tmp = nullptr;
+  TF_Tensor *tf_tensor = nullptr;
   if (variantType) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
@@ -593,12 +595,18 @@ tensorflow::Status EnsureSparseVariableAccess(TF_OpKernelContext* ctx,
     TF_RETURN_IF_ERROR(context->allocate_temp(var->tensor()->dtype(),
                                           var->tensor()->shape(), &tmp, attr));
     tensorflow::Status s;
-    TF_Tensor *tf_tmp = TF_TensorFromTensor(tmp, &s);
-    TF_Tensor *tf_tensor = TF_TensorFromTensor(*var->tensor(), &s);
+    tf_tmp = TF_TensorFromTensor(tmp, &s);
+    tf_tensor = TF_TensorFromTensor(*var->tensor(), &s);
     copyFunc(ctx, tf_tensor, tf_tmp);
   }
   *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
+  if (tf_tmp != nullptr) {
+    TF_DeleteTensor(tf_tmp);
+  }
+  if (tf_tensor != nullptr) {
+    TF_DeleteTensor(tf_tensor);
+  }
   return Status::OK();
 }
 
@@ -609,6 +617,8 @@ tensorflow::Status PrepareToUpdateVariable(TF_OpKernelContext* ctx, tensorflow::
 
   using namespace tensorflow;
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  TF_Tensor *tf_tmp = nullptr;
+  TF_Tensor *tf_tensor = nullptr;
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before
     // updating.
@@ -636,6 +646,13 @@ tensorflow::Status PrepareToUpdateVariable(TF_OpKernelContext* ctx, tensorflow::
       copyFunc(ctx, tf_tensor, tf_tmp);
     }
     *tensor = tmp;
+    if (tf_tmp != nullptr) {
+      TF_DeleteTensor(tf_tmp);
+    }
+
+    if (tf_tensor != nullptr) {
+      TF_DeleteTensor(tf_tensor);
+    }
   }
   return Status::OK();
 }
@@ -691,7 +708,7 @@ void TF_AssignVariable(TF_OpKernelContext* ctx,
     attr.set_nic_compatible(true);
     OP_REQUIRES_OK(cc_ctx,
                      cc_ctx->allocate_temp(value.dtype(), value.shape(),
-                                            variable->tensor(), attr));
+                                            tmp, attr));
     tensorflow::Status s;
     TF_Tensor *tf_tmp = TF_TensorFromTensor(*tmp, &s);
     TF_Tensor *tf_value = TF_TensorFromTensor(value, &s);
