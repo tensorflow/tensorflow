@@ -5089,20 +5089,21 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
 };
 
 // Converts tf.Unpack to a series of XLA HLO Slice ops.
-// TODO: To recover static special case's performance with folding and canonicalization.
+// TODO: To recover static special case's performance with folding and
+// canonicalization.
 class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TF::UnpackOp op,
-                                     PatternRewriter& rewriter) const override {
-    auto value_type = op.value().getType().cast<RankedTensorType>();
-    if (!value_type || !value_type.hasRank()) return failure();
+                                PatternRewriter& rewriter) const override {
+    auto value_type = op.value().getType().dyn_cast<RankedTensorType>();
+    if (!value_type) return failure();
 
     int64_t value_rank = value_type.getRank();
     int64_t axis = op.axis();
     if (axis < 0) axis += value_rank;
-    auto loc = op.getLoc();
+    Location loc = op.getLoc();
 
     auto shape_scalar_type = rewriter.getIntegerType(32);
     // Parameters for constructing each slice.
@@ -5115,26 +5116,26 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
     shape_values.reserve(value_rank - 1);
     // slice shape before reshape, should be like{?, 1, ?, ?} if axis = 1
     SmallVector<int64_t, 4> slice_shape(value_rank, ShapedType::kDynamicSize);
-    for (int64_t i = 0; i < value_rank; ++i) {
-      auto dim_size = value_type.getDimSize(i);
+    for (int64_t dim_idx = 0; dim_idx < value_rank; ++dim_idx) {
+      int64_t dim_size = value_type.getDimSize(dim_idx);
       if (dim_size == ShapedType::kDynamicSize) {
-        auto dim_i = rewriter.create<IndexCastOp>(
-            loc, rewriter.create<memref::DimOp>(loc, op.getOperand(), i),
+        Value dim_i = rewriter.create<IndexCastOp>(
+            loc, rewriter.create<memref::DimOp>(loc, op.getOperand(), dim_idx),
             shape_scalar_type);
         end_indices.push_back(dim_i);
-        if (i != axis) {
+        if (dim_idx != axis) {
           shape_values.push_back(dim_i);
         }
       } else {
-        auto dim_i = rewriter.create<ConstantOp>(
+        Value dim_i = rewriter.create<ConstantOp>(
             loc, shape_scalar_type,
             rewriter.getIntegerAttr(shape_scalar_type, dim_size));
         end_indices.push_back(dim_i);
-        if (i != axis) {
+        if (dim_idx != axis) {
           shape_values.push_back(dim_i);
-          slice_shape[i] = dim_size;
+          slice_shape[dim_idx] = dim_size;
         } else {
-          slice_shape[i] = 1;
+          slice_shape[dim_idx] = 1;
         }
       }
       begin_indices.push_back(rewriter.create<ConstantIntOp>(loc, 0, 32));
@@ -5146,24 +5147,20 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
     for (int64_t i = 0; i < op.getNumResults(); ++i) {
       begin_indices[axis] = rewriter.create<ConstantIntOp>(loc, i, 32);
       end_indices[axis] = rewriter.create<ConstantIntOp>(loc, i + 1, 32);
-      auto slice_op = rewriter.create<RealDynamicSliceOp>(
+      Value slice_op = rewriter.create<RealDynamicSliceOp>(
           loc, RankedTensorType::get(slice_shape, value_type.getElementType()),
           op.value(),
-          rewriter.create<tensor::FromElementsOp>(
-              loc, rewriter.getI32Type(),
-              begin_indices),
-          rewriter.create<tensor::FromElementsOp>(
-              loc, rewriter.getI32Type(),
-              end_indices),
-          rewriter.create<tensor::FromElementsOp>(
-              loc, rewriter.getI32Type(),
-              strides));
+          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
+                                                  begin_indices),
+          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
+                                                  end_indices),
+          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
+                                                  strides));
       // Reshape to drop the axis dimension.
-      auto new_shape = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getI32Type(),
-          shape_values);
-      auto reshape_op = rewriter.create<DynamicReshapeOp>(
-          loc, op.getType(i), slice_op, new_shape);
+      Value new_shape = rewriter.create<tensor::FromElementsOp>(
+          loc, rewriter.getI32Type(), shape_values);
+      Value reshape_op = rewriter.create<DynamicReshapeOp>(loc, op.getType(i),
+                                                           slice_op, new_shape);
       results.push_back(reshape_op);
     }
 
@@ -5173,69 +5170,70 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
 };
 
 // Converts the tf.Sign op into mhlo.sign
-// TODO: To recover static special case's performance with folding and canonicalization.
+// TODO: To recover static special case's performance with folding and
+// canonicalization.
 class ConvertSignOpDynamic : public OpRewritePattern<TF::SignOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(
-      TF::SignOp op, PatternRewriter& rewriter) const override {
-    auto loc = op.getLoc();
-    auto x = op.x();
+  LogicalResult matchAndRewrite(TF::SignOp op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value x = op.x();
     auto x_type = x.getType().dyn_cast<RankedTensorType>();
     if (!x_type) return failure();
-    auto hlo_sign = rewriter.create<mhlo::SignOp>(loc, x);
+    Value hlo_sign = rewriter.create<mhlo::SignOp>(loc, x);
     const StringAttr kNe = rewriter.getStringAttr(
         mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
-    auto hlo_cmp = rewriter.create<mhlo::CompareOp>(
-        loc, x, x, kNe);
-    
-    auto zero = GetScalarConstOfType(x_type.getElementType(), loc, 0, &rewriter);
-    auto shape_op =
-        rewriter.create<shape::ShapeOfOp>(op.getLoc(), x);
+    Value hlo_cmp = rewriter.create<mhlo::CompareOp>(loc, x, x, kNe);
+
+    auto zero =
+        GetScalarConstOfType(x_type.getElementType(), loc, 0, &rewriter);
+    Value shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), x);
 
     auto broadcast_dims_attr =
         GetI64ElementsAttr(ArrayRef<int64_t>({}), &rewriter);
-    auto broadcasted_zero = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+    Value broadcasted_zero = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
         loc, x_type, zero, shape_op, broadcast_dims_attr);
-    
+
     auto hlo_select = rewriter.create<mhlo::SelectOp>(
         loc, hlo_cmp, broadcasted_zero, hlo_sign);
-    
+
     rewriter.replaceOp(op, hlo_select.getResult());
     return success();
   }
 };
 
 // Converts the tf.SigmoidGradOp
-// TODO: To recover static special case's performance with folding and canonicalization.
+// TODO: To recover static special case's performance with folding and
+// canonicalization.
 class ConvertSigmoidGradOpDynamic : public OpRewritePattern<TF::SigmoidGradOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TF::SigmoidGradOp op,
-                                     PatternRewriter& rewriter) const override {
-    auto loc = op.getLoc();
-    auto y = op.y();
-    auto dy = op.dy();
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value y = op.y();
+    Value dy = op.dy();
     auto tp_y = y.getType().dyn_cast<RankedTensorType>();
     auto tp_dy = dy.getType().dyn_cast<RankedTensorType>();
-    if (!tp_y || !tp_dy || !tp_y.hasRank() || !tp_dy.hasRank())
+    if (!tp_y || !tp_dy)
       return failure();
 
     Attribute attr;
-    auto elem_tp = tp_y.getElementType();
+    Type elem_tp = tp_y.getElementType();
     if (elem_tp.isSignlessInteger()) {
       attr = rewriter.getIntegerAttr(elem_tp, 1);
     } else {
       assert(elem_tp.isa<FloatType>());
       attr = rewriter.getFloatAttr(elem_tp, 1);
     }
-    auto one = rewriter.create<mhlo::ConstOp>(
+    Value one = rewriter.create<mhlo::ConstOp>(
         loc, DenseElementsAttr::get(RankedTensorType::get({}, elem_tp), attr));
 
-    Value v0 = rewriter.create<chlo::BroadcastMulOp>(
+    auto v0 = rewriter.create<chlo::BroadcastMulOp>(
         loc, dy, y, hlo::getBroadcastDimensionsAttr(&rewriter, dy, y));
-    Value v1 = rewriter.create<chlo::BroadcastSubOp>(
+    auto v1 = rewriter.create<chlo::BroadcastSubOp>(
         loc, one, y, hlo::getBroadcastDimensionsAttr(&rewriter, one, y));
     auto result = rewriter.create<chlo::BroadcastMulOp>(
         loc, v0, v1, hlo::getBroadcastDimensionsAttr(&rewriter, v0, v1));

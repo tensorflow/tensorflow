@@ -2444,7 +2444,7 @@ func @sigmoid_grad_complex(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomple
 
 // CHECK-LABEL: @sigmoid_grad_dynamic
 func @sigmoid_grad_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
-	// CHECK: shape.shape_of {{.*}} : tensor<?xf32> -> tensor<1xindex>
+  // CHECK: shape.shape_of {{.*}} : tensor<?xf32> -> tensor<1xindex>
   // CHECK: "mhlo.dynamic_broadcast_in_dim"({{.*}}) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK: mhlo.subtract {{.*}} : tensor<?xf32>
   // CHECK: shape.shape_of {{.*}} : tensor<?xf32> -> tensor<1xindex>
