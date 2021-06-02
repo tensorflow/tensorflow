@@ -625,7 +625,7 @@ cc_library(
         # by most WASM clients.
         "//tensorflow:emscripten": [":tflite_with_xnnpack_enabled"],
         "//tensorflow:macos": [],
-        "//tensorflow:windows": [],
+        "//tensorflow:windows": [":tflite_with_xnnpack_enabled"],
         "//conditions:default": [],
     }),
 )
