@@ -387,6 +387,8 @@ class TransposeTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testComplex64(self):
+    self._testBoth(np.array(np.complex(1, 2)).astype(np.complex64))
+    self._testBoth(np.complex(1, 2) * np.arange(0, 21).astype(np.complex64))
     self._testBoth(
         np.complex(1, 2) *
         np.arange(0, 21).reshape([3, 7]).astype(np.complex64))
@@ -399,6 +401,8 @@ class TransposeTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testComplex128(self):
+    self._testBoth(np.array(np.complex(1, 2)).astype(np.complex128))
+    self._testBoth(np.complex(1, 2) * np.arange(0, 21).astype(np.complex128))
     self._testBoth(
         np.complex(1, 2) *
         np.arange(0, 21).reshape([3, 7]).astype(np.complex128))
