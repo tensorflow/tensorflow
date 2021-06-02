@@ -41,7 +41,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -638,9 +637,12 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   // Execute the kernel.
   tensorflow::OpKernelContext op_context(&params_, op_->getNumResults());
   device_->Compute(params_.op_kernel, &op_context);
-  if (!op_context.status().ok()) {
+
+  status = op_context.status();
+  status.Update(hlo_builder_.GetCurrentStatus());
+  if (!status.ok()) {
     return op_->emitRemark()
-           << "compilation to HLO failed: " << op_context.status().ToString();
+           << "compilation to HLO failed: " << status.ToString();
   }
 
   // Replace uses of old results using the corresponding value after the
