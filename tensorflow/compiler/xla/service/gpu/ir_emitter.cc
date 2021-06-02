@@ -291,6 +291,42 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
       }
     }
 
+    if (target_triple.isAMDGPU()) {
+      std::string arch = ir_emitter_context_->amdgpu_arch();
+      bool isGfx908Plus = arch.size()>=6 &&
+          (arch.substr(0,6)=="gfx908" || arch.substr(0,6)=="gfx90a");
+      llvm::PointerType* output_address_type =
+          llvm::dyn_cast<llvm::PointerType>(output_address->getType());
+      CHECK_NE(output_address_type, nullptr);
+
+      // todo: implement for F16 via global_atomic_fadd_pk2f16
+      bool atomic_add_supported = (element_type == F32);
+      if (atomic_add_supported) {
+        if (output_address_type->getPointerAddressSpace() != 3) {
+          // the compiler will only generate a global_atomic_fadd if the pointer
+          // is in global addrspace (1)
+          auto cast_output_ptr = b_.CreateAddrSpaceCast(
+             output_address,
+             llvm::PointerType::get(output_address_type->getPointerElementType(),
+                               /*AddressSpace=*/1));
+          AtomicRMW(llvm::AtomicRMWInst::FAdd, cast_output_ptr, source,
+                  llvm::MaybeAlign(),
+                  llvm::AtomicOrdering::SequentiallyConsistent,
+                  // we really want "agent", but it's not in the enum.
+                  llvm::SyncScope::SingleThread);
+          return true;
+        } else {
+          // adds to shared memory are always atomic. Todo: verify that the compiler
+          // produces a ds_add_f32 rather than a CAS loop
+          AtomicRMW(llvm::AtomicRMWInst::FAdd, output_address, source,
+                  llvm::MaybeAlign(),
+                  llvm::AtomicOrdering::SequentiallyConsistent,
+                  llvm::SyncScope::SingleThread);
+          return true;
+        }
+      }
+    }
+
     if (is_atomic_integral) {
       // integral + integral
       AtomicRMW(llvm::AtomicRMWInst::Add, output_address, source,

@@ -174,7 +174,7 @@ __global__ void BincountColReduceSharedKernel(const Tidx* in, const T* weights,
         shared_col_bins[offset] = T(1);
       } else {
         T value = (weights_size == 0) ? T(1) : ldg(weights + index);
-        GpuAtomicAdd(shared_col_bins + offset, value);
+        GpuAtomicAddShared(shared_col_bins + offset, value);
       }
     }
   }

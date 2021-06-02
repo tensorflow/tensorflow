@@ -68,6 +68,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   xla::gpu::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.cc_major = sm / 10;
   cuda_compute_capability.cc_minor = sm % 10;
+  std::string amdgpu_arch;
 #if GOOGLE_CUDA
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
@@ -76,6 +77,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   std::string target_triple = "amdgcn--amdhsa-amdgiz";
   std::string datalayout = ""; // TODO: correct value?
   std::string platform_name = "ROCm"; // ditto
+  amdgpu_arch = "gfx908";
 #endif
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                       xla::gpu::CompileModuleToLlvmIr(
@@ -83,7 +85,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                           /*target_triple=*/xla::gpu::nvptx::kTargetTriple,
                           /*data_layout=*/xla::gpu::nvptx::kDataLayout,
                           /*platform_name=*/platform_name, gpu_device_info,
-                          cuda_compute_capability, /*pointer_size=*/8));
+                          cuda_compute_capability, amdgpu_arch,
+                          /*pointer_size=*/8));
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);
@@ -98,10 +101,9 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                                       hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
 #else
-    int isa_version = 908;
     std::string arch_str = "gfx908";
     std::string libdevice_dir = tensorflow::RocdlRoot();
-    xla::gpu::GpuVersion gpu_version{std::make_pair(isa_version, arch_str)};
+    xla::gpu::GpuVersion gpu_version{arch_str};
     TF_ASSIGN_OR_RETURN(
       std::vector<uint8_t> ptx,
       xla::gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,

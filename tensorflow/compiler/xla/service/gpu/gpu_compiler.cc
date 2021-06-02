@@ -606,6 +606,7 @@ static Status CompileModuleToLlvmIrImpl(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
     absl::optional<CudaComputeCapability> cuda_compute_capability,
+    std::string amdgpu_arch,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, const HloProfileIndexMap* profile_index_map,
     CompileModuleResults* results) {
@@ -664,7 +665,7 @@ static Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, profile_index_map,
+      gpu_device_info, cuda_compute_capability, amdgpu_arch, profile_index_map,
       &mlir_context, results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
@@ -916,6 +917,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     return cuda_compute_capability;
   }();
 
+  std::string amdgpu_arch =
+      stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
   std::unique_ptr<HloProfilePrinterData> profile_printer;
 
@@ -936,6 +940,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       module.get(), &llvm_context, target_triple_, data_layout_,
       stream_exec->platform()->Name(), gpu_device_info, cuda_compute_capability,
+      amdgpu_arch,
       GetCanShareBuffer(), pointer_size_, profile_index_map.get(),
       &compile_module_results));
 
@@ -1021,11 +1026,12 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
     absl::optional<CudaComputeCapability> cuda_compute_capability,
-    int pointer_size) {
+    std::string amdgpu_arch, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      gpu_device_info, cuda_compute_capability, DummyCanShareBufferFunction,
+      gpu_device_info, cuda_compute_capability, amdgpu_arch,
+      DummyCanShareBufferFunction,
       pointer_size, /*profile_index_map=*/nullptr, &results));
   return std::move(results.llvm_module);
 }

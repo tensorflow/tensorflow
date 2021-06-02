@@ -65,9 +65,13 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
     return cuda_compute_capability;
   }();
 
+  std::string amdgpu_arch =
+      stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr,
       backend_->platform()->Name(), gpu_device_info, cuda_compute_capability,
+      amdgpu_arch,
       /*profile_index_map=*/nullptr, /*mlir_context=*/nullptr,
       llvm_module.get());
 

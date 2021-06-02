@@ -95,13 +95,6 @@ AMDGPUCompiler::AMDGPUCompiler()
                   amdgpu::kDataLayout) {}
 
 GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
-  int isa_version = 0;
-  if (!stream_exec->GetDeviceDescription().rocm_amdgpu_isa_version(
-          &isa_version)) {
-    LOG(WARNING)
-        << "Couldn't get AMDGPU ISA version for device; assuming gfx900.";
-    isa_version = 803;
-  }
   std::string gcn_arch_name =
       stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
   if (gcn_arch_name == stream_exec->GetDeviceDescription().kUndefinedString) {
@@ -109,7 +102,7 @@ GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
     gcn_arch_name = "gfx900";
   }
 
-  return std::make_pair(isa_version, gcn_arch_name);
+  return gcn_arch_name;
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
