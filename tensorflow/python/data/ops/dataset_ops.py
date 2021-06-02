@@ -4082,17 +4082,12 @@ class ConcatenateDataset(DatasetV2):
           "Two datasets to concatenate have different classes %s and %s" %
           (output_classes, get_legacy_output_classes(dataset_to_concatenate)))
 
-    input_shapes = get_legacy_output_shapes(self._input_dataset)
-    output_shapes = nest.pack_sequence_as(input_shapes, [
-        ts1.most_specific_compatible_shape(ts2)
-        for (ts1, ts2) in zip(
-            nest.flatten(input_shapes),
-            nest.flatten(get_legacy_output_shapes(
-                self._dataset_to_concatenate)))
+    spec1 = input_dataset.element_spec
+    spec2 = dataset_to_concatenate.element_spec
+    self._structure = nest.pack_sequence_as(spec1, [
+        ts1.most_specific_compatible_type(ts2)
+        for (ts1, ts2) in zip(nest.flatten(spec1), nest.flatten(spec2))
     ])
-
-    self._structure = structure.convert_legacy_structure(
-        output_types, output_shapes, output_classes)
 
     self._input_datasets = [input_dataset, dataset_to_concatenate]
     # pylint: disable=protected-access
