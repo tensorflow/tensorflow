@@ -52,8 +52,8 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
     self.assertEqual(model.optimizer.iterations, 100)
 
   def testModelFitWithNumpyData(self, strategy):
-    x = np.random.rand(10, 10)
-    y = np.random.rand(10, 1)
+    x = np.random.rand(100, 10)
+    y = np.random.rand(100, 1)
     model = self._model_fit(
         strategy,
         x=x,
@@ -64,8 +64,8 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
     self.assertEqual(model.optimizer.iterations, 100)
 
   def testModelFitWithTensorData(self, strategy):
-    x = random_ops.random_uniform((10, 10))
-    y = random_ops.random_uniform((10,))
+    x = random_ops.random_uniform((100, 10))
+    y = random_ops.random_uniform((100,))
     model = self._model_fit(
         strategy,
         x=x,
@@ -100,8 +100,8 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
     self.assertGreaterEqual(self._accuracy_metric.result(), 0.0)
 
   def testModelEvaluateWithNumpyData(self, strategy):
-    x = np.random.rand(10, 10)
-    y = np.random.rand(10, 1)
+    x = np.random.rand(100, 10)
+    y = np.random.rand(100, 1)
     self._model_evaluate(
         strategy,
         x=x,
@@ -111,8 +111,8 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
     self.assertGreaterEqual(self._accuracy_metric.result(), 0.0)
 
   def testModelEvaluateWithTensorData(self, strategy):
-    x = random_ops.random_uniform((10, 10))
-    y = random_ops.random_uniform((10,))
+    x = random_ops.random_uniform((100, 10))
+    y = random_ops.random_uniform((100,))
     self._model_evaluate(
         strategy,
         x=x,
