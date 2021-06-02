@@ -505,14 +505,14 @@ static Graph* Activation(const string& op_name, const string& kind,
 
 #define BM_Activation(op, kind, A, B, C, D, T, type)                     \
   static void BM_##op##_##kind##_##type##_##A##_##B##_##C##_##D##_##T(   \
-      int iters) {                                                       \
+      ::testing::benchmark::State & state) {                             \
     int64 num_computed_elements = (A) * (B) * (C) * (D);                 \
     int64 flops_per_iter = num_computed_elements;                        \
     testing::UseRealTime();                                              \
-    testing::ItemsProcessed(static_cast<int64>(iters) * flops_per_iter); \
+    testing::ItemsProcessed(state.iterations()  * flops_per_iter);       \
                                                                          \
     test::Benchmark(#type, Activation<T>(#op, #kind, {A, B, C, D}))      \
-        .Run(iters);                                                     \
+        .Run(state);                                                     \
   }                                                                      \
   BENCHMARK(BM_##op##_##kind##_##type##_##A##_##B##_##C##_##D##_##T)
 
