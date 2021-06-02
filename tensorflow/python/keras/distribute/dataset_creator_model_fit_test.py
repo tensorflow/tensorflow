@@ -15,6 +15,8 @@
 # ==============================================================================
 """Tests for `DatasetCreator` with `Model.fit` across usages and strategies."""
 
+import numpy as np
+
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -49,6 +51,30 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
     model = self._model_fit(strategy)
     self.assertEqual(model.optimizer.iterations, 100)
 
+  def testModelFitWithNumpyData(self, strategy):
+    x = np.random.rand(10, 10)
+    y = np.random.rand(10, 1)
+    model = self._model_fit(
+        strategy,
+        x=x,
+        y=y,
+        batch_size=1,
+        validation_data=(x, y),
+    )
+    self.assertEqual(model.optimizer.iterations, 100)
+
+  def testModelFitWithTensorData(self, strategy):
+    x = random_ops.random_uniform((10, 10))
+    y = random_ops.random_uniform((10,))
+    model = self._model_fit(
+        strategy,
+        x=x,
+        y=y,
+        batch_size=1,
+        validation_data=(x, y),
+    )
+    self.assertEqual(model.optimizer.iterations, 100)
+
   def testModelFitWithLookupLayer(self, strategy):
     model = self._model_fit(strategy, use_lookup_layer=True)
     self.assertEqual(model.optimizer.iterations, 100)
@@ -71,6 +97,28 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
 
   def testModelEvaluate(self, strategy):
     self._model_evaluate(strategy)
+    self.assertGreaterEqual(self._accuracy_metric.result(), 0.0)
+
+  def testModelEvaluateWithNumpyData(self, strategy):
+    x = np.random.rand(10, 10)
+    y = np.random.rand(10, 1)
+    self._model_evaluate(
+        strategy,
+        x=x,
+        y=y,
+        batch_size=1,
+    )
+    self.assertGreaterEqual(self._accuracy_metric.result(), 0.0)
+
+  def testModelEvaluateWithTensorData(self, strategy):
+    x = random_ops.random_uniform((10, 10))
+    y = random_ops.random_uniform((10,))
+    self._model_evaluate(
+        strategy,
+        x=x,
+        y=y,
+        batch_size=1,
+    )
     self.assertGreaterEqual(self._accuracy_metric.result(), 0.0)
 
   def testModelEvaluateWithNormalizationLayer(self, strategy):
@@ -96,6 +144,21 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
     # `model.predict` so there predictions should match.
     self.assertTrue(all(predictions[0] == predictions[i] for i in [0, 3, 5]))
 
+    self.assertFalse(
+        all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
+
+  def testModelPredictWithNumpyData(self, strategy):
+    x = np.array([1., 2., 3., 1., 5., 1.])
+    _, predictions = self._model_predict(strategy, test_data=x)
+
+    self.assertTrue(all(predictions[0] == predictions[i] for i in [0, 3, 5]))
+    self.assertFalse(
+        all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
+
+  def testModelPredictWithTensorData(self, strategy):
+    x = constant_op.constant([1., 2., 3., 1., 5., 1.])
+    _, predictions = self._model_predict(strategy, test_data=x)
+    self.assertTrue(all(predictions[0] == predictions[i] for i in [0, 3, 5]))
     self.assertFalse(
         all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
 
