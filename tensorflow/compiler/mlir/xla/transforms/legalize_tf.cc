@@ -1151,72 +1151,71 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
   }
 };
 
+// Convert TF::GatherV2Op to mhlo::DynamicGatherOp
 class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
   using OpRewritePattern<TF::GatherV2Op>::OpRewritePattern;
-  // Convert GatherV2Op to mhlo::GatherOp
-  // TODO: To recover static special case's performance with folding and canonicalization.
-  LogicalResult matchAndRewrite(
-      TF::GatherV2Op op, PatternRewriter& rewriter) const override {
-    auto loc = op.getLoc();
-    auto params = op.params();
+  // TODO: To recover static special case's performance with folding and
+  // canonicalization.
+  LogicalResult matchAndRewrite(TF::GatherV2Op op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value params = op.params();
     // params and indices of GatherNdOp must be ranked
     auto params_ty = params.getType().dyn_cast<RankedTensorType>();
-    auto indices = op.indices();
+    Value indices = op.indices();
     auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
-    if (!params_ty || !indices_ty ) return failure();
+    if (!params_ty || !indices_ty) return failure();
 
-    auto params_rank = params_ty.getRank();
-    auto indices_rank = indices_ty.getRank();
+    int64_t params_rank = params_ty.getRank();
+    int64_t indices_rank = indices_ty.getRank();
 
     // axis
     DenseIntElementsAttr axis_attr;
     // axis must be const for GatherOp
     if (!matchPattern(op.axis(), m_Constant(&axis_attr))) return failure();
-    
+
     int64_t axis = (*axis_attr.begin()).getSExtValue();
     if (axis < 0) axis += params_rank;
-    
+
     // slice_sizes
     SmallVector<int64_t, 4> slice_sizes;
     slice_sizes.reserve(params_rank);
-    for (int64_t i = 0; i < params_rank; ++i) {
-      if (i == axis) {
+    for (int64_t dim_idx = 0; dim_idx < params_rank; ++dim_idx) {
+      if (dim_idx == axis) {
         slice_sizes.push_back(1);
       } else {
         // potentially dynamic
-        auto dim_size = params_ty.getDimSize(i);
+        int64_t dim_size = params_ty.getDimSize(dim_idx);
         slice_sizes.push_back(dim_size);
       }
     }
     SmallVector<Value, 4> slice_sizes_vals;
-    for (int64_t i = 0; i < params_rank; ++i) {
-      if (i == axis) {
+    for (int64_t dim_idx = 0; dim_idx < params_rank; ++dim_idx) {
+      if (dim_idx == axis) {
         slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
             loc, rewriter.getIntegerAttr(indices_ty.getElementType(), 1)));
       } else {
-        int64_t dim_size = params_ty.getDimSize(i);
+        int64_t dim_size = params_ty.getDimSize(dim_idx);
         if (dim_size != ShapedType::kDynamicSize) {
           slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
               loc,
               rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
         } else {
           slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
-              loc, rewriter.create<memref::DimOp>(loc, params, i),
+              loc, rewriter.create<memref::DimOp>(loc, params, dim_idx),
               indices_ty.getElementType()));
         }
       }
     }
     Value slice_sizes_value = rewriter.create<tensor::FromElementsOp>(
-        loc,
-        rewriter.getI32Type(),
-        slice_sizes_vals);
+        loc, rewriter.getI32Type(), slice_sizes_vals);
     // offset_dims
     SmallVector<int64_t, 4> offset_dims;
-    for (int64_t i = 0; i < params_rank; i++) {
-      if (i < axis) {
-        offset_dims.push_back(i);
-      } else if (i >= axis + 1) {
-        offset_dims.push_back(i + indices_rank - 1);
+    for (int64_t dim_idx = 0; dim_idx < params_rank; dim_idx++) {
+      if (dim_idx < axis) {
+        offset_dims.push_back(dim_idx);
+      } else if (dim_idx >= axis + 1) {
+        offset_dims.push_back(dim_idx + indices_rank - 1);
       }
     }
     // collapsed_slice_dims
@@ -1241,25 +1240,24 @@ class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
 };
 
 // Conterts tf.Conv2D to mhlo.dynamic_conv.
-// TODO: To recover static special case's performance with adding folding, canonicalization func
-// and removing ConvertConvOp.
+// TODO: To recover static special case's performance with adding folding,
+// canonicalization func and removing ConvertConvOp.
 template <typename OpT, int num_spatial_dims, bool depthwise_conv = false>
 class ConvertConvDynamic : public OpRewritePattern<OpT> {
  public:
   using OpRewritePattern<OpT>::OpRewritePattern;
 
-  bool GetPaddingValues(OpT& op, PatternRewriter& rewriter,
-                                 Value input_size, Value filter_size,
-                                 int64_t dilation_rate, int64_t stride,
-                                 tensorflow::Padding padding_type,
-                                 Type shape_scalar_type, Value* padding_low,
-                                 Value* padding_high) const {
+  bool GetPaddingValues(OpT& op, PatternRewriter& rewriter, Value input_size,
+                        Value filter_size, int64_t dilation_rate,
+                        int64_t stride, tensorflow::Padding padding_type,
+                        Type shape_scalar_type, Value* padding_low,
+                        Value* padding_high) const {
     // Stride must be > 0
-    if (stride <= 0)  return false;
+    if (stride <= 0) return false;
     // Dilation rate must be >= 1
     if (dilation_rate < 1) return false;
 
-    auto loc = op.getLoc();
+    Location loc = op.getLoc();
     switch (padding_type) {
       case tensorflow::Padding::VALID: {
         auto zero = rewriter.create<ConstantIntOp>(loc, 0, shape_scalar_type);
@@ -1318,17 +1316,19 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
   LogicalResult matchAndRewriteDynamicConv(OpT op,
                                            PatternRewriter& rewriter) const {
     tensorflow::TensorFormat data_format;
-    if (!FormatFromString(op.data_format().str(), &data_format)) return failure();
+    if (!FormatFromString(op.data_format().str(), &data_format))
+      return failure();
 
     tensorflow::Padding padding;
-    if (!GetPaddingFromString(op.padding().str(), &padding).ok()) return failure();
-    
+    if (!GetPaddingFromString(op.padding().str(), &padding).ok())
+      return failure();
+
     auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     auto filter_ty =
         op.filter().getType().template dyn_cast<RankedTensorType>();
     auto result_ty = op.getType().template dyn_cast<RankedTensorType>();
     if (!input_ty || !filter_ty || !result_ty) return failure();
-    
+
     ArrayRef<Attribute> dilations = op.dilations().getValue();
     ArrayRef<Attribute> strides = op.strides().getValue();
     ArrayRef<Attribute> explicit_paddings;
@@ -1350,7 +1350,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
 
     constexpr int num_dims = num_spatial_dims + 2;
 
-    auto loc = op.getLoc();
+    Location loc = op.getLoc();
     auto shape_scalar_type = rewriter.getIntegerType(32);
 
     auto get_const = [&](int64_t val) {
@@ -1378,8 +1378,8 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
         auto input_size = get_dim_value(op.input(), dim);
         auto filter_size = get_dim_value(op.filter(), i);
         if (!GetPaddingValues(op, rewriter, input_size, filter_size, dilation,
-                             stride, padding, shape_scalar_type, &pad_low,
-                             &pad_high)) {
+                              stride, padding, shape_scalar_type, &pad_low,
+                              &pad_high)) {
           return failure();
         }
       }
@@ -1412,10 +1412,8 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     auto batch_group_count_attr = rewriter.getNamedAttr(
         "batch_group_count", rewriter.getI64IntegerAttr(1));
 
-    auto paddings_op = rewriter.create<tensor::FromElementsOp>(
-        op.getLoc(),
-        rewriter.getI32Type(), 
-        paddings);
+    Value paddings_op = rewriter.create<tensor::FromElementsOp>(
+        op.getLoc(), rewriter.getI32Type(), paddings);
 
     SmallVector<Value, 3> operands(op.getOperands());
     operands.push_back(paddings_op);
@@ -1446,6 +1444,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     return matchAndRewriteDynamicConv(op, rewriter);
   }
 };
+
 using ConvertConv2DDynamic =
     ConvertConvDynamic<TF::Conv2DOp, /*num_spatial_dims=*/2>;
 
