@@ -570,7 +570,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
 
   def __init__(self,
                from_logits=False,
-               label_smoothing=0,
+               label_smoothing=.0,
                reduction=losses_utils.ReductionV2.AUTO,
                name='binary_crossentropy'):
     """Initializes `BinaryCrossentropy` instance.
@@ -650,7 +650,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
 
   def __init__(self,
                from_logits=False,
-               label_smoothing=0,
+               label_smoothing=.0,
                reduction=losses_utils.ReductionV2.AUTO,
                name='categorical_crossentropy'):
     """Initializes `CategoricalCrossentropy` instance.
