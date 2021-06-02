@@ -4237,7 +4237,8 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
 };
 
 // Converts the tf.TileOp op into mhlo.dynamic_reshape
-// TODO: To recover static special case's performance with folding and canonicalization.
+// TODO: To recover static special case's performance with folding and
+// canonicalization.
 class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -4252,11 +4253,11 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
   //   %shape = [MS1, MS2]
   //   %result = "mhlo.d_reshape"(%broadcast, %shape) : (tensor<S1xM1xS2xM2xf32>) -> tensor<MS1xMS2xf32>
   // clang-format on
-  LogicalResult matchAndRewrite(
-      TF::TileOp op, PatternRewriter& rewriter) const {
-    auto loc = op.getLoc();
-    auto input = op.input();
-    auto multiples = op.multiples();
+  LogicalResult matchAndRewrite(TF::TileOp op,
+                                PatternRewriter& rewriter) const {
+    Location loc = op.getLoc();
+    Value input = op.input();
+    Value multiples = op.multiples();
     auto input_ty = input.getType().dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
 
@@ -4266,15 +4267,16 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
     for (int64_t i = 0; i < input_rank; ++i) {
       auto dim_size = input_ty.getDimSize(i);
       if (dim_size == ShapedType::kDynamicSize) {
-        input_shape_values.push_back(rewriter.create<memref::DimOp>(loc, input, i));
+        input_shape_values.push_back(
+            rewriter.create<memref::DimOp>(loc, input, i));
       } else {
-        input_shape_values.push_back(rewriter.create<ConstantOp>(
-            loc, rewriter.getIndexAttr(dim_size)));
+        input_shape_values.push_back(
+            rewriter.create<ConstantOp>(loc, rewriter.getIndexAttr(dim_size)));
       }
     }
 
     auto multiples_ty = multiples.getType().dyn_cast<RankedTensorType>();
-    auto multiples_rank = multiples_ty.getRank();
+    int64_t multiples_rank = multiples_ty.getRank();
     // rank of multiples input of tf.TileOp must be 1
     if (multiples_rank != 1) return failure();
     // multiples input of tf.TileOp must be fixed shaped
@@ -4285,49 +4287,45 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
     // %out_dim_size
     SmallVector<Value, 4> out_dim_size;
     out_dim_size.reserve(input_rank * 2);
-    for (int64_t i = 0; i < input_rank; ++i) {
-      Value index = rewriter.create<ConstantOp>(
-          loc, rewriter.getIndexAttr(i));
+    for (int64_t dim_idx = 0; dim_idx < input_rank; ++dim_idx) {
+      Value index =
+          rewriter.create<ConstantOp>(loc, rewriter.getIndexAttr(dim_idx));
       Value multiples_size =
           rewriter.create<tensor::ExtractOp>(loc, multiples, ValueRange{index});
-      auto multiples_size_casted = rewriter.create<IndexCastOp>(
+      Value multiples_size_casted = rewriter.create<IndexCastOp>(
           loc, rewriter.getIndexType(), multiples_size);
       out_dim_size.push_back(multiples_size_casted);
-      out_dim_size.push_back(input_shape_values[i]);
+      out_dim_size.push_back(input_shape_values[dim_idx]);
     }
     SmallVector<int64_t, 4> broadcast_dimensions;
     broadcast_dimensions.reserve(input_rank);
-    for (int64_t i = 0; i < input_rank; ++i) {
-      broadcast_dimensions.push_back(1 + 2 * i);
+    for (int64_t dim_idx = 0; dim_idx < input_rank; ++dim_idx) {
+      broadcast_dimensions.push_back(1 + 2 * dim_idx);
     }
     auto broadcast_dims_attr =
         GetI64ElementsAttr(broadcast_dimensions, &rewriter);
 
-    auto out_dim_size_tensor =
-        rewriter.create<tensor::FromElementsOp>(
-            loc,
-            rewriter.getIndexType(),
-            out_dim_size);
+    Value out_dim_size_tensor = rewriter.create<tensor::FromElementsOp>(
+        loc, rewriter.getIndexType(), out_dim_size);
     SmallVector<int64_t, 4> broadcast_shape(input_rank * 2,
                                             ShapedType::kDynamicSize);
     RankedTensorType broadcast_type =
         RankedTensorType::get(broadcast_shape, element_type);
-    auto broadcast = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+    Value broadcast = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
         loc, broadcast_type, input, out_dim_size_tensor, broadcast_dims_attr);
 
     // %shape = [MS1, MS2]
     SmallVector<Value, 4> shape_values;
     shape_values.reserve(input_rank);
     for (int64_t i = 0; i < input_rank; ++i) {
-      auto dim_size_value = rewriter.create<mlir::MulIOp>(
+      Value dim_size_value = rewriter.create<mlir::MulIOp>(
           loc, out_dim_size[2 * i], out_dim_size[2 * i + 1]);
       shape_values.push_back(dim_size_value);
     }
-    auto shape = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getIndexType(),
-        shape_values);
-    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, op.getType(), broadcast,
-                                                    shape);
+    Value shape = rewriter.create<tensor::FromElementsOp>(
+        loc, rewriter.getIndexType(), shape_values);
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, op.getType(),
+                                                        broadcast, shape);
     return success();
   }
 };
@@ -5183,8 +5181,6 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
     return success();
   }
 };
-
-
 
 // Converts TF unsorted segment reduction ops to XLA HLO scatter op.
 //
