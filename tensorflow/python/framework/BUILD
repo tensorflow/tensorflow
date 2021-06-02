@@ -490,6 +490,7 @@ py_library(
     deps = [
         ":_op_def_registry",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 

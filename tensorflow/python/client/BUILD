@@ -137,12 +137,10 @@ tf_py_test(
     size = "small",
     srcs = ["events_writer_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_windows",  # TODO(b/184424727): Re-enable this.
-    ],
     deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/util",
@@ -156,6 +154,7 @@ py_library(
     deps = [
         ":_pywrap_device_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -181,9 +180,6 @@ cuda_py_test(
         "device_lib_test.py",
     ],
     python_version = "PY3",
-    tags = [
-        "no_windows",  # TODO(b/184424727): Re-enable this.
-    ],
     deps = [
         ":client",
         "//tensorflow/core:protos_all_py",
