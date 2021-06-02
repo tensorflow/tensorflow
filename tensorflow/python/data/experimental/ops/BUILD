@@ -157,7 +157,6 @@ py_library(
         "//tensorflow/python:stateless_random_ops_gen",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
-        "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
