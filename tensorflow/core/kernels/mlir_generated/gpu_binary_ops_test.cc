@@ -192,6 +192,30 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div);
 
+// TODO(akuegel): Enable the test once we know why it fails in the Kokoro
+// environment.
+TEST_F(BinaryOpsTest, DISABLED_DivComplex64SpecialCases) {
+  TestEqualShapes<std::complex<float>, std::complex<float>, std::complex<float>,
+                  std::complex<float>>(
+      "Div", /*shape=*/{67, 63},
+      test::NearZeroInfAndNanInput<std::complex<float>>(),
+      test::RepeatElements(test::NearZeroInfAndNanInput<std::complex<float>>(),
+                           64),
+      baseline_div, test::OpsTestConfig());
+}
+
+// TODO(akuegel): Enable the test once we know why it fails in the Kokoro
+// environment.
+TEST_F(BinaryOpsTest, DISABLED_DivComplex128SpecialCases) {
+  TestEqualShapes<std::complex<double>, std::complex<double>,
+                  std::complex<double>, std::complex<double>>(
+      "Div", /*shape=*/{67, 63},
+      test::NearZeroInfAndNanInput<std::complex<double>>(),
+      test::RepeatElements(test::NearZeroInfAndNanInput<std::complex<double>>(),
+                           64),
+      baseline_div, test::OpsTestConfig());
+}
+
 /// Test `tf.Equal`.
 
 template <typename T>
