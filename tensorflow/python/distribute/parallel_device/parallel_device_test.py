@@ -180,8 +180,6 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
       self.assertNotAllClose(different_component, different_unpacked[0])
 
   def test_collective_reduce(self):
-    if self.device_type == "TPU":
-      self.skipTest("ParallelDevice collectives on TPUs need work")
     with self.device:
       x = self.device.pack(
           [constant_op.constant(-1.5),
@@ -209,8 +207,6 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
   def test_collective_reduce_async_scope(self):
-    if self.device_type == "TPU":
-      self.skipTest("ParallelDevice collectives on TPUs need work")
     # Note that ops on the parallel device currently don't execute
     # asynchronously. The test is just that we don't get deadlocks.
     with context.async_scope(), self.device:
@@ -224,8 +220,6 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
   def test_collective_reduce_async_context(self):
-    if self.device_type == "TPU":
-      self.skipTest("ParallelDevice collectives on TPUs need work")
     previous = config.get_synchronous_execution()
     try:
       context._reset_context()
@@ -293,7 +287,7 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
 
   def test_collective_broadcast_in_function(self):
     if self.device_type == "TPU":
-      self.skipTest("ParallelDevice collectives on TPUs need work")
+      self.skipTest("ParallelDevice broadcast collectives on TPUs need work")
     c = constant_op.constant([2])
 
     @def_function.function
@@ -525,8 +519,6 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
   def test_layer_sync_training(self):
-    if self.device_type == "TPU":
-      self.skipTest("ParallelDevice collectives on TPUs need work")
     with self.device:
       layer = _Dense(5)
 
@@ -546,8 +538,8 @@ class LayerTests(_VirtualDeviceTestCase):
     final_bias = self.device.unpack(layer.bias)
     expected_bias = (1. - 0.01 * 2. * (1. + .5 - math_ops.range(5.)) -
                      0.01 * 2. * (1. - .5 - math_ops.range(5.)))
-    self.assertAllClose(expected_bias, final_bias[0])
-    self.assertAllClose(expected_bias, final_bias[1])
+    self.assertAllClose(expected_bias, final_bias[0], rtol=1e-4, atol=1e-4)
+    self.assertAllClose(expected_bias, final_bias[1], rtol=1e-4, atol=1e-4)
     self.assertIn(self.device.components[0], final_kernels[0].backing_device)
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
@@ -576,8 +568,6 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
   def test_training_loop(self):
-    if self.device_type == "TPU":
-      self.skipTest("ParallelDevice collectives on TPUs need work")
     for _ in range(5):
       layer = _Dense(5)
       checkpoint = tracking.Checkpoint(layer=layer)
