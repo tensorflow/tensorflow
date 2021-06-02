@@ -1184,6 +1184,7 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/functional:bind_front",
     ],
 )
 
@@ -1195,11 +1196,46 @@ tf_cc_test(
         ":cudnn_pad_for_convolutions",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "cudnn_vectorize_convolutions",
+    srcs = ["cudnn_vectorize_convolutions.cc"],
+    hdrs = ["cudnn_vectorize_convolutions.h"],
+    deps = [
+        ":ir_emission_utils",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_vectorize_convolutions_test",
+    srcs = ["cudnn_vectorize_convolutions_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":cudnn_vectorize_convolutions",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//tensorflow/core/platform:statusor",
     ],
 )
 
@@ -1426,6 +1462,7 @@ cc_library(
         ":cublas_gemm_pad_for_tensor_cores",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
+        ":cudnn_vectorize_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
         ":gpu_compiler",
@@ -1806,6 +1843,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
