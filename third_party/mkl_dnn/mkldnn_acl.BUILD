@@ -27,9 +27,9 @@ template_rule(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "2",
-        "@DNNL_VERSION_MINOR@": "1",
+        "@DNNL_VERSION_MINOR@": "2",
         "@DNNL_VERSION_PATCH@": "0",
-        "@DNNL_VERSION_HASH@": "fbdfeea2642fec05387ed37d565cf904042f507e",
+        "@DNNL_VERSION_HASH@": "269680b228218158fc172e9d5277446f73ac1917",
     },
 )
 
@@ -38,16 +38,13 @@ cc_library(
     srcs = glob(
         [
             "src/common/*.cpp",
-            "src/common/*.hpp",
             "src/cpu/**/*.cpp",
-            "src/cpu/**/*.hpp",
+            "src/cpu/*.cpp",
         ],
-        exclude = ["src/cpu/x64/**/*"],
-    ) + [
-        ":dnnl_config_h",
-        ":dnnl_version_h",
-    ],
-    hdrs = glob(["include/*"]),
+        exclude = [
+            "src/cpu/x64/**",
+        ],
+    ),
     copts = [
         "-fexceptions",
         "-UUSE_MKL",
@@ -59,9 +56,24 @@ cc_library(
         "src",
         "src/common",
         "src/cpu",
+        "src/cpu/aarch64/xbyak_aarch64/src",
+        "src/cpu/aarch64/xbyak_aarch64/xbyak_aarch64",
         "src/cpu/gemm",
     ],
     linkopts = ["-lgomp"],
+    textual_hdrs = glob(
+        [
+            "include/**/*",
+            "include/*",
+            "src/common/*.hpp",
+            "src/cpu/**/*.hpp",
+            "src/cpu/*.hpp",
+            "src/cpu/aarch64/xbyak_aarch64/**/*.h",
+        ],
+    ) + [
+        ":dnnl_config_h",
+        ":dnnl_version_h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "@compute_library//:arm_compute_graph",

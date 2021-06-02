@@ -128,7 +128,7 @@ xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
 
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
   return [](const TensorShape& shape, DataType dtype,
-            bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
+            bool use_fast_memory) -> StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
     return xla_shape;
@@ -177,7 +177,7 @@ Status RewriteLayoutWithShardedShape(
 
 // There is a shape_representation_fn or sharding for an output, this function
 // uses a reshape to fix the layout.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     absl::optional<xla::OpSharding> sharding, bool fast_mem) {

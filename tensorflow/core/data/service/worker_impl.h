@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -72,6 +73,7 @@ class DataServiceWorkerImpl {
     TaskDef task_def;
     mutex mu;
     bool initialized TF_GUARDED_BY(mu) = false;
+    int64 outstanding_requests TF_GUARDED_BY(&DataServiceWorkerImpl::mu_) = 0;
     std::unique_ptr<TaskRunner> task_runner;
   };
 
@@ -81,6 +83,9 @@ class DataServiceWorkerImpl {
   Status ProcessTaskInternal(const TaskDef& task)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureTaskInitialized(Task& task);
+  // Stops a task, cancelling the task's outstanding requests and waiting for
+  // them to finish.
+  void StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_);
   // A thread for notifying the dispatcher when tasks complete.
   void TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_);
   // A thread for doing periodic heartbeats to the dispatcher.
@@ -96,7 +101,8 @@ class DataServiceWorkerImpl {
 
   mutex mu_;
   condition_variable cv_;
-  // Information about tasks, keyed by task ids.
+  // Information about tasks, keyed by task ids. The tasks are updated based on
+  // the heartbeat responses from the dispatcher.
   absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
   // Ids of tasks that have finished.
   absl::flat_hash_set<int64> finished_tasks_ TF_GUARDED_BY(mu_);

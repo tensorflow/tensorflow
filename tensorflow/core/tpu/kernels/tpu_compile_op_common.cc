@@ -326,14 +326,6 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
   CopyGraph(*fbody->graph, graph.get());
 
   VLOG(2) << "metadata: " << metadata_.DebugString();
-  std::vector<int> parameter_arg_mapping;
-  for (int i = 0; i < args.size(); i++) {
-    XlaCompiler::Argument& arg = args[i];
-    if (arg.kind != XlaCompiler::Argument::kParameter) {
-      continue;
-    }
-    parameter_arg_mapping.push_back(i);
-  }
   TF_RET_CHECK(fbody->arg_nodes.size() == args.size());
   for (size_t i = 0; i < fbody->arg_nodes.size(); i++) {
     args[i].node_name = fbody->arg_nodes[i]->name();
@@ -344,27 +336,6 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
   std::vector<PartialTensorShape> partial_arg_shapes(arg_shapes.size());
   for (const TensorShape& shape : arg_shapes) {
     arg_shape_dims.push_back(shape.dim_sizes());
-  }
-
-  for (const auto& padding_mapping : metadata_.padding_maps()) {
-    if (padding_mapping.padding_arg_index() >= parameter_arg_mapping.size()) {
-      return errors::Internal(absl::StrCat(
-          "TPUCompileMetadataProto `padding_maps` has `padding_arg_index` ",
-          padding_mapping.padding_arg_index(),
-          " which exceeds`parameter_arg_mapping` array bounds ",
-          parameter_arg_mapping.size(),
-          ". this usually indicates there are dynamic shape inputs fed into "
-          "TPUs from outside compilation head extraction, which is not "
-          "supported"));
-    }
-    int padding_arg_index =
-        parameter_arg_mapping.at(padding_mapping.padding_arg_index());
-    args[parameter_arg_mapping.at(padding_mapping.arg_index())]
-        .dynamic_dim_to_arg_num_map[padding_mapping.shape_index()] =
-        padding_arg_index;
-    arg_shape_dims[parameter_arg_mapping.at(padding_mapping.arg_index())]
-                  [padding_mapping.shape_index()] = -1;
-    args[padding_arg_index].is_pad_arg = true;
   }
 
   for (int64 i = 0; i < arg_shape_dims.size(); ++i) {

@@ -70,8 +70,25 @@ def _model_setup(test_obj, file_format):
   return model, saving_filepath, train_ds, steps
 
 
-def _get_task_config():
+def get_tf_config_task():
   return json.loads(os.environ['TF_CONFIG'])['task']
+
+
+def get_tf_config_cluster_spec():
+  return json.loads(os.environ['TF_CONFIG'])['cluster']
+
+
+def get_task_type():
+  return get_tf_config_task()['type']
+
+
+def get_task_index():
+  return get_tf_config_task()['index']
+
+
+def is_chief():
+  return ('chief' not in get_tf_config_cluster_spec() and
+          get_task_type() == 'worker' and get_task_index() == 0)
 
 
 class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
@@ -96,7 +113,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # ensure every worker has a unique path. Note that in normal use case the
       # saving_filepath will be the same for all workers, but we use different
       # ones here just to test out chief saves checkpoint but non-chief doesn't.
-      task_config = _get_task_config()
+      task_config = get_tf_config_task()
       saving_filepath = os.path.join(
           test_obj.get_temp_dir(), 'checkpoint_%s_%d%s' %
           (task_config['type'], task_config['index'], extension))
@@ -116,8 +133,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           ])
 
       # If it's chief, the model should be saved; if not, the model shouldn't.
-      test_obj.assertEqual(
-          checkpoint_exists(saving_filepath), test_base.is_chief())
+      test_obj.assertEqual(checkpoint_exists(saving_filepath), is_chief())
 
       # If it's chief, the model should be saved (`write_filepath` should
       # simply return `saving_filepath`); if not, i.e. for non-chief workers,
@@ -126,8 +142,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       test_obj.assertEqual(
           checkpoint_exists(
               distributed_file_utils.write_filepath(
-                  saving_filepath, model._distribution_strategy)),
-          test_base.is_chief())
+                  saving_filepath, model._distribution_strategy)), is_chief())
 
     multi_process_runner.run(
         proc_model_checkpoint_saves_on_chief_but_not_otherwise,
@@ -236,7 +251,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # ensure every worker has a unique path. Note that in normal use case the
       # saving_filepath will be the same for all workers, but we use different
       # ones here just to test out chief saves summaries but non-chief doesn't.
-      task_config = _get_task_config()
+      task_config = get_tf_config_task()
       saving_filepath = os.path.join(
           test_obj.get_temp_dir(),
           'logfile_%s_%d' % (task_config['type'], task_config['index']))
@@ -255,8 +270,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # `file_io.list_directory()` since the directory may be created at this
       # point.
       test_obj.assertEqual(
-          bool(file_io.list_directory_v2(saving_filepath)),
-          test_base.is_chief())
+          bool(file_io.list_directory_v2(saving_filepath)), is_chief())
 
     multi_process_runner.run(
         proc_tensorboard_saves_on_chief_but_not_otherwise,
@@ -271,7 +285,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       num_epoch = 2
 
       saving_filepath = os.path.join(
-          test_obj.get_temp_dir(), 'logfile_%s' % (_get_task_config()['type']))
+          test_obj.get_temp_dir(),
+          'logfile_%s' % (get_tf_config_task()['type']))
 
       saving_filepath_for_temp = os.path.join(saving_filepath, 'workertemp_1')
       os.mkdir(saving_filepath)

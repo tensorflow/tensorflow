@@ -25,9 +25,9 @@ from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -59,11 +59,30 @@ def get_var(val, dtype, name=None):
   return variables.VariableV1(val, use_resource=True, dtype=dtype, name=name)
 
 
+def set_cpu_logical_devices_to_at_least(num):
+  """Create cpu logical devices of at least a given number."""
+  physical_devices = config.list_physical_devices('CPU')
+  if not physical_devices:
+    raise RuntimeError('No CPU found')
+  if len(physical_devices) >= num:
+    return
+  # By default each physical device corresponds to one logical device. We create
+  # multiple logical devices for the last physical device so that we have `num`
+  # logical devices.
+  num = num - len(physical_devices) + 1
+  logical_devices = []
+  for _ in range(num):
+    logical_devices.append(context.LogicalDeviceConfiguration())
+  # Create logical devices from the last device since sometimes the first GPU
+  # is the primary graphic card and may have less memory available.
+  config.set_logical_device_configuration(physical_devices[-1], logical_devices)
+
+
 @ds_combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    test_util.set_logical_devices_to_at_least('CPU', 3)
+    set_cpu_logical_devices_to_at_least(3)
     super(AutoCastVariableTest, self).setUp()
 
   @ds_combinations.generate(maybe_distribute)

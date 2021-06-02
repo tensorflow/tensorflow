@@ -34,6 +34,11 @@ class DeviceFactory {
                        int priority, bool is_pluggable_device);
   static DeviceFactory* GetFactory(const std::string& device_type);
 
+  // Append to "*devices" CPU devices.
+  static Status AddCpuDevices(const SessionOptions& options,
+                              const std::string& name_prefix,
+                              std::vector<std::unique_ptr<Device>>* devices);
+
   // Append to "*devices" all suitable devices, respecting
   // any device type specific properties/counts listed in "options".
   //

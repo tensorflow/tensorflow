@@ -406,3 +406,82 @@ func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf.resource<tensor<8
  }
  return
 }
+
+// CHECK: func @stateful_composite_op_control
+func @stateful_composite_op_control(%arg0: tensor<i1>, %arg1: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %output, %control = tf_executor.island {
+      // CHECK: {{%.+}}, [[IF_CONTROL:%.+]] = tf_executor.island wraps "tf.If"
+      %1 = "tf.If"(%arg0, %arg1) {device = "", else_branch = @stateful_composite_op_control_else, is_stateless = false, then_branch = @stateful_composite_op_control_then} : (tensor<i1>, tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32>
+      // CHECK: [[IDENTITY_OUTPUT:%.+]], [[IDENTITY_CONTROL:%.+]] = tf_executor.island wraps "tf.Identity"
+      %2 = "tf.Identity"(%1) {device = ""} : (tensor<i32>) -> tensor<i32>
+
+      // The side effects of the If op might not be executed without an
+      // explicit control dependency on the tf.If op, due to the way the
+      // LowerFunctionalOpsPass in TF operates (b/185483669). Check that we
+      // output an explicit control dependency on the tf.If op in this case to
+      // be on the safe side.
+      // CHECK: [[SINK:%.+]] = tf_executor.island([[IF_CONTROL]], [[IDENTITY_CONTROL]]) wraps "tf.NoOp"
+      tf_executor.yield %2 : tensor<i32>
+    }
+    // CHECK: tf_executor.fetch [[IDENTITY_OUTPUT]], [[SINK]]
+    tf_executor.fetch %output : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK: func @stateful_composite_op_control_else
+// This is a helper function for the stateful_composite_op_control test.
+func @stateful_composite_op_control_else(%arg0: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %outputs, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+      "tf.AssignVariableOp"(%arg0, %1) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      tf_executor.yield %1 : tensor<i32>
+    }
+    tf_executor.fetch %outputs : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK: func @stateful_composite_op_control_then
+// This is a helper function for the stateful_composite_op_control test.
+func @stateful_composite_op_control_then(%arg0: tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %outputs, %control = tf_executor.island {
+      %1 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+      "tf.AssignVariableOp"(%arg0, %1) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      tf_executor.yield %1 : tensor<i32>
+    }
+    tf_executor.fetch %outputs : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @generator_op
+func @generator_op(%str : tensor<!tf.string>, %arg0: tensor<*x!tf.string>, %arg1: tensor<!tf.string>, %arg2: tensor<*xi64>, %arg3: tensor<!tf.string>) {
+  tf_executor.graph {
+    tf_executor.island {
+      // CHECK: %{{.*}}, %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.GeneratorDataset"
+      %gen0 = "tf.GeneratorDataset"(%str, %arg0, %arg1, %arg2, %arg3) {
+        finalize_func = @__finalize_func_790,
+        init_func = @__init_func_530, next_func = @__next_func_680,
+        next_func.experimental_ints_on_device = true,
+        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        output_shapes = [#tf.shape<?>], output_types = [f32]} :
+         (tensor<!tf.string>, tensor<*x!tf.string>, tensor<!tf.string>, tensor<*xi64>, tensor<!tf.string>) -> tensor<*x!tf.variant>
+      %add1 = "tf.Add"(%str, %arg3) : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<!tf.string>
+      // CHECK: tf_executor.island(%[[CONTROL]]) wraps "tf.GeneratorDataset"
+      %gen1 = "tf.GeneratorDataset"(%str, %arg0, %arg1, %arg2, %arg3) {
+        finalize_func = @__finalize_func_790,
+        init_func = @__init_func_530, next_func = @__next_func_680,
+        next_func.experimental_ints_on_device = true,
+        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        output_shapes = [#tf.shape<?>], output_types = [f32]} :
+         (tensor<!tf.string>, tensor<*x!tf.string>, tensor<!tf.string>, tensor<*xi64>, tensor<!tf.string>) -> tensor<*x!tf.variant>
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}

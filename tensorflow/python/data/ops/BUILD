@@ -1,9 +1,7 @@
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "dataset_ops",
@@ -29,7 +27,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:distribute_options",
         "//tensorflow/python/data/experimental/ops:optimization_options",
-        "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/experimental/ops:threading_options",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",

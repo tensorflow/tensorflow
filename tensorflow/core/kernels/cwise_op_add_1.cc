@@ -19,7 +19,8 @@ namespace tensorflow {
 REGISTER6(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
           int64, bfloat16);
 
-#if !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(BinaryOp, CPU, "AddV2", functor::add, float, Eigen::half, double,
           int32, int64, bfloat16);
 #else

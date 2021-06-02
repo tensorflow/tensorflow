@@ -284,10 +284,22 @@ class QuantizedMulOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& x = context->input(0);
     const Tensor& y = context->input(1);
-    const float min_x = context->input(2).flat<float>()(0);
-    const float max_x = context->input(3).flat<float>()(0);
-    const float min_y = context->input(4).flat<float>()(0);
-    const float max_y = context->input(5).flat<float>()(0);
+    auto& min_x_tensor = context->input(2);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_x_tensor.shape()),
+                errors::InvalidArgument("min_x must be a scalar"));
+    const float min_x = min_x_tensor.flat<float>()(0);
+    auto& max_x_tensor = context->input(3);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_x_tensor.shape()),
+                errors::InvalidArgument("max_x must be a scalar"));
+    const float max_x = max_x_tensor.flat<float>()(0);
+    auto& min_y_tensor = context->input(4);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_y_tensor.shape()),
+                errors::InvalidArgument("min_y must be a scalar"));
+    const float min_y = min_y_tensor.flat<float>()(0);
+    auto& max_y_tensor = context->input(5);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_y_tensor.shape()),
+                errors::InvalidArgument("max_y must be a scalar"));
+    const float max_y = max_y_tensor.flat<float>()(0);
 
     BCast bcast(BCast::FromShape(x.shape()), BCast::FromShape(y.shape()));
     if (!bcast.IsValid()) {
@@ -346,6 +358,11 @@ class QuantizedMulOp : public OpKernel {
         tensor_data = x_data;
         tensor_num_elements = x.NumElements();
         tensor_offset = offset_x;
+      }
+      if (vector_num_elements == 0) {
+        context->SetStatus(
+            errors::InvalidArgument("vector must have at least 1 element"));
+        return;
       }
       VectorTensorMultiply<T, Toutput>(
           vector_data, vector_offset, vector_num_elements, tensor_data,

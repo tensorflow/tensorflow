@@ -1,11 +1,11 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -28,11 +28,14 @@ package_group(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "legalize_tf_patterns_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-rewriters", "transforms/generated_legalize_tf.inc"),
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_legalize_tf.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/legalize_tf_patterns.td",
@@ -48,11 +51,17 @@ gentbl(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "xla_legalize_tf_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-pass-decls -name XLA", "transforms/xla_legalize_tf_passes.h.inc"),
+        (
+            [
+                "-gen-pass-decls",
+                "-name=LegalizeTf",
+            ],
+            "transforms/xla_legalize_tf_passes.h.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/xla_legalize_tf_passes.td",
@@ -64,11 +73,17 @@ gentbl(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "xla_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-pass-decls -name XLA", "transforms/xla_passes.h.inc"),
+        (
+            [
+                "-gen-pass-decls",
+                "-name=Xla",
+            ],
+            "transforms/xla_passes.h.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/xla_passes.td",
@@ -89,6 +104,8 @@ cc_library(
     name = "xla_passes",
     srcs = [
         "transforms/prepare_for_export.cc",
+        "transforms/xla_legalize_tf_passes.h.inc",
+        "transforms/xla_passes.h.inc",
         "transforms/xla_passes_detail.h",
     ],
     hdrs = [
@@ -113,7 +130,9 @@ cc_library(
         "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_control_flow.cc",
         "transforms/legalize_tf_types.cc",
+        "transforms/xla_legalize_tf_passes.h.inc",
         "transforms/xla_legalize_tf_passes_detail.h",
+        "transforms/xla_passes.h.inc",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -274,9 +293,24 @@ cc_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "hlo_utils_test",
+    srcs = ["hlo_utils_test.cc"],
+    deps = [
+        ":hlo_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 cc_library(
@@ -342,6 +376,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -484,10 +519,10 @@ tf_native_cc_binary(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "operator_writer_inc",
     compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [("", "operator_writers.inc")],
+    tbl_outs = [([], "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
     td_file = "//tensorflow/compiler/mlir/hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     td_relative_includes = [

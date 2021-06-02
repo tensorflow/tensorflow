@@ -189,6 +189,16 @@ def MatrixSetDiagV2ToV3 : Pat<(TF_MatrixSetDiagV2Op $input, $diag, $k),
                                 (GetStrAttr<"LEFT_LEFT">))>;
 
 //===----------------------------------------------------------------------===//
+// QuantizeAndDequantizeV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+def QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4 : Pat<
+  (TF_QuantizeAndDequantizeV2Op $inputs, $min, $max, $signed_input, $num_bits,
+    $range_given, $round_mode, $narrow_range, $axis),
+  (TF_QuantizeAndDequantizeV4Op $inputs, $min, $max, $signed_input, $num_bits,
+    $range_given, $round_mode, $narrow_range, $axis)>;
+
+//===----------------------------------------------------------------------===//
 // RealDiv op patterns.
 //===----------------------------------------------------------------------===//
 

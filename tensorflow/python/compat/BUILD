@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(

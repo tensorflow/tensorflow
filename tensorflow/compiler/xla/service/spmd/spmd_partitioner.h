@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
@@ -73,14 +74,19 @@ class SpmdBuilder : public HloComputation::Builder {
       : HloComputation::Builder(name) {
     visiting_hlo_ = hlo;
   }
-  HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);
+
+  HloInstruction* AddInstruction(
+      std::unique_ptr<HloInstruction> instruction) override;
 
   const std::vector<HloInstruction*>& derived_instructions(
       HloInstruction* hlo) {
     return instructions_.at(hlo);
   }
 
-  void set_visiting_hlo(HloInstruction* hlo) { visiting_hlo_ = hlo; }
+  void set_visiting_hlo(HloInstruction* hlo) {
+    visiting_hlo_ = hlo;
+    instructions_[hlo];
+  }
 
   HloInstruction* visiting_hlo() const { return visiting_hlo_; }
 
@@ -239,9 +245,22 @@ class SpmdPartitioner : public HloModulePass {
       const SPMDCollectiveOpsCreator& collectives_creator,
       HloComputation* reduction, bool per_dim_ar);
 
-  // Verify that the sharding of instructions in the module are valid, and also
-  // fill in missing sharding information.
-  Status PreprocessSharding(HloModule* module);
+  // Verifies that the sharding of instructions in the module are valid, and
+  // also fill in missing sharding information.
+  virtual Status PreprocessSharding(HloModule* module);
+
+  // Returns if the given side-effecting instruction is allowed to have
+  // replicated sharding.
+  virtual bool CanSideEffectingHaveReplicatedSharding(
+      const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kInfeed ||
+           hlo->opcode() == HloOpcode::kOutfeed;
+  }
+
+  // Preprocesses the graph to simplify some communication patterns. E.g., merge
+  // pad->slice into a single pad with potentially negative padding to avoid
+  // multiple halo exchanges.
+  Status PreprocessHlos(HloModule* module);
 
   const int64 num_partitions_;
   const int64 num_replicas_;
@@ -451,6 +470,11 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Common handle for HLOs that runs on a single device.
   Status HandleSingleDevice(const HloInstruction* hlo);
 
+  // CustomCall handlers per call target.
+  Status HandleCustomCallTopK(HloInstruction* hlo);
+  // Convenient custom ops defined by the partitioner itself.
+  Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+
   // Returns the PartitionedHlo that corresponds to the original hlo.
   PartitionedHlo& GetPartitionedHlo(const HloInstruction* hlo) {
     CHECK_EQ(partitioned_instructions_.count(hlo), 1);
@@ -508,7 +532,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     bool operands_sharded_at_contracting_dims;
   };
 
- private:
+ protected:
   Status Preprocess(HloInstruction* hlo) override;
   Status Postprocess(HloInstruction* hlo) override;
 

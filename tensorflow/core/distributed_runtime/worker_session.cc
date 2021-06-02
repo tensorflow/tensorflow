@@ -66,6 +66,11 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     return wrapped_->GetEagerClientCache(eager_client_cache);
   }
 
+  Status GetCoordinationClientCache(std::unique_ptr<CoordinationClientCache>*
+                                        coordination_client_cache) override {
+    return wrapped_->GetCoordinationClientCache(coordination_client_cache);
+  }
+
   void ReleaseWorker(const string& target, WorkerInterface* worker) override {
     // TODO(jeff,sanjay): Should decrement ref-count when we implement eviction.
   }
@@ -144,7 +149,7 @@ Status WorkerSession::UpdateWorkerCacheAndDevices(
 std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
-    const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr) {
   return std::shared_ptr<WorkerSession>(new WorkerSession(
       session_name, worker_name, std::move(worker_cache), borrowed_device_mgr,
@@ -154,7 +159,7 @@ std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
 WorkerSession::WorkerSession(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
-    const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr)
     : session_name_(session_name),
       worker_name_(worker_name),

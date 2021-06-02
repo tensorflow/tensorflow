@@ -298,7 +298,10 @@ class RingReducerTest : public ::testing::Test {
                int num_devices, int num_subdivs, int tensor_len,
                int fail_after) {
     Init(num_workers, num_devices, dtype, device_type, num_subdivs, fail_after);
-    std::vector<T> expected(tensor_len, 0.0);
+    std::vector<T> expected(tensor_len);
+    for (int i = 0; i < tensor_len; ++i) {
+      expected[i] = static_cast<T>(0.0);
+    }
     for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
       DeviceInstance* instance = instances_[di];
       instance->InitTensor(
@@ -311,7 +314,7 @@ class RingReducerTest : public ::testing::Test {
                 value = di * 10 + i;
               }
               t->flat<T>()(i) = static_cast<T>(value);
-              expected[i] += value;
+              expected[i] += static_cast<T>(value);
             }
           });
     }
@@ -326,7 +329,7 @@ class RingReducerTest : public ::testing::Test {
     } else {
       // Confirm that every device computed the same correct reduction value.
       for (int i = 0; i < tensor_len; ++i) {
-        expected[i] /= (num_workers * num_devices);
+        expected[i] /= static_cast<T>(num_workers * num_devices);
       }
       for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
         TF_EXPECT_OK(instances_[di]->status_);
@@ -349,6 +352,7 @@ class RingReducerTest : public ::testing::Test {
         auto alias = actual.template unaligned_flat<T>();
         for (int i = 0; i < tensor_len; ++i) {
           switch (dtype) {
+            case DT_BFLOAT16:
             case DT_FLOAT:
               EXPECT_FLOAT_EQ(expected[i], alias(i))
                   << "Mismatch at device " << di << " index " << i;
@@ -637,6 +641,7 @@ TEST_F(RingReducerTest, AutomaticSubdivs) {
   // Test automatic generation of subdiv offsets.
   cp->default_rank = 0;
   cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 0;
   RunSubdivPermsTest(cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
                      {0});
@@ -668,8 +673,63 @@ TEST_F(RingReducerTest, AutomaticSubdivUpperBound) {
 
   cp->default_rank = 0;
   cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 0;
   cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
   RunSubdivPermsTest(cp, {{0, 1, 2, 3}, {0, 1, 2, 3}}, {0, 0});
+}
+
+TEST_F(RingReducerTest, AutomaticSubdivIgnoresMaxNumSubdivs) {
+  const int kNumDevsPerTask = 1;
+  const int kNumTasks = 4;
+  CollectiveParams* cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+  core::ScopedUnref unref(cp);
+
+  cp->default_rank = 0;
+  // When subdiv_offsets is present it will override automatic generation of
+  // offsets even when max_subdivs_per_device is present.
+  // cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 4;
+  cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(cp, {{0, 1, 2, 3}}, {0});
+
+  cp->default_rank = 0;
+  // subdiv_offsets cleared, max_subdivs_per_device = 4 takes effect.
+  cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 4;
+  cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(cp,
+                     {{0, 1, 2, 3}, {0, 1, 2, 3}, {0, 1, 2, 3}, {0, 1, 2, 3}},
+                     {0, 0, 0, 0});
+}
+
+TEST_F(RingReducerTest, AutomaticSubdivUsesDefault) {
+  const int kNumDevsPerTask = 1;
+  const int kNumTasks = 4;
+  CollectiveParams* cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+  core::ScopedUnref unref(cp);
+
+  cp->default_rank = 0;
+  // When subdiv_offsets is NOT present and max_subdivs_per_device has a
+  // == 0 value, the default setting of 2 is used.
+  cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = 0;
+  cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(cp, {{0, 1, 2, 3}, {0, 1, 2, 3}}, {0, 0});
+}
+
+TEST_F(RingReducerTest, AutomaticSubdivDisabled) {
+  const int kNumDevsPerTask = 1;
+  const int kNumTasks = 4;
+  CollectiveParams* cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+  core::ScopedUnref unref(cp);
+
+  cp->default_rank = 0;
+  // When subdiv_offsets is NOT present and max_subdivs_per_device = -1 no
+  // subidivision should be done. (old behavior)
+  cp->instance.impl_details.subdiv_offsets.clear();
+  cp->instance.impl_details.max_subdivs_per_device = -1;
+  cp->instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(cp, {{0, 1, 2, 3}}, {0});
 }
 
 // TODO(b/113171733): change to use TEST_P.
@@ -683,6 +743,9 @@ TEST_F(RingReducerTest, AutomaticSubdivUpperBound) {
       } break;                                                                \
       case DT_DOUBLE: {                                                       \
         RunTest<double>(dtype, DEVICE_##T, W, D, S, L, A);                    \
+      } break;                                                                \
+      case DT_BFLOAT16: {                                                     \
+        RunTest<tensorflow::bfloat16>(dtype, DEVICE_##T, W, D, S, L, A);      \
       } break;                                                                \
       case DT_INT32: {                                                        \
         RunTest<int32>(dtype, DEVICE_##T, W, D, S, L, A);                     \
@@ -711,6 +774,8 @@ DEF_TEST(FLOAT, CPU, 2, 8, 3, 1045991, 0)
 DEF_TEST(FLOAT, CPU, 4, 4, 4, 1045991, 0)
 DEF_TEST(DOUBLE, CPU, 1, 2, 1, 1001, 0)
 DEF_TEST(DOUBLE, CPU, 2, 8, 3, 4095, 0)
+DEF_TEST(BFLOAT16, CPU, 1, 2, 1, 8, 0)
+DEF_TEST(BFLOAT16, CPU, 2, 8, 3, 16, 0)
 DEF_TEST(INT32, CPU, 1, 2, 1, 1001, 0)
 DEF_TEST(INT32, CPU, 2, 8, 3, 4095, 0)
 DEF_TEST(INT64, CPU, 1, 2, 1, 1001, 0)

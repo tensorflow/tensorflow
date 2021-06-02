@@ -404,6 +404,8 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   // creating the replicate op.
   llvm::SmallVector<std::pair<ValueRange, Type>, 8> replicated_inputs;
   llvm::SmallVector<Value, 8> packed_inputs;
+  llvm::SmallVector<Operation*, 8> replicated_ops;
+  llvm::SmallVector<Operation*, 8> packed_ops;
   for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
     bool is_packed = llvm::cast<TF::TPUReplicatedInputOp>(input).is_packed();
@@ -417,10 +419,12 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
     if (is_packed) {
       packed_inputs.push_back(input->getOperand(0));
       packed_input_indices.push_back(tpu_replicated_input_index);
+      packed_ops.push_back(input);
     } else {
       replicated_inputs.push_back(
           {input->getOperands(), input->getOperand(0).getType()});
       replicated_input_indices.push_back(tpu_replicated_input_index);
+      replicated_ops.push_back(input);
     }
     if (tpu_replicated_input_index != -1) has_replicated_input_index = true;
 
@@ -475,8 +479,11 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   // `tf_device.replicate` later.
   llvm::SmallSet<Operation*, 4> partitioned_inputs;
   // Update replicated inputs with replicate op block arguments.
+  auto ordered_tpu_replicate_inputs =
+      llvm::concat<Operation*>(replicated_ops, packed_ops);
   for (auto input_and_block_arg :
-       llvm::zip(replicated_input_ops, replicate_op.GetBody().getArguments())) {
+       llvm::zip(ordered_tpu_replicate_inputs,
+                 replicate_op.GetBody().getArguments())) {
     Operation* input = std::get<0>(input_and_block_arg);
     Value block_arg = std::get<1>(input_and_block_arg);
     mlir::replaceAllUsesInRegionWith(input->getResult(0), block_arg,

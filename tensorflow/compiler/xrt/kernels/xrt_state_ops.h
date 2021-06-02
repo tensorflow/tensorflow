@@ -201,7 +201,8 @@ class XRTAllocateOp : public OpKernel {
     XRTTupleAllocation* allocation;
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::CreateAndTransfer(
                             literal, memory_manager.get(), device_ref.backend(),
-                            device_ref.device_ordinal(), &allocation));
+                            device_ref.device_ordinal(), &allocation,
+                            device_ref.allocator()));
 
     Tensor output(DT_INT64, TensorShape({}));
     output.scalar<int64>()() = memory_manager->Register(allocation);
@@ -239,10 +240,10 @@ class XRTAllocateUninitializedOp : public OpKernel {
 
     RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
     XRTTupleAllocation* allocation;
-    OP_REQUIRES_OK(ctx,
-                   XRTTupleAllocation::CreateUninitialized(
-                       xla_shape_, memory_manager.get(), device_ref.backend(),
-                       device_ref.device_ordinal(), &allocation));
+    OP_REQUIRES_OK(ctx, XRTTupleAllocation::CreateUninitialized(
+                            xla_shape_, memory_manager.get(),
+                            device_ref.backend(), device_ref.device_ordinal(),
+                            &allocation, device_ref.allocator()));
 
     Tensor output(DT_INT64, TensorShape({}));
     output.scalar<int64>()() = memory_manager->Register(allocation);
@@ -345,7 +346,8 @@ class XRTAllocateFromTensorOp : public OpKernel {
     XRTTupleAllocation* allocation;
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::CreateAndTransfer(
                             literal, memory_manager.get(), device_ref.backend(),
-                            device_ref.device_ordinal(), &allocation));
+                            device_ref.device_ordinal(), &allocation,
+                            device_ref.allocator()));
 
     Tensor output(DT_INT64, TensorShape({}));
     output.scalar<int64>()() = memory_manager->Register(allocation);
@@ -465,7 +467,7 @@ class XRTMakeTupleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::MakeTuple(
                             memory_manager.get(), device_ref.backend(),
                             device_ref.device_ordinal(), tuple_shape_tree,
-                            &output_allocation));
+                            &output_allocation, device_ref.allocator()));
     RefPtr<XRTTupleAllocation> output_ptr(output_allocation);
     for (int i = 0; i < input_vector.size(); ++i) {
       if (input_vector[i].release_allocation_after_use) {
@@ -735,7 +737,8 @@ class XRTCompactAllocationsOp : public OpKernel {
     class DeviceAccessor::ScopedRef device_ref;
     OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
     OP_REQUIRES_OK(ctx, memory_manager->CompactAllocations(
-                            device_ref.backend(), device_ref.device_ordinal()));
+                            device_ref.backend(), device_ref.device_ordinal(),
+                            device_ref.allocator()));
   }
 };
 

@@ -3,10 +3,11 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(
@@ -395,6 +396,7 @@ cc_library(
         ":environment",
         ":gpu_object",
         ":opencl_wrapper",
+        ":recordable_queue_builder",
         ":serialization_cc_fbs",
         ":tensor",
         "//tensorflow/lite/delegates/gpu/common:data_type",
@@ -463,6 +465,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
         "@opencl_headers",
+        "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
     ],
 )
 
@@ -485,12 +488,37 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "recordable_queue",
+    hdrs = ["recordable_queue.h"],
+    deps = [
+        ":cl_command_queue",
+        ":cl_context",
+        ":cl_device",
+        ":cl_operation",
+        ":opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+cc_library(
+    name = "recordable_queue_builder",
+    hdrs = ["recordable_queue_builder.h"],
+    deps = [
+        ":cl_context",
+        ":cl_device",
+        ":cl_operation",
+        ":recordable_queue",
+        "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":recordable_queue",
+    ],
+)
+
 flatbuffer_cc_library(
     name = "serialization_cc_fbs",
     srcs = ["serialization.fbs"],
     flatc_args = [
         "--scoped-enums",
-        "-I ./",
+        "-I " + workspace_root,
     ],
     includes = [
         "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",

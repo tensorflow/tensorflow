@@ -12,7 +12,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 objc_library(
@@ -434,6 +434,7 @@ ios_unit_test(
     minimum_os_version = "11.4",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = [
+        "no_mac",  # TODO(b/183905399)
         "notap",
         "tflite_mobile_test_jet",
         "tflite_not_portable_android",

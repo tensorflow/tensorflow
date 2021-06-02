@@ -22,6 +22,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
 import java.util.Arrays;
 
 /**
@@ -168,6 +169,42 @@ public final class Tensor {
   }
 
   /**
+   * Returns a read-only {@code ByteBuffer} view of the tensor data.
+   *
+   * <p>In general, this method is most useful for obtaining a read-only view of output tensor data,
+   * *after* inference has been executed (e.g., via {@link Interpreter#run(Object,Object)}). In
+   * particular, some graphs have dynamically shaped outputs, which can make feeding a predefined
+   * output buffer to the {@link Interpreter} awkward. Example usage:
+   *
+   * <pre>{@code
+   * interpreter.run(input, null);
+   * ByteBuffer outputBuffer = interpreter.getOutputTensor(0).asReadOnlyBuffer();
+   * // Copy or read from outputBuffer.
+   * }</pre>
+   *
+   * <p>WARNING: If the tensor has not yet been allocated, e.g., before inference has been executed,
+   * the result is undefined. Note that the underlying tensor pointer may also change when the
+   * tensor is invalidated in any way (e.g., if inference is executed, or the graph is resized), so
+   * it is *not* safe to hold a reference to the returned buffer beyond immediate use directly
+   * following inference. Example *bad* usage:
+   *
+   * <pre>{@code
+   * ByteBuffer outputBuffer = interpreter.getOutputTensor(0).asReadOnlyBuffer();
+   * interpreter.run(input, null);
+   * // Copy or read from outputBuffer (which may now be invalid).
+   * }</pre>
+   *
+   * <p>WARNING: This is an experimental interface that is subject to change.
+   *
+   * @throws IllegalArgumentException if the tensor data has not been allocated.
+   */
+  public ByteBuffer asReadOnlyBuffer() {
+    // Note that the ByteBuffer order is not preserved when duplicated or marked read only, so
+    // we have to repeat the call.
+    return buffer().asReadOnlyBuffer().order(ByteOrder.nativeOrder());
+  }
+
+  /**
    * Copies the contents of the provided {@code src} object to the Tensor.
    *
    * <p>The {@code src} should either be a (multi-dimensional) array with a shape matching that of
@@ -230,6 +267,13 @@ public final class Tensor {
       } else {
         buffer().asIntBuffer().put(srcBuffer);
       }
+    } else if (src instanceof ShortBuffer) {
+      ShortBuffer srcBuffer = (ShortBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asShortBuffer().put(srcBuffer);
+      }
     } else {
       throw new IllegalArgumentException("Unexpected input buffer type: " + src);
     }
@@ -238,8 +282,11 @@ public final class Tensor {
   /**
    * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
    *
-   * @param dst the destination buffer, either an explicitly-typed array, a {@link ByteBuffer} or
-   *     {@code null} iff the tensor has an underlying delegate buffer handle.
+   * @param dst the destination buffer, either an explicitly-typed array, a compatible {@link
+   *     Buffer} or {@code null} iff the tensor has an underlying delegate buffer handle. If
+   *     providing a (multi-dimensional) array, its shape must match the tensor shape *exactly*. If
+   *     providing a {@link Buffer}, its capacity must be at least as large as the source tensor's
+   *     capacity.
    * @throws IllegalArgumentException if {@code dst} is not compatible with the tensor (for example,
    *     mismatched data types or shapes).
    */
@@ -271,6 +318,8 @@ public final class Tensor {
       ((LongBuffer) dst).put(buffer().asLongBuffer());
     } else if (dst instanceof IntBuffer) {
       ((IntBuffer) dst).put(buffer().asIntBuffer());
+    } else if (dst instanceof ShortBuffer) {
+      ((ShortBuffer) dst).put(buffer().asShortBuffer());
     } else {
       throw new IllegalArgumentException("Unexpected output buffer type: " + dst);
     }
@@ -318,6 +367,8 @@ public final class Tensor {
           return DataType.FLOAT32;
         } else if (int.class.equals(c)) {
           return DataType.INT32;
+        } else if (short.class.equals(c)) {
+          return DataType.INT16;
         } else if (byte.class.equals(c)) {
           // Byte array can be used for storing string tensors, especially for ParseExample op.
           if (dtype == DataType.STRING) {
@@ -337,6 +388,8 @@ public final class Tensor {
           return DataType.FLOAT32;
         } else if (Integer.class.equals(c) || o instanceof IntBuffer) {
           return DataType.INT32;
+        } else if (Short.class.equals(c) || o instanceof ShortBuffer) {
+          return DataType.INT16;
         } else if (Byte.class.equals(c)) {
           // Note that we don't check for ByteBuffer here; ByteBuffer payloads
           // are allowed to map to any type, and should be handled earlier

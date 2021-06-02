@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "pybind11/pybind11.h"
@@ -36,10 +37,23 @@ limitations under the License.
 
 namespace xla {
 
+enum class PyTreeKind {
+  kLeaf,        // An opaque leaf node
+  kNone,        // None.
+  kTuple,       // A tuple
+  kNamedTuple,  // A collections.namedtuple
+  kList,        // A list
+  kDict,        // A dict
+  kCustom,      // A custom type.
+};
+
 // Registry of custom node types.
-class CustomNodeRegistry {
+class PyTreeTypeRegistry {
  public:
   struct Registration {
+    PyTreeKind kind;
+
+    // The following values are populated for custom types.
     // The Python type object, used to identify the type.
     pybind11::object type;
     // A function with signature: object -> (iterable, aux_data)
@@ -58,17 +72,26 @@ class CustomNodeRegistry {
   static const Registration* Lookup(pybind11::handle type);
 
  private:
-  static CustomNodeRegistry* Singleton();
+  static PyTreeTypeRegistry* Singleton();
 
   struct TypeHash {
+    using is_transparent = void;
     size_t operator()(const pybind11::object& t) const {
-      return pybind11::hash(t);
+      return absl::Hash<void*>()(t.ptr());
+    }
+    size_t operator()(const pybind11::handle& t) const {
+      return absl::Hash<void*>()(t.ptr());
     }
   };
   struct TypeEq {
+    using is_transparent = void;
     bool operator()(const pybind11::object& a,
                     const pybind11::object& b) const {
-      return a.equal(b);
+      return a.ptr() == b.ptr();
+    }
+    bool operator()(const pybind11::object& a,
+                    const pybind11::handle& b) const {
+      return a.ptr() == b.ptr();
     }
   };
   absl::flat_hash_map<pybind11::object, std::unique_ptr<Registration>, TypeHash,
@@ -84,6 +107,8 @@ class PyTreeDef {
   PyTreeDef() = default;
 
   // Flattens a Pytree into a list of leaves and a PyTreeDef.
+  // Returns references to the flattened objects, which might be temporary
+  // objects in the case of custom pytype handlers.
   static std::pair<std::vector<pybind11::object>, std::unique_ptr<PyTreeDef>>
   Flatten(pybind11::handle x,
           absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
@@ -91,6 +116,9 @@ class PyTreeDef {
   // Recursive helper used to implement Flatten().
   void FlattenInto(
       pybind11::handle handle, std::vector<pybind11::object>& leaves,
+      absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
+  void FlattenInto(
+      pybind11::handle handle, absl::InlinedVector<pybind11::object, 2>& leaves,
       absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
 
   // Tests whether the given list is a flat list of leaves.
@@ -144,18 +172,8 @@ class PyTreeDef {
   std::string ToString() const;
 
  private:
-  enum class Kind {
-    kLeaf,        // An opaque leaf node
-    kNone,        // None.
-    kTuple,       // A tuple
-    kNamedTuple,  // A collections.namedtuple
-    kList,        // A list
-    kDict,        // A dict
-    kCustom,      // A custom type.
-  };
-
   struct Node {
-    Kind kind = Kind::kLeaf;
+    PyTreeKind kind = PyTreeKind::kLeaf;
 
     // Arity for non-kLeaf types.
     int arity = 0;
@@ -165,7 +183,7 @@ class PyTreeDef {
     // contains the auxiliary data returned by the `to_iterable` function.
     pybind11::object node_data;
 
-    const CustomNodeRegistry::Registration* custom = nullptr;
+    const PyTreeTypeRegistry::Registration* custom = nullptr;
 
     // Number of leaf nodes in the subtree rooted at this node.
     int num_leaves = 0;
@@ -186,11 +204,17 @@ class PyTreeDef {
   // Recursive helper used to implement FromIterableTree()
   pybind11::object FromIterableTreeHelper(
       pybind11::handle xs,
-      std::vector<PyTreeDef::Node>::const_reverse_iterator* it) const;
+      absl::InlinedVector<PyTreeDef::Node, 1>::const_reverse_iterator* it)
+      const;
 
   // Computes the node kind of a given Python object.
-  static Kind GetKind(const pybind11::handle& obj,
-                      CustomNodeRegistry::Registration const** custom);
+  static PyTreeKind GetKind(const pybind11::handle& obj,
+                            PyTreeTypeRegistry::Registration const** custom);
+
+  template <typename T>
+  void FlattenIntoImpl(
+      pybind11::handle handle, T& leaves,
+      const absl::optional<pybind11::function>& leaf_predicate);
 
   template <typename T>
   pybind11::object UnflattenImpl(T leaves) const;
@@ -198,7 +222,7 @@ class PyTreeDef {
   // Nodes, in a post-order traversal. We use an ordered traversal to minimize
   // allocations, and post-order corresponds to the order we need to rebuild the
   // tree structure.
-  std::vector<Node> traversal_;
+  absl::InlinedVector<Node, 1> traversal_;
 };
 
 template <typename H>

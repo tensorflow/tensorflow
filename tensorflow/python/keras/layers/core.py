@@ -54,6 +54,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
@@ -194,6 +195,9 @@ class Dropout(Layer):
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
+    if isinstance(rate, (int, float)) and not 0 <= rate <= 1:
+      raise ValueError(f'Invalid value {rate} received for '
+                       f'`rate`, expected a value between 0 and 1.')
     self.rate = rate
     if isinstance(rate, (int, float)) and not rate:
       keras_temporary_dropout_rate.get_cell().set(True)
@@ -738,6 +742,8 @@ class RepeatVector(Layer):
   def __init__(self, n, **kwargs):
     super(RepeatVector, self).__init__(**kwargs)
     self.n = n
+    if not isinstance(n, int):
+      raise TypeError(f'Expected an integer value for `n`, got {type(n)}.')
     self.input_spec = InputSpec(ndim=2)
 
   def compute_output_shape(self, input_shape):
@@ -965,7 +971,7 @@ class Lambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def compute_mask(self, inputs, mask=None):
     if callable(self.mask):
@@ -1164,6 +1170,9 @@ class Dense(Layer):
         activity_regularizer=activity_regularizer, **kwargs)
 
     self.units = int(units) if not isinstance(units, int) else units
+    if self.units < 0:
+      raise ValueError(f'Received an invalid value for `units`, expected '
+                       f'a positive integer, got {units}.')
     self.activation = activations.get(activation)
     self.use_bias = use_bias
     self.kernel_initializer = initializers.get(kernel_initializer)
@@ -1441,7 +1450,7 @@ class TFOpLambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def get_config(self):
     if not self.symbol:
@@ -1575,9 +1584,12 @@ class TFSlicingOpDispatcher(dispatch.OpDispatcher):
     else:
       return self.NOT_SUPPORTED
 
-for slicing_op in [array_ops._slice_helper,  # pylint: disable=protected-access
-                   array_ops.boolean_mask,
-                   array_ops.boolean_mask_v2]:
+for slicing_op in [
+    array_ops._slice_helper,  # pylint: disable=protected-access
+    array_ops.boolean_mask,
+    array_ops.boolean_mask_v2,
+    ragged_getitem.ragged_tensor_getitem
+]:
   TFSlicingOpDispatcher(slicing_op).register(slicing_op)
 
 

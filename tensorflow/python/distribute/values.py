@@ -35,6 +35,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
@@ -1029,11 +1030,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
         will be a `SavedVariable` instance.
       options: A `SaveOptions` instance.
     """
+    resource_variable_ops.write_object_proto_for_resource_variable(
+        self, proto, options)
     if self._policy:
       if self._policy._is_mirrored():  # pylint: disable=protected-access
         self._policy._write_object_proto(self, proto, options)  # pylint: disable=protected-access
-    else:
-      self._write_object_proto(proto, options)
 
 
 # We extend from `saveable_object.SaveableObject` instead of
@@ -1153,6 +1154,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
         will be a `SavedVariable` instance.
       options: A `SaveOptions` instance.
     """
+    super(MirroredVariable, self)._write_object_proto(proto, options)
     values_util.write_object_proto(self, proto, options)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
@@ -1279,6 +1281,10 @@ class SyncOnReadVariable(DistributedVariable):
     self._scatter_not_implemented("scatter_update")
 
   def value(self):
+    if ds_context.in_variable_sync_on_read_context():
+      raise NotImplementedError(
+          "call `variable.value()` inside variable_sync_on_read_context is not "
+          "supported")
     if values_util.is_saving_non_distributed():
       return self._primary.value()
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -1290,6 +1296,13 @@ class SyncOnReadVariable(DistributedVariable):
       else:
         # _get_on_device_or_primary() returns a Variable.
         return self._get_on_device_or_primary().value()
+
+  def read_value(self):
+    if ds_context.in_variable_sync_on_read_context():
+      raise NotImplementedError(
+          "call `variable.read_value()` inside variable_sync_on_read_context is"
+          " not supported")
+    return super().read_value()
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
@@ -1328,25 +1341,31 @@ class SyncOnReadVariable(DistributedVariable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
-  def _write_object_proto(self, proto, options):
-    """Update a SavedObject proto for the caller.
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    """Converts a SyncOnReadVariable to a tensor."""
+    if values_util.is_saving_non_distributed():
+      return ops.convert_to_tensor(
+          self._primary, dtype=dtype, name=name, as_ref=as_ref)
+    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+      replica_context = ds_context.get_replica_context()
+      if (replica_context is not None and
+          ds_context.in_variable_sync_on_read_context()):
+        if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          return ops.convert_to_tensor(
+              self._get_replica(0), dtype=dtype, name=name, as_ref=as_ref)
+        if self._aggregation == vs.VariableAggregation.SUM:
+          values_util.mark_as_unsaveable()
+        # pylint: disable=protected-access
+        reduced = (
+            replica_context.strategy.extended._replica_ctx_all_reduce(
+                reduce_util.ReduceOp.from_variable_aggregation(
+                    self._aggregation),
+                self._get().read_value()))
+        return ops.convert_to_tensor(
+            reduced, dtype=dtype, name=name, as_ref=as_ref)
 
-    If a DistributedVariable object supports this method, it will be called when
-    saving with a pre-built `SavedObject` proto representing the object, plus an
-    instance of `SaveOptions`. This method is then free to modify that proto
-    instance.
-
-    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
-    write out information about their components to the
-    `experimental_distributed_variable_components` field of a
-    `SavedVariable` (depending on the `SaveOptions` variable policy).
-
-    Args:
-      proto: A pre-built `SavedObject` proto for this object. It is assumed this
-        will be a `SavedVariable` instance.
-      options: A `SaveOptions` instance.
-    """
-    pass
+      return ops.convert_to_tensor(
+          self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 # Register a conversion functions which reads the value of the variable,

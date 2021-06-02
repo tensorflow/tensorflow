@@ -63,7 +63,7 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
     graph_def = graph_or_graph_def
 
   # gcs does not have the concept of directory at the moment.
-  if not file_io.file_exists(logdir) and not logdir.startswith('gs:'):
+  if not logdir.startswith('gs:'):
     file_io.recursive_create_dir(logdir)
   path = os.path.join(logdir, name)
   if as_text:

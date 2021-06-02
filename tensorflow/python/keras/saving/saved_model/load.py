@@ -344,10 +344,11 @@ class KerasObjectLoader(object):
         if self.loaded_nodes[child_id][0] is not obj_child:
           # This means that the same trackable object is referenced by two
           # different objects that were recreated from the config.
-          logging.warn('Looks like there is an object (perhaps variable or '
-                       'layer) that is shared between different layers/models. '
-                       'This may cause issues when restoring the variable '
-                       'values. Object: {}'.format(obj_child))
+          logging.warning(
+              'Looks like there is an object (perhaps variable or '
+              'layer) that is shared between different layers/models. '
+              'This may cause issues when restoring the variable '
+              'values. Object: {}'.format(obj_child))
         continue
 
       # Overwrite variable names with the ones saved in the SavedModel.
@@ -888,13 +889,16 @@ def _finalize_config_layers(layers):
     # Restore metrics list.
     _restore_layer_metrics(layer)
 
-    # Restore RNN layer states
+    # Restore RNN layer states.
     if (isinstance(layer, recurrent.RNN) and
         layer.stateful and
         hasattr(_get_keras_attr(layer), 'states')):
       layer.states = getattr(_get_keras_attr(layer), 'states', None)
       for variable in nest.flatten(layer.states):
         backend.track_variable(variable)
+
+    # Perform any layer defined finalization of the layer state.
+    layer.finalize_state()
 
 
 def _finalize_metric(metric):

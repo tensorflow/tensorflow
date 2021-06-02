@@ -125,7 +125,7 @@ function install_ubuntu_16_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
+  "${PIP_CMD}" install --user --upgrade 'numpy ~= 1.19.2'
   # Now, install the deps, as listed in setup.py
   "${PIP_CMD}" install --user 'absl-py ~= 0.10'
   "${PIP_CMD}" install --user 'astunparse ~= 1.6.3'
@@ -145,9 +145,9 @@ function install_ubuntu_16_pip_deps {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   "${PIP_CMD}" install --user --upgrade 'tb-nightly ~= 2.4.0.a'
-  "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.4.0'
+  "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.5.0'
   # Test dependencies
-  "${PIP_CMD}" install --user 'grpcio ~= 1.34.0'
+  "${PIP_CMD}" install --user 'grpcio >= 1.37.0, < 2.0'
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
   "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
   # LINT.ThenChange(:mac_pip_installations)
@@ -182,7 +182,7 @@ function install_ubuntu_16_python_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install --user 'numpy ~= 1.19.2'
+  ${PIP_CMD} install --user --upgrade 'numpy ~= 1.19.2'
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install --user 'absl-py ~= 0.10'
   ${PIP_CMD} install --user 'astunparse ~= 1.6.3'
@@ -202,9 +202,9 @@ function install_ubuntu_16_python_pip_deps {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   ${PIP_CMD} install --user --upgrade 'tb-nightly ~= 2.4.0.a'
-  ${PIP_CMD} install --user --upgrade 'tensorflow_estimator ~= 2.4.0'
+  ${PIP_CMD} install --user --upgrade 'tensorflow_estimator ~= 2.5.0'
   # Test dependencies
-  ${PIP_CMD} install --user 'grpcio ~= 1.34.0'
+  ${PIP_CMD} install --user 'grpcio >= 1.37.0, < 2.0'
   ${PIP_CMD} install --user 'portpicker ~= 1.3.1'
   ${PIP_CMD} install --user 'scipy ~= 1.5.2'
   # LINT.ThenChange(:mac_pip_installations)
@@ -225,7 +225,7 @@ function install_macos_pip_deps {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install 'numpy ~= 1.19.2'
+  ${PIP_CMD} install --upgrade 'numpy ~= 1.19.2'
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install 'absl-py ~= 0.10'
   ${PIP_CMD} install 'astunparse ~= 1.6.3'
@@ -245,9 +245,9 @@ function install_macos_pip_deps {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   ${PIP_CMD} install --upgrade 'tb-nightly ~= 2.4.0.a'
-  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.4.0'
+  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.5.0'
   # Test dependencies
-  ${PIP_CMD} install 'grpcio ~= 1.34.0'
+  ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0'
   ${PIP_CMD} install 'portpicker ~= 1.3.1'
   ${PIP_CMD} install 'scipy ~= 1.5.2'
   ${PIP_CMD} install --upgrade certifi
@@ -272,7 +272,7 @@ function install_macos_pip_deps_no_venv {
   # deps depend on numpy without an upper bound, we must install numpy before
   # everything else.
   # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install 'numpy ~= 1.19.2' --user
+  ${PIP_CMD} install --upgrade 'numpy ~= 1.19.2' --user
   # Now, install the deps, as listed in setup.py
   ${PIP_CMD} install 'absl-py ~= 0.10' --user
   ${PIP_CMD} install 'astunparse ~= 1.6.3' --user
@@ -292,9 +292,9 @@ function install_macos_pip_deps_no_venv {
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   ${PIP_CMD} install --upgrade 'tb-nightly ~= 2.4.0.a' --user
-  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.4.0' --user
+  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.5.0' --user
   # Test dependencies
-  ${PIP_CMD} install 'grpcio ~= 1.34.0' --user
+  ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0' --user
   ${PIP_CMD} install 'portpicker ~= 1.3.1' --user
   ${PIP_CMD} install 'scipy ~= 1.5.2' --user
   ${PIP_CMD} install --upgrade certifi --user
@@ -321,7 +321,7 @@ function setup_python_from_pyenv_macos {
     PY_VERSION=$1
   fi
 
-  git clone --branch v1.2.23 https://github.com/pyenv/pyenv.git
+  git clone --branch 1.2.27 https://github.com/pyenv/pyenv.git
 
   PYENV_ROOT="$(pwd)/pyenv"
   export PYENV_ROOT
@@ -434,3 +434,55 @@ function test_xml_summary_exit {
   test_xml_summary
   exit "${RETVAL}"
 }
+
+# CPU size
+MAC_CPU_MAX_WHL_SIZE=190M
+LINUX_CPU_MAX_WHL_SIZE=170M
+WIN_CPU_MAX_WHL_SIZE=170M
+# GPU size
+LINUX_GPU_MAX_WHL_SIZE=450M
+WIN_GPU_MAX_WHL_SIZE=345M
+
+function test_tf_whl_size() {
+  WHL_PATH=${1}
+  # First, list all wheels with their sizes:
+  echo "Found these wheels: "
+  find $WHL_PATH -type f -exec ls -lh {} \;
+  echo "===================="
+  # Check CPU whl size.
+  if [[ "$WHL_PATH" == *"_cpu"* ]]; then
+    # Check MAC CPU whl size.
+    if [[ "$WHL_PATH" == *"-macos"* ]] && [[ $(find $WHL_PATH -type f -size +${MAC_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Mac CPU whl size has exceeded ${MAC_CPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+    # Check Linux CPU whl size.
+    if [[ "$WHL_PATH" == *"-manylinux"* ]] && [[ $(find $WHL_PATH -type f -size +${LINUX_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Linux CPU whl size has exceeded ${LINUX_CPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+    # Check Windows CPU whl size.
+    if [[ "$WHL_PATH" == *"-win"* ]] && [[ $(find $WHL_PATH -type f -size +${WIN_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Windows CPU whl size has exceeded ${WIN_CPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+  # Check GPU whl size
+  elif [[ "$WHL_PATH" == *"_gpu"* ]]; then
+    # Check Linux GPU whl size.
+    if [[ "$WHL_PATH" == *"-manylinux"* ]] && [[ $(find $WHL_PATH -type f -size +${LINUX_GPU_MAX_WHL_SIZE}) ]]; then
+        echo "Linux GPU whl size has exceeded ${LINUX_GPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+    # Check Windows GPU whl size.
+    if [[ "$WHL_PATH" == *"-win"* ]] && [[ $(find $WHL_PATH -type f -size +${WIN_GPU_MAX_WHL_SIZE}) ]]; then
+        echo "Windows GPU whl size has exceeded ${WIN_GPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+  fi
+}
+

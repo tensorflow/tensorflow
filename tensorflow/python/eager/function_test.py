@@ -133,6 +133,7 @@ def dummy_tf_decorator(method):
   return tf_decorator.make_decorator(method, wrapper)
 
 
+# TODO(mdan): Organize these tests.
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -1409,6 +1410,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(f(constant_op.constant(1.0))['name'], 2.0)
 
+  def testWeakrefInputsRejected(self):
+
+    @def_function.function
+    def f(x):
+      return x
+
+    class Dummy:
+      pass
+    o = Dummy()
+    wr = weakref.ref(o)
+
+    with self.assertRaisesRegex(ValueError, 'weakref'):
+      f(wr)
+
   def testTensorConversionWithDefun(self):
 
     @def_function.function
@@ -1751,6 +1766,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       with ops.get_default_graph().as_default():
         create_variable()
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testCallOptionsMemory(self):
+
+    @function.defun
+    def model(x):
+      return x + constant_op.constant(1.)
+
+    # This happens with a lot of option toggles, e.g. soft device placement
+    context.context().function_call_options = None
+    model(constant_op.constant(2.))
+
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testLayerInDefun(self):
     conv = convolutional.Conv2D(
@@ -2021,10 +2047,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return tuple(key[0] for key in total_function_cache(defined))
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('URRRu', (0, 1, 20)), cache_keys())
+    self.assertIn(('UURRRuDu', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('URRRu', (1, 1, 2)), cache_keys())
+    self.assertIn(('UURRRuDu', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
@@ -2032,7 +2058,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(1, 2, 3)
     self.assertLen(total_function_cache(defined), 3)
-    self.assertIn(('URRRu', (1, 2, 3)), cache_keys())
+    self.assertIn(('UURRRuDu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -2089,6 +2115,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     out = defined(b)
     self.assertLen(total_function_cache(defined), 1)
     self.assertAllEqual(out, b)
+
+  def testInputSignatureWithDictInPositionalArgs(self):
+
+    @function.defun
+    def f(*_args, **_kwargs):
+      return None
+
+    f(1, x=2)
+    self.assertLen(total_function_cache(f), 1)
+    f(1, x=2)
+    self.assertLen(total_function_cache(f), 1)
+    f(1, {'x': 2})
+    self.assertLen(total_function_cache(f), 2)
 
   def testInputSignatureWithCompatibleInputs(self):
 

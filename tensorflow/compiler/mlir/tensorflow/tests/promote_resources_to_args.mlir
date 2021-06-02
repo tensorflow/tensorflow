@@ -5,7 +5,8 @@
 func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
-  // CHECK: %[[ADD:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST:[0-9]*]])
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK: %[[ADD:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST]])
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD]])
   // CHECK: return %[[PACK]]
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
@@ -18,12 +19,36 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
 
 // -----
 
+// One resource, one read. _is_initialized is false, shouldn't be promoted.
+// CHECK-LABEL: func @main()
+func @main() -> tensor<f32> {
+  // CHECK: "tf.VarHandleOp"
+  %1 = "tf.VarHandleOp"() {container = "", shared_name = "x", _is_initialized = false} : () -> tensor<!tf.resource<tensor<f32>>>
+  %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+  return %2 : tensor<f32>
+}
+
+// -----
+
+// One resource, one read. _is_initialized is true, should be promoted.
+// CHECK-LABEL: func @main
+// CHECK-SAME: ({{%.+}}: tensor<f32> {tf.resource_name = "x"})
+func @main() -> tensor<f32> {
+  // CHECK-NOT: "tf.VarHandleOp"
+  %1 = "tf.VarHandleOp"() {container = "", shared_name = "x", _is_initialized = true} : () -> tensor<!tf.resource<tensor<f32>>>
+  %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+  return %2 : tensor<f32>
+}
+
+// -----
+
 // One resource, one write. The initial value of the resource is not read.
 // CHECK-LABEL: func @main(%arg0: tensor<i1>) -> (tensor<f32> {tf.resource_name = "x"})
 func @main(%arg0: tensor<i1>) {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.AssignVariableOp"
-  // CHECK: return %[[CONST]]
+  // CHECK: %[[RES:.*]] = "tf.Const"()
+  // CHECK: return %[[RES]]
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
   "tf.AssignVariableOp"(%1, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -37,7 +62,8 @@ func @main(%arg0: tensor<i1>) {
 func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
-  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST:[0-9]*]])
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
+  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST]])
   // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %arg1)
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD2]])
   // CHECK: return %[[PACK]]
@@ -60,7 +86,8 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
 func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
-  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST:[0-9]*]])
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST]])
   // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %arg2)
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD2]])
   // CHECK: return %[[PACK]]
@@ -82,7 +109,8 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
 // CHECK-LABEL: func @main(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.aliasing_output = 1 : i64, tf.resource_name = "x"}) -> (tensor<2xf32>, tensor<f32>)
 func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.AssignVariableOp"
-  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %{{[0-9]*}})
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST]])
   // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %[[ADD1]])
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%arg1, %[[ADD2]])
   // CHECK: return %[[PACK]], %[[ADD1]]
@@ -105,7 +133,7 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
 // CHECK-LABEL: func @main(%arg0: tensor<i1>) -> (tensor<2xf32>, tensor<f32> {tf.resource_name = "x"})
 func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.AssignVariableOp"
-  // CHECK: %[[CONST:[a-z0-9]+]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
   // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%[[CONST]], %[[CONST]])
   // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %[[ADD1]])
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD2]])
@@ -176,7 +204,7 @@ func @main(%arg0: tensor<i1>, %arg1: tensor<!tf.resource<tensor<f32>>>) {
 // CHECK-SAME: %arg1: tensor<i1>
 // CHECK-SAME: -> tensor<f32>
 func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) {
-  // CHECK-NEXT: %[[CONST:[a-z0-9]+]] = "tf.Const"
+  // CHECK-NEXT: %[[CONST:.*]] = "tf.Const"
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[CONST]] : tensor<f32>
@@ -194,7 +222,7 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) {
 func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) {
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
-  // CHECK: %[[CONST:[a-z0-9]+]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
   %1 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[CONST]] : tensor<f32>
@@ -213,7 +241,7 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) {
 func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<f32> {
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
-  // CHECK: %[[CONST:[a-z0-9]+]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
   %1 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[CONST]], %[[CONST]] : tensor<f32>, tensor<f32>
@@ -229,13 +257,13 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) -> tenso
 // CHECK-SAME: %arg1: tensor<i1>
 // CHECK-SAME: -> (tensor<f32>, tensor<f32>)
 func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<f32> {
-  // CHECK-NEXT: %[[CONST_0:[a-z0-9]+]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
+  // CHECK-NEXT: %[[CONST_0:.*]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   %1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
   // CHECK-NEXT: %[[ADD:[a-z0-9]+]] = "tf.AddV2"(%[[CONST_0]], %[[CONST_0]])
   %2 = "tf.AddV2"(%1, %1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK-NEXT: %[[CONST_1:[a-z0-9]+]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
+  // CHECK-NEXT: %[[CONST_1:.*]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
   %3 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[ADD]], %[[CONST_1]] : tensor<f32>, tensor<f32>

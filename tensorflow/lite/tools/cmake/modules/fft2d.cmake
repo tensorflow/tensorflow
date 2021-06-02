@@ -22,7 +22,7 @@ include(OverridableFetchContent)
 OverridableFetchContent_Declare(
   fft2d
   URL https://storage.googleapis.com/mirror.tensorflow.org/www.kurims.kyoto-u.ac.jp/~ooura/fft2d.tgz
-  # TODO: Reference where this comes from.
+  # Sync with tensorflow/workspace2.bzl
   URL_HASH SHA256=ada7e99087c4ed477bfdf11413f2ba8db8a840ba9bbf8ac94f4f3972e2a7cec9
   SOURCE_DIR "${CMAKE_BINARY_DIR}/fft2d"
   LICENSE_FILE "readme2d.txt"

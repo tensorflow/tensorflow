@@ -169,6 +169,37 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
         example=example, got=got, optionflags=doctest.ELLIPSIS)
     self.assertIn("doesn't work if *some* of the", result)
 
+  @parameterized.parameters(
+      ['<...>', ('<...>', False)],
+      ['TensorFlow', ('TensorFlow', False)],
+      [
+          'tf.Variable([[1, 2], [3, 4]])',
+          ('tf.Variable([[1, 2], [3, 4]])', False)
+      ],
+      ['<tf.Tensor: shape=(), dtype=float32, numpy=inf>', ('inf', True)],
+      [
+          '<tf.RaggedTensor:... shape=(2, 2), numpy=1>',
+          ('<tf.RaggedTensor:... shape=(2, 2), numpy=1>', False)
+      ],
+      [
+          """<tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+              array([[2, 2],
+                     [3, 5]], dtype=int32)>""",
+          ('\n              array([[2, 2],\n                     [3, 5]], '
+           'dtype=int32)', True)
+      ],
+      [
+          '[<tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], '
+          'dtype=int32)>, '
+          '<tf.Tensor: shape=(2,), dtype=int32, numpy=array([3, 4], '
+          'dtype=int32)>]',
+          ('[array([1, 2], dtype=int32), array([3, 4], dtype=int32)]', True)
+      ],
+  )
+  def test_tf_tensor_numpy_output(self, string, expected_output):
+    output_checker = tf_doctest_lib.TfDoctestOutputChecker()
+    output = output_checker._tf_tensor_numpy_output(string)
+    self.assertEqual(expected_output, output)
 
 if __name__ == '__main__':
   absltest.main()

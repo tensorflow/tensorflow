@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "third_party/tensorrt/tensorrt_config.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace stream_executor {
 namespace internal {
 
@@ -46,7 +50,7 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   port::Status status =
       port::Env::Default()->LoadDynamicLibrary(filename.c_str(), &dso_handle);
   if (status.ok()) {
-    LOG(INFO) << "Successfully opened dynamic library " << filename;
+    VLOG(1) << "Successfully opened dynamic library " << filename;
     return dso_handle;
   }
 
@@ -133,12 +137,20 @@ port::StatusOr<void*> GetMiopenDsoHandle() {
   return GetDsoHandle("MIOpen", "");
 }
 
-port::StatusOr<void*> GetRocfftDsoHandle() {
+port::StatusOr<void*> GetHipfftDsoHandle() {
+#if TF_ROCM_VERSION < 40100
   return GetDsoHandle("rocfft", "");
+#else
+  return GetDsoHandle("hipfft", "");
+#endif
 }
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
   return GetDsoHandle("rocrand", "");
+}
+
+port::StatusOr<void*> GetRoctracerDsoHandle() {
+  return GetDsoHandle("roctracer64", "");
 }
 
 port::StatusOr<void*> GetHipsparseDsoHandle() {
@@ -210,13 +222,18 @@ port::StatusOr<void*> GetMiopenDsoHandle() {
   return *result;
 }
 
-port::StatusOr<void*> GetRocfftDsoHandle() {
-  static auto result = new auto(DsoLoader::GetRocfftDsoHandle());
+port::StatusOr<void*> GetHipfftDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipfftDsoHandle());
   return *result;
 }
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocrandDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetRoctracerDsoHandle() {
+  static auto result = new auto(DsoLoader::GetRoctracerDsoHandle());
   return *result;
 }
 

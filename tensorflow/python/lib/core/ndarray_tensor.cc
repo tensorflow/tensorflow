@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 
 #include <cstring>
+#include <optional>
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -74,6 +75,13 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
   PyObject* key;
   PyObject* value;
   Py_ssize_t pos = 0;
+
+  // Return an error if the fields attribute is null.
+  // Occurs with an improper conversion attempt to resource.
+  if (descr->fields == nullptr) {
+    return errors::Internal("Unexpected numpy data type");
+  }
+
   if (PyDict_Next(descr->fields, &pos, &key, &value)) {
     // In Python 3, the keys of numpy custom struct types are unicode, unlike
     // Python 2, where the keys are bytes.

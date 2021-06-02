@@ -82,10 +82,7 @@ disables it, and uses the TensorFlow Inference Interface package from JCenter.
 
 Note: Currently, in this build mode, YUV -> RGB is done using a less efficient
 Java implementation, and object tracking is not available in the "TF Detect"
-activity. Setting the build system to `'cmake'` currently only builds
-`libtensorflow_demo.so`, which provides fast YUV -> RGB conversion and object
-tracking, while still acquiring TensorFlow support via the downloaded AAR, so it
-may be a lightweight way to enable these features.
+activity.
 
 For any project that does not include custom low level TensorFlow code, this is
 likely sufficient.
@@ -96,7 +93,7 @@ For details on how to include this JCenter package in your own project see
 ## Building the Demo with TensorFlow from Source
 
 Pick your preferred approach below. At the moment, we have full support for
-Bazel, and partial support for gradle, cmake, make, and Android Studio.
+Bazel, and partial support for gradle and Android Studio.
 
 As a first step for all build types, clone the TensorFlow repo with:
 
@@ -109,9 +106,8 @@ protobuf compilation.
 
 ### Bazel
 
-NOTE: Bazel does not currently support building for Android on Windows. Full
-support for gradle/cmake builds is coming soon, but in the meantime we suggest
-that Windows users download the
+NOTE: Bazel does not currently support building for Android on Windows. In the
+meantime we suggest that Windows users download the
 [prebuilt demo APK](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk)
 instead.
 
@@ -210,8 +206,3 @@ requests, and you should be able to have Android Studio build the demo like any
 other application (it will call out to Bazel to build the native code with the
 NDK).
 
-### CMake
-
-Full CMake support for the demo is coming soon, but for now it is possible to
-build the TensorFlow Android Inference library using
-[tensorflow/tools/android/inference_interface/cmake](../../tools/android/inference_interface/cmake).

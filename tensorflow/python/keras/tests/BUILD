@@ -5,6 +5,8 @@ load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
@@ -13,7 +15,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -75,7 +77,6 @@ tpu_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:training_util",
@@ -84,6 +85,7 @@ tpu_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -375,7 +377,7 @@ tf_py_test(
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
-        "//tensorflow/python/keras/layers:normalization",
+        "//tensorflow/python/keras/layers/normalization",
         "//tensorflow/python/module",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:data_structures",
@@ -425,6 +427,7 @@ tf_py_test(
     name = "tracking_util_with_v1_optimizers_test",
     srcs = ["tracking_util_with_v1_optimizers_test.py"],
     tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
         "notsan",  # b/74395663
     ],
     deps = [

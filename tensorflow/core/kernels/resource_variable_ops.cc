@@ -419,18 +419,15 @@ class AssignVariableOp : public OpKernel {
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(dtype_)));
     if (variable->copy_on_read_mode.load()) {
-      PersistentTensor unused;
-      Tensor* tmp;
       AllocatorAttributes attr;
       attr.set_gpu_compatible(true);
       attr.set_nic_compatible(true);
       OP_REQUIRES_OK(context,
-                     context->allocate_persistent(value.dtype(), value.shape(),
-                                                  &unused, &tmp, attr));
+                     context->allocate_temp(value.dtype(), value.shape(),
+                                            variable->tensor(), attr));
       functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
-      copy_functor(context->eigen_device<Device>(), tmp->flat<T>(),
-                   value.flat<T>());
-      *variable->tensor() = *tmp;
+      copy_functor(context->eigen_device<Device>(),
+                   variable->tensor()->flat<T>(), value.flat<T>());
     } else {
       *variable->tensor() = value;
     }
@@ -498,14 +495,10 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
     // Need to copy, but maybe we can re-use variable's buffer?
     if (!variable->tensor()->RefCountIsOne() ||
         !variable->tensor()->shape().IsSameSize(value.shape())) {
-      PersistentTensor unused;
-      Tensor* tmp;
       // Allocation of DT_VARIANT is always on host.
       attr.set_on_host(true);
-      OP_REQUIRES_OK(context,
-                     context->allocate_persistent(DT_VARIANT, value.shape(),
-                                                  &unused, &tmp, attr));
-      *variable->tensor() = *tmp;
+      OP_REQUIRES_OK(context, context->allocate_temp(DT_VARIANT, value.shape(),
+                                                     variable->tensor(), attr));
     }
 
     const auto elements_in = value.flat<Variant>();
@@ -1048,6 +1041,13 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64>("Tindices"),
                         ResourceScatterUpdateOp<GPUDevice, Variant, int64,
+                                                scatter_op::UpdateOp::ASSIGN>)
+REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .TypeConstraint<int64>("dtype")
+                            .TypeConstraint<int64>("Tindices"),
+                        ResourceScatterUpdateOp<GPUDevice, int64, int64,
                                                 scatter_op::UpdateOp::ASSIGN>)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

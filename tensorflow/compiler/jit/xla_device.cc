@@ -236,7 +236,7 @@ XlaDevice::~XlaDevice() {
   }
 }
 
-xla::StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
+StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
   // We lazily create the client because the platform commits to the
   // details of the host hardware when the client is created, so we
   // don't want to do it until we get a chance to hook the platform up
@@ -289,7 +289,7 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
   return Status::OK();
 }
 
-xla::StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
+StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
 XlaDevice::GetDeviceContextLocked() {
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client, GetOrCreateClient());
   xla::Backend* backend = client->mutable_backend();

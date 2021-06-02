@@ -85,6 +85,11 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
 }
 
 Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
+  // Only collect device traces for RunMetadata.
+  DCHECK_EQ(options_.device_tracer_level(), 1);
+  DCHECK_EQ(options_.host_tracer_level(), 0);
+  DCHECK_EQ(options_.python_tracer_level(), 0);
+
   mutex_lock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
 #if !defined(IS_MOBILE_PLATFORM)
@@ -144,6 +149,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {
+    DCHECK(profiler != nullptr);
     auto start_status = profiler->Start();
     if (!start_status.ok()) {
       LOG(WARNING) << "Encountered error while starting profiler: "

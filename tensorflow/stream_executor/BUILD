@@ -13,7 +13,7 @@ load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -309,6 +309,7 @@ cc_library(
     hdrs = ["device_options.h"],
     deps = [
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings",
     ],
 )
 

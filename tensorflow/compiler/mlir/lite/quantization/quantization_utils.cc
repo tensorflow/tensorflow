@@ -50,6 +50,7 @@ namespace quant {
 
 constexpr double kNearZeroTolerance = 1.0e-6;
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
+using QType = quant::QuantizedType;
 
 const char kQuantTraitAttr[] = "_tfl_quant_trait";
 const absl::string_view QuantTraitValues[] = {"fully_quantizable",
@@ -126,7 +127,7 @@ Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
         static_cast<int64_t>(min.size()) != shape.getDimSize(quant_dim)) {
       return {};
     }
-    // TODO(b/141508873): the quantization dim is set to the last dimension.
+    // The quantization dim is set to the last dimension.
     quantizedEleType = quant::fakeQuantAttrsToType(
         builder.getUnknownLoc(), storage_type_width, quant_dim, effective_mins,
         effective_maxs, narrow_range, converter.expressedType, is_signed);
@@ -456,10 +457,9 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         /*zeroPoint=*/0, storage_type_min, storage_type_max);
   } else {
     llvm::SmallVector<int64_t, 4> zero_points(axis_size, 0);
-    // TODO(b/141508873): Assume the bias is a 1-D tensor, and set the
-    // quantization dim to the last dimension, which is 0. If the bias rank is
-    // larger than 1, this returned quantized type couldn't be used to
-    // quantize the bias.
+    // Assume the bias is a 1-D tensor, and set the quantization dim to the last
+    // dimension, which is 0. If the bias rank is larger than 1, this returned
+    // quantized type couldn't be used to quantize the bias.
     return quant::UniformQuantizedPerAxisType::getChecked(
         builder.getUnknownLoc(),
         /*flags=*/true, storage_type, expressed_type, scales, zero_points,
@@ -811,5 +811,43 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
       result_type.getElementType(), scale, zero_point, storage_min,
       storage_max);
 }
+
+Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc) {
+  auto qtype = QType::getQuantizedElementType(signed_tensor_type);
+  if (!qtype || !qtype.isSigned()) return {};
+
+  int num_bits = qtype.getStorageTypeIntegralWidth();
+  // This is a negative value, and will be applied on zero points and fixed
+  // point ranges.
+  int64_t offset =
+      QType::getDefaultMinimumForInteger(/*isSigned=*/true, num_bits) -
+      QType::getDefaultMinimumForInteger(/*isSigned=*/false, num_bits);
+
+  auto flags = !quant::QuantizationFlags::Signed;
+  QType new_qtype;
+  if (auto uqtype = qtype.dyn_cast<quant::UniformQuantizedType>()) {
+    new_qtype = quant::UniformQuantizedType::getChecked(
+        loc, flags, qtype.getStorageType(), qtype.getExpressedType(),
+        uqtype.getScale(), uqtype.getZeroPoint() - offset,
+        uqtype.getStorageTypeMin() - offset,
+        uqtype.getStorageTypeMax() - offset);
+  } else if (auto aqtype =
+                 qtype.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+    auto zero_points = aqtype.getZeroPoints();
+    llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
+                                                  zero_points.end());
+    for (int i = 0, e = new_zero_points.size(); i != e; ++i) {
+      new_zero_points[i] -= offset;
+    }
+    new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
+        loc, flags, qtype.getStorageType(), qtype.getExpressedType(),
+        aqtype.getScales(), new_zero_points, aqtype.getQuantizedDimension(),
+        aqtype.getStorageTypeMin() - offset,
+        aqtype.getStorageTypeMax() - offset);
+  }
+  return new_qtype.castFromExpressedType(
+      QType::castToExpressedType(signed_tensor_type));
+}
+
 }  // namespace quant
 }  // namespace mlir

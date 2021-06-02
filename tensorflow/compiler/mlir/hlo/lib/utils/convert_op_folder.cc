@@ -27,6 +27,11 @@ namespace hlo {
 mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
                                        mlir::Type new_type) {
   auto old_type = getElementTypeOrSelf(elements);
+  // TODO(kramerb): Add support when MLIR can represent const complex tensors.
+  if (old_type.isa<mlir::ComplexType>() || new_type.isa<mlir::ComplexType>()) {
+    return {};
+  }
+
   size_t bit_width = new_type.isBF16() ? 64 : new_type.getIntOrFloatBitWidth();
 
   if (old_type.isa<mlir::FloatType>()) {

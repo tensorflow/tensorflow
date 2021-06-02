@@ -123,7 +123,7 @@ REGISTER_XLA_OP(Name("XlaConvV2")
                     .CompileTimeConstantInput("rhs_dilation")
                     .CompileTimeConstantInput("feature_group_count")
                     .CompileTimeConstantInput("padding"),
-                XlaConvOp);
+                XlaConvV2Op);
 
 }  // namespace
 }  // namespace tensorflow

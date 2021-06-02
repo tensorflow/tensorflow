@@ -35,6 +35,11 @@ struct MlirToHloConversionOptions {
   //
   // TODO(timshen): Investigate the necessity of having layouts in MHLO.
   bool propagate_layouts = false;
+
+  // Propagate the source and result layouts from mhlo bitcast op into the
+  // backend config for the bitcast. This is required for XLA:GPU backend to
+  // use elemental IR emitters for fused bitcasts without propagating layouts.
+  bool propagate_bitcast_layouts_to_backend_config = false;
 };
 
 // Converts a MLIR module in HLO dialect into a HloModuleProto. If
@@ -72,7 +77,8 @@ llvm::Optional<::xla::XlaOp> CreateXlaOperator(
     mlir::Operation* op,
     llvm::DenseMap<mlir::Value, ::xla::XlaOp>* value_lowering);
 
-mlir::DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op);
+mlir::DenseIntElementsAttr GetLayoutFromMlirHlo(
+    mlir::Operation* op, llvm::StringRef attr_name = "minor_to_major");
 
 }  // namespace mlir
 

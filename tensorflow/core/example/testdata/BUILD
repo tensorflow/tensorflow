@@ -4,7 +4,7 @@ package(
     default_visibility = [
         "//tensorflow/core/example:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(

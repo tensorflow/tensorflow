@@ -5,10 +5,8 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -28,21 +26,18 @@ py_library(
     name = "keras",
     srcs = [
         "__init__.py",
-        "estimator/__init__.py",
         "keras_parameterized.py",
     ],
     srcs_version = "PY3",
     deps = [
         ":backend",
         ":engine",
-        # TODO(scottzhu): Stop exporting the test_utils after removing all
-        # callers that using it.
-        ":testing_utils",
+        ":testing_utils",  # TODO(scottzhu): Stop exporting the test_utils after removing all the callers.
         "//tensorflow/python:training",
-        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
         "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/estimator",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
@@ -89,7 +84,6 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
@@ -99,11 +93,13 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/keras/utils:object_identity",
         "//tensorflow/python/keras/utils:tf_contextlib",
         "//tensorflow/python/keras/utils:tf_inspect",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -212,31 +208,6 @@ py_library(
 )
 
 py_library(
-    name = "initializers",
-    srcs = [
-        "initializers/__init__.py",
-        "initializers/initializers_v1.py",
-        "initializers/initializers_v2.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":backend",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:stateless_random_ops",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python/keras/utils:generic_utils",
-        "//tensorflow/python/keras/utils:tf_inspect",
-        "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_library(
     name = "losses",
     srcs = [
         "losses.py",
@@ -262,7 +233,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
@@ -417,26 +387,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "initializers_test",
-    size = "small",
-    srcs = ["initializers_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":backend",
-        ":combinations",
-        ":initializers",
-        ":models",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python/keras/engine",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "regularizers_test",
     size = "medium",
     srcs = ["regularizers_test.py"],
@@ -469,6 +419,9 @@ tf_py_test(
     size = "small",
     srcs = ["losses_test.py"],
     python_version = "PY3",
+    tags = [
+        "noasan",  # b/186128525
+    ],
     deps = [
         ":backend",
         ":combinations",
@@ -689,19 +642,6 @@ tf_py_test(
 #         ":url_utils",
 #         "//testing/pymocks:matchers",
 #         "//tensorflow/python:client_testlib",
-#     ],
-# )
-#
-# tf_py_test(
-#     name = "gfile_utils_test",
-#     size = "small",
-#     srcs = ["google_utils/gfile_utils_test.py"],
-#     python_version = "PY3",
-#     deps = [
-#         ":keras",
-#         "//testing/pymocks:matchers",
-#         "//tensorflow/python:client_testlib",
-#         "//tensorflow/python:util",
 #     ],
 # )
 # copybara:uncomment_end

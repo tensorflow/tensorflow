@@ -45,15 +45,11 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
              .ok())
       original_node_name_ = name();
   }
-  if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
-                                     &propagate_compile_time_consts_));
-  }
 }
 
 // Populates tensor array gradients for compiled branches, returns whether the
 // set of found tensor array gradients is non-empty.
-static xla::StatusOr<bool> PopulateTensorArrayGradients(
+static StatusOr<bool> PopulateTensorArrayGradients(
     XlaOpKernelContext* ctx, xla::XlaBuilder* b,
     absl::Span<XlaCompiler::Argument> arguments,
     XlaCompiler::CompilationResult* then_result,
@@ -212,35 +208,33 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  if (propagate_compile_time_consts_) {
-    std::vector<bool> then_branch_must_be_const_nodes;
-    const FunctionBody* then_body;
-    std::vector<bool> else_branch_must_be_const_nodes;
-    const FunctionBody* else_body;
-    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
-                                             &then_branch_must_be_const_nodes,
-                                             &then_body));
-    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, else_branch_,
-                                             &else_branch_must_be_const_nodes,
-                                             &else_body));
+  std::vector<bool> then_branch_must_be_const_nodes;
+  const FunctionBody* then_body;
+  std::vector<bool> else_branch_must_be_const_nodes;
+  const FunctionBody* else_body;
+  OP_REQUIRES_OK(
+      ctx, FindMustBeConstNodes(ctx, then_branch_,
+                                &then_branch_must_be_const_nodes, &then_body));
+  OP_REQUIRES_OK(
+      ctx, FindMustBeConstNodes(ctx, else_branch_,
+                                &else_branch_must_be_const_nodes, &else_body));
 
-    auto should_resolve_const = [&](int arg_idx) {
-      XlaCompiler::Argument& arg = arguments[arg_idx];
-      return arg.kind == XlaCompiler::Argument::kParameter &&
-             (then_branch_must_be_const_nodes[then_body->arg_nodes[arg_idx]
-                                                  ->id()] ||
-              else_branch_must_be_const_nodes[else_body->arg_nodes[arg_idx]
-                                                  ->id()]);
-    };
+  auto should_resolve_const = [&](int arg_idx) {
+    XlaCompiler::Argument& arg = arguments[arg_idx];
+    return arg.kind == XlaCompiler::Argument::kParameter &&
+           (then_branch_must_be_const_nodes[then_body->arg_nodes[arg_idx]
+                                                ->id()] ||
+            else_branch_must_be_const_nodes[else_body->arg_nodes[arg_idx]
+                                                ->id()]);
+  };
 
-    // Replaces `kParameter` type args in `arguments` with `kConstant` if
-    // the op input corresponding to that arg is a compile-time const. This
-    // is necessary to propagate compile time consts to ops in the branch
-    // functions.
-    ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
-                                            /*xla_expression_offset=*/1,
-                                            should_resolve_const);
-  }
+  // Replaces `kParameter` type args in `arguments` with `kConstant` if
+  // the op input corresponding to that arg is a compile-time const. This
+  // is necessary to propagate compile time consts to ops in the branch
+  // functions.
+  ConvertCompileTimeConstArgumentsToConst(ctx, &arguments,
+                                          /*xla_expression_offset=*/1,
+                                          should_resolve_const);
 
   // Compile both branches of the conditional.
   XlaCompiler::CompileOptions options;
@@ -257,7 +251,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
                                                 arguments, &else_result));
 
-  xla::StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
+  StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
       ctx, b, absl::MakeSpan(arguments), &then_result, &else_result);
   OP_REQUIRES_OK(ctx, has_tensor_array_gradients.status());
 
@@ -304,7 +298,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   for (int i = 0; i < output_types_.size(); ++i) {
     xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);
     if (VLOG_IS_ON(2)) {
-      xla::StatusOr<xla::Shape> shape = b->GetShape(output_handle);
+      StatusOr<xla::Shape> shape = b->GetShape(output_handle);
       VLOG(2) << "Setting output " << i << " with shape "
               << (shape.ok() ? shape->ToString() : "<unknown>");
     }

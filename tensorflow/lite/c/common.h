@@ -456,8 +456,8 @@ typedef struct TfLiteTensor {
 } TfLiteTensor;
 
 // A structure representing an instance of a node.
-// This structure only exhibits the inputs, outputs and user defined data, not
-// other features like the type.
+// This structure only exhibits the inputs, outputs, user defined data and some
+// node properties (like statefulness), not other features like the type.
 typedef struct TfLiteNode {
   // Inputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* inputs;
@@ -490,6 +490,9 @@ typedef struct TfLiteNode {
   // created by calling `interpreter.ModifyGraphWithDelegate`.
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
+
+  // Whether this op might have side effect (e.g. stateful op).
+  bool might_have_side_effect;
 } TfLiteNode;
 #else   // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.
@@ -640,6 +643,7 @@ typedef struct TfLiteContext {
   // TfLiteDelegates can traverse the current execution plan by iterating
   // through each member of this array and using GetNodeAndRegistration() to
   // access details about a node. i.e.
+  //
   // TfLiteIntArray* execution_plan;
   // TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
   // for (int exec_index = 0; exec_index < execution_plan->size; exec_index++) {
@@ -648,6 +652,28 @@ typedef struct TfLiteContext {
   //    TfLiteRegistration* reg;
   //    context->GetNodeAndRegistration(context, node_index, &node, &reg);
   // }
+  // Note: the memory pointed by '`*execution_plan` is OWNED by TfLite runtime.
+  // Future calls to GetExecutionPlan invalidates earlier outputs. The following
+  // code snippet shows the issue of such an invocation pattern. After calling
+  // CheckNode, subsequent access to `plan_1st` is undefined.
+  //
+  // void CheckNode(const TfLiteNode* node) {
+  //   ...
+  //   TfLiteIntArray* plan_2nd;
+  //   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan_2nd));
+  //   ...
+  // }
+  //
+  // TfLiteIntArray* plan_1st;
+  // TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan_1st));
+  // for (int exec_index = 0; exec_index < plan_1st->size; exec_index++) {
+  //    int node_index = plan_1st->data[exec_index];
+  //    TfLiteNode* node;
+  //    TfLiteRegistration* reg;
+  //    context->GetNodeAndRegistration(context, node_index, &node, &reg);
+  //    CheckNode(node);
+  // }
+  //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus (*GetExecutionPlan)(struct TfLiteContext* context,
                                    TfLiteIntArray** execution_plan);

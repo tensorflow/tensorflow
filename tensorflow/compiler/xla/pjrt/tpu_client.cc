@@ -49,7 +49,7 @@ namespace {
 class TpuDeviceState : public LocalDeviceState {
  public:
   TpuDeviceState(se::StreamExecutor* executor, LocalClient* client,
-                 bool asynchronous);
+                 int max_inflight_computations);
 
   Status ThenMemcpyDeviceToDevice(se::Stream* transfer_stream,
                                   se::Stream* dst_stream,
@@ -58,9 +58,10 @@ class TpuDeviceState : public LocalDeviceState {
 };
 
 TpuDeviceState::TpuDeviceState(se::StreamExecutor* executor,
-                               LocalClient* client, bool asynchronous)
+                               LocalClient* client,
+                               int max_inflight_computations)
     : LocalDeviceState(executor, client, LocalDeviceState::kAsynchronous,
-                       asynchronous,
+                       max_inflight_computations,
                        /*allow_event_reuse=*/false,
                        /*use_callback_stream=*/true) {}
 
@@ -78,7 +79,7 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
  public:
   PjRtTpuClient(LocalClient* client,
                 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-                int task_id);
+                int process_index);
 
   absl::string_view platform_version() const override {
     return platform_version_;
@@ -98,8 +99,10 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
 
 PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
-    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int task_id)
-    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices), task_id,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+    int process_index)
+    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices),
+                               process_index,
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,
                                /*should_stage_host_to_device_transfers=*/false,
@@ -174,7 +177,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
     auto it = core_id_to_device_ordinal.find(core.Id());
     int device_ordinal =
         (it != core_id_to_device_ordinal.end()) ? it->second : -1;
-    int task_id = topology.IdForHost(core.host_coordinates());
+    int process_index = topology.IdForHost(core.host_coordinates());
     const tf_tpu::TpuDimensionsExternal coords = core.chip_coordinates();
     std::array<int, 3> coords_array = {coords.x, coords.y, coords.z};
     std::unique_ptr<LocalDeviceState> local_device_state;
@@ -182,7 +185,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
       local_device_state = std::move(local_device_states[device_ordinal]);
     }
     auto device = absl::make_unique<PjRtTpuDevice>(
-        core, std::move(local_device_state), task_id, coords_array,
+        core, std::move(local_device_state), process_index, coords_array,
         std::string(tf_tpu::TpuVersionEnumToString(topology.version())));
     devices.push_back(std::move(device));
   }
@@ -192,7 +195,7 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
 }  // namespace
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
-    bool asynchronous, absl::Duration init_retry_timeout) {
+    int max_inflight_computations, absl::Duration init_retry_timeout) {
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);
@@ -206,6 +209,14 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   while (true) {
     Status status = platform->Initialize({});
     if (status.ok()) {
+      break;
+    }
+    // TODO(b/165870356): refactor this loop to be
+    // while(!platform->Initialized()) once the Initialized() function works
+    // correctly, and remove this check. The platform may already be initialized
+    // when running internally.
+    if (status.code() == tensorflow::error::ALREADY_EXISTS) {
+      LOG(INFO) << "TpuPlatform already initialized, continuing...";
       break;
     }
     LOG(INFO) << "TPU platform initialization failed: " << status;
@@ -228,16 +239,16 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
-    local_device_states.push_back(
-        absl::make_unique<TpuDeviceState>(executor, client, asynchronous));
+    local_device_states.push_back(absl::make_unique<TpuDeviceState>(
+        executor, client, max_inflight_computations));
   }
 
   TF_ASSIGN_OR_RETURN(auto devices,
                       GetTpuDevices(client, std::move(local_device_states)));
-  int task_id = platform->GetTpuHostLocation().Id();
+  int process_index = platform->GetTpuHostLocation().Id();
 
-  return std::shared_ptr<PjRtClient>(
-      absl::make_unique<PjRtTpuClient>(client, std::move(devices), task_id));
+  return std::shared_ptr<PjRtClient>(absl::make_unique<PjRtTpuClient>(
+      client, std::move(devices), process_index));
 }
 
 }  // namespace xla

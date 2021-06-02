@@ -21,7 +21,6 @@ from __future__ import print_function
 import functools
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1187,7 +1186,8 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
 
     cropped = array_ops.slice(
         image, array_ops.stack([0, offset_height, offset_width, 0]),
-        array_ops.stack([-1, target_height, target_width, -1]))
+        array_ops.stack([array_ops.shape(image)[0], target_height, target_width,
+                         array_ops.shape(image)[3]]))
 
     cropped_shape = [
         None if _is_tensor(i) else i
@@ -3192,96 +3192,22 @@ def decode_image(contents,
     ValueError: On incorrect number of channels.
   """
   with ops.name_scope(name, 'decode_image'):
-    if compat.forward_compatible(2020, 8, 14):
-      channels = 0 if channels is None else channels
-      if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
-        dest_dtype = dtype
-        dtype = dtypes.uint16
-        return convert_image_dtype(gen_image_ops.decode_image(
-            contents=contents,
-            channels=channels,
-            expand_animations=expand_animations,
-            dtype=dtype), dest_dtype)
-      else:
-        return gen_image_ops.decode_image(
-            contents=contents,
-            channels=channels,
-            expand_animations=expand_animations,
-            dtype=dtype)
-
-    if channels not in (None, 0, 1, 3, 4):
-      raise ValueError('channels must be in (None, 0, 1, 3, 4)')
-    substr = string_ops.substr(contents, 0, 3)
-
-    def _bmp():
-      """Decodes a BMP image."""
-      signature = string_ops.substr(contents, 0, 2)
-      # Create assert op to check that bytes are BMP decodable
-      is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
-      decode_msg = 'Unable to decode bytes as JPEG, PNG, GIF, or BMP'
-      assert_decode = control_flow_ops.Assert(is_bmp, [decode_msg])
-      bmp_channels = 0 if channels is None else channels
-      good_channels = math_ops.not_equal(bmp_channels, 1, name='check_channels')
-      channels_msg = ('Channels must be in (None, 0, 3, 4) when decoding BMP '
-                      'images')
-      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
-      with ops.control_dependencies([assert_decode, assert_channels]):
-        return convert_image_dtype(
-            gen_image_ops.decode_bmp(contents, channels=bmp_channels), dtype)
-
-    def _gif():
-      """Decodes a GIF image."""
-      # Create assert to make sure that channels is not set to 1
-      # Already checked above that channels is in (None, 0, 1, 3)
-      gif_channels = 0 if channels is None else channels
-      good_channels = math_ops.logical_and(
-          math_ops.not_equal(gif_channels, 1, name='check_gif_channels'),
-          math_ops.not_equal(gif_channels, 4, name='check_gif_channels'))
-      channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
-      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
-      with ops.control_dependencies([assert_channels]):
-        result = convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
-        if not expand_animations:
-          # For now we decode animated GIFs fully and toss out all but the
-          # first frame when expand_animations is False
-          result = array_ops.gather(result, 0)
-        return result
-
-    def check_gif():
-      # Create assert op to check that bytes are GIF decodable
-      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
-      return control_flow_ops.cond(is_gif, _gif, _bmp, name='cond_gif')
-
-    def _png():
-      """Decodes a PNG image."""
+    channels = 0 if channels is None else channels
+    if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
+      dest_dtype = dtype
+      dtype = dtypes.uint16
       return convert_image_dtype(
-          gen_image_ops.decode_png(
-              contents,
-              channels,
-              dtype=dtypes.uint8 if dtype == dtypes.uint8 else dtypes.uint16),
-          dtype)
-
-    def check_png():
-      """Checks if an image is PNG."""
-      return control_flow_ops.cond(
-          _is_png(contents), _png, check_gif, name='cond_png')
-
-    def _jpeg():
-      """Decodes a jpeg image."""
-      jpeg_channels = 0 if channels is None else channels
-      good_channels = math_ops.not_equal(
-          jpeg_channels, 4, name='check_jpeg_channels')
-      channels_msg = ('Channels must be in (None, 0, 1, 3) when decoding JPEG '
-                      'images')
-      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
-      with ops.control_dependencies([assert_channels]):
-        return convert_image_dtype(
-            gen_image_ops.decode_jpeg(contents, channels), dtype)
-
-    # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
-    # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
-    return control_flow_ops.cond(
-        is_jpeg(contents), _jpeg, check_png, name='cond_jpeg')
+          gen_image_ops.decode_image(
+              contents=contents,
+              channels=channels,
+              expand_animations=expand_animations,
+              dtype=dtype), dest_dtype)
+    else:
+      return gen_image_ops.decode_image(
+          contents=contents,
+          channels=channels,
+          expand_animations=expand_animations,
+          dtype=dtype)
 
 
 @tf_export('image.total_variation')
@@ -3975,8 +3901,8 @@ def rgb_to_yuv(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YUV
   value of the pixels.
   The output is only well defined if the value in images are in [0, 1].
-  There are two ways of representing an image: [0, 255] pixel values range or 
-  [0, 1] (as float) pixel values range. Users need to convert the input image 
+  There are two ways of representing an image: [0, 255] pixel values range or
+  [0, 1] (as float) pixel values range. Users need to convert the input image
   into a float [0, 1] range.
 
   Args:
@@ -5350,40 +5276,30 @@ def non_max_suppression_padded(boxes,
    Raises:
     ValueError: When set pad_to_max_output_size to False for batched input.
   """
-  # if no new arguments are used and no later than 2020/6/23, use the old
-  # version to give us time to fix TFLite conversion after the TF 2.3 release.
-  if (not sorted_input) and \
-      (not canonicalized_coordinates) and \
-      tile_size == 512 and not compat.forward_compatible(2020, 6, 23):
-    return non_max_suppression_padded_v1(
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    if not pad_to_max_output_size:
+      # pad_to_max_output_size may be set to False only when the shape of
+      # boxes is [num_boxes, 4], i.e., a single image. We make best effort to
+      # detect violations at compile time. If `boxes` does not have a static
+      # rank, the check allows computation to proceed.
+      if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
+        raise ValueError("'pad_to_max_output_size' (value {}) must be True for "
+                         'batched input'.format(pad_to_max_output_size))
+    if name is None:
+      name = ''
+    idx, num_valid = non_max_suppression_padded_v2(
         boxes, scores, max_output_size, iou_threshold, score_threshold,
-        pad_to_max_output_size, name)
-  else:
-    with ops.name_scope(name, 'non_max_suppression_padded'):
-      if not pad_to_max_output_size:
-        # pad_to_max_output_size may be set to False only when the shape of
-        # boxes is [num_boxes, 4], i.e., a single image. We make best effort to
-        # detect violations at compile time. If `boxes` does not have a static
-        # rank, the check allows computation to proceed.
-        if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
-          raise ValueError(
-              "'pad_to_max_output_size' (value {}) must be True for "
-              'batched input'.format(pad_to_max_output_size))
-      if name is None:
-        name = ''
-      idx, num_valid = non_max_suppression_padded_v2(
-          boxes, scores, max_output_size, iou_threshold, score_threshold,
-          sorted_input, canonicalized_coordinates, tile_size)
-      # def_function.function seems to lose shape information, so set it here.
-      if not pad_to_max_output_size:
-        idx = idx[0, :num_valid]
-      else:
-        batch_dims = array_ops.concat([
-            array_ops.shape(boxes)[:-2],
-            array_ops.expand_dims(max_output_size, 0)
-        ], 0)
-        idx = array_ops.reshape(idx, batch_dims)
-      return idx, num_valid
+        sorted_input, canonicalized_coordinates, tile_size)
+    # def_function.function seems to lose shape information, so set it here.
+    if not pad_to_max_output_size:
+      idx = idx[0, :num_valid]
+    else:
+      batch_dims = array_ops.concat([
+          array_ops.shape(boxes)[:-2],
+          array_ops.expand_dims(max_output_size, 0)
+      ], 0)
+      idx = array_ops.reshape(idx, batch_dims)
+    return idx, num_valid
 
 
 # TODO(b/158709815): Improve performance regression due to
@@ -5809,17 +5725,17 @@ def generate_bounding_box_proposals(scores,
      `[num_images, height, width, num_achors]` containing scores of
       the boxes for given anchors, can be unsorted.
     bbox_deltas: A 4-D float `Tensor` of shape
-     `[num_images, height, width, 4 x num_anchors]` encoding boxes 
-      with respect to each anchor. Coordinates are given 
+     `[num_images, height, width, 4 x num_anchors]` encoding boxes
+      with respect to each anchor. Coordinates are given
       in the form `[dy, dx, dh, dw]`.
-    image_info: A 2-D float `Tensor` of shape `[num_images, 5]` 
+    image_info: A 2-D float `Tensor` of shape `[num_images, 5]`
       containing image information Height, Width, Scale.
-    anchors: A 2-D float `Tensor` of shape `[num_anchors, 4]` 
+    anchors: A 2-D float `Tensor` of shape `[num_anchors, 4]`
       describing the anchor boxes.
       Boxes are formatted in the form `[y1, x1, y2, x2]`.
     nms_threshold: A scalar float `Tensor` for non-maximal-suppression
       threshold. Defaults to 0.7.
-    pre_nms_topn: A scalar int `Tensor` for the number of 
+    pre_nms_topn: A scalar int `Tensor` for the number of
       top scoring boxes to be used as input. Defaults to 6000.
     min_size: A scalar float `Tensor`. Any box that has a smaller size
       than min_size will be discarded. Defaults to 16.

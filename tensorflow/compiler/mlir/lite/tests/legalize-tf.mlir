@@ -864,6 +864,16 @@ func @pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   // CHECK:  return
 }
 
+func @pad_5D(tensor<2x1x3x1x1xf32>, tensor<5x2xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<2x1x3x1x1xf32>, %arg1: tensor<5x2xi32>):
+  %0 = "tf.Pad"(%arg0, %arg1) : (tensor<2x1x3x1x1xf32>, tensor<5x2xi32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+
+  // CHECK-LABEL: pad_5D
+  // CHECK:  "tfl.pad"(%arg0, %arg1) : (tensor<2x1x3x1x1xf32>, tensor<5x2xi32>) -> tensor<?xf32>
+  // CHECK:  return
+}
+
 func @pow(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x1x1xf32>) -> tensor<2x1x3xf32> {
   %0 = "tf.Pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
   return %0 : tensor<2x1x3xf32>
@@ -892,6 +902,17 @@ func @padv2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 
   // CHECK-LABEL: padv2
   // CHECK:  "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<?xf32>
+  // CHECK:  return
+}
+
+func @padv2_5D(tensor<2x1x3x1x1xf32>, tensor<5x2xi32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<2x1x3x1x1xf32>, %arg1: tensor<5x2xi32>):
+  %cst = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %0 = "tf.PadV2"(%arg0, %arg1, %cst) : (tensor<2x1x3x1x1xf32>, tensor<5x2xi32>, tensor<f32>) -> tensor<? x f32>
+  return %0#0 : tensor<? x f32>
+
+  // CHECK-LABEL: padv2_5D
+  // CHECK:  "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3x1x1xf32>, tensor<5x2xi32>, tensor<f32>) -> tensor<?xf32>
   // CHECK:  return
 }
 
@@ -1269,14 +1290,21 @@ func @strided_slice_non_zero_ellipsis_mask(%arg0: tensor<12x2x2x5xf32>, %arg1: t
   %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
   return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice_non_zero_ellipsis_mask
-  // CHECK-NOT: "tfl.strided_slice"
+  // CHECK:  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 1 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
 }
 
 func @strided_slice_non_zero_new_axis_mask(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
   %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 2 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
   return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice_non_zero_new_axis_mask
-  // CHECK-NOT: "tfl.strided_slice"
+  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 2 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+}
+
+func @strided_slice_big_dims(%arg0: tensor<5x6x7xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>, %arg3: tensor<3xi32>) -> tensor<1x1x5x6x7xf32> {
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
+  return %0 : tensor<1x1x5x6x7xf32>
+  // CHECK-LABEL: strided_slice_big_dims
+  // CHECK: %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
 }
 
 func @slice1Tensor(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {
@@ -1719,11 +1747,35 @@ func @matmul_batchv2(%arg0: tensor<2x10x15xf32>, %arg1: tensor<15x17xf32>) -> te
 // CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x10x15xf32>, tensor<15x17xf32>) -> tensor<2x10x17xf32>
 }
 
+func @matmul_batchv3(%arg0: tensor<2x10x15xf32>, %arg1: tensor<15x17xf32>) -> tensor<2x10x17xf32> {
+  %0 = "tf.BatchMatMulV3"(%arg0, %arg1) {Ta = "tfdtype$DT_FLOAT", Tb = "tfdtype$DT_FLOAT",device = "/device:CPU:0", name = "MatMul", adj_x = false, adj_y = false} :
+(tensor<2x10x15xf32>, tensor<15x17xf32>) -> tensor<2x10x17xf32>
+  return %0 : tensor<2x10x17xf32>
+// CHECK-LABEL: matmul_batchv3
+// CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x10x15xf32>, tensor<15x17xf32>) -> tensor<2x10x17xf32>
+}
+
+func @matmul_batchv3_int8(%arg0: tensor<2x10x15xi8>, %arg1: tensor<15x17xi8>) -> tensor<2x10x17xi32> {
+  %0 = "tf.BatchMatMulV3"(%arg0, %arg1) {Ta = "tfdtype$DT_INT8", Tb = "tfdtype$DT_INT8", Tout = "tfdtype$DT_INT32", device = "/device:CPU:0", name = "MatMul", adj_x = false, adj_y = false} :
+(tensor<2x10x15xi8>, tensor<15x17xi8>) -> tensor<2x10x17xi32>
+  return %0 : tensor<2x10x17xi32>
+// CHECK-LABEL: matmul_batchv3_int8
+// CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x10x15xi8>, tensor<15x17xi8>) -> tensor<2x10x17xi32>
+}
+
 func @matmul_batchv2_unknown_dim(%arg0: tensor<?x10x15xf32>, %arg1: tensor<15x17xf32>) -> tensor<?x10x17xf32> {
   %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", device = "/device:CPU:0", name = "MatMul", adj_x = false, adj_y = false} :
 (tensor<?x10x15xf32>, tensor<15x17xf32>) -> tensor<?x10x17xf32>
   return %0 : tensor<?x10x17xf32>
 // CHECK-LABEL: matmul_batchv2_unknown_dim
+// CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<?x10x15xf32>, tensor<15x17xf32>) -> tensor<?x10x17xf32>
+}
+
+func @matmul_batchv3_unknown_dim(%arg0: tensor<?x10x15xf32>, %arg1: tensor<15x17xf32>) -> tensor<?x10x17xf32> {
+  %0 = "tf.BatchMatMulV3"(%arg0, %arg1) {Ta = "tfdtype$DT_FLOAT", Tb = "tfdtype$DT_FLOAT", device = "/device:CPU:0", name = "MatMul", adj_x = false, adj_y = false} :
+(tensor<?x10x15xf32>, tensor<15x17xf32>) -> tensor<?x10x17xf32>
+  return %0 : tensor<?x10x17xf32>
+// CHECK-LABEL: matmul_batchv3_unknown_dim
 // CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<?x10x15xf32>, tensor<15x17xf32>) -> tensor<?x10x17xf32>
 }
 
@@ -2043,4 +2095,33 @@ func @imag(%arg0: tensor<1 x complex<f64>>) -> tensor<1xf64> {
 // CHECK-LABEL: imag
 // CHECK:  "tfl.imag"(%arg0) : (tensor<1xcomplex<f64>>) -> tensor<1xf64>
 // CHECK:  return
+}
+
+func @all(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+// CHECK-LABEL:all
+// CHECK:  "tfl.reduce_all"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+}
+
+func @all_i64axes(%arg0: tensor<8x16x16xi1>, %arg1: tensor<2xi64>) -> tensor<?xi1> {
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<8x16x16xi1>, tensor<2xi64>) -> tensor<?xi1>
+  return %0 : tensor<?xi1>
+
+  // CHECK-LABEL: all_i64axes
+  // CHECK: %[[V0:.*]] = "tfl.cast"(%arg1) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK: "tfl.reduce_all"(%arg0, %[[V0]]) {keep_dims = false} : (tensor<8x16x16xi1>, tensor<2xi32>) -> tensor<?xi1>
+}
+
+func @quantize_dequantize_v4(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %cst = constant dense<0.0> : tensor<f32>
+  %cst_0 = constant dense<255.0> : tensor<f32>
+  %0 = "tf.QuantizeAndDequantizeV4"(%arg0, %cst, %cst_0) : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+
+// CHECK-LABEL: quantize_dequantize_v4
+// CHECK:  %[[QUANT:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<?x?x!quant.uniform<u8:f32, 1.000000e+00>>} : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK:  %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<?x?x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<?x?xf32>
+// CHECK:  return %[[DEQUANT]]
 }

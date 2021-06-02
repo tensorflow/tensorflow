@@ -52,7 +52,8 @@ bool IsRootIteratorEvent(const XEventVisitor& iterator_event) {
 bool IsAsyncIterator(absl::string_view iterator_event_name) {
   static auto* kAsyncIterators = new absl::flat_hash_set<absl::string_view>(
       {"Prefetch", "ParallelInterleave", "ParallelMap", "ParseExample",
-       "MapAndBatch", "DataService", "LegacyParallelInterleave"});
+       "MapAndBatch", "DataService", "LegacyParallelInterleave",
+       "ParallelBatch"});
   return kAsyncIterators->contains(iterator_event_name);
 }
 

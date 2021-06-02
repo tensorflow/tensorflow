@@ -12,16 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/data/service/task_runner.h"
 
+#include <memory>
+#include <vector>
+
+#include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
@@ -49,7 +55,6 @@ int64 StandaloneTaskIterator::Cardinality() const {
 
 Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
                           const TaskDef& task_def,
-                          CancellationManager& cancellation_manager,
                           std::unique_ptr<TaskIterator> iterator,
                           std::unique_ptr<TaskRunner>& out) {
   if (task_def.optional_num_consumers_case() == TaskDef::kNumConsumers) {
@@ -62,9 +67,9 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
           cardinality,
           ". Consider adding a `.repeat()` transformation to the dataset.");
     }
-    out = absl::make_unique<RoundRobinTaskRunner>(
-        std::move(iterator), task_def.num_consumers(),
-        task_def.worker_address(), cancellation_manager);
+    out = absl::make_unique<RoundRobinTaskRunner>(std::move(iterator),
+                                                  task_def.num_consumers(),
+                                                  task_def.worker_address());
   } else {
     out =
         absl::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
@@ -74,10 +79,41 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
 
 FirstComeFirstServedTaskRunner::FirstComeFirstServedTaskRunner(
     std::unique_ptr<TaskIterator> iterator)
-    : iterator_(std::move(iterator)) {}
+    : iterator_(std::move(iterator)), buffer_(/*buffer_size=*/1) {
+  RunPrefetchThread();
+}
+
+FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
                                                GetElementResult& result) {
+  TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
+  return Status::OK();
+}
+
+Status FirstComeFirstServedTaskRunner::PrefetchFn() {
+  while (true) {
+    TF_RETURN_IF_ERROR(buffer_.Push(GetNextFromInputIterator()));
+  }
+  return Status::OK();
+}
+
+void FirstComeFirstServedTaskRunner::RunPrefetchThread() {
+  auto prefetch_fn = [this] {
+    Status status = PrefetchFn();
+    if (!status.ok()) {
+      buffer_.Cancel(status);
+    }
+  };
+  prefetch_thread_ = absl::WrapUnique(Env::Default()->StartThread(
+      /*thread_options=*/{}, /*name=*/"tf_data_service_fcfs_prefetch_thread",
+      prefetch_fn));
+}
+
+StatusOr<GetElementResult>
+FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
+    TF_LOCKS_EXCLUDED(mu_) {
+  GetElementResult result;
   std::vector<Tensor> element;
   bool end_of_task;
   result.skip = false;
@@ -90,35 +126,23 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
   if (!end_of_task) {
     result.components = std::move(element);
   }
-  return Status::OK();
+  return result;
+}
+
+void FirstComeFirstServedTaskRunner::Cancel() {
+  VLOG(2) << "Cancelling tf.data service FCFS task.";
+  buffer_.Cancel(errors::Cancelled("tf.data service FCFS task is cancelled."));
 }
 
 RoundRobinTaskRunner::RoundRobinTaskRunner(
     std::unique_ptr<TaskIterator> iterator, int64 num_consumers,
-    string worker_address, CancellationManager& cancellation_manager)
+    string worker_address)
     : num_consumers_(num_consumers),
       worker_address_(worker_address),
       buffer_(num_consumers_),
       prefetch_thread_(std::move(iterator), num_consumers_) {
   VLOG(1) << "Creating task runner for distributing data round-robin to "
           << num_consumers << " consumers";
-  Status s = RegisterCancellationCallback(
-      &cancellation_manager,
-      [&] {
-        mutex_lock l(mu_);
-        LOG(INFO) << "Cancelling task runner";
-        cancelled_ = true;
-        new_round_cv_.notify_all();
-      },
-      &deregister_cancel_callback_);
-  if (!s.ok()) {
-    mutex_lock l(mu_);
-    cancelled_ = true;
-  }
-}
-
-RoundRobinTaskRunner::~RoundRobinTaskRunner() {
-  if (deregister_cancel_callback_) deregister_cancel_callback_();
 }
 
 Status RoundRobinTaskRunner::ValidateRequest(const GetElementRequest& req) {
@@ -235,6 +259,12 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
   }
   result.components = std::move(element);
   return Status::OK();
+}
+
+void RoundRobinTaskRunner::Cancel() {
+  mutex_lock l(mu_);
+  cancelled_ = true;
+  new_round_cv_.notify_all();
 }
 
 PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,

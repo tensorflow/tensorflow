@@ -2990,7 +2990,7 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
                     input_dims->end());
   // Reshape tensor.
   nvinfer1::Dims new_dims;
-  VLOG(2) << "input_dims" << input_dims;
+  VLOG(2) << "input_dims: " << input_dims;
   TF_RETURN_IF_ERROR(ContainerToTrtDims(*input_dims, &new_dims));
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, TRT_TensorOrWeights(input), new_dims,
@@ -5117,6 +5117,13 @@ Status ConvertSplitHelper(OpConverterParams* params,
   int trt_axis;
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
                                  params->use_implicit_batch, &trt_axis));
+
+  if (dims.d[trt_axis] < 0) {
+    return errors::InvalidArgument(
+        "Dimension ", tf_axis, " must have statically defined dimensions, at ",
+        node_def.name());
+  }
+
   // Dimension must equal num_splits for Unstack (when squeeze_after is true)
   if (squeeze_after && dims.d[trt_axis] != num_splits) {
     return errors::InvalidArgument(
@@ -5127,7 +5134,7 @@ Status ConvertSplitHelper(OpConverterParams* params,
   if (dims.d[trt_axis] % num_splits != 0) {
     return errors::InvalidArgument(
         "Dimension ", tf_axis, " of size ", dims.d[trt_axis],
-        " is not evenly divisble by ", num_splits, ", at ", node_def.name());
+        " is not evenly divisible by ", num_splits, ", at ", node_def.name());
   }
 
   // Create parameters for StridedSliceHelper.
@@ -5135,33 +5142,59 @@ Status ConvertSplitHelper(OpConverterParams* params,
   // will change.
   std::vector<int> begin(dims.nbDims, 0);
   // Determine size of split. Slice will get the full length of all dims, except
-  // the one being split.
+  // the one being split. Undefined dims (-1) will translate to a size of -1
+  // which will tell StridedSlice to take full length of that dim.
   std::vector<int> size(dims.d, dims.d + dims.nbDims);
   const int split_size_on_axis = dims.d[trt_axis] / num_splits;
   size[trt_axis] = split_size_on_axis;
   // Stride will always be 1
   std::vector<int> stride(dims.nbDims, 1);
   // Add dummy batch dimension
-  begin.insert(begin.begin(), 0);
-  size.insert(size.begin(), 1);
-  stride.insert(stride.begin(), 1);
+  if (params->use_implicit_batch) {
+    begin.insert(begin.begin(), 0);
+    size.insert(size.begin(), 1);
+    stride.insert(stride.begin(), 1);
+  }
   // Create final shape for Unpack/Unstack, where split axis is squeezed.
   nvinfer1::Dims final_shape_for_unpack;
   nvinfer1::Dims* final_shape_for_unpack_ptr = nullptr;
-  if (squeeze_after) {
+
+  // We can't use final_shape_for_unpack_ptr when input dimensions are not
+  // fully defined.
+  const bool is_dynamic_shape = !HasStaticShape(dims);
+  if (squeeze_after && !is_dynamic_shape) {
     std::vector<int> size_after_squeeze(size);
-    size_after_squeeze.erase(size_after_squeeze.begin() + trt_axis + 1);
-    TF_RETURN_IF_ERROR(ContainerToTrtDims(
-        size_after_squeeze, &final_shape_for_unpack, /*ignore_frst_dim=*/true));
+    const int tf_axis = trt_axis + (params->use_implicit_batch ? 1 : 0);
+    size_after_squeeze.erase(size_after_squeeze.begin() + tf_axis);
+    TF_RETURN_IF_ERROR(ContainerToTrtDims(size_after_squeeze,
+                                          &final_shape_for_unpack,
+                                          /*ignore_first_dim=*/
+                                          params->use_implicit_batch));
     final_shape_for_unpack_ptr = &final_shape_for_unpack;
   }
 
   // Slice the input. ConvertStridedSliceHelper will push the outputs onto
   // params->outputs.
   for (int i = 0; i < num_splits; ++i) {
-    begin[trt_axis + 1] = i * split_size_on_axis;
+    const int tf_axis = trt_axis + (params->use_implicit_batch ? 1 : 0);
+    begin[tf_axis] = i * split_size_on_axis;
     TF_RETURN_IF_ERROR(ConvertStridedSliceHelper(
-        params, input, begin, size, stride, final_shape_for_unpack_ptr, i));
+        params, input, begin, size, stride, final_shape_for_unpack_ptr,
+        /*op_instance=*/i));
+  }
+  if (params->validation_only) return Status::OK();
+
+  // Squeeze for dynamic shapes
+  if (squeeze_after && is_dynamic_shape) {
+    for (int i = 0; i < params->outputs->size(); i++) {
+      nvinfer1::ITensor* output_tensor = nullptr;
+      std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+      input_dims[trt_axis] = 0;
+      TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
+          params->outputs->at(i).tensor(), &input_dims, params,
+          &output_tensor));
+      (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
+    }
   }
   return Status::OK();
 }
@@ -7255,7 +7288,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["TopKV2"] = ConvertTopK;
   (*registration)["Transpose"] = ConvertTranspose;
   (*registration)["Unpack"] = ConvertUnpack;
-
+  (*registration)["_CopyFromHostToGpu"] = ConvertIdentity;
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
         "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxArgs"}) {
@@ -7516,6 +7549,11 @@ Status ConvertSegmentToGraphDef(
     }
   }  // for each connection.
 
+  std::set<string> subgraph_node_names;
+  for (const Node* node : subgraph_nodes) {
+    subgraph_node_names.insert(node->name());
+  }
+
   std::unordered_map<int, int> old_to_new_id_map;
   // Copy internal nodes to new graphdef
   string local_scope = subgraph_nodes.front()->name();
@@ -7524,6 +7562,27 @@ Status ConvertSegmentToGraphDef(
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
     *snode = node->def();
+    if (snode->op() == "Shape") {
+      const std::string copy_op_name = snode->name();
+      std::string shape_op_name = copy_op_name + "_cpu_result";
+
+      // Add a node to copy the Shape OP output to GPU. Use the Shape OP node
+      // name for this new node so that users switch to use the result of this
+      // new node without having to change the name of the value they use.
+      NodeDef* copy_op = segment_def->add_node();
+      copy_op->set_name(copy_op_name);
+      copy_op->set_op("_CopyFromHostToGpu");
+      *copy_op->add_input() = shape_op_name + ":0";
+      tensorflow::DataType type = snode->attr().at("out_type").type();
+      AddNodeAttr("T", type, copy_op);
+      AddNodeAttr("out_type", type, copy_op);
+
+      // Rename the Shape OP node and add the new name to the set of node names
+      // for the engine.
+      snode->set_name(shape_op_name);
+      subgraph_node_names.insert(shape_op_name);
+      VLOG(2) << "Add copy node " << copy_op->DebugString();
+    }
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
@@ -7538,10 +7597,6 @@ Status ConvertSegmentToGraphDef(
             << " from " << snode->input(connection.inside_port) << " to "
             << arg_name;
     snode->set_input(connection.inside_port, arg_name);
-  }
-  std::set<string> subgraph_node_names;
-  for (const Node* node : subgraph_nodes) {
-    subgraph_node_names.insert(node->name());
   }
 
   // Remove control inputs that are not inside the segment.

@@ -60,6 +60,10 @@ class InterpreterTest : public ::testing::Test {
     interpreter_.SetSignatureDef({signature});
   }
 
+  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan) {
+    return interpreter_.SetExecutionPlan(new_plan);
+  }
+
   Interpreter interpreter_;
 };
 

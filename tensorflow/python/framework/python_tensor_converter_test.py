@@ -23,8 +23,8 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.python import _pywrap_python_tensor_converter
 from tensorflow.python.eager import context
+from tensorflow.python.framework import _pywrap_python_tensor_converter
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices

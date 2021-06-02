@@ -109,7 +109,8 @@ log.innerHTML = "<pre>" + data[row][col]  + "</pre>";
   for idx, (params, vals) in enumerate(reports):
     fp.write("<tr>\n")
     for p in param_keys:
-      fp.write("  <td>%s</td>\n" % html.escape(repr(params[p]), quote=True))
+      fp.write("  <td>%s</td>\n" %
+               html.escape(repr(params.get(p, None)), quote=True))
 
     result_cell(vals["tf"], idx, 0)
     result_cell(vals["converter"], idx, 1)

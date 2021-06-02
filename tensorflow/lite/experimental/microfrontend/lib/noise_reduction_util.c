@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/noise_reduction_util.h"
 
-#include <stdio.h>
+#include <string.h>
+
+#include "tensorflow/lite/experimental/microfrontend/lib/fprintf_shim.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
 
 void NoiseReductionFillConfigWithDefaults(struct NoiseReductionConfig* config) {
   config->smoothing_bits = 10;
@@ -32,14 +35,16 @@ int NoiseReductionPopulateState(const struct NoiseReductionConfig* config,
   state->min_signal_remaining =
       config->min_signal_remaining * (1 << kNoiseReductionBits);
   state->num_channels = num_channels;
-  state->estimate = calloc(state->num_channels, sizeof(*state->estimate));
+  state->estimate =
+      microfrontend_alloc(state->num_channels * sizeof(*state->estimate));
+  memset(state->estimate, 0, (state->num_channels * sizeof(*state->estimate)));
   if (state->estimate == NULL) {
-    fprintf(stderr, "Failed to alloc estimate buffer\n");
+    MICROFRONTEND_FPRINTF(stderr, "Failed to alloc estimate buffer\n");
     return 0;
   }
   return 1;
 }
 
 void NoiseReductionFreeStateContents(struct NoiseReductionState* state) {
-  free(state->estimate);
+  microfrontend_free(state->estimate);
 }

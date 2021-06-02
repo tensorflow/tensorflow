@@ -1,6 +1,8 @@
 path: "tensorflow.__internal__.function.Function"
 tf_class {
   is_instance: "<class \'tensorflow.python.eager.def_function.Function\'>"
+  is_instance: "<class \'tensorflow.python.types.core.GenericFunction\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "function_spec"

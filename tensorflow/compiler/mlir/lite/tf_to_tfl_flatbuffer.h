@@ -42,7 +42,8 @@ LoadFromGraphdefOrMlirSource(
     const GraphImportConfig& specs, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
+    absl::string_view control_output_arrays, llvm::SourceMgr* source_mgr,
+    mlir::MLIRContext* context);
 
 // Load Saved model (either v1 or v2) into MLIR.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(

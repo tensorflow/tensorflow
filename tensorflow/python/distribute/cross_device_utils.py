@@ -530,45 +530,47 @@ class CollectiveReplicaLauncher(object):
     # IndexedSlices as follows:
     #   1. Gather the lengths of IndexedSlices from all participants.
     #   2. If they have consistent length, apply all_gather.
-    #   3. Otherwise convert IndexedSlices to dense tensors and apply
-    #      all_reduce.
+    #   3. Otherwise pad IndexedSlices to be the same length accross all
+    #      participants and apply_gather.
     with ops.device(self._device):
 
-      def all_gather():
-        """Use all_gather to aggregate `IndexedSlices`."""
-        all_values = self._all_gather(
+      def all_gather_indexed_slices(all_gather_fn):
+        """Use all_gather_fn to aggregate `IndexedSlices`."""
+        all_values = all_gather_fn(
             input_slices.values, communication_hint, timeout=timeout)
         # Add control dependency to order the all-gather.
         control = [all_values] if communication_hint == 'NCCL' else []
         with ops.control_dependencies(control):
-          all_indices = self._all_gather(
+          all_indices = all_gather_fn(
               input_slices.indices, communication_hint, timeout=timeout)
         return ops.IndexedSlices(
             values=all_values,
             indices=all_indices,
             dense_shape=input_slices.dense_shape)
 
-      def densify_and_all_reduce():
-        """Use all_reduce to aggregate `IndexedSlices`."""
-        densified = ops.convert_to_tensor(input_slices)
-        reduced = self.all_reduce(
-            densified, communication_hint=communication_hint, timeout=timeout)
-        # We have to convert dense grad to IndexedSlice because all_reduce()
-        # and all_gather() must have the same return type as required by
-        # control_flow_ops.cond.
-        return ops.IndexedSlices(
-            values=reduced,
-            indices=math_ops.range(array_ops.shape(reduced)[0]),
-            dense_shape=input_slices.dense_shape)
-
       length = array_ops.shape(input_slices.indices)
       all_lengths = self._all_gather(
           length, communication_hint, timeout=timeout)
+
+      def all_gather_with_padding(input_tensor, communication_hint, timeout):
+        """all_gather tensors of different sizes using padding."""
+        max_length = math_ops.reduce_max(all_lengths)
+        padded_tensor = _pad_util(input_tensor, max_length)
+        all_padded_tensors = self._all_gather(
+            padded_tensor, communication_hint, timeout=timeout)
+        split_tensors = []
+        for i in range(self._group_size):
+          start_pos = i * max_length
+          split_tensors.append(all_padded_tensors[start_pos:start_pos +
+                                                  all_lengths[i]])
+        return array_ops.concat(split_tensors, 0)
+
       return control_flow_ops.cond(
           math_ops.equal(
               math_ops.reduce_max(all_lengths),
-              math_ops.reduce_min(all_lengths)), all_gather,
-          densify_and_all_reduce)
+              math_ops.reduce_min(all_lengths)),
+          lambda: all_gather_indexed_slices(self._all_gather),
+          lambda: all_gather_indexed_slices(all_gather_with_padding))
 
 
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):

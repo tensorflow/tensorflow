@@ -20,7 +20,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # TODO(bmzhao): Refactor this target to use granular dependencies
@@ -97,6 +97,7 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
 )
 
 tf_proto_library(

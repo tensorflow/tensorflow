@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
@@ -97,10 +98,16 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
+bool AllocationShouldLowerToTypedArg(const BufferAllocation* alloc) {
+  return alloc->is_entry_computation_parameter() && !alloc->maybe_live_out();
+}
+
+}  // namespace
+
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the
 // given platform.
-Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
-                     StringRef platform_name) {
+Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
+                                    ModuleOp module, StringRef platform_name) {
   auto platform = xla::se::MultiPlatformManager::PlatformWithName(
       StringRefToView(platform_name));
   if (!platform.ok()) {
@@ -141,7 +148,6 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   // conversion.
   module.getBody()->clear();
   OpBuilder builder(module);
-  module.ensureTerminator(module.getBodyRegion(), builder, module.getLoc());
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       HloToLhloModule(*assignment, *optimized_hlo_module, module),
@@ -150,6 +156,7 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   return Status::OK();
 }
 
+namespace {
 // This pass takes an MLIR HLO module, converts it to XLA to perform the HLO
 // optimization pipeline for the required platform, and then converts it back to
 // MLIR LHLO.
@@ -189,7 +196,8 @@ class XlaHloToLhloPass
       std::unique_ptr<HloModule> hlo_module =
           std::move(statusOrHloModule.ValueOrDie());
 
-      return ConvertModule(std::move(hlo_module), module, platform_);
+      return OptimizeAndConvertHloToLmhlo(std::move(hlo_module), module,
+                                          platform_);
     }();
     if (!status.ok()) {
       module.emitError() << status.ToString();
@@ -252,7 +260,15 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kAbs:
       return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
-      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+      // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
+      // AddOps on i1 are just addition with overflow; so, we have to implement
+      // the special behavior of HLO add ops on PRED here by creating an OrOp
+      // instead.
+      if (instr->shape().element_type() == xla::PRED) {
+        return CreateOpWithoutAttrs<lmhlo::OrOp>(instr);
+      } else {
+        return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+      }
     case HloOpcode::kAddDependency:
       return nullptr;
     case HloOpcode::kAfterAll:
@@ -456,11 +472,6 @@ Status WalkTuplePostOrder(Value v,
   return visitor(v);
 }
 
-// This function removes all uses of a fused region argument, and rewire those
-// uses to a `tensor_load %memref`, where %memref is caller argument.
-//
-// It also flattens all input/output tuples into more region arguments /
-// results.
 StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
     const HloInstruction* root, const Shape& shape,
     xla::ShapeIndex* shape_index, OpBuilder* b, Location loc) {
@@ -489,6 +500,22 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
   return load.getResult();
 }
 
+// Emit a lmhlo.fusion based on XLA HLO fusion. Structurally they are not neatly
+// equivalent. Specifically, XLA HLO fusion:
+//     fused_computation {
+//       %p0 = parameter(0)
+//       %p1 = parameter(1)
+//       ...
+//       ROOT %ret = ...
+//     }
+// will be converted to
+//     lmhlo.fusion() {  // no explicit operands
+//       // capturing outside buffers
+//       %p0 = tensor_load(%arg0) : memref<...> -> tensor<...>
+//       %p1 = tensor_load(%arg1) : memref<...> -> tensor<...>
+//       ...
+//       tensor_store ..., %ret // store a tensor to a memref
+//     }
 StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     const HloInstruction* instr) {
   Location loc = getLocation(instr);
@@ -1001,7 +1028,11 @@ StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     // the allocated buffer slice for this constant if need be.
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         assignment_.GetUniqueTopLevelSlice(instr));
-    global_var->setAttr("lmhlo.alloc", builder_.getIndexAttr(slice.index()));
+    global_var->setAttr(
+        "lmhlo.alloc",
+        builder_.getIndexAttr(allocations_.find(slice.allocation())
+                                  ->second.cast<BlockArgument>()
+                                  .getArgNumber()));
     TF_RET_CHECK(slice.offset() == 0)
         << "Each constant should have its own allocation from BufferAssignment";
     TF_RET_CHECK(slice.allocation()->size() == slice.size())
@@ -1510,39 +1541,42 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       assignment_.GetUniqueSlice(instr, shape_index));
   Value alloc = allocations_[slice.allocation()];
-  if (alloc.getType() == out_type && slice.offset() == 0) {
-    return cached_value = alloc;
-  }
-
-  auto out_memref_type = out_type.dyn_cast<MemRefType>();
-  if (!out_memref_type)
-    return tensorflow::errors::Internal(
-        "Expected memref type when creating a view for leaf type of a "
-        "tuple.");
-
-  Value byte_shift =
-      builder_.create<ConstantIndexOp>(alloc.getLoc(), slice.offset());
-
-  xla::Shape physical_shape =
-      xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          static_shape);
-  TF_ASSIGN_OR_RETURN(
-      Type physical_out_type,
-      xla::ConvertShapeToType<MemRefType>(physical_shape, builder_));
 
   // TODO(timshen): revisit location handling.
   Location loc = builder_.getUnknownLoc();
 
-  // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp produce
-  // the physical shape (where dimensions are ordered in major to minor) first,
-  // then follow up with a MemRefReinterpretCast to cast the resulting memref to
-  // the original layout.
-  Value result =
-      builder_.create<memref::ViewOp>(loc, physical_out_type, alloc, byte_shift,
-                                      /*sizes=*/ValueRange{});
-  if (physical_out_type != out_type) {
+  Value result;
+  if (AllocationShouldLowerToTypedArg(slice.allocation())) {
+    TF_RET_CHECK(slice.offset() == 0);
+    TF_RET_CHECK(slice.size() == slice.allocation()->size());
+    result = alloc;
+  } else {
+    Value byte_shift =
+        builder_.create<ConstantIndexOp>(alloc.getLoc(), slice.offset());
+
+    xla::Shape physical_shape =
+        xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            static_shape);
+    TF_ASSIGN_OR_RETURN(
+        Type physical_out_type,
+        xla::ConvertShapeToType<MemRefType>(physical_shape, builder_));
+
+    // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp
+    // produce the physical shape (where dimensions are ordered in major to
+    // minor) first, then follow up with a MemRefReinterpretCast to cast the
+    // resulting memref to the original layout.
+    result = builder_.create<memref::ViewOp>(loc, physical_out_type, alloc,
+                                             byte_shift,
+                                             /*sizes=*/ValueRange{});
+  }
+  if (result.getType() != out_type) {
     int64_t out_offset;
     SmallVector<int64_t, 4> out_strides;
+    auto out_memref_type = out_type.dyn_cast<MemRefType>();
+    if (!out_memref_type)
+      return tensorflow::errors::Internal(
+          "Expected memref type when creating a view for leaf type of a "
+          "tuple.");
     if (failed(getStridesAndOffset(out_memref_type, out_strides, out_offset)))
       return tensorflow::errors::Internal(
           "Failed to get strides and offset from the output type.");
@@ -1604,6 +1638,8 @@ Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
 }
 
 Status LhloDialectEmitter::Initialize() {
+  TF_RET_CHECK(computation_.IsEntryComputation());
+
   mlir::IntegerAttr unique_id =
       builder_.getI32IntegerAttr(computation_.parent()->unique_id());
   module_->setAttr("hlo.unique_id", unique_id);
@@ -1614,6 +1650,15 @@ Status LhloDialectEmitter::Initialize() {
   // buffer allocation and update the type then.
   auto func_op = FuncOp::create(builder_.getUnknownLoc(), function_name,
                                 builder_.getFunctionType({}, {}));
+
+  {
+    // This is an optional attribute used by the XLA backend. If the resulting
+    // LMHLO doesn't go through XLA, this is not needed.
+    const Shape& shape = computation_.root_instruction()->shape();
+    func_op->setAttr(
+        "result_xla_shape",
+        builder_.getStringAttr(shape.ToString(/*print_layout=*/true)));
+  }
   Block* block = func_op.addEntryBlock();
 
   llvm::SmallVector<const BufferAllocation*, 8> ordered_allocations;
@@ -1650,41 +1695,99 @@ Status LhloDialectEmitter::Initialize() {
                      allocation_comparator);
   }
 
+  absl::flat_hash_map<const BufferAllocation*,
+                      std::pair<const Shape*, xla::ShapeIndex>>
+      allocation_to_output_info;
+  TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
+      computation_.root_instruction()->shape(),
+      [&](const Shape& sub_shape, xla::ShapeIndex index) -> Status {
+        TF_ASSIGN_OR_RETURN(
+            auto slice,
+            assignment_.GetUniqueSlice(computation_.root_instruction(), index));
+        const BufferAllocation* alloc = slice.allocation();
+        TF_RET_CHECK(slice.offset() == 0);
+        TF_RET_CHECK(slice.size() == alloc->size());
+        allocation_to_output_info[alloc] = std::make_pair(&sub_shape, index);
+        return Status::OK();
+      }));
+
   // The function signature will be composed of:
   // - one memref for each of the parameters.
   // - one memref for each other buffer allocation.
   llvm::SmallVector<DictionaryAttr, 8> args_attrs;
   for (const BufferAllocation* alloc : ordered_allocations) {
-    if (computation_.IsEntryComputation() &&
-        alloc->is_entry_computation_parameter()) {
-      const xla::Shape& buffer_shape = xla::ShapeUtil::GetSubshape(
+    if (alloc->is_thread_local()) {
+      continue;
+    }
+
+    // There are optional attributes to help the program run through XLA. XLA
+    // defines ExecutionInput and ExecutionOutput structures to carry
+    // input-output type and buffer information, therefore any information they
+    // need (mainly the type structure, potentially containing tuples) to be
+    // preserved. They are not needed if the generated LMHLO is not sent to XLA.
+    NamedAttrList arg_attr_list;
+    mlir::Type arg_type;
+    if (AllocationShouldLowerToTypedArg(alloc)) {
+      xla::Shape buffer_shape = xla::ShapeUtil::GetSubshape(
           computation_.parameter_instruction(alloc->parameter_number())
               ->shape(),
           alloc->param_shape_index());
 
-      // TODO(jurahul): Revisit this when we can model memrefs with dynamic
-      // shape but static bounds in MLIR.
-      const Shape static_shape = xla::ShapeUtil::MakeStaticShape(buffer_shape);
-      TF_ASSIGN_OR_RETURN(auto arg_type, xla::ConvertShapeToType<MemRefType>(
-                                             static_shape, builder_));
+      if (buffer_shape.IsTuple()) {
+        arg_type = MemRefType::get({alloc->size()}, i8_type_);
+      } else {
+        // TODO(jurahul): Revisit this when we can model memrefs with dynamic
+        // shape but static bounds in MLIR.
+        const Shape static_shape =
+            xla::ShapeUtil::MakeStaticShape(buffer_shape);
+        TF_ASSIGN_OR_RETURN(arg_type, xla::ConvertShapeToType<MemRefType>(
+                                          static_shape, builder_));
+      }
+    } else {
+      arg_type = MemRefType::get({alloc->size()}, i8_type_);
+    }
 
-      // First map parameters to memrefs on the operation.
-      block->addArgument(arg_type);
-      allocations_[alloc] = block->getArguments().back();
-      NamedAttrList arg_attr_list;
-      arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
+    if (alloc->is_entry_computation_parameter()) {
       arg_attr_list.set("lmhlo.params",
                         builder_.getIndexAttr(alloc->parameter_number()));
-      args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
-    } else {
-      block->addArgument(MemRefType::get({alloc->size()}, i8_type_));
-      allocations_[alloc] = block->getArguments().back();
-
-      NamedAttrList arg_attr_list;
-      arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
-      arg_attr_list.set("lmhlo.liveout", builder_.getBoolAttr(true));
-      args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
+      if (!alloc->param_shape_index().empty()) {
+        arg_attr_list.set("lmhlo.param_shape_index",
+                          builder_.getI64TensorAttr(llvm::makeArrayRef(
+                              alloc->param_shape_index().begin(),
+                              alloc->param_shape_index().end())));
+      }
     }
+    // Optional: an attribute for optimization. If a kernel uses this
+    // allocation, but the allocation has lmhlo.constant_name, then the kernel
+    // will instead use the global value indicated by the name for potentially
+    // more optimizations (e.g. constant propagation).
+    if (alloc->is_constant()) {
+      arg_attr_list.set(
+          "lmhlo.constant_name",
+          builder_.getStringAttr(
+              xla::llvm_ir::ConstantBufferAllocationToGlobalName(*alloc)));
+    }
+    auto iter = allocation_to_output_info.find(alloc);
+    if (iter != allocation_to_output_info.end()) {
+      const Shape* sub_shape = iter->second.first;
+      const xla::ShapeIndex& shape_index = iter->second.second;
+      if (!sub_shape->IsArray()) {
+        continue;
+      }
+      arg_attr_list.set("lmhlo.output_index",
+                        builder_.getI64TensorAttr(llvm::makeArrayRef(
+                            shape_index.begin(), shape_index.end())));
+      if (auto alias = computation_.parent()
+                           ->input_output_alias_config()
+                           .GetAliasedParameter(shape_index)) {
+        if (alias->must_alias()) {
+          arg_attr_list.set("lmhlo.must_alias", builder_.getUnitAttr());
+        }
+      }
+    }
+    block->addArgument(arg_type);
+    allocations_[alloc] = block->getArguments().back();
+    args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
   }
 
   FunctionType function_type =
@@ -1727,7 +1830,9 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   if (!schedule)
     return xla::Unimplemented("Missing sequential order for the computation");
   const std::vector<HloInstruction*>& ordering = schedule->instructions();
-  return computation->AcceptOrdered(&emitter, ordering);
+  TF_RETURN_IF_ERROR(computation->AcceptOrdered(&emitter, ordering));
+  TF_RET_CHECK(succeeded(mlir::verify(module)));
+  return Status::OK();
 }
 
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
@@ -1739,8 +1844,8 @@ OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
 
   OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
 
-  TF_CHECK_OK(
-      ConvertModule(maybe_module.ConsumeValueOrDie(), module.get(), "Host"));
+  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
+                                           module.get(), "Host"));
 
   return module;
 }

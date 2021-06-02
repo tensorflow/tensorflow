@@ -20,12 +20,14 @@ the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -52,6 +54,10 @@ class HloLiveRange {
   struct TimeBound {
     LogicalTime start;
     LogicalTime end;
+    // The buffer can hold multiple instructions during its life time (each
+    // tenant exclusively owns the buffer at any given time). `end_instruction`
+    // represents the last instruction that the buffer holds.
+    HloPosition end_position;
 
     bool friend operator==(const TimeBound& a, const TimeBound& b) {
       return a.start == b.start && a.end == b.end;
@@ -194,6 +200,8 @@ class HloLiveRange {
   //
   // Note there is no overlap of live ranges after normalization.
   void NormalizeAliasedBuffers();
+
+  int64 ComputePeakMemoryMoment() const;
 
   const HloSchedule& schedule_;
   const HloAliasAnalysis& alias_analysis_;

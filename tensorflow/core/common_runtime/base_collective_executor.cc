@@ -194,6 +194,10 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                          Allocator* allocator,
                                          bool align_chunks) {
   switch (output->dtype()) {
+    case DT_BFLOAT16:
+      return new CollectiveAdapterImpl<Eigen::bfloat16>(
+          output, num_chunks, allocator, align_chunks);
+      break;
     case DT_HALF:
       return new CollectiveAdapterImpl<Eigen::half>(output, num_chunks,
                                                     allocator, align_chunks);
@@ -411,6 +415,16 @@ Status BaseCollectiveExecutor::CreateCollective(
         // TODO(b/139421603): enable int32 all-reduce on GPU.
         return errors::Internal(
             "Collective all-reduce does not support datatype DT_INT32 on "
+            "DEVICE_GPU");
+      } else {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
+      }
+    case DT_BFLOAT16:
+      if (col_params.group.device_type == DEVICE_GPU &&
+          col_params.instance.type == REDUCTION_COLLECTIVE) {
+        return errors::Internal(
+            "Collective all-reduce does not support datatype DT_BFLOAT16 on "
             "DEVICE_GPU");
       } else {
         return CollectiveRegistry::Lookup(

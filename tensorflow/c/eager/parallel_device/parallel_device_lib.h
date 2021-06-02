@@ -81,6 +81,11 @@ class ParallelDevice {
   // The number of devices operations run on.
   size_t num_underlying_devices() const { return underlying_devices_.size(); }
 
+  // The devices operations run on.
+  const std::vector<std::string>& underlying_devices() const {
+    return underlying_devices_;
+  }
+
   // Takes a description of a single operation being executed on the
   // ParallelDevice, and in turn runs one operation per component device with
   // its corresponding inputs from the input ParallelTensors. Wraps the

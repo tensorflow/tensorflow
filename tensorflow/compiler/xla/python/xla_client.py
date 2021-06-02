@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 13
+_version = 23
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -58,16 +58,19 @@ xla_platform_names = {
 }
 
 
-def _interpreter_backend_factory():
+def make_interpreter_client():
   return _xla.get_interpreter_client()
 
 
-def _cpu_backend_factory():
-  return _xla.get_cpu_client(asynchronous=True)
+def make_cpu_client(*, use_tfrt=False):
+  if use_tfrt:
+    return _xla.get_tfrt_cpu_client(asynchronous=True)
+  else:
+    return _xla.get_cpu_client(asynchronous=True)
 
 
-def _gpu_backend_factory(distributed_client=None, node_id=0):
-  """Returns a GPU backend. BFC allocator is used by default."""
+def make_gpu_client(distributed_client=None, node_id=0):
+  """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
   preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE')
@@ -95,16 +98,18 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
       node_id=node_id)
 
 
-def _tpu_backend_factory():
-  return _xla.get_tpu_client(asynchronous=True)
+def make_tpu_client():
+  return _xla.get_tpu_client(max_inflight_computations=32)
 
+
+# Deprecated client factory API.
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
-    ('interpreter', _interpreter_backend_factory),
-    ('cpu', _cpu_backend_factory),
-    ('gpu', _gpu_backend_factory),
-    ('tpu', _tpu_backend_factory),
+    ('interpreter', make_interpreter_client),
+    ('cpu', make_cpu_client),
+    ('gpu', make_gpu_client),
+    ('tpu', make_tpu_client),
 ])
 
 
@@ -281,6 +286,28 @@ class ProgramShape(object):
 """
 
 
+ShapeIndex = _xla.ShapeIndex
+ShapeIndex.__doc__ = """
+A Shape is an object defined in C++ that duck types like the following class:
+
+class ShapeIndex(object):
+  '''Represents an XLA ShapeIndex.
+
+  An index for specifying a particular nested subshape within a shape. Used in
+  ShapeUtil::GetSubshape and other interfaces. ShapeIndex defines a path through
+  the Shape tree where each element of ShapeIndex indexes into a tuple (or
+  nested tuple) within the shape. For a non-nested tuple, an index has a single
+  element.
+  '''
+
+  def __init__(self, List[int]) -> ShapeIndex:
+  def __eq__(self, other: Shape) -> bool:
+  def __ne__(self, other: Shape) -> bool:
+  def __hash__(self):
+  def __repr__(self):
+"""
+
+
 def shape_from_pyval(pyval):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
@@ -415,6 +442,7 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
+XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
@@ -682,6 +710,7 @@ def make_replica_groups(replica_groups):
 
 
 Traceback = _xla.Traceback
+Frame = _xla.Frame
 
 
 @contextlib.contextmanager
@@ -695,7 +724,7 @@ def tracebacks(enabled=True):
     Traceback.enabled = saved
 
 
-def heap_profile(client: Client) -> str:
+def heap_profile(client: Client) -> bytes:
   """Returns a gzipped pprof protocol buffer containing a heap profile."""
   return gzip.compress(client.heap_profile())
 

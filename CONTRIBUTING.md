@@ -2,14 +2,16 @@
 
 ## Pull Request Checklist
 
-Before sending your pull requests, make sure you followed this list.
+Before sending your pull requests, make sure you do the following:
 
-- Read [contributing guidelines](CONTRIBUTING.md).
-- Read [Code of Conduct](CODE_OF_CONDUCT.md).
-- Ensure you have signed the [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
-- Check if my changes are consistent with the [guidelines](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#general-guidelines-and-philosophy-for-contribution).
-- Changes are consistent with the [Coding Style](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#c-coding-style).
-- Run [Unit Tests](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#running-unit-tests).
+-   Read the [contributing guidelines](CONTRIBUTING.md).
+-   Read the [Code of Conduct](CODE_OF_CONDUCT.md).
+-   Ensure you have signed the
+    [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
+-   Check if your changes are consistent with the
+    [guidelines](#general-guidelines-and-philosophy-for-contribution).
+-   Changes are consistent with the [Coding Style](#c-coding-style).
+-   Run the [unit tests](#running-unit-tests).
 
 ## How to become a contributor and submit your own code
 
@@ -74,7 +76,8 @@ TensorFlow coding style.
     [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
     TensorFlow has passed version 1.0 and hence cannot make
     non-backward-compatible API changes without a major release. Reviewers of
-    your pull request will comment on any API compatibility issues.
+    your pull request will comment on any API compatibility issues
+    [following API review practices](https://github.com/tensorflow/community/blob/master/governance/api-reviews.md).
 *   When you contribute a new feature to TensorFlow, the maintenance burden is
     (by default) transferred to the TensorFlow team. This means that the benefit
     of the contribution must be compared against the cost of maintaining the
@@ -195,6 +198,12 @@ There are two ways to run TensorFlow unit tests.
 
     ```bash
     bazel test ${flags} //tensorflow/python/...
+    ```
+
+    For a single component e.g. softmax op:
+
+    ```bash
+    bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
     ```
 
 2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.

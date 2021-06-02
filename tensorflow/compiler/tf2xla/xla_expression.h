@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "tensorflow/compiler/xla/client/client.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -106,25 +107,26 @@ class XlaExpression {
   // Returns a human-readable summary of the expression.
   string HumanString() const;
 
-  // Returns the value of a kConstant or kXlaOp as an xla::XlaOp. Returns
+  // Returns the value of a kValue or kXlaOp as an xla::XlaOp. Returns
   // an erroneous XlaOp if the expression is not a constant or an expression.
   xla::XlaOp AsXlaOp(xla::XlaBuilder* builder) const;
 
-  // If a kXlaOp or kConstant expression can be resolved to a compile-time
+  // If a kXlaOp or kValue expression can be resolved to a compile-time
   // constant, returns the value as a host-memory Tensor. Returns an empty
   // optional if it cannot be resolved. Returns an error if passed a resource
   // expression.
-  xla::StatusOr<absl::optional<Tensor>> ResolveConstant(
-      xla::Client* client, bool dynamic_dimension_is_minus_one = false) const;
+  StatusOr<absl::optional<Tensor>> ResolveConstant(
+      xla::Client* client, bool dynamic_dimension_is_minus_one = false,
+      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue) const;
 
   // ResolveDynamism computes where a value inside this op is dynamic or can be
   // inferred at compile time.
-  xla::StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
+  StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
 
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),
   // not the shape of the resource's value.
-  xla::StatusOr<TensorShape> GetShape() const;
+  StatusOr<TensorShape> GetShape() const;
 
   // Retrieves an XlaExpression that was allocated by a previous Op.
   static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);

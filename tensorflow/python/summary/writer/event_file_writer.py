@@ -26,7 +26,7 @@ import time
 
 import six
 
-from tensorflow.python import _pywrap_events_writer
+from tensorflow.python.client import _pywrap_events_writer
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -67,8 +67,7 @@ class EventFileWriter(object):
         `filename_suffix`.
     """
     self._logdir = str(logdir)
-    if not gfile.IsDirectory(self._logdir):
-      gfile.MakeDirs(self._logdir)
+    gfile.MakeDirs(self._logdir)
     self._max_queue = max_queue
     self._flush_secs = flush_secs
     self._flush_complete = threading.Event()

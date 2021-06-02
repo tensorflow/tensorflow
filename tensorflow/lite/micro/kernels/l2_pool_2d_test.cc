@@ -42,9 +42,9 @@ struct L2Pool2DTestParams {
 
 void ExecuteL2Pool2DTest(const L2Pool2DTestParams& params,
                          TfLiteTensor* tensors, int tensors_count) {
-  constexpr int kInputArrayData[] = {1, 0};
+  int kInputArrayData[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
-  constexpr int kOutputArrayData[] = {1, 1};
+  int kOutputArrayData[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
   TfLitePoolParams op_params = {};
@@ -64,8 +64,8 @@ void ExecuteL2Pool2DTest(const L2Pool2DTestParams& params,
 }
 
 template <typename T>
-void TestL2Pool2D(const L2Pool2DTestParams& params, const int* input_dims_data,
-                  const T* input_data, const int* expected_dims_data,
+void TestL2Pool2D(L2Pool2DTestParams& params, int* input_dims_data,
+                  const T* input_data, int* expected_dims_data,
                   const T* expected_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* expected_dims = IntArrayFromInts(expected_dims_data);
@@ -84,7 +84,9 @@ void TestL2Pool2D(const L2Pool2DTestParams& params, const int* input_dims_data,
                               params.compare_tolerance);
   }
   for (int i = 0; i < expected_dims->size; i++) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_dims->data[i], output_dims->data[i]);
+    // output dims will have been relocated during prepare phase,
+    // so use the tensor dims pointer.
+    TF_LITE_MICRO_EXPECT_EQ(expected_dims->data[i], tensors[1].dims->data[i]);
   }
 }
 
@@ -95,29 +97,28 @@ void TestL2Pool2D(const L2Pool2DTestParams& params, const int* input_dims_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(FloatPoolingOpTestL2Pool) {
-  constexpr int kInputDims[] = {4, 1, 2, 4, 1};
+  int kInputDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       0, 6, 2,  4,  //
       3, 2, 10, 7,  //
   };
-  constexpr int kExpectDims[] = {4, 1, 1, 2, 1};
+  int kExpectDims[] = {4, 1, 1, 2, 1};
   constexpr float kExpect[] = {3.5, 6.5};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
   tflite::testing::L2Pool2DTestParams params;
-  params.compare_tolerance = 0;
 
   tflite::testing::TestL2Pool2D(params, kInputDims, kInput, kExpectDims,
                                 kExpect, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolActivationRelu) {
-  constexpr int kInputDims[] = {4, 1, 2, 4, 1};
+  int kInputDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       -1, -6, 2,  4,  //
       -3, -2, 10, 7,  //
   };
-  constexpr int kExpectDims[] = {4, 1, 1, 2, 1};
+  int kExpectDims[] = {4, 1, 1, 2, 1};
   constexpr float kExpect[] = {3.53553, 6.5};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -129,12 +130,12 @@ TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolActivationRelu) {
 }
 
 TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolActivationRelu1) {
-  constexpr int kInputDims[] = {4, 1, 2, 4, 1};
+  int kInputDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       -0.1, -0.6, 2,  4,  //
       -0.3, -0.2, 10, 7,  //
   };
-  constexpr int kExpectDims[] = {4, 1, 1, 2, 1};
+  int kExpectDims[] = {4, 1, 1, 2, 1};
   constexpr float kExpect[] = {0.353553, 1.0};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -146,12 +147,12 @@ TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolActivationRelu1) {
 }
 
 TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolActivationRelu6) {
-  constexpr int kInputDims[] = {4, 1, 2, 4, 1};
+  int kInputDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       -0.1, -0.6, 2,  4,  //
       -0.3, -0.2, 10, 7,  //
   };
-  constexpr int kExpectDims[] = {4, 1, 1, 2, 1};
+  int kExpectDims[] = {4, 1, 1, 2, 1};
   constexpr float kExpect[] = {0.353553, 6.0};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
@@ -163,30 +164,29 @@ TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolActivationRelu6) {
 }
 
 TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolPaddingSame) {
-  constexpr int kInputDims[] = {4, 1, 2, 4, 1};
+  int kInputDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       0, 6, 2,  4,  //
       3, 2, 10, 7,  //
   };
-  constexpr int kExpectDims[] = {4, 1, 1, 2, 1};
+  int kExpectDims[] = {4, 1, 1, 2, 1};
   constexpr float kExpect[] = {3.5, 6.5};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
   tflite::testing::L2Pool2DTestParams params;
   params.padding = kTfLitePaddingSame;
-  params.compare_tolerance = 0;
 
   tflite::testing::TestL2Pool2D(params, kInputDims, kInput, kExpectDims,
                                 kExpect, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolPaddingSameStride1) {
-  constexpr int kInputDims[] = {4, 1, 2, 4, 1};
+  int kInputDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       0, 6, 2,  4,  //
       3, 2, 10, 7,  //
   };
-  constexpr int kExpectDims[] = {4, 1, 2, 4, 1};
+  int kExpectDims[] = {4, 1, 2, 4, 1};
   constexpr float kExpect[] = {3.5,     6.0,    6.5,     5.70088,
                                2.54951, 7.2111, 8.63134, 7.0};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
@@ -202,12 +202,12 @@ TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolPaddingSameStride1) {
 }
 
 TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolPaddingValidStride1) {
-  constexpr int kInputDims[] = {4, 1, 2, 4, 1};
+  int kInputDims[] = {4, 1, 2, 4, 1};
   constexpr float kInput[] = {
       0, 6, 2,  4,  //
       3, 2, 10, 7,  //
   };
-  constexpr int kExpectDims[] = {4, 1, 1, 3, 1};
+  int kExpectDims[] = {4, 1, 1, 3, 1};
   constexpr float kExpect[] = {3.5, 6.0, 6.5};
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];

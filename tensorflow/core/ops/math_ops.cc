@@ -137,6 +137,23 @@ REGISTER_OP("BatchMatMulV2")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 
+REGISTER_OP("BatchMatMulV3")
+    .Input("x: Ta")
+    .Input("y: Tb")
+    .Output("output: Tout")
+    .Attr(
+        "Ta: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "complex64, complex128}")
+    .Attr(
+        "Tb: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "complex64, complex128}")
+    .Attr(
+        "Tout: {bfloat16, half, float, double, int16, int32, int64, complex64, "
+        "complex128}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .SetShapeFn(shape_inference::BatchMatMulV2Shape);
+
 #ifdef INTEL_MKL
 REGISTER_OP("_MklBatchMatMul")
     .Input("x: T")
@@ -334,8 +351,8 @@ REGISTER_OP("Sign")
     .Input("x: T")
     .Output("y: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "complex64, complex128}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Floor")
@@ -543,8 +560,8 @@ REGISTER_OP("Maximum")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int8, int16, int32, int64, "
-        "uint8, uint16, uint32, uint64}")
+        "T: {bfloat16, half, float, double, int8, uint8, int16, uint16, "
+        "int32, uint32, int64, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -568,7 +585,9 @@ REGISTER_OP("Minimum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, uint8, int16, int32, int64}")
+    .Attr(
+        "T: {bfloat16, half, float, double, int8, uint8, int16, uint16, "
+        "int32, uint32, int64, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Mod")
@@ -582,7 +601,9 @@ REGISTER_OP("FloorMod")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {int32, int64, uint64, bfloat16, half, float, double}")
+    .Attr(
+        "T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64, "
+        "bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("TruncateMod")
@@ -605,14 +626,14 @@ REGISTER_OP("Igammac")
     .Input("a: T")
     .Input("x: T")
     .Output("z: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Igamma")
     .Input("a: T")
     .Input("x: T")
     .Output("z: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("IgammaGradA")
@@ -1339,6 +1360,17 @@ REGISTER_OP("SparseSegmentSumWithNumSegments")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionWithNumSegmentsShapeFn);
 
+REGISTER_OP("SparseSegmentSumGrad")
+    .Input("grad: T")
+    .Input("indices: Tidx")
+    .Input("segment_ids: Tsegmentids")
+    .Input("output_dim0: int32")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .SetShapeFn(SparseSegmentReductionGradShapeFn);
+
 REGISTER_OP("SparseSegmentMean")
     .Input("data: T")
     .Input("indices: Tidx")
@@ -1367,7 +1399,7 @@ REGISTER_OP("SparseSegmentMeanGrad")
     .Input("segment_ids: Tsegmentids")
     .Input("output_dim0: int32")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
@@ -1400,7 +1432,7 @@ REGISTER_OP("SparseSegmentSqrtNGrad")
     .Input("segment_ids: Tsegmentids")
     .Input("output_dim0: int32")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
@@ -1461,7 +1493,8 @@ REGISTER_OP("Range")
     .Input("delta: Tidx")
     .Output("output: Tidx")
     .Attr(
-        "Tidx: {bfloat16, half, float, double, int8, int16, int32, int64} = "
+        "Tidx: "
+        "{bfloat16, half, float, double, int8, int16, int32, int64, uint32} = "
         "DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
@@ -1488,6 +1521,8 @@ REGISTER_OP("Range")
         return RangeSize<int8>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
         return RangeSize<int64>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_UINT32) {
+        return RangeSize<uint32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
         return RangeSize<float>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_DOUBLE) {
@@ -1923,32 +1958,6 @@ REGISTER_OP("Requantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
-    });
-
-REGISTER_OP("CompareAndBitpack")
-    .Input("input: T")
-    .Input("threshold: T")
-    .Output("output: uint8")
-    .Attr("T: {bool, float16, float32, float64, int8, int16, int32, int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      ShapeHandle output = input;
-      if (c->RankKnown(input)) {
-        int rank = c->Rank(input);
-        auto inner_dim = c->Dim(input, rank - 1);
-        DimensionHandle inferred_dim;
-        TF_RETURN_IF_ERROR(c->Divide(inner_dim, 8,
-                                     /* evenly_divisible */ true,
-                                     &inferred_dim));
-        TF_RETURN_IF_ERROR(
-            c->ReplaceDim(output, rank - 1, inferred_dim, &output));
-      }
-      c->set_output(0, output);
-
       return Status::OK();
     });
 

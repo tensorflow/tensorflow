@@ -62,10 +62,10 @@ from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
-
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
@@ -1512,12 +1512,8 @@ class _ForwardBackwardCall(object):
 _BOUND_VALUE = object()
 
 
-class ConcreteFunction(object):
-  """Callable object encapsulating a function definition and its gradient.
-
-  `ConcreteFunction` is a callable that encapsulates a function definition and
-  is differentiable under `tf.GradientTape` objects.
-  """
+class ConcreteFunction(core.ConcreteFunction):
+  """A `tf.types.experimental.ConcreteFunction` created from `tf.function`."""
 
   def __init__(self,
                func_graph,
@@ -2646,6 +2642,14 @@ class FunctionSpec(object):
         kwargs[kw] = self._to_tensor_or_tensor_spec(v)
     return tuple(args), kwargs
 
+  def _validate_inputs(self, flat_inputs):
+    """Raises an error if inputs contain illegal values."""
+    for inp in flat_inputs:
+      # TODO(b/183107079): Allow these once they're handled properly.
+      if isinstance(inp, weakref.ref):
+        raise ValueError(
+            f"weakref input {inp} not supported for function {self._name}")
+
   def canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
 
@@ -2768,13 +2772,16 @@ class FunctionSpec(object):
     if self._input_signature is None:
       inputs, flat_inputs, filtered_flat_inputs = _convert_numpy_inputs(inputs)
       kwargs, flat_kwargs, filtered_flat_kwargs = _convert_numpy_inputs(kwargs)
-      return (inputs, kwargs, flat_inputs + flat_kwargs,
-              filtered_flat_inputs + filtered_flat_kwargs)
+      flat_inputs += flat_kwargs
+      filtered_flat_inputs += filtered_flat_kwargs
     else:
       assert not kwargs
       inputs, flat_inputs, filtered_flat_inputs = _convert_inputs_to_signature(
           inputs, self._input_signature, self._flat_input_signature)
-      return inputs, {}, flat_inputs, filtered_flat_inputs
+
+    self._validate_inputs(flat_inputs)
+
+    return inputs, kwargs, flat_inputs, filtered_flat_inputs
 
 
 def _as_ndarray(value):
@@ -2934,6 +2941,8 @@ class FunctionCache(object):
         v for v in self.arg_relaxed.values() if v not in primary_functions]
 
 
+# TODO(mdan): Refactor this and clarify relationship with def_function.Function.
+# Right now, def_function.Function is the higher level implementation.
 class Function(object):
   """Wrapper class for the graph functions defined for a Python function.
 
@@ -3177,7 +3186,10 @@ class Function(object):
                  include_tensor_ranks_only=False):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
-      inputs = (args, kwargs) if kwargs else args
+      # We always use both args and kwargs to form input even if one is empty.
+      # This reduces ambiguity, for example, when args contains a dict and
+      # kwargs is empty.
+      inputs = (args, kwargs)
       input_signature = pywrap_tfe.TFE_Py_EncodeArg(inputs,
                                                     include_tensor_ranks_only)
       hashable_input_signature = _make_input_signature_hashable(input_signature)

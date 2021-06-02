@@ -1,0 +1,11 @@
+path: "tensorflow.keras.__internal__.backend"
+tf_module {
+  member_method {
+    name: "initialize_variables"
+    argspec: "args=[\'session\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "track_variable"
+    argspec: "args=[\'v\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -49,7 +49,8 @@ StatusOr<bool> CollectivesScheduleLinearizer::Run(HloModule* module) {
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);
     HloCollectiveInstruction* prev = nullptr;
-    for (HloInstruction* instruction : computation->instructions()) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
       if (auto* next = DynCast<HloCollectiveInstruction>(instruction)) {
         if (prev != nullptr && !reachability->IsConnected(next, prev)) {
           // If prev and next are independent, enforce ordering.

@@ -15,7 +15,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # TODO(bmzhao): Remove these exports_files and rules, swap with cc_public_library instead.

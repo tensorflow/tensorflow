@@ -83,6 +83,12 @@ class VariableSynchronization(enum.Enum):
   * `ON_READ`: Indicates that the variable will be aggregated across devices
     when it is read (eg. when checkpointing or when evaluating an op that uses
     the variable).
+
+    Example:
+  >>> temp_grad=[tf.Variable([0.], trainable=False,
+  ...                      synchronization=tf.VariableSynchronization.ON_READ,
+  ...                      aggregation=tf.VariableAggregation.MEAN
+  ...                      )]
   """
   AUTO = 0
   NONE = 1
@@ -361,11 +367,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   """
 
   @deprecated_args(
-      None,
-      "A variable's value can be manually cached by calling "
+      None, "A variable's value can be manually cached by calling "
       "tf.Variable.read_value() under a tf.device scope. The caching_device "
-      "argument does not work properly.",
-      "caching_device")
+      "argument does not work properly.", "caching_device")
   def __init__(self,
                initial_value=None,
                trainable=None,
@@ -394,10 +398,11 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
-      caching_device: Optional device string describing where the Variable
-        should be cached for reading.  Defaults to the Variable's device. If not
-        `None`, caches on another device.  Typical use is to cache on the device
-        where the Ops using the Variable reside, to deduplicate copying through
+      caching_device: Note: This argument is only valid when using a v1-style
+        `Session`. Optional device string describing where the Variable should
+        be cached for reading. Defaults to the Variable's device. If not `None`,
+        caches on another device. Typical use is to cache on the device where
+        the Ops using the Variable reside, to deduplicate copying through
         `Switch` and other conditional statements.
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.

@@ -31,18 +31,22 @@ MICRO_LOG_FILENAME=${RESULTS_DIRECTORY}/logs.txt
 mkdir -p ${RESULTS_DIRECTORY}
 
 FVP="FVP_Corstone_SSE-300_Ethos-U55 "
-FVP+="--cpulimit 1 "
+FVP+="-C ethosu.num_macs=256 "
 FVP+="-C mps3_board.visualisation.disable-visualisation=1 "
 FVP+="-C mps3_board.telnetterminal0.start_telnet=0 "
 FVP+='-C mps3_board.uart0.out_file="-" '
-FVP+='-C mps3_board.uart0.unbuffered_output=1'
+FVP+='-C mps3_board.uart0.unbuffered_output=1 '
+FVP+='-C mps3_board.uart0.shutdown_on_eot=1'
 ${FVP} ${BINARY_TO_TEST} | tee ${MICRO_LOG_FILENAME}
 
-if grep -q "$PASS_STRING" ${MICRO_LOG_FILENAME}
+if [[ ${2} != "non_test_binary" ]]
 then
-  echo "$BINARY_TO_TEST: PASS"
-  exit 0
-else
-  echo "$BINARY_TO_TEST: FAIL - '$PASS_STRING' not found in logs."
-  exit 1
+  if grep -q "$PASS_STRING" ${MICRO_LOG_FILENAME}
+  then
+    echo "$BINARY_TO_TEST: PASS"
+    exit 0
+  else
+    echo "$BINARY_TO_TEST: FAIL - '$PASS_STRING' not found in logs."
+    exit 1
+  fi
 fi

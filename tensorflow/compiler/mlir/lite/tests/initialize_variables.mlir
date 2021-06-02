@@ -25,10 +25,24 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
+// Unsupported type.
+module attributes {tf_saved_model.semantics} {
+  "tf_saved_model.global_tensor"() {is_mutable, sym_name = "Variable", type = tensor<1x10xui64>, value = dense<0> : tensor<1x10xui64>} : () -> ()
+  func @serving_default(%arg0: tensor<!tf.resource<tensor<1x10xui64>>> {tf_saved_model.bound_input = @Variable}) ->
+    (tensor<1x10xui64> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_x:0", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf.resource<tensor<1x10xui64>>>) -> tensor<1x10xui64>
+    return %0 : tensor<1x10xui64>
+  }
+
+  // CHECK-NOT: SessionInitializerFunction
+}
+
+// -----
+
 // Test for case with existing session initialize op.
 module attributes {tf_saved_model.semantics} {
   func @init_all_tables()
-  attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
+  attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_1"]} {
     %cst = constant dense<[1, 2, 3, 4]> : tensor<4xi64>
     %cst_0 = constant dense<["a", "b", "c", "d"]> : tensor<4x!tf.string>
     %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = i64, shared_name = "hash_table_dba2ccaa-f1b1-46d6-b276-98008f69da71", use_node_name_sharing = false, value_dtype = !tf.string} : () -> tensor<!tf.resource>

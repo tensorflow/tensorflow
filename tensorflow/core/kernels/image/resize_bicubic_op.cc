@@ -557,13 +557,13 @@ class ResizeBicubicOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
     ImageResizerState st(align_corners_, half_pixel_centers_);
-    st.ValidateAndCreateOutput(context, input);
+    st.ValidateAndCreateOutput(context);
 
     if (!context->status().ok()) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::ConstTensor input_data(
+        context->input(0).tensor<T, 4>());
     TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
     interpolate_with_caching<T>(input_data, st, half_pixel_centers_,
@@ -587,16 +587,15 @@ class ResizeBicubicOpGrad : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // Validate input.
-    // First argument is gradient with respect to resized image.
-    const Tensor& input = context->input(0);
-    const Tensor& original_image = context->input(1);
-
     ImageResizerGradientState st(align_corners_, half_pixel_centers_);
-    st.ValidateAndCreateOutput(context, input, original_image);
+    st.ValidateAndCreateOutput(context);
 
     if (!context->status().ok()) return;
 
-    TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
+    // First argument is gradient with respect to resized image.
+    TTypes<float, 4>::ConstTensor input_grad =
+        context->input(0).tensor<float, 4>();
+
     typename TTypes<T, 4>::Tensor output_grad(st.output->tensor<T, 4>());
 
     ResizeBicubicGrad<T>(input_grad, st, half_pixel_centers_, output_grad);

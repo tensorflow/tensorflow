@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019-2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/model.h"
 
 namespace tflite {
 namespace gpu {
@@ -71,6 +73,12 @@ absl::Status BuildFinalModel(
     TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
     GraphFloat32* graph,
     absl::flat_hash_map<int, int>* quant_conversion_map = nullptr);
+
+// Convenience wrapper that builds a GraphFloat32 from the provided
+// FlatBufferModel.
+absl::Status BuildFromFlatBuffer(const FlatBufferModel& flatbuffer,
+                                 const OpResolver& op_resolver,
+                                 GraphFloat32* graph);
 
 // Module-internal converter, exposed for unit testing purpose only.
 absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -74,12 +75,11 @@ TensorShape XlaOpKernelContext::InputShape(absl::string_view name) {
   return GetInputTensorByName(name).shape();
 }
 
-xla::StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
+StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
   return builder()->GetShape(Input(index));
 }
 
-xla::StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(
-    absl::string_view name) {
+StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(absl::string_view name) {
   return builder()->GetShape(Input(name));
 }
 
@@ -128,13 +128,21 @@ xla::PrimitiveType XlaOpKernelContext::InputXlaType(absl::string_view name) {
 }
 
 Status XlaOpKernelContext::ConstantInput(int index,
-                                         xla::Literal* constant_literal) {
-  return ConstantInputReshaped(
-      index, context_->input(index).shape().dim_sizes(), constant_literal);
+                                         xla::Literal* constant_literal,
+                                         xla::ValueInferenceMode mode) {
+  if (this->InputXlaShape(index)->is_dynamic()) {
+    return errors::InvalidArgument(
+        "Reading input as constant from a dynamic tensor is not yet supported. "
+        "Xla shape: ",
+        this->InputXlaShape(index)->ToString());
+  }
+  return ConstantInputReshaped(index,
+                               context_->input(index).shape().dim_sizes(),
+                               constant_literal, mode);
 }
 
-static xla::StatusOr<int> InputIndex(XlaOpKernelContext* context,
-                                     absl::string_view name) {
+static StatusOr<int> InputIndex(XlaOpKernelContext* context,
+                                absl::string_view name) {
   int start, stop;
   TF_RETURN_IF_ERROR(context->op_kernel().InputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -147,18 +155,19 @@ static xla::StatusOr<int> InputIndex(XlaOpKernelContext* context,
 }
 
 Status XlaOpKernelContext::ConstantInput(absl::string_view name,
-                                         xla::Literal* constant_literal) {
+                                         xla::Literal* constant_literal,
+                                         xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
-  return ConstantInput(index, constant_literal);
+  return ConstantInput(index, constant_literal, mode);
 }
 
 Status XlaOpKernelContext::ConstantInputReshaped(
-    int index, absl::Span<const int64> new_dims,
-    xla::Literal* constant_literal) {
+    int index, absl::Span<const int64> new_dims, xla::Literal* constant_literal,
+    xla::ValueInferenceMode mode) {
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
-  xla::StatusOr<absl::optional<Tensor>> constant_or_status =
-      e.ResolveConstant(client, dynamic_dimension_is_minus_one_);
+  StatusOr<absl::optional<Tensor>> constant_or_status =
+      e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
   if (!constant_or_status.ok()) {
     Status status = constant_or_status.status();
     errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
@@ -225,21 +234,23 @@ static Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
   return Status::OK();
 }
 
-Status XlaOpKernelContext::ConstantInputAsIntScalar(int index, int64* out) {
+Status XlaOpKernelContext::ConstantInputAsIntScalar(
+    int index, int64* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
-  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   return LiteralToInt64Scalar(literal, out);
 }
 
-Status XlaOpKernelContext::ConstantInputAsIntScalar(absl::string_view name,
-                                                    int64* out) {
+Status XlaOpKernelContext::ConstantInputAsIntScalar(
+    absl::string_view name, int64* out, xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
-  return ConstantInputAsIntScalar(index, out);
+  return ConstantInputAsIntScalar(index, out, mode);
 }
 
-Status XlaOpKernelContext::ConstantInputAsFloatScalar(int index, double* out) {
+Status XlaOpKernelContext::ConstantInputAsFloatScalar(
+    int index, double* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
-  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   return LiteralToFloat64Scalar(literal, out);
 }
 
@@ -263,7 +274,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   xla::Literal literal;
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
-  xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
     // dynamic. This could happen if the input depends on some ops like
@@ -294,7 +305,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
   xla::Literal literal;
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
-  xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
     // dynamic. This could happen if the input depends on some ops like
@@ -341,40 +352,42 @@ static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
   return Status::OK();
 }
 
-Status XlaOpKernelContext::ConstantInputAsIntVector(int index,
-                                                    std::vector<int64>* out) {
+Status XlaOpKernelContext::ConstantInputAsIntVector(
+    int index, std::vector<int64>* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
-  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   return LiteralToInt64Vector(literal, out);
 }
 
-Status XlaOpKernelContext::ConstantInputAsIntVector(absl::string_view name,
-                                                    std::vector<int64>* out) {
+Status XlaOpKernelContext::ConstantInputAsIntVector(
+    absl::string_view name, std::vector<int64>* out,
+    xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
   return ConstantInputAsIntVector(index, out);
 }
 
 Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
-    int index, std::vector<int64>* out) {
+    int index, std::vector<int64>* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInputReshaped(
-      index, {InputShape(index).num_elements()}, &literal));
+      index, {InputShape(index).num_elements()}, &literal, mode));
   return LiteralToInt64Vector(literal, out);
 }
 
 Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
-    absl::string_view name, std::vector<int64>* out) {
+    absl::string_view name, std::vector<int64>* out,
+    xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInputReshaped(
-      index, {InputShape(index).num_elements()}, &literal));
+      index, {InputShape(index).num_elements()}, &literal, mode));
   return LiteralToInt64Vector(literal, out);
 }
 
-Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
-                                                       xla::Literal* out) {
+Status XlaOpKernelContext::ConstantInputAsInt64Literal(
+    int index, xla::Literal* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
-  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   switch (literal.shape().element_type()) {
     case xla::S32: {
       *out = xla::Literal(
@@ -396,17 +409,18 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
   }
 }
 
-Status XlaOpKernelContext::ConstantInputAsInt64Literal(absl::string_view name,
-                                                       xla::Literal* out) {
+Status XlaOpKernelContext::ConstantInputAsInt64Literal(
+    absl::string_view name, xla::Literal* out, xla::ValueInferenceMode mode) {
   TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
-  return ConstantInputAsInt64Literal(index, out);
+  return ConstantInputAsInt64Literal(index, out, mode);
 }
 
 // TODO(phawkins): validate that the dimensions form a valid shape, fail
 // gracefully if they do not.
-Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape) {
+Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape,
+                                                xla::ValueInferenceMode mode) {
   xla::Literal literal;
-  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   std::vector<int64> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
   *shape = TensorShape(dims);
@@ -449,13 +463,14 @@ Status XlaOpKernelContext::InputList(absl::string_view name,
   return Status::OK();
 }
 
-Status XlaOpKernelContext::ConstantInputList(
-    absl::string_view name, std::vector<xla::Literal>* outputs) {
+Status XlaOpKernelContext::ConstantInputList(absl::string_view name,
+                                             std::vector<xla::Literal>* outputs,
+                                             xla::ValueInferenceMode mode) {
   int start, stop;
   TF_RETURN_IF_ERROR(op_kernel().InputRange(name, &start, &stop));
   outputs->resize(stop - start);
   for (int i = start; i < stop; ++i) {
-    TF_RETURN_IF_ERROR(ConstantInput(i, &(*outputs)[i]));
+    TF_RETURN_IF_ERROR(ConstantInput(i, &(*outputs)[i], mode));
   }
   return Status::OK();
 }

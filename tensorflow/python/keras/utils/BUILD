@@ -11,7 +11,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -272,12 +272,11 @@ tf_py_test(
     name = "dataset_creator_test",
     srcs = ["dataset_creator_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
-    ],
     deps = [
         ":dataset_creator",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
     ],
@@ -474,13 +473,13 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/user_ops:ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -494,7 +493,6 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
@@ -502,5 +500,6 @@ tf_py_test(
         "//tensorflow/python/ops/ragged:ragged_array_ops",
         "//tensorflow/python/ops/ragged:ragged_concat_ops",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/user_ops:ops",
     ],
 )

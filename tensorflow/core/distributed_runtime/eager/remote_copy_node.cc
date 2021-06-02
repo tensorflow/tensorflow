@@ -425,8 +425,6 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
-  // TODO(b/110044833): this is currently slow, but can be fixed by making
-  // tensor handles aware of more than one device.
   // TODO(fishx): Make CopyToDevice asynchronous.
   Tensor tensor;
   s = src_->CopyToDevice(*ctx_, ctx_->HostCPU(), &tensor);

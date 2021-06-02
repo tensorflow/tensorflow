@@ -46,7 +46,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
-    bool broadcast_only = false);
+    bool legalize_broadcasts = true, bool expand_compositions = true);
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
@@ -68,6 +68,14 @@ std::unique_ptr<OperationPass<FuncOp>>
 createLegalizeTrigonometricToApproximationPass();
 
 std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass();
+
+/// Rank specialization passes:
+///   - Find compatible operations and group them together in one rank
+///     specialization cluster.
+///   - Lower rank specialization clusters to SCF and ranked operations.
+std::unique_ptr<FunctionPass> createRankSpecializationClusterPass();
+std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass(
+    int64_t max_target_rank = 5);
 
 std::unique_ptr<FunctionPass> createOptimizeMhloPass();
 std::unique_ptr<FunctionPass> createLowerComplexPass();
@@ -101,6 +109,9 @@ std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
 
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
+
+// Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
 
 }  // namespace lmhlo
 

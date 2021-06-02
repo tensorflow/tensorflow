@@ -132,7 +132,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   const Tensor& perm = ctx->input(1);
   // Preliminary validation of sizes.
   OP_REQUIRES(ctx, TensorShapeUtils::IsVector(perm.shape()),
-              errors::InvalidArgument("perm must be a vector, not ",
+              errors::InvalidArgument("perm must be rank 1, got shape ",
                                       perm.shape().DebugString()));
 
   // Although Tperm may be an int64 type, an int32 is sufficient to hold

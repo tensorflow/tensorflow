@@ -27,7 +27,7 @@ import sys
 
 from absl import app
 
-from tensorflow.python import _pywrap_graph_analyzer as tf_wrap
+from tensorflow.python.grappler import _pywrap_graph_analyzer as tf_wrap
 
 
 def main(_):

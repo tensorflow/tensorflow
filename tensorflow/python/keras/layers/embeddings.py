@@ -15,9 +15,6 @@
 """Embedding layer."""
 # pylint: disable=g-classes-have-attributes
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
@@ -82,6 +79,28 @@ class Embedding(Layer):
 
   Output shape:
     3D tensor with shape: `(batch_size, input_length, output_dim)`.
+
+  **Note on variable placement:**
+  By default, if a GPU is available, the embedding matrix will be placed on
+  the GPU. This achieves the best performance, but it might cause issues:
+
+  - You may be using an optimizer that does not support sparse GPU kernels.
+  In this case you will see an error upon training your model.
+  - Your embedding matrix may be too large to fit on your GPU. In this case
+  you will see an Out Of Memory (OOM) error.
+
+  In such cases, you should place the embedding matrix on the CPU memory.
+  You can do so with a device scope, as such:
+
+  ```python
+  with tf.device('cpu:0'):
+    embedding_layer = Embedding(...)
+    embedding_layer.build()
+  ```
+
+  The pre-built `embedding_layer` instance can then be added to a `Sequential`
+  model (e.g. `model.add(embedding_layer)`), called in a Functional model
+  (e.g. `x = embedding_layer(x)`), or used in a subclassed model.
   """
 
   def __init__(self,
@@ -126,36 +145,19 @@ class Embedding(Layer):
     self.input_length = input_length
 
   @tf_utils.shape_type_conversion
-  def build(self, input_shape):
-    # Note: most sparse optimizers do not have GPU kernels defined. When
-    # building graphs, the placement algorithm is able to place variables on CPU
-    # since it knows all kernels using the variable only exist on CPU.
-    # When eager execution is enabled, the placement decision has to be made
-    # right now. Checking for the presence of GPUs to avoid complicating the
-    # TPU codepaths which can handle sparse optimizers.
-    if context.executing_eagerly() and tf_config.list_logical_devices('GPU'):
-      with ops.device('cpu:0'):
-        self.embeddings = self.add_weight(
-            shape=(self.input_dim, self.output_dim),
-            initializer=self.embeddings_initializer,
-            name='embeddings',
-            regularizer=self.embeddings_regularizer,
-            constraint=self.embeddings_constraint,
-            experimental_autocast=False)
-    else:
-      self.embeddings = self.add_weight(
-          shape=(self.input_dim, self.output_dim),
-          initializer=self.embeddings_initializer,
-          name='embeddings',
-          regularizer=self.embeddings_regularizer,
-          constraint=self.embeddings_constraint,
-          experimental_autocast=False)
+  def build(self, input_shape=None):
+    self.embeddings = self.add_weight(
+        shape=(self.input_dim, self.output_dim),
+        initializer=self.embeddings_initializer,
+        name='embeddings',
+        regularizer=self.embeddings_regularizer,
+        constraint=self.embeddings_constraint,
+        experimental_autocast=False)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
     if not self.mask_zero:
       return None
-
     return math_ops.not_equal(inputs, 0)
 
   @tf_utils.shape_type_conversion

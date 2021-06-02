@@ -56,12 +56,12 @@ void ValidateStridedSliceGoldens(TfLiteTensor* tensors, int tensors_size,
   }
 }
 
-void TestStridedSliceFloat(const int* input_shape, const int* begin_shape,
-                           const int* end_shape, const int* strides_shape,
+void TestStridedSliceFloat(int* input_shape, int* begin_shape, int* end_shape,
+                           int* strides_shape,
                            TfLiteStridedSliceParams* builtin_data,
                            float* input_data, const int32_t* begin_data,
                            const int32_t* end_data, const int32_t* strides_data,
-                           const int* output_shape, float* output_data,
+                           int* output_shape, float* output_data,
                            const float* expected_output,
                            bool expect_prepare_err, int num_invoke = 1) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_shape);
@@ -87,12 +87,14 @@ void TestStridedSliceFloat(const int* input_shape, const int* begin_shape,
 }
 
 template <typename T>
-void TestStridedSliceQuantized(
-    const int* input_shape, const int* begin_shape, const int* end_shape,
-    const int* strides_shape, TfLiteStridedSliceParams* builtin_data,
-    const T* input_data, const int32_t* begin_data, const int32_t* end_data,
-    const int32_t* strides_data, const int* output_shape, T* output_data,
-    const T* expected_output, bool expect_prepare_err, int num_invoke = 1) {
+void TestStridedSliceQuantized(int* input_shape, int* begin_shape,
+                               int* end_shape, int* strides_shape,
+                               TfLiteStridedSliceParams* builtin_data,
+                               const T* input_data, const int32_t* begin_data,
+                               const int32_t* end_data,
+                               const int32_t* strides_data, int* output_shape,
+                               T* output_data, const T* expected_output,
+                               bool expect_prepare_err, int num_invoke = 1) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_shape);
   TfLiteIntArray* begin_dims = IntArrayFromInts(begin_shape);
   TfLiteIntArray* end_dims = IntArrayFromInts(end_shape);
@@ -124,11 +126,11 @@ void TestStridedSliceQuantized(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(UnsupportedInputSize) {
-  const int input_shape[] = {5, 2, 2, 2, 2, 2};
-  const int begin_shape[] = {1, 5};
-  const int end_shape[] = {1, 5};
-  const int strides_shape[] = {1, 5};
-  const int output_shape[] = {0};
+  int input_shape[] = {5, 2, 2, 2, 2, 2};
+  int begin_shape[] = {1, 5};
+  int end_shape[] = {1, 5};
+  int strides_shape[] = {1, 5};
+  int output_shape[] = {0};
   float input_data[] = {};
   int32_t begin_data[] = {};
   int32_t end_data[] = {};
@@ -145,11 +147,11 @@ TF_LITE_MICRO_TEST(UnsupportedInputSize) {
 }
 
 TF_LITE_MICRO_TEST(In1D) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 2};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 2};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {1};
   int32_t end_data[] = {3};
@@ -166,11 +168,11 @@ TF_LITE_MICRO_TEST(In1D) {
 }
 
 TF_LITE_MICRO_TEST(In1D_EmptyOutput) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 0};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 0};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {10};
   int32_t end_data[] = {3};
@@ -187,11 +189,11 @@ TF_LITE_MICRO_TEST(In1D_EmptyOutput) {
 }
 
 TF_LITE_MICRO_TEST(In1D_NegativeBegin) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 2};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 2};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {-3};
   int32_t end_data[] = {3};
@@ -208,11 +210,11 @@ TF_LITE_MICRO_TEST(In1D_NegativeBegin) {
 }
 
 TF_LITE_MICRO_TEST(In1D_OutOfRangeBegin) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 3};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 3};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {-5};
   int32_t end_data[] = {3};
@@ -229,11 +231,11 @@ TF_LITE_MICRO_TEST(In1D_OutOfRangeBegin) {
 }
 
 TF_LITE_MICRO_TEST(In1D_NegativeEnd) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 1};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 1};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {1};
   int32_t end_data[] = {-2};
@@ -250,11 +252,11 @@ TF_LITE_MICRO_TEST(In1D_NegativeEnd) {
 }
 
 TF_LITE_MICRO_TEST(In1D_OutOfRangeEnd) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 3};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 3};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {-3};
   int32_t end_data[] = {5};
@@ -271,11 +273,11 @@ TF_LITE_MICRO_TEST(In1D_OutOfRangeEnd) {
 }
 
 TF_LITE_MICRO_TEST(In1D_BeginMask) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 3};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 3};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {1};
   int32_t end_data[] = {3};
@@ -292,11 +294,11 @@ TF_LITE_MICRO_TEST(In1D_BeginMask) {
 }
 
 TF_LITE_MICRO_TEST(In1D_NegativeBeginNegativeStride) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 1};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 1};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {-2};
   int32_t end_data[] = {-3};
@@ -313,11 +315,11 @@ TF_LITE_MICRO_TEST(In1D_NegativeBeginNegativeStride) {
 }
 
 TF_LITE_MICRO_TEST(In1D_OutOfRangeBeginNegativeStride) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 1};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 1};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {5};
   int32_t end_data[] = {2};
@@ -334,11 +336,11 @@ TF_LITE_MICRO_TEST(In1D_OutOfRangeBeginNegativeStride) {
 }
 
 TF_LITE_MICRO_TEST(In1D_NegativeEndNegativeStride) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 2};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 2};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {2};
   int32_t end_data[] = {-4};
@@ -355,11 +357,11 @@ TF_LITE_MICRO_TEST(In1D_NegativeEndNegativeStride) {
 }
 
 TF_LITE_MICRO_TEST(In1D_OutOfRangeEndNegativeStride) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 2};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 2};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {-3};
   int32_t end_data[] = {-5};
@@ -376,11 +378,11 @@ TF_LITE_MICRO_TEST(In1D_OutOfRangeEndNegativeStride) {
 }
 
 TF_LITE_MICRO_TEST(In1D_EndMask) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 3};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 3};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {1};
   int32_t end_data[] = {3};
@@ -397,11 +399,11 @@ TF_LITE_MICRO_TEST(In1D_EndMask) {
 }
 
 TF_LITE_MICRO_TEST(In1D_NegStride) {
-  const int input_shape[] = {1, 3};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 3};
+  int input_shape[] = {1, 3};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 3};
   float input_data[] = {1, 2, 3};
   int32_t begin_data[] = {-1};
   int32_t end_data[] = {-4};
@@ -418,11 +420,11 @@ TF_LITE_MICRO_TEST(In1D_NegStride) {
 }
 
 TF_LITE_MICRO_TEST(In1D_EvenLenStride2) {
-  const int input_shape[] = {1, 2};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 1};
+  int input_shape[] = {1, 2};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 1};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {0};
   int32_t end_data[] = {4};
@@ -439,11 +441,11 @@ TF_LITE_MICRO_TEST(In1D_EvenLenStride2) {
 }
 
 TF_LITE_MICRO_TEST(In1D_OddLenStride2) {
-  const int input_shape[] = {1, 3};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {1, 2};
+  int input_shape[] = {1, 3};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {1, 2};
   float input_data[] = {1, 2, 3, 4};
   int32_t begin_data[] = {0};
   int32_t end_data[] = {3};
@@ -460,11 +462,11 @@ TF_LITE_MICRO_TEST(In1D_OddLenStride2) {
 }
 
 TF_LITE_MICRO_TEST(In2D_Identity) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 2, 3};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 2, 3};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {0, 0};
   int32_t end_data[] = {2, 3};
@@ -481,11 +483,11 @@ TF_LITE_MICRO_TEST(In2D_Identity) {
 }
 
 TF_LITE_MICRO_TEST(In2D) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 1, 2};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 1, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {1, 0};
   int32_t end_data[] = {2, 2};
@@ -502,11 +504,11 @@ TF_LITE_MICRO_TEST(In2D) {
 }
 
 TF_LITE_MICRO_TEST(In2D_Stride2) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 1, 2};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 1, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {0, 0};
   int32_t end_data[] = {2, 3};
@@ -523,11 +525,11 @@ TF_LITE_MICRO_TEST(In2D_Stride2) {
 }
 
 TF_LITE_MICRO_TEST(In2D_NegStride) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 1, 3};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 1, 3};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {1, -1};
   int32_t end_data[] = {2, -4};
@@ -544,11 +546,11 @@ TF_LITE_MICRO_TEST(In2D_NegStride) {
 }
 
 TF_LITE_MICRO_TEST(In2D_BeginMask) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 2, 2};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 2, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {1, 0};
   int32_t end_data[] = {2, 2};
@@ -565,11 +567,11 @@ TF_LITE_MICRO_TEST(In2D_BeginMask) {
 }
 
 TF_LITE_MICRO_TEST(In2D_EndMask) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 1, 3};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 1, 3};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {1, 0};
   int32_t end_data[] = {2, 2};
@@ -586,11 +588,11 @@ TF_LITE_MICRO_TEST(In2D_EndMask) {
 }
 
 TF_LITE_MICRO_TEST(In2D_NegStrideBeginMask) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 1, 3};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 1, 3};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {1, -2};
   int32_t end_data[] = {2, -4};
@@ -607,11 +609,11 @@ TF_LITE_MICRO_TEST(In2D_NegStrideBeginMask) {
 }
 
 TF_LITE_MICRO_TEST(In2D_NegStrideEndMask) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 1, 2};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 1, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {1, -2};
   int32_t end_data[] = {2, -3};
@@ -628,11 +630,11 @@ TF_LITE_MICRO_TEST(In2D_NegStrideEndMask) {
 }
 
 TF_LITE_MICRO_TEST(In3D_Identity) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {3, 2, 3, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {3, 2, 3, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {2, 3, 2};
@@ -649,11 +651,11 @@ TF_LITE_MICRO_TEST(In3D_Identity) {
 }
 
 TF_LITE_MICRO_TEST(In3D_NegStride) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {3, 2, 3, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {3, 2, 3, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {2, 3, 2};
@@ -670,11 +672,11 @@ TF_LITE_MICRO_TEST(In3D_NegStride) {
 }
 
 TF_LITE_MICRO_TEST(In3D_Strided2) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {3, 1, 2, 1};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {3, 1, 2, 1};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {2, 3, 2};
@@ -691,11 +693,11 @@ TF_LITE_MICRO_TEST(In3D_Strided2) {
 }
 
 TF_LITE_MICRO_TEST(In1D_ShrinkAxisMask1) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {3, 2, 3, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {3, 2, 3, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {2, 3, 2};
@@ -712,11 +714,11 @@ TF_LITE_MICRO_TEST(In1D_ShrinkAxisMask1) {
 }
 
 TF_LITE_MICRO_TEST(In1D_ShrinkAxisMask1_NegativeSlice) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {0};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {0};
   float input_data[] = {0, 1, 2, 3};
   int32_t begin_data[] = {-1};
   int32_t end_data[] = {0};
@@ -733,11 +735,11 @@ TF_LITE_MICRO_TEST(In1D_ShrinkAxisMask1_NegativeSlice) {
 }
 
 TF_LITE_MICRO_TEST(In2D_ShrinkAxis3_NegativeSlice) {
-  const int input_shape[] = {2, 4, 1};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {0};
+  int input_shape[] = {2, 4, 1};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {0};
   float input_data[] = {0, 1, 2, 3};
   int32_t begin_data[] = {-2, -1};
   int32_t end_data[] = {-1, 0};
@@ -754,11 +756,11 @@ TF_LITE_MICRO_TEST(In2D_ShrinkAxis3_NegativeSlice) {
 }
 
 TF_LITE_MICRO_TEST(In2D_ShrinkAxis2_BeginEndAxis1_NegativeSlice) {
-  const int input_shape[] = {2, 4, 1};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {1, 4};
+  int input_shape[] = {2, 4, 1};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {1, 4};
   float input_data[] = {0, 1, 2, 3};
   int32_t begin_data[] = {0, -1};
   int32_t end_data[] = {0, 0};
@@ -775,11 +777,11 @@ TF_LITE_MICRO_TEST(In2D_ShrinkAxis2_BeginEndAxis1_NegativeSlice) {
 }
 
 TF_LITE_MICRO_TEST(In1D_BeginMaskShrinkAxisMask1) {
-  const int input_shape[] = {1, 4};
-  const int begin_shape[] = {1, 1};
-  const int end_shape[] = {1, 1};
-  const int strides_shape[] = {1, 1};
-  const int output_shape[] = {0};
+  int input_shape[] = {1, 4};
+  int begin_shape[] = {1, 1};
+  int end_shape[] = {1, 1};
+  int strides_shape[] = {1, 1};
+  int output_shape[] = {0};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {1};
   int32_t end_data[] = {1};
@@ -796,11 +798,11 @@ TF_LITE_MICRO_TEST(In1D_BeginMaskShrinkAxisMask1) {
 }
 
 TF_LITE_MICRO_TEST(In2D_ShrinkAxisMask1) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {1, 3};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {1, 3};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {0, 0};
   int32_t end_data[] = {1, 3};
@@ -817,11 +819,11 @@ TF_LITE_MICRO_TEST(In2D_ShrinkAxisMask1) {
 }
 
 TF_LITE_MICRO_TEST(In2D_ShrinkAxisMask2) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {1, 2};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {1, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {0, 0};
   int32_t end_data[] = {2, 1};
@@ -838,11 +840,11 @@ TF_LITE_MICRO_TEST(In2D_ShrinkAxisMask2) {
 }
 
 TF_LITE_MICRO_TEST(In2D_ShrinkAxisMask3) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {0};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {0};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {0, 0};
   int32_t end_data[] = {1, 1};
@@ -859,11 +861,11 @@ TF_LITE_MICRO_TEST(In2D_ShrinkAxisMask3) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis1) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {2, 3, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {2, 3, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {1, 3, 2};
@@ -880,11 +882,11 @@ TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis1) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis2) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {2, 2, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {2, 2, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {2, 1, 2};
@@ -901,11 +903,11 @@ TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis2) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis3) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {1, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {1, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {1, 1, 2};
@@ -922,11 +924,11 @@ TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis3) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis4) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {2, 2, 3};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {2, 2, 3};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {2, 3, 2};
@@ -943,11 +945,11 @@ TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis4) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis5) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {1, 3};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {1, 3};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {1, 3, 1};
@@ -964,11 +966,11 @@ TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis5) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis6) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {1, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {1, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {2, 1, 1};
@@ -985,11 +987,11 @@ TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis6) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis7) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {0};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {0};
   float input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {1, 1, 1};
@@ -1007,11 +1009,11 @@ TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis7) {
 
 // This tests catches a very subtle bug that was fixed by cl/188403234.
 TF_LITE_MICRO_TEST(RunTwice) {
-  const int input_shape[] = {2, 2, 3};
-  const int begin_shape[] = {1, 2};
-  const int end_shape[] = {1, 2};
-  const int strides_shape[] = {1, 2};
-  const int output_shape[] = {2, 2, 2};
+  int input_shape[] = {2, 2, 3};
+  int begin_shape[] = {1, 2};
+  int end_shape[] = {1, 2};
+  int strides_shape[] = {1, 2};
+  int output_shape[] = {2, 2, 2};
   float input_data[] = {1, 2, 3, 4, 5, 6};
   int32_t begin_data[] = {1, 0};
   int32_t end_data[] = {2, 2};
@@ -1028,11 +1030,11 @@ TF_LITE_MICRO_TEST(RunTwice) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis1Uint8) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {2, 3, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {2, 3, 2};
   uint8_t input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {1, 3, 2};
@@ -1049,11 +1051,11 @@ TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis1Uint8) {
 }
 
 TF_LITE_MICRO_TEST(In3D_IdentityShrinkAxis1int8) {
-  const int input_shape[] = {3, 2, 3, 2};
-  const int begin_shape[] = {1, 3};
-  const int end_shape[] = {1, 3};
-  const int strides_shape[] = {1, 3};
-  const int output_shape[] = {2, 3, 2};
+  int input_shape[] = {3, 2, 3, 2};
+  int begin_shape[] = {1, 3};
+  int end_shape[] = {1, 3};
+  int strides_shape[] = {1, 3};
+  int output_shape[] = {2, 3, 2};
   int8_t input_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   int32_t begin_data[] = {0, 0, 0};
   int32_t end_data[] = {1, 3, 2};

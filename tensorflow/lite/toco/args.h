@@ -190,6 +190,8 @@ struct ParsedTocoFlags {
   Arg<bool> enable_select_tf_ops = Arg<bool>(false);
   // WARNING: Experimental interface, subject to change
   Arg<bool> force_select_tf_ops = Arg<bool>(false);
+  // WARNING: Experimental interface, subject to change
+  Arg<bool> unfold_batchmatmul = Arg<bool>(true);
 };
 
 }  // namespace toco

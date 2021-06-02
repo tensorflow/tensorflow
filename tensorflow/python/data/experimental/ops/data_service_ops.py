@@ -83,8 +83,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       element_spec: The dataset element spec for the dataset to read from.
       protocol: The protocol to use for communicating with the tf.data service,
         e.g. "grpc".
-      data_transfer_protocol: The protocol to use for transferring data with the
-        tf.data service, e.g. "grpc".
+      data_transfer_protocol: (Optional.) The protocol to use for transferring
+        data with the tf.data service. By default, data is transferred using
+        gRPC.
       job_name: (Optional.) The name of the job. This argument makes it possible
         for multiple datasets to share the same job. The default behavior is
         that the dataset creates anonymous, exclusively owned jobs.
@@ -224,6 +225,7 @@ def _parse_service(service):
   else:
     raise ValueError("malformed service string has multiple '://': %s" %
                      service)
+  # TODO(aaudibert): Considering validating reachability of address here.
   return (protocol, address)
 
 
@@ -246,10 +248,11 @@ def _distribute(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
@@ -271,7 +274,7 @@ def _distribute(processing_mode,
     task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
       dispatcher for task changes.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
-      data with the tf.data service.
+      data with the tf.data service. By default, data is transferred using gRPC.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
@@ -418,7 +421,7 @@ def distribute(processing_mode,
   ```
   range5_dataset = tf.data.Dataset.range(5)
   dataset = range5_dataset.apply(tf.data.experimental.service.distribute(
-      "parallel_epochs", "grpc://localhost:5000", job_name="my_job_name"))
+      "parallel_epochs", "localhost:5000", job_name="my_job_name"))
   for iteration in range(3):
     print(list(dataset))
   ```
@@ -491,10 +494,11 @@ def distribute(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
@@ -514,7 +518,7 @@ def distribute(processing_mode,
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
-      data with the tf.data service, e.g. "grpc".
+      data with the tf.data service. By default, data is transferred using gRPC.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
@@ -540,10 +544,11 @@ def _register_dataset(service, dataset, compression):
   parameters which we do not yet want to add to the public Python API.
 
   Args:
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
@@ -557,7 +562,10 @@ def _register_dataset(service, dataset, compression):
     raise ValueError(
         "Invalid compression argument: {}. Must be one of {}".format(
             compression, valid_compressions))
-  protocol, address = _parse_service(service)
+  if isinstance(service, tuple):
+    protocol, address = service
+  else:
+    protocol, address = _parse_service(service)
   external_state_policy = dataset.options().experimental_external_state_policy
   if external_state_policy is None:
     external_state_policy = ExternalStatePolicy.WARN
@@ -567,10 +575,7 @@ def _register_dataset(service, dataset, compression):
         lambda *x: compression_ops.compress(x),
         num_parallel_calls=dataset_ops.AUTOTUNE)
   dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
-  # Apply options so that the dataset executed in the tf.data service will
-  # be optimized and support autotuning.
-  # TODO(b/183497230): Move options application after deserialization.
-  dataset = dataset._apply_options()  # pylint: disable=protected-access
+  dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
 
   dataset_id = gen_experimental_dataset_ops.register_dataset(
       dataset._variant_tensor,  # pylint: disable=protected-access
@@ -613,10 +618,11 @@ def register_dataset(service, dataset):
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   Args:
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
 
   Returns:
@@ -646,10 +652,11 @@ def _from_dataset_id(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
@@ -677,7 +684,7 @@ def _from_dataset_id(processing_mode,
     task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
       dispatcher for task changes.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
-      data with the tf.data service.
+      data with the tf.data service. By default, data is transferred using gRPC.
     compression: An indication of how the dataset's elements were compressed, so
       that `from_dataset_id` can uncompress them if necessary.
 
@@ -698,7 +705,11 @@ def _from_dataset_id(processing_mode,
       raise ValueError("job_name must not be empty")
   if element_spec is None:
     raise ValueError("element_spec must not be None")
-  protocol, address = _parse_service(service)
+
+  if isinstance(service, tuple):
+    protocol, address = service
+  else:
+    protocol, address = _parse_service(service)
 
   # If we compress, the data service side dataset will produce scalar variants.
   data_service_element_spec = (
@@ -738,7 +749,8 @@ def from_dataset_id(processing_mode,
                     job_name=None,
                     consumer_index=None,
                     num_consumers=None,
-                    max_outstanding_requests=None):
+                    max_outstanding_requests=None,
+                    data_transfer_protocol=None):
   """Creates a dataset which reads data from the tf.data service.
 
   This is useful when the dataset is registered by one process, then used in
@@ -784,10 +796,11 @@ def from_dataset_id(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
@@ -812,6 +825,8 @@ def from_dataset_id(processing_mode,
       requested at the same time. You can use this option to control the amount
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
+    data_transfer_protocol: (Optional.) The protocol to use for transferring
+      data with the tf.data service. By default, data is transferred using gRPC.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
@@ -824,4 +839,5 @@ def from_dataset_id(processing_mode,
       job_name=job_name,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
-      max_outstanding_requests=max_outstanding_requests)
+      max_outstanding_requests=max_outstanding_requests,
+      data_transfer_protocol=data_transfer_protocol)

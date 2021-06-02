@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
@@ -239,6 +240,28 @@ class Conv3DBackpropInputOp : public OpKernel {
       input_shape = context->input(0).shape();
     }
 
+    OP_REQUIRES(context, input_shape.dims() == 5,
+                errors::InvalidArgument("input tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, filter_shape.dims() == 5,
+        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dims() == 5,
+        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+        errors::InvalidArgument("input and filter_sizes must have the same "
+                                "number of channels. Got ",
+                                input_shape.dim_size(4), " for input and ",
+                                filter_shape.dim_size(3), " for filter_sizes"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+        errors::InvalidArgument("out_backprop and filter_sizes must have the "
+                                "same number of channels. Got ",
+                                out_backprop_shape.dim_size(4),
+                                " for out_backprop and ",
+                                filter_shape.dim_size(4), " for filter_sizes"));
+
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context, ConvBackpropComputeDimensions(
                                 "Conv3DBackpropInputOp", /*num_spatial_dims=*/3,
@@ -346,6 +369,28 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
       input_shape = context->input(0).shape();
     }
 
+    OP_REQUIRES(context, input_shape.dims() == 5,
+                errors::InvalidArgument("input tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, filter_shape.dims() == 5,
+        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dims() == 5,
+        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+        errors::InvalidArgument("input and filter_sizes must have the same "
+                                "number of channels. Got ",
+                                input_shape.dim_size(4), " for input and ",
+                                filter_shape.dim_size(3), " for filter_sizes"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+        errors::InvalidArgument("out_backprop and filter_sizes must have the "
+                                "same number of channels. Got ",
+                                out_backprop_shape.dim_size(4),
+                                " for out_backprop and ",
+                                filter_shape.dim_size(4), " for filter_sizes"));
+
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context, ConvBackpropComputeDimensions(
                                 "Conv3DBackpropInputOp", /*num_spatial_dims=*/3,
@@ -415,6 +460,11 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     // benchmarks I didn't find a case when it's beneficial to run parallel
     // contraction compared to sharding and matmuls.
     const bool use_parallel_contraction = dims.batch_size == 1;
+
+    OP_REQUIRES(
+        context, work_unit_size > 0,
+        errors::InvalidArgument("input, filter_sizes and out_backprop tensors "
+                                "must all have at least 1 element"));
 
     const size_t shard_size =
         use_parallel_contraction
@@ -696,6 +746,28 @@ class Conv3DBackpropFilterOp : public OpKernel {
       filter_shape = context->input(1).shape();
     }
 
+    OP_REQUIRES(context, input_shape.dims() == 5,
+                errors::InvalidArgument("input tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, filter_shape.dims() == 5,
+        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dims() == 5,
+        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+        errors::InvalidArgument("input and filter_sizes must have the same "
+                                "number of channels. Got ",
+                                input_shape.dim_size(4), " for input and ",
+                                filter_shape.dim_size(3), " for filter_sizes"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+        errors::InvalidArgument("out_backprop and filter_sizes must have the "
+                                "same number of channels. Got ",
+                                out_backprop_shape.dim_size(4),
+                                " for out_backprop and ",
+                                filter_shape.dim_size(4), " for filter_sizes"));
+
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
                    ConvBackpropComputeDimensions(
@@ -808,6 +880,28 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
       filter_shape = context->input(1).shape();
     }
 
+    OP_REQUIRES(context, input_shape.dims() == 5,
+                errors::InvalidArgument("input tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, filter_shape.dims() == 5,
+        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dims() == 5,
+        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
+    OP_REQUIRES(
+        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+        errors::InvalidArgument("input and filter_sizes must have the same "
+                                "number of channels. Got ",
+                                input_shape.dim_size(4), " for input and ",
+                                filter_shape.dim_size(3), " for filter_sizes"));
+    OP_REQUIRES(
+        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+        errors::InvalidArgument("out_backprop and filter_sizes must have the "
+                                "same number of channels. Got ",
+                                out_backprop_shape.dim_size(4),
+                                " for out_backprop and ",
+                                filter_shape.dim_size(4), " for filter_sizes"));
+
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
                    ConvBackpropComputeDimensions(
@@ -879,6 +973,11 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     const int64 size_C = filter_total_size * dims.out_depth;
 
     const int64 work_unit_size = size_A + size_B + size_C;
+
+    OP_REQUIRES(
+        context, work_unit_size > 0,
+        errors::InvalidArgument("input, filter_sizes and out_backprop tensors "
+                                "must all have at least 1 element"));
 
     const size_t shard_size =
         (target_working_set_size + work_unit_size - 1) / work_unit_size;
@@ -1199,15 +1298,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       auto transpose = se::blas::Transpose::kTranspose;
       auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                             a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                            ", n=", n, ", k=", k));
-      }
+      OP_REQUIRES_OK(
+          context, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr,
+                                        k, a_ptr, k, &c_ptr, n));
       return;
     } else if (!is_grouped_convolution &&
                dims.filter_size(0) == dims.input_size(0) &&
@@ -1229,15 +1322,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       auto transpose = se::blas::Transpose::kTranspose;
       auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                             a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                            ", n=", n, ", k=", k));
-      }
+      OP_REQUIRES_OK(
+          context, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr,
+                                        k, a_ptr, k, &c_ptr, n));
       return;
     }
 
@@ -1426,6 +1513,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
+      profiler::ScopedAnnotation trace("cudnn_autotuning");
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;
@@ -1766,16 +1854,10 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                   filter_backprop->template flat<T>().size());
 
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                             se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                             a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                            ", n=", n, ", k=", k));
-      }
+      OP_REQUIRES_OK(context,
+                     stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                                          se::blas::Transpose::kTranspose, n, m,
+                                          k, a_ptr, n, b_ptr, m, &c_ptr, n));
       return;
     } else if (!is_grouped_convolution &&
                dims.filter_size(0) == dims.input_size(0) &&
@@ -1794,16 +1876,10 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                   filter_backprop->template flat<T>().size());
 
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                             se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                             b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                            ", n=", n, ", k=", k));
-      }
+      OP_REQUIRES_OK(context,
+                     stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                                          se::blas::Transpose::kTranspose, n, m,
+                                          k, b_ptr, n, a_ptr, m, &c_ptr, n));
       return;
     }
 

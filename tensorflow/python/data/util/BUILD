@@ -2,10 +2,8 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "nest",
@@ -42,11 +40,11 @@ py_library(
     deps = [
         ":nest",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
+        "//tensorflow/python/user_ops:ops",
         "@six_archive//:six",
     ],
 )
@@ -76,7 +74,6 @@ py_library(
         ":nest",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_array_ops",
@@ -84,6 +81,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/user_ops:ops",
         "@wrapt",
     ],
 )
