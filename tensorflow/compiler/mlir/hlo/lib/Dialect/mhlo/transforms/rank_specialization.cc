@@ -651,8 +651,6 @@ struct LowerRankSpecializationClusterPattern
 
 struct RankSpecializationToSCFPass
     : public RankSpecializationToSCFPassBase<RankSpecializationToSCFPass> {
-  using RankSpecializationToSCFPassBase<
-      RankSpecializationToSCFPass>::RankSpecializationToSCFPassBase;
   explicit RankSpecializationToSCFPass(int64_t max_target_rank)
       : RankSpecializationToSCFPassBase<
             RankSpecializationToSCFPass>::RankSpecializationToSCFPassBase() {
@@ -697,10 +695,6 @@ std::unique_ptr<FunctionPass> createRankSpecializationClusterPass() {
 std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass(
     int64_t max_target_rank) {
   return std::make_unique<RankSpecializationToSCFPass>(max_target_rank);
-}
-
-std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass() {
-  return std::make_unique<RankSpecializationToSCFPass>();
 }
 
 }  // namespace mhlo
