@@ -867,6 +867,7 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_hlo_to_lhlo_op",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
