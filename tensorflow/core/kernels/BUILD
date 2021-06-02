@@ -1574,6 +1574,9 @@ tf_cc_test(
     name = "batch_norm_op_test",
     size = "small",
     srcs = ["batch_norm_op_test.cc"],
+    tags = [
+        "no_oss",  # b/189866692
+    ],
     deps = [
         ":batch_norm_op",
         ":ops_testutil",

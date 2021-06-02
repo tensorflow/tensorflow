@@ -382,6 +382,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # b/189866692
     ],
     tpu_tags = [
         "no_oss",  # b/155502591
