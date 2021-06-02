@@ -66,11 +66,11 @@ Provided an input tensor, the `tf.math.acos` operation returns the inverse cosin
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TensorOf<[TF_SInt, TF_Float, TF_Complex]>:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TensorOf<[TF_SInt, TF_Float, TF_Complex]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -621,11 +621,11 @@ tf.math.asin(y) # [1.047, 0.785] = x
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TensorOf<[TF_SInt, TF_Float, TF_Complex]>:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TensorOf<[TF_SInt, TF_Float, TF_Complex]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -778,11 +778,11 @@ tf.math.atan(y) # [1.047, 0.785] = x
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TensorOf<[TF_SInt, TF_Float, TF_Complex]>:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TensorOf<[TF_SInt, TF_Float, TF_Complex]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
