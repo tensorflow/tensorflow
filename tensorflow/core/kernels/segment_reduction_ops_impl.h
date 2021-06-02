@@ -110,6 +110,9 @@ class SegmentReductionOp : public OpKernel {
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
 
+    OP_REQUIRES(context, input.dims() >= 1,
+                errors::InvalidArgument("Shape must be at least rank 1"));
+
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
 
@@ -236,6 +239,10 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(
         context, TensorShapeUtils::IsVector(segment_ids.shape()),
         errors::InvalidArgument("segment_ids should be a vector."), done);
+
+    OP_REQUIRES_ASYNC(context, input.dims() >= 1,
+                      errors::InvalidArgument("Shape must be at least rank 1"),
+                      done);
 
     const int64 num_indices = segment_ids.NumElements();
     OP_REQUIRES_ASYNC(
@@ -507,6 +514,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
     }
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
+
+    OP_REQUIRES(context, input.dims() >= 1,
+                errors::InvalidArgument("Shape must be at least rank 1"));
 
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
