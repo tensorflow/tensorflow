@@ -17,13 +17,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER4(BinaryOp, CPU, "Atan2", functor::atan2, Eigen::half, bfloat16, float,
-          double);
+REGISTER2(BinaryOp, CPU, "Atan2", functor::atan2, float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER4(BinaryOp, GPU, "Atan2", functor::atan2, Eigen::half, bfloat16, float,
-          double);
+REGISTER2(BinaryOp, GPU, "Atan2", functor::atan2, float, double);
 #endif
 #endif
 

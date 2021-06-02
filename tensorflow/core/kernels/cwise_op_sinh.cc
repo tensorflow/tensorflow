@@ -17,13 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER6(UnaryOp, CPU, "Sinh", functor::sinh, float, double, bfloat16,
-          Eigen::half, complex64, complex128);
+REGISTER5(UnaryOp, CPU, "Sinh", functor::sinh, float, double, bfloat16,
+          complex64, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER4(UnaryOp, GPU, "Sinh", functor::sinh, float, double, bfloat16,
-          Eigen::half);
+REGISTER2(UnaryOp, GPU, "Sinh", functor::sinh, float, double);
 #endif
 #endif
 

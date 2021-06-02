@@ -1165,7 +1165,7 @@ struct scalar_atan2_op {
 #if TENSORFLOW_USE_ROCM
     return ::atan2(y, x);
 #else
-    return Scalar(std::atan2(y, x));
+    return std::atan2(y, x);
 #endif
   }
 };
