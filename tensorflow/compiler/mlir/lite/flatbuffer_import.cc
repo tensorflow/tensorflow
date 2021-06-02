@@ -50,6 +50,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -927,6 +928,73 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
   return func;
 }
 
+// Helper method that returns the index of the tensor with name 'tensor_name'
+// in the list of tensor names 'tensors'.
+int GetTensorIndex(const std::string& tensor_name,
+                   llvm::SmallVector<llvm::StringRef, 2> tensors) {
+  for (const auto& tensor_index_pair : llvm::enumerate(tensors)) {
+    if (tensor_index_pair.value() == tensor_name)
+      return tensor_index_pair.index();
+  }
+  return -1;
+}
+
+// Helper method that returns list of all strings in a StringAttr identified
+// by 'attr_key' and values are separated by a comma.
+llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
+    mlir::DictionaryAttr attr, const std::string& attr_key) {
+  llvm::SmallVector<llvm::StringRef, 2> result;
+  if (auto str = attr.get(attr_key).dyn_cast_or_null<mlir::StringAttr>()) {
+    str.getValue().split(result, ',', /*MaxSplit=*/-1,
+                         /*KeepEmpty=*/false);
+  }
+  return result;
+}
+
+// Sets signature attributes on the function.
+void SetSignature(
+    FuncOp func, const tflite::SignatureDefT* signature,
+    const std::vector<std::unique_ptr<tflite::TensorT>>& tensors) {
+  auto* context = func->getContext();
+  static const char kSignatureDefIndexPath[] = "tf_saved_model.index_path";
+  static const char kExportedNameAttr[] = "tf_saved_model.exported_names";
+  static const char kEntryFunctionAttributes[] = "tf.entry_function";
+
+  llvm::SmallVector<mlir::DictionaryAttr, 4> arg_attrs, res_attrs;
+
+  auto dict_attr =
+      func->getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
+  if (!dict_attr) return;
+
+  // Get Input and output tensor names from attribute.
+  llvm::SmallVector<llvm::StringRef, 2> input_names =
+      GetStringsFromAttrWithSeparator(dict_attr, /*attr_key=*/"inputs");
+  llvm::SmallVector<llvm::StringRef, 2> output_names =
+      GetStringsFromAttrWithSeparator(dict_attr, /*attr_key=*/"outputs");
+
+  for (auto input_pair : llvm::enumerate(signature->inputs)) {
+    func.setArgAttr(
+        GetTensorIndex(tensors[input_pair.value()->tensor_index]->name,
+                       input_names),
+        kSignatureDefIndexPath,
+        mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
+                                          context, input_pair.value()->name)}));
+  }
+  for (auto output_pair : llvm::enumerate(signature->outputs)) {
+    func.setResultAttr(
+        GetTensorIndex(tensors[output_pair.value()->tensor_index]->name,
+                       output_names),
+        kSignatureDefIndexPath,
+        mlir::ArrayAttr::get(
+            context,
+            {mlir::StringAttr::get(context, output_pair.value()->name)}));
+  }
+  func->setAttr(
+      kExportedNameAttr,
+      mlir::ArrayAttr::get(
+          context, {mlir::StringAttr::get(context, signature->method_name)}));
+}
+
 // Build a FuncOp from a tflite SubGraph
 // The buffers are directly taken
 // from the deserialized flatbuffer as we do not have the type information to
@@ -935,6 +1003,8 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
 // controls whether shapeless types are treated as scalars. If
 // ordered_output_arrays is not empty, then the imported mlir function will only
 // return nodes in ordered_output_arrays in the same order.
+// If signature is not null, then the inputs/outputs in signature will be
+// attached to the FuncOp.
 StatusOr<FuncOp> ConvertSubgraph(
     const tflite::SubGraphT& subgraph, llvm::StringRef name,
     const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
@@ -944,7 +1014,8 @@ StatusOr<FuncOp> ConvertSubgraph(
     bool use_external_constant,
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
-    bool experimental_prune_unreachable_nodes_unconditionally) {
+    bool experimental_prune_unreachable_nodes_unconditionally,
+    const tflite::SignatureDefT* signature) {
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
@@ -1061,6 +1132,11 @@ StatusOr<FuncOp> ConvertSubgraph(
     func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   } else {
     func.setPrivate();
+  }
+
+  // Set signature on function.
+  if (signature) {
+    SetSignature(func, signature, subgraph.tensors);
   }
 
   absl::flat_hash_set<const tflite::OperatorT*> pruned_subgraph_ops;
@@ -1249,6 +1325,12 @@ OwningModuleRef tflite::FlatBufferToMlir(
                     builder.getStringAttr(model->description));
   }
 
+  // TODO(b/184697652): Update to handle multiple entry points.
+  tflite::SignatureDefT* signature_def = nullptr;
+  if (!model->signature_defs.empty()) {
+    signature_def = model->signature_defs[0].get();
+  }
+
   for (auto e : llvm::enumerate(model->subgraphs)) {
     auto& subgraph = e.value();
     std::string name = SubgraphName(e.index(), *subgraph);
@@ -1259,7 +1341,8 @@ OwningModuleRef tflite::FlatBufferToMlir(
         /*is_entry_point=*/e.index() == 0,
         /*use_external_constant=*/use_external_constant, ordered_input_arrays,
         ordered_output_arrays,
-        experimental_prune_unreachable_nodes_unconditionally);
+        experimental_prune_unreachable_nodes_unconditionally,
+        e.index() == 0 ? signature_def : nullptr);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name << ": "
