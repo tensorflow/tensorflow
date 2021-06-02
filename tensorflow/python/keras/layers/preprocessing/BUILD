@@ -476,6 +476,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/189956080)
     ],
     deps = [
         ":discretization",
