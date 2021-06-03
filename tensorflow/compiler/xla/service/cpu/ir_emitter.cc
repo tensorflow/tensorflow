@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/cus_related_functions.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
@@ -826,7 +827,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   auto rhs = dot->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{S32, F16, F32, F64, C64, C128}));
+      /*supported_types=*/{S32, F16, F32, F64, CUS, C64, C128}));
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
 
   if (dnums.lhs_contracting_dimensions_size() != 1) {
@@ -1007,7 +1008,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   auto rhs = convolution->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, F64, C64, C128}));
+      /*supported_types=*/{F16, F32, F64, CUS, C64, C128}));
 
   // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.
@@ -1498,6 +1499,20 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   return true;
 }
 
+llvm::Value* CreateCusAdd(llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+  // llvm::StructType* cus = llvm_ir::getCusTy(module->getContext());
+  
+  // llvm::Value* func =
+  //     module->getOrInsertFunction("CastCusToF32", b->getFloatTy(), cus)
+  //         .getCallee();
+  // llvm::Function* cast_cus_to_f32 = llvm::dyn_cast<llvm::Function>(func);
+  // auto args = cast_cus_to_f32->arg_begin();
+  // llvm::Value* c = args++;
+  // c->setName("c");
+
+  // return b->CreateCall(cast_cus_to_f32, {cus_value});
+}
+
 IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
     HloComputation* function, string* failure_reason) const {
   CHECK_EQ(function->num_parameters(), 2);
@@ -1521,6 +1536,7 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
   }
   bool root_is_floating_point = ShapeUtil::ElementIsFloating(root_shape);
   bool root_is_integral = ShapeUtil::ElementIsIntegral(root_shape);
+  bool root_is_cus = ShapeUtil::ElementIsCus(root_shape);
   bool root_is_signed = ShapeUtil::ElementIsSigned(root_shape);
 
   auto lhs = root_instruction->operand(0);
@@ -1547,10 +1563,15 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       return nullptr;
 
     case HloOpcode::kAdd:
-      return [root_is_integral](llvm::IRBuilder<>* b, llvm::Value* lhs,
-                                llvm::Value* rhs) {
-        return root_is_integral ? b->CreateAdd(lhs, rhs)
-                                : b->CreateFAdd(lhs, rhs);
+      return [root_is_integral, root_is_cus](
+                 llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+        if (root_is_integral) {
+          return b->CreateAdd(lhs, rhs);
+        } else if (root_is_cus) {
+          return EmitCusAdd(lhs, rhs, b);
+        } else {
+          return b->CreateFAdd(lhs, rhs);
+        }
       };
 
     case HloOpcode::kMultiply:

@@ -140,6 +140,8 @@ inline PrimitiveType NativeToPrimitiveType<complex128>() {
   return C128;
 }
 
+bool IsCusType(PrimitiveType type);
+
 bool IsFloatingPointType(PrimitiveType type);
 
 bool IsComplexType(PrimitiveType type);

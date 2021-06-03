@@ -295,39 +295,6 @@ struct Helper<Variant> {
   }
 };
 
-template <>
-struct Helper<cus> {
-  // Encodes "n" elements of type Variant stored in "in" into destination
-  // "out", which is usually the TensorProto::tensor_content.
-  template <typename Destination>
-  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
-    EncodeVariantList(in->base<const Variant>(), n,
-                      port::NewStringListEncoder(out));
-  }
-
-  // Decodes "n" elements of type Variant from "in" and constructs a
-  // buffer out of it. Returns nullptr if the decoding fails. "in" is
-  // usually the TensorProto::tensor_content.
-  template <typename Source>
-  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
-    auto* buf = new Buffer<Variant>(a, n);
-    Variant* ps = buf->template base<Variant>();
-    if (ps == nullptr ||
-        !DecodeVariantList(port::NewStringListDecoder(in), ps, n)) {
-      buf->Unref();
-      return nullptr;
-    }
-    return buf;
-  }
-
-  // Returns the estimated memory usage of "n" elements of type T
-  // stored in buffer "in".
-  static int64 TotalBytes(TensorBuffer* in, int n) {
-    return n * sizeof(Variant);
-  }
-};
-
-
 template <typename T>
 struct ProtoHelper {};
 
@@ -648,31 +615,6 @@ TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
                                        int64 n) {
   CHECK_GT(n, 0);
   Buffer<bfloat16>* buf = new Buffer<bfloat16>(a, n);
-  uint16* data = buf->template base<uint16>();
-  if (data == nullptr) {
-    buf->Unref();
-    return nullptr;
-  }
-  const int64 in_n = in.half_val().size();
-  auto begin = in.half_val().begin();
-  if (n <= in_n) {
-    std::copy_n(begin, n, data);
-  } else if (in_n > 0) {
-    std::copy_n(begin, in_n, data);
-    const uint16 last = *(data + in_n - 1);
-    std::fill_n(data + in_n, n - in_n, last);
-  } else {
-    std::fill_n(data, n, 0);
-  }
-  return buf;
-}
-
-
-template <>
-TensorBuffer* FromProtoField<cus>(Allocator* a, const TensorProto& in,
-                                       int64 n) {
-  CHECK_GT(n, 0);
-  Buffer<cus>* buf = new Buffer<cus>(a, n);
   uint16* data = buf->template base<uint16>();
   if (data == nullptr) {
     buf->Unref();

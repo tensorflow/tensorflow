@@ -304,7 +304,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case HloOpcode::kNegate:
       if (!ShapeUtil::ElementIsIntegral(shape) &&
           !ShapeUtil::ElementIsFloating(shape) &&
-          !ShapeUtil::ElementIsComplex(shape)) {
+          !ShapeUtil::ElementIsComplex(shape) &&
+          !ShapeUtil::ElementIsCus(shape)) {
         return InvalidArgument(
             "Expected element type in shape to be integral, floating or "
             "complex for %s operation; got %s.",

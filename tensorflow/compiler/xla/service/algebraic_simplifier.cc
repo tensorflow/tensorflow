@@ -263,8 +263,10 @@ bool IsConvertPairNoOp(const HloInstruction* convert) {
   bool is_conversion_integral =
       ShapeUtil::ElementIsIntegral(src_shape) &&
       ShapeUtil::ElementIsIntegral(intermediate_shape);
-
-  return is_conversion_floating || is_conversion_integral;
+  bool is_conversion_cus =
+      ShapeUtil::ElementIsCus(src_shape) &&
+      ShapeUtil::ElementIsCus(intermediate_shape);
+  return is_conversion_floating || is_conversion_integral || is_conversion_cus;
 }
 
 // AlgebraicSimplifierVisitor traverses the HLO computation and reduces certain

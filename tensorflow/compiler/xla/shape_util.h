@@ -469,6 +469,9 @@ class ShapeUtil {
   // determine and assign an optimized layout.
   static Status ValidateShapeWithOptionalLayout(const Shape& shape);
 
+  // Returns whether the element type of the shape is cus.
+  static bool ElementIsCus(const Shape& shape);
+
   // Returns whether the element type of the shape is integral (signed or
   // unsigned). Note that predicates are not considered integral here, since
   // they are logical values.

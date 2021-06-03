@@ -468,6 +468,7 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
     case RNG_UNIFORM:
       if (!primitive_util::IsFloatingPointType(element_type) &&
           !primitive_util::IsIntegralType(element_type) &&
+          !primitive_util::IsCusType(element_type) &&
           element_type != PRED) {
         return InternalError(
             "Element type not supported."

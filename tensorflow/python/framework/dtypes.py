@@ -130,8 +130,6 @@ class DType(_dtypes.DType):
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("-0x1.FEp127"))
-        elif self.base_dtype == cus:
-          return _np_cus(float.fromhex("-0x1.FEp127"))
         raise TypeError("Cannot find minimum value of %s." % self)
 
   @property
@@ -156,8 +154,6 @@ class DType(_dtypes.DType):
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("0x1.FEp127"))
-        elif self.base_dtype == cus:
-          return _np_cus(float.fromhex("0x1.FEp127"))
         raise TypeError("Cannot find maximum value of %s." % self)
 
   @property

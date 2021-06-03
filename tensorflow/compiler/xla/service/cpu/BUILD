@@ -512,6 +512,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:cus_related_functions",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",

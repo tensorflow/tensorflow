@@ -205,7 +205,7 @@ REGISTER_OP("ComplexAbs")
   Input("x: T")                                                            \
       .Output("y: T")                                                      \
       .Attr(                                                               \
-          "T: {bfloat16, half, float, double, int8, int16, int32, int64, " \
+          "T: {bfloat16, cus, half, float, double, int8, int16, int32, int64, " \
           "complex64, complex128}")                                        \
       .SetShapeFn(shape_inference::UnchangedShape)
 
@@ -360,7 +360,7 @@ REGISTER_OP("Rint")
 
 #define BINARY_MORE()                                                          \
   Input("x: T").Input("y: T").Output("z: T").Attr(                             \
-      "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, " \
+      "T: {bfloat16, cus, half, float, double, uint8, int8, uint16, int16, int32, " \
       "int64, complex64, complex128}")
 
 #define BINARY_FEWER()                                               \
@@ -432,7 +432,7 @@ REGISTER_OP("Sub")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, "
+        "T: {bfloat16, cus, half, float, double, uint8, int8, uint16, int16, int32, "
         "int64, complex64, complex128, uint32}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 

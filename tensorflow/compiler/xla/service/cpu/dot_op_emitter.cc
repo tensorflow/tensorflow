@@ -26,12 +26,6 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"  // from @llvm-project
-#include "mlir/EDSC/Builders.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -40,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/cpu/tiled_dot_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
+#include "tensorflow/compiler/xla/service/cus_related_functions.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -382,7 +377,8 @@ void DotOpEmitter::EmitTiledLlvmIrGemv() {
   PrimitiveType primitive_type = dot_info_.result_shape.element_type();
 
   CHECK(primitive_util::IsFloatingPointType(primitive_type) ||
-        primitive_util::IsIntegralType(primitive_type));
+        primitive_util::IsIntegralType(primitive_type) ||
+        primitive_util::IsCusType(primitive_type));
 
   MatMultDims mat_mult_dims = GetMatMultDims();
   bool is_column_major_matrix_vector_gemv = false;
@@ -652,6 +648,9 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   } else if (ShapeUtil::ElementIsIntegral(lhs_shape)) {
     llvm::Value* product = b_->CreateMul(lhs_element, rhs_element);
     updated_accum = b_->CreateAdd(accum, product);
+  } else if (ShapeUtil::ElementIsCus(lhs_shape)) {
+    llvm::Value* product = EmitCusMul(lhs_element, rhs_element, b_);
+    updated_accum = EmitCusAdd(accum, product, b_);
   } else {
     llvm::Value* product = b_->CreateFMul(lhs_element, rhs_element);
     updated_accum = b_->CreateFAdd(accum, product);
@@ -1020,7 +1019,8 @@ DotImplementationStrategy GetDotImplementationStrategy(
         (dot_info.result_shape.dimensions(0) == 1 ||
          dot_info.result_shape.dimensions(1) == 1))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
-       primitive_util::IsIntegralType(element_type))) {
+       primitive_util::IsIntegralType(element_type) ||
+       primitive_util::IsCusType(element_type))) {
     return DotImplementationStrategy::kTiledLlvmIrGemv;
   }
 
@@ -1043,7 +1043,7 @@ Status EmitNonBatchDotOperation(
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
   TF_RET_CHECK(S32 == type || F16 == type || F32 == type || F64 == type ||
-               C64 == type || C128 == type);
+               C64 == type || C128 == type || CUS == type);
   DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
                            target_array, lhs_array, rhs_array, addend_array,
                            executable_run_options_value, b, mlir_context,

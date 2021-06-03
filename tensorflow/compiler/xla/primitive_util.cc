@@ -32,8 +32,6 @@ int SignificandWidth(PrimitiveType type) {
       return std::numeric_limits<double>::digits;
     case BF16:
       return kBFloat16MantissaBits + 1;
-    case CUS:
-      return std::numeric_limits<float>::digits;
     case F16:
       return 11;
     default:
@@ -41,9 +39,12 @@ int SignificandWidth(PrimitiveType type) {
   }
 }
 
-// todo(chenhao)
+bool IsCusType(PrimitiveType type) {
+  return type == CUS;
+}
+
 bool IsFloatingPointType(PrimitiveType type) {
-  return type == F16 || type == F32 || type == F64 || type == BF16 || type == CUS;
+  return type == F16 || type == F32 || type == F64 || type == BF16;
 }
 
 bool IsComplexType(PrimitiveType type) { return type == C64 || type == C128; }
@@ -53,7 +54,7 @@ bool IsSignedIntegralType(PrimitiveType type) {
 }
 
 bool IsUnsignedIntegralType(PrimitiveType type) {
-  return type == U8 || type == U16 || type == U32 || type == U64 || type == CUS;
+  return type == U8 || type == U16 || type == U32 || type == U64;
 }
 
 bool IsIntegralType(PrimitiveType type) {

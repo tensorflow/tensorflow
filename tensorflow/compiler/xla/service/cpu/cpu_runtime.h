@@ -99,6 +99,9 @@ extern xla::int64 __xla_cpu_runtime_TracingStart(
 extern void __xla_cpu_runtime_TracingEnd(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
     xla::int64 id);
+extern float __xla_cpu_runtime_CastCusToF32(tensorflow::cus c);
+
+extern tensorflow::cus __xla_cpu_runtime_CastF32ToCus(const float f);
 
 // Some things common to all of the runtime entry points below:
 //

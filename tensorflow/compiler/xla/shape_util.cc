@@ -348,6 +348,10 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*to));
 }
 
+/* static */ bool ShapeUtil::ElementIsCus(const Shape& shape) {
+  return primitive_util::IsCusType(shape.element_type());
+}
+
 /* static */ bool ShapeUtil::ElementIsIntegral(const Shape& shape) {
   return primitive_util::IsIntegralType(shape.element_type());
 }

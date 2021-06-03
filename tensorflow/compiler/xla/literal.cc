@@ -1141,6 +1141,7 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64> multi_index,
       break;
     case BF16:
       Set<bfloat16>(multi_index, static_cast<bfloat16>(value));
+      break;
     case CUS:
       Set<cus>(multi_index, static_cast<cus>(value));
       break;

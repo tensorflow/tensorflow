@@ -70,11 +70,11 @@ bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
                             absl::Span<const int64> multi_index) {
   return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs, multi_index);
 }
-// template <>
-// bool CompareEqual<cus>(cus lhs, cus rhs,
-//                             absl::Span<const int64> multi_index) {
-//   return CompareFloatsBitwiseEqual<cus, uint32>(lhs, rhs, multi_index);
-// }
+template <>
+bool CompareEqual<cus>(cus lhs, cus rhs,
+                            absl::Span<const int64> multi_index) {
+  return CompareFloatsBitwiseEqual<cus, uint32>(lhs, rhs, multi_index);
+}
 template <>
 bool CompareEqual<Eigen::half>(Eigen::half lhs, Eigen::half rhs,
                                absl::Span<const int64> multi_index) {
@@ -830,8 +830,10 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
     return return_status;
   }
 
+  // todo(chenhaop) not sure if this is necessary
   if (ShapeUtil::ElementIsFloating(expected.shape()) ||
-      ShapeUtil::ElementIsComplex(expected.shape())) {
+      ShapeUtil::ElementIsComplex(expected.shape()) ||
+      ShapeUtil::ElementIsCus(expected.shape())) {
     bool use_detailed_message = detailed_message.value_or(
         ShapeUtil::ElementsIn(expected.shape()) >= 64);
     switch (expected.shape().element_type()) {

@@ -4103,6 +4103,20 @@ cc_library(
 )
 
 cc_library(
+    name = "cus_related_functions",
+    srcs = ["cus_related_functions.cc"],
+    hdrs = [
+        "cus_related_functions.h",
+    ],
+    deps = [
+        ":custom_call_target_registry",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+cc_library(
     name = "elemental_ir_emitter",
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
@@ -4110,6 +4124,7 @@ cc_library(
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_module_config",
+        ":cus_related_functions",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

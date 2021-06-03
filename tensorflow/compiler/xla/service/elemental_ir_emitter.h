@@ -66,6 +66,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Module* module() { return module_; }
 
  protected:
+  virtual StatusOr<llvm::Value*> EmitCusUnaryOp(const HloInstruction* op,
+                                                llvm::Value* operand_value);
+
   virtual StatusOr<llvm::Value*> EmitIntegerUnaryOp(const HloInstruction* op,
                                                     llvm::Value* operand_value);
 
@@ -82,6 +85,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* GetIntSMin(llvm::Type* type);
   llvm::Value* GetMinusOne(llvm::Type* type);
 
+//   llvm::Value* EmitCusAdd(llvm::Value* lhs, llvm::Value* rhs);
+//   llvm::Value* EmitCusSub(llvm::Value* lhs, llvm::Value* rhs);
+//   llvm::Value* EmitCusMul(llvm::Value* lhs, llvm::Value* rhs);
+//   llvm::Value* EmitCusDiv(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* EmitIntegerDivide(llvm::Value* lhs, llvm::Value* rhs,
                                  bool is_signed);
   llvm::Value* EmitIntegerRemainder(llvm::Value* lhs, llvm::Value* rhs,
@@ -91,6 +98,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                      llvm::Value* lhs_value,
                                                      llvm::Value* rhs_value,
                                                      bool is_signed);
+
+  virtual StatusOr<llvm::Value*> EmitCusBinaryOp(const HloInstruction* op,
+                                                 llvm::Value* lhs_value,
+                                                 llvm::Value* rhs_value);
 
   virtual StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                                    llvm::Value* lhs_value,

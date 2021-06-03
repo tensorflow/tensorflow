@@ -123,7 +123,8 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
                                    llvm::IRBuilder<>* b);
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
                                    llvm::IRBuilder<>* b);
-
+// the definition of cus in LLVM
+llvm::StructType* getCusTy(llvm::LLVMContext& context);
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module);

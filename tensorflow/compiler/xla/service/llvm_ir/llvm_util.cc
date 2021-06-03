@@ -139,6 +139,11 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
   return EmitBufferIndexingGEP(array, b->getInt64(index), b);
 }
 
+llvm::StructType* getCusTy(llvm::LLVMContext& context){
+  llvm::SmallVector<llvm::Type*, 1> structFields({llvm::Type::getInt32Ty(context)});
+  return llvm::StructType::get(context, structFields);
+}
+
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
@@ -160,7 +165,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getHalfTy(module->getContext());
     case S32:
     case CUS:
-      // similar reason as BF16
+      return getCusTy(module->getContext());
     case U32:
       return llvm::Type::getInt32Ty(module->getContext());
     case S64:

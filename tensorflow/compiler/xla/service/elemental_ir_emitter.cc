@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/cus_related_functions.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -207,12 +208,6 @@ StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
   return b->CreateBitCast(truncated, b->getInt16Ty());
 }
 
-// todo(chenhao) dynamic cus
-StatusOr<llvm::Value*> EmitF32ToCus(llvm::Value* f32_value,
-                                     llvm::IRBuilder<>* b) {
-  return b->CreateFPToUI(f32_value, b->getInt32Ty());
-}
-
 llvm::Value* EmitBF16ToF32(llvm::Value* bf16_value, llvm::IRBuilder<>* b) {
   auto as_int16 = b->CreateBitCast(bf16_value, b->getInt16Ty());
   auto as_int32 = b->CreateZExt(as_int16, b->getInt32Ty());
@@ -242,6 +237,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitUnaryOp(
   if (ShapeUtil::ElementIsIntegral(op->operand(0)->shape()) ||
       op->operand(0)->shape().element_type() == PRED) {
     return EmitIntegerUnaryOp(op, operand_value);
+  } else if (ShapeUtil::ElementIsCus(op->operand(0)->shape())) {
+    return EmitCusUnaryOp(op, operand_value);
   } else if (ShapeUtil::ElementIsComplex(op->operand(0)->shape())) {
     return EmitComplexUnaryOp(op, operand_value);
   } else {
@@ -270,6 +267,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
         return IntCast(operand_value,
                        llvm_ir::PrimitiveTypeToIrType(to_type, module_),
                        primitive_util::IsSignedIntegralType(from_type));
+      }
+      if (primitive_util::IsCusType(to_type)) {
+        if (to_type == CUS) {
+          return EmitF32ToCus(EmitIntegralToFloating(operand_value, from_type,
+                                                     F32, module_, b_),
+                              b_);
+        }
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
         if (to_type == BF16) {
@@ -369,6 +373,161 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
   }
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitCusUnaryOp(
+    const HloInstruction* op, llvm::Value* operand_value) {
+  switch (op->opcode()) {
+    case HloOpcode::kConvert: {
+      PrimitiveType from_type = op->operand(0)->shape().element_type();
+      PrimitiveType to_type = op->shape().element_type();
+      CHECK(primitive_util::IsCusType(from_type)) << from_type;
+      if (from_type == to_type) {
+        return operand_value;
+      }
+      if (from_type == CUS) {
+        TF_RET_CHECK(to_type != CUS);
+        operand_value = EmitCusToF32(operand_value, b_);
+        from_type = F32;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
+      if (primitive_util::IsComplexType(to_type)) {
+        PrimitiveType to_component_type =
+            primitive_util::ComplexComponentType(to_type);
+        if (from_type == to_component_type) {
+          return EmitComposeComplex(op, operand_value, nullptr);
+        }
+        return EmitComposeComplex(
+            op,
+            FPCast(operand_value,
+                   llvm_ir::PrimitiveTypeToIrType(to_component_type, module_)),
+            nullptr);
+      }
+      if (to_type == BF16) {
+        // Cast to F32 first. Other floating point formats are not supported by
+        // EmitReducePrecisionIR.
+        if (from_type != F32) {
+          operand_value = b_->CreateFPCast(
+              operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
+        }
+        return EmitF32ToBF16(operand_value, b_);
+      }
+      if (to_type == PRED) {
+        return b_->CreateZExt(
+            FCmpUNE(operand_value,
+                    llvm::ConstantFP::get(operand_value->getType(), 0.0)),
+            llvm_ir::PrimitiveTypeToIrType(PRED, module_));
+      }
+      if (primitive_util::IsFloatingPointType(to_type)) {
+        return FPCast(operand_value,
+                      llvm_ir::PrimitiveTypeToIrType(to_type, module_));
+      }
+      if (primitive_util::IsSignedIntegralType(to_type)) {
+        return FPToSI(operand_value,
+                      llvm_ir::PrimitiveTypeToIrType(to_type, module_));
+      }
+      if (primitive_util::IsUnsignedIntegralType(to_type)) {
+        return FPToUI(operand_value,
+                      llvm_ir::PrimitiveTypeToIrType(to_type, module_));
+      }
+      return Unimplemented("unhandled conversion operation: %s => %s",
+                           PrimitiveType_Name(from_type),
+                           PrimitiveType_Name(to_type));
+    }
+    case HloOpcode::kBitcastConvert: {
+      PrimitiveType from_type = op->operand(0)->shape().element_type();
+      PrimitiveType to_type = op->shape().element_type();
+      CHECK(primitive_util::IsCusType(from_type));
+      if (from_type == to_type) {
+        return operand_value;
+      }
+      if (primitive_util::BitWidth(from_type) ==
+          primitive_util::BitWidth(to_type)) {
+        // todo(chenhao) not sure if bitcast works here
+        return BitCast(operand_value,
+                       llvm_ir::PrimitiveTypeToIrType(to_type, module_));
+      }
+      return InvalidArgument(
+          "bitcast conversion from primitive type %s to %s with unequal "
+          "bit-widths (%u versus %u) ",
+          PrimitiveType_Name(from_type), PrimitiveType_Name(to_type),
+          primitive_util::BitWidth(from_type),
+          primitive_util::BitWidth(to_type));
+    }
+    // case HloOpcode::kExp:
+    //   return EmitExp(op->shape().element_type(), operand_value);
+    // case HloOpcode::kExpm1:
+    //   return EmitExpm1(op->shape().element_type(), operand_value);
+    // case HloOpcode::kLog:
+    //   return EmitLog(op->shape().element_type(), operand_value);
+    // case HloOpcode::kLog1p:
+    //   return EmitLog1p(op->shape().element_type(), operand_value);
+    // case HloOpcode::kCos:
+    //   return EmitCos(op->shape().element_type(), operand_value);
+    // case HloOpcode::kSin:
+    //   return EmitSin(op->shape().element_type(), operand_value);
+    // case HloOpcode::kTanh:
+    //   return EmitTanh(op->shape().element_type(), operand_value);
+    // case HloOpcode::kSqrt:
+    //   return EmitSqrt(op->shape().element_type(), operand_value);
+    // case HloOpcode::kRsqrt:
+    //   return EmitRsqrt(op->shape().element_type(), operand_value);
+    // case HloOpcode::kCbrt:
+    //   return EmitCbrt(op->shape().element_type(), operand_value);
+    // case HloOpcode::kFloor:
+    //   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::floor,
+    //                                       {operand_value},
+    //                                       {operand_value->getType()}, b_);
+    // case HloOpcode::kCeil:
+    //   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::ceil,
+    //                                       {operand_value},
+    //                                       {operand_value->getType()}, b_);
+    // case HloOpcode::kAbs:
+    //   auto cus_zero = 
+    //   auto type =
+    //       llvm_ir::PrimitiveTypeToIrType(op->shape().element_type(),
+    //       module_);
+    //   auto cmp = ICmpSGE(operand_value, GetZero(type));
+    //   return Select(cmp, operand_value, Neg(operand_value));
+
+    // case HloOpcode::kRoundNearestAfz:
+    //   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::round,
+    //                                       {operand_value},
+    //                                       {operand_value->getType()}, b_);
+    // case HloOpcode::kSign: {
+    //   auto type = operand_value->getType();
+    //   auto zero = llvm::ConstantFP::get(type, 0.0);
+    //   auto ne0_i1 = FCmpONE(operand_value, zero);
+    //   auto ne0_float = UIToFP(ne0_i1, type);
+    //   llvm::Value* result = llvm_ir::EmitCallToIntrinsic(
+    //       llvm::Intrinsic::copysign, {ne0_float, operand_value},
+    //       {operand_value->getType()}, b_);
+    //   auto is_nan = FCmpUNO(operand_value, operand_value);
+    //   result = Select(is_nan, operand_value, result);
+    //   return result;
+    // }
+    // case HloOpcode::kIsFinite: {
+    //   // abs(x) o!= inf, this works because the comparison returns false if
+    //   // either operand is NaN.
+    //   auto type = operand_value->getType();
+    //   auto abs_value = llvm_ir::EmitCallToIntrinsic(
+    //       llvm::Intrinsic::fabs, {operand_value}, {type}, b_);
+    //   auto infinity = llvm::ConstantFP::getInfinity(type);
+    //   auto not_infinite = FCmpONE(abs_value, infinity);
+    //   return b_->CreateZExt(not_infinite,
+    //                         llvm_ir::PrimitiveTypeToIrType(PRED, module_));
+    // }
+    case HloOpcode::kNegate:
+      return EmitCusNeg(operand_value, b_);
+    // case HloOpcode::kReal:
+    //   return operand_value;
+    // case HloOpcode::kImag:
+    //   return llvm::ConstantFP::get(operand_value->getType(), 0.0);
+    default:
+      return Unimplemented("unary cus op '%s'", HloOpcodeString(op->opcode()));
+  }
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
   switch (op->opcode()) {
@@ -382,14 +541,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == BF16) {
         TF_RET_CHECK(to_type != BF16);
         operand_value = EmitBF16ToF32(operand_value, b_);
-        from_type = F32;
-        if (from_type == to_type) {
-          return operand_value;
-        }
-      }
-      if (from_type == CUS) {
-        TF_RET_CHECK(to_type != CUS);
-        operand_value = EmitCusToF32(operand_value, b_);
         from_type = F32;
         if (from_type == to_type) {
           return operand_value;
@@ -835,10 +986,55 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitBinaryOp(
     return EmitIntegerBinaryOp(
         op, lhs_value, rhs_value,
         primitive_util::IsSignedIntegralType(operand_type));
+  } else if (ShapeUtil::ElementIsCus(op->operand(0)->shape())) {
+    return EmitCusBinaryOp(op, lhs_value, rhs_value);
   } else if (primitive_util::IsComplexType(operand_type)) {
     return EmitComplexBinaryOp(op, lhs_value, rhs_value);
   } else {
     return EmitFloatBinaryOp(op, lhs_value, rhs_value);
+  }
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitCusBinaryOp(
+    const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
+  switch (op->opcode()) {
+    case HloOpcode::kAdd:
+      return EmitCusAdd(lhs_value, rhs_value, b_);
+    case HloOpcode::kSubtract:
+      return EmitCusSub(lhs_value, rhs_value, b_);
+    case HloOpcode::kMultiply:
+      return EmitCusMul(lhs_value, rhs_value, b_);
+    case HloOpcode::kDivide:
+      return EmitCusDiv(lhs_value, rhs_value, b_);
+    // case HloOpcode::kRemainder:
+    //   return FRem(lhs_value, rhs_value);
+    case HloOpcode::kCompare: {
+      switch (op->comparison_direction()) {
+        case ComparisonDirection::kEq:
+          return EmitCusEq(lhs_value, rhs_value, b_);
+        case ComparisonDirection::kNe:
+          return EmitCusNe(lhs_value, rhs_value, b_);
+        case ComparisonDirection::kLt:
+          return EmitCusLt(lhs_value, rhs_value, b_);
+        case ComparisonDirection::kGt:
+          return EmitCusGt(lhs_value, rhs_value, b_);
+        case ComparisonDirection::kLe:
+          return EmitCusLe(lhs_value, rhs_value, b_);
+        case ComparisonDirection::kGe:
+          return EmitCusGe(lhs_value, rhs_value, b_);
+      }
+    }
+    case HloOpcode::kMaximum:
+      return EmitFloatMax(lhs_value, rhs_value);
+    // case HloOpcode::kMinimum:
+    //   return EmitFloatMin(lhs_value, rhs_value);
+    // case HloOpcode::kPower:
+    //   return EmitPow(op->shape().element_type(), lhs_value, rhs_value);
+    // case HloOpcode::kAtan2:
+    //   return EmitAtan2(op->shape().element_type(), lhs_value, rhs_value);
+    default:
+      return Unimplemented("binary floating point op '%s'",
+                           HloOpcodeString(op->opcode()));
   }
 }
 
@@ -2230,6 +2426,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
         FAdd(EmitExtractImag(current_accumulator), product_imag), {1});
   } else if (primitive_util::IsFloatingPointType(primitive_type)) {
     next_accumulator = FAdd(current_accumulator, FMul(lhs_value, rhs_value));
+  } else if (primitive_util::IsCusType(primitive_type)) {
+    next_accumulator = EmitCusAdd(current_accumulator,
+                                  EmitCusMul(lhs_value, rhs_value, b_), b_);
   } else {
     next_accumulator = Add(current_accumulator, Mul(lhs_value, rhs_value));
   }
