@@ -542,6 +542,10 @@ class StreamExecutor {
   // Return allocator statistics.
   absl::optional<AllocatorStats> GetAllocatorStats();
 
+  // Clears the internal stats except for the `in_use` fields
+  // and sets the `peak_bytes_in_use` to be equal to the `bytes_in_use`.
+  bool ClearAllocatorStats();
+
   // Return an allocator which delegates to this stream executor for memory
   // allocation.
   StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
