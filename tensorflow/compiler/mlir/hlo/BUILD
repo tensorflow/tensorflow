@@ -26,6 +26,7 @@ package_group(
         "//platforms/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
+        "//third_party/py/mlir/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
@@ -1240,5 +1241,45 @@ cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+# Python library.
+
+td_library(
+    name = "MhloOpsPyTdFiles",
+    srcs = [
+        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+    ],
+    includes = ["include"],
+    deps = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "MhloOpsPyGen",
+    tbl_outs = [
+        (
+            [
+                "-gen-python-op-bindings",
+                "-bind-dialect=mhlo",
+            ],
+            "python/_mhlo_ops_gen.py",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "python/MhloOps.td",
+    deps = [
+        ":MhloOpsPyTdFiles",
+    ],
+)
+
+filegroup(
+    name = "MhloOpsPyFiles",
+    srcs = [
+        "python/mhlo.py",
+        ":MhloOpsPyGen",
     ],
 )
