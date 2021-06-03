@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+#include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
@@ -520,7 +521,7 @@ TfLiteStatus GetDeviceHandle(const NnApi* nnapi, TfLiteContext* context,
                        "Could not find the specified NNAPI accelerator: %s. "
                        "Must be one of: {%s}.",
                        device_name_ptr,
-                       nnapi::GetStringDeviceNamesList().c_str());
+                       nnapi::GetStringDeviceNamesList(nnapi).c_str());
   return kTfLiteError;
 }
 
@@ -3806,10 +3807,21 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
             &compilation),
         "creating NNAPI model for given devices", nnapi_errno);
   } else {
-    RETURN_TFLITE_ERROR_IF_NN_ERROR(context,
-                                    nnapi_->ANeuralNetworksCompilation_create(
-                                        nn_model_.get(), &compilation),
-                                    "creating NNAPI compilation", nnapi_errno);
+    // Trying to call ANeuralNetworksCompilation_create when the delegate is
+    // constructed from a support library would result in a crash.
+    if (nnapi_->ANeuralNetworksCompilation_create != nullptr) {
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(context,
+                                      nnapi_->ANeuralNetworksCompilation_create(
+                                          nn_model_.get(), &compilation),
+                                      "creating NNAPI compilation",
+                                      nnapi_errno);
+    } else {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Attempted to call ANeuralNetworksCompilation_create from NNAPI "
+          "delegate that is constructed from a support library");
+      return kTfLiteError;
+    }
   }
 
   auto preference = delegate_options.execution_preference;
@@ -5001,6 +5013,8 @@ using ::tflite::delegate::nnapi::kMinSdkVersionForNNAPI12;
 using ::tflite::delegate::nnapi::NNAPIDelegateKernel;
 
 StatefulNnApiDelegate::Data::Data(const NnApi* nnapi) : nnapi(nnapi) {}
+StatefulNnApiDelegate::Data::Data(std::unique_ptr<const NnApi> nnapi)
+    : nnapi(nnapi.get()), owned_nnapi(std::move(nnapi)) {}
 
 StatefulNnApiDelegate::Data::~Data() {
   std::for_each(std::begin(delegate_state_cache),
@@ -5030,15 +5044,8 @@ NNAPIDelegateKernel* StatefulNnApiDelegate::Data::MaybeGetCachedDelegateKernel(
   }
 }
 
-StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi)
-    : StatefulNnApiDelegate(nnapi, Options()) {}
-
-StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
-    : StatefulNnApiDelegate(NnApiImplementation(), options) {}
-
-StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
-                                             Options options)
-    : TfLiteDelegate(TfLiteDelegateCreate()), delegate_data_(nnapi) {
+void StatefulNnApiDelegate::StatefulNnApiDelegateConstructorImpl(
+    const Options& options) {
   if (options.accelerator_name) {
     delegate_data_.accelerator_name = options.accelerator_name;
   }
@@ -5060,7 +5067,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
       options.max_execution_timeout_duration_ns;
   delegate_data_.max_execution_loop_timeout_duration_ns =
       options.max_execution_loop_timeout_duration_ns;
-  if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI11) {
+  if (delegate_data_.nnapi->android_sdk_version >= kMinSdkVersionForNNAPI11) {
     delegate_data_.allow_dynamic_dimensions = options.allow_dynamic_dimensions;
   }
   delegate_data_.use_burst_computation = options.use_burst_computation;
@@ -5075,6 +5082,26 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
     flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
     flags |= kTfLiteDelegateFlagsRequirePropagatedShapes;
   }
+}
+
+StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi)
+    : StatefulNnApiDelegate(nnapi, Options()) {}
+
+StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
+    : StatefulNnApiDelegate(NnApiImplementation(), options) {}
+
+StatefulNnApiDelegate::StatefulNnApiDelegate(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver, Options options)
+    : TfLiteDelegate(TfLiteDelegateCreate()),
+      delegate_data_(
+          CreateNnApiFromSupportLibrary(nnapi_support_library_driver)) {
+  StatefulNnApiDelegateConstructorImpl(options);
+}
+
+StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
+                                             Options options)
+    : TfLiteDelegate(TfLiteDelegateCreate()), delegate_data_(nnapi) {
+  StatefulNnApiDelegateConstructorImpl(options);
 }
 
 StatefulNnApiDelegate::StatefulNnApiDelegate()

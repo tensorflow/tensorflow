@@ -99,6 +99,11 @@ the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     efficiently manage resources, which would significantly reduce overhead
     especially if the same delegate instance is to be used for multiple
     inferences.
+*   `nnapi_support_library_path`: `string` (default=""),
+    Path from which NNAPI support library will be loaded to construct the
+    delegate. In order to use NNAPI delegate with support library,
+    --nnapi_accelerator_name must be specified and must be equal to one of the
+    devices provided by the support library.
 
 ### Hexagon delegate provider
 *   `use_hexagon`: `bool` (default=false) \
