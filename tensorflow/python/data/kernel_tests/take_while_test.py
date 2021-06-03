@@ -60,7 +60,7 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(num_elements=[0], upper_bound=[1])))
   def testTakeWhileDatasetRange(self, num_elements, upper_bound):
     dataset = dataset_ops.Dataset.range(num_elements).take_while(
-        lambda x: x < upper_bound)
+        predicate=lambda x: x < upper_bound)
 
     self.assertDatasetProduces(dataset,
                                np.arange(min(num_elements, upper_bound)))
