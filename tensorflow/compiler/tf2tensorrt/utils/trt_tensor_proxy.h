@@ -119,7 +119,6 @@ class SimpleITensor {
 
 enum class TensorType : int
 {
-  kNONE,
   kTRT,
   kSIMPLE
 };
@@ -194,9 +193,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->setName(name);
       case TensorType::kSIMPLE: return simple_tensor_->setName(name);
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   const char* getName() const
@@ -205,9 +203,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getName();
       case TensorType::kSIMPLE: return simple_tensor_->getName();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   void setDimensions(nvinfer1::Dims dimensions)
@@ -216,9 +213,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->setDimensions(dimensions);
       case TensorType::kSIMPLE: return simple_tensor_->setDimensions(dimensions);
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   nvinfer1::Dims getDimensions() const
@@ -227,9 +223,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getDimensions();
       case TensorType::kSIMPLE: return simple_tensor_->getDimensions();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   void setType(nvinfer1::DataType type)
@@ -238,9 +233,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->setType(type);
       case TensorType::kSIMPLE: return simple_tensor_->setType(type);
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   nvinfer1::DataType getType() const
@@ -249,9 +243,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getType();
       case TensorType::kSIMPLE: return simple_tensor_->getType();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   bool isNetworkInput() const
@@ -260,9 +253,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->isNetworkInput();
       case TensorType::kSIMPLE: return simple_tensor_->isNetworkInput();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   bool isNetworkOutput() const
@@ -271,9 +263,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->isNetworkOutput();
       case TensorType::kSIMPLE: return simple_tensor_->isNetworkOutput();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   void setBroadcastAcrossBatch(bool broadcastAcrossBatch)
@@ -282,9 +273,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->setBroadcastAcrossBatch(broadcastAcrossBatch);
       case TensorType::kSIMPLE: return simple_tensor_->setBroadcastAcrossBatch(broadcastAcrossBatch);
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   bool getBroadcastAcrossBatch() const
@@ -293,9 +283,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getBroadcastAcrossBatch();
       case TensorType::kSIMPLE: return simple_tensor_->getBroadcastAcrossBatch();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   nvinfer1::TensorLocation getLocation() const
@@ -304,9 +293,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getLocation();
       case TensorType::kSIMPLE: return simple_tensor_->getLocation();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   void setLocation(nvinfer1::TensorLocation location) {
@@ -314,9 +302,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->setLocation(location);
       case TensorType::kSIMPLE: return simple_tensor_->setLocation(location);
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   bool setDynamicRange(float min, float max) {
@@ -324,9 +311,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->setDynamicRange(min, max);
       case TensorType::kSIMPLE: return simple_tensor_->setDynamicRange(min, max);
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   bool dynamicRangeIsSet() const { 
@@ -334,9 +320,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->dynamicRangeIsSet();
       case TensorType::kSIMPLE: return simple_tensor_->dynamicRangeIsSet();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");
+    assert(0 && "Unsupported itensor_ type");
   }
 
   void resetDynamicRange() {
@@ -344,9 +329,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->resetDynamicRange();
       case TensorType::kSIMPLE: return simple_tensor_->resetDynamicRange();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");    
+    assert(0 && "Unsupported itensor_ type");
   }
   float getDynamicRangeMin() const
   {
@@ -354,9 +338,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getDynamicRangeMin();
       case TensorType::kSIMPLE: return simple_tensor_->getDynamicRangeMin();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");   
+    assert(0 && "Unsupported itensor_ type");
   }
 
   float getDynamicRangeMax() const
@@ -365,9 +348,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getDynamicRangeMax();
       case TensorType::kSIMPLE: return simple_tensor_->getDynamicRangeMax();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");   
+    assert(0 && "Unsupported itensor_ type");
   }
 #if IS_TRT_VERSION_GE(5, 0, 0, 0) && !IS_TRT_VERSION_GE(8, 0, 0, 0)
   float getDynamicRange() const
@@ -376,9 +358,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getDynamicRange();
       case TensorType::kSIMPLE: return simple_tensor_->getDynamicRange();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");   
+    assert(0 && "Unsupported itensor_ type");
   }
 #endif
   void setAllowedFormats(nvinfer1::TensorFormats formats)
@@ -387,9 +368,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->setAllowedFormats(formats);
       case TensorType::kSIMPLE: return simple_tensor_->setAllowedFormats(formats);
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");   
+    assert(0 && "Unsupported itensor_ type");
   }
 
   nvinfer1::TensorFormats getAllowedFormats() const
@@ -398,9 +378,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->getAllowedFormats();
       case TensorType::kSIMPLE: return simple_tensor_->getAllowedFormats();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");   
+    assert(0 && "Unsupported itensor_ type");
   }
 
   bool isShapeTensor() const
@@ -409,9 +388,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->isShapeTensor();
       case TensorType::kSIMPLE: return simple_tensor_->isShapeTensor();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");   
+    assert(0 && "Unsupported itensor_ type");
   }
 
   bool isExecutionTensor() const
@@ -420,9 +398,8 @@ public:
     {
       case TensorType::kTRT: return trt_tensor_->isExecutionTensor();
       case TensorType::kSIMPLE: return simple_tensor_->isExecutionTensor();
-      case TensorType::kNONE: assert(0 && "Unsupported itensor_ type");
     }
-    assert(0 && "Should not come here.");   
+    assert(0 && "Unsupported itensor_ type");
   }
 
 private:
@@ -430,8 +407,6 @@ private:
   {
     return trt_tensor_ && !simple_tensor_ || !trt_tensor_ && simple_tensor_;
   }
-
-  TensorType ttype_{TensorType::kNONE};
 
   // When ITensorProxy represents an ITensor, the ITensor can be either passed
   // by the caller via the constructor that takes an ITensor* as parameter, or
@@ -448,6 +423,8 @@ private:
   // implementation of ITensor and is used for testing and by TrtNodeValidator
   //  to validate the graph nodes.
   std::shared_ptr<SimpleITensor> simple_tensor_ = nullptr;
+
+  TensorType ttype_;
 };
 
 class ITensorProxyPtr
