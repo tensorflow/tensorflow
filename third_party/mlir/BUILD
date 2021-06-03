@@ -680,6 +680,12 @@ td_library(
 )
 
 td_library(
+    name = "RewritePassBaseTdFiles",
+    srcs = ["include/mlir/Rewrite/PassUtil.td"],
+    includes = ["include"],
+)
+
+td_library(
     name = "AffineOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td",
@@ -3758,7 +3764,10 @@ gentbl_cc_library(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Transforms/Passes.td",
-    deps = [":PassBaseTdFiles"],
+    deps = [
+        ":PassBaseTdFiles",
+        ":RewritePassBaseTdFiles",
+    ],
 )
 
 cc_library(
