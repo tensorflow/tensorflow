@@ -309,7 +309,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::Conv3DOp>(),
     TypeID::get<TF::Conv3DBackpropFilterV2Op>(),
     TypeID::get<TF::Conv3DBackpropInputV2Op>(),
-    TypeID::get<TF::CrossReplicaSumOp>(),
     TypeID::get<TF::CumprodOp>(),
     TypeID::get<TF::CumsumOp>(),
     TypeID::get<TF::DepthwiseConv2dNativeOp>(),

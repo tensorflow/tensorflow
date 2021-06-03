@@ -6483,9 +6483,11 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // within MLIR.
     TypeID::get<TF::ConstOp>(),
 
-    // TF2XLA fallback pattern doesn't support this op as MLIR hlo builder
-    // doesn't implement the outfeed op builder method.
+    // TF2XLA fallback pattern doesn't support these op as MLIR hlo builder
+    // doesn't override the necessary builder methods. These ops have simple
+    // lowering pattern so this should be safe.
     TypeID::get<TF::OutfeedEnqueueTupleOp>(),
+    TypeID::get<TF::CrossReplicaSumOp>(),
   };
   // clang-format on
   return *ops;
