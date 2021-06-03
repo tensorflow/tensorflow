@@ -711,6 +711,10 @@ class Subgraph {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
+
+  // Whether the subgraph is currently in use (e.g. running the `Invoke`
+  // or `AllocateTensors` functions).
+  bool is_subgraph_in_use_ = false;
 };
 
 }  // namespace impl
@@ -720,11 +724,6 @@ using Subgraph = tflrt::Subgraph;
 #else
 using Subgraph = impl::Subgraph;
 #endif
-
-  // Whether the subgraph is currently in use (e.g. running the `Invoke`
-  // or `AllocateTensors` functions).
-  bool is_subgraph_in_use_ = false;
-};
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_SUBGRAPH_H_
