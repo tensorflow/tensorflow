@@ -563,6 +563,7 @@ BUILTIN_KERNEL_SRCS = [
     "concatenation.cc",
     "conv.cc",
     "conv3d.cc",
+    "conv3d_transpose.cc",
     "cumsum.cc",
     "densify.cc",
     "depth_to_space.cc",
@@ -2575,6 +2576,21 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "conv3d_transpose_test",
+    size = "small",
+    srcs = ["conv3d_transpose_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
     ],
 )
 
