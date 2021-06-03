@@ -165,6 +165,15 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
       self.assertEqual(hlo_text, hlo_text_roundtrip)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
+    def testStableComputationSerialization(self):
+      # Ideally we would test identical computations produced in different
+      # processes. For now we have this limited smoke test.
+      computation = self.ExampleComputation()
+      ref = computation.as_serialized_hlo_module_proto()
+      for _ in range(10):
+        self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
