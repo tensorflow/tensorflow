@@ -712,6 +712,7 @@ cc_library(
     srcs = [
         "assign_variable.cc",
         "read_variable.cc",
+        "var_handle.cc",
         "variable_ops.cc",
     ],
     hdrs = ["variable_ops.h"],
@@ -722,6 +723,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:tensor",
+        "@flatbuffers",
     ],
 )
 
@@ -737,6 +739,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
