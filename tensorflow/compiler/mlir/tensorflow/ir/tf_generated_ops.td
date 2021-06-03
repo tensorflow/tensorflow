@@ -5548,6 +5548,30 @@ See `rgb_to_hsv` for a description of the HSV encoding.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_HashTableOp : TF_Op<"HashTable", []> {
+  let summary = "Creates a non-initialized hash table.";
+
+  let description = [{
+This op creates a hash table, specifying the type of its keys and values.
+Before using the table you will have to initialize it.  After initialization the
+table will be immutable.
+  }];
+
+  let arguments = (ins
+    DefaultValuedAttr<StrAttr, "">:$container,
+    DefaultValuedAttr<StrAttr, "">:$shared_name,
+    DefaultValuedAttr<BoolAttr, "false">:$use_node_name_sharing,
+    TypeAttr:$key_dtype,
+    TypeAttr:$value_dtype
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{Handle to a table.}], [TF_LookupTableAlloc]>:$table_handle
+  );
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_HashTableV2Op : TF_Op<"HashTableV2", []> {
   let summary = "Creates a non-initialized hash table.";
 
@@ -5568,6 +5592,16 @@ table will be immutable.
   let results = (outs
     Res<TF_ResourceTensor, [{Handle to a table.}], [TF_LookupTableAlloc]>:$table_handle
   );
+
+  let builders = [
+    OpBuilder<(ins "StringAttr":$container, "StringAttr":$shared_name,
+      "BoolAttr":$use_node_name_sharing, "TypeAttr":$key_dtype, "TypeAttr":$value_dtype),
+    [{
+      build($_builder, $_state,
+      mlir::RankedTensorType::get({},
+      $_builder.getType<mlir::TF::ResourceType>()),
+      container, shared_name, use_node_name_sharing, key_dtype, value_dtype);
+    }]>];
 }
 
 def TF_IFFTOp : TF_Op<"IFFT", [NoSideEffect]> {
