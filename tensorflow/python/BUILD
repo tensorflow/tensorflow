@@ -900,6 +900,21 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "array_grad_test",
+    srcs = ["ops/array_grad_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":gradients",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "array_ops",
     srcs = [

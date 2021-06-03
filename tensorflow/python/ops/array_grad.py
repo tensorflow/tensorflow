@@ -692,9 +692,10 @@ def _GatherV2Grad(op, grad):
         inner_axes_indices
     ], 0)
     values_transpose = array_ops.transpose(values, transpose_dims)
+    params_shape_transpose = array_ops.gather(params_shape, transpose_dims)
 
-    params_grad = _BatchGatherGrad(params_shape, values_transpose, indices,
-                                   batch_dims, params_shape[axis])
+    params_grad = _BatchGatherGrad(params_shape_transpose, values_transpose,
+                                   indices, batch_dims, params_shape[axis])
 
     # Inverts the above transpose by moving dimension batch_dims back to its
     # original position.
