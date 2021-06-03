@@ -683,10 +683,10 @@ tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
                                             tensorflow::Var** maybe_resource) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   *maybe_resource = nullptr;
-  if (ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
+  if (cc_ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
     if (LookupResource(cc_ctx, HandleFromInput(cc_ctx, input), maybe_resource).ok()) {
       if (sparse) {
-        EnsureSparseVariableAccess(ctx, false, copyFunc, *maybe_resource)
+        EnsureSparseVariableAccess(ctx, false, copyFunc, *maybe_resource);
       }
       return (*maybe_resource)->mu();
     } else {
@@ -697,7 +697,6 @@ tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
   }
   return cc_ctx->input_ref_mutex(input);
 }
-
 
 void TF_AssignVariable(TF_OpKernelContext* ctx,
                        int input_index,
@@ -768,7 +767,7 @@ void TF_MaybeLockVariableInputMutexesInOrder(
   for (auto input : input_ids) {
     tensorflow::Var* var;
     tensorflow::mutex* mutex =
-        GetTrainingVariableMutex(ctx, input, sparse, &var);
+        GetTrainingVariableMutex(ctx, input, sparse, copyFunc, &var);
     if (var) vars.push_back(var);
     // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
     if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
@@ -785,7 +784,7 @@ void TF_MaybeLockVariableInputMutexesInOrder(
 
   for (auto input : acquire_order) {
     tensorflow::Var* var;
-    tensorflow::mutex* mu = GetTrainingVariableMutex(ctx, input, sparse, &var);
+    tensorflow::mutex* mu = GetTrainingVariableMutex(ctx, input, sparse, copyFunc, &var);
     tensorflow::core::ScopedUnref scoped_unref(var);
     if (mu != nullptr) {
       if (do_lock) {

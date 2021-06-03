@@ -53,6 +53,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//third_party/py/numpy:headers",
         "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/c:kernels_hdrs",
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/core:protos_all_cc",
