@@ -140,7 +140,7 @@ def pad_sequences(sequences, maxlen=None, dtype='int32',
       truncating: String, 'pre' or 'post' (optional, defaults to 'pre'):
           remove values from sequences larger than
           `maxlen`, either at the beginning or at the end of the sequences.
-      value: Float or String, padding value. (Optional, defaults to 0.)
+      value: Float or String, padding value. (Optional, defaults to 0.0)
 
   Returns:
       Numpy array with shape `(len(sequences), maxlen)`

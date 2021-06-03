@@ -1628,7 +1628,7 @@ def log_cosh(y_true, y_pred):
 def categorical_crossentropy(y_true,
                              y_pred,
                              from_logits=False,
-                             label_smoothing=0):
+                             label_smoothing=.0):
   """Computes the categorical crossentropy loss.
 
   Standalone usage:
@@ -1672,7 +1672,7 @@ def categorical_crossentropy(y_true,
 def _ragged_tensor_categorical_crossentropy(y_true,
                                             y_pred,
                                             from_logits=False,
-                                            label_smoothing=0):
+                                            label_smoothing=.0):
   """Implements support for handling RaggedTensors.
 
   Args:
@@ -1762,7 +1762,7 @@ def _ragged_tensor_sparse_categorical_crossentropy(y_true,
 @keras_export('keras.metrics.binary_crossentropy',
               'keras.losses.binary_crossentropy')
 @dispatch.add_dispatch_support
-def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
+def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=.0):
   """Computes the binary crossentropy loss.
 
   Standalone usage:
@@ -1805,7 +1805,7 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
 def _ragged_tensor_binary_crossentropy(y_true,
                                        y_pred,
                                        from_logits=False,
-                                       label_smoothing=0):
+                                       label_smoothing=.0):
   """Implements support for handling RaggedTensors.
 
   Args:
