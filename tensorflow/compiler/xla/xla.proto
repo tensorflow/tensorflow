@@ -360,7 +360,10 @@ message DebugOptions {
   // logging a warning and proceeding with fallback.
   bool xla_gpu_strict_conv_algorithm_picker = 156;
 
-  // Next id: 160
+  // Persistent compilation cache directory
+  string xla_gpu_persistent_cache_dir = 160;
+
+  // Next id: 161
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
