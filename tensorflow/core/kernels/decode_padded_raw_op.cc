@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
