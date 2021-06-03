@@ -4671,7 +4671,7 @@ def crop_and_resize_v2(image,
                        box_indices,
                        crop_size,
                        method='bilinear',
-                       extrapolation_value=0,
+                       extrapolation_value=.0,
                        name=None):
   """Extracts crops from the input image tensor and resizes them.
 
@@ -4717,7 +4717,7 @@ def crop_and_resize_v2(image,
       can be either `"bilinear"` or `"nearest"` and default to `"bilinear"`.
       Currently two sampling methods are supported: Bilinear and Nearest
         Neighbor.
-    extrapolation_value: An optional `float`. Defaults to `0`. Value used for
+    extrapolation_value: An optional `float`. Defaults to `0.0`. Value used for
       extrapolation, when applicable.
     name: A name for the operation (optional).
 

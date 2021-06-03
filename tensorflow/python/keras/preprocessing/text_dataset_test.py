@@ -234,7 +234,7 @@ class TextDatasetFromDirectoryTest(keras_parameterized.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 '`validation_split` must be between 0 and 1'):
       _ = text_dataset.text_dataset_from_directory(
-          directory, validation_split=2)
+          directory, validation_split=2.)
 
     with self.assertRaisesRegex(ValueError,
                                 '`subset` must be either "training" or'):

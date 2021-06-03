@@ -333,7 +333,7 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 '`validation_split` must be between 0 and 1'):
       _ = image_dataset.image_dataset_from_directory(
-          directory, validation_split=2)
+          directory, validation_split=2.)
 
     with self.assertRaisesRegex(ValueError,
                                 '`subset` must be either "training" or'):
@@ -342,7 +342,7 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
 
     with self.assertRaisesRegex(ValueError, '`validation_split` must be set'):
       _ = image_dataset.image_dataset_from_directory(
-          directory, validation_split=0, subset='training')
+          directory, validation_split=.0, subset='training')
 
     with self.assertRaisesRegex(ValueError, 'must provide a `seed`'):
       _ = image_dataset.image_dataset_from_directory(

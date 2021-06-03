@@ -3208,7 +3208,7 @@ class BinaryCrossentropy(MeanMetricWrapper):
                name='binary_crossentropy',
                dtype=None,
                from_logits=False,
-               label_smoothing=0):
+               label_smoothing=.0):
     super(BinaryCrossentropy, self).__init__(
         binary_crossentropy,
         name,
@@ -3272,7 +3272,7 @@ class CategoricalCrossentropy(MeanMetricWrapper):
                name='categorical_crossentropy',
                dtype=None,
                from_logits=False,
-               label_smoothing=0):
+               label_smoothing=.0):
     super(CategoricalCrossentropy, self).__init__(
         categorical_crossentropy,
         name,

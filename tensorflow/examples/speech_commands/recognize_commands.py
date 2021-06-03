@@ -28,7 +28,7 @@ class RecognizeResult(object):
   Attributes:
     founded_command: A string indicating the word just founded. Default value
       is '_silence_'
-    score: An float representing the confidence of founded word. Default
+    score: A float representing the confidence of founded word. Default
       value is zero.
     is_new_command: A boolean indicating if the founded command is a new one
       against the last one. Default value is False.
@@ -36,7 +36,7 @@ class RecognizeResult(object):
 
   def __init__(self):
     self._founded_command = "_silence_"
-    self._score = 0
+    self._score = 0.0
     self._is_new_command = False
 
   @property

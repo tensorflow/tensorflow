@@ -388,7 +388,7 @@ class Adadelta(Optimizer):
   at their default values.
 
   Arguments:
-    lr: float >= 0. Initial learning rate, defaults to 1.
+    lr: float >= 0. Initial learning rate, defaults to 1.0.
         It is recommended to leave it at the default value.
     rho: float >= 0. Adadelta decay factor, corresponding to fraction of
         gradient to keep at each time step.
