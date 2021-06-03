@@ -40,7 +40,11 @@ def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
     Option<"device_type_", "device-type", "std::string",
         /*default=*/"\"INVALID_DEVICE_TYPE\"",
         "The device type used by TF2XLA fallback. Must be specified if "
-        "use-tf2xla-fallback is true, otherwise not used">
+        "use-tf2xla-fallback is true, otherwise not used">,
+    Option<"prefer_tf2xla_", "prefer-tf2xla", "bool",
+        /*default=*/"false",
+        "Prioritize tf2xla fallback legalization over MLIR legalization "
+        "patterns">
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";

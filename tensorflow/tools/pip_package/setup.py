@@ -184,7 +184,7 @@ class InstallCommand(InstallCommandBase):
   """Override the dir where the headers go."""
 
   def finalize_options(self):
-    ret = InstallCommandBase.finalize_options(self)
+    ret = InstallCommandBase.finalize_options(self)  # pylint: disable=assignment-from-no-return
     self.install_headers = os.path.join(self.install_platlib, 'tensorflow',
                                         'include')
     self.install_lib = self.install_platlib
@@ -292,6 +292,7 @@ headers = (
     list(find_files('*.h.inc', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
     list(find_files('*.h', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/python/client')) +
     list(find_files('*.h', 'tensorflow/python/framework')) +
     list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +

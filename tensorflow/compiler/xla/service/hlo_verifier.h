@@ -58,6 +58,8 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleAllGather(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
+  Status HandleAllReduceStart(HloInstruction* hlo) override;
+  Status HandleAllReduceDone(HloInstruction* hlo) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
   Status HandleCollectivePermuteStart(HloInstruction* hlo) override;

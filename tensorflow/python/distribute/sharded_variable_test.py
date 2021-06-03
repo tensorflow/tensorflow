@@ -313,8 +313,8 @@ class ShardedVariableTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
     save.save(root, save_dir)
 
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, 'Loading `ShardedVariable` is not supported'):
+    with self.assertRaisesRegex(
+        ValueError, 'Loading a saved_model containing ShardedVariable'):
       load.load(save_dir)
 
   def test_validation_errors(self):

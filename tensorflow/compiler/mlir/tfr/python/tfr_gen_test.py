@@ -247,6 +247,12 @@ def _tfr_quant_test(x):
   return f
 
 
+@composite.Composite('TestIdentityNOp')
+def _tfr_quant_test_n(x):
+  y = _tfr_quant_raw_data(x)
+  return y
+
+
 class TFRGenTestBase(test.TestCase):
 
   def _check_code(self, tfr_code, exp_tfr_code):
@@ -625,6 +631,11 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK:        %[[Cast:.*]] = tfr.call @tf__cast(%[[rescale]], %[[attr]], %{{.*}}) : (!tfr.tensor, !tfr.attr, i1) -> (!tfr.tensor)
       CHECK:        %[[attr_1:.*]] = tfr.constant i8 -> !tfr.attr
       CHECK:        tfr.call @tf__cast(%[[Cast]], %[[attr_1]], %{{.*}}) : (!tfr.tensor, !tfr.attr, i1) -> (!tfr.tensor)
+      CHECK:       }
+
+      CHECK-LABEL: tfr.func @tf__test_identity_n_op(%x: !tfr.tensor_list) -> (!tfr.tensor_list) {
+      CHECK-NEXT:   %[[raw_data:.*]] = tfr.quant_raw_data(%x) : (!tfr.tensor_list) -> (!tfr.tensor_list)
+      CHECK:        tfr.return %[[raw_data:.*]] : !tfr.tensor_list
       CHECK:       }
     """
     self._check_code(mlir_code, mlir_code_exp)

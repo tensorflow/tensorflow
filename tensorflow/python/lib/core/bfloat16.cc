@@ -331,8 +331,8 @@ PyObject* PyBfloat16_Str(PyObject* self) {
 // Hash function for PyBfloat16. We use the identity function, which is a weak
 // hash function.
 Py_hash_t PyBfloat16_Hash(PyObject* self) {
-  bfloat16 x = reinterpret_cast<PyBfloat16*>(self)->value;
-  return x.value;
+  return Eigen::numext::bit_cast<uint16_t>(
+      reinterpret_cast<PyBfloat16*>(self)->value);
 }
 
 // Python type for PyBfloat16 objects.

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import _pywrap_model_analyzer as tf_wrap
+from tensorflow.python.grappler import _pywrap_model_analyzer as tf_wrap
 
 
 def GenerateModelReport(metagraph, assume_valid_feeds=True, debug=False):

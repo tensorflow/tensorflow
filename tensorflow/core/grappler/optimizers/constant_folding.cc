@@ -1138,10 +1138,12 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
   *t->mutable_tensor_shape() = shape;
   switch (type) {
     case DT_HALF:
-      t->add_half_val(static_cast<Eigen::half>(value).x);
+      t->add_half_val(
+          Eigen::numext::bit_cast<uint16>(static_cast<Eigen::half>(value)));
       break;
     case DT_BFLOAT16:
-      t->add_half_val(static_cast<bfloat16>(value).value);
+      t->add_half_val(
+          Eigen::numext::bit_cast<uint16>(static_cast<bfloat16>(value)));
       break;
       SET_TENSOR_VAL_CASE(DT_FLOAT, float, float);
       SET_TENSOR_VAL_CASE(DT_DOUBLE, double, double);

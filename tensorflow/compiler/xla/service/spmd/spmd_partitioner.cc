@@ -1642,6 +1642,9 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
 
 Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding();
+  if (sharding.HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   // Special handling for sort in TopK when first operand partitioined at
   // sort dimension.
   auto k = GetKValueInTopKWhenPartitionSortDim(hlo);
@@ -2558,6 +2561,9 @@ Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   int64 input_count = 1;
   auto per_input_sharding = hlo->sharding();
   if (hlo->shape().IsTuple()) {

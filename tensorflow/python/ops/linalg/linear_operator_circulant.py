@@ -300,7 +300,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     Returns:
       `Tensor` with `dtype` `self.dtype`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       h = self._ifft(_to_complex(self.spectrum))
       return math_ops.cast(h, self.dtype)
 
@@ -346,7 +346,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       An `Op` that asserts this operator has Hermitian spectrum.
     """
     eps = np.finfo(self.dtype.real_dtype.as_numpy_dtype).eps
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       # Assume linear accumulation of error.
       max_err = eps * self.domain_dimension_tensor()
       imag_convolution_kernel = math_ops.imag(self.convolution_kernel())

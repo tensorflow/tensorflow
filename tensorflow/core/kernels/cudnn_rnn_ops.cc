@@ -15,6 +15,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <stddef.h>
+
 #include <atomic>
 #include <cmath>
 #include <functional>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
@@ -1704,6 +1706,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
               << algo_config->algorithm()->tensor_ops_enabled() << ").";
       return Status::OK();
     }
+    profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     // Create temp tensors when profiling backprop pass.
     auto data_type = input->dtype();

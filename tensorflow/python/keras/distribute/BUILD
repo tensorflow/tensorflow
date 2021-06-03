@@ -47,10 +47,10 @@ py_library(
         "//tensorflow/python/keras:callbacks",
         "//tensorflow/python/keras:callbacks_v1",
         "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
+        "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
@@ -774,6 +774,9 @@ tf_py_test(
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+    ],
     deps = [
         ":distributed_file_utils",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
@@ -868,6 +871,7 @@ distribute_py_test(
     deps = [
         ":multi_worker_testing_utils",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
@@ -928,6 +932,7 @@ distribute_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/framework:test_combinations_lib",
@@ -1064,6 +1069,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":multi_worker_testing_utils",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/data/ops:dataset_ops",

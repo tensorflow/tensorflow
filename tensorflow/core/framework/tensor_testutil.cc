@@ -90,8 +90,8 @@ static ::testing::AssertionResult IsEqual(Eigen::half x, Eigen::half y,
     return kSignBitMask | sam;                // positive number.
   };
 
-  auto xb = sign_and_magnitude_to_biased(x.x);
-  auto yb = sign_and_magnitude_to_biased(y.x);
+  auto xb = sign_and_magnitude_to_biased(Eigen::numext::bit_cast<uint16_t>(x));
+  auto yb = sign_and_magnitude_to_biased(Eigen::numext::bit_cast<uint16_t>(y));
   if (t == Tolerance::kNone) {
     if (xb == yb) return ::testing::AssertionSuccess();
   } else {

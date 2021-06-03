@@ -804,7 +804,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
     item.graph.mutable_node(i)->set_device(devices[i]);
   }
 
-  ArithmeticOptimizer optimizer;
+  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   DisableAddToAddNCombining(&optimizer);
 
   GraphDef output;
@@ -886,7 +886,7 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorMul) {
       TF_CHECK_OK(s.ToGraphDef(&item.graph));
       auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
       ASSERT_EQ(tensors_expected.size(), 1);
-      ArithmeticOptimizer optimizer;
+      ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
       EnableOnlyHoistCommonFactor(&optimizer);
 
       GraphDef output;
@@ -969,7 +969,7 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorDiv) {
         auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
         ASSERT_EQ(tensors_expected.size(), 1);
 
-        ArithmeticOptimizer optimizer;
+        ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
         EnableOnlyHoistCommonFactor(&optimizer);
 
         GraphDef output;

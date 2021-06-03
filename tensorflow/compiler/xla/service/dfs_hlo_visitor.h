@@ -118,6 +118,8 @@ class DfsHloVisitorBase {
   virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGather(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduce(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllReduceStart(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllReduceDone(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermuteStart(HloInstructionPtr hlo) = 0;

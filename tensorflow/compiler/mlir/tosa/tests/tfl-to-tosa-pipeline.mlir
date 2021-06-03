@@ -122,7 +122,7 @@ func @test_rcp(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_relu
-// CHECK: %[[VAR0:.*]] = "tosa.reluN"(%arg0) {max_fp = 3.40282347E+38 : f32, max_int = 0 : i64}
+// CHECK: %[[VAR0:.*]] = "tosa.clamp"(%arg0) {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
 func @test_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.relu"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
@@ -131,7 +131,7 @@ func @test_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_relu6
-// CHECK: %[[VAR0:.*]] = "tosa.reluN"(%arg0) {max_fp = 6.000000e+00 : f32, max_int = 0 : i64}
+// CHECK: %[[VAR0:.*]] = "tosa.clamp"(%arg0) {max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
 func @test_relu6(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.relu6"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
@@ -594,8 +594,8 @@ func @test_log_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_matmul
-// CHECK: %[[VAR0:.*]] = "tosa.const"() {value = dense<[1, 0]> : tensor<2xi32>}
-// CHECK: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<28xf32>}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[1, 0]> : tensor<2xi32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<28xf32>}
 // CHECK: %[[VAR2:.*]] = "tosa.transpose"(%arg1, %[[VAR0]])
 // CHECK: %[[VAR3:.*]] = "tosa.fully_connected"(%arg0, %[[VAR2]], %[[VAR1]])
 func @test_matmul(%arg0: tensor<14x19xf32>, %arg1: tensor<19x28xf32>) -> tensor<14x28xf32> {
@@ -813,8 +813,8 @@ func @test_max_pool2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.01568
 // -----
 
 // CHECK-LABEL: test_softmax_qi8
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<513xi16>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<513xi16>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<"0x5{{.*}}> : tensor<513xi16>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<"0xE{{.*}}> : tensor<513xi16>}
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() {value = dense<9> : tensor<i32>}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() {value = dense<7> : tensor<i32>}
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.const"() {value = dense<32768> : tensor<i32>}
@@ -908,8 +908,7 @@ func @test_tanh_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.0156731288880
 
 // CHECK-LABEL: test_relu_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reluN"(%[[VAR0]]) {max_fp = 0.000000e+00 : f32, max_int = 2147483647 : i64}
-// CHECK: %[[VAR2:.*]] = "tosa.rescale"(%[[VAR1]])
+// CHECK: %[[VAR1:.*]] = "tosa.clamp"(%0) {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = -1 : i64}
 func @test_relu_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015671534463763237:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.015671534463763237:-1>> {
   %0 = "tfl.relu"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015671534463763237:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.015671534463763237:-1>>
   return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 0.015671534463763237:-1>>
@@ -919,8 +918,7 @@ func @test_relu_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.0156715344637
 
 // CHECK-LABEL: test_relu6_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reluN"(%[[VAR0]]) {max_fp = 0.000000e+00 : f32, max_int = 384 : i64}
-// CHECK: %[[VAR2:.*]] = "tosa.rescale"(%[[VAR1]])
+// CHECK: %[[VAR1:.*]] = "tosa.clamp"(%0) {max_fp = 6.000000e+00 : f32, max_int = 384 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
 func @test_relu6_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>> {
   %0 = "tfl.relu6"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>>
   return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 0.015639215707778931>>

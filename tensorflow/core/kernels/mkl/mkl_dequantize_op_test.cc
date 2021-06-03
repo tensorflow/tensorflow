@@ -29,17 +29,11 @@ namespace tensorflow {
 
 class MklDequantizeOpTest : public OpsTestBase {};
 
-static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const TensorShape dummy_shape({8});
-
 TEST_F(MklDequantizeOpTest, small) {
   TF_ASSERT_OK(NodeDefBuilder("dequantize_op", "_MklDequantize")
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("mode", "SCALED")
                    .Attr("_kernel", "QuantizedMklOp")
@@ -51,9 +45,6 @@ TEST_F(MklDequantizeOpTest, small) {
   AddInputFromArray<float>(TensorShape({1}), {0});
   // max_range = 200
   AddInputFromArray<float>(TensorShape({1}), {200.0f});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 2}));
   test::FillValues<float>(&expected,
@@ -80,45 +71,11 @@ Tensor CreateMklInput() {
   return mkl_tensor;
 }
 
-template <typename T>
-class CommonTestUtilities : public OpsTestBase {
- public:
-  void MklToTF(const Tensor& tensor, const Tensor& mkl_meta_tensor,
-               Tensor* output) {
-    // Create an MKL to TF conversion node and execute it
-    TF_ASSERT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
-                     .Input(FakeInput(DataTypeToEnum<T>::v()))
-                     .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                     .Attr("T", DataTypeToEnum<T>::v())
-                     .Attr("_kernel", "MklLayoutDependentOp")
-                     .Finalize(node_def()));
-    TF_ASSERT_OK(InitOp());
-    AddInputFromArray<T>(tensor.shape(), tensor.flat<T>());
-    AddInputFromArray<uint8>(mkl_meta_tensor.shape(),
-                             mkl_meta_tensor.flat<uint8>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    *output = *GetOutput(0);
-  }
-
-  void ConvertAndCompare(const Tensor& tensor, const Tensor& mkl_meta_tensor,
-                         const Tensor& expected) {
-    Tensor output;
-    MklToTF(tensor, mkl_meta_tensor, &output);
-    test::ExpectTensorNear<T>(expected, output, 0.1);
-  }
-
-  void TestBody() {}
-};
-
 TEST_F(MklDequantizeOpTest, MKLInput) {
   TF_ASSERT_OK(NodeDefBuilder("dequantize_op", "_MklDequantize")
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("mode", "SCALED")
                    .Attr("_kernel", "QuantizedMklOp")
@@ -130,16 +87,11 @@ TEST_F(MklDequantizeOpTest, MKLInput) {
   AddInputFromArray<float>(TensorShape({1}), {0});
   // max_range = 200
   AddInputFromArray<float>(TensorShape({1}), {200.0f});
-  auto mkl_tensor = CreateMklInput();
-  AddInputFromArray<uint8>(mkl_tensor.shape(), mkl_tensor.flat<uint8>());
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 2}));
   test::FillValues<float>(&expected,
                           {0.0, 7.84, 39.21, 31.37, 19.6, 90.2, 149.0, 200});
-  CommonTestUtilities<float> test_util;
-  test_util.ConvertAndCompare(*GetOutput(0), *GetOutput(1), expected);
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.1);
 }
 
 }  // namespace tensorflow

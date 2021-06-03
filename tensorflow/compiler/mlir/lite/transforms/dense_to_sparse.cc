@@ -39,11 +39,11 @@ const float kBlockOverRandomSparsityRatio = 0.9;
 
 Eigen::half APFloatToEigenHalf(const APFloat& val) {
   uint16_t raw_data = val.bitcastToAPInt().getZExtValue();
-  return Eigen::half_impl::raw_uint16_to_half(raw_data);
+  return Eigen::numext::bit_cast<Eigen::half>(raw_data);
 }
 
 APFloat EigenHalfToAPFloat(const Eigen::half& val) {
-  uint16_t raw_data = val.x;
+  uint16_t raw_data = Eigen::numext::bit_cast<uint16_t>(val);
   return APFloat(APFloat::IEEEhalf(), APInt(16, raw_data));
 }
 

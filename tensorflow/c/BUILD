@@ -1,6 +1,7 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -98,11 +99,11 @@ tf_cuda_library(
         "//tensorflow:internal",
         "//tensorflow/c:__subpackages__",
     ],
-    deps = select({
+    deps = selects.with_or({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
-        "//tensorflow:chromiumos": [
+        ("//tensorflow:chromiumos", "//tensorflow:fuchsia"): [
             ":tf_attrtype",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",

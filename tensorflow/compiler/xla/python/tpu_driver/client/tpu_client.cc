@@ -95,6 +95,7 @@ PyTpuClient::PyTpuClient(std::string platform_name,
       devices_(std::move(devices)),
       process_index_(process_index) {
   for (const std::shared_ptr<PjRtDevice>& device : devices_) {
+    tensorflow::down_cast<TpuDevice*>(device.get())->set_tpu_client(this);
     CHECK(id_to_device_.insert({device->id(), device}).second)
         << "Duplicate device id: " << device->id();
 

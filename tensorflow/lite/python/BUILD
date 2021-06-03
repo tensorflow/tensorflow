@@ -183,7 +183,6 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
-        "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/saved_model:constants",
@@ -567,6 +566,7 @@ py_test(
     name = "analyzer_test",
     srcs = ["analyzer_test.py"],
     data = [
+        "//tensorflow/lite:testdata/conv_huge_im2col.bin",
         "//tensorflow/lite/python/testdata:interpreter_test_data",
     ],
     python_version = "PY3",

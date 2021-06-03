@@ -4950,5 +4950,38 @@ ENTRY %module {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, GatherToOperand_ParallelDimIsNotPartitioned) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[2,1000,1]{2,1,0} parameter(0)
+  %parameter.1 = bf16[2,4819,4]{2,1,0} parameter(1)
+  %iota = s32[2,1000,1]{1,0,2} iota(), iota_dimension=0
+  %operand = bf16[2,4819,4]{2,1,0} copy(%parameter.1)
+  %index = s32[2,1000,2]{2,1,0} concatenate(s32[2,1000,1]{1,0,2} %parameter.0,
+    s32[2,1000,1]{2,1,0} %iota), dimensions={2},
+    sharding={devices=[1,4,1]0,1,2,3}
+  ROOT %gather = bf16[2,1000,4]{2,1,0} gather(bf16[2,4819,4]{2,1,0} %operand,
+    s32[2,1000,2]{2,1,0} %index), offset_dims={2},
+    collapsed_slice_dims={0,1}, start_index_map={0,1},
+    index_vector_dim=2, slice_sizes={1,1,4},
+    sharding={devices=[1,4,1]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* operand = FindInstruction(module.get(), "operand");
+  EXPECT_THAT(operand, op::Sharding("{replicated}"));
+}
+
 }  // namespace
 }  // namespace xla

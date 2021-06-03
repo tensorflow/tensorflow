@@ -575,14 +575,19 @@ class CudnnTensorDescriptor {
         break;
       }
       case dnn::DataLayout::kBatchDepthYX4:
-        // TODO(b/188571332): Support int8x32.
-        CHECK_EQ(elem_type, CUDNN_DATA_INT8x4);
+      case dnn::DataLayout::kBatchDepthYX32: {
+        auto expected_elem_ty =
+            batch_descriptor.layout() == dnn::DataLayout::kBatchDepthYX4
+                ? CUDNN_DATA_INT8x4
+                : CUDNN_DATA_INT8x32;
+        CHECK_EQ(elem_type, expected_elem_ty);
         CHECK_CUDNN_OK(cudnnSetTensor4dDescriptor(
             handle_.get(), CUDNN_TENSOR_NCHW_VECT_C, elem_type,
             batch_descriptor.count(), batch_descriptor.feature_map_count(),
             batch_descriptor.height(), batch_descriptor.width()))
             << "batch_descriptor: " << batch_descriptor.ToString();
         break;
+      }
       default:
         LOG(FATAL) << "Unsupported tensor format "
                    << DataLayoutString(batch_descriptor.layout());
@@ -618,8 +623,15 @@ class CudnnFilterDescriptor {
         format = CUDNN_TENSOR_NHWC;
         break;
       case dnn::FilterLayout::kOutputInputYX4:
+      case dnn::FilterLayout::kOutputInputYX32: {
+        auto expected_elem_ty =
+            filter_descriptor.layout() == dnn::FilterLayout::kOutputInputYX4
+                ? CUDNN_DATA_INT8x4
+                : CUDNN_DATA_INT8x32;
+        CHECK_EQ(elem_type, expected_elem_ty);
         format = CUDNN_TENSOR_NCHW_VECT_C;
         break;
+      }
       default:
         LOG(FATAL) << "Unsupported filter format "
                    << FilterLayoutString(filter_descriptor.layout());
@@ -949,9 +961,14 @@ cudnnDataType_t ToCudnnDataType(
     case dnn::DataType::kHalf:
       return CUDNN_DATA_HALF;
     case dnn::DataType::kInt8:
-      // TODO(jlebar): Support CUDNN_DATA_INT8x32.
-      return data_layout == dnn::DataLayout::kBatchDepthYX4 ? CUDNN_DATA_INT8x4
-                                                            : CUDNN_DATA_INT8;
+      switch (data_layout) {
+        case dnn::DataLayout::kBatchDepthYX4:
+          return CUDNN_DATA_INT8x4;
+        case dnn::DataLayout::kBatchDepthYX32:
+          return CUDNN_DATA_INT8x32;
+        default:
+          return CUDNN_DATA_INT8;
+      }
     case dnn::DataType::kInt32:
       return CUDNN_DATA_INT32;
     default:
@@ -963,8 +980,11 @@ cudnnDataType_t ToCudnnDataType(dnn::DataType data_type,
                                 dnn::FilterLayout filter_layout) {
   if (data_type == dnn::DataType::kInt8 &&
       filter_layout == dnn::FilterLayout::kOutputInputYX4) {
-    // TODO(jlebar): Support CUDNN_DATA_INT8x32.
     return CUDNN_DATA_INT8x4;
+  }
+  if (data_type == dnn::DataType::kInt8 &&
+      filter_layout == dnn::FilterLayout::kOutputInputYX4) {
+    return CUDNN_DATA_INT8x32;
   }
   return ToCudnnDataType(data_type);
 }
@@ -3340,6 +3360,10 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
       format = CUDNN_TENSOR_NCHW_VECT_C;
       tensor_format = dnn::DataLayout::kBatchDepthYX4;
       break;
+    case dnn::FilterLayout::kOutputInputYX32:
+      format = CUDNN_TENSOR_NCHW_VECT_C;
+      tensor_format = dnn::DataLayout::kBatchDepthYX32;
+      break;
     default:
       LOG(FATAL) << "Unsupported filter format "
                  << FilterLayoutString(filter_descriptor.layout());
@@ -3512,6 +3536,10 @@ GetCudnnFusedOperationGraph(
     case dnn::FilterLayout::kOutputInputYX4:
       format = CUDNN_TENSOR_NCHW_VECT_C;
       tensor_format = dnn::DataLayout::kBatchDepthYX4;
+      break;
+    case dnn::FilterLayout::kOutputInputYX32:
+      format = CUDNN_TENSOR_NCHW_VECT_C;
+      tensor_format = dnn::DataLayout::kBatchDepthYX32;
       break;
     default:
       LOG(FATAL) << "Unsupported filter format "

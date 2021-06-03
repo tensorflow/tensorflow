@@ -679,7 +679,10 @@ def embedding_lookup(params,
 def _raise_when_load(_):
   # We don't have serialization and deserialization mechanisms for
   # `ShardedVariable` in 2.x style save/load yet.
-  raise ValueError('Loading `ShardedVariable` is not supported')
+  raise ValueError(
+      'Loading a saved_model containing ShardedVariable via '
+      '`tf.saved_model.load` is not supported. If the model is built using '
+      'Keras, please use `tf.keras.models.load_model` instead.')
 
 
 revived_types.register_revived_type(

@@ -50,12 +50,11 @@ the 100 % MobileNet on various input sizes:
 ------------------------------------------------------------------------
       Resolution      | ImageNet Acc | Multiply-Adds (M) | Params (M)
 ------------------------------------------------------------------------
-|  1.0 MobileNet-224  |    70.6 %    |        529        |     4.2     |
-|  1.0 MobileNet-192  |    69.1 %    |        529        |     4.2     |
-|  1.0 MobileNet-160  |    67.2 %    |        529        |     4.2     |
-|  1.0 MobileNet-128  |    64.4 %    |        529        |     4.2     |
+|  1.0 MobileNet-224  |    70.6 %    |        569        |     4.2     |
+|  1.0 MobileNet-192  |    69.1 %    |        418        |     4.2     |
+|  1.0 MobileNet-160  |    67.2 %    |        290        |     4.2     |
+|  1.0 MobileNet-128  |    64.4 %    |        186        |     4.2     |
 ------------------------------------------------------------------------
-
 Reference:
   - [MobileNets: Efficient Convolutional Neural Networks
      for Mobile Vision Applications](

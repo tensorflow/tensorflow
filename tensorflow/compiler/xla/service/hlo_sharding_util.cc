@@ -951,7 +951,17 @@ absl::optional<HloSharding> GatherParallelDataOperandSharding(
     partially_replicated_size *=
         relevant_output_sharding.tile_assignment().dimensions().back();
   }
+
+  if (relevant_output_sharding.IsTileMaximal()) {
+    partially_replicated_size *=
+        Product(output_sharding.tile_assignment().dimensions());
+  }
+
   Array<int64> tile_assignment = relevant_output_sharding.tile_assignment();
+  if (relevant_output_sharding.IsTileMaximal()) {
+    Array<int64> replicated_tile_assignment({gather_shape.rank()}, 1L);
+    tile_assignment = replicated_tile_assignment;
+  }
   const int64 operand_tile_elements =
       Product(operand_tile_assignment) * partially_replicated_size;
   if (tile_assignment.num_elements() != operand_tile_elements) {

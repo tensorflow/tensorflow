@@ -40,6 +40,11 @@ readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=no
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=release build
 
+# Next, build wit release and logs so that we can run the tests and get
+# additional debugging info on failures.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=release_with_logs test
+
 # Next, build w/o release so that we can run the tests and get additional
 # debugging info on failures.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean

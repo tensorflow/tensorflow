@@ -170,6 +170,14 @@ As some delegates are only available on certain platforms, when running the
 benchmark tool on a particular platform, specifying `--help` will print out all
 supported parameters.
 
+### Use multiple delegates
+When multiple delegates are specified to be used in the commandline flags, the
+order of delegates applied to the TfLite runtime will be same as their enabling
+commandline flag is specified. For example, "--use_xnnpack=true --use_gpu=true"
+means applying the XNNPACK delegate first, and then the GPU delegate secondly.
+In comparison, "--use_gpu=true --use_xnnpack=true" means applying the GPU
+delegate first, and then the XNNPACK delegate secondly.
+
 ## To build/install/run
 
 ### On Android:

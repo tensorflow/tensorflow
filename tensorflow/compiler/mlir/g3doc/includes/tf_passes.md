@@ -199,6 +199,11 @@ This pass analyzes the inputs and outputs to device cluster and marks those
 input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
 and write to the same resource. This aliasing information can then be propagated
 to XLA compiler for input/output buffer space optimizations.
+### `-tf-ensure-static-shapes`: Performs checks that the whole module does not contain dynamic shapes.
+This pass performs check that none of the ops in the MLIR module
+have dynamic shapes.
+Note, the pass is created temporary to stage the rollout of the second
+phase of the MLIR bridge and will be deleted after the rollout stage is completed.
 ### `-tf-executor-graph-pruning`: Prunes unreachable ops in a tf_executor.graph
 This pass removes ops from a `tf_executor.graph` that are not transitively, via
 data or control dependencies, connected to the associated `tf_executor.fetch`

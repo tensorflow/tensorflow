@@ -243,16 +243,8 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   cache_misses++;
   VLOG(4) << "Autotuning cache miss";
 
-  int64 batch_size = gemm_config.batch_size();
-  absl::optional<se::blas::AlgorithmType> result;
-  if (batch_size != 1) {
-    // TODO(b/112111608): Implement auto tune for batched gemm.
-    VLOG(2) << "Batch size is non-singular, using generic algorithm";
-    result = absl::nullopt;
-  } else {
-    TF_ASSIGN_OR_RETURN(result,
-                        DoUncachedGemmAutotune(instr, stream, allocator));
-  }
+  TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> result,
+                      DoUncachedGemmAutotune(instr, stream, allocator));
 
   CHECK(autotune_cache.emplace(key, result).second);
   return result;

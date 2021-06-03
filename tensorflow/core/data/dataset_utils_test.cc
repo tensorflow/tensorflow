@@ -663,7 +663,7 @@ TEST_P(GetOptimizationsTest, DatasetUtils) {
   const GetOptimizationsTestCase test_case = GetParam();
   auto options = test_case.options;
 
-  std::vector<tstring> actual_enabled, actual_disabled, actual_default;
+  absl::flat_hash_set<tstring> actual_enabled, actual_disabled, actual_default;
   GetOptimizations(options, &actual_enabled, &actual_disabled, &actual_default);
 
   EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
@@ -682,10 +682,10 @@ INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
                                            GetOptimizationTestCase4()));
 
 struct SelectOptimizationsTestCase {
-  std::vector<string> experiments;
-  std::vector<tstring> optimizations_enabled;
-  std::vector<tstring> optimizations_disabled;
-  std::vector<tstring> optimizations_default;
+  absl::flat_hash_set<string> experiments;
+  absl::flat_hash_set<tstring> optimizations_enabled;
+  absl::flat_hash_set<tstring> optimizations_disabled;
+  absl::flat_hash_set<tstring> optimizations_default;
   std::vector<string> expected;
 };
 

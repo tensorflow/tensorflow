@@ -40,6 +40,8 @@ namespace xla {
 
 constexpr char kTpuPlatform[] = "tpu";
 
+class PyTpuClient;
+
 class TpuDevice : public PjRtDevice {
  public:
   TpuDevice(int id, int process_index, const std::array<int, 3>& coords,
@@ -54,6 +56,8 @@ class TpuDevice : public PjRtDevice {
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
 
   PjRtClient* client() const override { return nullptr; }
+  PyTpuClient* tpu_client() const { return tpu_client_; }
+  void set_tpu_client(PyTpuClient* tpu_client) { tpu_client_ = tpu_client; }
 
   bool IsAddressable() const override { return false; }
 
@@ -80,10 +84,11 @@ class TpuDevice : public PjRtDevice {
   const std::string device_kind_ = "Cloud TPU";
   // Index of the core of the same chip.
   int core_on_chip_;
+  PyTpuClient* tpu_client_;
 };
 
 // Encapsulates the state of Python session with XLA.
-class PyTpuClient {
+class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
  public:
   // Initializes a local XLA client for `platform_name`. Returns an error if no
   // such platform exists, or if the platform has no visible devices.

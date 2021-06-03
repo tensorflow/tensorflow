@@ -245,10 +245,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           return fail(this->typeConverter->convertType(t)
                           .template dyn_cast<ShapedType>());
         })) {
-      return emitError(loc,
-                       "hlo to linalg conversion expects ranked args of "
-                       "signless int, float or complex element type with ")
-             << nloops << " parallel iterators: " << *(op.getOperation());
+      return rewriter.notifyMatchFailure(
+          op, "mismatched operand/result types or iterator count");
     }
 
     // Construct the indexing maps needed for linalg.generic ops.
@@ -919,7 +917,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
             ? SmallVector<Value, 2>()
             : ExtractDynamicSizes(
                   rewriter, loc, GetResultValue<isLHLO>(iota_op), shape_tensor);
-    auto linalg_op = rewriter.create<linalg::IndexedGenericOp>(
+    auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc,
         /*resultTensorTypes=*/
         isLHLO ? ArrayRef<Type>{} : ArrayRef<Type>{result_shaped_type},
@@ -930,10 +928,11 @@ class IotaConverter : public OpConversionPattern<OpTy> {
                                           dyn_sizes)},
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         GetNParallelLoopsAttrs(nloops),
-        [&](OpBuilder& nested_builder, Location nested_loc, ValueRange ivs,
-            ValueRange args) {
+        [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
+          Value index_op = nested_builder.create<linalg::IndexOp>(
+              nested_loc, iota_op.iota_dimension());
           Value cast_op = nested_builder.create<IndexCastOp>(
-              nested_loc, ivs[iota_op.iota_dimension()],
+              nested_loc, index_op,
               nested_builder.getIntegerType(
                   result_element_type.getIntOrFloatBitWidth()));
           if (result_element_type.template isa<FloatType>()) {
@@ -997,17 +996,23 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
     // Generate a generic op to gather the elements of the concatenate. This is
     // awkward standalone but allows fusion with other generic ops.
     unsigned nloops = result_type.getRank();
-    auto linalg_op = b.create<linalg::IndexedGenericOp>(
+    auto linalg_op = b.create<linalg::GenericOp>(
         /*resultTensorTypes=*/result_type,
         /*inputs=*/ValueRange{}, /*outputBuffers=*/result,
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         GetNParallelLoopsAttrs(nloops),
-        [&](OpBuilder& nested_builder, Location loc, ValueRange ivs,
-            ValueRange) {
+        [&](OpBuilder& nested_builder, Location loc, ValueRange) {
           OpBuilder b = nested_builder;
           Value concat_dim_size = zero;
           Value result;
-          auto extract_indices = llvm::to_vector<4>(ivs);
+
+          SmallVector<Value, 4> extract_indices;
+          extract_indices.reserve(nloops);
+          for (int i = 0; i < nloops; i++) {
+            extract_indices.push_back(b.create<linalg::IndexOp>(loc, i));
+          }
+
+          Value index_op = b.create<linalg::IndexOp>(loc, dim);
           for (const Value& arg : args) {
             Value new_concat_dim_size;
             scf::IfOp if_op;
@@ -1017,7 +1022,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
               new_concat_dim_size = b.create<AddIOp>(
                   loc, concat_dim_size, b.create<memref::DimOp>(loc, arg, dim));
               Value cmp = b.create<CmpIOp>(loc, rewriter.getI1Type(),
-                                           CmpIPredicate::ult, ivs[dim],
+                                           CmpIPredicate::ult, index_op,
                                            new_concat_dim_size);
               if_op = b.create<scf::IfOp>(loc, result_type.getElementType(),
                                           cmp, true);
@@ -1033,7 +1038,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
             // Now adjust the index for the concatenated dimension to fit into
             // the selected tensor and do an extract at that position.
             extract_indices[dim] =
-                b.create<SubIOp>(loc, ivs[dim], concat_dim_size);
+                b.create<SubIOp>(loc, index_op, concat_dim_size);
             Value extract =
                 b.create<tensor::ExtractOp>(loc, arg, extract_indices);
             b.create<scf::YieldOp>(loc, extract);
@@ -1095,8 +1100,7 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     auto operand_shape =
         adaptor.inputs()[0].getType().template dyn_cast<ShapedType>();
     if (!operand_shape || !operand_shape.hasRank()) {
-      emitError(loc, "lhlo to linalg conversion expects known-rank args");
-      return failure();
+      return rewriter.notifyMatchFailure(reduce_op, "expects known-rank args");
     }
 
     // First fill the output buffer with the init value.
@@ -1216,8 +1220,7 @@ class SliceConverter : public OpConversionPattern<OpTy> {
     auto loc = slice_op.getLoc();
     auto arg_type = args[0].getType().template dyn_cast<ShapedType>();
     if (!arg_type || !arg_type.hasRank()) {
-      emitError(loc, "lhlo to linalg conversion expects known-rank args");
-      return failure();
+      return rewriter.notifyMatchFailure(slice_op, "expects known-rank args");
     }
 
     SmallVector<OpFoldResult, 3> offsets, sizes, strides;
@@ -1309,6 +1312,75 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
     rewriter.replaceOpWithNewOp<SubTensorOp>(dynamic_slice_op, result_type,
                                              adaptor.operand(), start_indices,
                                              sizes, strides);
+    return success();
+  }
+};
+
+class DynamicUpdateSliceConverter
+    : public OpConversionPattern<mhlo::DynamicUpdateSliceOp> {
+ public:
+  using OpConversionPattern<mhlo::DynamicUpdateSliceOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicUpdateSliceOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    mhlo::DynamicUpdateSliceOp::Adaptor adaptor(args);
+    auto operand_type =
+        adaptor.operand().getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || !operand_type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require static ranked type for operand");
+    }
+
+    auto update_type = adaptor.update().getType().dyn_cast<RankedTensorType>();
+    if (!update_type || !update_type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require static ranked type for operand");
+    }
+
+    // We do not have to clamp sizes because the semantic of `update`
+    // guarantees that it is always in the bounds. See
+    // https://www.tensorflow.org/xla/operation_semantics#dynamicupdateslice
+    SmallVector<OpFoldResult, 3> sizes;
+    for (auto size : update_type.getShape()) {
+      sizes.push_back(rewriter.getIndexAttr(size));
+    }
+
+    auto index_type = rewriter.getIndexType();
+    SmallVector<OpFoldResult, 3> start_indices;
+    Type start_index_type = adaptor.start_indices()[0]
+                                .getType()
+                                .cast<RankedTensorType>()
+                                .getElementType();
+    Value zero = rewriter.create<ConstantOp>(
+        loc, rewriter.getZeroAttr(start_index_type));
+    for (auto en : llvm::enumerate(adaptor.start_indices())) {
+      // By mhlo.DynamicUpdateSlice definition:
+      //   `start_indices[i] = clamp(start_indices[i],
+      //       0, operand.dimension_size[i] - update.dimension_size[i])`
+      Value start_index = rewriter.create<tensor::ExtractOp>(loc, en.value());
+      Value ub = rewriter.create<ConstantOp>(
+          loc, rewriter.getIntegerAttr(start_index_type,
+                                       operand_type.getDimSize(en.index()) -
+                                           update_type.getDimSize(en.index())));
+      // TODO(hanchung): This is a workaround to use the method because only
+      // lmhlo version is defined. The implementation in
+      // map_lmhlo_to_scalar_op.h requires to pass a mhlo op. It will convert it
+      // to an lmhlo op and call the lmhlo implementation.
+      start_index = lmhlo::HloOpToStdScalarOp::map<lmhlo::ClampOp>(
+          loc, start_index_type,
+          ArrayRef<Type>{start_index_type, start_index_type, start_index_type},
+          ArrayRef<Value>{zero, start_index, ub}, &rewriter);
+      start_indices.push_back(
+          rewriter.create<IndexCastOp>(loc, index_type, start_index)
+              .getResult());
+    }
+
+    int64_t rank = operand_type.getRank();
+    SmallVector<OpFoldResult, 3> strides(rank, rewriter.getI64IntegerAttr(1));
+    rewriter.replaceOpWithNewOp<SubTensorInsertOp>(
+        op, adaptor.update(), adaptor.operand(), start_indices, sizes, strides);
     return success();
   }
 };
@@ -2051,7 +2123,7 @@ struct TorchIndexSelectOpOnTensorsConversion
     }
     Value init_op = rewriter.create<linalg::InitTensorOp>(
         loc, dyn_sizes, result_type.getShape(), result_type.getElementType());
-    auto linalg_op = rewriter.create<linalg::IndexedGenericOp>(
+    auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensors=*/ArrayRef<Type>{result_type},
         /*inputs=*/adaptor.index(),
         /*outputs=*/init_op, indexing_maps, GetNParallelLoopsAttrs(rank));
@@ -2061,7 +2133,6 @@ struct TorchIndexSelectOpOnTensorsConversion
     // Add a block to the region.
     auto* region = &linalg_op.region();
     auto* block = rewriter.createBlock(region, region->end());
-    body_arg_types.append(rank, rewriter.getIndexType());
     for (auto block_args : linalg_op_args) {
       body_arg_types.push_back(
           block_args.getType().cast<ShapedType>().getElementType());
@@ -2071,21 +2142,117 @@ struct TorchIndexSelectOpOnTensorsConversion
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointToEnd(block);
 
-    SmallVector<Value, 4> indices;
     Value casted_value = rewriter.create<IndexCastOp>(
-        loc, block->getArgument(rank), rewriter.getIndexType());
+        loc, block->getArgument(0), rewriter.getIndexType());
+
+    SmallVector<Value, 4> indices;
     for (int i = 0; i < axis; ++i) {
-      indices.push_back(block->getArgument(i));
+      indices.push_back(rewriter.create<linalg::IndexOp>(loc, i));
     }
     indices.push_back(casted_value);
     for (int i = axis + num_indices - batch; i < rank; ++i) {
-      indices.push_back(block->getArgument(i));
+      indices.push_back(rewriter.create<linalg::IndexOp>(loc, i));
     }
-
     Value res =
         rewriter.create<tensor::ExtractOp>(loc, adaptor.input(), indices);
     rewriter.create<linalg::YieldOp>(loc, res);
 
+    rewriter.replaceOp(op, linalg_op.getResults());
+    return success();
+  }
+};
+
+struct ScatterUpdateOnTensorsConversion
+    : public OpConversionPattern<mhlo::ScatterOp> {
+  using OpConversionPattern<mhlo::ScatterOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ScatterOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    mhlo::ScatterOp::Adaptor adaptor(args);
+
+    // Check if it is a tensor_scatter_nd_update-like op.
+    auto& body_ops = op.getRegion().front().getOperations();
+    if (body_ops.size() != 1) return failure();
+    auto ret_arg = body_ops.front().getOperand(0).dyn_cast<BlockArgument>();
+    if (!ret_arg || ret_arg.getArgNumber() != 1) return failure();
+
+    auto operand_ty = adaptor.operand().getType().dyn_cast<RankedTensorType>();
+    auto indices_ty =
+        adaptor.scatter_indices().getType().dyn_cast<RankedTensorType>();
+    if (!operand_ty || !indices_ty) return failure();
+
+    // Linalg operations put all the computation to the innermost loop. Since we
+    // also iterate over scatter_indices() with some loops, we can only check
+    // one scatter index in one iteration. If there are multiple indices (ie,
+    // the index depth is greater than 1), we don't have a way to keep the
+    // comparison state. E.g., if the index_depth is 2, like indices = [[0, 1]],
+    // we should use the update value only if (i == 0 and j == 1). However, we
+    // can not get both indices in one iteration unless we pack them together.
+    auto index_vector_dim =
+        op.scatter_dimension_numbers().index_vector_dim().getInt();
+    if (indices_ty.getDimSize(index_vector_dim) != 1)
+      return rewriter.notifyMatchFailure(op, "require index depth to be 1");
+    if (index_vector_dim != indices_ty.getRank() - 1) {
+      return rewriter.notifyMatchFailure(
+          op, "require index_vector_dim to be the last dim");
+    }
+
+    // One of indices dims is index depth vector.
+    int64_t nloops = operand_ty.getRank() + indices_ty.getRank() - 1;
+    SmallVector<AffineMap, 3> indexing_maps;
+    {
+      SmallVector<AffineExpr> exprs;
+      for (int64_t i = 0, e = operand_ty.getRank(); i < e; ++i)
+        exprs.push_back(rewriter.getAffineDimExpr(i));
+      indexing_maps.push_back(AffineMap::get(nloops, /*symbolCount=*/0, exprs,
+                                             rewriter.getContext()));
+    }
+    {
+      SmallVector<AffineExpr> exprs;
+      for (int64_t i = operand_ty.getRank(); i < nloops; ++i)
+        exprs.push_back(rewriter.getAffineDimExpr(i));
+      // The index depth is 1.
+      exprs.push_back(rewriter.getAffineConstantExpr(0));
+      indexing_maps.push_back(AffineMap::get(nloops, /*symbolCount=*/0, exprs,
+                                             rewriter.getContext()));
+
+      exprs.pop_back();
+      auto update_window_dims =
+          Extract1DVector(op.scatter_dimension_numbers().update_window_dims());
+      for (auto d : update_window_dims)
+        exprs.push_back(rewriter.getAffineDimExpr(d));
+      indexing_maps.push_back(AffineMap::get(nloops, /*symbolCount=*/0, exprs,
+                                             rewriter.getContext()));
+    }
+    indexing_maps.push_back(indexing_maps.front());
+
+    auto result_ty = this->typeConverter->convertType(op.getResult().getType())
+                         .cast<ShapedType>();
+    auto scatter_dims_to_operand_dims = Extract1DVector(
+        op.scatter_dimension_numbers().scatter_dims_to_operand_dims());
+    assert(scatter_dims_to_operand_dims.size() == 1);
+    // Do not need init_tensor because we'd like to initialize the output as
+    // operand.
+    auto linalg_op = rewriter.create<linalg::GenericOp>(
+        op.getLoc(), /*resultTensors=*/ArrayRef<Type>{result_ty},
+        /*inputs=*/
+        ValueRange{adaptor.operand(), adaptor.scatter_indices(),
+                   adaptor.updates()},
+        /*outputs=*/adaptor.operand(), indexing_maps,
+        GetNParallelLoopsAttrs(nloops),
+        [&](OpBuilder& b, Location loc, ValueRange args) {
+          Value cmp_idx =
+              b.create<linalg::IndexOp>(loc, scatter_dims_to_operand_dims[0]);
+          Value idx = b.create<IndexCastOp>(loc, b.getIndexType(), args[1]);
+          Value pred = b.create<CmpIOp>(loc, b.getI1Type(), CmpIPredicate::eq,
+                                        cmp_idx, idx);
+          // Use the output arg, so some update values won't be init value
+          // again.
+          Value res = b.create<SelectOp>(loc, args[2].getType(), pred, args[2],
+                                         args[3]);
+          b.create<linalg::YieldOp>(loc, res);
+        });
     rewriter.replaceOp(op, linalg_op.getResults());
     return success();
   }
@@ -2342,6 +2509,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       ReverseConverter<mhlo::ReverseOp, false>,
       SliceConverter<mhlo::SliceOp, false>,
       DynamicSliceConverter,
+      DynamicUpdateSliceConverter,
       TransposeConverter<mhlo::TransposeOp, false>,
       DotOpOnTensorsConversion<DotOperationType::kMatrixMatrix,
                                linalg::MatmulOp>,
@@ -2353,6 +2521,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       DepthwiseConvOpOnTensorsConversion,
       ReduceOnTensorsConversion,
       ReduceWindowOpOnTensorsConversion,
+      ScatterUpdateOnTensorsConversion,
       TorchIndexSelectOpOnTensorsConversion,
       PadOpOnTensorsConversion>(type_converter, context);
   // clang-format on
