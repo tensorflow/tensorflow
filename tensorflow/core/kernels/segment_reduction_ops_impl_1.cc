@@ -75,6 +75,9 @@ void SparseSegmentReductionValidationHelper(OpKernelContext* context,
   if (!done) {
     done = [] {};
   }
+  OP_REQUIRES_ASYNC(context, input.dims() >= 1,
+                    errors::InvalidArgument("Shape must be at least rank 1"),
+                    done);
   if (has_num_segments) {
     const Tensor& num_segments_t = context->input(3);
     OP_REQUIRES_ASYNC(

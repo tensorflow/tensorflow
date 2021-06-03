@@ -514,9 +514,6 @@ class SparseSegmentReductionOpBase : public OpKernel {
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
 
-    OP_REQUIRES(context, input.dims() >= 1,
-                errors::InvalidArgument("Shape must be at least rank 1"));
-
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
 
