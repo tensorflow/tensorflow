@@ -2733,7 +2733,6 @@ name=None))
     >>> dataset = dataset.unique()
     >>> sorted(list(dataset.as_numpy_iterator()))
     [1, 2, 37]
-    ```
 
     NOTE: This transformation is only applicable on datasets with either
       `tf.int32`, `tf.int64` or `tf.string` type elements.
