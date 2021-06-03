@@ -37,6 +37,8 @@ class NnapiDelegateProvider : public DelegateProvider {
                              ToolParam::Create<bool>(true));
     default_params_.AddParam("nnapi_allow_fp16",
                              ToolParam::Create<bool>(false));
+    default_params_.AddParam("nnapi_allow_dynamic_dimensions",
+                             ToolParam::Create<bool>(false));
     default_params_.AddParam("nnapi_use_burst_mode",
                              ToolParam::Create<bool>(false));
   }
@@ -72,6 +74,10 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
       CreateFlag<bool>("nnapi_allow_fp16", params,
                        "Allow fp32 computation to be run in fp16"),
       CreateFlag<bool>(
+          "nnapi_allow_dynamic_dimensions", params,
+          "Whether to allow dynamic dimension sizes without re-compilation. "
+          "This requires Android 9+."),
+      CreateFlag<bool>(
           "nnapi_use_burst_mode", params,
           "use NNAPI Burst mode if supported. Burst mode allows accelerators "
           "to efficiently manage resources, which would significantly reduce "
@@ -104,6 +110,8 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params,
                  verbose);
   LOG_TOOL_PARAM(params, bool, "nnapi_allow_fp16", "Allow fp16 in NNAPI",
                  verbose);
+  LOG_TOOL_PARAM(params, bool, "nnapi_allow_dynamic_dimensions",
+                 "Allow dynamic dimensions in NNAPI", verbose);
   LOG_TOOL_PARAM(params, bool, "nnapi_use_burst_mode",
                  "Use burst mode in NNAPI", verbose);
 }
@@ -123,6 +131,10 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
 
     if (params.Get<bool>("nnapi_allow_fp16")) {
       options.allow_fp16 = true;
+    }
+
+    if (params.Get<bool>("nnapi_allow_dynamic_dimensions")) {
+      options.allow_dynamic_dimensions = true;
     }
 
     if (params.Get<bool>("nnapi_use_burst_mode")) {
