@@ -2200,7 +2200,7 @@ def adjust_contrast(images, contrast_factor):
   ...       [4.0, 5.0, 6.0]],
   ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
-  >>> tf.image.adjust_contrast(x, 2)
+  >>> tf.image.adjust_contrast(x, 2.)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
   array([[[-3.5, -2.5, -1.5],
           [ 2.5,  3.5,  4.5]],
