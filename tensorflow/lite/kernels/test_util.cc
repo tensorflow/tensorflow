@@ -192,10 +192,22 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   UpdateOpVersion(buffer_pointer);
 
   if (!resolver_) {
+    // If we have a manually-set TfLite delegate, we assume the intention of
+    // the test is to test against the particular delegate, hence bypassing
+    // applying TfLite default delegates (i.e. the XNNPACK delegate).
+    bool bypass_default_delegates = (delegate_ != nullptr);
+    if (!bypass_default_delegates) {
+      // Check if any delegates are specified via the commandline flags.
+      const auto specified_delegates =
+          tflite::KernelTestDelegateProviders::Get()->CreateAllDelegates();
+      if (!specified_delegates.empty()) {
+        bypass_default_delegates = true;
+      }
+    }
     MutableOpResolver* resolver =
-        apply_delegate
-            ? new ops::builtin::BuiltinOpResolver()
-            : new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
+        bypass_default_delegates
+            ? new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates()
+            : new ops::builtin::BuiltinOpResolver();
     for (const auto& reg : custom_registrations_) {
       resolver->AddCustom(reg.first.data(), reg.second());
     }
