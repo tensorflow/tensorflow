@@ -22,6 +22,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework import test_util
@@ -230,6 +231,10 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
 
     self.assertFalse(
         all(predictions[0] == predictions[i] for i in [0, 1, 2, 4]))
+
+  def testModelTrainTFFunction(self, strategy):
+    model = self._model_fit(strategy)
+    self.assertIsInstance(model.train_tf_function, def_function.Function)
 
 
 if __name__ == "__main__":
