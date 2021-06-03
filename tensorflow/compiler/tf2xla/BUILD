@@ -250,6 +250,7 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
+        "//tensorflow/core/platform:stringpiece",
     ] + [
         # Extra dependencies required for multithreaded runtime objects.
         "//tensorflow/core/platform:blocking_counter",
