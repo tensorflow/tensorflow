@@ -909,6 +909,26 @@ def HLO_WhileOp: HLO_Op<"while", [
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
+
+  string summary = "AllGather operator";
+
+  string description = [{
+    Performs concatenation across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allgather
+  }];
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64Attr:$all_gather_dim,
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<ChannelHandle>:$channel_handle
+  );
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_AllReduceOp : HLO_Op<"all_reduce",
     [SameOperandsAndResultType]> {
   let summary = "AllReduce operator";
@@ -921,7 +941,7 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_id
+    OptionalAttr<ChannelHandle>:$channel_handle
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);

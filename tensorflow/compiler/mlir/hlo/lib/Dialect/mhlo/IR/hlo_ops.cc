@@ -726,6 +726,34 @@ static LogicalResult Verify(AllToAllOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// AllGatherOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllGatherOp op) {
+  // If operand and result are both ranked, then the size of the gather
+  // dimension in the result should be a multiple of the size of the gather
+  // dimension in the operand.
+  auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+  auto resultType = op.getType().dyn_cast<RankedTensorType>();
+  uint64_t allGatherDimIndex = op.all_gather_dim();
+  if (!operandType || !resultType ||
+      operandType.isDynamicDim(allGatherDimIndex) ||
+      resultType.isDynamicDim(allGatherDimIndex))
+    return success();
+  if (operandType.getDimSize(allGatherDimIndex) == 0)
+    return op.emitOpError() << "operand gather dimension cannot be zero.";
+  if ((resultType.getDimSize(allGatherDimIndex) %
+       operandType.getDimSize(allGatherDimIndex)) != 0)
+    return op.emitOpError()
+           << "result gather dimension has size "
+           << resultType.getDimSize(allGatherDimIndex)
+           << ", expected to be a multiple of operand gather dimension size "
+           << operandType.getDimSize(allGatherDimIndex);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastOp
 //===----------------------------------------------------------------------===//
 

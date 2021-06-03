@@ -27,6 +27,26 @@ func @main(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    shard_count = 4,
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x128xf32>
+  return %0 : tensor<128x128xf32>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
+// CHECK: ROOT %[[OUTPUT:.*]] = f32[128,128] all-gather(f32[128,32] %[[INPUT]])
+// CHECK-SAME: channel_id=1
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}
+// CHECK-SAME: dimensions={1}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %0 = "mhlo.all_reduce"(%arg0) ({
   // Perform max reduction inside the region
@@ -36,7 +56,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   })
   {
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 2 : i64
     }
@@ -65,7 +85,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   })
   {
     replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 2 : i64
     }
