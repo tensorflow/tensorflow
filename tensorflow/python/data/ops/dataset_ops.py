@@ -2704,6 +2704,25 @@ name=None))
 
     return _ScanDataset(self, initial_state=initial_state, scan_func=scan_func)
 
+  def take_while(self, predicate):
+    """A transformation that stops dataset iteration based on a `predicate`.
+
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> dataset = dataset.take_while(lambda x: x < 5)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 2, 3, 4]
+
+    Args:
+      predicate: A function that maps a nested structure of tensors (having
+        shapes and types defined by `self.output_shapes` and
+        `self.output_types`) to a scalar `tf.bool` tensor.
+
+    Returns:
+      A `Dataset`.
+    """
+
+    return _TakeWhileDataset(self, predicate)
+
 
 @tf_export(v1=["data.Dataset"])
 class DatasetV1(DatasetV2):
@@ -5212,6 +5231,35 @@ class RandomDataset(DatasetSource):
   @property
   def element_spec(self):
     return tensor_spec.TensorSpec([], dtypes.int64)
+
+
+class _TakeWhileDataset(UnaryUnchangedStructureDataset):
+  """A dataset that stops iteration when `predicate` returns false."""
+
+  def __init__(self, input_dataset, predicate):
+    """See `take_while()` for details."""
+
+    self._input_dataset = input_dataset
+    wrapped_func = StructuredFunctionWrapper(
+        predicate, self._transformation_name(), dataset=self._input_dataset)
+
+    if not wrapped_func.output_structure.is_compatible_with(
+        tensor_spec.TensorSpec([], dtypes.bool)):
+      raise ValueError("`predicate` must return a scalar boolean tensor.")
+
+    self._predicate = wrapped_func
+    var_tensor = ged_ops.take_while_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        other_arguments=self._predicate.function.captured_inputs,
+        predicate=self._predicate.function,
+        **self._flat_structure)
+    super(_TakeWhileDataset, self).__init__(input_dataset, var_tensor)
+
+  def _functions(self):
+    return [self._predicate]
+
+  def _transformation_name(self):
+    return "Dataset.take_while()"
 
 
 def _collect_resource_inputs(op):

@@ -378,11 +378,7 @@ py_library(
     srcs = ["take_while_ops.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:function",
-        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python:util",
     ],
 )
 

@@ -133,6 +133,10 @@ tf_class {
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "take_while"
+    argspec: "args=[\'self\', \'predicate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "unbatch"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
