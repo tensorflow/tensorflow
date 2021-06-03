@@ -882,12 +882,14 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
 
   if (op.is_host_transfer()) {
-    value_map[op] = xla::RecvFromHost(token, xla::TypeToShape(result_type),
-                                      Convert_channel_handle(op.channel_id()));
+    value_map[op] =
+        xla::RecvFromHost(token, xla::TypeToShape(result_type),
+                          Convert_channel_handle(op.channel_handle()));
     return success();
   }
-  value_map[op] = xla::RecvWithToken(token, xla::TypeToShape(result_type),
-                                     Convert_channel_handle(op.channel_id()));
+  value_map[op] =
+      xla::RecvWithToken(token, xla::TypeToShape(result_type),
+                         Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -1041,13 +1043,13 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
 
   if (op.is_host_transfer()) {
-    value_map[op] = xla::SendToHost(operand, token,
-                                    xla::TypeToShape(op.operand().getType()),
-                                    Convert_channel_handle(op.channel_id()));
+    value_map[op] = xla::SendToHost(
+        operand, token, xla::TypeToShape(op.operand().getType()),
+        Convert_channel_handle(op.channel_handle()));
     return success();
   }
-  value_map[op] = xla::SendWithToken(operand, token,
-                                     Convert_channel_handle(op.channel_id()));
+  value_map[op] = xla::SendWithToken(
+      operand, token, Convert_channel_handle(op.channel_handle()));
   return success();
 }
 

@@ -744,7 +744,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
   let arguments = (ins
     HLO_TensorOrTuple:$operand,
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle:$channel_handle,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -769,7 +769,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
   let arguments = (ins
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle:$channel_handle,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 

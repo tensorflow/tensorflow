@@ -682,7 +682,7 @@ func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> 
 func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token> {
   // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
   %0 = "mhlo.recv"(%token) {
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
@@ -696,7 +696,7 @@ func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi3
 func @recv_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
   // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
   %0 = "mhlo.recv"(%token) {
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
