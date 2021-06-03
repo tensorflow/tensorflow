@@ -6353,6 +6353,7 @@ filegroup(
         "sparse_xent_op.cc",
         "sparse_fill_empty_rows_op.cc",
         "sparse_reshape_op.cc",
+        "sparse_slice_op.cc",
         "sparse_to_dense_op.cc",
         "spectrogram.cc",
         "spectrogram_op.cc",
