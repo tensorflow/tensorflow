@@ -584,6 +584,7 @@ class SparseCrossOp : public OpKernel {
   }
   int64 num_buckets_;
   uint64 hash_key_;
+  DataType internal_type_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
