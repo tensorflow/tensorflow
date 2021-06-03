@@ -2,6 +2,7 @@
 .ipynb_checkpoints
 node_modules
 /.bazelrc.user
+/.devcontainer
 /.tf_configure.bazelrc
 /bazel-*
 /bazel_pip
