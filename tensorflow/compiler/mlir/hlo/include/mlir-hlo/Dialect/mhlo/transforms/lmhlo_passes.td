@@ -56,3 +56,8 @@ def LegalizeTensorLoadOpPass : Pass<"lhlo-legalize-tensor-load-op", "FuncOp"> {
   let constructor = "createLegalizeTensorLoadOpPass()";
 }
 
+def LhloFusionPass : Pass<"lhlo-fusion", "FuncOp"> {
+  let summary = "Fuse lmhlo ops to kLoop/kInput fusion patterns.";
+  let constructor = "createLhloFusionPass()";
+}
+
