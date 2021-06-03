@@ -25,7 +25,8 @@ REGISTER3(UnaryOp, CPU, "Tanh", functor::tanh, bfloat16, complex64, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifndef MLIR_GENERATED_GPU_KERNELS_ENABLED
-REGISTER3(UnaryOp, GPU, "Tanh", functor::tanh, float, Eigen::half, double);
+REGISTER4(UnaryOp, GPU, "Tanh", functor::tanh, float, Eigen::half, bfloat16,
+          double);
 #endif
 #endif
 
