@@ -4735,6 +4735,23 @@ the dimension is padded with zeros.
   );
 }
 
+def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
+  let summary = "Returns a handle to a variable resource from its name.";
+
+  let description = [{
+    Returns a handle for a variable resource from its name.
+    container: the container this variable is placed in.
+    shared_name: the name by which this variable is referred to.
+  }];
+
+  let arguments = (ins
+    DefaultValuedAttr<StrAttr, "">:$container,
+    DefaultValuedAttr<StrAttr, "">:$shared_name
+  );
+
+  let results = (outs TFL_ResourceTensor:$resource_handle);
+}
+
 def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
   let summary = "Assigns a new value to a variable.";
 
@@ -4744,9 +4761,7 @@ this value or a subsequent newer value of the variable.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id,
+    TFL_ResourceTensor:$resource_handle,
     TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$value
   );
 
@@ -4761,9 +4776,7 @@ Read variable data identified by 'resource_id'.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id
+    TFL_ResourceTensor:$resource_handle
   );
 
   let results = (outs TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$result);
