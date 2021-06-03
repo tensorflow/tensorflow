@@ -45,17 +45,14 @@ class HloOrdering {
   enum class ExecutionConstraint {
     // Indicate a and b are the same instruction;
     kIsSame,
-    // Indicate a runs before b starts;
-    kRunBeforeStart,
-    // Indicate a runs before b ends but after b starts, e.g., when b is a
-    // conditional or while loop;
-    kRunBeforeEnd,
+    // Indicate a runs before b;
+    kRunBefore,
     // Only one of a or b runs each time their common ancestor is evaluated,
     // and a is in an earlier branch than b.
     kRunExclusiveBefore,
     // Only one of a or b runs each time, and a is in a later branch than b.
     kRunExclusiveAfter,
-    // Indicate a runs after b ends.
+    // Indicate a runs after b
     kRunAfter,
     // An order cannot be detrermined as a and b do not have a common ancestor.
     kUnordered,
