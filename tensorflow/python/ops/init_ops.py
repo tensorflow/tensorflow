@@ -246,7 +246,7 @@ class RandomUniform(Initializer):
     minval: A python scalar or a scalar tensor. Lower bound of the range of
       random values to generate.
     maxval: A python scalar or a scalar tensor. Upper bound of the range of
-      random values to generate.  Defaults to 1 for float types.
+      random values to generate.  Defaults to 1.0 for float types.
     seed: A Python integer. Used to create random seeds. See
       `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
@@ -256,7 +256,7 @@ class RandomUniform(Initializer):
   @deprecated_args(None,
                    "Call initializer instance with the dtype argument instead "
                    "of passing it to the constructor", "dtype")
-  def __init__(self, minval=0, maxval=None, seed=None, dtype=dtypes.float32):
+  def __init__(self, minval=.0, maxval=1., seed=None, dtype=dtypes.float32):
     self.minval = minval
     self.maxval = maxval
     self.seed = seed
