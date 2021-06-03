@@ -322,6 +322,18 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
     size_t* lengths, int max_values, void* storage, size_t storage_size,
     TF_Status* status);
 
+// Interprets the named kernel construction attribute as a shape attribute and fills
+// in `vals` with the size of each dimension.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to total_size from
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, &list_size,
+// &total_size)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensorShape(
+                                           TF_OpKernelConstruction* ctx,
+                                           const char* attr_name, int64_t* values,
+                                           size_t max_vals,
+                                           TF_Status* status);
+
 // Return true if the kernel construction has the attr_name
 TF_CAPI_EXPORT extern bool TF_OpKernelConstruction_HasAttr(
     TF_OpKernelConstruction* ctx, const char* attr_name, TF_Status* status);

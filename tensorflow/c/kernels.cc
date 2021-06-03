@@ -439,6 +439,23 @@ void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
   }
 }
 
+void TF_OpKernelConstruction_GetAttrTensorShape(TF_OpKernelConstruction* ctx,
+                                                const char* attr_name, int64_t* values,
+                                                size_t max_vals,
+                                                TF_Status* status) {
+  ::tensorflow::TensorShape shape;
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &shape);
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
+
+  if (!status->status.ok()) return;
+
+  const auto len = std::min(max_vals, (size_t)shape.dims());
+  for (int i = 0; i < len; ++i) {
+    values[i] = static_cast<int64_t>(shape.dim_size(i));
+  }
+}
+
 bool TF_OpKernelConstruction_HasAttr(TF_OpKernelConstruction* ctx,
                                      const char* attr_name, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
