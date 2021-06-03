@@ -16,6 +16,7 @@
 """TensorFlow Lite Python metrics helper TFLiteMetrics check."""
 import gc
 import os
+import time
 from unittest import mock
 
 import numpy as np
@@ -104,6 +105,12 @@ class MetricsNonportableTest(test_util.TensorFlowTestCase):
         metrics._gauge_conversion_params.get_cell('name1').value(), 'value1')
     self.assertEqual(
         metrics._gauge_conversion_params.get_cell('name2').value(), 'value2')
+
+  def test_converter_params_set_latency(self):
+    stub = metrics.TFLiteMetrics()
+    stub.set_converter_latency(34566)
+    self.assertEqual(metrics._gauge_conversion_latency.get_cell().value(),
+                     34566)
 
 
 class ConverterMetricsTest(test_util.TensorFlowTestCase):
@@ -249,10 +256,12 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     mock_metrics = mock.create_autospec(
         metrics.TFLiteConverterMetrics, instance=True)
     converter._tflite_metrics = mock_metrics
+    time.process_time = mock.Mock(side_effect=np.arange(1, 1000, 2).tolist())
     converter.convert()
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
+        mock.call.set_converter_latency(2000),
         mock.call.export_metrics(),
         mock.call.set_converter_param('enable_mlir_converter', 'True'),
     ], any_order=True)  # pyformat: disable
@@ -275,8 +284,10 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     ], any_order=True)  # pyformat: disable
 
   def disable_converter_counter_metrics(self, tflite_metrics):
+
     def empty_func():
       pass
+
     tflite_metrics.increase_counter_converter_attempt = empty_func
     tflite_metrics.increase_counter_converter_success = empty_func
 

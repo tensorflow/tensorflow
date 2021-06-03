@@ -53,6 +53,9 @@ _gauge_conversion_errors = monitoring.StringGauge(
     'Gauge for collecting conversion errors. The value represents the error '
     'message.', 'component', 'subcomponent', 'op_name', 'error_code')
 
+_gauge_conversion_latency = monitoring.IntGauge(
+    '/tensorflow/lite/convert/latency', 'Conversion latency in ms.')
+
 
 class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
   """TFLite metrics helper for prod (borg) environment.
@@ -99,6 +102,9 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
         error_data.operator.name,
         error_code_str,
     ).set(error_data.error_message)
+
+  def set_converter_latency(self, value):
+    _gauge_conversion_latency.get_cell().set(value)
 
 
 class TFLiteConverterMetrics(TFLiteMetrics):
