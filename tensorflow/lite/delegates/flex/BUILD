@@ -267,6 +267,7 @@ cc_library(
     testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    visibility = internal_visibility_allowlist(),
     deps = [
         "//tensorflow/c:c_api_internal",
         "//tensorflow/lite:string",
