@@ -3962,7 +3962,7 @@ class StructuredFunctionWrapper(object):
               "Even though the `tf.config.experimental_run_functions_eagerly` "
               "option is set, this option does not apply to tf.data functions. "
               "To force eager execution of tf.data functions, please use "
-              "`tf.data.experimental.enable.debug_mode()`.")
+              "`tf.data.experimental.enable_debug_mode()`.")
         fn_factory = trace_tf_function(defun_kwargs)
 
     resource_tracker = tracking.ResourceTracker()
