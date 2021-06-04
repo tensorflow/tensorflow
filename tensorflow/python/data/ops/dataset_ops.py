@@ -2734,8 +2734,8 @@ name=None))
     >>> sorted(list(dataset.as_numpy_iterator()))
     [1, 2, 37]
 
-    NOTE: This transformation only supports datasets which fit into memory
-      and have elements of either `tf.int32`, `tf.int64` or `tf.string` type.
+    Note: This transformation only supports datasets which fit into memory
+    and have elements of either `tf.int32`, `tf.int64` or `tf.string` type.
 
     Returns:
       A `Dataset`.
