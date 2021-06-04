@@ -13,8 +13,7 @@ and maintainers.
 
 1. Install Visual Studio Code and Docker.
 2. Install the `Remote - Containers` extension within VSCode.
-3. Copy the `.devcontainer` folder to the root of your workspace folder.
-5. Re-open the folder workspace using the remote containers extension.
+4. Re-open the folder workspace using the remote containers extension.
    VSCode should recommend this action in a popup. Alternatively,
    use the green button in the bottom left container to control the
    remote extension.
