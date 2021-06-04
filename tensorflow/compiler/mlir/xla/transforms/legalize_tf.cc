@@ -1166,6 +1166,10 @@ class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
     auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
     if (!params_ty || !indices_ty) return failure();
 
+    // TODO: Remove this constraint once fold and canonicalization implemented.
+    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape()) 
+      return failure();
+
     int64_t params_rank = params_ty.getRank();
     int64_t indices_rank = indices_ty.getRank();
 
@@ -1328,6 +1332,9 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
         op.filter().getType().template dyn_cast<RankedTensorType>();
     auto result_ty = op.getType().template dyn_cast<RankedTensorType>();
     if (!input_ty || !filter_ty || !result_ty) return failure();
+    // TODO: Remove this constraint once fold and canonicalization implemented.
+    if (input_ty.hasStaticShape() && filter_ty.hasStaticShape()) 
+      return failure();
 
     ArrayRef<Attribute> dilations = op.dilations().getValue();
     ArrayRef<Attribute> strides = op.strides().getValue();
