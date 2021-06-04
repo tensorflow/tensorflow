@@ -313,6 +313,7 @@ class SparseCrossOp : public OpKernel {
     OP_REQUIRES_OK(
         context, ValidateInput(context, indices_list_in, values_list_in,
                                shapes_list_in, dense_list_in, internal_type));
+    OP_REQUIRES_OK(context, context->status());
 
     std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns =
         GenerateColumnsFromInput(indices_list_in, values_list_in,
@@ -351,12 +352,12 @@ class SparseCrossOp : public OpKernel {
 
  private:
   // Validates input tensors.
-  void ValidateInput(OpKernelContext* context,
-                     const OpInputList& indices_list_in,
-                     const OpInputList& values_list_in,
-                     const OpInputList& shapes_list_in,
-                     const OpInputList& dense_list_in,
-                     const DataType& internal_type) {
+  Status ValidateInput(OpKernelContext* context,
+                       const OpInputList& indices_list_in,
+                       const OpInputList& values_list_in,
+                       const OpInputList& shapes_list_in,
+                       const OpInputList& dense_list_in,
+                       const DataType& internal_type) {
     const auto size = indices_list_in.size();
     // Only perform internal_type check for SparseCrossOp.
     // Check if the internal_type is not invalid before doing so.
@@ -458,6 +459,8 @@ class SparseCrossOp : public OpKernel {
                                           " got ", dense_list_in[i].dim_size(0),
                                           " at dense tensor ", i));
     }
+    
+    return Status::OK();
   }
 
   // Calculate the batch size from either the shapes input or the dense input.
