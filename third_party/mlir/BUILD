@@ -6346,6 +6346,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "MlirReduceLib",
+    srcs = ["lib/Tools/mlir-reduce/MlirReduceMain.cpp"],
+    hdrs = ["include/mlir/Tools/mlir-reduce/MlirReduceMain.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Pass",
+        ":Reducer",
+        ":Rewrite",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 cc_binary(
     name = "mlir-reduce",
     srcs = ["tools/mlir-reduce/mlir-reduce.cpp"],
@@ -6355,6 +6371,7 @@ cc_binary(
     deps = [
         ":AllPassesAndDialects",
         ":IR",
+        ":MlirReduceLib",
         ":Parser",
         ":Pass",
         ":Reducer",
