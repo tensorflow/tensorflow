@@ -903,7 +903,7 @@ class LSTMCell(recurrent.LSTMCell):
       the linear transformation of the recurrent state. Default: 0.
 
   Call arguments:
-    inputs: A 2D tensor, with shape of `[batch, feature]`.
+    inputs: A 3D tensor with shape `[batch, timesteps, feature]`.
     states: List of 2 tensors that corresponding to the cell's units. Both of
       them have shape `[batch, units]`, the first tensor is the memory state
       from previous time step, the second tensor is the carry state from
