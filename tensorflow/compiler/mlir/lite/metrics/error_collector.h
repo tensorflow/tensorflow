@@ -31,6 +31,7 @@ namespace TFL {
 // Collects errors when running the pass manager.
 class ErrorCollectorInstrumentation : public PassInstrumentation {
   using ConverterErrorData = tflite::metrics::ConverterErrorData;
+  using ErrorCode = ConverterErrorData::ErrorCode;
 
  public:
   explicit ErrorCollectorInstrumentation(MLIRContext *context);
@@ -45,8 +46,7 @@ class ErrorCollectorInstrumentation : public PassInstrumentation {
 
   // Helper method to creat a new error.
   void AppendNewError(const std ::string &pass_name,
-                      const std::string &error_message,
-                      const std::string &error_code,
+                      const std::string &error_message, ErrorCode error_code,
                       const std::string &op_name) {
     errors_.push_back(
         NewConverterErrorData(pass_name, error_message, error_code, op_name));
@@ -85,6 +85,18 @@ class ErrorCollector {
 
 // Returns the global instance of ErrorCollector.
 ErrorCollector *GetErrorCollector();
+
+// Prefix when adding error code as a note in Diagnostic.
+constexpr char kErrorCodePrefix[] = "Error code: ";
+
+// Adds error code to a newly created InFlightDiagnostic.
+inline InFlightDiagnostic AttachErrorCode(InFlightDiagnostic &&diag,
+                                          int error_code) {
+  using tflite::metrics::ConverterErrorData;
+  diag.attachNote() << kErrorCodePrefix
+                    << ConverterErrorData::ErrorCode_Name(error_code);
+  return std::move(diag);
+}
 
 }  // namespace TFL
 }  // namespace mlir

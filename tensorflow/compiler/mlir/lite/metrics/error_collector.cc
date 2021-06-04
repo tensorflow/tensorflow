@@ -23,6 +23,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+
 // The signature contains namespaces (Ex: mlir::TFL::(anonymous namespace)::).
 // So only extract the function name as the pass name.
 inline std::string extract_pass_name(const std::string &signature) {
@@ -36,10 +37,22 @@ ErrorCollectorInstrumentation::ErrorCollectorInstrumentation(
   handler_.reset(new ScopedDiagnosticHandler(context, [this](Diagnostic &diag) {
     if (diag.getSeverity() == DiagnosticSeverity::Error) {
       Location loc = diag.getLocation();
+      std::string op_name, error_code;
       if (loc_to_name_.count(loc)) {
-        const std::string &op_name = loc_to_name_[loc];
-        AppendNewError(/*pass_name=*/"", diag.str(), /*error_code=*/"",
-                       op_name);
+        op_name = loc_to_name_[loc];
+      }
+
+      for (auto &note : diag.getNotes()) {
+        if (note.str().rfind(kErrorCodePrefix, 0) == 0) {
+          error_code = note.str().substr(sizeof(kErrorCodePrefix) - 1);
+        }
+      }
+
+      ErrorCode error_code_enum = ConverterErrorData::UNKNOWN;
+      bool has_valid_error_code =
+          ConverterErrorData::ErrorCode_Parse(error_code, &error_code_enum);
+      if (!op_name.empty() || has_valid_error_code) {
+        AppendNewError(/*pass_name=*/"", diag.str(), error_code_enum, op_name);
       } else {
         common_error_message_ += diag.str();
         common_error_message_ += "\n";
@@ -81,7 +94,7 @@ void ErrorCollectorInstrumentation::runAfterPassFailed(Pass *pass,
   // Create a new error if no errors collected yet.
   if (errors_.empty() && !common_error_message_.empty()) {
     AppendNewError(pass_name, common_error_message_,
-                   /*error_code=*/"", /*op_name=*/"");
+                   ConverterErrorData::UNKNOWN, /*op_name=*/"");
   }
 
   // Report to ErrorCollector.

@@ -48,7 +48,6 @@ cc_library(
     hdrs = ["types_util.h"],
     deps = [
         "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_cc",
-        "@com_google_protobuf//:protobuf",
         "@llvm-project//mlir:IR",
     ],
 )

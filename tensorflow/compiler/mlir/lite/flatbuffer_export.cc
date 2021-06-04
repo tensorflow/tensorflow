@@ -60,6 +60,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -1293,11 +1294,16 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       // Insert failed op to `flex_ops` or `custom_ops`.
       if (is_allowed_flex_op) {
         failed_flex_ops_[op_name].insert(op_desc);
+        tfl::AttachErrorCode(
+            inst->emitOpError("is neither a custom op nor a flex op"),
+            tflite::metrics::ConverterErrorData::ERROR_NEEDS_FLEX_OPS);
       } else {
         failed_custom_ops_[op_name].insert(op_desc);
+        tfl::AttachErrorCode(
+            inst->emitOpError("is neither a custom op nor a flex op"),
+            tflite::metrics::ConverterErrorData::ERROR_NEEDS_CUSTOM_OPS);
       }
-      return inst->emitOpError("is neither a custom op nor a flex op"),
-             llvm::None;
+      return llvm::None;
     }
 
     uint32_t opcode_index =

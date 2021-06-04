@@ -70,8 +70,13 @@ class MockFailurePass
  private:
   void runOnOperation() override {
     getOperation().walk([](Operation* nestedOp) {
-      nestedOp->emitError()
-          << "Failed at " << nestedOp->getName().getStringRef().str() << " op";
+      if (nestedOp->getName().getStringRef().str().rfind("tf.") != -1) {
+        AttachErrorCode(
+            nestedOp->emitError()
+                << "Failed at " << nestedOp->getName().getStringRef().str()
+                << " op",
+            tflite::metrics::ConverterErrorData::ERROR_NEEDS_FLEX_OPS);
+      }
     });
     signalPassFailure();
   };
@@ -135,10 +140,13 @@ TEST(ErrorCollectorTest, TessFailurePass) {
 
   EXPECT_EQ(collected_errors.size(), 2);
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
-                "MockFailurePass", "Failed at tf.Const op", "", "tf.Const")),
+                "MockFailurePass", "Failed at tf.Const op",
+                tflite::metrics::ConverterErrorData::ERROR_NEEDS_FLEX_OPS,
+                "tf.Const")),
             1);
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
-                "MockFailurePass", "Failed at tf.StridedSlice op", "",
+                "MockFailurePass", "Failed at tf.StridedSlice op",
+                tflite::metrics::ConverterErrorData::ERROR_NEEDS_FLEX_OPS,
                 "tf.StridedSlice")),
             1);
 }
