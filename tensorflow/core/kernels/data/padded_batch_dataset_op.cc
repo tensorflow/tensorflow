@@ -280,6 +280,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     Status CopyBatch(IteratorContext* ctx,
                      const std::vector<std::vector<Tensor>>& batch_elements,
                      std::vector<Tensor>* out_tensors) {
+      static bool in_experiment =
+          GetExperiments().contains("parallelize_batch_copy");
       const size_t num_tuple_components = batch_elements[0].size();
       const int64 num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
@@ -360,7 +362,9 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         };
 
-        if (dataset()->parallel_copy_) {
+        if (dataset()->parallel_copy_ ||
+            (in_experiment && (batch_component.AllocatedBytes() /
+                               num_batch_elements) >= (1 << 15))) {
           BlockingCounter counter(num_batch_elements);
           Status status;
           mutex status_mu;
@@ -377,8 +381,9 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
                               &copy_element_fn]() {
               for (size_t j = offset; j < offset + length; ++j) {
                 {
+                  Status s = copy_element_fn(j);
                   mutex_lock l(status_mu);
-                  status.Update(copy_element_fn(j));
+                  status.Update(s);
                 }
                 counter.DecrementCount();
               }
