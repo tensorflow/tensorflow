@@ -85,7 +85,11 @@ upper_tabs:
       - title: "Convert RNN models"
         path: /lite/convert/rnn
       - title: "Add metadata"
-        path: /lite/convert/metadata
+        section:
+        - title: "Overview"
+          path: /lite/convert/metadata
+        - title: "Metadata Writer API"
+          path: /lite/convert/metadata_writer_tutorial
       - title: "Sample models"
         path: /lite/guide/hosted_models
       - title: "API updates"

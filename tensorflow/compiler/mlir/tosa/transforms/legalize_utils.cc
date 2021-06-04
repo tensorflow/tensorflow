@@ -124,10 +124,10 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     auto output_last_axis = output_type.getShape().size() - 1;
     uint32_t output_channels = output_type.getShape()[output_last_axis];
 
-    llvm::SmallVector<int32_t, 4> multiplier_arr;
-    llvm::SmallVector<int32_t, 4> shift_arr;
+    SmallVector<int32_t> multiplier_arr;
+    SmallVector<int32_t> shift_arr;
 
-    llvm::SmallVector<double, 4> weight_scale_arr(
+    SmallVector<double> weight_scale_arr(
         weight_per_channel_qtype.getScales().begin(),
         weight_per_channel_qtype.getScales().end());
 
@@ -170,15 +170,14 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             double output_scale, int32_t output_zp,
                             std::function<double(double)> func) {
-  llvm::SmallVector<int16_t, 4> table_vec;
-  table_vec.reserve(256);
+  SmallVector<int16_t, 513> table;
 
   for (int32_t i = -256; i <= 256; i++) {
     double dequantized = input_scale * (i - input_zp);
     double transformed = func(dequantized);
     int32_t rescaled = std::llround(transformed / output_scale);
     int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
-    table_vec.push_back(
+    table.push_back(
         static_cast<int16_t>(std::min(std::max(quantized, -32768), 32767)));
   }
 
@@ -188,8 +187,8 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   auto const_type = RankedTensorType::get({513}, element_qtype);
   auto storage_type =
       RankedTensorType::get({513}, element_qtype.getStorageType());
-  auto const_attr = DenseElementsAttr::get(
-      storage_type, llvm::makeArrayRef<int16_t>(table_vec));
+  auto const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -202,11 +201,11 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
 Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
                              std::function<double(double)> func, double min,
                              double max) {
-  llvm::SmallVector<int16_t, 513> table_vec;
+  SmallVector<int16_t, 513> table;
 
   double step = (max - min) / 512.0f;
   double half_step = step / 2.0f;
-  for (int32_t i = 0; i <= 512; i++) {
+  for (int32_t i = 0; i < 512; i++) {
     int32_t sample_val = std::llround(func(min + (i * step)) * 32768.0);
     double midpoint_interp_val =
         std::round(((func(min + (i + 1) * step) * 32768.0) +
@@ -217,12 +216,12 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
     double midpoint_err = midpoint_interp_val - midpoint_val;
     int32_t bias = std::llround(midpoint_err / 2.0);
 
-    table_vec.push_back(static_cast<int16_t>(
+    table.push_back(static_cast<int16_t>(
         std::min(std::max(sample_val - bias, -32768), 32767)));
   }
 
   int32_t max_val = std::llround(func(max) * 32768.0);
-  table_vec.push_back(
+  table.push_back(
       static_cast<int16_t>(std::min(std::max(max_val, -32768), 32767)));
 
   auto element_qtype =
@@ -231,8 +230,8 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   auto const_type = RankedTensorType::get({513}, element_qtype);
   auto storage_type =
       RankedTensorType::get({513}, element_qtype.getStorageType());
-  auto const_attr = DenseElementsAttr::get(
-      storage_type, llvm::makeArrayRef<int16_t>(table_vec));
+  auto const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -245,7 +244,7 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             std::function<double(double)> func,
                             Value& upper_const, Value& lower_const) {
-  std::array<int16_t, 513> upper_table_array, lower_table_array;
+  SmallVector<int16_t, 513> upper_table, lower_table;
 
   double output_inv_scale = static_cast<double>(1L << 31);
 
@@ -268,8 +267,8 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
     // Legalization should add this back before recovering 32-bit value
     int32_t lower = (rescaled & 0xFFFF) - 0x8000;
 
-    upper_table_array[i + 256] = upper;
-    lower_table_array[i + 256] = lower;
+    upper_table.push_back(upper);
+    lower_table.push_back(lower);
   }
 
   auto element_qtype =
@@ -279,10 +278,10 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
   auto storage_type =
       RankedTensorType::get({513}, element_qtype.getStorageType());
 
-  auto upper_const_attr = DenseElementsAttr::get(
-      storage_type, llvm::makeArrayRef<int16_t>(upper_table_array));
-  auto lower_const_attr = DenseElementsAttr::get(
-      storage_type, llvm::makeArrayRef<int16_t>(lower_table_array));
+  auto upper_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(upper_table));
+  auto lower_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(lower_table));
 
   upper_const =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, upper_const_attr)
@@ -316,10 +315,12 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
 // Create a vector from a 32-bit value tensor.  Returns the size of
 // the new vector or -1 on error.
-int getVectorFromValue32(Value val, llvm::SmallVector<int32_t, 4>& vec) {
+int getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec) {
   int i = 0;
 
   ElementsAttr elems;
+
+  vec.clear();
 
   if (!matchPattern(val, m_Constant(&elems))) return -1;
 
@@ -346,7 +347,7 @@ bool getPaddingValuesFromPadType(
 
   // Storing the numeric padding values is useful for TOSA codegen, as opposed
   // to holding the padding regime mnemonic, i.e. SAME, VALID, FULL, ...
-  SmallVector<int64_t, 4> computed_paddings;
+  SmallVector<int64_t> computed_paddings;
 
   int64_t pad_before, pad_after;
   for (int i = 0; i < 2; i++) {  // Two spatial dimensions X&Y
@@ -388,7 +389,7 @@ bool getPaddingValuesFromPadType(
 ArrayAttr getPaddingValuesFromExplicitPadAttr(
     ArrayAttr explicit_pad, tensorflow::TensorFormat data_format_tf,
     PatternRewriter& rewriter) {
-  SmallVector<int64_t, 4> computed_paddings;
+  SmallVector<int64_t> computed_paddings;
 
   int64_t pad_before, pad_after;
   for (int i = 0; i < 2; i++) {  // Two spatial dimensions X&Y
@@ -416,7 +417,7 @@ bool getTransposeConv2dPaddingValues(
   // Storing the numeric padding values is useful for TOSA codegen, as opposed
   // to holding the padding regime mnemonic, i.e. SAME, VALID, FULL, ...
 
-  SmallVector<int64_t, 2> computed_paddings;
+  SmallVector<int64_t> computed_paddings;
 
   int64_t pad_before, pad_after;
   for (int i = 0; i < 2; i++) {  // Two spatial dimensions X&Y
@@ -447,60 +448,83 @@ bool getTransposeConv2dPaddingValues(
   return true;
 }
 
-// Templated function to create a constant op in a given dialect and with a
-// given type.  Specializations below.
+// Templated function to create a constant op for given type and shape.
+// T: storage C type.
+// Default template creates a constant tensor in T.
+template <typename T>
+llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
+                                     ArrayRef<T> vec, ArrayRef<int64_t> shape) {
+  int64_t num_total_elements = 1;
+  for (int64_t a : shape) {
+    num_total_elements *= a;
+  }
 
-// T0: target dialect constant op
-// T1: native c++ integer type
-template <typename T0, typename T1>
-Value get1DConstTensor(PatternRewriter& rewriter, Operation* op,
-                       SmallVector<T1, 8> arr) {
+  if (vec.size() != num_total_elements) {
+    op->emitOpError("getConstTensor(): number of elements mismatch.");
+    return llvm::None;
+  }
+
   auto const_type =
-      RankedTensorType::get({static_cast<int32_t>(arr.size())},
-                            rewriter.getIntegerType(sizeof(T1) * 8));
-  auto const_attr =
-      DenseElementsAttr::get(const_type, llvm::makeArrayRef<T1>(arr));
+      RankedTensorType::get(shape, rewriter.getIntegerType(sizeof(T) * 8));
+  auto const_attr = DenseElementsAttr::get(const_type, vec);
 
-  auto const_op = rewriter.create<T0>(op->getLoc(), const_type, const_attr);
+  auto const_op =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
   return const_op.getResult();
 }
 
-// Specialization for Const ops
+// Template specialization for APInt
 template <>
-Value get1DConstTensor<tosa::ConstOp, float>(PatternRewriter& rewriter,
-                                             Operation* op,
-                                             SmallVector<float, 8> arr) {
-  auto const_type = RankedTensorType::get({static_cast<int32_t>(arr.size())},
-                                          rewriter.getF32Type());
-  auto const_attr =
-      DenseElementsAttr::get(const_type, llvm::makeArrayRef<float>(arr));
+llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
+                                            Operation* op, ArrayRef<APInt> vec,
+                                            ArrayRef<int64_t> shape) {
+  int64_t num_total_elements = 1;
+  for (int64_t a : shape) {
+    num_total_elements *= a;
+  }
+
+  if (vec.size() != num_total_elements) {
+    op->emitOpError("getConstTensor(): number of elements mismatch.");
+    return llvm::None;
+  }
+
+  auto const_type = RankedTensorType::get(
+      shape, rewriter.getIntegerType(vec[0].getBitWidth()));
+  auto const_attr = DenseElementsAttr::get(const_type, vec);
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
   return const_op.getResult();
 }
 
-template Value get1DConstTensor<tosa::ConstOp, int32_t>(
-    PatternRewriter&, Operation*, SmallVector<int32_t, 8> arr);
-template Value get1DConstTensor<tosa::ConstOp, int64_t>(
-    PatternRewriter&, Operation*, SmallVector<int64_t, 8> arr);
-template Value get1DConstTensor<TFL::ConstOp, int32_t>(
-    PatternRewriter&, Operation*, SmallVector<int32_t, 8> arr);
-template Value get1DConstTensor<TFL::ConstOp, int64_t>(
-    PatternRewriter&, Operation*, SmallVector<int64_t, 8> arr);
+// Template specialization for float
+template <>
+llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
+                                            Operation* op, ArrayRef<float> vec,
+                                            ArrayRef<int64_t> shape) {
+  int64_t num_total_elements = 1;
+  for (int64_t a : shape) {
+    num_total_elements *= a;
+  }
 
-// Same as get1DConstTensor, but int48 is not native c++ type, needs additional
-// interface
-Value get1DConstTensorInt48(PatternRewriter& rewriter, Operation* op,
-                            ArrayRef<APInt>& arr) {
-  auto const_type = RankedTensorType::get({static_cast<int32_t>(arr.size())},
-                                          rewriter.getIntegerType(48));
-  auto const_attr = DenseElementsAttr::get(const_type, arr);
+  if (vec.size() != num_total_elements) {
+    op->emitOpError("getConstTensor(): number of elements mismatch.");
+    return llvm::None;
+  }
+
+  auto const_type = RankedTensorType::get(shape, rewriter.getF32Type());
+  auto const_attr = DenseElementsAttr::get(const_type, vec);
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
   return const_op.getResult();
 }
+
+// Template instantiation
+template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
+                                                       Operation*,
+                                                       ArrayRef<int32_t> vec,
+                                                       ArrayRef<int64_t> shape);
 
 static ElementsAttr getDefiningOpConstElementsAttr(Value input) {
   if (!input.getDefiningOp()) {

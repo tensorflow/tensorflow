@@ -102,6 +102,11 @@ AudioClassifierOptions options;
 options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
 std::unique_ptr<AudioClassifier> audio_classifier = AudioClassifier::CreateFromOptions(options).value();
 
+// Create input audio buffer from data.
+int input_buffer_size = audio_classifier->GetRequiredInputBufferSize();
+const std::unique_ptr<AudioBuffer> audio_buffer =
+    AudioBuffer::Create(audio_data.get(), input_buffer_size, kAudioFormat).value();
+
 // Run inference
 const ClassificationResult result = audio_classifier->Classify(*audio_buffer).value();
 ```
@@ -113,7 +118,9 @@ for more options to configure `AudioClassifier`.
 ## Model compatibility requirements
 
 The `AudioClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+metadata for audio classifiers using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#audio_classifiers).
 
 The compatible audio classifier models should meet the following requirements:
 

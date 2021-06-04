@@ -33,6 +33,7 @@ __all__ = ["LinearOperatorHouseholder",]
 
 
 @tf_export("linalg.LinearOperatorHouseholder")
+@linear_operator.make_composite_tensor
 class LinearOperatorHouseholder(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] of Householder transformations.
 
@@ -270,3 +271,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   @property
   def reflection_axis(self):
     return self._reflection_axis
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("reflection_axis",)

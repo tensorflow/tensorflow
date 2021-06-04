@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -323,32 +324,32 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
                  std::vector<Tensor>* out_tensors,
                  std::vector<std::vector<Tensor>>* batch_elements);
 
-// Configures tf.data experiments and determines which optimizations should be
-// applied.
-std::vector<tstring> ConfigureExperimentsAndSelectOptimizations(
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default);
+// Computes the set of experiments to apply based on the job name, rollout
+// percentage of registered experiments, and the TF_DATA_EXPERIMENT_OPT_IN and
+// TF_DATA_EXPERIMENT_OPT_OUT environment variables.
+absl::flat_hash_set<string> GetExperiments();
+absl::flat_hash_set<string> GetExperiments(
+    const string& job_name, std::function<uint64(const string&)> hash_func);
 
-// Determines which optimizations should be applied.
-std::vector<tstring> SelectOptimizations(
-    const string& job_name,
-    const absl::flat_hash_map<string, uint64>& live_experiments,
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default,
-    std::function<uint64(const string&)> hash_func);
+// Logs and records the experiments that will be applied.
+void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments);
 
 // Computes the set of enabled, disabled, and default optimizations based on the
 // given options.
 void GetOptimizations(const Options& options,
-                      std::vector<tstring>* optimizations_enabled,
-                      std::vector<tstring>* optimizations_disabled,
-                      std::vector<tstring>* optimizations_default);
+                      absl::flat_hash_set<tstring>* optimizations_enabled,
+                      absl::flat_hash_set<tstring>* optimizations_disabled,
+                      absl::flat_hash_set<tstring>* optimizations_default);
+
+// Determines which optimizations should be applied.
+absl::flat_hash_set<tstring> SelectOptimizations(
+    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default);
 
 // Creates graph rewrite configs based on the given options.
-void CreateGraphRewriteConfigs(const Options& options,
-                               std::vector<std::string>* configs);
+absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options);
 
 // Determines whether max intra-op parallelism should be configured.
 bool ShouldConfigureMaxIntraOpParallelism(const Options& options);
@@ -361,8 +362,39 @@ bool ShouldUseAutotuning(const Options& options);
 
 // Determines whether optimizations should be applied.
 bool ShouldApplyOptimizations(
-    const Options& options, const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_default);
+    const Options& options,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_default);
+
+// Registry of tf.data experiments.
+class DatasetExperimentRegistry {
+ public:
+  // Registers the experiment.
+  static void Register(const string& experiment, int64 rollout_pct);
+
+  // Returns all registered experiments.
+  static absl::flat_hash_map<string, int64> Experiments();
+};
+
+// Helper class to register a dataset experiment.
+class DatasetExperimentRegistrar {
+ public:
+  explicit DatasetExperimentRegistrar(const string& experiment,
+                                      int64 rollout_pct) {
+    DatasetExperimentRegistry::Register(experiment, rollout_pct);
+  }
+};
+
+// Macro that can be used to register a dataset experiment.
+#define REGISTER_DATASET_EXPERIMENT(experiment, rollout_pct) \
+  REGISTER_DATASET_OP_NAME_UNIQ_HELPER(__COUNTER__, experiment, rollout_pct)
+
+#define REGISTER_DATASET_OP_NAME_UNIQ_HELPER(ctr, experiment, rollout_pct) \
+  REGISTER_DATASET_OP_NAME_UNIQ(ctr, experiment, rollout_pct)
+
+#define REGISTER_DATASET_OP_NAME_UNIQ(ctr, experiment, rollout_pct) \
+  static ::tensorflow::data::DatasetExperimentRegistrar             \
+      registrar__body__##ctr##__object(experiment, rollout_pct)
 
 }  // namespace data
 }  // namespace tensorflow

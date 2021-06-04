@@ -72,7 +72,6 @@ namespace wrap {
 #endif
 
 // clang-format off
-
 #define FOREACH_HIPSPARSE_API(__macro)          \
   __macro(hipsparseCreate)                      \
   __macro(hipsparseCreateMatDescr)              \
@@ -130,12 +129,11 @@ namespace wrap {
   __macro(hipsparseScsru2csr)                   \
   __macro(hipsparseZcsru2csr_bufferSizeExt)     \
   __macro(hipsparseZcsru2csr)
- 
+
 FOREACH_HIPSPARSE_ROCM42_API(HIPSPARSE_API_WRAPPER)
 
 #undef FOREACH_HIPSPARSE_ROCM42_API
 #endif
-
 
 // clang-format on
 

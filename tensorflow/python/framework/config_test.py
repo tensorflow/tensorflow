@@ -40,6 +40,7 @@ from tensorflow.python.util import compat
 
 
 def reset_eager(fn):
+
   def wrapper(*args, **kwargs):
     try:
       return fn(*args, **kwargs)
@@ -126,9 +127,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
   @reset_eager
   def testIntraOpParallelismThreads(self):
     config.set_intra_op_parallelism_threads(10)
-    self.assertEqual(
-        config.get_intra_op_parallelism_threads(),
-        context.context().intra_op_parallelism_threads)
+    self.assertEqual(config.get_intra_op_parallelism_threads(),
+                     context.context().intra_op_parallelism_threads)
 
     context.ensure_initialized()
 
@@ -140,9 +140,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
   @reset_eager
   def testInterOpParallelismThreads(self):
     config.set_inter_op_parallelism_threads(10)
-    self.assertEqual(
-        config.get_inter_op_parallelism_threads(),
-        context.context().inter_op_parallelism_threads)
+    self.assertEqual(config.get_inter_op_parallelism_threads(),
+                     context.context().inter_op_parallelism_threads)
 
     context.ensure_initialized()
 
@@ -167,9 +166,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     config.set_soft_device_placement(True)
     self.assertEqual(config.get_soft_device_placement(), True)
-    self.assertEqual(
-        config.get_soft_device_placement(),
-        context.context().soft_device_placement)
+    self.assertEqual(config.get_soft_device_placement(),
+                     context.context().soft_device_placement)
 
     # Since soft placement is enabled, the mod operation should fallback to CPU
     # with pure eager execution as well as functions
@@ -178,9 +176,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     config.set_soft_device_placement(False)
     self.assertEqual(config.get_soft_device_placement(), False)
-    self.assertEqual(
-        config.get_soft_device_placement(),
-        context.context().soft_device_placement)
+    self.assertEqual(config.get_soft_device_placement(),
+                     context.context().soft_device_placement)
 
     # Since soft placement is disabled, the mod operation should fail on GPU
     # with pure eager execution as well as functions
@@ -195,15 +192,13 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     context.set_log_device_placement(True)
     self.assertEqual(context.get_log_device_placement(), True)
-    self.assertEqual(
-        context.get_log_device_placement(),
-        context.context().log_device_placement)
+    self.assertEqual(context.get_log_device_placement(),
+                     context.context().log_device_placement)
 
     context.set_log_device_placement(False)
     self.assertEqual(context.get_log_device_placement(), False)
-    self.assertEqual(
-        context.get_log_device_placement(),
-        context.context().log_device_placement)
+    self.assertEqual(context.get_log_device_placement(),
+                     context.context().log_device_placement)
 
     context.ensure_initialized()
 
@@ -280,8 +275,7 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('LayoutOptimizer', 'layout_optimizer'),
       ('ConstantFolding', 'constant_folding'),
-      ('ShapeOptimization', 'shape_optimization'),
-      ('Remapping', 'remapping'),
+      ('ShapeOptimization', 'shape_optimization'), ('Remapping', 'remapping'),
       ('ArithmeticOptimization', 'arithmetic_optimization'),
       ('DependencyOptimization', 'dependency_optimization'),
       ('LoopOptimization', 'loop_optimization'),
@@ -299,14 +293,14 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     config.set_optimizer_experimental_options({field: True})
     options[field] = True
     self.assertDictEqual(config.get_optimizer_experimental_options(), options)
-    self.assertDictEqual(
-        context.context().get_optimizer_experimental_options(), options)
+    self.assertDictEqual(context.context().get_optimizer_experimental_options(),
+                         options)
 
     config.set_optimizer_experimental_options({field: False})
     options[field] = False
     self.assertDictEqual(config.get_optimizer_experimental_options(), options)
-    self.assertDictEqual(
-        context.context().get_optimizer_experimental_options(), options)
+    self.assertDictEqual(context.context().get_optimizer_experimental_options(),
+                         options)
 
   @parameterized.named_parameters(
       ('DisableModelPruning', 'disable_model_pruning'),
@@ -320,14 +314,14 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     config.set_optimizer_experimental_options({field: True})
     options[field] = True
     self.assertDictEqual(config.get_optimizer_experimental_options(), options)
-    self.assertDictEqual(
-        context.context().get_optimizer_experimental_options(), options)
+    self.assertDictEqual(context.context().get_optimizer_experimental_options(),
+                         options)
 
     config.set_optimizer_experimental_options({field: False})
     options[field] = False
     self.assertDictEqual(config.get_optimizer_experimental_options(), options)
-    self.assertDictEqual(
-        context.context().get_optimizer_experimental_options(), options)
+    self.assertDictEqual(context.context().get_optimizer_experimental_options(),
+                         options)
 
   @test_util.run_gpu_only
   @reset_eager
@@ -352,8 +346,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         {'pin_to_host_optimization': True})
     options['pin_to_host_optimization'] = True
     self.assertDictEqual(config.get_optimizer_experimental_options(), options)
-    self.assertDictEqual(
-        context.context().get_optimizer_experimental_options(), options)
+    self.assertDictEqual(context.context().get_optimizer_experimental_options(),
+                         options)
 
     # Since pin to host is enabled, the operation should go on CPU
     cpu = self.evaluate(fun())
@@ -363,8 +357,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         {'pin_to_host_optimization': False})
     options['pin_to_host_optimization'] = False
     self.assertDictEqual(config.get_optimizer_experimental_options(), options)
-    self.assertDictEqual(
-        context.context().get_optimizer_experimental_options(), options)
+    self.assertDictEqual(context.context().get_optimizer_experimental_options(),
+                         options)
 
     # Since pin to host is disabled again, the operation should go on GPU
     gpu2 = self.evaluate(fun())
@@ -618,10 +612,19 @@ class DeviceTest(test.TestCase):
 
   @reset_eager
   def testGetMemoryInfoUnknownDevice(self):
+    with self.assertRaisesRegex(ValueError, 'No matching devices found'):
+      config.get_memory_info('unknown_device:0')
+    with self.assertRaisesRegex(ValueError, 'No matching devices found'):
+      config.get_memory_usage('unknown_device:0')
+
+  @reset_eager
+  def testGetMemoryInfoInvalidDeviceString(self):
     with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
-      config.get_memory_info('unknown_device')
+      context.context().get_memory_info('GPU')
     with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
-      config.get_memory_usage('unknown_device')
+      context.context().get_memory_info('GPU:')
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().get_memory_info('GPU:CPU')
 
   @test_util.run_gpu_only
   @reset_eager
@@ -636,14 +639,6 @@ class DeviceTest(test.TestCase):
     peak3 = config.get_memory_info('GPU:0')['peak']
     self.assertGreaterEqual(peak3, peak2)
     self.assertGreaterEqual(peak3, config.get_memory_info('GPU:0')['current'])
-
-  @test_util.run_gpu_only
-  @reset_eager
-  def testGetMemoryUsageAmbiguousDevice(self):
-    if len(config.list_physical_devices('GPU')) < 2:
-      self.skipTest('Need at least 2 GPUs')
-    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
-      config.get_memory_usage('GPU')
 
   @test_util.run_gpu_only
   @reset_eager
@@ -667,16 +662,17 @@ class DeviceTest(test.TestCase):
 
   @reset_eager
   def testResetMemoryStatsUnknownDevice(self):
-    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
-      config.reset_memory_stats('unknown_device')
+    with self.assertRaisesRegex(ValueError, 'No matching devices found'):
+      config.reset_memory_stats('unknown_device:0')
 
-  @test_util.run_gpu_only
   @reset_eager
-  def testResetMemoryStatsAmbiguousDevice(self):
-    if len(config.list_physical_devices('GPU')) < 2:
-      self.skipTest('Need at least 2 GPUs')
-    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
-      config.reset_memory_stats('GPU')
+  def testResetMemoryStatsInvalidDeviceString(self):
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().reset_memory_stats('GPU')
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().reset_memory_stats('GPU:')
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().reset_memory_stats('GPU:CPU')
 
   @test_util.run_gpu_only
   @reset_eager
@@ -807,11 +803,12 @@ class DeviceTest(test.TestCase):
 
     # Handle single visible device list
     context.context()._config = config_pb2.ConfigProto(
-        gpu_options=config_pb2.GPUOptions(visible_device_list=str(gpu_count-1)))
+        gpu_options=config_pb2.GPUOptions(
+            visible_device_list=str(gpu_count - 1)))
     gpus = config.list_physical_devices('GPU')
     new_config = context.context().config
     self.assertEqual(new_config.gpu_options.visible_device_list,
-                     str(gpu_count-1))
+                     str(gpu_count - 1))
     context.context()._physical_devices = None
 
   def testConfigureCollectiveOps(self):

@@ -314,6 +314,51 @@ class TextVectorizationLayerTest(keras_parameterized.TestCase,
         adapt_data=vocab_data)
     self.assertAllClose(expected_output, output_data)
 
+  def test_scalar_input_int_mode_no_len_limit(self):
+    vocab_data = [
+        "fire earth earth", "earth earth", "wind wind", "and wind and"
+    ]
+    input_data = "earth wind and fire fire and earth michigan"
+    layer = text_vectorization.TextVectorization()
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [2, 3, 4, 5, 5, 4, 2, 1])
+    layer.set_vocabulary(["earth", "wind", "and", "fire"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [2, 3, 4, 5, 5, 4, 2, 1])
+
+  def test_scalar_input_int_mode_trim_to_len_limit(self):
+    vocab_data = [
+        "fire earth earth", "earth earth", "wind wind", "and wind and"
+    ]
+    input_data = "earth wind and fire fire and earth michigan"
+    layer = text_vectorization.TextVectorization(output_sequence_length=3)
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [2, 3, 4])
+    layer.set_vocabulary(["earth", "wind", "and", "fire"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [2, 3, 4])
+
+  def test_scalar_input_int_pad_to_len_limit(self):
+    vocab_data = [
+        "fire earth earth", "earth earth", "wind wind", "and wind and"
+    ]
+    input_data = "earth wind and fire fire and earth michigan"
+    layer = text_vectorization.TextVectorization(output_sequence_length=10)
+    layer.adapt(vocab_data)
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [2, 3, 4, 5, 5, 4, 2, 1, 0, 0])
+    layer.set_vocabulary(["earth", "wind", "and", "fire"])
+    out = layer(input_data)
+    if context.executing_eagerly():
+      self.assertAllClose(out.numpy(), [2, 3, 4, 5, 5, 4, 2, 1, 0, 0])
+
   def test_list_inputs_1d(self):
     vocab_data = ["two two two", "two three three", "three four four five"]
     input_data = ["two three", "four five"]

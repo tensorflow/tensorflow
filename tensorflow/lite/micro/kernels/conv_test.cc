@@ -28,21 +28,21 @@ namespace {
 
 // Common inputs and outputs.
 constexpr int kInputElements = 16;
-static const int kInputShape[] = {4, 2, 2, 4, 1};
+static int kInputShape[] = {4, 2, 2, 4, 1};
 static const float kInputData[kInputElements] = {1, 1, 1, 1, 2, 2, 2, 2,
                                                  1, 2, 3, 4, 1, 2, 3, 4};
 
 constexpr int kFilterElements = 12;
-static const int kFilterShape[] = {4, 3, 2, 2, 1};
+static int kFilterShape[] = {4, 3, 2, 2, 1};
 static const float kFilterData[kFilterElements] = {1,  2, 3,  4,  -1, 1,
                                                    -1, 1, -1, -1, 1,  1};
 
 constexpr int kBiasElements = 3;
-static const int kBiasShape[] = {1, 3};
+static int kBiasShape[] = {1, 3};
 static const float kBiasData[kBiasElements] = {1, 2, 3};
 
 constexpr int kOutputElements = 12;
-static const int kOutputShape[] = {4, 2, 1, 2, 3};
+static int kOutputShape[] = {4, 2, 1, 2, 3};
 static const float kGoldenData[kOutputElements] = {18, 2, 5, 18, 2, 5,
                                                    17, 4, 3, 37, 4, 3};
 
@@ -82,11 +82,11 @@ TF_LITE_MICRO_TEST(InputAndFilterSameWidthHeight) {
   const int output_dims_count = 2;
   float output_data[output_dims_count];
 
-  const int kFilterShape[] = {4, 1, 2, 4, 1};
+  int kFilterShape[] = {4, 1, 2, 4, 1};
   const float filter_values[] = {1, 2, 3, 4, -1, -1, 1, 1};
-  const int kBiasShape[] = {1, 1};
+  int kBiasShape[] = {1, 1};
   const float bias_values[] = {0};
-  const int kOutputShape[] = {4, 2, 1, 1, 1};
+  int kOutputShape[] = {4, 2, 1, 1, 1};
   const float expected_output[] = {10, 34};
 
   TF_LITE_MICRO_EXPECT_EQ(
@@ -198,14 +198,14 @@ TF_LITE_MICRO_TEST(SimpleTestDilatedQuantizedPerChannel) {
   const int output_zero_point = 0;
 
   const int input_elements = 48;
-  const int input_shape[] = {4, 2, 4, 6, 1};
+  int input_shape[] = {4, 2, 4, 6, 1};
   const float input_data[] = {
       // b = 0
       1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4,
       // b = 1
       1, 2, 3, 4, 5, 6, 2, 6, 2, 4, 4, 2, 3, 2, 6, 5, 1, 4, 1, 2, 1, 4, 6, 3};
   const int output_elements = 24;
-  const int output_shape[] = {4, 2, 2, 2, 3};
+  int output_shape[] = {4, 2, 2, 2, 3};
   const float golden_data[] = {25, 2, 7, 25, 2, 7, 10, 2, -3, 10, 2, -3,
                                39, 7, 6, 50, 3, 4, 14, 4, -5, 15, 0, -7};
 
@@ -270,23 +270,25 @@ TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannel) {
   TfLiteConvParams conv_params = {kTfLitePaddingValid, 1, 1,
                                   kTfLiteActNone,      1, 1};
 
-  constexpr int input_shape[] = {4, 1, 2, 2, 4};  // [len,N,H,W,C]
+  int input_shape[] = {4, 1, 2, 2, 4};  // [len,N,H,W,C]
   constexpr int input_elements =
-      input_shape[1] * input_shape[2] * input_shape[3] * input_shape[4];
+      1 * 2 * 2 *
+      4;  // input_shape[1] * input_shape[2] * input_shape[3] * input_shape[4];
   constexpr float input_data[input_elements] = {1, 1, 1, 1, 2, 2, 2, 2,
                                                 1, 2, 3, 4, 1, 2, 3, 4};
 
-  constexpr int filter_shape[] = {4, 3, 1, 1, 4};
+  int filter_shape[] = {4, 3, 1, 1, 4};
   constexpr int filter_elements =
-      filter_shape[1] * filter_shape[2] * filter_shape[3] * filter_shape[4];
+      3 * 1 * 1 * 4;  //      filter_shape[1] * filter_shape[2] *
+                      //      filter_shape[3] * filter_shape[4];
   const float filter_data[filter_elements] = {1,  2, 3,  4,  -1, 1,
                                               -1, 1, -1, -1, 1,  1};
 
-  constexpr int bias_elements = filter_shape[1];
-  constexpr int bias_shape[] = {1, bias_elements};
+  constexpr int bias_elements = 3;  // filter_shape[1];
+  int bias_shape[] = {1, bias_elements};
   constexpr float bias_data[bias_elements] = {1, 2, 3};
 
-  constexpr int output_shape[] = {4, 1, 2, 2, bias_elements};
+  int output_shape[] = {4, 1, 2, 2, bias_elements};
   constexpr int output_elements = 4 * 3;
   int8_t output_data[output_elements];
 
@@ -321,23 +323,25 @@ TF_LITE_MICRO_TEST(Kernel1x1QuantizedPerChannelRelu6) {
   TfLiteConvParams conv_params = {kTfLitePaddingValid, 1, 1,
                                   kTfLiteActRelu6,     1, 1};
 
-  constexpr int input_shape[] = {4, 1, 2, 2, 4};  // [len,N,H,W,C]
+  int input_shape[] = {4, 1, 2, 2, 4};  // [len,N,H,W,C]
   constexpr int input_elements =
-      input_shape[1] * input_shape[2] * input_shape[3] * input_shape[4];
+      1 * 2 * 2 *
+      4;  // input_shape[1] * input_shape[2] * input_shape[3] * input_shape[4];
   constexpr float input_data[input_elements] = {1, 1, 1, 1, 2, 2, 2, 2,
                                                 1, 2, 3, 4, 1, 2, 3, 4};
 
-  constexpr int filter_shape[] = {4, 3, 1, 1, 4};
+  int filter_shape[] = {4, 3, 1, 1, 4};
   constexpr int filter_elements =
-      filter_shape[1] * filter_shape[2] * filter_shape[3] * filter_shape[4];
+      3 * 1 * 1 * 4;  //      filter_shape[1] * filter_shape[2] *
+                      //      filter_shape[3] * filter_shape[4];
   const float filter_data[filter_elements] = {1,  2, 3,  4,  -1, 1,
                                               -1, 1, -1, -1, 1,  1};
 
-  constexpr int bias_elements = filter_shape[1];
-  constexpr int bias_shape[] = {1, bias_elements};
+  constexpr int bias_elements = 3;  // filter_shape[1];
+  int bias_shape[] = {1, bias_elements};
   constexpr float bias_data[bias_elements] = {1, 2, -3};
 
-  constexpr int output_shape[] = {4, 1, 2, 2, bias_elements};
+  int output_shape[] = {4, 1, 2, 2, bias_elements};
   constexpr int output_elements = 4 * 3;
   int8_t output_data[output_elements];
 
@@ -542,10 +546,10 @@ TF_LITE_MICRO_TEST(FilterDimsNotMatchingAffineQuantization) {
 TF_LITE_MICRO_TEST(Int8Input32x1Filter32x32ShouldMatchGolden) {
   constexpr int kSampleSize = 32;
   constexpr int kNumFilters = 32;
-  const int input_shape[] = {4, 1, 1, 1, kSampleSize};
-  const int filter_shape[] = {4, kNumFilters, 1, 1, kSampleSize};
-  const int bias_shape[] = {1, kSampleSize};
-  const int output_shape[] = {4, 1, 1, 1, kSampleSize};
+  int input_shape[] = {4, 1, 1, 1, kSampleSize};
+  int filter_shape[] = {4, kNumFilters, 1, 1, kSampleSize};
+  int bias_shape[] = {1, kSampleSize};
+  int output_shape[] = {4, 1, 1, 1, kSampleSize};
   float filter_values[kNumFilters * kSampleSize];
   float input_values[kSampleSize];
   float bias_values[kSampleSize];

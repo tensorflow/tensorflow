@@ -1088,3 +1088,23 @@ def ReplicateInvariantOpHoistingPass : FunctionPass<"tf-replicate-invariant-op-h
 
   let constructor = "TFDevice::CreateReplicateInvariantOpHoistingPass()";
 }
+
+def LowerQuantizedPass : FunctionPass<"tf-lower-quantized"> {
+  let summary = "Lowers ops that require quantized input or output.";
+
+  let description = [{
+    This pass rewrites all ops that have at least one input or output that must
+    be a quantized type to ops whose inputs and outputs allow non-quantized
+    types. Examples of quantized types are TF_Qint8 or TF_Quint8.
+
+    An example is TF_DequantizeOp, which converts a quantized type to a float.
+    This op is rewritten to generic ops that perform the scale and shift
+    and can operate on non-quantized types.
+
+    Currently, TF_DequantizeOp is the only op with a lowering that falls
+    in this category. When more lowerings are added (e.g. QuantizeV2Op),
+    they should be added to this pass.
+  }];
+
+  let constructor = "TF::CreateLowerQuantizedPass()";
+}

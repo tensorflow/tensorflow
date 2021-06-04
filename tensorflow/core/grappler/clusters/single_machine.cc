@@ -290,7 +290,7 @@ Status SingleMachine::CloseSession(bool use_timeout) {
           this->coordinator_->RequestStop().IgnoreError();
           // Wait for all the runners to have closed their queues.
           while (!this->coordinator_->AllRunnersStopped()) {
-            sleep(1);
+            Env::Default()->SleepForMicroseconds(1000000);
           }
           // Now we can close the session. This should cancel any pending I/O
           // operation.

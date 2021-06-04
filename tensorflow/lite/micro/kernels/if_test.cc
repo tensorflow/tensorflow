@@ -26,9 +26,9 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestIf(const int* input1_dims_data, const bool* input1_data,
-            const int* input2_dims_data, const float* input2_data,
-            const int* output_dims_data, const float* expected_output_data,
+void TestIf(int* input1_dims_data, const bool* input1_data,
+            int* input2_dims_data, const float* input2_data,
+            int* output_dims_data, const float* expected_output_data,
             const int subgraph1_invoke_count_golden,
             const int subgraph2_invoke_count_golden, float* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
@@ -79,8 +79,8 @@ void TestIf(const int* input1_dims_data, const bool* input1_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(IfShouldInvokeSubgraphWithMockModelConditionTrue) {
-  const int shape[] = {2, 1, 2};
-  const int condition_shape[] = {1, 1};
+  int shape[] = {2, 1, 2};
+  int condition_shape[] = {1, 1};
   const bool condition[] = {true};
   const float input[] = {5.0, 2.0};
   const float golden[] = {5.0, 2.0};
@@ -90,8 +90,8 @@ TF_LITE_MICRO_TEST(IfShouldInvokeSubgraphWithMockModelConditionTrue) {
 }
 
 TF_LITE_MICRO_TEST(IfShouldInvokeSubgraphWithMockModelConditionFalse) {
-  const int shape[] = {2, 1, 2};
-  const int condition_shape[] = {1, 1};
+  int shape[] = {2, 1, 2};
+  int condition_shape[] = {1, 1};
   const bool condition[] = {false};
   const float input[] = {5.0, 2.0};
   const float golden[] = {5.0, 2.0};

@@ -131,24 +131,24 @@ struct HipComplexT {
 
 template <>
 struct HipComplexT<std::complex<float>> {
-  typedef hipFloatComplex type; 
+  typedef hipFloatComplex type;
 };
 
 template <>
 struct HipComplexT<std::complex<double>> {
-  typedef hipDoubleComplex type; 
+  typedef hipDoubleComplex type;
 };
 
-// Convert pointers of std::complex<> to pointers of 
-// hipFloatComplex/hipDoubleComplex. No type conversion for non-complex types. 
+// Convert pointers of std::complex<> to pointers of
+// hipFloatComplex/hipDoubleComplex. No type conversion for non-complex types.
 template <typename T>
 inline const typename HipComplexT<T>::type* AsHipComplex(const T* p) {
-  return reinterpret_cast<const typename HipComplexT<T>::type*>(p); 
+  return reinterpret_cast<const typename HipComplexT<T>::type*>(p);
 }
 
 template <typename T>
 inline typename HipComplexT<T>::type* AsHipComplex(T* p) {
-  return reinterpret_cast<typename HipComplexT<T>::type*>(p); 
+  return reinterpret_cast<typename HipComplexT<T>::type*>(p);
 }
 
 GpuSparse::GpuSparse(OpKernelContext* context)
@@ -224,10 +224,10 @@ static inline Status CsrmmImpl(
     const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
     const int* csrSortedColIndA, const Scalar* B, int ldb,
     const Scalar* beta_host, Scalar* C, int ldc) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(op(hipsparse_handle, transA, transB, m, n, k,
-                                  nnz, AsHipComplex(alpha_host), descrA, AsHipComplex(csrSortedValA),
-                                  csrSortedRowPtrA, csrSortedColIndA, AsHipComplex(B), ldb,
-                                  AsHipComplex(beta_host), AsHipComplex(C), ldc));
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      hipsparse_handle, transA, transB, m, n, k, nnz, AsHipComplex(alpha_host),
+      descrA, AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsHipComplex(B), ldb, AsHipComplex(beta_host), AsHipComplex(C), ldc));
   return Status::OK();
 }
 
@@ -297,8 +297,9 @@ static inline Status CsrmvImpl(SparseFnT op, OpKernelContext* context,
                                const int* csrSortedColIndA, const Scalar* x,
                                const Scalar* beta_host, Scalar* y) {
   TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, transA, m, n, nnz, AsHipComplex(alpha_host), descrA, AsHipComplex(csrSortedValA),
-         csrSortedRowPtrA, csrSortedColIndA, AsHipComplex(x), AsHipComplex(beta_host), AsHipComplex(y)));
+      op(hipsparse_handle, transA, m, n, nnz, AsHipComplex(alpha_host), descrA,
+         AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+         AsHipComplex(x), AsHipComplex(beta_host), AsHipComplex(y)));
   return Status::OK();
 }
 
@@ -346,11 +347,11 @@ static inline Status CsrgemmImpl(
     const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
     const int* csrSortedColIndB, const hipsparseMatDescr_t descrC,
     Scalar* csrSortedValC, int* csrSortedRowPtrC, int* csrSortedColIndC) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, transA, transB, m, n, k, descrA, nnzA, AsHipComplex(csrSortedValA),
-         csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB, AsHipComplex(csrSortedValB),
-         csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
-         csrSortedRowPtrC, csrSortedColIndC));
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      hipsparse_handle, transA, transB, m, n, k, descrA, nnzA,
+      AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA, descrB,
+      nnzB, AsHipComplex(csrSortedValB), csrSortedRowPtrB, csrSortedColIndB,
+      descrC, AsHipComplex(csrSortedValC), csrSortedRowPtrC, csrSortedColIndC));
   return Status::OK();
 }
 
@@ -408,16 +409,16 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
   return Status::OK();
 }
 
-#define CSRU2CSR_INSTANCE(Scalar, sparse_prefix)                              \
-  template <>                                                                 \
-  Status GpuSparse::Csru2csr<Scalar>(                                         \
+#define CSRU2CSR_INSTANCE(Scalar, sparse_prefix)                               \
+  template <>                                                                  \
+  Status GpuSparse::Csru2csr<Scalar>(                                          \
       int m, int n, int nnz, const hipsparseMatDescr_t descrA, Scalar* csrVal, \
-      const int* csrRowPtr, int* csrColInd) {                                 \
-    DCHECK(initialized_);                                                     \
-    return Csru2csrImpl(SPARSE_FN(csru2csr, sparse_prefix),                   \
-                        BUFSIZE_FN(csru2csr, sparse_prefix), context_,        \
-                        *gpusparse_handle_, m, n, nnz, descrA, csrVal,        \
-                        csrRowPtr, csrColInd);                                \
+      const int* csrRowPtr, int* csrColInd) {                                  \
+    DCHECK(initialized_);                                                      \
+    return Csru2csrImpl(SPARSE_FN(csru2csr, sparse_prefix),                    \
+                        BUFSIZE_FN(csru2csr, sparse_prefix), context_,         \
+                        *gpusparse_handle_, m, n, nnz, descrA, csrVal,         \
+                        csrRowPtr, csrColInd);                                 \
   }
 
 TF_CALL_LAPACK_TYPES(CSRU2CSR_INSTANCE);
@@ -431,9 +432,10 @@ static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
                                  const int* csrRowPtr, const int* csrColInd,
                                  Scalar* cscVal, int* cscRowInd, int* cscColPtr,
                                  const hipsparseAction_t copyValues) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, m, n, nnz, AsHipComplex(csrVal), csrRowPtr, csrColInd, AsHipComplex(cscVal),
-         cscRowInd, cscColPtr, copyValues, HIPSPARSE_INDEX_BASE_ZERO));
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(hipsparse_handle, m, n, nnz,
+                                  AsHipComplex(csrVal), csrRowPtr, csrColInd,
+                                  AsHipComplex(cscVal), cscRowInd, cscColPtr,
+                                  copyValues, HIPSPARSE_INDEX_BASE_ZERO));
   return Status::OK();
 }
 
@@ -461,12 +463,12 @@ static inline Status CsrgeamBufferSizeExtImpl(
     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
     const hipsparseMatDescr_t descrC, Scalar* csrSortedValC,
     int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(sparse_handle, m, n, AsHipComplex(alpha), descrA, nnzA,
-	 AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA, 
-	 AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB), 
-	 csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC), 
-	 csrSortedRowPtrC, csrSortedColIndC, bufferSize));
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      sparse_handle, m, n, AsHipComplex(alpha), descrA, nnzA,
+      AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
+      csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
+      csrSortedRowPtrC, csrSortedColIndC, bufferSize));
   return Status::OK();
 }
 
@@ -516,13 +518,12 @@ static inline Status Csrgeam2Impl(
     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
     const hipsparseMatDescr_t descrC, Scalar* csrSortedValC,
     int* csrSortedRowPtrC, int* csrSortedColIndC, void* workspace) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(cusparse_handle, m, n, AsHipComplex(alpha), descrA, nnzA,
-	 AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-	 AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
-         csrSortedRowPtrB, csrSortedColIndB, descrC,
-	 AsHipComplex(csrSortedValC), csrSortedRowPtrC, csrSortedColIndC,
-	 workspace));
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      cusparse_handle, m, n, AsHipComplex(alpha), descrA, nnzA,
+      AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
+      csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
+      csrSortedRowPtrC, csrSortedColIndC, workspace));
   return Status::OK();
 }
 

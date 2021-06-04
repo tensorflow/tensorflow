@@ -751,6 +751,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       function_name, function_key, ret_node_names.size(),
       lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
+  // The runtime shouldn't depend on duplication between the function library
+  // owned by the graph and the one owned by the runtime. To ensure this, for
+  // now we ensure that the graph function library is empty and the runtime
+  // library receives the query from LookUps on the graph function library.
+  graph->mutable_flib_def()->set_default_registry(&data->lib_def_);
+  graph->mutable_flib_def()->Clear();
+
   // Do not run function/graph optimization passes for component functions,
   // since they have already processed the main function.
   const bool should_run_optimization_passes = !options.is_component_function;

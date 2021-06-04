@@ -140,7 +140,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ImageSegmenter` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+metadata for image segmenters using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#image_segmenters).
 
 *   Input image tensor (kTfLiteUInt8/kTfLiteFloat32)
 

@@ -46,7 +46,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
-    bool broadcast_only = false);
+    bool legalize_broadcasts = true, bool expand_compositions = true);
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.

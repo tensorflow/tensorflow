@@ -25,7 +25,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestExp(const int* input_dims_data, const float* input_data,
+void TestExp(int* input_dims_data, const float* input_data,
              const float* expected_output_data, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
@@ -63,7 +63,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(SingleDim) {
   constexpr int kInputSize = 7;
   float output_data[kInputSize];
-  const int input_dims[] = {2, 1, kInputSize};
+  int input_dims[] = {2, 1, kInputSize};
   const float input_values[kInputSize] = {0.0f,    1.0f,  -1.0f, 100.0f,
                                           -100.0f, 0.01f, -0.01f};
   float golden[kInputSize];

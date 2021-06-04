@@ -116,10 +116,11 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
                                       OwningRewritePatternList *patterns);
 
 // Populates a collection of conversion patterns for legalizing client-HLO to
-// HLO. Includes decomposition of operations and inserting of explicit
-// broadcasts.
-void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
-                                       OwningRewritePatternList *patterns);
+// HLO by decomposing client-operations to corresponding sequences of more
+// primitive operations. This does not include the
+// PopulateChloBroadcastingPatterns above.
+void PopulateDecomposeChloPatterns(MLIRContext *context,
+                                   OwningRewritePatternList *patterns);
 
 }  // namespace chlo
 

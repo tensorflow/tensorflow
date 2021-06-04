@@ -4164,7 +4164,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
     embedding_column.create_state(state_manager)
 
     with self.assertRaisesRegex(errors.OpError,
-                                r'indices\[0\] = 2 is not in \[0, 2\)'):
+                                r'indices\[0\].*\[0, 2\)'):
       # Provide sparse input and get dense result.
       embedding_lookup = embedding_column.get_dense_tensor(
           fc.FeatureTransformationCache({'aaa': sparse_input}), state_manager)

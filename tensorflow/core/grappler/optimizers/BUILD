@@ -26,7 +26,7 @@ filegroup(
         "meta_optimizer.h",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
@@ -327,6 +327,7 @@ tf_cuda_cc_test(
         ":model_pruner",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -890,6 +891,7 @@ tf_kernel_library(
 tf_cuda_cc_test(
     name = "remapper_test",
     srcs = ["remapper_test.cc"],
+    tags = ["no_rocm",],
     deps = [
         ":remapper",
         "//tensorflow/cc:cc_ops",

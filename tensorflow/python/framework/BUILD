@@ -434,7 +434,7 @@ py_library(
         ":tensor_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/grappler:tf_optimizer",
     ],
 )
 
