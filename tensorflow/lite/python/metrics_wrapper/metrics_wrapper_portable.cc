@@ -55,5 +55,9 @@ PyObject* MetricsWrapper::ExportMetrics() {
   Py_RETURN_NONE;
 }
 
+std::vector<std::string> GetCollectedErrors() {
+  return std::vector<std::string>();
+}
+
 }  // namespace metrics_wrapper
 }  // namespace tflite

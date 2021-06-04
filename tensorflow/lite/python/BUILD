@@ -364,6 +364,7 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/lite/python/metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
@@ -500,7 +501,7 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_interface",
-        "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
+        "//tensorflow/lite/python/metrics_wrapper",
         "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python/eager:monitoring",
     ],
