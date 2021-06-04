@@ -231,7 +231,6 @@ class EventForest {
   EventList root_events_;
   EventList tf_loop_root_events_;
   GroupMetadataMap group_metadata_map_;
-  int64 next_group_id_ = 0;
 };
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
