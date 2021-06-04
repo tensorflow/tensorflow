@@ -60,9 +60,15 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 // Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Acos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputBetweenZeroAndOne<Eigen::half>(), std::acos,
+    test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
     std::acos, test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::acos, test::OpsTestConfig())
@@ -70,6 +76,11 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 /// Test `tf.Acosh`.
 
 // TODO(herhut): Give this better input once TF testing also supports NaN.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Acosh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputGreaterEqualOne<Eigen::half>(), std::acosh,
+    test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acosh, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterEqualOne<float>(),
     std::acosh, test::OpsTestConfig())
@@ -95,14 +106,23 @@ GENERATE_DEFAULT_TEST(Angle, DT_COMPLEX128, DT_DOUBLE, baseline_angle,
 
 // Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Asin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputBetweenZeroAndOne<Eigen::half>(), std::asin,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
     std::asin, test::OpsTestConfig().ExpectStrictlyEqual())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::asin, test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Asinh`.
+
+GENERATE_DEFAULT_TEST_2(Asinh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::asinh,
+                        test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST(Asinh, DT_FLOAT, DT_FLOAT, std::asinh,
                       test::OpsTestConfig())
@@ -112,6 +132,9 @@ GENERATE_DEFAULT_TEST(Asinh, DT_DOUBLE, DT_DOUBLE, std::asinh,
 
 /// Test `tf.Atan`.
 
+GENERATE_DEFAULT_TEST_2(Atan, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::atan,
+                        test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST(Atan, DT_FLOAT, DT_FLOAT, std::atan,
                       test::OpsTestConfig())
 
@@ -119,6 +142,11 @@ GENERATE_DEFAULT_TEST(Atan, DT_DOUBLE, DT_DOUBLE, std::atan,
                       test::OpsTestConfig())
 
 /// Test `tf.Atanh`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Atanh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputBetweenZeroAndOne<Eigen::half>(), std::atanh,
+    test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Atanh, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
@@ -214,6 +242,9 @@ GENERATE_DEFAULT_TEST_2(Cos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cos,
                         test::OpsTestConfig())
 
 /// Test `tf.Cosh`.
+
+GENERATE_DEFAULT_TEST_2(Cosh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cosh,
+                        test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
                       test::OpsTestConfig())
@@ -760,6 +791,9 @@ GENERATE_DEFAULT_TEST_2(Sin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sin,
                         test::OpsTestConfig())
 
 /// Test `tf.Sinh`.
+
+GENERATE_DEFAULT_TEST_2(Sinh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sinh,
+                        test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST(Sinh, DT_FLOAT, DT_FLOAT, std::sinh,
                       test::OpsTestConfig())

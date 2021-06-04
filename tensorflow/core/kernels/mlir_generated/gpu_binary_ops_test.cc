@@ -63,7 +63,17 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64, int64, baseline_add)
 
 /// Test `tf.Atan2`.
 
+Eigen::half baseline_atan2(Eigen::half lhs, Eigen::half rhs) {
+  return static_cast<Eigen::half>(
+      std::atan2(static_cast<float>(lhs), static_cast<float>(rhs)));
+}
+
 // Prevent the undefined case (0, 0) with non-zero rhs values.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/HalfRhsNonZero, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_atan2);
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Atan2,
     /*test_name=*/FloatRhsNonZero, float, float, test::DefaultInput<float>(),
@@ -77,6 +87,11 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
 // Prevent the undefined case (0, 0) with non-zero lhs values.
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Atan2,
+    /*test_name=*/HalfLhsNonZero, Eigen::half, Eigen::half,
+    test::DefaultInputNonZero<Eigen::half>(), test::DefaultInput<Eigen::half>(),
+    baseline_atan2);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
     /*test_name=*/FloatLhsNonZero, float, float,
     test::DefaultInputNonZero<float>(), test::DefaultInput<float>(),
     std::atan2);
@@ -87,6 +102,13 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     std::atan2);
 
 // Test some particularly interesting cases.
+TEST_F(BinaryOpsTest, Atan2EigenHalfSpecialCases) {
+  TestEqualShapes<Eigen::half, float, Eigen::half, float>(
+      "Atan2", /*shape=*/{20},
+      test::InputAsVector<Eigen::half>({1, 1, 1, 0, -1, -1, -1, 0}),
+      test::InputAsVector<Eigen::half>({1, 0, -1, -1, -1, 0, 1, 1}), std::atan2,
+      test::OpsTestConfig().ExpectStrictlyEqual());
+}
 TEST_F(BinaryOpsTest, Atan2FloatSpecialCases) {
   TestEqualShapes<float, float, float, float>(
       "Atan2", /*shape=*/{20},
@@ -192,9 +214,10 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div);
 
-// TODO(akuegel): Enable the test once we know why it fails in the Kokoro
-// environment.
-TEST_F(BinaryOpsTest, DISABLED_DivComplex64SpecialCases) {
+// The following tests don't work with Eigen kernels if the Eigen kernels are
+// compiled with nvcc.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TEST_F(BinaryOpsTest, DivComplex64SpecialCases) {
   TestEqualShapes<std::complex<float>, std::complex<float>, std::complex<float>,
                   std::complex<float>>(
       "Div", /*shape=*/{67, 63},
@@ -204,9 +227,7 @@ TEST_F(BinaryOpsTest, DISABLED_DivComplex64SpecialCases) {
       baseline_div, test::OpsTestConfig());
 }
 
-// TODO(akuegel): Enable the test once we know why it fails in the Kokoro
-// environment.
-TEST_F(BinaryOpsTest, DISABLED_DivComplex128SpecialCases) {
+TEST_F(BinaryOpsTest, DivComplex128SpecialCases) {
   TestEqualShapes<std::complex<double>, std::complex<double>,
                   std::complex<double>, std::complex<double>>(
       "Div", /*shape=*/{67, 63},
@@ -215,6 +236,7 @@ TEST_F(BinaryOpsTest, DISABLED_DivComplex128SpecialCases) {
                            64),
       baseline_div, test::OpsTestConfig());
 }
+#endif
 
 /// Test `tf.Equal`.
 

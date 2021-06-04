@@ -208,9 +208,14 @@ message GPUOptions {
 // Options passed to the graph optimizer
 message OptimizerOptions {
   // If true, optimize the graph using common subexpression elimination.
+  // Note: the optimization Level L1 will override this setting to true. So in
+  // order to disable common subexpression elimination the opt_level has to be
+  // set to L0.
   bool do_common_subexpression_elimination = 1;
 
   // If true, perform constant folding optimization on the graph.
+  // Note: the optimization Level L1 will override this setting to true. So in
+  // order to disable constant folding the opt_level has to be set to L0.
   bool do_constant_folding = 2;
 
   // Constant folding optimization replaces tensors whose values can be

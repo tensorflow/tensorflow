@@ -462,6 +462,9 @@ tf_cuda_cc_test(
     name = "gpu_binary_ops_test",
     size = "medium",
     srcs = ["gpu_binary_ops_test.cc"],
+    extra_copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
     ],
@@ -527,6 +530,7 @@ gpu_kernel_library(
     op = "acos",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
@@ -538,6 +542,7 @@ gpu_kernel_library(
     op = "acosh",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
@@ -565,6 +570,7 @@ gpu_kernel_library(
     op = "asin",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
@@ -576,6 +582,7 @@ gpu_kernel_library(
     op = "asinh",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
@@ -587,6 +594,7 @@ gpu_kernel_library(
     op = "atan",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
@@ -598,6 +606,7 @@ gpu_kernel_library(
     op = "atanh",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
@@ -620,6 +629,7 @@ gpu_kernel_library(
     op = "cosh",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
@@ -767,6 +777,7 @@ gpu_kernel_library(
     op = "sinh",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
@@ -853,6 +864,8 @@ gpu_kernel_library(
         "f64",
         "i16",
         "i64",
+        "c64",
+        "c128",
     ],
 )
 
@@ -904,6 +917,7 @@ gpu_kernel_library(
     op = "atan2",
     tile_size = "256,1,1",
     types = [
+        "f16",
         "f32",
         "f64",
     ],

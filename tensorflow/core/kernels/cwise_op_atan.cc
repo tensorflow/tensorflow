@@ -21,9 +21,9 @@ REGISTER4(UnaryOp, CPU, "Atan", functor::atan, Eigen::half, bfloat16, float,
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER4(UnaryOp, GPU, "Atan", functor::atan, Eigen::half, bfloat16, float,
-          double);
+REGISTER3(UnaryOp, GPU, "Atan", functor::atan, Eigen::half, float, double);
 #endif
+REGISTER(UnaryOp, GPU, "Atan", functor::atan, bfloat16)
 #endif
 
 }  // namespace tensorflow
