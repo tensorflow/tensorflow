@@ -34,39 +34,42 @@ namespace gpu {
 void WarnIfBadDriverJITVersion();
 
 
-/*
-Persistent compilation cache.
-This cache store .ptx and .cubin files to be used by subsequent compilations.
-The cache is a directory of files. The file name is a hash of the file content.
-All file are read (disk IO) and stored in memory when the cache is consructed.
-When an uncached compilation occurs, the result is written (disk IO) to the
-cache directory immediately. Autotuning is currently non-deterministic, so a
-few executions might be required to populate the cache.
-
-Deployemt:
-For best performance, keep the cache small (per model) containing only the
-binaries needed for this execution. In that scenario, after cache creation,
-there will be no disk IO.
-*/
-class persistentCompilationCache
+// Persistent compilation cache.
+// This cache stores .ptx and .cubin files to be used by subsequent
+// compilations. The cache is a directory of files. The file name is a hash of
+// the file content. All files are read (disk IO) and stored in memory when the
+// cache is constructed. When an uncached compilation occurs, the result is
+// written (disk IO) to the cache directory immediately. Autotuning is currently
+// non-deterministic, so a few executions might be required to populate the
+// cache.
+//
+// Deployment:
+// For best performance, keep the cache small (per model) containing only the
+// binaries needed for this execution. In that scenario, after cache creation,
+// there will be no disk IO.
+class PersistentCompilationCache
 {
-    static const int64 ptx_hash_ = 0xBA55ED50;
-    string cache_dir_;
-    absl::flat_hash_map<int64, string > in_memory_cache_;
-
-    void addToCache(int64 key,  absl::string_view text, const string &kind);
-    template <typename T> bool LookupCache(int64 key, T &text,
-                                           const string &kind);
   public:
-    bool in_use_;
-    persistentCompilationCache();
-    int64 createKey(llvm::Module* llvm_module,
+    PersistentCompilationCache();
+    int64 CreateKey(llvm::Module* llvm_module,
                     const se::CudaComputeCapability &compute_capability,
 		    const se::GpuAsmOpts &options);
-    void addToCache(int64 key, const string &ptx);
+    void AddToCache(int64 key, const string &ptx);
     bool LookupCache(int64 key, string &ptx);
-    void addToCache(int64 key, const std::vector<uint8> &cubin);
+    void AddToCache(int64 key, const std::vector<uint8> &cubin);
     bool LookupCache(int64 key, std::vector<uint8> &cubin);
+    bool InUse() { return in_use_; }
+  private:
+    void AddToCache(int64 key,  absl::string_view text, const string &kind);
+    template <typename T> bool LookupCache(int64 key, T &text,
+                                           const string &kind);
+    // The cache uses the LLVM IR as the hash key for both the PTX and the
+    // CUBIN. kPtxHash is added to the hash when adding or retrieving the PTX
+    // in order to distinguish between the two.
+    static constexpr const int64 kPtxHash = 0xBA55ED50;
+    bool in_use_;
+    string cache_dir_;
+    absl::flat_hash_map<int64, string > in_memory_cache_;
 };
 
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
@@ -171,7 +174,7 @@ class NVPTXCompiler : public GpuCompiler {
                       CompilationCacheHash, CompilationCacheEq>
       compilation_cache_ TF_GUARDED_BY(mutex_);
 
-  persistentCompilationCache persistent_compilation_cache_;
+  PersistentCompilationCache persistent_compilation_cache_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(NVPTXCompiler);
 };

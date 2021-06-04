@@ -293,7 +293,7 @@ void WarnIfBadDriverJITVersion() {
   });
 }
 
-persistentCompilationCache::persistentCompilationCache()
+PersistentCompilationCache::PersistentCompilationCache()
 {
   cache_dir_ = GetDebugOptionsFromFlags().xla_gpu_persistent_cache_dir();
   in_use_ = !cache_dir_.empty();
@@ -347,9 +347,9 @@ persistentCompilationCache::persistentCompilationCache()
   }
 }
 
-const int64 persistentCompilationCache::ptx_hash_;
+constexpr const int64 PersistentCompilationCache::kPtxHash;
 
-int64 persistentCompilationCache::createKey(
+int64 PersistentCompilationCache::CreateKey(
     llvm::Module* llvm_module,
     const se::CudaComputeCapability &compute_capability,
     const se::GpuAsmOpts &options){
@@ -372,7 +372,7 @@ int64 persistentCompilationCache::createKey(
   return key;
 }
 
-void persistentCompilationCache::addToCache(int64 key, absl::string_view text,
+void PersistentCompilationCache::AddToCache(int64 key, absl::string_view text,
                                             const string &kind) {
   VLOG(2) << "Attempting to add " << kind << " to cache for key: "
           << key << ".";
@@ -408,23 +408,23 @@ void persistentCompilationCache::addToCache(int64 key, absl::string_view text,
   }
 }
 
-void persistentCompilationCache::addToCache(int64 key, const string &ptx) {
-  int64 ptx_key = tensorflow::Hash64Combine(key, ptx_hash_);
-  addToCache(ptx_key, ptx, "PTX");
+void PersistentCompilationCache::AddToCache(int64 key, const string &ptx) {
+  int64 ptx_key = tensorflow::Hash64Combine(key, kPtxHash);
+  AddToCache(ptx_key, ptx, "PTX");
 }
 
-void persistentCompilationCache::addToCache(int64 key,
+void PersistentCompilationCache::AddToCache(int64 key,
                                             const std::vector<uint8> &cubin) {
   size_t size = cubin.size();
   if (size > 0) { // 0 sized cubin is a result of ptxas failure.
     absl::string_view cubin_str(reinterpret_cast<const char*>(cubin.data()),
                         	size);
-    addToCache(key, cubin_str, "cubin");
+    AddToCache(key, cubin_str, "cubin");
   }
 }
 
 template <typename T>
-bool persistentCompilationCache::LookupCache(int64 key, T &text,
+bool PersistentCompilationCache::LookupCache(int64 key, T &text,
                                              const string &kind) {
   VLOG(2) << "Attempting to lookup " << kind << " in cache for key: " << key << ".";
   bool in_cache = in_memory_cache_.contains(key);
@@ -437,13 +437,13 @@ bool persistentCompilationCache::LookupCache(int64 key, T &text,
   return in_cache;
 }
 
-bool persistentCompilationCache::LookupCache(int64 key, string &ptx) {
-  int64 ptx_key = tensorflow::Hash64Combine(key, ptx_hash_);
+bool PersistentCompilationCache::LookupCache(int64 key, string &ptx) {
+  int64 ptx_key = tensorflow::Hash64Combine(key, kPtxHash);
 
   return LookupCache(ptx_key, ptx, "PTX");
 }
 
-bool persistentCompilationCache::LookupCache(int64 key,
+bool PersistentCompilationCache::LookupCache(int64 key,
                                              std::vector<uint8> &cubin) {
   return LookupCache(key, cubin, "cubin");
 }
@@ -470,12 +470,13 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    const HloModule* debug_module) {
   const se::CudaComputeCapability &compute_capability =
     absl::get<se::CudaComputeCapability>(gpu_version)
-  bool use_cache = persistent_compilation_cache_.in_use_;
+
+  bool use_cache = persistent_compilation_cache_.InUse();
   bool have_ptx = false;
   int64 key;
   string ptx;
   if (use_cache) {
-    key = persistent_compilation_cache_.createKey(
+    key = persistent_compilation_cache_.CreateKey(
       llvm_module, compute_capability, PtxOptsFromConfig(module_config));
     have_ptx = persistent_compilation_cache_.LookupCache(key, ptx);
   }
@@ -507,8 +508,12 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
           MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
       XLA_SCOPED_LOGGING_TIMER(
           "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-      TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
-                                                   module_config, libdevice_dir));
+      TF_ASSIGN_OR_RETURN(ptx,
+                          nvptx::CompileToPtx(selected_module, gpu_version,
+                                              module_config, libdevice_dir));
+      if (use_cache) {
+	persistent_compilation_cache_.AddToCache(key, ptx);
+      }
     }
   }
 
@@ -521,7 +526,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability, module_config, relocatable);
     if (use_cache) {
-      persistent_compilation_cache_.addToCache(key, cubin);
+      persistent_compilation_cache_.AddToCache(key, cubin);
     }
   }
 
