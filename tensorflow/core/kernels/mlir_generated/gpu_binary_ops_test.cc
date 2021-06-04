@@ -63,7 +63,17 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64, int64, baseline_add)
 
 /// Test `tf.Atan2`.
 
+Eigen::half baseline_atan2(Eigen::half lhs, Eigen::half rhs) {
+  return static_cast<Eigen::half>(
+      std::atan2(static_cast<float>(lhs), static_cast<float>(rhs)));
+}
+
 // Prevent the undefined case (0, 0) with non-zero rhs values.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/HalfRhsNonZero, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_atan2);
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Atan2,
     /*test_name=*/FloatRhsNonZero, float, float, test::DefaultInput<float>(),
@@ -77,6 +87,11 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
 // Prevent the undefined case (0, 0) with non-zero lhs values.
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Atan2,
+    /*test_name=*/HalfLhsNonZero, Eigen::half, Eigen::half,
+    test::DefaultInputNonZero<Eigen::half>(), test::DefaultInput<Eigen::half>(),
+    baseline_atan2);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
     /*test_name=*/FloatLhsNonZero, float, float,
     test::DefaultInputNonZero<float>(), test::DefaultInput<float>(),
     std::atan2);
@@ -87,6 +102,13 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     std::atan2);
 
 // Test some particularly interesting cases.
+TEST_F(BinaryOpsTest, Atan2EigenHalfSpecialCases) {
+  TestEqualShapes<Eigen::half, float, Eigen::half, float>(
+      "Atan2", /*shape=*/{20},
+      test::InputAsVector<Eigen::half>({1, 1, 1, 0, -1, -1, -1, 0}),
+      test::InputAsVector<Eigen::half>({1, 0, -1, -1, -1, 0, 1, 1}), std::atan2,
+      test::OpsTestConfig().ExpectStrictlyEqual());
+}
 TEST_F(BinaryOpsTest, Atan2FloatSpecialCases) {
   TestEqualShapes<float, float, float, float>(
       "Atan2", /*shape=*/{20},
