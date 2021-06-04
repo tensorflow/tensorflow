@@ -13,9 +13,9 @@ cc_library(
     ],
     hdrs = [
         "include/json/config.h",
-        "include/json/features.h",
         "include/json/forwards.h",
         "include/json/json.h",
+        "include/json/json_features.h",
         "include/json/reader.h",
         "include/json/value.h",
         "include/json/version.h",
