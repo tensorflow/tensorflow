@@ -649,11 +649,12 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
-void EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
-                          TfLiteConvParams* params, OpData* data,
-                          TfLiteTensor* input, TfLiteTensor* filter,
-                          TfLiteTensor* bias, TfLiteTensor* im2col,
-                          TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
+TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
+                                  TfLiteConvParams* params, OpData* data,
+                                  TfLiteTensor* input, TfLiteTensor* filter,
+                                  TfLiteTensor* bias, TfLiteTensor* im2col,
+                                  TfLiteTensor* hwcn_weights,
+                                  TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -721,10 +722,11 @@ void EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
-void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
-                TfLiteConvParams* params, OpData* data, TfLiteTensor* input,
-                TfLiteTensor* filter, TfLiteTensor* bias, TfLiteTensor* im2col,
-                TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
+TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
+                       TfLiteConvParams* params, OpData* data,
+                       TfLiteTensor* input, TfLiteTensor* filter,
+                       TfLiteTensor* bias, TfLiteTensor* im2col,
+                       TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -811,12 +813,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       if (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8) {
         if (is_hybrid_per_channel) {
-          EvalHybridPerChannel<kernel_type>(context, node, params, data, input,
-                                            filter, bias, im2col, hwcn_weights,
-                                            output);
+          TF_LITE_ENSURE_OK(context, EvalHybridPerChannel<kernel_type>(
+                                         context, node, params, data, input,
+                                         filter, bias, im2col, hwcn_weights,
+                                         output));
         } else {
-          EvalHybrid<kernel_type>(context, node, params, data, input, filter,
-                                  bias, im2col, hwcn_weights, output);
+          TF_LITE_ENSURE_OK(context,
+                            EvalHybrid<kernel_type>(context, node, params, data,
+                                                    input, filter, bias, im2col,
+                                                    hwcn_weights, output));
         }
       } else {
         EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
