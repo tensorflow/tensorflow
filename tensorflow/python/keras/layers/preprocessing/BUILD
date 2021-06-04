@@ -383,6 +383,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # b/189866692
+        "noguitar",  # b/190034522
     ],
     tpu_tags = [
         "no_oss",  # b/155502591
@@ -477,6 +478,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/189956080)
+        "noguitar",  # b/190034522
     ],
     deps = [
         ":discretization",
