@@ -131,6 +131,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],

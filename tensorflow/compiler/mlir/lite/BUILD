@@ -1076,6 +1076,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/tools/optimize:quantize_weights",
+        "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",

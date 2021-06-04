@@ -432,6 +432,8 @@ def build_toco_flags(inference_type=dtypes.float32,
                      enable_tflite_resource_variables=False,
                      unfold_batchmatmul=True,
                      lower_tensor_list_ops=True,
+                     accumulation_type=None,
+                     allow_bfloat16=False,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -467,6 +469,11 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.enable_tflite_resource_variables = enable_tflite_resource_variables
   toco.unfold_batchmatmul = unfold_batchmatmul
   toco.lower_tensor_list_ops = lower_tensor_list_ops
+  if accumulation_type:
+    toco.accumulation_type = convert_tensor_tf_type_to_tflite_type(
+        accumulation_type, usage="accumulation_type flag")
+  toco.allow_bfloat16 = allow_bfloat16
+
   return toco
 
 
@@ -497,7 +504,9 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_exported_names=None,
                               select_user_tf_ops=None,
                               unfold_batchmatmul=True,
-                              lower_tensor_list_ops=True):
+                              lower_tensor_list_ops=True,
+                              accumulation_type=None,
+                              allow_bfloat16=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -579,6 +588,10 @@ def build_toco_convert_protos(input_tensors,
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
     lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
       not, use Flex tensor list ops.
+    accumulation_type: Data type of the accumulators in quantized inference.
+      Typically used for float16 quantization and is either fp16 or fp32.
+    allow_bfloat16: Whether the converted model supports reduced precision
+      inference with the bfloat16 type.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -608,7 +621,9 @@ def build_toco_convert_protos(input_tensors,
       conversion_summary_dir=conversion_summary_dir,
       select_user_tf_ops=select_user_tf_ops,
       unfold_batchmatmul=unfold_batchmatmul,
-      lower_tensor_list_ops=lower_tensor_list_ops)
+      lower_tensor_list_ops=lower_tensor_list_ops,
+      accumulation_type=accumulation_type,
+      allow_bfloat16=allow_bfloat16)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
