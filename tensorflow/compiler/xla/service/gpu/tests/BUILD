@@ -200,6 +200,7 @@ tf_cc_test(
     ],
     deps = [
         ":gpu_codegen_test",
+        "@com_google_absl//absl/memory",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -216,8 +217,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/memory",
-    ],
+    ] + select({
+        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
+            ":tfrt_exec_ctx_injector",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_test(
