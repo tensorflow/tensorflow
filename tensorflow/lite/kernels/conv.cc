@@ -972,7 +972,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
           TF_LITE_ENSURE_OK(context,
                             EvalHybrid<kernel_type>(context, node, params, data,
                                                     input, filter, bias, im2col,
-                                                    accum_scratch, output);
+                                                    accum_scratch, output));
         }
       } else {
         EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
