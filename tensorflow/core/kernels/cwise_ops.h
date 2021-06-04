@@ -56,7 +56,7 @@ template <typename T>
 struct scalar_asinh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
-    return std::asinh(a);
+    return static_cast<T>(std::asinh(a));
   }
 };
 template <typename T>
@@ -68,7 +68,7 @@ template <typename T>
 struct scalar_acosh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
-    return std::acosh(a);
+    return static_cast<T>(std::acosh(a));
   }
 };
 template <typename T>
@@ -80,7 +80,7 @@ template <typename T>
 struct scalar_atanh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
-    return std::atanh(a);
+    return static_cast<T>(std::atanh(a));
   }
 };
 template <typename T>
@@ -1163,9 +1163,9 @@ struct scalar_atan2_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& y, const Scalar& x) const {
 #if TENSORFLOW_USE_ROCM
-    return ::atan2(y, x);
+    return static_cast<Scalar>(::atan2(y, x));
 #else
-    return Scalar(std::atan2(y, x));
+    return static_cast<Scalar>(std::atan2(y, x));
 #endif
   }
 };
