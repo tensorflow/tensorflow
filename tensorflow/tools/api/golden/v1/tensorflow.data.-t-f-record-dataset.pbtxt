@@ -162,6 +162,10 @@ tf_class {
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "snapshot"
+    argspec: "args=[\'self\', \'path\', \'compression\', \'reader_func\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "take"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
   }

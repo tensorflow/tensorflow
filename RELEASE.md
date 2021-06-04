@@ -102,6 +102,8 @@
         endpoint.
     *   Promoting `tf.data.experimental.RandomDataset` API to
         `tf.data.Dataset.random` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.snapshot` API to
+        `tf.data.Dataset.shapshot` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan`
         and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.take_while` API to
