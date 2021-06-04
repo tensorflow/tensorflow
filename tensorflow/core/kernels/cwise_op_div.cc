@@ -37,9 +37,7 @@ REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
 REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
           int64);
 #else
-REGISTER4(BinaryOp, GPU, "Div", functor::div, uint8, uint16, complex64,
-          complex128);
-REGISTER2(BinaryOp, GPU, "RealDiv", functor::div, complex64, complex128);
+REGISTER2(BinaryOp, GPU, "Div", functor::div, uint8, uint16);
 REGISTER2(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16);
 #endif
 REGISTER5(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,

@@ -214,9 +214,10 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div);
 
-// TODO(akuegel): Enable the test once we know why it fails in the Kokoro
-// environment.
-TEST_F(BinaryOpsTest, DISABLED_DivComplex64SpecialCases) {
+// The following tests don't work with Eigen kernels if the Eigen kernels are
+// compiled with nvcc.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TEST_F(BinaryOpsTest, DivComplex64SpecialCases) {
   TestEqualShapes<std::complex<float>, std::complex<float>, std::complex<float>,
                   std::complex<float>>(
       "Div", /*shape=*/{67, 63},
@@ -226,9 +227,7 @@ TEST_F(BinaryOpsTest, DISABLED_DivComplex64SpecialCases) {
       baseline_div, test::OpsTestConfig());
 }
 
-// TODO(akuegel): Enable the test once we know why it fails in the Kokoro
-// environment.
-TEST_F(BinaryOpsTest, DISABLED_DivComplex128SpecialCases) {
+TEST_F(BinaryOpsTest, DivComplex128SpecialCases) {
   TestEqualShapes<std::complex<double>, std::complex<double>,
                   std::complex<double>, std::complex<double>>(
       "Div", /*shape=*/{67, 63},
@@ -237,6 +236,7 @@ TEST_F(BinaryOpsTest, DISABLED_DivComplex128SpecialCases) {
                            64),
       baseline_div, test::OpsTestConfig());
 }
+#endif
 
 /// Test `tf.Equal`.
 

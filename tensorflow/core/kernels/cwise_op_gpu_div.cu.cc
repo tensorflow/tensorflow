@@ -23,7 +23,7 @@ namespace functor {
 DEFINE_BINARY10(div, Eigen::half, float, double, uint8, uint16, int16, int32,
                 int64, complex64, complex128);
 #else
-DEFINE_BINARY4(div, uint8, uint16, complex64, complex128);
+DEFINE_BINARY2(div, uint8, uint16);
 #endif
 DEFINE_BINARY5(div_no_nan, Eigen::half, float, double, complex64, complex128);
 }  // namespace functor
