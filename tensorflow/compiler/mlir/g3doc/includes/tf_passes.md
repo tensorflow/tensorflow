@@ -80,30 +80,6 @@ Prepares TPU computation module attached to _TPUCompileMlir op for
 TensorFlow graph export by making transformation such as replacing or
 removing MLIR or XLA specific attributes that are not legal in TensorFlow
 graph.
-### `-tf-device-attribute-to-launch`: Wraps each TF op which has a non-empty device attribute in a tf_device.launch.
-This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
-the same device attribute.
-
-For example, the following:
-
-```mlir
-func @single_op_launch() {
-  %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
-  return %a
-}
-```
-
-will be transformed into:
-
-```mlir
-func @single_op_launch() {
-  %1 = tf_device.launch() ( {
-    %a = "tf.opA"() : () -> tensor<i1>
-    tf_device.return %a
-  }) {device = "CPU:0"} : () -> tensor<i1>
-  return %1
-}
-```
 ### `-tf-device-cluster-outlining`: Outlines regions of tf_device.cluster operations
 This pass outlines the body of a `tf_device.cluster` into a function and
 replaces the `tf_device.cluster` op with an equivalent `tf_device.cluster_func`
@@ -164,35 +140,6 @@ func @cluster() -> tensor<i32> {
   }) : () -> (tensor<i32>)
   return %cluster : tensor<i32>
 }
-```
-### `-tf-device-host-launch-to-outside-compiled`: Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.
-This pass takes ops wrapped in a tf_device.launch op with host device
-assignment extracts them from launch and adds an `_xla_outside_compilation`
-attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
-
-A simple example:
-
-```mlir
-  "tf_device.cluster"() ( {
-    "tf.A"()
-    "tf_device.launch"() {
-      "tf.B"()
-      tf_device.return
-    } {device = "TPU_REPLICATED_HOST"} : () -> ()
-    "tf.C"()
-    tf_device.return
-  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-```
-
-Would become the following ops (unimportant attribute, type are omitted):
-
-```mlir
-  "tf_device.cluster"() ( {
-    "tf.A"()
-    "tf.B"() {_xla_outside_compilation = "cluster1"}
-    "tf.C"()
-    tf_device.return
-  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
 ```
 ### `-tf-device-mark-input-output-aliases`: Marks device cluster inputs-output pairs that read/write to the same variable as aliases
 This pass analyzes the inputs and outputs to device cluster and marks those
