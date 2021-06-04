@@ -60,6 +60,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -562,6 +563,12 @@ class Translator {
       T op, const std::string& op_name, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
+  // Builds VarHandle op.
+  BufferOffset<tflite::Operator> BuildVarHandleOp(
+      mlir::TFL::VarHandleOp op, const std::string& op_name,
+      const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   BufferOffset<tflite::Operator> BuildCustomOperator(
       Operation* inst, mlir::TFL::CustomOp op,
       const std::vector<int32_t>& operands,
@@ -974,6 +981,25 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
       tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
+BufferOffset<tflite::Operator> Translator::BuildVarHandleOp(
+    mlir::TFL::VarHandleOp op, const std::string& op_name,
+    const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex(op_name, tflite::BuiltinOperator_CUSTOM);
+  auto fbb = absl::make_unique<flexbuffers::Builder>();
+  fbb->Map([&]() {
+    fbb->String("shared_name", op.shared_name().str());
+    fbb->String("container", op.container().str());
+  });
+  fbb->Finish();
+  auto f = std::unique_ptr<flexbuffers::Builder>(fbb.release());
+  auto custom_option = f->GetBuffer();
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_option),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
+}
+
 // Builds Assign/Read Variable ops.
 template <typename T>
 BufferOffset<tflite::Operator> Translator::BuildVariableOperator(
@@ -1128,7 +1154,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
   // TODO(b/149099381): Remove this once the kernels are promoted as
   // builtin TFLite kernels.
-  // We export the Assign/Read variable ops as custom ops.
+  // We export the VarHandle, Assign, and Read variable ops as custom ops.
   if (auto read_op = llvm::dyn_cast<mlir::TFL::ReadVariableOp>(inst)) {
     return BuildVariableOperator<mlir::TFL::ReadVariableOp>(
         read_op, "ReadVariable", operands, results);
@@ -1136,6 +1162,9 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
                  llvm::dyn_cast<mlir::TFL::AssignVariableOp>(inst)) {
     return BuildVariableOperator<mlir::TFL::AssignVariableOp>(
         assign_op, "AssignVariable", operands, results);
+  } else if (auto var_handle_op =
+                 llvm::dyn_cast<mlir::TFL::VarHandleOp>(inst)) {
+    return BuildVarHandleOp(var_handle_op, "VarHandle", operands, results);
   }
 
   // If TFLite built in op, create operator as a builtin op.
@@ -1265,11 +1294,16 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       // Insert failed op to `flex_ops` or `custom_ops`.
       if (is_allowed_flex_op) {
         failed_flex_ops_[op_name].insert(op_desc);
+        tfl::AttachErrorCode(
+            inst->emitOpError("is neither a custom op nor a flex op"),
+            tflite::metrics::ConverterErrorData::ERROR_NEEDS_FLEX_OPS);
       } else {
         failed_custom_ops_[op_name].insert(op_desc);
+        tfl::AttachErrorCode(
+            inst->emitOpError("is neither a custom op nor a flex op"),
+            tflite::metrics::ConverterErrorData::ERROR_NEEDS_CUSTOM_OPS);
       }
-      return inst->emitOpError("is neither a custom op nor a flex op"),
-             llvm::None;
+      return llvm::None;
     }
 
     uint32_t opcode_index =

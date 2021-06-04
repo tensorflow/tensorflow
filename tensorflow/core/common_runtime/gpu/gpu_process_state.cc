@@ -204,8 +204,11 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
-      gpu_allocator =
-          new GPUcudaMallocAllocator(gpu_allocator, platform_device_id);
+      delete gpu_bfc_allocator;
+      delete sub_allocator;
+      gpu_bfc_allocator = nullptr;
+      sub_allocator = nullptr;
+      gpu_allocator = new GPUcudaMallocAllocator(platform_device_id);
     } else if (UseCudaMallocAsyncAllocator()) {
       LOG(INFO) << "Using CUDA malloc Async allocator for GPU: "
                 << platform_device_id;
@@ -213,6 +216,10 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // TODO: useful for doing memory debugging with tools like
       // compute-sanitizer.
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
+      delete gpu_bfc_allocator;
+      delete sub_allocator;
+      gpu_bfc_allocator = nullptr;
+      sub_allocator = nullptr;
       gpu_allocator =
           new GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
     }
@@ -259,6 +266,9 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(TfDeviceId tf_device_id) {
 
   AllocatorParts& allocator_parts = gpu_allocators_[tf_device_id.value()];
   if (allocator_parts.counter.get() == nullptr) {
+    if (allocator_parts.bfc_allocator == nullptr) {
+      return nullptr;
+    }
     SharedCounter* timing_counter = new SharedCounter;
     allocator_parts.bfc_allocator->SetTimingCounter(timing_counter);
     allocator_parts.counter.reset(timing_counter);

@@ -52,6 +52,42 @@ func @alltoall_invalid_split_dim_size(%data: tensor<4x16xf32>) -> tensor<16x4xf3
 
 // -----
 
+func @allgather_incompatible_types(%arg0: tensor<128x32xf32>) -> tensor<128x100xf32> {
+  // expected-error@+1 {{result gather dimension has size 100, expected to be a multiple of operand gather dimension size 32}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x100xf32>
+  return %0 : tensor<128x100xf32>
+}
+
+// -----
+
+func @allgather_gather_along_zero_dimension(%arg0: tensor<128x0x32xf32>) -> tensor<128x100xf32> {
+  // expected-error@+1 {{operand gather dimension cannot be zero}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x0x32xf32>) -> tensor<128x100xf32>
+  return %0 : tensor<128x100xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @allgather_dynamic_gather_dim
+func @allgather_dynamic_gather_dim(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x?xf32>
+  return %0 : tensor<128x?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @broadcast
 func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
   %0 = "mhlo.broadcast"(%arg0) {broadcast_sizes = dense<[1, 2]> : tensor<2xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
@@ -682,7 +718,7 @@ func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> 
 func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token> {
   // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
   %0 = "mhlo.recv"(%token) {
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
@@ -696,7 +732,7 @@ func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi3
 func @recv_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
   // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
   %0 = "mhlo.recv"(%token) {
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },

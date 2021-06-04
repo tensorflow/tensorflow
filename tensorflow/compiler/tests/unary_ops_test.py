@@ -26,7 +26,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -95,8 +94,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
     """Tests that result and expeted are exactly equal."""
     self.assertAllEqual(result, expected)
 
-  @test_util.disable_mlir_bridge(
-      "Handle complex element type in DiagPart lowering")
   def testAllTypeOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(

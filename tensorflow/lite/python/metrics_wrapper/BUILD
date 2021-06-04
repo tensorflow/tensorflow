@@ -2,6 +2,10 @@ load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -38,3 +42,17 @@ pybind_extension(
         "@pybind11",
     ],
 )
+
+tf_proto_library(
+    name = "converter_error_data_proto",
+    srcs = ["converter_error_data.proto"],
+    cc_api_version = 2,
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "converter_error_data_proto_py",
+#     api_version = 2,
+#     deps = [":converter_error_data_proto"],
+# )
+# copybara:uncomment_end

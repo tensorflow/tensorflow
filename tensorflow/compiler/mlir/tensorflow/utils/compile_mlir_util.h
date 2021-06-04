@@ -69,6 +69,8 @@ void CreateConvertMlirToXlaHloPipeline(
 //   original shape will be used as is.
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
+//
+// TODO(hinsu): Migrate options to a separate struct.
 Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
@@ -109,10 +111,12 @@ Status PopulateResultIOInfo(
 
 // Compiles a MLIR module into XLA HLO, generates all accompanying metadata and
 // stores them in CompilationResult.
-// TODO(hinsu): Migrate options to separate struct.
+//
+// If analyse_graph is set to true, graph is legalized only if the graph
+// analysis for the graph is successful. Otherwise, an error is returned.
 Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool prefer_tf2xla,
+    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
@@ -123,7 +127,7 @@ Status CompileMlirToXlaHlo(
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool prefer_tf2xla,
+    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -136,7 +140,8 @@ Status CompileSerializedMlirToXlaHlo(
 // `CompileMlirToXlaHlo`.
 Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
-    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
+    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    bool use_return_tuple,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -147,8 +152,8 @@ Status CompileGraphToXlaHlo(
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    bool use_tuple_args, const FunctionLibraryDefinition& flib_def,
-    const GraphDebugInfo& debug_info,
+    bool use_tuple_args, bool analyse_graph,
+    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -169,6 +174,9 @@ Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
                          llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
                              custom_legalization_passes = {});
 
+static inline Status CompileToHloGraphAnalysisFailedError() {
+  return errors::Internal("disabled after graph analysis");
+}
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_COMPILE_MLIR_UTIL_H_

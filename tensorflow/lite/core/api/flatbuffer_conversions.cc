@@ -760,7 +760,8 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_CONV_3D: {
+    case BuiltinOperator_CONV_3D:
+    case BuiltinOperator_CONV_3D_TRANSPOSE: {
       auto params = safe_allocator.Allocate<TfLiteConv3DParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
       if (const auto* conv3d_params = op->builtin_options_as_Conv3DOptions()) {

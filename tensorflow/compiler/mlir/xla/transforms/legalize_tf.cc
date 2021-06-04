@@ -887,11 +887,13 @@ static DenseElementsAttr GetEpsilonValue(Type ty) {
   auto element_ty = ty.cast<TensorType>().getElementType();
   auto scalar_ty = RankedTensorType::get({}, element_ty);
   if (element_ty.isF16()) {
-    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::half>::epsilon().x;
+    uint16_t raw_epsilon = Eigen::numext::bit_cast<uint16_t>(
+        Eigen::NumTraits<Eigen::half>::epsilon());
     auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isBF16()) {
-    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::bfloat16>::epsilon().value;
+    uint16_t raw_epsilon = Eigen::numext::bit_cast<uint16_t>(
+        Eigen::NumTraits<Eigen::bfloat16>::epsilon());
     auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isF32()) {
@@ -6395,10 +6397,6 @@ void LegalizeTF::runOnFunction() {
 // can be cleanly migrated from the old bridge to the MLIR bridge.
 OwningRewritePatternList PatternsIncludeOps(
     OwningRewritePatternList &from,
-    const llvm::DenseSet<mlir::TypeID> &include_ops);
-
-OwningRewritePatternList PatternsIncludeOps(
-    OwningRewritePatternList &from,
     const llvm::DenseSet<mlir::TypeID> &include_ops) {
   OwningRewritePatternList to(from.getContext());
   // Filter NativePatterns.
@@ -6416,6 +6414,83 @@ OwningRewritePatternList PatternsIncludeOps(
   to.add(std::move(from.getPDLPatterns()));
 
   return to;
+}
+
+/// Returns ops that should use MLIR legalization only in the case of
+/// prefer_tf2xla. All other ops not in this list should use XlaOpKernel
+/// legalization only or not be legalized by the new bridge.
+const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
+  // The static variable is a pointer in order to avoid destruction upon thread
+  // termination.
+
+  // clang-format off
+  static const llvm::DenseSet<mlir::TypeID>* ops =
+      new llvm::DenseSet<mlir::TypeID>{
+    // Ops that are legalized in the old bridge using MlirXlaOpKernel
+    TypeID::get<TF::AbsOp>(),
+    TypeID::get<TF::AtanOp>(),
+    TypeID::get<TF::AvgPool3DOp>(),
+    TypeID::get<TF::BiasAddGradOp>(),
+    TypeID::get<TF::CeilOp>(),
+    TypeID::get<TF::CheckNumericsOp>(),
+    TypeID::get<TF::ComplexOp>(),
+    TypeID::get<TF::CosOp>(),
+    TypeID::get<TF::DiagPartOp>(),
+    TypeID::get<TF::DivOp>(),
+    TypeID::get<TF::EinsumOp>(),
+    TypeID::get<TF::ExpOp>(),
+    TypeID::get<TF::Expm1Op>(),
+    TypeID::get<TF::FakeQuantWithMinMaxArgsOp>(),
+    TypeID::get<TF::FloorOp>(),
+    TypeID::get<TF::GreaterEqualOp>(),
+    TypeID::get<TF::IFFTOp>(),
+    TypeID::get<TF::ImagOp>(),
+    TypeID::get<TF::IsFiniteOp>(),
+    TypeID::get<TF::IsInfOp>(),
+    TypeID::get<TF::IsNanOp>(),
+    TypeID::get<TF::LessEqualOp>(),
+    TypeID::get<TF::LgammaOp>(),
+    TypeID::get<TF::Log1pOp>(),
+    TypeID::get<TF::LogicalOrOp>(),
+    TypeID::get<TF::LogSoftmaxOp>(),
+    TypeID::get<TF::MatrixBandPartOp>(),
+    TypeID::get<TF::MaxPool3DGradOp>(),
+    TypeID::get<TF::PreventGradientOp>(),
+    TypeID::get<TF::RandomShuffleOp>(),
+    TypeID::get<TF::RealOp>(),
+    TypeID::get<TF::ReciprocalOp>(),
+    TypeID::get<TF::ReluOp>(),
+    TypeID::get<TF::Relu6Op>(),
+    TypeID::get<TF::ReluGradOp>(),
+    TypeID::get<TF::RsqrtOp>(),
+    TypeID::get<TF::SelectOp>(),
+    TypeID::get<TF::SigmoidOp>(),
+    TypeID::get<TF::SignOp>(),
+    TypeID::get<TF::SoftmaxOp>(),
+    TypeID::get<TF::SqrtOp>(),
+    TypeID::get<TF::SqrtGradOp>(),
+    TypeID::get<TF::SquaredDifferenceOp>(),
+    TypeID::get<TF::TanhOp>(),
+    TypeID::get<TF::TanhGradOp>(),
+    TypeID::get<TF::XlogyOp>(),
+    TypeID::get<TF::ZetaOp>(),
+
+    // Ops that have no XlaOpKernel.
+    TypeID::get<TF::RiscAddOp>(),
+    TypeID::get<TF::RiscDotOp>(),
+
+    // Const op has a simple legalization and it is much more efficient to lower
+    // within MLIR.
+    TypeID::get<TF::ConstOp>(),
+
+    // TF2XLA fallback pattern doesn't support these op as MLIR hlo builder
+    // doesn't override the necessary builder methods. These ops have simple
+    // lowering pattern so this should be safe.
+    TypeID::get<TF::OutfeedEnqueueTupleOp>(),
+    TypeID::get<TF::CrossReplicaSumOp>(),
+  };
+  // clang-format on
+  return *ops;
 }
 
 }  // end namespace
@@ -6456,12 +6531,10 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   }
 
   // Set patterns to legalize_lower_patters, where in the prefer_tf2xla case
-  // only patterns whose ops are in the set MlirLegalizedUnderPreferTf2XlaSet
-  // are kept.
+  // only patterns whose ops are in the set MlirPreferredOps are kept.
   OwningRewritePatternList patterns =
       (tf2xla_fallback_device_type && prefer_tf2xla)
-          ? PatternsIncludeOps(legalize_lower_patterns,
-                               MlirLegalizedUnderPreferTf2XlaSet())
+          ? PatternsIncludeOps(legalize_lower_patterns, MlirPreferredOps())
           : std::move(legalize_lower_patterns);
 
   if (tf2xla_fallback_device_type) {

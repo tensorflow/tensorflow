@@ -182,22 +182,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "pywrap_required_hdrs",
-    textual_hdrs = [
-        "concrete_function.h",
-        "function_metadata.h",
-        "saved_model_api.h",
-    ],
-    visibility = ["//tensorflow/python:__pkg__"],
-    deps = [
-        "//tensorflow/c/eager:immediate_execution_operation",
-        "//tensorflow/c/eager:immediate_execution_tensor_handle",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 tf_cc_test(
     name = "constant_loading_test",
     srcs = [

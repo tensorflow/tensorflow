@@ -1292,7 +1292,9 @@ _TRUEDIV_TABLE = {
     dtypes.int8: dtypes.float32,
     dtypes.uint16: dtypes.float32,
     dtypes.int16: dtypes.float32,
+    dtypes.uint32: dtypes.float64,
     dtypes.int32: dtypes.float64,
+    dtypes.uint64: dtypes.float64,
     dtypes.int64: dtypes.float64,
     dtypes.bfloat16: None,
     dtypes.float16: None,
@@ -4061,7 +4063,7 @@ def log_sigmoid(x, name=None):
   """
   with ops.name_scope(name, "LogSigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)
+    return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)  # pylint: disable=invalid-unary-operand-type
 
 
 @tf_export("math.cumsum", "cumsum")

@@ -127,11 +127,16 @@ def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {
 /// Rank specialization passes.
 
 def RankSpecializationClusterPass
-    : Pass<"mhlo-rank-specialization-cluster", "FuncOp"> {
+    : FunctionPass<"mhlo-rank-specialization-cluster"> {
   let constructor = "createRankSpecializationClusterPass()";
 }
 
 def RankSpecializationToSCFPass
-    : Pass<"mhlo-rank-specialization-to-scf", "FuncOp"> {
+    : FunctionPass<"mhlo-rank-specialization-to-scf"> {
   let constructor = "createRankSpecializationToSCFPass()";
+  let options = [
+    Option<"max_target_rank_", "max-target-rank", "int", /*default=*/"8",
+           "The maximum supported rank after rank specialization. Any argument "
+           "of greater rank may result in a runtime failure.">,
+  ];
 }

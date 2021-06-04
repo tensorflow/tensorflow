@@ -55,6 +55,11 @@ void BuildOpsSubmodule(py::module* m) {
       .value("RNG_THREE_FRY", RandomAlgorithm::RNG_THREE_FRY)
       .value("RNG_PHILOX", RandomAlgorithm::RNG_PHILOX);
 
+  py::enum_<CustomCallSchedule>(ops, "CustomCallSchedule")
+      .value("SCHEDULE_NONE", CustomCallSchedule::SCHEDULE_NONE)
+      .value("SCHEDULE_LATEST", CustomCallSchedule::SCHEDULE_LATEST)
+      .value("SCHEDULE_EARLIEST", CustomCallSchedule::SCHEDULE_EARLIEST);
+
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def("AllGather", &AllGather, py::arg("operand"),
           py::arg("all_gather_dimension"), py::arg("shard_count"),
@@ -122,26 +127,33 @@ void BuildOpsSubmodule(py::module* m) {
       "CustomCall",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape,
-         const py::bytes& opaque, bool has_side_effect) -> XlaOp {
+         const py::bytes& opaque, bool has_side_effect,
+         CustomCallSchedule schedule) -> XlaOp {
         return CustomCall(builder, call_target_name, operands, shape, opaque,
-                          has_side_effect);
+                          has_side_effect, /*output_operand_aliasing=*/{},
+                          /*literal=*/nullptr, schedule);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape"), py::arg("opaque") = py::bytes(""),
-      py::arg("has_side_effect") = false);
+      py::arg("has_side_effect") = false,
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
   ops.def(
       "CustomCallWithLayout",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
          absl::Span<const Shape> operand_shapes_with_layout,
-         const py::bytes& opaque, bool has_side_effect) -> XlaOp {
+         const py::bytes& opaque, bool has_side_effect,
+         CustomCallSchedule schedule) -> XlaOp {
         return CustomCallWithLayout(
             builder, call_target_name, operands, shape_with_layout,
-            operand_shapes_with_layout, opaque, has_side_effect);
+            operand_shapes_with_layout, opaque, has_side_effect,
+            /*output_operand_aliasing=*/{},
+            /*literal=*/nullptr, schedule);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
-      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false);
+      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
   ops.def(
       "CustomCallWithAliasing",
       [](XlaBuilder* builder, const py::bytes& call_target_name,
@@ -150,16 +162,17 @@ void BuildOpsSubmodule(py::module* m) {
          const py::bytes& opaque, bool has_side_effect,
          absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
              output_operand_aliasing,
-         const Literal* literal) -> XlaOp {
+         const Literal* literal, CustomCallSchedule schedule) -> XlaOp {
         return CustomCallWithLayout(
             builder, call_target_name, operands, shape_with_layout,
             operand_shapes_with_layout, opaque, has_side_effect,
-            output_operand_aliasing, literal);
+            output_operand_aliasing, literal, schedule);
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
-      py::arg("output_operand_aliasing"), py::arg("literal") = nullptr);
+      py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr,
           py::arg("preferred_element_type") = absl::nullopt);

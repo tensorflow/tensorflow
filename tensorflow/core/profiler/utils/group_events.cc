@@ -577,9 +577,10 @@ void SortRootEventList(EventList* event_list) {
 
 void EventForest::CreateEventGroups() {
   // Create a group for each TF loop iteration in non-JAX profiles.
+  int64 group_id = 0;
   if (!HasJaxEvent(event_node_map_) && !tf_loop_root_events_.empty()) {
     for (EventNode* root_event : tf_loop_root_events_) {
-      ProcessRootEvent(next_group_id_++, root_event, &group_metadata_map_);
+      ProcessRootEvent(group_id++, root_event, &group_metadata_map_);
     }
     return;
   }
@@ -591,7 +592,7 @@ void EventForest::CreateEventGroups() {
         // Ignores legacy TF root events for JAX profiles.
         (!HasJaxEvent(event_node_map_) ||
          !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
-      ProcessRootEvent(next_group_id_++, root_event, &group_metadata_map_);
+      ProcessRootEvent(group_id++, root_event, &group_metadata_map_);
     }
   }
 }
@@ -676,17 +677,9 @@ void EventForest::ProcessTensorFlowLoop() {
 
   // Register the first event of each iteration as a root event. Also, add the
   // other events of the iteration as child to the root event.
-  bool next_group_id_updated = false;
   for (const auto& start_time_and_step_id : sorted_tf_loops) {
     TensorFlowLoop& tf_loop = tf_loops[start_time_and_step_id.second];
     for (auto& iter_num_and_iteration : tf_loop) {
-      if (!next_group_id_updated) {
-        // Set next_group_id_ to the first iter_num of the first TF loop. This
-        // is necessary later when selecting the intersection of the steps from
-        // multiple hosts.
-        next_group_id_ = iter_num_and_iteration.first;
-        next_group_id_updated = true;
-      }
       TensorFlowLoopIteration& iteration = iter_num_and_iteration.second;
       EventNode* root_event = iteration.first_event;
       tf_loop_root_events_.push_back(root_event);
@@ -774,7 +767,8 @@ void EventForest::ConnectTfDataEvents() {
        {HostEventType::kPrefetchProduce,
         HostEventType::kParallelInterleaveProduce,
         HostEventType::kParallelMapProduce, HostEventType::kMapAndBatchProduce,
-        HostEventType::kParseExampleProduce}) {
+        HostEventType::kParseExampleProduce,
+        HostEventType::kParallelBatchProduce}) {
     auto produce_event_list = gtl::FindOrNull(event_node_map_, event_type);
     if (!produce_event_list) continue;
     VLOG(1) << produce_event_list->size() << " "
@@ -803,7 +797,8 @@ void EventForest::ConnectTfDataEvents() {
        {HostEventType::kPrefetchConsume,
         HostEventType::kParallelInterleaveConsume,
         HostEventType::kParallelMapConsume, HostEventType::kMapAndBatchConsume,
-        HostEventType::kParseExampleConsume}) {
+        HostEventType::kParseExampleConsume,
+        HostEventType::kParallelBatchConsume}) {
     auto consume_event_list = gtl::FindOrNull(event_node_map_, event_type);
     if (!consume_event_list) continue;
     VLOG(1) << consume_event_list->size() << " "

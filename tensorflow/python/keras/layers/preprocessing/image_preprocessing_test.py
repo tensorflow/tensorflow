@@ -64,6 +64,9 @@ class ResizingTest(keras_parameterized.TestCase):
       'interpolation': 'area'
   }, 2, 2), ('down_sample_area_3_by_2', {
       'interpolation': 'area'
+  }, 3, 2), ('down_sample_crop_to_aspect_ratio_3_by_2', {
+      'interpolation': 'bilinear',
+      'crop_to_aspect_ratio': True,
   }, 3, 2))
   def test_down_sampling(self, kwargs, expected_height, expected_width):
     with CustomObjectScope({'Resizing': image_preprocessing.Resizing}):
@@ -81,7 +84,10 @@ class ResizingTest(keras_parameterized.TestCase):
       'interpolation': 'area'
   }, 10, 12), ('up_sample_area_12_by_12', {
       'interpolation': 'area'
-  }, 12, 12))
+  }, 12, 12), ('up_sample_crop_to_aspect_ratio_12_by_14', {
+      'interpolation': 'bilinear',
+      'crop_to_aspect_ratio': True,
+  }, 12, 14))
   def test_up_sampling(self, kwargs, expected_height, expected_width):
     with CustomObjectScope({'Resizing': image_preprocessing.Resizing}):
       self._run_test(kwargs, expected_height, expected_width)
@@ -136,6 +142,20 @@ class ResizingTest(keras_parameterized.TestCase):
     config = layer.get_config()
     layer_1 = image_preprocessing.Resizing.from_config(config)
     self.assertEqual(layer_1.name, layer.name)
+
+  def test_crop_to_aspect_ratio(self):
+    with testing_utils.use_gpu():
+      input_image = np.reshape(np.arange(0, 16), (1, 4, 4, 1)).astype('float32')
+      layer = image_preprocessing.Resizing(4, 2, crop_to_aspect_ratio=True)
+      output_image = layer(input_image)
+      expected_output = np.asarray([
+          [1, 2],
+          [5, 6],
+          [9, 10],
+          [13, 14]
+      ]).astype('float32')
+      expected_output = np.reshape(expected_output, (1, 4, 2, 1))
+      self.assertAllEqual(expected_output, output_image)
 
 
 def get_numpy_center_crop(images, expected_height, expected_width):

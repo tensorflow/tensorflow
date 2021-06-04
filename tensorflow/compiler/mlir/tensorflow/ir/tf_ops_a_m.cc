@@ -2864,6 +2864,16 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<MulOp>(*this, operands);
 }
 
+//===----------------------------------------------------------------------===//
+// HashTableOp
+//===----------------------------------------------------------------------===//
+void HashTableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<HashTableAndInitializeTableToV2>(context);
+  results.insert<HashTableAndLookupTableSizeToV2>(context);
+  results.insert<HashTableAndLookupTableFindToV2>(context);
+}
+
 }  // namespace TF
 }  // namespace mlir
 

@@ -59,6 +59,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kWhile:
       return CallContext::kSequential;
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:

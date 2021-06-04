@@ -384,24 +384,18 @@ def DecomposeResourceApplyCenteredRMSProp :
        )
      ),
      (TF_AssignVariableOp $mg_resource, $mg_new),
-     // mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)
+     // mom <- momentum * mom_{t-1} + lr * grad / sqrt((ms - mg * mg) + epsilon)
      (TF_AddV2Op:$mom_new
       (TF_MulOp $momentum,
        (CreateTFReadVariableOp $src_op, $grad, $mom_resource)),
       (TF_DivOp
-         (TF_MulOp $lr, $grad),
-         (TF_SqrtOp
-           (TF_SubOp
-             $ms_new,
-             (TF_AddV2Op
-               (TF_MulOp
-                 $mg_new,
-                 $mg_new
-               ),
-               $epsilon
-             )
-           )
-         )
+        (TF_MulOp $lr, $grad),
+        (TF_SqrtOp
+          (TF_AddV2Op
+            (TF_SubOp $ms_new, (TF_SquareOp $mg_new)),
+            $epsilon
+          )
+        )
       )
      ),
      (TF_AssignVariableOp $mom_resource, $mom_new),

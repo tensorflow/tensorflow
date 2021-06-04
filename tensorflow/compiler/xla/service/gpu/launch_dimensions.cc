@@ -122,11 +122,32 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   }
 
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
-  if (dim_config.few_waves) {
+  if (dim_config.few_waves && !dim_config.row_vectorized) {
     int64 capped_threads_per_block = std::min<int64>(threads_per_block, 128);
     int64 capped_block_count =
         gpu_device_info.core_count *
         (gpu_device_info.threads_per_core_limit / capped_threads_per_block);
+    if (capped_block_count < block_count) {
+      threads_per_block = capped_threads_per_block;
+      block_count = capped_block_count;
+    }
+  } else if (dim_config.few_waves && dim_config.row_vectorized) {
+    int64 capped_threads_per_block = std::min<int64>(threads_per_block, 128);
+    if (dim_config.row_vectorized) {
+      // Keep the threads_per_block found for row_vectorized.
+      capped_threads_per_block = threads_per_block;
+    }
+    int64 min_block_count =
+        gpu_device_info.core_count *
+        (gpu_device_info.threads_per_core_limit / capped_threads_per_block);
+    int64 capped_block_count = block_count;
+    // This multiple of 32 was tuned to not cause regression on multiple
+    // benchmarks.  It isn't a value that is optimal for all
+    // kernels. Maybe looking at the arithmetic intensity of the
+    // kernels can specialize the multiple per kernel.
+    while (capped_block_count > (32 * min_block_count)) {
+      capped_block_count /= 2;
+    }
     // Do not increase the number of blocks. This can happens for
     // small num_elements.
     if (capped_block_count < block_count) {
@@ -134,7 +155,6 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
       block_count = capped_block_count;
     }
   }
-
   if (gpu_device_info.block_dim_limit_x > 0 &&
       block_count >= gpu_device_info.block_dim_limit_x) {
     return tensorflow::errors::Unimplemented(

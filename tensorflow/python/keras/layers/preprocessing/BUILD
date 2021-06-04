@@ -136,6 +136,7 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/preprocessing:image",
         "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -382,6 +383,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm", #TODO Steven I Reeves fails multiGPU
+        "no_oss",  # b/189866692
     ],
     tpu_tags = [
         "no_oss",  # b/155502591
@@ -477,6 +479,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
 	"no_rocm", #TODO Steven I Reeves fails MultiGPU
+        "no_oss",  # TODO(b/189956080)
     ],
     deps = [
         ":discretization",
@@ -568,6 +571,9 @@ cuda_py_test(
     srcs = ["image_preprocessing_test.py"],
     python_version = "PY3",
     shard_count = 4,
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+    ],
     deps = [
         ":image_preprocessing",
         "//tensorflow/python:client_testlib",

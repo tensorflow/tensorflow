@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
+
 namespace mlir {
 class FuncOp;
 class ModuleOp;
@@ -27,6 +29,7 @@ class OperationPass;
 class Type;
 
 namespace TFL {
+using StringSet = absl::flat_hash_set<std::string>;
 class QuantizationSpecs;
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
@@ -51,7 +54,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
-    bool verify_numeric = false, bool legacy_float_scale = false);
+    bool verify_numeric = false, bool legacy_float_scale = false,
+    const StringSet& ops_blocklist = {}, const StringSet& nodes_blocklist = {});
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(

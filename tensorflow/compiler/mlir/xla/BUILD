@@ -293,9 +293,24 @@ cc_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "hlo_utils_test",
+    srcs = ["hlo_utils_test.cc"],
+    deps = [
+        ":hlo_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 cc_library(

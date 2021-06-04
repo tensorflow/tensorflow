@@ -903,6 +903,10 @@ absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
 
+bool StreamExecutor::ClearAllocatorStats() {
+  return implementation_->ClearAllocatorStats();
+}
+
 template <typename TraceCallT, typename... ArgsT>
 void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&...args) {
   if (tracing_enabled_) {

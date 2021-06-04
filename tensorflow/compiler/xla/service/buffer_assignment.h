@@ -241,6 +241,7 @@ class BufferAllocation {
   // computation.
   void AddHeapTrace(const HeapSimulatorTrace& heap_trace) {
     heap_traces_.push_back(heap_trace);
+    heap_traces_.back().set_buffer_allocation_index(index());
   }
 
   // Return the set of heap traces used to assign slices to logical buffers in

@@ -2057,6 +2057,84 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   EXPECT_FALSE(analysis->ValueIsDefinedAt(root));
 }
 
+TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDone) {
+  const char* hlo_text = R"(
+    HloModule test
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+    ENTRY entry {
+      p0 = f32[2] parameter(0)
+      start = (f32[2], f32[2]) all-reduce-start(p0), to_apply=add
+      ROOT done = f32[2] all-reduce-done(start)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
+                          HloDataflowAnalysis::Run(*module));
+
+  HloInstruction* done = module->entry_computation()->root_instruction();
+  HloInstruction* start = done->mutable_operand(0);
+  HloInstruction* param0 = start->mutable_operand(0);
+
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{}));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1}));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(start, /*index=*/{0}));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(done));
+
+  EXPECT_THAT(analysis->GetValueDefinedAt(param0).uses(),
+              UnorderedElementsAre(HloUse{start, 0, {}}, HloUse{done, 0, {0}}));
+  EXPECT_THAT(analysis->GetValueDefinedAt(start, {1}).uses(),
+              UnorderedElementsAre(HloUse{done, 0, {1}}));
+}
+
+TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
+  const char* hlo_text = R"(
+    HloModule test
+    add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+    ENTRY entry {
+      p0 = f32[2] parameter(0)
+      p1 = f32[2] parameter(1)
+      start = ((f32[2], f32[2]), (f32[2], f32[2])) all-reduce-start(p0, p1), to_apply=add
+      ROOT done = (f32[2], f32[2]) all-reduce-done(start)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
+                          HloDataflowAnalysis::Run(*module));
+
+  HloInstruction* done = module->entry_computation()->root_instruction();
+  HloInstruction* start = done->mutable_operand(0);
+  HloInstruction* param0 = start->mutable_operand(0);
+  HloInstruction* param1 = start->mutable_operand(1);
+
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{}));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1}));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1, 0}));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1, 1}));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(start, /*index=*/{0}));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(done));
+
+  EXPECT_THAT(
+      analysis->GetValueDefinedAt(param0).uses(),
+      UnorderedElementsAre(HloUse{start, 0, {}}, HloUse{done, 0, {0, 0}}));
+  EXPECT_THAT(
+      analysis->GetValueDefinedAt(param1).uses(),
+      UnorderedElementsAre(HloUse{start, 1, {}}, HloUse{done, 0, {0, 1}}));
+  EXPECT_THAT(analysis->GetValueDefinedAt(start, {1}).uses(),
+              UnorderedElementsAre(HloUse{done, 0, {1}}));
+}
+
 INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
                          HloDataflowAnalysisTest,
                          ::testing::Values(false, true));

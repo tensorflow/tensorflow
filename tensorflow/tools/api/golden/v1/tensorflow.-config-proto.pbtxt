@@ -235,6 +235,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "coordination_service"
+        number: 19
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
       enum_type {
         name: "MlirBridgeRollout"
         value {

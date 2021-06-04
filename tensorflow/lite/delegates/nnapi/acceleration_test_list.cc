@@ -209,6 +209,7 @@ FloatFullyConnectedOpTest/FloatFullyConnectedOpTest/SimpleTest4DInput/\d+
 QuantizedFullyConnectedOpTest/QuantizedFullyConnectedOpTest/SimpleTest4dInputQuantizedUint8/\d+
 QuantizedFullyConnectedOpTest/QuantizedFullyConnectedOpTest/SimpleTest4dInputQuantizedOutputMultiplierGreaterThan1Uint8/\d+,29
 FloatFullyConnectedOpTest/FloatFullyConnectedOpTest/BlackBoxTest/\d+
+FloatFullyConnectedOpTest/SimpleTestNoBias
 
 # gather_test
 GatherOpTest/Shuffle,29

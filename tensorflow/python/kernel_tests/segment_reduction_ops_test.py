@@ -628,6 +628,20 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         tf_ans = self.evaluate(s)
         self.assertAllClose(np.zeros([5, 4]), tf_ans)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSegmentScalarIdiRaisesInvalidArgumentError(self):
+    """Test for github #46897."""
+    ops_list = [
+        math_ops.sparse_segment_sum,
+        math_ops.sparse_segment_mean,
+        math_ops.sparse_segment_sqrt_n,
+    ]
+    for op in ops_list:
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError),
+          "Shape must be at least rank 1"):
+        op(data=1.0, indices=[0], segment_ids=[3])
+
   def testSegmentIdsGreaterThanZero(self):
     tf_x, np_x = self._input([10, 4], dtype=dtypes_lib.float32)
     ops_list = [(np.add, None, math_ops.sparse_segment_sum), (

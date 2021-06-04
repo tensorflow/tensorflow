@@ -37,7 +37,8 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
   switch (GetExecutionConstraint(a, b)) {
     case ExecutionConstraint::kIsSame:  // a and b are the same instruction;
       return false;
-    case ExecutionConstraint::kRunBefore:
+    case ExecutionConstraint::kRunBeforeStart:
+    case ExecutionConstraint::kRunBeforeEnd:
     case ExecutionConstraint::kRunExclusiveBefore:
       return true;
     case ExecutionConstraint::kRunExclusiveAfter:
@@ -81,7 +82,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
     const HloComputation* condition = a_ancestor->while_condition();
     if (call_graph_->InstructionIsNestedIn(a, condition) &&
         call_graph_->InstructionIsNestedIn(b, body)) {
-      return ExecutionConstraint::kRunBefore;
+      return ExecutionConstraint::kRunBeforeEnd;
     }
   }
 
@@ -115,7 +116,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
     // computation, 'a' executes before 'b'.
     if (b_branch == -1) {
       CHECK_EQ(b, a_ancestor);
-      return ExecutionConstraint::kRunBefore;
+      return ExecutionConstraint::kRunBeforeEnd;
     }
     if (a_branch == -1) {
       CHECK_EQ(a, a_ancestor);
@@ -130,7 +131,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
   }
 
   if (ExecutesBeforeInSameComputation(a_ancestor, b_ancestor)) {
-    return ExecutionConstraint::kRunBefore;
+    return ExecutionConstraint::kRunBeforeStart;
   }
   if (ExecutesBeforeInSameComputation(b_ancestor, a_ancestor)) {
     return ExecutionConstraint::kRunAfter;
@@ -254,7 +255,8 @@ bool HloOrdering::UsesBeforeValueDefinition(
         VLOG(4) << "value def has escaped use in conditional. \n";
         break;
       case HloOrdering::ExecutionConstraint::kRunExclusiveBefore:
-      case HloOrdering::ExecutionConstraint::kRunBefore:
+      case HloOrdering::ExecutionConstraint::kRunBeforeStart:
+      case HloOrdering::ExecutionConstraint::kRunBeforeEnd:
         VLOG(4)
             << "  use instruction executes before value-defining instruction";
         return true;

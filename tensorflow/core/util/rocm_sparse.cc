@@ -181,10 +181,9 @@ Status GpuSparse::Initialize() {
   return Status::OK();
 }
 
-#define TF_CALL_HIPSPARSE_DTYPES(m)                       \
-	m(float, ROCM_R_32F) m(double, ROCM_R_64F)        \
-	m(std::complex<float>, ROCM_C_32F)                \
-	m(std::complex<double>, ROCM_C_64F) 
+#define TF_CALL_HIPSPARSE_DTYPES(m)          \
+  m(float, ROCM_R_32F) m(double, ROCM_R_64F) \
+      m(std::complex<float>, ROCM_C_32F) m(std::complex<double>, ROCM_C_64F)
 
 // Macro that specializes a sparse method for all 4 standard
 // numeric types.
@@ -215,7 +214,6 @@ Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
 }
 
 #if TF_ROCM_VERSION < 40200
-
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmmImpl(
     SparseFnT op, OpKernelContext* context, hipsparseHandle_t hipsparse_handle,
@@ -268,18 +266,19 @@ TF_CALL_HIP_LAPACK_TYPES(CSRMM_INSTANCE);
 
 TF_CALL_HIPSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
 
-#define SPMM_INSTANCE(Scalar, dtype)                                             \
-  template <>                                                                    \
-  Status GpuSparse::SpMM<Scalar>(                                                \
-      hipsparseOperation_t transA, hipsparseOperation_t transB,                  \
-      const Scalar* alpha, const hipsparseSpMatDescr_t matA,                     \
-      const gpusparseDnMatDescr_t matB, const Scalar* beta,                      \
-      gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, int8* buffer) const {  \
-    DCHECK(initialized_);                                                        \
-    TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseSpMM(*gpusparse_handle_, transA, \
-                                              transB, alpha, matA, matB, beta,   \
-                                              matC, dtype, alg, buffer));        \
-    return Status::OK();                                                         \
+#define SPMM_INSTANCE(Scalar, dtype)                                         \
+  template <>                                                                \
+  Status GpuSparse::SpMM<Scalar>(                                            \
+      hipsparseOperation_t transA, hipsparseOperation_t transB,              \
+      const Scalar* alpha, const hipsparseSpMatDescr_t matA,                 \
+      const gpusparseDnMatDescr_t matB, const Scalar* beta,                  \
+      gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, int8* buffer)      \
+      const {                                                                \
+    DCHECK(initialized_);                                                    \
+    TF_RETURN_IF_GPUSPARSE_ERROR(                                            \
+        wrap::hipsparseSpMM(*gpusparse_handle_, transA, transB, alpha, matA, \
+                            matB, beta, matC, dtype, alg, buffer));          \
+    return Status::OK();                                                     \
   }
 
 TF_CALL_HIPSPARSE_DTYPES(SPMM_INSTANCE);

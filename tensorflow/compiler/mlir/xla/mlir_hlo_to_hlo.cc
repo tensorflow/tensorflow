@@ -296,6 +296,12 @@ xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
   return channel_handle;
 }
 
+absl::optional<xla::ChannelHandle> Convert_channel_handle(
+    llvm::Optional<mlir::mhlo::ChannelHandle> attr) {
+  if (!attr.hasValue()) return absl::nullopt;
+  return Convert_channel_handle(attr.getValue());
+}
+
 // Converts the comparison_direction string attribute into the XLA enum. The
 // string is assumed to correspond to exactly one of the allowed strings
 // representing the enum. This should have been checked in the op verify method.
@@ -589,6 +595,23 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
+  auto& valueMap = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
+  TensorType operandType = op.operand().getType().cast<TensorType>();
+  TensorType resultType = op.getType();
+  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+    return failure();
+  auto allGatherDim = op.all_gather_dim();
+  int64_t shardCount = resultType.getDimSize(allGatherDim) /
+                       operandType.getDimSize(allGatherDim);
+  valueMap[op] = xla::AllGather(operand, allGatherDim, shardCount,
+                                Convert_replica_groups(op.replica_groups()),
+                                Convert_channel_handle(op.channel_handle()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaComputation computation;
@@ -596,18 +619,13 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
                                                      &computation))) {
     return failure();
   }
-  auto replica_groups = Convert_replica_groups(op.replica_groups());
+
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
 
-  if (!op.channel_id().hasValue()) {
-    value_map[op] = xla::AllReduce(operand, computation, replica_groups,
-                                   /*channel_id=*/absl::nullopt);
-    return success();
-  }
-  auto channel_id = Convert_channel_handle(op.channel_id().getValue());
-  value_map[op] =
-      xla::AllReduce(operand, computation, replica_groups, channel_id);
+  value_map[op] = xla::AllReduce(operand, computation,
+                                 Convert_replica_groups(op.replica_groups()),
+                                 Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -882,12 +900,14 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
 
   if (op.is_host_transfer()) {
-    value_map[op] = xla::RecvFromHost(token, xla::TypeToShape(result_type),
-                                      Convert_channel_handle(op.channel_id()));
+    value_map[op] =
+        xla::RecvFromHost(token, xla::TypeToShape(result_type),
+                          Convert_channel_handle(op.channel_handle()));
     return success();
   }
-  value_map[op] = xla::RecvWithToken(token, xla::TypeToShape(result_type),
-                                     Convert_channel_handle(op.channel_id()));
+  value_map[op] =
+      xla::RecvWithToken(token, xla::TypeToShape(result_type),
+                         Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -1041,13 +1061,13 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
 
   if (op.is_host_transfer()) {
-    value_map[op] = xla::SendToHost(operand, token,
-                                    xla::TypeToShape(op.operand().getType()),
-                                    Convert_channel_handle(op.channel_id()));
+    value_map[op] = xla::SendToHost(
+        operand, token, xla::TypeToShape(op.operand().getType()),
+        Convert_channel_handle(op.channel_handle()));
     return success();
   }
-  value_map[op] = xla::SendWithToken(operand, token,
-                                     Convert_channel_handle(op.channel_id()));
+  value_map[op] = xla::SendWithToken(
+      operand, token, Convert_channel_handle(op.channel_handle()));
   return success();
 }
 

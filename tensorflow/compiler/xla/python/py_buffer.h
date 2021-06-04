@@ -81,7 +81,9 @@ class PyBuffer {
   StatusOr<pybind11::object> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
 
-  int64 OnDeviceSizeInBytes() { return buffer_->OnDeviceSizeInBytes(); }
+  StatusOr<size_t> OnDeviceSizeInBytes() {
+    return buffer_->GetOnDeviceSizeInBytes();
+  }
 
   void Delete() {
     buffer_->Delete();

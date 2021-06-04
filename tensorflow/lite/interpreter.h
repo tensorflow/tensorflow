@@ -348,8 +348,8 @@ class Interpreter {
   /// be between 0 and inputs().size().
   TfLiteTensor* input_tensor(size_t index) { return tensor(inputs()[index]); }
 
-  /// Return an immutable pointerto the given input tensor. The given index must
-  /// be between 0 and inputs().size().
+  /// Return an immutable pointer to the given input tensor. The given index
+  /// must be between 0 and inputs().size().
   const TfLiteTensor* input_tensor(size_t index) const {
     return tensor(inputs()[index]);
   }
@@ -773,6 +773,10 @@ class Interpreter {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
+
+  // A map of resource Ids. Owned by interpreter and shared by multiple
+  // subgraphs.
+  resource::ResourceIDMap resource_ids_;
 
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or

@@ -295,7 +295,8 @@ Status BuildComputation(
           arg.tensor_array_gradients.count(grad.first) == 0;
     }
 
-    if (return_updated_values_for_all_resources || modified) {
+    if (return_updated_values_for_all_resources || modified ||
+        arg.requires_broadcast) {
       resource_updates->emplace_back();
       XlaCompiler::ResourceUpdate& update = resource_updates->back();
       update.input_index = resource->arg_num();
@@ -820,8 +821,8 @@ Status XlaCompiler::CompileFunction(
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
         valid_control_rets, options_.device_type.type_string(),
-        options.use_tuple_arg, *options_.flib_def, debug_info,
-        options_.shape_representation_fn, result));
+        options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
+        debug_info, options_.shape_representation_fn, result));
   } else {
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));

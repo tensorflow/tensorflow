@@ -55,7 +55,9 @@
 * `tf.saved_model`:
     *   SavedModels can now save custom gradients. Use the option
         `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
-        enable this feature.
+        enable this feature. The documentation in [Advanced autodiff]
+        (https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
+        has been updated.
 
 *   TF Core:
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
@@ -100,6 +102,10 @@
         endpoint.
     *   Promoting `tf.data.experimental.RandomDataset` API to
         `tf.data.Dataset.random` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan`
+        and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.take_while` API to
+        `tf.data.Dataset.take_while` and deprecating the experimental endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
         `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
         sampling if it encounters an empty dataset. This preserves the sampling
@@ -117,12 +123,18 @@
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
     *   Add `keepdims` argument to all `GlobalPooling` layers.
+    *   Add `include_preprocessing` argument to `MobileNetV3` architectures to
+        control the inclusion of `Rescaling` layer in the model.
 *   `tf.linalg`:
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
     *   Added `framework_stable` BUILD target, which links in only the
         non-experimental TF Lite APIs.
+    *   Remove deprecated Java `Interpreter` methods:
+        *    `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
+        *    `setNumThreads` - Use `Interpreter.Options.setNumThreads`
+    *   Add Conv3DTranspose as a builtin op.
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,

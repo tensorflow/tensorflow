@@ -297,8 +297,11 @@ class Tests(test.TestCase):
                                         False)
 
   def testOpDefDefaultType(self):
-    im = np.random.randint(
-        low=0, high=65535, size=100, dtype=np.uint16).reshape(10, 10, 1)
+    im = np.random.randint(  # pylint: disable=too-many-function-args
+        low=0,
+        high=65535,
+        size=100,
+        dtype=np.uint16).reshape(10, 10, 1)
 
     context.ensure_initialized()
 

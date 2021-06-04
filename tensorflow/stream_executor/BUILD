@@ -309,6 +309,7 @@ cc_library(
     hdrs = ["device_options.h"],
     deps = [
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings",
     ],
 )
 

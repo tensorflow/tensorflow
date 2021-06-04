@@ -484,6 +484,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",

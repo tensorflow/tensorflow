@@ -113,6 +113,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"MapAndBatchConsume", kMapAndBatchConsume},
       {"ParseExampleProduce", kParseExampleProduce},
       {"ParseExampleConsume", kParseExampleConsume},
+      {"ParallelBatchProduce", kParallelBatchProduce},
+      {"ParallelBatchConsume", kParallelBatchConsume},
       // Batching related.
       {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
@@ -121,6 +123,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
       {"ScheduleWithSplit", kScheduleWithSplit},
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
+      // TFRT related.
+      {"TfrtModelRun", kTfrtModelRun},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.

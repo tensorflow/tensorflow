@@ -24,6 +24,7 @@ import functools
 import pprint
 import shutil
 import tempfile
+import time
 import warnings
 
 from absl import logging
@@ -643,6 +644,9 @@ class TFLiteConverterBase(object):
       self._tflite_metrics.set_converter_param(key, format_param(value))
     self._tflite_metrics.set_export_required()
 
+  def _set_conversion_latency_metric(self, value):
+    self._tflite_metrics.set_converter_latency(value)
+
   @convert_phase(Component.OPTIMIZE_TFLITE_MODEL)
   def _optimize_tflite_model(self, model, quant_mode, quant_io=True):
     """Apply optimizations on a TFLite model."""
@@ -681,9 +685,12 @@ class TFLiteConverterBase(object):
     """
     self._increase_conversion_attempt_metric()
     self._save_conversion_params_metric()
+    start_time = time.process_time()
     result = convert_func(self, *args, **kwargs)
+    elapsed_time_ms = (time.process_time() - start_time) * 1000
     if result:
       self._increase_conversion_success_metric()
+    self._set_conversion_latency_metric(round(elapsed_time_ms))
     self._tflite_metrics.export_metrics()
     return result
 

@@ -34,6 +34,7 @@ from tensorflow.lite.python import util
 from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
+from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
@@ -192,11 +193,6 @@ class OpsSet(enum.Enum):
   def get_options():
     """Returns a list of OpsSet options as a list of strings."""
     return [str(option) for option in list(OpsSet)]
-
-
-class ConverterError(Exception):
-  """Raised when an error occurs during model conversion."""
-  pass
 
 
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.QUANTIZE)
