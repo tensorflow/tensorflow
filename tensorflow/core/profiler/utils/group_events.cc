@@ -711,16 +711,19 @@ void EventForest::ProcessWorker() {
 }
 
 void EventForest::ProcessModelIds() {
-  auto session_run_event_list =
-      gtl::FindOrNull(event_node_map_, HostEventType::kSessionRun);
-  if (!session_run_event_list) return;
-  for (const auto& session_run_event : *session_run_event_list) {
-    auto group_id = session_run_event->GetGroupId();
-    if (!group_id.has_value()) continue;
-    absl::optional<XStatVisitor> model_id =
-        session_run_event->GetEventVisitor().GetStat(StatType::kModelId);
-    if (!model_id.has_value()) continue;
-    group_metadata_map_[*group_id].model_id = model_id->ToString();
+  const int64 model_id_event_type_list[] = {HostEventType::kSessionRun,
+                                            HostEventType::kTfrtModelRun};
+  for (const int64 event_type : model_id_event_type_list) {
+    auto event_list = gtl::FindOrNull(event_node_map_, event_type);
+    if (!event_list) continue;
+    for (const auto& event : *event_list) {
+      auto group_id = event->GetGroupId();
+      if (!group_id.has_value()) continue;
+      absl::optional<XStatVisitor> model_id =
+          event->GetEventVisitor().GetStat(StatType::kModelId);
+      if (!model_id.has_value()) continue;
+      group_metadata_map_[*group_id].model_id = model_id->ToString();
+    }
   }
 }
 
