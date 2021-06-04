@@ -25,39 +25,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-namespace {
-
-// TODO(duncanriach): Factor this into a shared utility library
-bool RequireDeterminism() {
-  static bool require_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return require_determinism;
-}
-
-bool DisableSoftmaxXentWithLogitsOpDeterminismExceptions() {
-  static bool cached_disable = [] {
-    bool disable = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_DISABLE_SOFTMAX_XENT_WITH_LOGITS_OP_DETERMINISM_EXCEPTIONS",
-        /*default_val=*/false, &disable));
-    return disable;
-  }();
-  return cached_disable;
-}
-
-}  // namespace
 
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {
@@ -87,12 +61,13 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                         "2-dimensional"));
 
     if (std::is_same<Device, GPUDevice>::value) {
-      OP_REQUIRES(context,
-                  !RequireDeterminism() ||
-                      DisableSoftmaxXentWithLogitsOpDeterminismExceptions(),
+      OP_REQUIRES(context, !OpDeterminismRequired(),
                   errors::Unimplemented(
-                      "Deterministic GPU implementation of"
-                      " SoftmaxCrossEntropyWithLogits not available."));
+                      "The GPU implementation of SoftmaxCrossEntropyWithLogits"
+                      " that would have been executed is not deterministic."
+                      " Note that the Python API uses an alternative,"
+                      " deterministic, GPU-accelerated path when determinism is"
+                      " enabled."));
     }
 
     // loss is 1-D (one per example), and size is batch_size.
