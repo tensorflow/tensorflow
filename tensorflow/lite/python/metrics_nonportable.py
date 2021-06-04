@@ -18,8 +18,8 @@ from typing import Optional, Text
 import uuid
 
 from tensorflow.lite.python import metrics_interface
-from tensorflow.lite.python.metrics_wrapper import _pywrap_tensorflow_lite_metrics_wrapper as _metrics_wrapper
 from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
+from tensorflow.lite.python.metrics_wrapper import metrics_wrapper
 from tensorflow.python.eager import monitoring
 
 _counter_debugger_creation = monitoring.Counter(
@@ -116,7 +116,7 @@ class TFLiteConverterMetrics(TFLiteMetrics):
   def __init__(self) -> None:
     super(TFLiteConverterMetrics, self).__init__()
     session_id = uuid.uuid4().hex
-    self._metrics_exporter = _metrics_wrapper.MetricsWrapper(session_id)
+    self._metrics_exporter = metrics_wrapper.MetricsWrapper(session_id)
     self._exported = False
 
   def __del__(self):

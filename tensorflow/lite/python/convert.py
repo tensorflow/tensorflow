@@ -36,6 +36,7 @@ from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
+from tensorflow.lite.python.metrics_wrapper import metrics_wrapper as _metrics_wrapper
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -295,7 +296,10 @@ def toco_convert_protos(model_flags_str,
                                                  enable_mlir_converter)
       return model_str
     except Exception as e:
-      raise ConverterError(str(e))
+      converter_error = ConverterError(str(e))
+      for error_data in _metrics_wrapper.get_collected_errors():
+        converter_error.append_error(error_data)
+      raise converter_error
 
   return _run_toco_binary(model_flags_str, toco_flags_str, input_data_str,
                           debug_info_str)

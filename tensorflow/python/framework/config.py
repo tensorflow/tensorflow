@@ -519,6 +519,8 @@ def set_visible_devices(devices, device_type=None):
   context.context().set_visible_devices(devices, device_type)
 
 
+# TODO(b/188089869): Redesign memory stats related APIs before move them out of
+# experimental.
 @tf_export('config.experimental.get_memory_info')
 def get_memory_info(device):
   """Get memory info for the chosen device, as a dict.
@@ -565,7 +567,9 @@ def get_memory_info(device):
   return context.context().get_memory_info(device)
 
 
-# TODO(b/189498350): Unify the behavior of CPU, GPU and TPU.
+# TODO(b/188089869): Redesign memory stats related APIs before move them out of
+# experimental.
+# TODO(b/189498350): Unify the behavior on CPU, GPU and TPU.
 @tf_export('config.experimental.reset_memory_stats')
 def reset_memory_stats(device):
   """Resets the tracked memory stats for the chosen device.

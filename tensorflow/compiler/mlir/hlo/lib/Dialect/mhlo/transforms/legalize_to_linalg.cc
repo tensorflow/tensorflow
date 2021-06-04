@@ -701,16 +701,16 @@ class LhloBroadcastInDimConverter
       collapsed_dims_list.back().push_back(dims);
     }
 
-    // `linalg.reshape` is inserted only if necessary, i.e. when the rank can be
-    // reduced.
+    // `linalg.collapse_shape` is inserted only if necessary, i.e. when the rank
+    // can be reduced.
     if (new_shape.size() < operand_shape.size()) {
       auto new_memref_type = MemRefType::get(
           new_shape, operand_type.getElementType(),
           makeStridedLinearLayoutMap(new_strides, operand_offset,
                                      rewriter.getContext()));
-      operand = rewriter.create<linalg::ReshapeOp>(op.getLoc(), new_memref_type,
-                                                   operand_adaptor.operand(),
-                                                   collapsed_dims_list);
+      operand = rewriter.create<linalg::CollapseShapeOp>(
+          op.getLoc(), new_memref_type, operand_adaptor.operand(),
+          collapsed_dims_list);
     }
     return std::make_pair(operand, broadcast_dims);
   }
@@ -868,30 +868,45 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
 
       if (isLHLO) {
         auto collapsed_type = MemRefType::get({total_elems}, elem_type);
-        Value collapsed_op = rewriter.create<linalg::ReshapeOp>(
+        Value collapsed_op = rewriter.create<linalg::CollapseShapeOp>(
             loc, collapsed_type, args[0], collapsing_map);
-        Value reshape_buffer = rewriter.create<linalg::ReshapeOp>(
+        Value reshape_buffer = rewriter.create<linalg::ExpandShapeOp>(
             loc, result_type, collapsed_op, expanding_map);
         rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
                                                     args[1]);
       } else {
         auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
-        Value collapsed_op = rewriter.create<linalg::TensorReshapeOp>(
+        Value collapsed_op = rewriter.create<linalg::TensorCollapseShapeOp>(
             loc, collapsed_type, args[0], collapsing_map);
-        rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
+        rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
             reshape_op, result_type, collapsed_op, expanding_map);
       }
       return success();
     }
 
+    bool isCollapsing =
+        result_type.getRank() < args[0].getType().cast<ShapedType>().getRank();
     if (isLHLO) {
-      Value reshape_buffer = rewriter.create<linalg::ReshapeOp>(
-          reshape_op.getLoc(), result_type, args[0], reassociation_map);
+      Value reshape_buffer = isCollapsing ? rewriter
+                                        .create<linalg::CollapseShapeOp>(
+                                            reshape_op.getLoc(), result_type,
+                                            args[0], reassociation_map)
+                                        .getResult()
+                                  : rewriter
+                                        .create<linalg::ExpandShapeOp>(
+                                            reshape_op.getLoc(), result_type,
+                                            args[0], reassociation_map)
+                                        .getResult();
       rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
                                                   args[1]);
     } else {
-      rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
-          reshape_op, result_type, args[0], reassociation_map);
+      if (isCollapsing) {
+        rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
+            reshape_op, result_type, args[0], reassociation_map);
+      } else {
+        rewriter.replaceOpWithNewOp<linalg::TensorExpandShapeOp>(
+            reshape_op, result_type, args[0], reassociation_map);
+      }
     }
     return success();
   }
@@ -1910,7 +1925,7 @@ struct DepthwiseConvOpOnTensorsConversion
       SmallVector<linalg::ReassociationIndices, 4> collapsed_dim_list = {
           get_indices_vector(0, 1), get_indices_vector(1, 2),
           get_indices_vector(2, 3), get_indices_vector(3, 5)};
-      rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
+      rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
           op, result_type, conv.getResult(0), collapsed_dim_list);
     } else {
       // For cases where channel multiplier == 1
@@ -1936,7 +1951,7 @@ struct DepthwiseConvOpOnTensorsConversion
           get_indices_vector(0, 1), get_indices_vector(1, 2),
           get_indices_vector(2, 4)};
 
-      Value reshaped_filter = rewriter.create<linalg::TensorReshapeOp>(
+      Value reshaped_filter = rewriter.create<linalg::TensorCollapseShapeOp>(
           loc, filter_shape, filter, collapsed_dim_list);
 
       rewriter.replaceOpWithNewOp<linalg::DepthwiseConvInputNHWCFilterHWCOp>(

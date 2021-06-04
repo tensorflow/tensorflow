@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 package(
     default_visibility = [
         "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//tensorflow/lite/python:__subpackages__",
     ],
     licenses = ["notice"],
 )

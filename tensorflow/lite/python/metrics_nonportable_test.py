@@ -25,13 +25,17 @@ import tensorflow as tf
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import metrics_nonportable as metrics
 from tensorflow.lite.python.convert import ConverterError
+from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.python.client import session
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training.tracking import tracking
@@ -315,6 +319,94 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     mock_exporter.ExportMetrics.assert_not_called()
     tflite_metrics.__del__()
     mock_exporter.ExportMetrics.assert_called_once()
+
+
+def mock_ngrams(data, width, axis=-1, string_separator=' ', name=None):
+  """This mock Ngrams lack the width attr, causing conversion to fail."""
+
+  experimental_implements = [
+      'name: "tftext:Ngrams"',
+      'attr { key: "axis" value { i: %d } }' % axis,
+      'attr { key: "reduction_type" value { s: "STRING_JOIN" } }',
+      'attr { key: "string_separator" value { s: "%s" } }' % string_separator,
+  ]
+  experimental_implements = ' '.join(experimental_implements)
+
+  @tf.function(experimental_implements=experimental_implements)
+  def func(data):
+    with ops.name_scope(name, 'NGrams', [data, width]):
+      data = ragged_tensor.convert_to_tensor_or_ragged_tensor(data, name='data')
+      slices = []
+      for start in range(width):
+        stop = None if start - width + 1 == 0 else start - width + 1
+        if axis >= 0:
+          idx = [slice(None)] * axis + [slice(start, stop)]
+        else:
+          idx = [Ellipsis, slice(start, stop)] + [slice(None)] * (-axis - 1)
+        slices.append(data[idx])
+
+      # Stack the slices.
+      stack_axis = axis + 1 if axis >= 0 else axis
+      windowed_data = array_ops.stack(slices, stack_axis)
+
+      return string_ops.reduce_join(
+          windowed_data, axis=axis, separator=string_separator)
+
+  return func(data)
+
+
+class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
+  """Testing conversion error metric."""
+
+  def setUp(self):
+    super(ConverterErrorMetricTest, self).setUp()
+
+    # Mock metrics instance except errors so other test cases are not affected.
+    mock_attempt = mock.create_autospec(monitoring.Counter, instance=True)
+    self._counter_conversion_attempt = metrics._counter_conversion_attempt
+    metrics._counter_conversion_attempt = mock_attempt
+
+    mock_success = mock.create_autospec(monitoring.Counter, instance=True)
+    self._counter_conversion_success = metrics._counter_conversion_success
+    metrics._counter_conversion_success = mock_success
+
+    mock_params = mock.create_autospec(monitoring.StringGauge, instance=True)
+    self._gauge_conversion_params = metrics._gauge_conversion_params
+    metrics._gauge_conversion_params = mock_params
+
+  def tearDown(self):
+    super(ConverterErrorMetricTest, self).tearDown()
+    # # Restore metrics instances.
+    metrics._counter_conversion_attempt = self._counter_conversion_attempt
+    metrics._counter_conversion_success = self._counter_conversion_success
+    metrics._gauge_conversion_params = self._gauge_conversion_params
+
+  def test_failure_at_PrepareCompositeFunctionsPass(self):
+
+    class NgramsLayer(tf.keras.layers.Layer):
+
+      def call(self, input_tensor, **kwargs):
+        return mock_ngrams(input_tensor, width=2, axis=-1, string_separator=' ')
+
+    # Registers a fake WhitespaceTokenizeWithOffsets so the TFText fusing logic
+    # is enable in MLIR side.
+    custom_opdefs_str = (
+        'name: \'WhitespaceTokenizeWithOffsets\' input_arg: {name: \'Input1\' '
+        'type: DT_FLOAT} input_arg: {name: \'Input2\' type: DT_FLOAT} '
+        'output_arg: {name: \'Output\' type: DT_FLOAT}')
+    register_custom_opdefs([custom_opdefs_str])
+
+    model = tf.keras.models.Sequential([NgramsLayer()])
+    model.predict(tf.constant(['test']))
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.allow_custom_ops = True
+    with self.assertRaises(ConverterError):
+      converter.convert()
+    exported_error = metrics._gauge_conversion_errors.get_cell(
+        'CONVERT_TF_TO_TFLITE_MODEL', 'PrepareCompositeFunctionsPass', '',
+        'UNKNOWN').value()
+    self.assertEqual(exported_error,
+                     "\'width\' attribute is not set or not an integer\n")
 
 
 if __name__ == '__main__':
