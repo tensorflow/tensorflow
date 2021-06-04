@@ -598,6 +598,7 @@ cc_library(
     hdrs = [
             "convert/utils.h",
             "utils/trt_tensor_proxy.h",
+	    "common/utils.h",
     ],
     copts = tf_copts(),
     deps = [
