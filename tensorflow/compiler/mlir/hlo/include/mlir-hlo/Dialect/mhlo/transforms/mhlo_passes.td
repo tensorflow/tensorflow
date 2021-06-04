@@ -29,6 +29,12 @@ def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";
+  let options = [
+    Option<"convert_to_lmhlo_only_", "convert-to-lmhlo-only", "bool",
+           /*default=*/"false", "If enabled, simply lower all mhlo ops to their lmhlo counterparts, "
+          "otherwise, some metadata-only ops (e.g. reshape) may be lowerred "
+          "to memref dialect to elide some buffer copy.">,
+  ];
 }
 
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "FuncOp"> {

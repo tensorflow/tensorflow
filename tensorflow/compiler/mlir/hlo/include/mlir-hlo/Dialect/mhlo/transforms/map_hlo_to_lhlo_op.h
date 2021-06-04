@@ -54,6 +54,8 @@ MAP_HLO_TO_LHLO(CosOp);
 MAP_HLO_TO_LHLO(CustomCallOp);
 MAP_HLO_TO_LHLO(DivOp);
 MAP_HLO_TO_LHLO(DotOp);
+MAP_HLO_TO_LHLO(DynamicBroadcastInDimOp);
+MAP_HLO_TO_LHLO(DynamicReshapeOp);
 MAP_HLO_TO_LHLO(ExpOp);
 MAP_HLO_TO_LHLO(Expm1Op);
 MAP_HLO_TO_LHLO(FloorOp);
