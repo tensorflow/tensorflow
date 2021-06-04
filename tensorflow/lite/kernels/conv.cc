@@ -919,9 +919,9 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       if (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8) {
         if (data->is_hybrid_per_channel) {
-          TF_LITE_ENSURE_OK(context,EvalHybridPerChannel<kernel_type>(
-                                        context, node, params, data, input,
-                                        filter, bias, im2col, output));
+          TF_LITE_ENSURE_OK(context, EvalHybridPerChannel<kernel_type>(
+                                         context, node, params, data, input,
+                                         filter, bias, im2col, output));
         } else {
           TfLiteTensor* accum_scratch =
               &context->tensors[node->temporaries
