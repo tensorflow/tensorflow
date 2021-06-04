@@ -440,19 +440,25 @@ void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
 }
 
 void TF_OpKernelConstruction_GetAttrTensorShape(TF_OpKernelConstruction* ctx,
-                                                const char* attr_name, int64_t* values,
-                                                size_t max_vals,
+                                                const char* attr_name, int64_t* dims,
+                                                size_t num_dims,
                                                 TF_Status* status) {
   ::tensorflow::TensorShape shape;
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
   ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &shape);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
+  size_t rank = (size_t)shape.dims();
 
   if (!status->status.ok()) return;
 
-  const auto len = std::min(max_vals, (size_t)shape.dims());
-  for (int i = 0; i < len; ++i) {
-    values[i] = static_cast<int64_t>(shape.dim_size(i));
+  if (num_dims != rank) {
+    status->status = InvalidArgument("Expected rank is ", num_dims,
+                                     " but actual rank is ", rank);
+    return;
+  }
+
+  for (int i = 0; i < rank; ++i) {
+    dims[i] = static_cast<int64_t>(shape.dim_size(i));
   }
 }
 
@@ -592,8 +598,6 @@ tensorflow::Status EnsureSparseVariableAccess(TF_OpKernelContext* ctx,
     return Status::OK();
   }
   Tensor tmp;
-  TF_Tensor *tf_tmp = nullptr;
-  TF_Tensor *tf_tensor = nullptr;
   if (variantType) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
@@ -612,18 +616,12 @@ tensorflow::Status EnsureSparseVariableAccess(TF_OpKernelContext* ctx,
     TF_RETURN_IF_ERROR(context->allocate_temp(var->tensor()->dtype(),
                                           var->tensor()->shape(), &tmp, attr));
     tensorflow::Status s;
-    tf_tmp = TF_TensorFromTensor(tmp, &s);
-    tf_tensor = TF_TensorFromTensor(*var->tensor(), &s);
+    TF_Tensor *tf_tmp = TF_TensorFromTensor(tmp, &s);
+    TF_Tensor *tf_tensor = TF_TensorFromTensor(*var->tensor(), &s);
     copyFunc(ctx, tf_tensor, tf_tmp);
   }
   *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
-  if (tf_tmp != nullptr) {
-    TF_DeleteTensor(tf_tmp);
-  }
-  if (tf_tensor != nullptr) {
-    TF_DeleteTensor(tf_tensor);
-  }
   return Status::OK();
 }
 
@@ -634,8 +632,6 @@ tensorflow::Status PrepareToUpdateVariable(TF_OpKernelContext* ctx, tensorflow::
 
   using namespace tensorflow;
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-  TF_Tensor *tf_tmp = nullptr;
-  TF_Tensor *tf_tensor = nullptr;
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before
     // updating.
@@ -663,13 +659,6 @@ tensorflow::Status PrepareToUpdateVariable(TF_OpKernelContext* ctx, tensorflow::
       copyFunc(ctx, tf_tensor, tf_tmp);
     }
     *tensor = tmp;
-    if (tf_tmp != nullptr) {
-      TF_DeleteTensor(tf_tmp);
-    }
-
-    if (tf_tensor != nullptr) {
-      TF_DeleteTensor(tf_tensor);
-    }
   }
   return Status::OK();
 }
@@ -718,18 +707,18 @@ void TF_AssignVariable(TF_OpKernelContext* ctx,
   tensorflow::mutex_lock ml(*variable->mu());
 
   if (variable->copy_on_read_mode.load()) {
-    tensorflow::Tensor* tmp;
+    tensorflow::Tensor tmp;
     tensorflow::AllocatorAttributes attr;
     attr.set_gpu_compatible(true);
     attr.set_nic_compatible(true);
     OP_REQUIRES_OK(cc_ctx,
                      cc_ctx->allocate_temp(value.dtype(), value.shape(),
-                                            tmp, attr));
+                                            &tmp, attr));
     tensorflow::Status s;
-    TF_Tensor *tf_tmp = TF_TensorFromTensor(*tmp, &s);
+    TF_Tensor *tf_tmp = TF_TensorFromTensor(tmp, &s);
     TF_Tensor *tf_value = TF_TensorFromTensor(value, &s);
     copyFunc(ctx, tf_value, tf_tmp);
-    *variable->tensor() = *tmp;
+    *variable->tensor() = tmp;
   } else {
     *variable->tensor() = value;
   }

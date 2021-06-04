@@ -330,8 +330,8 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
 // &total_size)).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensorShape(
                                            TF_OpKernelConstruction* ctx,
-                                           const char* attr_name, int64_t* values,
-                                           size_t max_vals,
+                                           const char* attr_name, int64_t* dims,
+                                           size_t num_dims,
                                            TF_Status* status);
 
 // Return true if the kernel construction has the attr_name
