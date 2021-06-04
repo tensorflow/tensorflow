@@ -873,11 +873,11 @@ TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
-void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
-                TfLiteConvParams* params, OpData* data,
-                const TfLiteTensor* input, const TfLiteTensor* filter,
-                const TfLiteTensor* bias, TfLiteTensor* im2col,
-                TfLiteTensor* accum_scratch, TfLiteTensor* output) {
+TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
+                        TfLiteConvParams* params, OpData* data,
+                        const TfLiteTensor* input, const TfLiteTensor* filter,
+                        const TfLiteTensor* bias, TfLiteTensor* im2col,
+                        TfLiteTensor* accum_scratch, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -969,8 +969,10 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
           TfLiteTensor* accum_scratch =
               &context->tensors[node->temporaries
                                     ->data[data->accum_scratch_index]];
-          EvalHybrid<kernel_type>(context, node, params, data, input, filter,
-                                  bias, im2col, accum_scratch, output);
+          TF_LITE_ENSURE_OK(context,
+                            EvalHybrid<kernel_type>(context, node, params, data,
+                                                    input, filter, bias, im2col,
+                                                    accum_scratch, output);
         }
       } else {
         EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
