@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "llvm/Support/Debug.h"
 
 namespace mlir {
 namespace mhlo {
@@ -5181,6 +5182,9 @@ class ConvertSignOpDynamic : public OpRewritePattern<TF::SignOp> {
     Value x = op.x();
     auto x_type = x.getType().dyn_cast<RankedTensorType>();
     if (!x_type) return failure();
+    // TODO: Remove this constraint once fold and canonicalization implemented.
+    if (x_type.hasStaticShape()) return failure();
+
     Value hlo_sign = rewriter.create<mhlo::SignOp>(loc, x);
     const StringAttr kNe = rewriter.getStringAttr(
         mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
@@ -5219,6 +5223,9 @@ class ConvertSigmoidGradOpDynamic : public OpRewritePattern<TF::SigmoidGradOp> {
     auto tp_dy = dy.getType().dyn_cast<RankedTensorType>();
     if (!tp_y || !tp_dy)
       return failure();
+
+    // TODO: Remove this constraint once fold and canonicalization implemented.
+    if (tp_y.hasStaticShape() || tp_dy.hasStaticShape()) return failure();
 
     Attribute attr;
     Type elem_tp = tp_y.getElementType();
