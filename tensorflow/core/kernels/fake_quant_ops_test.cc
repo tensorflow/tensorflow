@@ -54,9 +54,7 @@ class QuantOpsTest : public OpsTestBase {
                                       const bool narrow_range, const float min,
                                       const float max, const TensorShape& shape,
                                       const gtl::ArraySlice<float> data,
-                                      gtl::ArraySlice<float> expected_data,
-                                      const double atol = -1.0,
-                                      const double rtol = -1.0) {
+                                      gtl::ArraySlice<float> expected_data) {
     TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxArgs")
                      .Input(FakeInput(DT_FLOAT))  // inputs
                      .Attr("min", min)
@@ -74,16 +72,14 @@ class QuantOpsTest : public OpsTestBase {
     Tensor* output = GetOutput(0);
     Tensor expected(allocator(), DT_FLOAT, shape);
     FillValues<float>(&expected, expected_data);
-    ExpectClose(expected, *output, atol, rtol);
+    ExpectClose(expected, *output);
   }
 
   void RunTestFakeQuantWithMinMaxVars(const int num_bits,
                                       const bool narrow_range, const float min,
                                       const float max, const TensorShape& shape,
                                       const gtl::ArraySlice<float> data,
-                                      gtl::ArraySlice<float> expected_data,
-                                      const double atol = -1.0,
-                                      const double rtol = -1.0) {
+                                      gtl::ArraySlice<float> expected_data) {
     TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVars")
                      .Input(FakeInput(DT_FLOAT))  // inputs
                      .Input(FakeInput(DT_FLOAT))  // min
@@ -105,15 +101,14 @@ class QuantOpsTest : public OpsTestBase {
     Tensor* output = GetOutput(0);
     Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3}));
     FillValues<float>(&expected, expected_data);
-    ExpectClose(expected, *output, atol, rtol);
+    ExpectClose(expected, *output);
   }
 
   void RunTestFakeQuantWithMinMaxVarsPerChannel(
       const int num_bits, const bool narrow_range,
       const TensorShape& minmax_shape, const gtl::ArraySlice<float> min,
       const gtl::ArraySlice<float> max, const TensorShape& shape,
-      const gtl::ArraySlice<float> data, gtl::ArraySlice<float> expected_data,
-      const double atol = -1.0, const double rtol = -1.0) {
+      const gtl::ArraySlice<float> data, gtl::ArraySlice<float> expected_data) {
     TF_EXPECT_OK(NodeDefBuilder("op", "FakeQuantWithMinMaxVarsPerChannel")
                      .Input(FakeInput(DT_FLOAT))  // inputs
                      .Input(FakeInput(DT_FLOAT))  // min
@@ -135,29 +130,9 @@ class QuantOpsTest : public OpsTestBase {
     Tensor* output = GetOutput(0);
     Tensor expected(allocator(), DT_FLOAT, shape);
     FillValues<float>(&expected, expected_data);
-    ExpectClose(expected, *output, atol, rtol);
+    ExpectClose(expected, *output);
   }
 };
-
-TEST_F(QuantOpsTest, WithArgsSymmetricRangeZeroInput_RegularRange) {
-  // Original quantization range: [-10, 10], scale: 20/255.
-  // Original zero point: 127.5, nudged zero point 128.0.
-  // Expected quantized values: 0.0.
-  RunTestFakeQuantWithMinMaxArgs(8, false, -10.0f, 10.0f, TensorShape({2, 3}),
-                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, 0.0,
-                                 0.0);
-}
-
-TEST_F(QuantOpsTest, WithArgsSymmetricRangeZeroInput_NarrowRange) {
-  // Original quantization range: [-10, 10], scale: 20/254.
-  // Original zero point: 128., no nudging necessary.
-  // Expected quantized values: 0.0.
-  RunTestFakeQuantWithMinMaxArgs(8, true, -10.0f, 10.0f, TensorShape({2, 3}),
-                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, 0.0,
-                                 0.0);
-}
 
 TEST_F(QuantOpsTest, WithArgsNoNudging_RegularRange) {
   // Original quantization range: [-10 + 0 / 4, -10 + 255 / 4], scale: 1/4.
@@ -504,26 +479,6 @@ TEST_F(QuantOpsTest, WithVars_ZeroMinAndMax) {
   RunTestFakeQuantWithMinMaxVars(8, false, 0.0f, 0.0f, TensorShape({2, 3}),
                                  {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
                                  {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-}
-
-TEST_F(QuantOpsTest, WithVarsSymmetricRangeZeroInput_RegularRange) {
-  // Original quantization range: [-10, 10], scale: 20/255.
-  // Original zero point: 127.5, nudged zero point 128.
-  // Expected quantized values: 0.
-  RunTestFakeQuantWithMinMaxVars(8, false, -10.0f, 10.0f, TensorShape({2, 3}),
-                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, 0.0,
-                                 0.0);
-}
-
-TEST_F(QuantOpsTest, WithVarsSymmetricRangeZeroInput_NarrowRange) {
-  // Original quantization range: [-10, 10], scale: 20/254.
-  // Original zero point: 128., no nudging necessary.
-  // Expected quantized values: 0.
-  RunTestFakeQuantWithMinMaxVars(8, true, -10.0f, 10.0f, TensorShape({2, 3}),
-                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-                                 {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, 0.0,
-                                 0.0);
 }
 
 TEST_F(QuantOpsTest, WithVarsNoNudging_RegularRange) {
@@ -911,26 +866,6 @@ TEST_F(QuantOpsTest, WithVarsPerChannel_ZeroMinAndMax) {
       8, false, TensorShape({4}), {0.0f, 0.0f, 0.0f, 0.0f},
       {0.0f, 0.0f, 0.0f, 0.0f}, TensorShape({4}), {0.0f, 0.0f, 0.0f, 0.0f},
       {0.0f, 0.0f, 0.0f, 0.0f});
-}
-
-TEST_F(QuantOpsTest, WithVarsPerChannelSymmetricRangeZeroInput_RegularRange) {
-  // Original quantization range: [-10, 10], scale: 20/255.
-  // Original zero point: 127.5, nudged zero point 128.0.
-  // Expected quantized values: 0.
-  RunTestFakeQuantWithMinMaxVarsPerChannel(
-      8, false, TensorShape({4}), {-10.0f, -10.0f, -10.0f, -10.0f},
-      {10.0f, 10.0f, 10.0f, 10.0f}, TensorShape({4}), {0.0f, 0.0f, 0.0f, 0.0f},
-      {0.0f, 0.0f, 0.0f, 0.0f}, 0.0, 0.0);
-}
-
-TEST_F(QuantOpsTest, WithVarsPerChannelSymmetricRangeZeroInput_NarrowRange) {
-  // Original quantization range: [-10, 10], scale: 20/254.
-  // Original zero point: 128.0, no nudging necessary.
-  // Expected quantized values: 0.
-  RunTestFakeQuantWithMinMaxVarsPerChannel(
-      8, true, TensorShape({4}), {-10.0f, -10.0f, -10.0f, -10.0f},
-      {10.0f, 10.0f, 10.0f, 10.0f}, TensorShape({4}), {0.0f, 0.0f, 0.0f, 0.0f},
-      {0.0f, 0.0f, 0.0f, 0.0f}, 0.0, 0.0);
 }
 
 TEST_F(QuantOpsTest, WithVarsPerChannelDim1NudgedDown_RegularRange) {
