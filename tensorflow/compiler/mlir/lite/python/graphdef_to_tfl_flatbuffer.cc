@@ -89,6 +89,13 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   TF_RETURN_IF_ERROR(
       tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
 
+  // Parse control output arrays.
+  std::vector<string> control_output_arrays(
+      model_flags.control_output_arrays().begin(),
+      model_flags.control_output_arrays().end());
+  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(control_output_arrays,
+                                                      &specs.control_outputs));
+
   specs.prune_unused_nodes = true;
   specs.convert_legacy_fed_inputs = true;
   specs.graph_as_function = false;

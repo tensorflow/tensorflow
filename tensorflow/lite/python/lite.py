@@ -1611,6 +1611,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
           input_data=optimized_graph,
           input_arrays_with_shape=self._input_arrays_with_shape,
           output_arrays=self._output_arrays,
+          control_output_arrays=self._control_output_arrays,
           **converter_kwargs)
 
     return self._optimize_tflite_model(
@@ -1928,13 +1929,10 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
     self._graph_def = graph_def
     self._input_tensors = input_tensors
     self._output_tensors = output_tensors
+    self._control_output_arrays = None
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
-      if not input_arrays_with_shape or not output_arrays:
-        raise ValueError(
-            "If input_tensors and output_tensors are None, both "
-            "input_arrays_with_shape and output_arrays must be defined.")
       self._input_arrays_with_shape = input_arrays_with_shape
       self._output_arrays = output_arrays
 
@@ -1960,6 +1958,13 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
+    if not self._has_valid_tensors():
+      if not self._input_arrays_with_shape or not (self._output_arrays or
+                                                   self._control_output_arrays):
+        raise ValueError(
+            "If input_tensors and output_tensors are None, both "
+            "input_arrays_with_shape and output_arrays|control_output_arrays "
+            "must be defined.")
     return super(TFLiteFrozenGraphConverter, self).convert()
 
 

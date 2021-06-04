@@ -32,6 +32,7 @@ from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import util
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import mlir_quantize
@@ -46,6 +47,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -80,18 +82,21 @@ class FromConstructor(TestModels):
 
   # Tests invalid constructors using a dummy value for the GraphDef.
   def testInvalidConstructor(self):
-    message = ('If input_tensors and output_tensors are None, both '
-               'input_arrays_with_shape and output_arrays must be defined.')
+    message = (
+        'If input_tensors and output_tensors are None, both '
+        'input_arrays_with_shape and output_arrays|control_output_arrays must '
+        'be defined.')
 
     # `output_arrays` is not defined.
     with self.assertRaises(ValueError) as error:
       lite.TFLiteConverter(
-          None, None, [], input_arrays_with_shape=[('input', [3, 9])])
+          None, None, [], input_arrays_with_shape=[('input', [3,
+                                                              9])]).convert()
     self.assertEqual(message, str(error.exception))
 
     # `input_arrays_with_shape` is not defined.
     with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter(None, [], None, output_arrays=['output'])
+      lite.TFLiteConverter(None, [], None, output_arrays=['output']).convert()
     self.assertEqual(message, str(error.exception))
 
   # Tests valid constructors using a dummy value for the GraphDef.
@@ -1951,6 +1956,53 @@ class FromFrozenGraphObjectDetection(LiteTest):
     self.assertEqual('TFLite_Detection_PostProcess:3',
                      output_details[3]['name'])
     self.assertAllEqual([1], output_details[3]['shape'])
+
+  def testTFLiteGraphDefWithControlOutput(self):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[5, 5], dtype=dtypes.float32, name='input')
+      out_tensor = in_tensor + in_tensor
+      logging_ops.print_v2(out_tensor)
+      sess = session.Session()
+
+    converter = lite.TFLiteConverter(
+        sess.graph_def,
+        input_tensors=None,
+        output_tensors=None,
+        input_arrays_with_shape=[('input', [5, 5])],
+        output_arrays=None,
+        experimental_debug_info_func=None)
+    converter._control_output_arrays = ['PrintV2']
+    converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    model = util._convert_model_from_bytearray_to_object(tflite_model)
+    self.assertEqual(model.operatorCodes[0].builtinCode,
+                     schema_fb.BuiltinOperator.ADD)
+    self.assertEqual(model.operatorCodes[1].builtinCode,
+                     schema_fb.BuiltinOperator.CUSTOM)
+    self.assertEqual(model.operatorCodes[1].customCode, b'FlexStringFormat')
+    self.assertEqual(model.operatorCodes[2].builtinCode,
+                     schema_fb.BuiltinOperator.CUSTOM)
+    self.assertEqual(model.operatorCodes[2].customCode, b'FlexPrintV2')
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual('input', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertAllEqual([5, 5], input_details[0]['shape'])
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 0)
 
   def testModifyIOToUint8(self):
     # Tests the object detection model that cannot be loaded in TensorFlow.

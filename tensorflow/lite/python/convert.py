@@ -679,7 +679,8 @@ def build_toco_convert_protos(input_tensors,
 @convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
                SubComponent.CONVERT_GRAPHDEF)
 def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
-                           enable_mlir_converter, *args, **kwargs):
+                           enable_mlir_converter, control_output_arrays, *args,
+                           **kwargs):
   """"Convert a model using TOCO.
 
   This function is used to convert GraphDefs that cannot be loaded into
@@ -692,12 +693,16 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     input_arrays_with_shape: Tuple of strings representing input tensor names
       and list of integers representing input shapes
       (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
-        into TensorFlow and when `input_tensors` is None. (default None)
+        into TensorFlow and when `input_tensors` is None.
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
-      (default None)
     enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
       conversion.
+    control_output_arrays: Control output node names. This is used when
+      converting a Graph with no output tensors. For example, if the
+      graph's last operation is a Print op, just specify that op's name in
+      this field. This can be used together with the `output_arrays`
+      parameter.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 
@@ -725,8 +730,12 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     input_array.name = name
     input_array.shape.dims.extend(list(map(int, shape)))
 
-  for name in output_arrays:
-    model_flags.output_arrays.append(name)
+  if output_arrays:
+    for name in output_arrays:
+      model_flags.output_arrays.append(name)
+  if control_output_arrays:
+    for name in control_output_arrays:
+      model_flags.control_output_arrays.append(name)
 
   data = toco_convert_protos(
       model_flags.SerializeToString(),
