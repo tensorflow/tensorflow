@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control.h"
 
 #include "tensorflow/lite/experimental/microfrontend/lib/bits.h"
-#include "tensorflow/lite/experimental/microfrontend/lib/fprintf_shim.h"
 
 int16_t WideDynamicFunction(const uint32_t x, const int16_t* lut) {
   if (x <= 2) {
