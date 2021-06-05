@@ -351,8 +351,8 @@ class SparseCrossOp : public OpKernel {
 
  private:
   // Validates input tensors.
-  Status ValidateInput(OpKernelContext* context,
-                       const OpInputList& indices_list_in,
+  void ValidateInput(OpKernelContext* context,
+                     const OpInputList& indices_list_in,
                        const OpInputList& values_list_in,
                        const OpInputList& shapes_list_in,
                        const OpInputList& dense_list_in,
