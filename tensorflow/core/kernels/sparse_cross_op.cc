@@ -353,10 +353,10 @@ class SparseCrossOp : public OpKernel {
   // Validates input tensors.
   void ValidateInput(OpKernelContext* context,
                      const OpInputList& indices_list_in,
-                       const OpInputList& values_list_in,
-                       const OpInputList& shapes_list_in,
-                       const OpInputList& dense_list_in,
-                       const DataType& internal_type) {
+                     const OpInputList& values_list_in,
+                     const OpInputList& shapes_list_in,
+                     const OpInputList& dense_list_in,
+                     const DataType& internal_type) {
     const auto size = indices_list_in.size();
     // Only perform internal_type check for SparseCrossOp.
     // Check if the internal_type is not invalid before doing so.
