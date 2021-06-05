@@ -1519,5 +1519,23 @@ def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResour
   );
   let results = (outs);
 }
+// PrintOp is used to print tensor, which can be used to debug.
+def TF_PrintOp : TF_Op<"Print"> {
+  let summary = "Print the tensors";
+  let arguments = (ins
+    TF_Tensor:$input,
+    Variadic<TF_Tensor>:$data,
+
+    StrAttr:$message,
+    DefaultValuedAttr<I64Attr, "-1">:$first_n,
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr U = TF_DerivedOperandTypeListAttr<1>;
+}
 
 #endif // TF_OPS

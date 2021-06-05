@@ -6334,6 +6334,18 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
+// TF.PrintOp to mhlo.PrintOp
+class ConvertPrintOp : public OpRewritePattern<TF::PrintOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(
+      TF::PrintOp op, PatternRewriter& rewriter) const {
+    auto input = op.input();
+    rewriter.replaceOpWithNewOp<mhlo::PrintOp>(op, op.getType(), input);
+    return success();
+  }
+};
+
 // Emits debug information which includes the number of ops of each type which
 // failed to legalize.
 void EmitLegalizationErrors(Operation *op,
@@ -6664,6 +6676,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaAllReduceOp,
     ConvertRollOp,
     ConvertLeakyReluOp,
+    ConvertPrintOp,
     ConvertLeakyReluGradOp>(context);
   // clang-format on
 }
