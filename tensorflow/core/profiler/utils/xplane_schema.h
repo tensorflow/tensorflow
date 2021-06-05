@@ -107,6 +107,8 @@ enum HostEventType {
   kMapAndBatchConsume,
   kParseExampleProduce,
   kParseExampleConsume,
+  kParallelBatchProduce,
+  kParallelBatchConsume,
   // Batching related.
   kBatchingSessionRun,
   kProcessBatch,
@@ -115,6 +117,8 @@ enum HostEventType {
   kScheduleWithoutSplit,
   kScheduleWithSplit,
   kASBSQueueSchedule,
+  // TFRT related.
+  kTfrtModelRun,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.

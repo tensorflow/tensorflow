@@ -11,6 +11,7 @@ platform.
 -   [Run on x86](#run-on-x86)
 -   [Run on Xtensa XPG Simulator](#run-on-xtensa-xpg-simulator)
 -   [Run on Sparkfun Edge](#run-on-sparkfun-edge)
+-   [Run on FVP based on Arm Corstone-300 software](#run-on-fvp-based-on-arm-corstone-300-software)
 
 ## Keyword benchmark
 
@@ -64,3 +65,34 @@ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge person_de
 
 Refer to flashing instructions in the [Person Detection Example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/person_detection/README.md#running-on-sparkfun-edge).
 
+## Run on FVP based on Arm Corstone-300 software
+
+For more info about the Corstone-300 software see:
+[tensorflow/lite/micro/cortex_m_corstone_300/README.md](../cortex_m_corstone_300/README.md).
+
+Disclaimer: Executing the benchmark test on the Corstone-300 software will
+provide a general metric of instructions executed. The estimates are not cycle
+accurate, however it aligns to instruction per cycle, and is a consistent
+environment. This means it can detect if code changes changed performance.
+
+The person detection benchmark can also run with Ethos-U enabled, as the
+downloaded model will be optimized for Ethos-U. For more info see:
+[tensorflow/lite/micro/kernels/ethos_u/README.md](../kernels/ethos_u/README.md).
+
+To run the keyword benchmark on FVP:
+
+```
+make -j -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 run_keyword_benchmark
+```
+
+To run the person detection benchmark on FVP:
+
+```
+make -j -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 run_person_detection_benchmark
+```
+
+To run the person detection benchmark on FVP with Ethos-U:
+
+```
+make -j -f tensorflow/lite/micro/tools/make/Makefile CO_PROCESSOR=ethos_u TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 run_person_detection_benchmark
+```

@@ -13,6 +13,7 @@ package(
 cc_library_with_tflite(
     name = "native_framework_only",
     srcs = [
+        "default/jni_utils.cc",
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
         "tensor_jni.cc",

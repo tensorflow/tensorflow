@@ -58,17 +58,19 @@ class ModelAnalyzer:
 
     Args:
       tflite_model: TFLite flatbuffer model.
-      result_format: txt|html|webserver.
+      result_format: txt|mlir|html|webserver.
 
     Returns:
       Analyzed report with the given result_format.
     """
-    if result_format == "html":
+    if result_format == "txt":
+      return _analyzer_wrapper.ModelAnalyzer(tflite_model)
+    elif result_format == "mlir":
+      return _analyzer_wrapper.FlatBufferToMlir(tflite_model)
+    elif result_format == "html":
       return visualize.create_html(tflite_model)
     elif result_format == "webserver":
       html_body = visualize.create_html(tflite_model)
       _handle_webserver("localhost", 8080, html_body)
-    elif result_format == "txt":
-      return _analyzer_wrapper.ModelAnalyzer(tflite_model)
     else:
       raise ValueError(f"result_format '{result_format}' is not supported")

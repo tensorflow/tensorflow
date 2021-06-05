@@ -59,7 +59,7 @@ transitive_hdrs(
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
-        "//tensorflow/python:tf_session_helper",
+        "//tensorflow/python/client:tf_session_helper",
         "//third_party/eigen3",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -139,6 +139,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
+    "//tensorflow/python/kernel_tests:xent_op_test_base",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",

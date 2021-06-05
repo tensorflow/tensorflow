@@ -5245,6 +5245,7 @@ void Col2im(const T* col_data, const int depth, const int height,
   }
 }
 
+// TODO(b/188008864) Optimize this function by combining outer loops.
 template <typename T>
 void BiasAdd(T* im_data, const T* bias_data, const int batch_size,
              const int height, const int width, const int depth) {
@@ -8176,6 +8177,163 @@ inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
   cpu_backend_gemm::Gemm(lhs_params, transposed_filter_data, rhs_params,
                          gemm_input_data, dst_params, output_data, gemm_params,
                          cpu_backend_context);
+}
+
+// Returns in 'im_data' (assumed to be zero-initialized) image patch in storage
+// order (planes, height, width, channel), constructed from patches in
+// 'col_data', which is required to be in storage order (out_planes * out_height
+// * out_width, filter_planes, filter_height, filter_width, in_channel).
+//
+// This function is copied from tensorflow/core/kernels/conv_grad_ops_3d.cc
+// authored by Eugene Zhulenev(ezhulenev).
+template <typename T>
+void Col2im(const T* col_data, const int channel, const int planes,
+            const int height, const int width, const int filter_p,
+            const int filter_h, const int filter_w, const int pad_pt,
+            const int pad_t, const int pad_l, const int pad_pb, const int pad_b,
+            const int pad_r, const int stride_p, const int stride_h,
+            const int stride_w, T* im_data) {
+  const int planes_col = (planes + pad_pt + pad_pb - filter_p) / stride_p + 1;
+  const int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
+  const int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
+  int p_pad = -pad_pt;
+  for (int p = 0; p < planes_col; ++p) {
+    int h_pad = -pad_t;
+    for (int h = 0; h < height_col; ++h) {
+      int w_pad = -pad_l;
+      for (int w = 0; w < width_col; ++w) {
+        T* im_patch_data =
+            im_data +
+            (p_pad * height * width + h_pad * width + w_pad) * channel;
+        for (int ip = p_pad; ip < p_pad + filter_p; ++ip) {
+          for (int ih = h_pad; ih < h_pad + filter_h; ++ih) {
+            for (int iw = w_pad; iw < w_pad + filter_w; ++iw) {
+              if (ip >= 0 && ip < planes && ih >= 0 && ih < height && iw >= 0 &&
+                  iw < width) {
+                for (int i = 0; i < channel; ++i) {
+                  im_patch_data[i] += col_data[i];
+                }
+              }
+              im_patch_data += channel;
+              col_data += channel;
+            }
+            // Jump over remaining number of channel.
+            im_patch_data += channel * (width - filter_w);
+          }
+          // Jump over remaining number of (channel * width).
+          im_patch_data += (channel * width) * (height - filter_h);
+        }
+        w_pad += stride_w;
+      }
+      h_pad += stride_h;
+    }
+    p_pad += stride_p;
+  }
+}
+
+template <typename T>
+void BiasAdd3D(T* im_data, const T* bias_data, const RuntimeShape& input_shape,
+               float float_activation_min, float float_activation_max) {
+  if (bias_data) {
+    const int outer_size = input_shape.Dims(0) * input_shape.Dims(1) *
+                           input_shape.Dims(2) * input_shape.Dims(3);
+    const int num_channels = input_shape.Dims(4);
+    for (int n = 0; n < outer_size; ++n) {
+      for (int c = 0; c < num_channels; ++c) {
+        im_data[c] = ActivationFunctionWithMinMax(im_data[c] + bias_data[c],
+                                                  float_activation_min,
+                                                  float_activation_max);
+      }
+      im_data += num_channels;
+    }
+  } else {
+    const int flat_size = input_shape.FlatSize();
+    for (int i = 0; i < flat_size; ++i) {
+      im_data[i] = ActivationFunctionWithMinMax(
+          im_data[i], float_activation_min, float_activation_max);
+    }
+  }
+}
+
+inline void Conv3DTranspose(
+    const Conv3DTransposeParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
+    float* const output_data, const RuntimeShape& col2im_shape,
+    float* col2im_data, CpuBackendContext* cpu_backend_context) {
+  ruy::profiler::ScopeLabel label("Conv3DTranspose/float");
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK(col2im_data);
+
+  const int batch_size = MatchingDim(input_shape, 0, output_shape, 0);
+  const int input_channel = MatchingDim(input_shape, 4, filter_shape, 4);
+  const int output_channel = MatchingDim(output_shape, 4, filter_shape, 3);
+  const int input_spatial_size =
+      input_shape.Dims(1) * input_shape.Dims(2) * input_shape.Dims(3);
+  const int output_spatial_size =
+      output_shape.Dims(1) * output_shape.Dims(2) * output_shape.Dims(3);
+
+  const int output_spatial_dim_1 = output_shape.Dims(1);
+  const int output_spatial_dim_2 = output_shape.Dims(2);
+  const int output_spatial_dim_3 = output_shape.Dims(3);
+  const int input_offset = input_spatial_size * input_channel;
+  const int output_offset = output_spatial_size * output_channel;
+
+  const int filter_spatial_dim_1 = filter_shape.Dims(0);
+  const int filter_spatial_dim_2 = filter_shape.Dims(1);
+  const int filter_spatial_dim_3 = filter_shape.Dims(2);
+
+  const int spatial_dim_1_padding_before = params.padding_values.depth;
+  const int spatial_dim_1_padding_after =
+      params.padding_values.height + params.padding_values.depth_offset;
+  const int spatial_dim_2_padding_before = params.padding_values.height;
+  const int spatial_dim_2_padding_after =
+      params.padding_values.height + params.padding_values.height_offset;
+  const int spatial_dim_3_padding_before = params.padding_values.width;
+  const int spatial_dim_3_padding_after =
+      params.padding_values.width + params.padding_values.width_offset;
+  const int spatial_dim_1_stride = params.stride_depth;
+  const int spatial_dim_2_stride = params.stride_height;
+  const int spatial_dim_3_stride = params.stride_width;
+  const int filter_total_size = filter_spatial_dim_1 * filter_spatial_dim_2 *
+                                filter_spatial_dim_3 * output_channel;
+
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = filter_total_size;
+  lhs_params.cols = input_channel;
+  float* output_data_p = output_data;
+  std::fill_n(output_data, output_offset * batch_size, 0.0f);
+  for (int i = 0; i < batch_size; ++i) {
+    cpu_backend_gemm::MatrixParams<float> rhs_params;
+    rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+    rhs_params.rows = input_channel;
+    rhs_params.cols = input_spatial_size;
+    cpu_backend_gemm::MatrixParams<float> dst_params;
+    dst_params.order = cpu_backend_gemm::Order::kColMajor;
+    dst_params.rows = filter_total_size;
+    dst_params.cols = input_spatial_size;
+    cpu_backend_gemm::GemmParams<float, float> gemm_params;
+    cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params,
+                           input_data + input_offset * i, dst_params,
+                           col2im_data, gemm_params, cpu_backend_context);
+
+    Col2im(col2im_data, output_channel, output_spatial_dim_1,
+           output_spatial_dim_2, output_spatial_dim_3, filter_spatial_dim_1,
+           filter_spatial_dim_2, filter_spatial_dim_3,
+           spatial_dim_1_padding_before, spatial_dim_2_padding_before,
+           spatial_dim_3_padding_before, spatial_dim_1_padding_after,
+           spatial_dim_2_padding_after, spatial_dim_3_padding_after,
+           spatial_dim_1_stride, spatial_dim_2_stride, spatial_dim_3_stride,
+           output_data_p);
+    output_data_p += output_offset;
+  }
+  output_data_p = output_data;
+  BiasAdd3D(output_data_p, bias_data, output_shape, params.float_activation_min,
+            params.float_activation_max);
 }
 
 }  // namespace optimized_ops

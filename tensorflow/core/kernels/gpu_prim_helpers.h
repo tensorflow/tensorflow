@@ -109,6 +109,11 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
 template <typename InputIteratorT, typename OutputIteratorT>
 Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
                              InputIteratorT input, OutputIteratorT output) {
+  static_assert(
+      !std::is_same<typename std::remove_reference<decltype(*input)>::type,
+                    bool>::value,
+      "GpuInclusivePrefixSum does not work correct with booleans, please use "
+      "TransformInputIterator to explicitly cast to an integer.");
   if (size == 0) return Status::OK();
   const auto& cu_stream = GetGpuStream(context);
   size_t temp_storage_bytes;

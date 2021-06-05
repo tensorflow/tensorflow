@@ -1,6 +1,7 @@
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize | FileCheck %s
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-numeric-verify -tfl-log-if-failed | FileCheck --check-prefix=DEBUG %s
 // RUN: tf-opt %s -tfl-quantize -tfl-legacy-quantize | FileCheck --check-prefix=LEGACY %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-ops-blocklist="tfl.fully_connected,tfl.softmax" -tfl-locs-blocklist="Block,NullBlock" | FileCheck --check-prefix=BLOCK %s
 
 // CHECK-LABEL: QuantizeFloatConst
 func @QuantizeFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {
@@ -115,6 +116,14 @@ func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e
 // CHECK: %[[cst_1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x12xi8>}
 // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %[[cst_1]], %[[cst_0]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}
 // CHECK: return %[[fc]]
+
+// BLOCK: %[[cst:.*]] = constant dense<-1.23697901>
+// BLOCK: %[[dq1:.*]] = "tfl.dequantize"(%arg0)
+// BLOCK: %[[cst2:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x12xi8>}
+// BLOCK: %[[dq2:.*]] = "tfl.dequantize"(%[[cst2]])
+// BLOCK: %[[fc:.*]] = "tfl.fully_connected"(%[[dq1]], %[[dq2]], %[[cst]])
+// BLOCK: %[[q:.*]] = "tfl.quantize"(%[[fc]])
+// BLOCK: return %[[q]]
 }
 
 // CHECK-LABEL: QuantizeNoBiasFullyConnected
@@ -183,12 +192,18 @@ func @QuantizeAdd(tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:1
 ^bb0(%arg0: tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>, %arg1: tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>):
   %0 = "tfl.dequantize"(%arg0) : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>) -> tensor<1x56x56x24xf32>
   %1 = "tfl.dequantize"(%arg1) : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>) -> tensor<1x56x56x24xf32>
-  %2 = tfl.add %0, %1 {fused_activation_function = "NONE"} : tensor<1x56x56x24xf32>
+  %2 = tfl.add %0, %1 {fused_activation_function = "NONE"} : tensor<1x56x56x24xf32> loc("Block")
   %3 = "tfl.quantize"(%2) {qtype = tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>} : (tensor<1x56x56x24xf32>) -> tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
   return %3 : tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
 
 // CHECK: %[[add:.*]] = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>, tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>)
 // CHECK: return %[[add]] : tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
+
+// BLOCK: %[[dq0:.*]] = "tfl.dequantize"(%arg0) : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>)
+// BLOCK: %[[dq1:.*]] = "tfl.dequantize"(%arg1) : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>)
+// BLOCK: %[[add:.*]] = tfl.add %[[dq0]], %[[dq1]] {fused_activation_function = "NONE"} : tensor<1x56x56x24xf32>
+// BLOCK: %[[q:.*]] = "tfl.quantize"(%[[add]]) {qtype = tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>}
+// BLOCK: return %[[q]] : tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
 }
 
 // CHECK-LABEL: QuantizeConcat

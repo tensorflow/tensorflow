@@ -9,6 +9,9 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
@@ -211,8 +214,8 @@ py_library(
         ":tensor_spec",
         ":tensor_util",
         ":type_spec",
-        "//tensorflow/python:_pywrap_debug_events_writer",
-        "//tensorflow/python:_pywrap_events_writer",
+        "//tensorflow/python/client:_pywrap_debug_events_writer",
+        "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         "//tensorflow/python:_pywrap_py_exception_registry",
@@ -487,6 +490,7 @@ py_library(
     deps = [
         ":_op_def_registry",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -613,6 +617,7 @@ tf_python_pybind_extension(
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:numpy_hdr",
@@ -694,6 +699,7 @@ tf_python_pybind_extension(
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:numpy_hdr",
@@ -810,6 +816,7 @@ tf_python_pybind_extension(
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:numpy_hdr",
@@ -1002,6 +1009,23 @@ cuda_py_test(
     name = "config_test",
     size = "small",
     srcs = ["config_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],  # test_ops are not available in pip.
+    deps = [
+        ":config",
+        ":constant_op",
+        ":test_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/util",
+    ] + tf_additional_xla_deps_py(),
+)
+
+tpu_py_test(
+    name = "config_test_tpu",
+    size = "small",
+    srcs = ["config_test.py"],
+    main = "config_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # test_ops are not available in pip.
     deps = [

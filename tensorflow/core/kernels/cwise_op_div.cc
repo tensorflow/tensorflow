@@ -18,10 +18,10 @@ limitations under the License.
 namespace tensorflow {
 REGISTER6(BinaryOp, CPU, "Div", functor::div, float, Eigen::half, double,
           bfloat16, complex64, complex128);
-REGISTER5(BinaryOp, CPU, "Div", functor::safe_div, uint8, uint16, int16, int32,
-          int64);
-REGISTER5(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16, int16,
-          int32, int64);
+REGISTER8(BinaryOp, CPU, "Div", functor::safe_div, uint8, uint16, uint32,
+          uint64, int8, int16, int32, int64);
+REGISTER8(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16,
+          uint32, uint64, int8, int16, int32, int64);
 REGISTER6(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
           bfloat16, complex64, complex128);
 REGISTER5(BinaryOp, CPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
@@ -37,9 +37,7 @@ REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
 REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
           int64);
 #else
-REGISTER4(BinaryOp, GPU, "Div", functor::div, uint8, uint16, complex64,
-          complex128);
-REGISTER2(BinaryOp, GPU, "RealDiv", functor::div, complex64, complex128);
+REGISTER2(BinaryOp, GPU, "Div", functor::div, uint8, uint16);
 REGISTER2(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16);
 #endif
 REGISTER5(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,

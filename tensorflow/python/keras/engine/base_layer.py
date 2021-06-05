@@ -896,7 +896,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       input_masks = nest.map_structure(
           keras_tensor.keras_tensor_to_placeholder, input_masks)
 
-      with backend.name_scope(self._name_scope()):
+      with backend.name_scope(self._name_scope()):  # pylint: disable=not-callable
         with autocast_variable.enable_auto_cast_variables(
             self._compute_dtype_object):
           # Build layer if applicable (if the `build` method has been
@@ -1042,7 +1042,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         call_fn = self.call
         name_scope = self._name
       else:
-        name_scope = self._name_scope()  # Avoid autoincrementing.
+        name_scope = self._name_scope()  # Avoid autoincrementing.  # pylint: disable=not-callable
         call_fn = self._autographed_call()
 
       with ops.name_scope_v2(name_scope):
@@ -2415,7 +2415,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     value = dtypes.as_dtype(value).name
     self._set_dtype_policy(policy.Policy(value))
 
-  def _name_scope(self):
+  def _name_scope(self):  # pylint: disable=method-hidden
     if not tf2.enabled():
       return self.name
     name_scope = self.name
@@ -2747,7 +2747,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # other attributes referencing it.
     reference_counts = self._obj_reference_counts
     if existing_value not in reference_counts:
-      super(tracking.AutoTrackable, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
       return
 
     reference_count = reference_counts[existing_value]
@@ -2755,24 +2755,24 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # There are other remaining references. We can't remove this object from
       # _layers etc.
       reference_counts[existing_value] = reference_count - 1
-      super(tracking.AutoTrackable, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
       return
     else:
       # This is the last remaining reference.
       del reference_counts[existing_value]
 
-    super(tracking.AutoTrackable, self).__delattr__(name)
+    super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
 
     if (isinstance(existing_value, Layer)
         or base_layer_utils.has_weights(existing_value)):
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_self_tracked_trackables',
           [l for l in self._self_tracked_trackables if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_trainable_weights',
           [w for w in self._trainable_weights if w is not existing_value])
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
 
@@ -2782,7 +2782,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
       try:
-        super(tracking.AutoTrackable, self).__setattr__(name, value)
+        super(tracking.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
       except AttributeError:
         raise AttributeError(
             ('Can\'t set the attribute "{}", likely because it conflicts with '
@@ -2847,7 +2847,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     # TODO(b/180760306) Skip the auto trackable from tf.Module to keep status
     # quo. See the comment at __delattr__.
-    super(tracking.AutoTrackable, self).__setattr__(name, value)
+    super(tracking.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
 
   def _gather_children_attribute(self, attribute):
     assert attribute in {

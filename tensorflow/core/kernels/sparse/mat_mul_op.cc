@@ -866,7 +866,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroySpMat(matA));
 
 #elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 40200
-      //Use SPMM
+      // Use SPMM
       const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
       gpusparseSpMatDescr_t matA;
       gpusparseDnMatDescr_t matB, matC;
@@ -877,13 +877,13 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
           CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, HIPSPARSE_INDEX_BASE_ZERO,
           GPUDataType<T>::type));
 
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          wrap::hipsparseCreateDnMat(&matB, n, k, ldb, const_cast<T*>(b.data()),
-                              GPUDataType<T>::type, HIPSPARSE_ORDER_COL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateDnMat(
+          &matB, n, k, ldb, const_cast<T*>(b.data()), GPUDataType<T>::type,
+          HIPSPARSE_ORDER_COL));
 
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          wrap::hipsparseCreateDnMat(&matC, m, n, ldc, c.data(), 
-                              GPUDataType<T>::type, HIPSPARSE_ORDER_COL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateDnMat(
+          &matC, m, n, ldc, c.data(), GPUDataType<T>::type,
+          HIPSPARSE_ORDER_COL));
 
       size_t bufferSize = 0;
       TF_RETURN_IF_ERROR(cuda_sparse.SpMMBufferSize(
@@ -902,7 +902,6 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matB));
       TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matC));
       TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroySpMat(matA));
-
 
 #else
 

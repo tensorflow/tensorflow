@@ -103,8 +103,9 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
 /// Populate rank specialization clustering and lowering patterns.
 void PopulateRankSpecializationClusterPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
-void PopulateRankSpecializationToSCFPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns);
+void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
+                                             OwningRewritePatternList *patterns,
+                                             int64_t max_target_rank);
 
 }  // namespace mhlo
 

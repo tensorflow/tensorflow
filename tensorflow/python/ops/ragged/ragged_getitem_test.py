@@ -565,7 +565,7 @@ class RaggedGetItemTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self._TestGetItem(rt, slice_spec, expected, expected_shape)
 
     # If the result is 3D, then check that it still has a uniform row length:
-    actual = rt.__getitem__(slice_spec)
+    actual = rt.__getitem__(slice_spec)  # pylint: disable=assignment-from-no-return
     if actual.shape.rank == 3:
       self.assertIsNot(actual.uniform_row_length, None)
       self.assertAllEqual(actual.uniform_row_length, expected_shape[1])

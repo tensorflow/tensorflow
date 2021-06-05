@@ -520,10 +520,10 @@ func @decompose_resource_apply_centered_RMS_prop(%arg0: tensor<f32>, %arg1: tens
     // CHECK: [[MOM_MOM:%.*]] = "tf.Mul"([[MOMENTUM]], [[MOM]])
     // CHECK: [[LR_GRAD:%.*]] = "tf.Mul"([[LR]], [[GRAD]])
 
-    // CHECK: [[MG_MG:%.*]] = "tf.Mul"([[MG_NEW]], [[MG_NEW]])
-    // CHECK: [[MG_NEW:%.*]] = "tf.AddV2"([[MG_MG]], [[EPSILON]])
-    // CHECK: [[MG_SUB:%.*]] = "tf.Sub"([[MS_NEW]], [[MG_NEW]])
-    // CHECK: [[MG_SQRT:%.*]] = "tf.Sqrt"([[MG_SUB]])
+    // CHECK: [[MG_MG:%.*]] = "tf.Square"([[MG_NEW]])
+    // CHECK: [[MG_SUB:%.*]] = "tf.Sub"([[MS_NEW]], [[MG_MG]])
+    // CHECK: [[MG_NEW:%.*]] = "tf.AddV2"([[MG_SUB]], [[EPSILON]])
+    // CHECK: [[MG_SQRT:%.*]] = "tf.Sqrt"([[MG_NEW]])
     // CHECK: [[MOM_DIV:%.*]] = "tf.Div"([[LR_GRAD]], [[MG_SQRT]])
     // CHECK: [[MOM_NEW:%.*]] = "tf.AddV2"([[MOM_MOM]], [[MOM_DIV]])
 

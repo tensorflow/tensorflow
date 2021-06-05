@@ -63,7 +63,17 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64, int64, baseline_add)
 
 /// Test `tf.Atan2`.
 
+Eigen::half baseline_atan2(Eigen::half lhs, Eigen::half rhs) {
+  return static_cast<Eigen::half>(
+      std::atan2(static_cast<float>(lhs), static_cast<float>(rhs)));
+}
+
 // Prevent the undefined case (0, 0) with non-zero rhs values.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
+    /*test_name=*/HalfRhsNonZero, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_atan2);
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Atan2,
     /*test_name=*/FloatRhsNonZero, float, float, test::DefaultInput<float>(),
@@ -77,6 +87,11 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
 // Prevent the undefined case (0, 0) with non-zero lhs values.
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Atan2,
+    /*test_name=*/HalfLhsNonZero, Eigen::half, Eigen::half,
+    test::DefaultInputNonZero<Eigen::half>(), test::DefaultInput<Eigen::half>(),
+    baseline_atan2);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Atan2,
     /*test_name=*/FloatLhsNonZero, float, float,
     test::DefaultInputNonZero<float>(), test::DefaultInput<float>(),
     std::atan2);
@@ -87,6 +102,13 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     std::atan2);
 
 // Test some particularly interesting cases.
+TEST_F(BinaryOpsTest, Atan2EigenHalfSpecialCases) {
+  TestEqualShapes<Eigen::half, float, Eigen::half, float>(
+      "Atan2", /*shape=*/{20},
+      test::InputAsVector<Eigen::half>({1, 1, 1, 0, -1, -1, -1, 0}),
+      test::InputAsVector<Eigen::half>({1, 0, -1, -1, -1, 0, 1, 1}), std::atan2,
+      test::OpsTestConfig().ExpectStrictlyEqual());
+}
 TEST_F(BinaryOpsTest, Atan2FloatSpecialCases) {
   TestEqualShapes<float, float, float, float>(
       "Atan2", /*shape=*/{20},
@@ -191,6 +213,30 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Div,
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div);
+
+// The following tests don't work with Eigen kernels if the Eigen kernels are
+// compiled with nvcc.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TEST_F(BinaryOpsTest, DivComplex64SpecialCases) {
+  TestEqualShapes<std::complex<float>, std::complex<float>, std::complex<float>,
+                  std::complex<float>>(
+      "Div", /*shape=*/{67, 63},
+      test::NearZeroInfAndNanInput<std::complex<float>>(),
+      test::RepeatElements(test::NearZeroInfAndNanInput<std::complex<float>>(),
+                           64),
+      baseline_div, test::OpsTestConfig());
+}
+
+TEST_F(BinaryOpsTest, DivComplex128SpecialCases) {
+  TestEqualShapes<std::complex<double>, std::complex<double>,
+                  std::complex<double>, std::complex<double>>(
+      "Div", /*shape=*/{67, 63},
+      test::NearZeroInfAndNanInput<std::complex<double>>(),
+      test::RepeatElements(test::NearZeroInfAndNanInput<std::complex<double>>(),
+                           64),
+      baseline_div, test::OpsTestConfig());
+}
+#endif
 
 /// Test `tf.Equal`.
 
@@ -638,6 +684,46 @@ GENERATE_DEFAULT_TESTS(Sub,
 GENERATE_DEFAULT_TESTS(Sub,
                        /*test_name=*/Int64, int64, int64, baseline_sub)
 
+/// Test `tf.Xlogy`.
+
+template <typename T>
+T baseline_xlogy(T x, T y) {
+  return x == 0 ? x : x * std::log(y);
+}
+
+GENERATE_DEFAULT_TESTS_2(Xlogy, /*test_name=*/Half, Eigen::half, float,
+                         Eigen::half, float, test::DefaultInput<Eigen::half>(),
+                         test::DefaultInput<Eigen::half>(), baseline_xlogy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_2(Xlogy, /*test_name=*/Float, float, float, float, float,
+                         test::DefaultInput<float>(),
+                         test::DefaultInput<float>(), baseline_xlogy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_2(Xlogy, /*test_name=*/Double, double, double, double,
+                         double, test::DefaultInput<double>(),
+                         test::DefaultInput<double>(), baseline_xlogy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+
+/// Test `tf.Xlog1py`.
+
+template <typename T>
+T baseline_xlog1py(T x, T y) {
+  return x == 0 ? x : x * std::log1p(y);
+}
+
+GENERATE_DEFAULT_TESTS_2(Xlog1py, /*test_name=*/Half, Eigen::half, float,
+                         Eigen::half, float, test::DefaultInput<Eigen::half>(),
+                         test::DefaultInput<Eigen::half>(), baseline_xlog1py,
+                         test::OpsTestConfig().RTol(1e-2))
+GENERATE_DEFAULT_TESTS_2(Xlog1py, /*test_name=*/Float, float, float, float,
+                         float, test::DefaultInput<float>(),
+                         test::DefaultInput<float>(), baseline_xlog1py,
+                         test::OpsTestConfig().RTol(1e-2))
+GENERATE_DEFAULT_TESTS_2(Xlog1py, /*test_name=*/Double, double, double, double,
+                         double, test::DefaultInput<double>(),
+                         test::DefaultInput<double>(), baseline_xlog1py,
+                         test::OpsTestConfig().RTol(1e-2))
+
 /// Test `tf.TruncateDiv`.
 
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
@@ -648,6 +734,26 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     TruncateDiv,
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div);
+
+/// Test `tf.Xdivy`.
+
+template <typename T>
+T baseline_xdivy(T x, T y) {
+  return x == 0 ? x : x / y;
+}
+
+GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Half, Eigen::half, float,
+                         Eigen::half, float, test::DefaultInput<Eigen::half>(),
+                         test::DefaultInput<Eigen::half>(), baseline_xdivy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Float, float, float, float, float,
+                         test::DefaultInput<float>(),
+                         test::DefaultInput<float>(), baseline_xdivy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Double, double, double, double,
+                         double, test::DefaultInput<double>(),
+                         test::DefaultInput<double>(), baseline_xdivy,
+                         test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Zeta`.
 

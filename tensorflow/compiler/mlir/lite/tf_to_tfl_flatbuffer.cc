@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -63,11 +64,13 @@ mlir::LogicalResult IsValidGraph(mlir::ModuleOp module) {
                                  : mlir::WalkResult::advance();
   });
   if (result.wasInterrupted()) {
-    module.emitError(
-        "The graph has Control Flow V1 ops. TFLite converter doesn't support "
-        "Control Flow V1 ops. Consider using Control Flow V2 ops instead. See "
-        "https://www.tensorflow.org/api_docs/python/tf/compat/v1/"
-        "enable_control_flow_v2.");
+    mlir::TFL::AttachErrorCode(
+        module.emitError(
+            "The graph has Control Flow V1 ops. TFLite converter doesn't "
+            "support Control Flow V1 ops. Consider using Control Flow V2 ops "
+            "instead. See https://www.tensorflow.org/api_docs/python/tf/compat/"
+            "v1/enable_control_flow_v2."),
+        tflite::metrics::ConverterErrorData::ERROR_UNSUPPORTED_CONTROL_FLOW_V1);
     return mlir::failure();
   }
   return mlir::success();

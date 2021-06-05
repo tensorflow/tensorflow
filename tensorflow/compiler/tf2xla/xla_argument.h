@@ -117,6 +117,11 @@ struct XlaArgument {
 
   // Returns the human-readable string for either TensorShape or xla::Shape.
   string ShapeHumanString() const;
+
+  // Whether to broadcast this parameter to all replicas before use.
+  // When true, xla_compiler should input/output alias this arg to prevent
+  // unnecessary HBM usage.
+  bool requires_broadcast = false;
 };
 
 // Returns true if any of `args` is an uninitialized resource variable.

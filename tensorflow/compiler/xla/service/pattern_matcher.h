@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
+#include <type_traits>
+
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/utility/utility.h"
@@ -733,6 +735,30 @@ class ShapePatternElementTypeImpl {
   PrimitiveType element_type_;
 };
 
+// A ShapePattern implementation that matches only if the shape has a given
+// list of dimensions.
+class ShapePatternDimsImpl {
+ public:
+  explicit ShapePatternDimsImpl(absl::Span<const int64> dims)
+      : dims_(dims.begin(), dims.end()) {}
+
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    if (shape->dimensions() != dims_) {
+      EXPLAIN << "Shape does not have dimensions [" << absl::StrJoin(dims_, ",")
+              << "]";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "with dimensions [" << absl::StrJoin(dims_, ",") << "]";
+  }
+
+ private:
+  absl::InlinedVector<int64, 8> dims_;
+};
+
 // A ShapePattern implementation that matches only if the shape is scalar.
 class ShapePatternIsScalarImpl {
  public:
@@ -985,6 +1011,10 @@ class ShapePattern {
   // Modifies the pattern to match only if the shape has the given element type.
   constexpr auto WithElementType(PrimitiveType element_type) const {
     return AppendImpl(ShapePatternElementTypeImpl(element_type));
+  }
+
+  constexpr auto WithDims(absl::Span<const int64> dims) const {
+    return AppendImpl(ShapePatternDimsImpl(dims));
   }
 
   // Modifies the pattern to match only if the shape is scalar.
@@ -1888,6 +1918,14 @@ class HloInstructionPattern {
         HloInstructionPatternShapeImpl<ShapeType, ShapeImpl>(shape));
   }
 
+  // Because we only specify the shape's element type and dims, this is
+  // effectivley checking shape-compatible-to, not shape-equal-to.  Perhaps this
+  // function should be called WithShapeCompatibleTo, but the short name is
+  // nice, and there's no ambiguity because there's no layout in the args!
+  constexpr auto WithShape(PrimitiveType ty, absl::Span<const int64> dims) {
+    return WithShape(Shape().WithElementType(ty).WithDims(dims));
+  }
+
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
@@ -2186,7 +2224,6 @@ inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg,
 XLA_VARIADIC_OP_PATTERN(AfterAll);
 XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(Conditional);
-XLA_VARIADIC_OP_PATTERN(CustomCall);
 XLA_VARIADIC_OP_PATTERN(DynamicSlice)
 XLA_VARIADIC_OP_PATTERN(Fusion);
 XLA_VARIADIC_OP_PATTERN(Map)
@@ -2194,6 +2231,50 @@ XLA_VARIADIC_OP_PATTERN(Reduce);
 XLA_VARIADIC_OP_PATTERN(ReduceWindow)
 XLA_VARIADIC_OP_PATTERN(Sort);
 XLA_VARIADIC_OP_PATTERN(Tuple);
+
+// CustomCall doesn't use the XLA_VARIADIC_OP_PATTERN macro so that you can
+// optionally pass a string_view for the custom_call_target before the other
+// operands.
+inline auto CustomCall() { return Op().WithOpcode(HloOpcode::kCustomCall); }
+
+template <typename HloInstructionType>
+auto CustomCall(HloInstructionType** matched_inst) {
+  return Op(matched_inst).WithOpcode(HloOpcode::kCustomCall);
+}
+
+template <
+    typename Arg0, typename... Args,
+    typename std::enable_if<
+        !std::is_convertible<Arg0, absl::string_view>::value &&
+        !std::is_convertible<Arg0, HloInstruction**>::value &&
+        !std::is_convertible<Arg0, const HloInstruction**>::value>::type* =
+        nullptr>
+auto CustomCall(Arg0&& arg0, Args&&... args) {
+  return detail::WithOperands(CustomCall().WithNumOperands(sizeof...(Args) + 1),
+                              /*operand_num=*/0, std::forward<Arg0>(arg0),
+                              std::forward<Args>(args)...);
+}
+template <typename... Args>
+auto CustomCall(absl::string_view custom_call_target, Args&&... args) {
+  return CustomCall(std::forward<Args>(args)...)
+      .WithCustomCallTarget(custom_call_target);
+}
+
+template <typename HloInstructionType, typename Arg0, typename... Args,
+          typename std::enable_if<!std::is_convertible<
+              Arg0, absl::string_view>::value>::type* = nullptr>
+auto CustomCall(HloInstructionType** matched_inst, Arg0&& arg0,
+                Args&&... args) {
+  return detail::WithOperands(
+      CustomCall(matched_inst).WithNumOperands(sizeof...(Args) + 1),
+      /*operand_num=*/0, std::forward<Arg0>(arg0), std::forward<Args>(args)...);
+}
+template <typename HloInstructionType, typename... Args>
+auto CustomCall(HloInstructionType** matched_inst,
+                absl::string_view custom_call_target, Args&&... args) {
+  return CustomCall(matched_inst, std::forward<Args>(args)...)
+      .WithCustomCallTarget(custom_call_target);
+}
 
 // Helpers for comparison instructions.
 #define XLA_COMPARE_PATTERN(NAME)                                             \

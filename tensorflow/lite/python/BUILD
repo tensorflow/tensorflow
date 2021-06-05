@@ -364,6 +364,7 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/lite/python/metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
@@ -480,12 +481,17 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
 )
 
-pytype_strict_library(
+# Use py_library since the metrics module is imported in a try-except block,
+# which doesn't work with the pytype_strict_library.
+py_library(
     name = "convert_phase",
     srcs = ["convert_phase.py"],
-    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [
+        ":metrics",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
+    ],
 )
 
 pytype_strict_library(
@@ -495,7 +501,8 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_interface",
-        "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
+        "//tensorflow/lite/python/metrics_wrapper",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python/eager:monitoring",
     ],
 )
@@ -566,6 +573,7 @@ py_test(
     name = "analyzer_test",
     srcs = ["analyzer_test.py"],
     data = [
+        "//tensorflow/lite:testdata/conv_huge_im2col.bin",
         "//tensorflow/lite/python/testdata:interpreter_test_data",
     ],
     python_version = "PY3",

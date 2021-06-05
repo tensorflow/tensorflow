@@ -1281,6 +1281,10 @@ class SyncOnReadVariable(DistributedVariable):
     self._scatter_not_implemented("scatter_update")
 
   def value(self):
+    if ds_context.in_variable_sync_on_read_context():
+      raise NotImplementedError(
+          "call `variable.value()` inside variable_sync_on_read_context is not "
+          "supported")
     if values_util.is_saving_non_distributed():
       return self._primary.value()
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -1292,6 +1296,13 @@ class SyncOnReadVariable(DistributedVariable):
       else:
         # _get_on_device_or_primary() returns a Variable.
         return self._get_on_device_or_primary().value()
+
+  def read_value(self):
+    if ds_context.in_variable_sync_on_read_context():
+      raise NotImplementedError(
+          "call `variable.read_value()` inside variable_sync_on_read_context is"
+          " not supported")
+    return super().read_value()
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
@@ -1329,6 +1340,32 @@ class SyncOnReadVariable(DistributedVariable):
       return _SyncOnReadSaveable(self, name)
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
+
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    """Converts a SyncOnReadVariable to a tensor."""
+    if values_util.is_saving_non_distributed():
+      return ops.convert_to_tensor(
+          self._primary, dtype=dtype, name=name, as_ref=as_ref)
+    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+      replica_context = ds_context.get_replica_context()
+      if (replica_context is not None and
+          ds_context.in_variable_sync_on_read_context()):
+        if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          return ops.convert_to_tensor(
+              self._get_replica(0), dtype=dtype, name=name, as_ref=as_ref)
+        if self._aggregation == vs.VariableAggregation.SUM:
+          values_util.mark_as_unsaveable()
+        # pylint: disable=protected-access
+        reduced = (
+            replica_context.strategy.extended._replica_ctx_all_reduce(
+                reduce_util.ReduceOp.from_variable_aggregation(
+                    self._aggregation),
+                self._get().read_value()))
+        return ops.convert_to_tensor(
+            reduced, dtype=dtype, name=name, as_ref=as_ref)
+
+      return ops.convert_to_tensor(
+          self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 # Register a conversion functions which reads the value of the variable,

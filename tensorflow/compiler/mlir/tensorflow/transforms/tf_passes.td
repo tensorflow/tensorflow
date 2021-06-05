@@ -29,6 +29,19 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   ];
 }
 
+def TensorFlowEnsureStaticShapesPass : FunctionPass<"tf-ensure-static-shapes"> {
+  let summary = "Performs checks that the whole module does not contain dynamic shapes.";
+
+  let description = [{
+    This pass performs check that none of the ops in the MLIR module
+    have dynamic shapes.
+    Note, the pass is created temporary to stage the rollout of the second
+    phase of the MLIR bridge and will be deleted after the rollout stage is completed.
+  }];
+
+  let constructor = "TF::CreateTFEnsureStaticShapesPass()";
+}
+
 def ExecutorGraphPruningPass : FunctionPass<"tf-executor-graph-pruning"> {
   let summary = "Prunes unreachable ops in a tf_executor.graph";
 
@@ -856,75 +869,6 @@ def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-
   }];
 
   let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
-}
-
-def DeviceAttributeToLaunchPass : FunctionPass<"tf-device-attribute-to-launch"> {
-  let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
-
-  let description = [{
-    This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
-    the same device attribute.
-
-    For example, the following:
-
-    ```mlir
-    func @single_op_launch() {
-      %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
-      return %a
-    }
-    ```
-
-    will be transformed into:
-
-    ```mlir
-    func @single_op_launch() {
-      %1 = tf_device.launch() ( {
-        %a = "tf.opA"() : () -> tensor<i1>
-        tf_device.return %a
-      }) {device = "CPU:0"} : () -> tensor<i1>
-      return %1
-    }
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
-}
-
-def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
-  let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
-
-  let description = [{
-    This pass takes ops wrapped in a tf_device.launch op with host device
-    assignment extracts them from launch and adds an `_xla_outside_compilation`
-    attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
-
-    A simple example:
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf_device.launch"() {
-          "tf.B"()
-          tf_device.return
-        } {device = "TPU_REPLICATED_HOST"} : () -> ()
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-
-    Would become the following ops (unimportant attribute, type are omitted):
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf.B"() {_xla_outside_compilation = "cluster1"}
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
 }
 
 def TensorDeviceCopyConversionPass : FunctionPass<"tf-tensor-device-copy"> {

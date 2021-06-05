@@ -3703,24 +3703,6 @@ MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
   if (type_attrs_present) {
     for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
       if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
-        // Currently OneDNN optimization does not support int8 with native
-        // format.
-        if (NativeFormatEnabled()) {
-          static absl::once_flag once;
-          absl::call_once(once, [] {
-#if defined(ENABLE_MKL)
-            VLOG(0) << "MklLayoutRewritePass::RewriteInfo does not support INT8"
-                    << "data type for native format. Please set the environment"
-                    << " variable TF_ENABLE_MKL_NATIVE_FORMAT to false. ";
-#else
-            VLOG(0) << "MklLayoutRewritePass::RewriteInfo does not support INT8"
-                    << " data type for native format. Please switch to Intel "
-                    << "Optimized Tensorflow and set the environment variable "
-                    << "TF_ENABLE_MKL_NATIVE_FORMAT to false.";
-#endif  // defined(ENABLE_MKL)
-          });
-          return nullptr;
-        }
         return &*ri;
       }
     }

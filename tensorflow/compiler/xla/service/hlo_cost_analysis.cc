@@ -771,6 +771,14 @@ Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleAllReduceStart(const HloInstruction* hlo) {
+  return HandleAllReduce(hlo);
+}
+
+Status HloCostAnalysis::HandleAllReduceDone(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
   return Status::OK();
 }

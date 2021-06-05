@@ -666,12 +666,13 @@ bool HloAllGatherInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 }
 
 HloAllReduceInstruction::HloAllReduceInstruction(
-    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids)
-    : HloCollectiveInstruction(HloOpcode::kAllReduce, shape, operands,
-                               replica_groups, constrain_layout, channel_id),
+    : HloCollectiveInstruction(opcode, shape, operands, replica_groups,
+                               constrain_layout, channel_id),
       use_global_device_ids_(use_global_device_ids) {
   AppendComputation(reduce_computation);
 }
@@ -705,6 +706,9 @@ bool HloAllReduceInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
+  if (opcode() != other.opcode()) {
+    return false;
+  }
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
              other, eq_computations) &&
@@ -718,8 +722,8 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, new_operands, to_apply(), replica_groups(), constrain_layout(),
-      channel_id(), use_global_device_ids());
+      opcode(), shape, new_operands, to_apply(), replica_groups(),
+      constrain_layout(), channel_id(), use_global_device_ids());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(

@@ -575,7 +575,7 @@ StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase lhs,
 
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {
     if (std::is_same<ElementType, Eigen::half>::value && a) {
-      constexpr ComparisonType kMaxFp16Value = 65505;
+      constexpr ComparisonType kMaxFp16Value = 65505.;
       if (std::isnan(a)) {
         return a;
       }
@@ -644,12 +644,6 @@ StatusOr<bool> BufferComparator::CompareEqual(se::Stream* stream,
       return CompareEqualParameterized<double, double>(
           stream, lhs, rhs, shape_, config_, "__xla_fp64_comparison");
     case xla::S8:
-      return CompareEqualParameterized<int8, float>(
-          stream, lhs, rhs, shape_, config_, "__xla_int8_comparison");
-    case xla::S32:
-      // Comparing in int8 chunks should work as well.
-      // TODO(cheshire): Write a separate comparator. Do we want a
-      // float-semantics or exact comparison?
       return CompareEqualParameterized<int8, float>(
           stream, lhs, rhs, shape_, config_, "__xla_int8_comparison");
     default:

@@ -983,7 +983,7 @@ cudnnDataType_t ToCudnnDataType(dnn::DataType data_type,
     return CUDNN_DATA_INT8x4;
   }
   if (data_type == dnn::DataType::kInt8 &&
-      filter_layout == dnn::FilterLayout::kOutputInputYX4) {
+      filter_layout == dnn::FilterLayout::kOutputInputYX32) {
     return CUDNN_DATA_INT8x32;
   }
   return ToCudnnDataType(data_type);
@@ -993,6 +993,11 @@ template <typename T>
 cudnnDataType_t GetCudnnDataType(
     dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   return ToCudnnDataType(dnn::ToDataType<T>::value, data_layout);
+}
+
+template <typename T>
+cudnnDataType_t GetCudnnDataType(dnn::FilterLayout filter_layout) {
+  return ToCudnnDataType(dnn::ToDataType<T>::value, filter_layout);
 }
 
 cudnnRNNInputMode_t ToCudnnRnnInputMode(dnn::RnnInputMode input_mode) {
@@ -3871,11 +3876,17 @@ port::Status CudnnSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  cudnnDataType_t cudnn_type = ToCudnnDataType(element_type);
+  cudnnDataType_t cudnn_type =
+      ToCudnnDataType(element_type, input_descriptor.layout());
+
   CudnnTensorDescriptor input_nd(input_descriptor, cudnn_type);
-  CudnnTensorDescriptor output_nd(output_descriptor,
-                                  ToCudnnDataType(output_type));
-  CudnnFilterDescriptor filter_nd(filter_descriptor, cudnn_type);
+  CudnnTensorDescriptor output_nd(
+      output_descriptor,
+      ToCudnnDataType(output_type, output_descriptor.layout()));
+  CudnnFilterDescriptor filter_nd(
+      filter_descriptor,
+      ToCudnnDataType(element_type, filter_descriptor.layout()));
+
   auto accumulator_type = GetConvAccumulatorType(element_type);
   CudnnConvolutionDescriptor conv(convolution_descriptor,
                                   ToCudnnDataType(accumulator_type));
@@ -4142,7 +4153,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
       GetCudnnDataType<OutputType>(conv_input_descriptor.layout()));
   CudnnFilterDescriptor filter(
       filter_descriptor,
-      GetCudnnDataType<ElementType>(conv_input_descriptor.layout()));
+      GetCudnnDataType<ElementType>(filter_descriptor.layout()));
   CudnnTensorDescriptor bias_nd(bias_descriptor, GetCudnnDataType<BiasType>());
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);

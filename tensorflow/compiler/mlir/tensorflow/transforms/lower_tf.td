@@ -427,12 +427,12 @@ class BinaryXopyPat<dag From, dag To> : Pat<
   (TF_SelectV2Op
     (TF_EqualOp
       $x,
-      (TF_ConstOp:$zero
+      (TF_ConstOp
         (GetScalarOfType<0> $x)
       ),
       /*incompatible_shape_error*/ConstBoolAttrTrue
     ),
-    $zero,
+    $x,
     To
   )>;
 

@@ -25,9 +25,6 @@ namespace xla {
 // as wider integral types.
 class OperandUpcaster : public OpExpanderPass {
  public:
-  explicit OperandUpcaster(PatternExtraFilter extra_filter = nullptr)
-      : OpExpanderPass(std::move(extra_filter)) {}
-
   absl::string_view name() const override { return "operand_upcaster"; }
 
  protected:

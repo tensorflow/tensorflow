@@ -5,19 +5,30 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 // CHECK-LABEL: @abs
 func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK:  "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NOT: tf.Abs
   %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
-// CHECK-LABEL: bessel_i0e
-func @bessel_i0e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64>) -> (tensor<3xf16>, tensor<3xf32>, tensor<3xf64>) {
-  // CHECK-NOT: tf.BesselI0e
-  %0 = "tf.BesselI0e"(%arg0) : (tensor<3xf16>) -> (tensor<3xf16>)
-  %1 = "tf.BesselI0e"(%arg1) : (tensor<3xf32>) -> (tensor<3xf32>)
-  %2 = "tf.BesselI0e"(%arg2) : (tensor<3xf64>) -> (tensor<3xf64>)
-  return %0, %1, %2 : tensor<3xf16>, tensor<3xf32>, tensor<3xf64>
+// -----
+
+// CHECK-LABEL: func @testBroadcastGradientArgs
+func @testBroadcastGradientArgs(%s0: tensor<4xi32>, %s1: tensor<4xi32>) -> (tensor<1xi32>, tensor<0xi32>) {
+  // CHECK:     tf.BroadcastGradientArgs
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
 }
+
+// -----
+
+// CHECK-LABEL: @acos
+func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-NOT:  tf.Acos
+  %0 = "tf.Acos"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
 
 // NOFALLBACK-LABEL: @xla_svd
 func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>) {

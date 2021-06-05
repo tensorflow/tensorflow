@@ -744,7 +744,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
   let arguments = (ins
     HLO_TensorOrTuple:$operand,
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle:$channel_handle,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -769,7 +769,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
   let arguments = (ins
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle:$channel_handle,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -909,6 +909,26 @@ def HLO_WhileOp: HLO_Op<"while", [
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
+
+  string summary = "AllGather operator";
+
+  string description = [{
+    Performs concatenation across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allgather
+  }];
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64Attr:$all_gather_dim,
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<ChannelHandle>:$channel_handle
+  );
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_AllReduceOp : HLO_Op<"all_reduce",
     [SameOperandsAndResultType]> {
   let summary = "AllReduce operator";
@@ -921,7 +941,7 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_id
+    OptionalAttr<ChannelHandle>:$channel_handle
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
@@ -1029,7 +1049,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
 }
 
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
-    SameOperandsAndResultShape,
+    SameOperandsAndResultShape, Elementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
         ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   let summary = "Comparison operator";
@@ -1471,12 +1491,12 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     See https://www.tensorflow.org/xla/operation_semantics#customcall.
   }];
   let arguments = (ins
-    Variadic<HLO_Tensor>:$args,
+    Variadic<HLO_TensorOrTuple>:$args,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
     DefaultValuedAttr<StrAttr, "">:$backend_config
   );
-  let results = (outs Variadic<HLO_Tensor>);
+  let results = (outs Variadic<HLO_TensorOrTuple>);
   let hasCustomHLOConverter = 1;
 }
 

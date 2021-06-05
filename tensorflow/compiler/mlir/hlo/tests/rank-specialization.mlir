@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file --mhlo-rank-specialization-cluster | FileCheck %s
-// RUN: mlir-hlo-opt %s --split-input-file --mhlo-rank-specialization-cluster --mhlo-rank-specialization-to-scf | FileCheck %s --check-prefix CHECK-SCF
+// RUN: mlir-hlo-opt %s --split-input-file --mhlo-rank-specialization-cluster --mhlo-rank-specialization-to-scf=max-target-rank=3 | FileCheck %s --check-prefix CHECK-SCF
 
 // CHECK-LABEL: @add_mul
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>, %[[ARG2:.*]]: tensor<*xf32>)
@@ -24,19 +24,9 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 // CHECK-SCF-DAG:  %[[C1:.*]] = constant 1
 // CHECK-SCF-DAG:  %[[C2:.*]] = constant 2
 // CHECK-SCF-DAG:  %[[C3:.*]] = constant 3
-// CHECK-SCF-DAG:  %[[C4:.*]] = constant 4
-// CHECK-SCF-DAG:  %[[C5:.*]] = constant 5
-// CHECK-SCF-DAG:  %[[C6:.*]] = constant 6
-// CHECK-SCF-DAG:  %[[C7:.*]] = constant 7
-// CHECK-SCF-DAG:  %[[C8:.*]] = constant 8
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_1:.*]] = shape.const_shape [1]
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_2:.*]] = shape.const_shape [1, 1]
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_3:.*]] = shape.const_shape [1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_4:.*]] = shape.const_shape [1, 1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_5:.*]] = shape.const_shape [1, 1, 1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_6:.*]] = shape.const_shape [1, 1, 1, 1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_7:.*]] = shape.const_shape [1, 1, 1, 1, 1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_8:.*]] = shape.const_shape [1, 1, 1, 1, 1, 1, 1, 1]
 // CHECK-SCF-DAG:  %[[SHAPE_ARG0:.*]] = shape.shape_of %[[ARG0]]
 // CHECK-SCF-DAG:  %[[SHAPE_ARG1:.*]] = shape.shape_of %[[ARG1]]
 // CHECK-SCF-DAG:  %[[SHAPE_ARG2:.*]] = shape.shape_of %[[ARG2]]
@@ -102,110 +92,20 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 // CHECK-SCF:          else
 //                 Generic case 3:
 // CHECK-SCF:            %[[MAX_RED_RANK_LE_3:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C3]]
-// CHECK-SCF:            %[[UNSHAPED_RES_3:.*]] = scf.if %[[MAX_RED_RANK_LE_3]]
-// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_3]]
-// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_3]]
-// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG2:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_3]]
-// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG2_:.*]] = tensor.cast %[[EXT_SHAPE_ARG2]]
-// CHECK-SCF-DAG:          %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:          %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:          %[[REDUCED_ARG2:.*]] = "mhlo.dynamic_reshape"(%[[ARG2]], %[[EXT_SHAPE_ARG2_]])
-// CHECK-SCF-DAG:          %[[TMP:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?xf32>, tensor<?x?x?xf32>)
-// CHECK-SCF-DAG:          %[[INNER_RES:.*]] = chlo.broadcast_add %[[TMP]], %[[REDUCED_ARG2]] : (tensor<?x?x?xf32>, tensor<?x?x?xf32>)
-// CHECK-SCF-DAG:          %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:              scf.yield %[[INNER_RES_]]
-// CHECK-SCF:            else
-//                 Generic case 4:
-// CHECK-SCF:              %[[MAX_RED_RANK_LE_4:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C4]]
-// CHECK-SCF:              %[[UNSHAPED_RES_4:.*]] = scf.if %[[MAX_RED_RANK_LE_4]]
-// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_4]]
-// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_4]]
-// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG2:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_4]]
-// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG2_:.*]] = tensor.cast %[[EXT_SHAPE_ARG2]]
-// CHECK-SCF-DAG:            %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:            %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:            %[[REDUCED_ARG2:.*]] = "mhlo.dynamic_reshape"(%[[ARG2]], %[[EXT_SHAPE_ARG2_]])
-// CHECK-SCF-DAG:            %[[TMP:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?xf32>, tensor<?x?x?x?xf32>)
-// CHECK-SCF-DAG:            %[[INNER_RES:.*]] = chlo.broadcast_add %[[TMP]], %[[REDUCED_ARG2]] : (tensor<?x?x?x?xf32>, tensor<?x?x?x?xf32>)
-// CHECK-SCF-DAG:            %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                scf.yield %[[INNER_RES_]]
-// CHECK-SCF:              else
-//                 Generic case 5:
-// CHECK-SCF:                %[[MAX_RED_RANK_LE_5:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C5]]
-// CHECK-SCF:                %[[UNSHAPED_RES_5:.*]] = scf.if %[[MAX_RED_RANK_LE_5]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_5]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_5]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG2:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_5]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG2_:.*]] = tensor.cast %[[EXT_SHAPE_ARG2]]
-// CHECK-SCF-DAG:              %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:              %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:              %[[REDUCED_ARG2:.*]] = "mhlo.dynamic_reshape"(%[[ARG2]], %[[EXT_SHAPE_ARG2_]])
-// CHECK-SCF-DAG:              %[[TMP:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:              %[[INNER_RES:.*]] = chlo.broadcast_add %[[TMP]], %[[REDUCED_ARG2]] : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:              %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                  scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                else
-//                 Generic case 6:
-// CHECK-SCF:                  %[[MAX_RED_RANK_LE_6:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C6]]
-// CHECK-SCF:                  %[[UNSHAPED_RES_6:.*]] = scf.if %[[MAX_RED_RANK_LE_6]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_6]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_6]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG2:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_6]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG2_:.*]] = tensor.cast %[[EXT_SHAPE_ARG2]]
-// CHECK-SCF-DAG:                %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:                %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:                %[[REDUCED_ARG2:.*]] = "mhlo.dynamic_reshape"(%[[ARG2]], %[[EXT_SHAPE_ARG2_]])
-// CHECK-SCF-DAG:                %[[TMP:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                %[[INNER_RES:.*]] = chlo.broadcast_add %[[TMP]], %[[REDUCED_ARG2]] : (tensor<?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                    scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                  else
-//                 Generic case 7:
-// CHECK-SCF:                    %[[MAX_RED_RANK_LE_7:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C7]]
-// CHECK-SCF:                    %[[UNSHAPED_RES_7:.*]] = scf.if %[[MAX_RED_RANK_LE_7]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_7]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_7]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG2:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_7]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG2_:.*]] = tensor.cast %[[EXT_SHAPE_ARG2]]
-// CHECK-SCF-DAG:                  %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:                  %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:                  %[[REDUCED_ARG2:.*]] = "mhlo.dynamic_reshape"(%[[ARG2]], %[[EXT_SHAPE_ARG2_]])
-// CHECK-SCF-DAG:                  %[[TMP:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                  %[[INNER_RES:.*]] = chlo.broadcast_add %[[TMP]], %[[REDUCED_ARG2]] : (tensor<?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                  %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                      scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                    else
-//                 Generic case 8:
-// CHECK-SCF:                      %[[MAX_RED_RANK_LE_8:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C8]]
-// CHECK-SCF:                      assert %[[MAX_RED_RANK_LE_8]], "Input for dynamic binary or n-ary op lowering was of a rank greater than 8"
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_8]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_8]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG2:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_8]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG2_:.*]] = tensor.cast %[[EXT_SHAPE_ARG2]]
-// CHECK-SCF-DAG:                  %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:                  %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:                  %[[REDUCED_ARG2:.*]] = "mhlo.dynamic_reshape"(%[[ARG2]], %[[EXT_SHAPE_ARG2_]])
-// CHECK-SCF-DAG:                  %[[TMP:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                  %[[INNER_RES:.*]] = chlo.broadcast_add %[[TMP]], %[[REDUCED_ARG2]] : (tensor<?x?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                  %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                      scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                    scf.yield %[[UNSHAPED_RES_7]]
-// CHECK-SCF:                  scf.yield %[[UNSHAPED_RES_6]]
-// CHECK-SCF:                scf.yield %[[UNSHAPED_RES_5]]
-// CHECK-SCF:              scf.yield %[[UNSHAPED_RES_4]]
-// CHECK-SCF:            scf.yield %[[UNSHAPED_RES_3]]
+// CHECK-SCF:            assert %[[MAX_RED_RANK_LE_3]], "Input for dynamic binary or n-ary op lowering was of a rank greater than 3"
+// CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_3]]
+// CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_3]]
+// CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG2:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_3]]
+// CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
+// CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
+// CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG2_:.*]] = tensor.cast %[[EXT_SHAPE_ARG2]]
+// CHECK-SCF-DAG:        %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
+// CHECK-SCF-DAG:        %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
+// CHECK-SCF-DAG:        %[[REDUCED_ARG2:.*]] = "mhlo.dynamic_reshape"(%[[ARG2]], %[[EXT_SHAPE_ARG2_]])
+// CHECK-SCF-DAG:        %[[TMP:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?xf32>, tensor<?x?x?xf32>)
+// CHECK-SCF-DAG:        %[[INNER_RES:.*]] = chlo.broadcast_add %[[TMP]], %[[REDUCED_ARG2]] : (tensor<?x?x?xf32>, tensor<?x?x?xf32>)
+// CHECK-SCF-DAG:        %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
+// CHECK-SCF:            scf.yield %[[INNER_RES_]]
 // CHECK-SCF:          scf.yield %[[UNSHAPED_RES_2]]
 // CHECK-SCF:        scf.yield %[[UNSHAPED_RES_1]]
 //                 Reshape the result.
@@ -267,7 +167,7 @@ func @sqrt_ranked(%arg: tensor<3x?xf32>) -> tensor<3x?xf32> {
 
 // -----
 
-// Ternary operation.
+// Operation with mixed ranked and unranked operands.
 // CHECK-LABEL: @select_mixed
 // CHECK-SAME: (%[[PRED:.*]]: tensor<*xi1>, %[[ARG1:.*]]: tensor<*xf32>, %[[ARG2:.*]]: tensor<2xf32>)
 func @select_mixed(%pred: tensor<*xi1>, %arg1: tensor<*xf32>,
@@ -283,7 +183,8 @@ func @select_mixed(%pred: tensor<*xi1>, %arg1: tensor<*xf32>,
 }
 
 // CHECK-SCF-LABEL: @select_mixed
-// CHECK-SCF: chlo.broadcast_select %{{.*}}, %{{.*}}, %{{.*}} : (tensor<?xi1>, tensor<?xf32>, tensor<?xf32>)
+// CHECK-SCF:       chlo.broadcast_select %{{.*}}, %{{.*}}, %{{.*}} : (tensor<?xi1>, tensor<?xf32>, tensor<?xf32>)
+// CHECK-SCF:       return
 
 // -----
 
@@ -417,6 +318,7 @@ func @angle(%arg : tensor<*xcomplex<f32>>) -> tensor<*xf32> {
 
 // -----
 
+// Scalar cluster operand.
 // CHECK-LABEL: @xlogy
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
 func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
@@ -441,11 +343,87 @@ func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
   return %5 : tensor<*xf32>
 }
 
-// CHECK-SCF-LABEL: @xlogy
-// CHECK-SCF-DAG:   %[[PRED:.*]] = chlo.broadcast_compare %{{.*}}, %{{.*}} {comparison_direction = "EQ"} : (tensor<?x?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:   %[[TMP0:.*]] = "mhlo.log"(%{{.*}}) : (tensor<?x?x?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:   %[[TMP1:.*]] = chlo.broadcast_multiply %{{.*}}, %[[TMP0]] : (tensor<?x?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?x?xf32>)
-// CHECK-SCF:       chlo.broadcast_select %[[PRED]], %{{.*}}, %[[TMP1]] : (tensor<?x?x?x?x?x?x?x?xi1>, tensor<?x?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?x?xf32>)
+// CHECK-SCF:      @xlogy
+// CHECK-SCF-SAME: (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
+// CHECK-SCF-DAG:  %[[C1:.*]] = constant 1
+// CHECK-SCF-DAG:  %[[ONE_SHAPE_1:.*]] = shape.const_shape [1]
+// CHECK-SCF-DAG:  %[[SHAPE_ARG0:.*]] = shape.shape_of %[[ARG0]]
+// CHECK-SCF-DAG:  %[[SHAPE_ARG1:.*]] = shape.shape_of %[[ARG1]]
+// CHECK-SCF-DAG:  %[[ZERO:.*]] = mhlo.constant dense<0.00{{.*}}>
+//                 Lhs scalar case:
+// CHECK-SCF-DAG:  %[[LHS_N:.*]] = shape.num_elements %[[SHAPE_ARG0]]
+// CHECK-SCF-DAG:  %[[LHS_SCALAR:.*]] = cmpi eq, %[[LHS_N]], %[[C1]]
+// CHECK-SCF:      %[[UNSHAPED_RES:.*]] = scf.if %[[LHS_SCALAR]]
+// CHECK-SCF-DAG:    %[[N:.*]] = shape.num_elements %[[SHAPE_ARG1]]
+// CHECK-SCF-DAG:    %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
+// CHECK-SCF-DAG:    %[[FLAT_NON_SCALAR:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[FLAT_SHAPE]])
+// CHECK-SCF-DAG:    %[[SCALAR:.*]] = "mhlo.reshape"(%[[ARG0]])
+// CHECK-SCF-DAG:    %[[PRED:.*]] = chlo.broadcast_compare %[[SCALAR]], %[[ZERO]] {comparison_direction = "EQ"} : (tensor<f32>, tensor<f32>)
+// CHECK-SCF-DAG:    %[[TMP0:.*]] = "mhlo.log"(%[[FLAT_NON_SCALAR]]) : (tensor<?xf32>)
+// CHECK-SCF-DAG:    %[[TMP1:.*]] = chlo.broadcast_multiply %[[SCALAR]], %[[TMP0]] : (tensor<f32>, tensor<?xf32>)
+// CHECK-SCF-DAG:    %[[INNER_RES:.*]] = chlo.broadcast_select %[[PRED]], %[[ZERO]], %[[TMP1]] : (tensor<i1>, tensor<f32>, tensor<?xf32>)
+// CHECK-SCF-DAG:    %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
+// CHECK-SCF:        scf.yield %[[INNER_RES_]]
+// CHECK-SCF:      else
+//                   Rhs scalar case:
+// CHECK-SCF-DAG:    %[[RHS_N:.*]] = shape.num_elements %[[SHAPE_ARG1]]
+// CHECK-SCF-DAG:    %[[RHS_SCALAR:.*]] = cmpi eq, %[[RHS_N]], %[[C1]]
+// CHECK-SCF:        %{{.*}} = scf.if %[[RHS_SCALAR]]
+// CHECK-SCF-DAG:      %[[N:.*]] = shape.num_elements %[[SHAPE_ARG0]]
+// CHECK-SCF-DAG:      %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
+// CHECK-SCF-DAG:      %[[FLAT_NON_SCALAR:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[FLAT_SHAPE]])
+// CHECK-SCF-DAG:      %[[SCALAR:.*]] = "mhlo.reshape"(%[[ARG1]])
+// CHECK-SCF-DAG:      %[[PRED:.*]] = chlo.broadcast_compare %[[FLAT_NON_SCALAR]], %[[ZERO]] {comparison_direction = "EQ"} : (tensor<?xf32>, tensor<f32>)
+// CHECK-SCF-DAG:      %[[TMP0:.*]] = "mhlo.log"(%[[SCALAR]]) : (tensor<f32>)
+// CHECK-SCF-DAG:      %[[TMP1:.*]] = chlo.broadcast_multiply %[[FLAT_NON_SCALAR]], %[[TMP0]] : (tensor<?xf32>, tensor<f32>)
+// CHECK-SCF-DAG:      %[[INNER_RES:.*]] = chlo.broadcast_select %[[PRED]], %[[ZERO]], %[[TMP1]] : (tensor<?xi1>, tensor<f32>, tensor<?xf32>)
+// CHECK-SCF-DAG:      %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
+// CHECK-SCF:          scf.yield %[[INNER_RES_]]
+// CHECK-SCF:        else
+//                 Equal shapes case:
+// CHECK-SCF-DAG:      %[[SHAPES_EQ:.*]] = shape.shape_eq %[[SHAPE_ARG0]], %[[SHAPE_ARG1]]
+// CHECK-SCF:          %{{.*}} = scf.if %[[SHAPES_EQ]]
+// CHECK-SCF-DAG:        %[[SHAPE:.*]] = shape.any %[[SHAPE_ARG0]], %[[SHAPE_ARG1]]
+// CHECK-SCF-DAG:        %[[N:.*]] = shape.num_elements %[[SHAPE]]
+// CHECK-SCF-DAG:        %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
+// CHECK-SCF-DAG:        %[[FLAT_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[FLAT_SHAPE]])
+// CHECK-SCF-DAG:        %[[FLAT_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[FLAT_SHAPE]])
+// CHECK-SCF-DAG:        %[[PRED:.*]] = chlo.broadcast_compare %[[FLAT_ARG0]], %[[ZERO]] {comparison_direction = "EQ"} : (tensor<?xf32>, tensor<f32>)
+// CHECK-SCF-DAG:        %[[TMP0:.*]] = "mhlo.log"(%[[FLAT_ARG1]]) : (tensor<?xf32>)
+// CHECK-SCF-DAG:        %[[TMP1:.*]] = chlo.broadcast_multiply %[[FLAT_ARG0]], %[[TMP0]] : (tensor<?xf32>, tensor<?xf32>)
+// CHECK-SCF-DAG:        %[[INNER_RES:.*]] = chlo.broadcast_select %[[PRED]], %[[ZERO]], %[[TMP1]] : (tensor<?xi1>, tensor<f32>, tensor<?xf32>)
+// CHECK-SCF-DAG:        %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
+// CHECK-SCF:            scf.yield %[[INNER_RES_]]
+// CHECK-SCF:          else
+//                 Find maximum reduced rank.
+// CHECK-SCF-DAG:        %[[REDUCED_SHAPES:.*]]:2 = chlo.minimum_broadcast_shapes %[[SHAPE_ARG0]], %[[SHAPE_ARG1]]
+// CHECK-SCF-DAG:        %[[REDUCED_RANK0:.*]] = shape.rank %[[REDUCED_SHAPES]]#0
+// CHECK-SCF-DAG:        %[[REDUCED_RANK1:.*]] = shape.rank %[[REDUCED_SHAPES]]#1
+// CHECK-SCF-DAG:        %[[R0_GT_R1:.*]] = cmpi sgt, %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
+// CHECK-SCF-DAG:        %[[MAX_RED_RANK:.*]] = select %[[R0_GT_R1]], %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
+//                 Generic case 1:
+// CHECK-SCF:            %[[MAX_RED_RANK_LE_1:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
+// CHECK-SCF:            %{{.*}} = scf.if %[[MAX_RED_RANK_LE_1]]
+// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_1]]
+// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_1]]
+// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
+// CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
+// CHECK-SCF-DAG:          %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
+// CHECK-SCF-DAG:          %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
+// CHECK-SCF-DAG:          %[[PRED:.*]] = chlo.broadcast_compare %[[REDUCED_ARG0]], %[[ZERO]] {comparison_direction = "EQ"} : (tensor<?xf32>, tensor<f32>)
+// CHECK-SCF-DAG:          %[[TMP0:.*]] = "mhlo.log"(%[[REDUCED_ARG1]]) : (tensor<?xf32>)
+// CHECK-SCF-DAG:          %[[TMP1:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[TMP0]] : (tensor<?xf32>, tensor<?xf32>)
+// CHECK-SCF-DAG:          %[[INNER_RES:.*]] = chlo.broadcast_select %[[PRED]], %[[ZERO]], %[[TMP1]] : (tensor<?xi1>, tensor<f32>, tensor<?xf32>)
+// CHECK-SCF-DAG:          %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
+// CHECK-SCF:              scf.yield %[[INNER_RES_]]
+// CHECK-SCF:            else
+//                         ...
+//                 Reshape the result.
+// CHECK-SCF-DAG:  %[[SHAPE_ARG0:.*]] = shape.shape_of %[[ARG0]]
+// CHECK-SCF-DAG:  %[[SHAPE_ARG1:.*]] = shape.shape_of %[[ARG1]]
+// CHECK-SCF-DAG:  %[[RES_SHAPE:.*]] = shape.broadcast %[[SHAPE_ARG0]], %[[SHAPE_ARG1]]
+// CHECK-SCF-DAG:  %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]])
+// CHECK-SCF:      return %[[RES]]
 
 // -----
 
@@ -466,19 +444,9 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF-DAG:  %[[C1:.*]] = constant 1
 // CHECK-SCF-DAG:  %[[C2:.*]] = constant 2
 // CHECK-SCF-DAG:  %[[C3:.*]] = constant 3
-// CHECK-SCF-DAG:  %[[C4:.*]] = constant 4
-// CHECK-SCF-DAG:  %[[C5:.*]] = constant 5
-// CHECK-SCF-DAG:  %[[C6:.*]] = constant 6
-// CHECK-SCF-DAG:  %[[C7:.*]] = constant 7
-// CHECK-SCF-DAG:  %[[C8:.*]] = constant 8
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_1:.*]] = shape.const_shape [1]
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_2:.*]] = shape.const_shape [1, 1]
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_3:.*]] = shape.const_shape [1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_4:.*]] = shape.const_shape [1, 1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_5:.*]] = shape.const_shape [1, 1, 1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_6:.*]] = shape.const_shape [1, 1, 1, 1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_7:.*]] = shape.const_shape [1, 1, 1, 1, 1, 1, 1]
-// CHECK-SCF-DAG:  %[[ONE_SHAPE_8:.*]] = shape.const_shape [1, 1, 1, 1, 1, 1, 1, 1]
 // CHECK-SCF-DAG:  %[[SHAPE_ARG0:.*]] = shape.shape_of %[[ARG0]]
 // CHECK-SCF-DAG:  %[[SHAPE_ARG1:.*]] = shape.shape_of %[[ARG1]]
 //                 Lhs scalar case:
@@ -551,86 +519,16 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:              else
 //                 Generic case 3:
 // CHECK-SCF:                %[[MAX_RED_RANK_LE_3:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C3]]
-// CHECK-SCF:                %[[UNSHAPED_RES_3:.*]] = scf.if %[[MAX_RED_RANK_LE_3]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_3]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_3]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:              %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:              %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:              %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:              %[[INNER_RES:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?xf32>, tensor<?x?x?xf32>)
-// CHECK-SCF-DAG:              %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                  scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                else
-//                 Generic case 4:
-// CHECK-SCF:                  %[[MAX_RED_RANK_LE_4:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C4]]
-// CHECK-SCF:                  %[[UNSHAPED_RES_4:.*]] = scf.if %[[MAX_RED_RANK_LE_4]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_4]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_4]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:                %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:                %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:                %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:                %[[INNER_RES:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?xf32>, tensor<?x?x?x?xf32>)
-// CHECK-SCF-DAG:                %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                    scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                  else
-//                 Generic case 5:
-// CHECK-SCF:                    %[[MAX_RED_RANK_LE_5:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C5]]
-// CHECK-SCF:                    %[[UNSHAPED_RES_5:.*]] = scf.if %[[MAX_RED_RANK_LE_5]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_5]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_5]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:                  %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:                  %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:                  %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:                  %[[INNER_RES:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                  %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                      scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                    else
-//                 Generic case 6:
-// CHECK-SCF:                      %[[MAX_RED_RANK_LE_6:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C6]]
-// CHECK-SCF:                      %[[UNSHAPED_RES_6:.*]] = scf.if %[[MAX_RED_RANK_LE_6]]
-// CHECK-SCF-DAG:                    %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_6]]
-// CHECK-SCF-DAG:                    %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_6]]
-// CHECK-SCF-DAG:                    %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:                    %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:                    %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:                    %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:                    %[[INNER_RES:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                    %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                        scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                      else
-//                 Generic case 7:
-// CHECK-SCF:                        %[[MAX_RED_RANK_LE_7:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C7]]
-// CHECK-SCF:                        %[[UNSHAPED_RES_7:.*]] = scf.if %[[MAX_RED_RANK_LE_7]]
-// CHECK-SCF-DAG:                      %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_7]]
-// CHECK-SCF-DAG:                      %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_7]]
-// CHECK-SCF-DAG:                      %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:                      %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:                      %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:                      %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:                      %[[INNER_RES:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                      %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                          scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                        else
-//                 Generic case 8:
-// CHECK-SCF:                          %[[MAX_RED_RANK_LE_8:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C8]]
-// CHECK-SCF:                          assert %[[MAX_RED_RANK_LE_8]], "Input for dynamic binary or n-ary op lowering was of a rank greater than 8"
-// CHECK-SCF-DAG:                      %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_8]]
-// CHECK-SCF-DAG:                      %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_8]]
-// CHECK-SCF-DAG:                      %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
-// CHECK-SCF-DAG:                      %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
-// CHECK-SCF-DAG:                      %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
-// CHECK-SCF-DAG:                      %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:                      %[[INNER_RES:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?x?x?x?x?x?xf32>, tensor<?x?x?x?x?x?x?x?xf32>)
-// CHECK-SCF-DAG:                      %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
-// CHECK-SCF:                          scf.yield %[[INNER_RES_]]
-// CHECK-SCF:                        scf.yield %[[UNSHAPED_RES_7]]
-// CHECK-SCF:                      scf.yield %[[UNSHAPED_RES_6]]
-// CHECK-SCF:                    scf.yield %[[UNSHAPED_RES_5]]
-// CHECK-SCF:                  scf.yield %[[UNSHAPED_RES_4]]
-// CHECK-SCF:                scf.yield %[[UNSHAPED_RES_3]]
+// CHECK-SCF:                assert %[[MAX_RED_RANK_LE_3]], "Input for dynamic binary or n-ary op lowering was of a rank greater than 3"
+// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_3]]
+// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_3]]
+// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG0_:.*]] = tensor.cast %[[EXT_SHAPE_ARG0]]
+// CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
+// CHECK-SCF-DAG:            %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
+// CHECK-SCF-DAG:            %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
+// CHECK-SCF-DAG:            %[[INNER_RES:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[REDUCED_ARG1]] : (tensor<?x?x?xf32>, tensor<?x?x?xf32>)
+// CHECK-SCF-DAG:            %[[INNER_RES_:.*]] = tensor.cast %[[INNER_RES]]
+// CHECK-SCF:                scf.yield %[[INNER_RES_]]
 // CHECK-SCF:              scf.yield %[[UNSHAPED_RES_2]]
 // CHECK-SCF:            scf.yield %[[UNSHAPED_RES_1]]
 // CHECK-SCF:          scf.yield %[[UNSHAPED_RES_EQ_SHAPES]]
