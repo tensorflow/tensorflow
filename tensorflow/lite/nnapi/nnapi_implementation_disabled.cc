@@ -18,3 +18,10 @@ const NnApi* NnApiImplementation() {
   static const NnApi nnapi = {};
   return &nnapi;
 }
+
+std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver) {
+  auto nnapi = std::make_unique<NnApi>();
+  nnapi->nnapi_exists = false;
+  return nnapi;
+}
