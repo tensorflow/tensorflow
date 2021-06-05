@@ -5100,6 +5100,8 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
                                 PatternRewriter& rewriter) const override {
     auto value_type = op.value().getType().dyn_cast<RankedTensorType>();
     if (!value_type) return failure();
+    // TODO: Remove this constraint once fold and canonicalization implemented.
+    if (value_type.hasStaticShape()) return failure();
 
     int64_t value_rank = value_type.getRank();
     int64_t axis = op.axis();
