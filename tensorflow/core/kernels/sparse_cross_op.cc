@@ -310,9 +310,8 @@ class SparseCrossOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list("dense_inputs", &dense_list_in));
     DataType internal_type = internal_type_;
-    OP_REQUIRES_OK(
-        context, ValidateInput(context, indices_list_in, values_list_in,
-                               shapes_list_in, dense_list_in, internal_type));
+    ValidateInput(context, indices_list_in, values_list_in,
+                  shapes_list_in, dense_list_in, internal_type));
     OP_REQUIRES_OK(context, context->status());
 
     std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns =
@@ -365,9 +364,11 @@ class SparseCrossOp : public OpKernel {
     // Validates indices_list_in OpInputList.
     for (int i = 0; i < size; i++) {
       if (check_type && indices_list_in[i].dtype() != DT_INT64) {
-      return errors::InvalidArgument("Input indices should be of type ",
-                                     DT_INT64, " but received ",
-                                     indices_list_in[i].dtype());
+          OP_REQUIRES(context, false,
+                      errors::InvalidArgument(
+                          "Input indices should be of type ",
+                          DT_INT64, " but received ",
+                          indices_list_in[i].dtype()));
       }
       OP_REQUIRES(
           context, TensorShapeUtils::IsMatrix(indices_list_in[i].shape()),
@@ -391,9 +392,11 @@ class SparseCrossOp : public OpKernel {
       // int64.
       if (check_type && internal_type == DT_STRING &&
           values_list_in[i].dtype() == DT_INT64) {
-        return errors::InvalidArgument("Input values should be of internal type ",
-                                       internal_type, " but received ",
-                                       values_list_in[i].dtype());
+          OP_REQUIRES(context, false,
+                      errors::InvalidArgument(
+                          "Input values should be of internal type ",
+                          internal_type, " but received ",
+                          values_list_in[i].dtype()));
       }
       OP_REQUIRES(
           context, TensorShapeUtils::IsVector(values_list_in[i].shape()),
@@ -418,9 +421,11 @@ class SparseCrossOp : public OpKernel {
     const auto batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
     for (int i = 0; i < size; i++) {
       if (check_type && shapes_list_in[i].dtype() != DT_INT64) {
-        return errors::InvalidArgument("Input shape should be of type ", DT_INT64,
-                                       " but received ",
-                                       shapes_list_in[i].dtype());
+          OP_REQUIRES(context, false,
+                      errors::InvalidArgument(
+                          "Input shape should be of type ",
+                          DT_INT64, " but received ",
+                          shapes_list_in[i].dtype()));
       }
       OP_REQUIRES(
           context, TensorShapeUtils::IsVector(shapes_list_in[i].shape()),
@@ -445,9 +450,11 @@ class SparseCrossOp : public OpKernel {
       // int64.
       if (check_type && internal_type == DT_STRING &&
           dense_list_in[i].dtype() == DT_INT64) {
-        return errors::InvalidArgument("Dense inputs should be of internal type ",
-                                       internal_type, " but received ",
-                                       dense_list_in[i].dtype());
+          OP_REQUIRES(context, false,
+                      errors::InvalidArgument(
+                          "Dense inputs should be of internal type ",
+                          internal_type, " but received ",
+                          dense_list_in[i].dtype()));
       }
       OP_REQUIRES(
           context, TensorShapeUtils::IsMatrix(dense_list_in[i].shape()),
@@ -459,8 +466,6 @@ class SparseCrossOp : public OpKernel {
                                           " got ", dense_list_in[i].dim_size(0),
                                           " at dense tensor ", i));
     }
-    
-    return Status::OK();
   }
 
   // Calculate the batch size from either the shapes input or the dense input.
