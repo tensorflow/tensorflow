@@ -19,6 +19,7 @@
 # Options:
 #           run sanity checks: python 2&3 pylint checks and bazel nobuild
 #  --pep8   run pep8 test only
+#  --pylint run pylint check only
 #  --incremental  Performs checks incrementally, by using the files changed in
 #                 the latest commit
 
@@ -111,10 +112,10 @@ do_pylint() {
     echo "Invalid syntax for invoking do_pylint"
     echo "Usage: do_pylint [--incremental]"
     return 1
+  else
+    # Get all Python files, regardless of mode.
+    PYTHON_SRC_FILES=$(get_py_files_to_check)
   fi
-
-  # Get all Python files, regardless of mode.
-  PYTHON_SRC_FILES=$(get_py_files_to_check)
 
   # Something happened. TF no longer has Python code if this branch is taken
   if [[ -z ${PYTHON_SRC_FILES} ]]; then
@@ -127,7 +128,7 @@ do_pylint() {
   sudo apt-get install -y python3.8
   curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
   python3.8 get-pip.py
-  python3.8 -m pip install pylint==2.4.4
+  python3.8 -m pip install pylint==2.7.4
 
   # Now that we know we have to do work, check if `pylint` is installed
   PYLINT_BIN="python3.8 -m pylint"
@@ -135,6 +136,7 @@ do_pylint() {
   echo ""
   echo "check whether pylint is available or not."
   echo ""
+
   ${PYLINT_BIN} --version
   if [[ $? -eq 0 ]]
   then
@@ -149,7 +151,7 @@ do_pylint() {
   fi
 
   # Configure pylint using the following file
-  PYLINTRC_FILE="${SCRIPT_DIR}/pylintrc"
+  PYLINTRC_FILE="${SCRIPT_DIR}/../../pylintrc"
 
   if [[ ! -f "${PYLINTRC_FILE}" ]]; then
     die "ERROR: Cannot find pylint rc file at ${PYLINTRC_FILE}"
@@ -165,14 +167,8 @@ do_pylint() {
 
   PYLINT_START_TIME=$(date +'%s')
   OUTPUT_FILE="$(mktemp)_pylint_output.log"
-  ERRORS_FILE="$(mktemp)_pylint_errors.log"
-  PERMIT_FILE="$(mktemp)_pylint_permit.log"
-  FORBID_FILE="$(mktemp)_pylint_forbid.log"
 
   rm -rf ${OUTPUT_FILE}
-  rm -rf ${ERRORS_FILE}
-  rm -rf ${PERMIT_FILE}
-  rm -rf ${FORBID_FILE}
 
   # When running, filter to only contain the error code lines. Removes module
   # header, removes lines of context that show up from some lines.
@@ -185,57 +181,18 @@ do_pylint() {
   echo "pylint took $((PYLINT_END_TIME - PYLINT_START_TIME)) s"
   echo ""
 
-  # Report only what we care about
-  # Ref https://pylint.readthedocs.io/en/latest/technical_reference/features.html
-  # E: all errors
-  # W0311 bad-indentation
-  # W0312 mixed-indentation
-  # C0330 bad-continuation
-  # C0301 line-too-long
-  # C0326 bad-whitespace
-  # W0611 unused-import
-  # W0622 redefined-builtin
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
-
-  # Split the pylint reported errors into permitted ones and those we want to
-  # block submit on until fixed.
-  # We use `${ALLOW_LIST_FILE}` to record the errors we temporarily accept. Goal
-  # is to make that file only contain errors caused by difference between
-  # internal and external versions.
-  ALLOW_LIST_FILE="${SCRIPT_DIR}/../../pylint_allowlist"
-
-  if [[ ! -f "${ALLOW_LIST_FILE}" ]]; then
-    die "ERROR: Cannot find pylint allowlist file at ${ALLOW_LIST_FILE}"
-  fi
-
-  # We can split with just 2 grep invocations
-  grep    -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} > ${PERMIT_FILE}
-  grep -v -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} | sort -u -t : -k1,1 -k2n > ${FORBID_FILE}
-
   # Determine counts of errors
-  N_PERMIT_ERRORS=$(wc -l ${PERMIT_FILE} | cut -d' ' -f1)
-  N_FORBID_ERRORS=$(wc -l ${FORBID_FILE} | cut -d' ' -f1)
-
-  # First print all allowed errors
-  echo ""
-  if [[ ${N_PERMIT_ERRORS} != 0 ]]; then
-    echo "Found ${N_PERMIT_ERRORS} allowlisted pylint errors:"
-    cat ${PERMIT_FILE}
-  fi
-
-  # Now, print the errors we should fix
-  echo ""
-  if [[ ${N_FORBID_ERRORS} != 0 ]]; then
-    echo "Found ${N_FORBID_ERRORS} non-allowlisted pylint errors:"
-    cat ${FORBID_FILE}
-  fi
+  N_ERRORS=$(wc -l ${OUTPUT_FILE} | cut -d' ' -f1)
 
   echo ""
-  if [[ ${N_FORBID_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_FORBID_ERRORS} non-allowlisted errors and ${N_PERMIT_ERRORS} allowlisted errors"
+  if [[ ${N_ERRORS} != 0 ]]; then
+    echo "FAIL: Found ${N_ERRORS} errors"
+    echo "Please correct these. If they must be ignored, use '# pylint: disable=<error name>' comments."
+    cat ${OUTPUT_FILE}
     return 1
   else
-    echo "PASS: Found only ${N_PERMIT_ERRORS} allowlisted errors"
+    echo "PASS: No error found"
+    return 0
   fi
 }
 
@@ -474,6 +431,9 @@ for arg in "$@"; do
     SANITY_STEPS_DESC=("pep8 test")
   elif [[ "${arg}" == "--incremental" ]]; then
     INCREMENTAL_FLAG="--incremental"
+  elif [[ "${arg}" == "--pylint" ]]; then
+    SANITY_STEPS=("do_pylint")
+    SANITY_STEPS_DESC=("pylint test")
   else
     BAZEL_FLAGS="${BAZEL_FLAGS} ${arg}"
   fi
