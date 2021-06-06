@@ -517,8 +517,8 @@ class FileSystem {
   virtual std::string DecodeTransaction(const TransactionToken* token);
 
   /// \brief Set File System Configuration
-  virtual tensorflow::Status SetConfiguration(const std::string& name,
-                                              const std::string& value) {
+  virtual tensorflow::Status SetConfiguration(
+      const std::string& name, const std::vector<string>& values) {
     return errors::Unimplemented("SetConfiguration");
   }
 

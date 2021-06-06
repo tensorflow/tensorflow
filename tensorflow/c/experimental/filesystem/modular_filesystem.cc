@@ -391,10 +391,14 @@ void ModularFileSystem::FlushCaches(TransactionToken* token) {
 }
 
 Status ModularFileSystem::SetConfiguration(const std::string& name,
-                                           const std::string& value) {
+                                           const std::vector<string>& values) {
   if (ops_->set_filesystem_configuration == nullptr) {
     return errors::Unimplemented(
         "Filesystem does not support SetConfiguration()");
+  }
+  if (values.size() == 0) {
+    return errors::InvalidArgument(
+        "SetConfiguration() needs number of values > 0");
   }
 
   TF_Filesystem_Option option;
@@ -402,12 +406,14 @@ Status ModularFileSystem::SetConfiguration(const std::string& name,
   option.name = const_cast<char*>(name.c_str());
   option.per_file = 0;
   option.type_tag = TF_FILESYSTEM_OPTION_TYPE_BUFFER;
-  option.num_values = 1;
-  TF_Filesystem_Option_Value option_value[1];
-  memset(&option_value, 0, sizeof(option_value));
-  option_value[0].buffer_val.buf = const_cast<char*>(value.c_str());
-  option_value[0].buffer_val.buf_length = value.size();
-  option.value = &option_value[0];
+  option.num_values = values.size();
+  std::vector<TF_Filesystem_Option_Value> option_values(values.size());
+  for (size_t i = 0; i < values.size(); i++) {
+    memset(&option_values[i], 0, sizeof(TF_Filesystem_Option_Value));
+    option_values[i].buffer_val.buf = const_cast<char*>(values[i].c_str());
+    option_values[i].buffer_val.buf_length = values[i].size();
+  }
+  option.value = &option_values[0];
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   ops_->set_filesystem_configuration(
       filesystem_.get(), &option, 1, plugin_status.get());
