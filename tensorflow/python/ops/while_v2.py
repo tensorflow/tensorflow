@@ -460,10 +460,7 @@ def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
   body_stateful_ops = [
       op for op in body_graph.get_operations() if op._is_stateful
   ]
-  if (cond_stateful_ops or body_stateful_ops):
-    op_fn = gen_functional_ops._while
-  else:
-    op_fn = gen_functional_ops.stateless_while
+  op_fn = gen_functional_ops._while if (cond_stateful_ops or body_stateful_ops) else gen_functional_ops.stateless_while
 
   def _make_op(inputs):
     while_op, tensors = util.get_op_and_outputs(op_fn(
