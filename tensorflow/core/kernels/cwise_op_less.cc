@@ -20,6 +20,8 @@ REGISTER5(BinaryOp, CPU, "Less", functor::less, float, Eigen::half, double,
           bfloat16, int32);
 REGISTER7(BinaryOp, CPU, "Less", functor::less, uint8, uint16, uint32, uint64,
           int8, int16, int64);
+REGISTER2(BinaryOp, CPU, "_LessWithCast", functor::less_with_cast, float,
+          bfloat16);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
