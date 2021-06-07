@@ -311,7 +311,7 @@ class SparseCrossOp : public OpKernel {
                    context->input_list("dense_inputs", &dense_list_in));
     DataType internal_type = internal_type_;
     ValidateInput(context, indices_list_in, values_list_in,
-                  shapes_list_in, dense_list_in, internal_type));
+                  shapes_list_in, dense_list_in, internal_type);
     OP_REQUIRES_OK(context, context->status());
 
     std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns =
