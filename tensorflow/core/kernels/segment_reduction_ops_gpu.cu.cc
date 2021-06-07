@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 
@@ -127,18 +128,6 @@ __global__ void UnsortedSegmentCustomKernel(
   }
 }
 
-// TODO(duncanriach): move this into a utility and share it
-bool RequireDeterminism() {
-  static bool require_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return require_determinism;
-}
-
 bool DisableSegmentReductionOpDeterminismExceptions() {
   static bool cached_disable = [] {
     bool disable = false;
@@ -215,7 +204,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     }
 
     bool determinism_requirement_met =
-        ReductionF::is_associative || !RequireDeterminism() ||
+        ReductionF::is_associative || !OpDeterminismRequired() ||
         DisableSegmentReductionOpDeterminismExceptions();
     OP_REQUIRES(
         ctx, determinism_requirement_met,

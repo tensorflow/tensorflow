@@ -36,10 +36,10 @@ from tensorflow.python.platform import test
 
 
 class XentOpDeterminismExceptionsTest(test.TestCase):
-  """Test d9m-unimplemented exceptions from SoftmaxCrossEntropyWithLogits.
+  """Test d9m-unimplemented exceptions from SoftmaxXentWithLogitsOp.
 
   Test that tf.errors.UnimplementedError is thrown, as appropriate, by the GPU
-  code-paths for SoftmaxCrossEntropyWithLogits when deterministic ops are
+  code-paths through SoftmaxXentWithLogitsOp when deterministic ops are
   enabled.
 
   This test assumes that xent_op_test.py runs equivalent test cases when
