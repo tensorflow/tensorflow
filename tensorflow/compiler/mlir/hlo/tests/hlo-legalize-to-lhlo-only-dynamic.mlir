@@ -81,3 +81,72 @@ func @dynamic_pad(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>, %arg2: tensor<2xin
   %0 = "mhlo.dynamic_pad"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<?x?xf32>, tensor<f32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x?xf32>
   return %0: tensor<?x?xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @real_dynamic_slice
+// CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>,
+// CHECK-SAME:  %[[START:.*]]: memref<2xi32>, %[[LIMIT:.*]]: memref<2xi32>, %[[STRIDE:.*]]: memref<2xi32>) -> memref<?x?xf32>
+func @real_dynamic_slice(%arg0: tensor<?x?xf32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>, %arg3: tensor<2xi32>) -> tensor<?x?xf32> {
+  // CHECK-NOT: tensor_load
+  // CHECK: %[[T0:.*]] = memref.load %[[START]][%c0] : memref<2xi32>
+  // CHECK: %[[T1:.*]] = memref.load %[[LIMIT]][%c0] : memref<2xi32>
+  // CHECK: %[[T2:.*]] = memref.load %[[STRIDE]][%c0] : memref<2xi32>
+  // CHECK: %[[T3:.*]] = subi %[[T1]], %[[T0]] : i32
+  // CHECK: %[[T4:.*]] = addi %[[T2]], %[[T3]] : i32
+  // CHECK: %[[T5:.*]] = subi %[[T4]], %c1_i32 : i32
+  // CHECK: %[[T6:.*]] = divi_signed %[[T5]], %[[T2]] : i32
+  // CHECK: %[[T7:.*]] = memref.load %[[START]][%c1] : memref<2xi32>
+  // CHECK: %[[T8:.*]] = memref.load %[[LIMIT]][%c1] : memref<2xi32>
+  // CHECK: %[[T9:.*]] = memref.load %[[STRIDE]][%c1] : memref<2xi32>
+  // CHECK: %[[T10:.*]] = subi %[[T8]], %[[T7]] : i32
+  // CHECK: %[[T11:.*]] = addi %[[T9]], %[[T10]] : i32
+  // CHECK: %[[T12:.*]] = subi %[[T11]], %c1_i32 : i32
+  // CHECK: %[[T13:.*]] = divi_signed %[[T12]], %[[T9]] : i32
+  // CHECK: %[[T14:.*]] = index_cast %[[T6]] : i32 to index
+  // CHECK: %[[T15:.*]] = index_cast %[[T13]] : i32 to index
+  // CHECK: %[[T16:.*]] = memref.alloc(%[[T14]], %[[T15]]) : memref<?x?xf32>
+  // CHECK: "lmhlo.real_dynamic_slice"(%[[ARG]], %[[START]], %[[LIMIT]], %[[STRIDE]], %[[T16]])
+  %0 = "mhlo.real_dynamic_slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<?x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %0: tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @row_reduce
+// CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>, %[[VAL:.*]]: memref<f32>) -> memref<?xf32>
+func @row_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  // CHECK-NOT: tensor_load
+  // CHECK: %[[DIM0:.*]] = memref.dim %[[ARG]], %c0 : memref<?x?xf32>
+  // CHECK: %[[OUT:.*]] = memref.alloc(%[[DIM0]]) : memref<?xf32>
+  // CHECK: lmhlo.reduce
+  // CHECK-SAME: %[[ARG]], %[[VAL]], %[[OUT]]
+  // CHECK: return %[[OUT]] : memref<?xf32>
+  %0 = "mhlo.reduce"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>}
+      : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
+  return %0: tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @column_reduce
+// CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>, %[[VAL:.*]]: memref<f32>) -> memref<?xf32>
+func @column_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  // CHECK-NOT: tensor_load
+  // CHECK: %[[DIM1:.*]] = memref.dim %[[ARG]], %c1 : memref<?x?xf32>
+  // CHECK: %[[OUT:.*]] = memref.alloc(%[[DIM1]]) : memref<?xf32>
+  // CHECK: lmhlo.reduce
+  // CHECK-SAME: %[[ARG]], %[[VAL]], %[[OUT]]
+  // CHECK: return %[[OUT]] : memref<?xf32>
+  %0 = "mhlo.reduce"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>}
+      : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
+  return %0: tensor<?xf32>
+}
