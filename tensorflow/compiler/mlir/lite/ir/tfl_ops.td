@@ -1487,8 +1487,7 @@ def TFL_DivOp : TFL_Op<"div", [
 def TFL_EluOp: TFL_Op<"elu", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType,
-    NoQuantizableResult]> {
+    SameOperandsAndResultType]> {
   let summary = "Exponential Linear Unit operator";
   let description = [{
     Computes the exponential linear
@@ -1496,9 +1495,9 @@ def TFL_EluOp: TFL_Op<"elu", [
     element-wise.
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, I8]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, I8]>:$y);
 
   let hasOptions = 0;
 }
