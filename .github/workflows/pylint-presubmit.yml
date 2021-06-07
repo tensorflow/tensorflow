@@ -27,7 +27,6 @@ jobs:
         pip install keras_preprocessing --no-deps
     - name: Run pylint
       run: |
-        FILES=$(echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep --quiet ".py$")
-        echo "the files are" $FILES
-        echo "$FILES" | wc -l
+        FILES=$(echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" )
+        FILES=$(echo "$FILES" | grep --quiet ".py$" || { echo "No changed Python files" && exit 0 })
         pylint --rcfile=tensorflow/tools/ci_build/pylintrc $FILES
