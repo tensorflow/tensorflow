@@ -177,6 +177,39 @@ cd benchmarks
 python3 ./scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py --model=resnet50 --num_gpus=1
 ```
 
+### Perfzero Resnet50 v1.5 benchmark
+
+Details on the Perfzero Resnet50 benchmark can be found at this [link](https://github.com/ROCmSoftwarePlatform/models/tree/develop-upstream/official/r1/resnet).
+
+Here are the basic instructions:
+```
+
+# Grab Perfzero
+git clone https://github.com/tensorflow/benchmarks
+
+# Grab the model
+git clone https://github.com/ROCmSoftwarePlatform/models rocm-models
+
+# Install prerequisites and set exports
+cd rocm-models
+pip3 install --upgrade pip setuptools
+export PYTHONPATH="$PYTHONPATH:~/rocm-models"
+export HIP_HIDDEN_FREE_MEM=500
+pip3 install --user -r official/requirements.txt
+pip3 install py_cpuinfo==5
+
+# Run the training benchmark
+# This benchmark configuration uses the following parameters:
+# - 1 GPU
+# - model = resnet50 v1.5
+# - precision = fp32
+# - batch size = 64 
+python3 /root/benchmarks/perfzero/lib/benchmark.py --gcloud_key_file_url="" --python_path=models --benchmark_methods=official.r1.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkSynth.benchmark_graph_1_gpu
+
+# The following command is similar to the previous but uses 8 GPUs
+python3 /root/benchmarks/perfzero/lib/benchmark.py --gcloud_key_file_url="" --python_path=models --benchmark_methods=official.r1.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkSynth.benchmark_graph_8_gpu
+```
+
 ## FAQs & tips
 
 ### Temp workaround:  Solutions when running out of memory
