@@ -159,12 +159,12 @@ StatusOr<std::unique_ptr<NcclClique>> CreateNcclClique(
     const NcclUniqueIdCallback* callback) {
   int num_participants = key.devices().size();
   ncclUniqueId unique_id;
-  if (callback) {  // Multi-host collective.
+  bool only_local_participants = num_participants == local_participants.size();
+  if (callback && !only_local_participants) {  // Multi-host collective.
     TF_ASSIGN_OR_RETURN(std::string id_string, (*callback)(key));
     TF_RETURN_IF_ERROR(ToNcclUniqueId(id_string, &unique_id));
   } else {
-    TF_RET_CHECK((num_participants == local_participants.size()) ||
-                 IsGlobalNcclConfig())
+    TF_RET_CHECK(only_local_participants || IsGlobalNcclConfig())
         << "If non-local devices are taking part of a collective API on GPU, "
            "the nccl_unique_id_callback must be provided by the client.";
     XLA_CUDA_RETURN_IF_ERROR(ncclGetUniqueId(&unique_id));
