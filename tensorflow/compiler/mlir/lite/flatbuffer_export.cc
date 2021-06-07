@@ -1600,7 +1600,7 @@ Translator::CreateMetadataVector() {
   // versions. Here we put a 16-byte dummy string as a placeholder. We choose
   // 16-byte because it's the alignment of buffers in flatbuffer, so it won't
   // cause any waste of space if the actual string is shorter than 16 bytes.
-  constexpr uint64_t kByteStringSize = 16;
+  constexpr std::size_t kByteStringSize = 16;
   metadata.push_back(
       BuildMetadata("min_runtime_version", std::string(kByteStringSize, '\0')));
   for (const auto& kv : metadata_) {
