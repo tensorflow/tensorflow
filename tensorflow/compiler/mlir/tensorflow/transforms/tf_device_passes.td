@@ -190,3 +190,45 @@ def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-com
 
   let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
 }
+
+def DecomposeResourceOpsPass : FunctionPass<"tf-device-decompose-resource-ops"> {
+  let summary = "Decompose composite resource variable operations into primitive Read/AssignVariableOp and raw computation.";
+
+  let description = [{
+    A pass that decomposes composite resource operations into primitive ones like
+    ReadVariableOp, AssignVariableOp and other computations to facilitate
+    transformations like resource op lifting.
+
+    For example:
+
+    ```mlir
+    tf.AssignAddVariableOp(%res, %0)
+    ```
+
+    Becomes
+
+    ```mlir
+    %res_val = tf.ReadVariableOp(%res)
+    %1 = tf.AddV2(%res_val, %0)
+    tf.AssignVariableOp(%res, %1)
+    ```
+
+    NOTE: This pass does not support `use_locking=true` for a lot of resource
+    operations. So decomposition may not be correct outside of backends like XLA,
+    which automatically locks all resource variables.
+  }];
+
+  let constructor = "TFDevice::CreateDecomposeResourceOpsPass()";
+}
+
+def DecomposeResourceOpsInClusterPass : Pass<"tf-device-decompose-resource-ops-in-cluster", "ModuleOp"> {
+  let summary = "Decompose composite resource variable operations into primitive Read/AssignVariableOp and raw computation within device cluster and reachable functions.";
+
+  let description = [{
+    This is a variation of DecomposeResourceOps pass. It operates on a module and
+    only decomposes ops within a device cluster (tf_device.cluster op) and any
+    functions reachable from the cluster.
+  }];
+
+  let constructor = "TFDevice::CreateDecomposeResourceOpsInClusterPass()";
+}

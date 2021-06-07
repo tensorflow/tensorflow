@@ -156,8 +156,8 @@ class LhloFuseLinalgPass
         tile_sizes = SmallVector<int64_t, 2>(generic_op.getNumLoops(), 1);
       }
       auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (const Value result : op.getOutputBuffers()) {
-        if (!result_buffers.count(result)) continue;
+      for (OpOperand* op_operand : op.getOutputBufferOperands()) {
+        if (!result_buffers.count(op_operand->get())) continue;
         if (tileGenericOp(op, tile_sizes, &b)) {
           generic_op.erase();
           return;
@@ -172,10 +172,10 @@ class LhloFuseLinalgPass
     SmallVector<LinalgOp, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
     for (LinalgOp op : llvm::reverse(linalg_ops)) {
-      for (OpOperand& inputOperand : op.getInputOpOperands()) {
+      for (OpOperand* inputOperand : op.getInputOperands()) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
-        if (auto info = fuseProducerOfBuffer(b, inputOperand, graph)) {
+        if (auto info = fuseProducerOfBuffer(b, *inputOperand, graph)) {
           auto originalOp = info->originalProducer.getOperation();
           erase_set.insert(originalOp);
           auto originalOpInLinalgOpsVector = std::find_if(

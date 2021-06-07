@@ -1021,12 +1021,6 @@ void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
       context);
 }
 
-LogicalResult DynamicBroadcastInDimOp::inferReturnTypeComponents(
-    MLIRContext*, llvm::Optional<mlir::Location>, ValueRange, DictionaryAttr,
-    RegionRange, llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
-  return failure();
-}
-
 LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
     OpBuilder&, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
@@ -1408,6 +1402,14 @@ static LogicalResult Verify(DynamicReshapeOp op) {
     return op.emitError() << "output should have a rank equal to the number of "
                              "elements in output_shape";
   }
+  return success();
+}
+
+LogicalResult DynamicReshapeOp::reifyReturnTypeShapes(
+    OpBuilder&, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  DynamicReshapeOp::Adaptor adaptor(operands);
+  reifiedReturnShapes.push_back(adaptor.output_shape());
   return success();
 }
 

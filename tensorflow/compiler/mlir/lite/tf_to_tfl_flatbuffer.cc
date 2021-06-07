@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -184,6 +185,11 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     options.emit_custom_ops = emit_custom_ops;
     options.saved_model_tags = saved_model_tags;
     options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+    if (quant_specs.support_mask !=
+        tflite::optimize::ReducedPrecisionSupport::None) {
+      options.metadata.insert(
+          MetadataForReducedPrecisionSupport(quant_specs.support_mask));
+    }
     if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
       return statusHandler.ConsumeStatus();
     }
@@ -198,6 +204,11 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     options.emit_custom_ops = emit_custom_ops;
     options.saved_model_tags = saved_model_tags;
     options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+    if (quant_specs.support_mask !=
+        tflite::optimize::ReducedPrecisionSupport::None) {
+      options.metadata.insert(
+          MetadataForReducedPrecisionSupport(quant_specs.support_mask));
+    }
     if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
                                                    &pre_quantized_result)) {
       return statusHandler.ConsumeStatus();
