@@ -1,0 +1,30 @@
+name: PyLint
+on: [pull_request]
+
+jobs:
+  build:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Get file changes
+      id: get_file_changes
+      uses: dorner/file-changes-action@v1.2.0
+      with:
+        githubToken: ${{ secrets.GITHUB_TOKEN }}
+        plaintext: true
+    - name: Echo file changes
+      run: |
+        echo Changed files: ${{ steps.get_file_changes.outputs.files }}
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.8
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint
+    - name: Run pylint
+      run: |
+        pylint --rcfile=tensorflow/tools/ci_build/pylintrc ${{ steps.get_file_changes.outputs.files}}
