@@ -185,10 +185,10 @@ def convert_phase(component, subcomponent=SubComponent.UNSPECIFIED):
             report_error(error_data)
         else:
           report_error_message(str(converter_error))
-        raise  # Re-throws the exception.
+        raise converter_error from None  # Re-throws the exception.
       except Exception as error:
         report_error_message(str(error))
-        raise  # Re-throws the exception.
+        raise error from None  # Re-throws the exception.
 
     return wrapper
 
