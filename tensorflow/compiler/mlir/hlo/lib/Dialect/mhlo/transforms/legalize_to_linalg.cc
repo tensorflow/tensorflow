@@ -922,6 +922,8 @@ class IotaConverter : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     ShapedType result_shaped_type = GetHloOpResultType<isLHLO>(iota_op);
     if (!result_shaped_type) return failure();
+    result_shaped_type = this->typeConverter->convertType(result_shaped_type)
+                             .template dyn_cast<ShapedType>();
 
     auto result_element_type = result_shaped_type.getElementType();
     if (!result_element_type.isSignlessIntOrFloat()) return failure();
