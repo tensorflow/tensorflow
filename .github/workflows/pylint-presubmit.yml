@@ -28,4 +28,6 @@ jobs:
     - name: Run pylint
       run: |
         FILES=$(echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$")
+        echo "the files are" $FILES
+        echo "$FILES" | wc -l
         pylint --rcfile=tensorflow/tools/ci_build/pylintrc $FILES
