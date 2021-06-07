@@ -18112,6 +18112,23 @@ array([[1, 2, 3, 1, 2, 3],
   let hasFolder = 1;
 }
 
+def TF_TimestampOp : TF_Op<"Timestamp", []> {
+  let summary = "Provides the time since epoch in seconds.";
+
+  let description = [{
+Returns the timestamp as a `float64` for seconds since the Unix epoch.
+
+Note: the timestamp is computed when the op is executed, not when it is added
+to the graph.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_Float64Tensor:$ts
+  );
+}
+
 def TF_TopKUniqueOp : TF_Op<"TopKUnique", [NoSideEffect]> {
   let summary = "Returns the TopK unique values in the array in sorted order.";
 
