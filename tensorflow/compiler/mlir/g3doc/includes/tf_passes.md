@@ -146,6 +146,15 @@ This pass analyzes the inputs and outputs to device cluster and marks those
 input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
 and write to the same resource. This aliasing information can then be propagated
 to XLA compiler for input/output buffer space optimizations.
+### `-tf-drop-while-shape-invariant`: Drop `shape_invariant` attrbute from While/WhileRegion ops.
+Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op. This
+would allow shape inference pass to further refine operand/result shapes of
+these ops. This is only safe to do when compiling to XLA.
+### `-tf-drop-while-shape-invariant-in-device-cluster`: Drop `shape_invariant` attrbute from While/WhileRegion ops inside device cluster.
+Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
+inside device cluster. This would allow shape inference pass to further
+refine operand/result shapes of these ops. This is only safe to do when
+compiling to XLA.
 ### `-tf-ensure-static-shapes`: Performs checks that the whole module does not contain dynamic shapes.
 This pass performs check that none of the ops in the MLIR module
 have dynamic shapes.
@@ -465,6 +474,9 @@ This pass requires that the full shape of the tensor array can be inferred:
 or that can be inferred from a later write, and 3) all elements have the same
 shape.
 ### `-tf-tensor-device-copy`: Fold the tf.Identity op if the op has the same device as its operand
+### `-tf-tpu-cleanup-cluster-attributes`: Eliminate _tpu_replicate and other attributes from ops in a cluster
+This pass eliminate `_tpu_replicate` and `device` attribute on operations
+that are contained in a tf_device.cluster op.
 ### `-tf-tpu-cluster-formation`: Forms clusters from operations assigned to the same TPU computation
 TPU computations from the frontend are composed of a `tf.TPUReplicateMetadata`
 op, a subgraph of ops (TensorFlow Dialect) each with a matching `_tpu_replicate`
@@ -540,6 +552,40 @@ func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, t
   }
   return %replicate#0, %replicate#1 : tensor<i32>, tensor<i32>
 }
+```
+### `-tf-tpu-extract-head-tail-outside-compilation`: Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.
+This pass extracts a CPU computation cluster with `_xla_outside_compilation`
+annotation from the head or tail of a TPU cluster.
+
+For example:
+
+```mlir
+  %cluster = "tf_device.cluster"() ( {
+    %a = "tf.A"(%arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+    %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
+    %c = "tf.C"(%b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+    tf_device.return %c : tensor<i32>
+  }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
+  return %cluster : tensor<i32>
+```
+
+becomes:
+
+```mlir
+%0 = "tf_device.launch"() ( {
+  %3 = "tf.A"(%arg0) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+%1 = "tf_device.cluster"() ( {
+  %3 = "tf.B"(%0) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device_assignment = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = ""} : () -> tensor<i32>
+%2 = "tf_device.launch"() ( {
+  %3 = "tf.C"(%1) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+return %2 : tensor<i32>
+
 ```
 ### `-tf-tpu-extract-outside-compilation`: Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.
 This pass extracts a CPU computation cluster with `_xla_outside_compilation`
