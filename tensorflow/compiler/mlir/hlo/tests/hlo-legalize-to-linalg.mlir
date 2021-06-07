@@ -2698,3 +2698,26 @@ func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
 // CHECK:           linalg.yield %[[SELECT]] : i32
 // CHECK:         } -> tensor<6x3xi32>
 // CHECK:         return %[[RES]] : tensor<6x3xi32>
+
+// -----
+
+func @const() -> tensor<3xi32> {
+  // CHECK: = constant dense<[1, 2, 3]> : tensor<3xi32>
+  %cst = mhlo.constant dense<[1, 2, 3]> : tensor<3xi32>
+  return %cst : tensor<3xi32>
+}
+// -----
+
+func @const_unsigned() -> tensor<3xui32> {
+  // CHECK: = constant dense<[1, 2, 3]> : tensor<3xi32>
+  %cst = mhlo.constant dense<[1, 2, 3]> : tensor<3xui32>
+  return %cst : tensor<3xui32>
+}
+
+// -----
+
+func @const_splat() -> tensor<3xi16> {
+  // CHECK: = constant dense<1> : tensor<3xi16>
+  %cst = mhlo.constant dense<1> : tensor<3xi16>
+  return %cst : tensor<3xi16>
+}
