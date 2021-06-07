@@ -1598,7 +1598,7 @@ ENTRY CRS {
 
 )"
 },
-// all-reduce with all-reduce-id
+// all-reduce with channel-id
 {
 "AllReduceAllReduce",
 R"(HloModule CRS
@@ -1632,6 +1632,24 @@ ENTRY CRS {
   input = f32[8]{0} parameter(0)
   crs = (f32[8]{0}, f32[8]{0}) all-reduce-start(input), replica_groups={}, to_apply=add
   ROOT done = f32[8]{0} all-reduce-done(crs)
+}
+
+)"
+},
+// all-reduce-scatter
+{
+"AllReduceScatter",
+R"(HloModule ARS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT ars = f32[4]{0} all-reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
 }
 
 )"

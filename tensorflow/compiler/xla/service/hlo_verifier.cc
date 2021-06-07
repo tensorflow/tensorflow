@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -35,12 +36,15 @@ limitations under the License.
 
 namespace xla {
 
+namespace {
+
 bool IsCallerInstruction(HloInstruction* hlo) {
   switch (hlo->opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
@@ -55,8 +59,6 @@ bool IsCallerInstruction(HloInstruction* hlo) {
       return false;
   }
 }
-
-namespace {
 
 Status CheckOperandCount(const HloInstruction* hlo, int expected) {
   if (hlo->operand_count() != expected) {
@@ -77,6 +79,37 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
   }
   return Status::OK();
 }
+
+int64 GetSubgroupSize(HloCollectiveInstruction* hlo,
+                      CollectiveOpGroupMode group_mode) {
+  const HloModuleConfig& config = hlo->GetModule()->config();
+  // empty replica groups imply all replicas form a single group.
+  int64 replica_subgroup_size =
+      hlo->replica_groups().empty()
+          ? 0
+          : hlo->replica_groups()[0].replica_ids_size();
+  switch (group_mode) {
+    case CollectiveOpGroupMode::kCrossReplica:
+    case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+      int64 replica_subgroup_size =
+          hlo->replica_groups().empty()
+              ? config.replica_count()
+              : hlo->replica_groups()[0].replica_ids_size();
+      if (group_mode == CollectiveOpGroupMode::kCrossReplicaAndPartition) {
+        // Replicas from all partitions participate.
+        replica_subgroup_size *= config.num_partitions();
+      }
+      return replica_subgroup_size;
+    }
+    case CollectiveOpGroupMode::kFlattenedID:
+      return replica_subgroup_size;
+    case CollectiveOpGroupMode::kCrossPartition:
+      return hlo->replica_groups().empty()
+                 ? config.num_partitions()
+                 : hlo->replica_groups()[0].replica_ids_size();
+  }
+}
+
 }  // namespace
 
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
@@ -292,32 +325,10 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
   int64 shard_count = CeilOfRatio(
       output0_shape.dimensions(ag->all_gather_dimension()),
       ag->operand(0)->shape().dimensions(ag->all_gather_dimension()));
-  const HloModuleConfig& config = hlo->GetModule()->config();
-  // empty replica groups imply all replicas form a single group.
-  int64 replica_subgroup_size =
-      ag->replica_groups().empty() ? config.replica_count()
-                                   : ag->replica_groups()[0].replica_ids_size();
-
-  auto get_subgroup_size = [&]() -> StatusOr<int64> {
-    switch (group_mode) {
-      case CollectiveOpGroupMode::kCrossReplica:
-      case CollectiveOpGroupMode::kFlattenedID:
-        return replica_subgroup_size;
-
-      case CollectiveOpGroupMode::kCrossReplicaAndPartition:
-        // Replicas from all partitions participate.
-        return replica_subgroup_size * config.num_partitions();
-
-      case CollectiveOpGroupMode::kCrossPartition:
-        return InternalError(
-            "kCrossPartition group mode not expected for all-gather");
-    }
-  };
-
+  int64 subgroup_size = GetSubgroupSize(ag, group_mode);
   // If replica and partition count is not explicitly set, it will have a
   // default value of 1, in which case the subgroup_size will be 1 as well. Skip
   // these verification checks in that case.
-  TF_ASSIGN_OR_RETURN(int64 subgroup_size, get_subgroup_size());
   TF_RET_CHECK(subgroup_size == 1 || shard_count == subgroup_size)
       << "shard_count = " << shard_count
       << ", subgroup_size = " << subgroup_size << ", " << hlo->ToString();
@@ -344,6 +355,45 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
     operand_shapes.push_back(&operand->shape());
   }
   return CheckShape(hlo, ShapeInference::InferAllReduceShape(operand_shapes));
+}
+
+Status ShapeVerifier::HandleAllReduceScatter(HloInstruction* hlo) {
+  auto ars = Cast<HloAllReduceScatterInstruction>(hlo);
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(ars->channel_id().has_value(),
+                                               ars->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
+  TF_RET_CHECK(ars->scatter_dimension() >= 0);
+
+  for (int64_t i = 0; i < ars->operand_count(); ++i) {
+    TF_RET_CHECK(ars->scatter_dimension() < ars->operand(i)->shape().rank());
+
+    const Shape& output_shape = (ars->operand_count() == 1)
+                                    ? ars->shape()
+                                    : ars->shape().tuple_shapes(i);
+    TF_RET_CHECK(ars->scatter_dimension() < output_shape.rank());
+  }
+
+  const Shape& output0_shape =
+      (ars->operand_count() == 1) ? ars->shape() : ars->shape().tuple_shapes(0);
+  int64 shard_count =
+      CeilOfRatio(ars->operand(0)->shape().dimensions(ars->scatter_dimension()),
+                  output0_shape.dimensions(ars->scatter_dimension()));
+  int64 subgroup_size = GetSubgroupSize(ars, group_mode);
+  // If replica and partition count is not explicitly set, it will have a
+  // default value of 1, in which case the subgroup_size will be 1 as well. Skip
+  // these verification checks in that case.
+  TF_RET_CHECK(subgroup_size == 1 || shard_count == subgroup_size)
+      << "shard_count = " << shard_count
+      << ", subgroup_size = " << subgroup_size << ", " << hlo->ToString();
+
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(ars,
+                    ShapeInference::InferAllReduceScatterShape(
+                        operand_shapes, ars->scatter_dimension(), shard_count));
 }
 
 Status ShapeVerifier::HandleAllReduceStart(HloInstruction* hlo) {

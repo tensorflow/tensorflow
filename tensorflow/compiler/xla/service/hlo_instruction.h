@@ -698,6 +698,16 @@ class HloInstruction {
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
+  // Creates a all-reduce-scatter operation which reduces its inputs across the
+  // given replica groups and then scatters the reduced data across the N
+  // participants.
+  static std::unique_ptr<HloInstruction> CreateAllReduceScatter(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids,
+      int64 scatter_dimension);
+
   // Creates an asynchronous cross replica reduction op.
   //
   // `reduction_computation`: the reduction function.
