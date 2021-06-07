@@ -1110,3 +1110,81 @@ def TPUUpdateEmbeddingEnqueueOpInputsPass : FunctionPass<"tf-tpu-update-embeddin
 
   let constructor = "TFTPU::CreateTPUUpdateEmbeddingEnqueueOpInputsPass()";
 }
+
+def DropWhileShapeInvariantPass : FunctionPass<"tf-drop-while-shape-invariant"> {
+  let summary = "Drop `shape_invariant` attrbute from While/WhileRegion ops.";
+
+  let description = [{
+    Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op. This
+    would allow shape inference pass to further refine operand/result shapes of
+    these ops. This is only safe to do when compiling to XLA.
+  }];
+
+  let constructor = "TF::CreateDropWhileShapeInvariantPass()";
+}
+
+def DropWhileShapeInvariantInDeviceClusterPass : FunctionPass<"tf-drop-while-shape-invariant-in-device-cluster"> {
+  let summary = "Drop `shape_invariant` attrbute from While/WhileRegion ops inside device cluster.";
+
+  let description = [{
+    Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
+    inside device cluster. This would allow shape inference pass to further
+    refine operand/result shapes of these ops. This is only safe to do when
+    compiling to XLA.
+  }];
+
+  let constructor = "TF::CreateDropWhileShapeInvariantInDeviceClusterPass()";
+}
+
+def TPUCleanupClusterAttributesPass : Pass<"tf-tpu-cleanup-cluster-attributes", "ModuleOp"> {
+  let summary = "Eliminate _tpu_replicate and other attributes from ops in a cluster";
+
+  let description = [{
+    This pass eliminate `_tpu_replicate` and `device` attribute on operations
+    that are contained in a tf_device.cluster op.
+  }];
+
+  let constructor = "TFTPU::CreateTPUClusterCleanupAttributesPass()";
+}
+
+def TPUExtractHeadTailOutsideCompilationPass : Pass<"tf-tpu-extract-head-tail-outside-compilation", "ModuleOp"> {
+  let summary = "Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.";
+
+  let description = [{
+    This pass extracts a CPU computation cluster with `_xla_outside_compilation`
+    annotation from the head or tail of a TPU cluster.
+
+    For example:
+
+    ```mlir
+      %cluster = "tf_device.cluster"() ( {
+        %a = "tf.A"(%arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+        %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
+        %c = "tf.C"(%b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+        tf_device.return %c : tensor<i32>
+      }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
+      return %cluster : tensor<i32>
+    ```
+
+    becomes:
+
+    ```mlir
+    %0 = "tf_device.launch"() ( {
+      %3 = "tf.A"(%arg0) : (tensor<i32>) -> tensor<i32>
+      tf_device.return %3 : tensor<i32>
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+    %1 = "tf_device.cluster"() ( {
+      %3 = "tf.B"(%0) : (tensor<i32>) -> tensor<i32>
+      tf_device.return %3 : tensor<i32>
+    }) {device_assignment = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = ""} : () -> tensor<i32>
+    %2 = "tf_device.launch"() ( {
+      %3 = "tf.C"(%1) : (tensor<i32>) -> tensor<i32>
+      tf_device.return %3 : tensor<i32>
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+    return %2 : tensor<i32>
+
+    ```
+  }];
+
+  let constructor = "TFTPU::CreateTPUExtractHeadTailOutsideCompilationPass()";
+}
