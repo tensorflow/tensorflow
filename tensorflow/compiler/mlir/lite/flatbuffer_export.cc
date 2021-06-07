@@ -483,7 +483,8 @@ class Translator {
       bool emit_custom_ops,
       const std::unordered_set<std::string>& select_user_tf_ops,
       const std::unordered_set<std::string>& tags,
-      OpOrArgNameMapper* op_or_arg_name_mapper);
+      OpOrArgNameMapper* op_or_arg_name_mapper,
+      const std::map<std::string, std::string>& metadata);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
@@ -491,12 +492,14 @@ class Translator {
                       bool emit_select_tf_ops, bool emit_custom_ops,
                       const std::unordered_set<std::string>& select_user_tf_ops,
                       const std::unordered_set<std::string>& saved_model_tags,
-                      OpOrArgNameMapper* op_or_arg_name_mapper)
+                      OpOrArgNameMapper* op_or_arg_name_mapper,
+                      const std::map<std::string, std::string>& metadata)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
         saved_model_tags_(saved_model_tags),
-        select_user_tf_ops_(select_user_tf_ops) {
+        select_user_tf_ops_(select_user_tf_ops),
+        metadata_(metadata) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -681,6 +684,8 @@ class Translator {
   const std::unordered_set<std::string> saved_model_tags_;
   // User's defined ops allowed with Flex.
   const std::unordered_set<std::string> select_user_tf_ops_;
+  // Map of key value pairs of metadata to export.
+  const std::map<std::string, std::string> metadata_;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -1595,8 +1600,17 @@ Translator::CreateMetadataVector() {
   // versions. Here we put a 16-byte dummy string as a placeholder. We choose
   // 16-byte because it's the alignment of buffers in flatbuffer, so it won't
   // cause any waste of space if the actual string is shorter than 16 bytes.
+  constexpr std::size_t kByteStringSize = 16;
   metadata.push_back(
-      BuildMetadata("min_runtime_version", std::string(16, '\0')));
+      BuildMetadata("min_runtime_version", std::string(kByteStringSize, '\0')));
+  for (const auto& kv : metadata_) {
+    const std::string& val = kv.second;
+    // Only take the first kByteStringSize values.
+    const int count = std::min(kByteStringSize, val.length());
+    std::string value = std::string(kByteStringSize, '\0')
+                            .assign(val.begin(), val.begin() + count);
+    metadata.push_back(BuildMetadata(kv.first, value));
+  }
   return builder_.CreateVector(metadata);
 }
 
@@ -1780,7 +1794,8 @@ Optional<std::string> Translator::Translate(
     bool emit_custom_ops,
     const std::unordered_set<std::string>& select_user_tf_ops,
     const std::unordered_set<std::string>& tags,
-    OpOrArgNameMapper* op_or_arg_name_mapper) {
+    OpOrArgNameMapper* op_or_arg_name_mapper,
+    const std::map<std::string, std::string>& metadata) {
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
   if (!op_or_arg_name_mapper)
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
@@ -1788,7 +1803,7 @@ Optional<std::string> Translator::Translate(
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
                         emit_custom_ops, select_user_tf_ops, tags,
-                        op_or_arg_name_mapper);
+                        op_or_arg_name_mapper, metadata);
   return translator.TranslateInternal();
 }
 
@@ -2089,7 +2104,8 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
   auto maybe_translated = Translator::Translate(
       module, options.emit_builtin_tflite_ops, options.emit_select_tf_ops,
       options.emit_custom_ops, options.select_user_tf_ops,
-      options.saved_model_tags, options.op_or_arg_name_mapper);
+      options.saved_model_tags, options.op_or_arg_name_mapper,
+      options.metadata);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return true;

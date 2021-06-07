@@ -1011,6 +1011,8 @@ Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
 Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
                  const std::vector<std::vector<Tensor>>& batch_elements,
                  std::vector<Tensor>* out_tensors) {
+  static bool in_experiment =
+      GetExperiments().contains("parallelize_batch_copy");
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
   const int64 num_batch_elements = batch_elements.size();
@@ -1049,7 +1051,8 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
           std::move(batch_elements.at(index)[component_index]),
           &batch_component, index);
     };
-    if (parallel_copy) {
+    if (parallel_copy ||
+        (in_experiment && first_element.AllocatedBytes() > (1 << 15))) {
       Status status;
       mutex status_mu;
       BlockingCounter counter(num_batch_elements);
@@ -1066,8 +1069,9 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
                           &copy_element_fn]() {
           for (size_t j = offset; j < offset + length; ++j) {
             {
+              Status s = copy_element_fn(j);
               mutex_lock l(status_mu);
-              status.Update(copy_element_fn(j));
+              status.Update(s);
             }
             counter.DecrementCount();
           }
@@ -1174,7 +1178,7 @@ absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
 namespace {
 
 REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
-
+REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 50);
 }
 }  // namespace data
 }  // namespace tensorflow
