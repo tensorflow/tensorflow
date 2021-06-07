@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
+#include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -989,6 +990,68 @@ struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
   }
 };
 
+Value MaterializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
+                                            Location loc, ValueRange operands) {
+  SinhOp::Adaptor transformed(operands);
+  Value x = transformed.operand();
+
+  Value log_one_half =
+      rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
+  Value exp_add = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
+  Value exp_sub = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::SubOp>(loc, log_one_half, x));
+  return rewriter.create<mhlo::SubOp>(loc, exp_add, exp_sub);
+}
+
+// Express `sinh` as
+//   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
+//           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
+Value MaterializeSinhApproximation(ConversionPatternRewriter &rewriter,
+                                   Location loc, ValueRange operands) {
+  Value large_sinh_result =
+      MaterializeSinhApproximationForLargeX(rewriter, loc, operands);
+
+  SinhOp::Adaptor transformed(operands);
+  Value x = transformed.operand();
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value exp_x = rewriter.create<mhlo::ExpOp>(loc, x);
+  Value exp_neg_x =
+      rewriter.create<mhlo::ExpOp>(loc, rewriter.create<mhlo::NegOp>(loc, x));
+  Value exp_difference = rewriter.create<mhlo::SubOp>(loc, exp_x, exp_neg_x);
+  Value two = getConstantLike(rewriter, loc, 2.0, x);
+  Value small_sinh_result =
+      rewriter.create<mhlo::DivOp>(loc, exp_difference, two);
+
+  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value one = getConstantLike(rewriter, loc, 1.0, x);
+  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(loc, abs_x, one, kLT);
+  return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, small_sinh_result,
+                                         large_sinh_result);
+}
+
+struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
+  using OpConversionPattern<SinhOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      SinhOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    SinhOp::Adaptor transformed(operands);
+    Value x = transformed.operand();
+    if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
+      // TODO(hinsu): Support operands with complex element types by always
+      // using the formula for large x. The compare op is not legal for complex
+      // numbers.
+      return failure();
+    }
+    rewriter.replaceOp(op,
+                       MaterializeWithUpcast(rewriter, op.getLoc(), operands,
+                                             rewriter.getF32Type(),
+                                             &MaterializeSinhApproximation));
+    return success();
+  }
+};
+
 struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
   using OpConversionPattern<ZetaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1248,6 +1311,7 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
                    ConvertErfcOp,
                    ConvertLgammaOp,
                    ConvertPolygammaOp,
+                   ConvertSinhOp,
                    ConvertZetaOp>(context);
   // clang-format on
 }

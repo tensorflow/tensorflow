@@ -18,8 +18,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(akuegel): Enable when it works for DT_HALF as well.
-// GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sinh, DT_HALF);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sinh, DT_HALF);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sinh, DT_FLOAT);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sinh, DT_DOUBLE);
 
