@@ -827,7 +827,7 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
 
 template <typename T>
 T baseline_xdivy(T x, T y) {
-  return x == 0 ? x : x / y;
+  return x == T(0) ? x : x / y;
 }
 
 GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Half, Eigen::half, float,
@@ -839,6 +839,18 @@ GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Float, float, float, baseline_xdivy,
 GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Double, double, double,
                        baseline_xdivy,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+
+// The following tests don't work with Eigen kernels if the Eigen kernels are
+// compiled with nvcc.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_xdivy,
+                       test::OpsTestConfig().ATol(1e-11).RTol(1e-2))
+GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_xdivy,
+                       test::OpsTestConfig().ATol(1e-11).RTol(1e-2))
+#endif
 
 /// Test `tf.Zeta`.
 
