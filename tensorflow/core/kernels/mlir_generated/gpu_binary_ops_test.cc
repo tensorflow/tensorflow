@@ -266,6 +266,30 @@ TEST_F(BinaryOpsTest, DivComplex128SpecialCases) {
 }
 #endif
 
+/// Test `tf.DivNoNan`.
+
+template <typename T>
+T baseline_div_no_nan(T lhs, T rhs) {
+  return rhs == T(0) ? T(0) : lhs / rhs;
+}
+
+GENERATE_DEFAULT_TESTS(DivNoNan,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_div_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(DivNoNan,
+                       /*test_name=*/Float, float, float, baseline_div_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(DivNoNan,
+                       /*test_name=*/Double, double, double,
+                       baseline_div_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    DivNoNan,
+    /*test_name=*/ZeroDenominator, float, float, test::DefaultInput<float>(),
+    test::InputAsVector<float>({0}), baseline_div_no_nan,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.Equal`.
 
 template <typename T>
