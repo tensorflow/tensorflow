@@ -1166,6 +1166,7 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_select_v2_kernels",
+    max_supported_rank = 8,
     op = "select_v2",
     tile_size = "256",
     types = [
