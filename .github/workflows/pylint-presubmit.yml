@@ -10,10 +10,9 @@ jobs:
       uses: actions/checkout@v2
     - name: Get file changes
       id: get_file_changes
-      uses: dorner/file-changes-action@v1.2.0
+      uses: trilom/file-changes-action@v1.2.4
       with:
-        githubToken: ${{ secrets.GITHUB_TOKEN }}
-        plaintext: true
+        output: '\n'
     - name: Echo file changes
       run: |
         echo Changed files: ${{ steps.get_file_changes.outputs.files }}
@@ -24,7 +23,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pylint
+        pip install pylint numpy wheel
+        pip install keras_preprocessing --no-deps
     - name: Run pylint
       run: |
-        pylint --rcfile=tensorflow/tools/ci_build/pylintrc ${{ steps.get_file_changes.outputs.files}}
+        FILES=$(echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$")
+        pylint --rcfile=tensorflow/tools/ci_build/pylintrc "$FILES"
