@@ -197,6 +197,17 @@ message GPUOptions {
     // launch an additional kernel will stall until an event
     // completes.
     int32 kernel_tracker_max_pending = 9;
+
+    // BFC Allocator can return an allocated chunk of memory upto 2x the
+    // requested size. For virtual devices with tight memory constraints, and
+    // proportionately large allocation requests, this can lead to a significant
+    // reduction in available memory. The threshold below controls when a chunk
+    // should be split if the chunk size exceeds requested memory size. It is
+    // expressed as a fraction of total available memory for the tf device. For
+    // example setting it to 0.05 would imply a chunk needs to be split if its
+    // size exceeds the requested memory by 5% of the total virtual device/gpu
+    // memory size.
+    double internal_fragmentation_fraction = 10;
   }
 
   // Everything inside experimental is subject to change and is not subject

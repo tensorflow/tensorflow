@@ -90,6 +90,9 @@
     *   Added a new op `SparseSegmentSumGrad` to match the other sparse segment
         gradient ops and avoid an extra gather operation that was in the
         previous gradient implementation.
+    *   Added a new session config setting `internal_fragmentation_fraction`,
+        which controls when the BFC Allocator needs to split an oversized chunk
+        to satisfy an allocation request.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
