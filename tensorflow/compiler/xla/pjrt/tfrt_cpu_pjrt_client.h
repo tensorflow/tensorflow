@@ -397,7 +397,6 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   StatusOr<Shape> logical_on_device_shape() override;
 
-
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
@@ -424,6 +423,12 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override {
     return Unimplemented("CopyToRemoteDevice not implemented.");
+  }
+
+  Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) override {
+    return Unimplemented("CopyToRemoteDeviceScattered not implemented.");
   }
 
   Status BlockHostUntilReady() override;

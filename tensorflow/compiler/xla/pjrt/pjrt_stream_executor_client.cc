@@ -1452,6 +1452,14 @@ Status PjRtStreamExecutorBuffer::CopyToRemoteDevice(
   return client_->CopyToRemoteDevice(this, serialized_descriptor);
 }
 
+Status PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
+    absl::Span<const std::string> serialized_descriptors,
+    const ScatterDetails& scatter_details) {
+  VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered";
+  return client_->CopyToRemoteDeviceScattered(this, serialized_descriptors,
+                                              scatter_details);
+}
+
 Status PjRtStreamExecutorBuffer::BlockHostUntilReady() {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorBuffer::BlockHostUntilReady");

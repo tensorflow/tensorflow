@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
@@ -521,6 +522,26 @@ class PjRtBuffer {
   // the callback along with the corresponding destination buffer.
   virtual Status CopyToRemoteDevice(
       absl::string_view serialized_descriptor) = 0;
+  struct ScatterDetails {
+    // The dimensions of the corresponding buffer that the scatter slices
+    // across. These dimensions must be the major dimensions in the on-device
+    // layout of the buffer, and must all be untiled. The scatter acts as if
+    // the buffer were transposed/reshaped so that all of these dimensions were
+    // combined into a single dimension whose size is the product of the
+    // dimensions, and the slice indices correspond to indices in that single
+    // combined dimension.
+    //
+    // For example, if the shape is [3, 4, 128, 128] with [3, 4] as the major
+    // dimensions in the layout, and dimensions = {0, 1}, then the buffer is
+    // treated as if it were shape [12, 128, 128] and the indices in slices
+    // range in [0, 12].
+    absl::InlinedVector<int, 3> dimensions;
+    // The start and end indices of the slices.
+    std::vector<std::pair<int64, int64>> slices;
+  };
+  virtual Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) = 0;
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.

@@ -262,6 +262,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return Unimplemented("Cross host sends not implemented.");
   }
 
+  virtual Status CopyToRemoteDeviceScattered(
+      PjRtBuffer* buffer, absl::Span<const std::string> serialized_descriptors,
+      const PjRtBuffer::ScatterDetails& scatter_details) const {
+    return Unimplemented("Scattered cross host sends not implemented.");
+  }
+
   virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
                                         int64 offset, int64 transfer_size,
                                         std::function<void(Status)> on_ready) {
@@ -549,6 +555,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       PjRtDevice* dst_device) override;
 
   Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override;
+
+  Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) override;
 
   Status BlockHostUntilReady() override;
 
