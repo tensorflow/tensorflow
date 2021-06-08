@@ -18,7 +18,7 @@
 # Run the python unit tests from the source code on the pip installation.
 #
 # Usage:
-#   run_pip_tests.sh [--virtualenv] [--gpu] [--mac] [--oss_serial]
+#   run_pip_tests.sh [--virtualenv] [--gpu] [--mac] [--oss_serial] [--target  ]
 #
 # If the flag --virtualenv is set, the script will use "python" as the Python
 # binary path. Otherwise, it will use tools/python_bin_path.sh to determine
@@ -34,6 +34,9 @@
 # oss_serial tag, in a serial fashion, i.e., using the bazel flag
 # --local_test_jobs=1
 #
+# The --targets flag lests the script to run only the py tests on the 
+# sepcified targets
+#
 #   TF_BUILD_APPEND_ARGUMENTS:
 #                      Additional command line arguments for the bazel,
 #                      pip.sh or android.sh command
@@ -48,6 +51,7 @@ IS_GPU=0
 IS_ROCM=0
 IS_MAC=0
 IS_OSS_SERIAL=0
+HAS_TARGETS=0
 while true; do
   if [[ "$1" == "--virtualenv" ]]; then
     IS_VIRTUALENV=1
@@ -59,6 +63,9 @@ while true; do
     IS_MAC=1
   elif [[ "$1" == "--oss_serial" ]]; then
     IS_OSS_SERIAL=1
+  elif [[ "$1" == "--targets" ]]; then
+    HAS_TARGETS=1
+    TARGETS=$2
   fi
   shift
 
@@ -120,8 +127,11 @@ else
   --test_timeout 300,450,1200,3600"
 fi
 
-
-BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/python/..."
+if [[ ${HAS_TARGETS} == "1" ]]; then
+  BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}${TARGETS}"
+else
+  BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/python/..."
+fi
 
 # Clean the bazel cache
 bazel clean
