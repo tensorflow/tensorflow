@@ -27,7 +27,15 @@ bool AreInstructionSupported(HloComputation* comp) {
     bool supported =
       (HloInstruction::IsOpElementwise(instr->opcode()) ||
        instr->opcode() == HloOpcode::kConstant ||
-       instr->opcode() == HloOpcode::kReduce ||
+       // We only support reduction when they are at the root or when
+       // in a MOF, at the end. This should always be true for now,
+       // but if we implement reduction epilog fusion in the future,
+       // this optimization need to be updated. So disable it just for
+       // future safety.
+       (instr->opcode() == HloOpcode::kReduce &&
+        (comp->root_instruction() == instr ||
+         (instr->users().size() == 1 &&
+          instr->users()[0]->opcode() == HloOpcode::kTuple)))||
        instr->opcode() == HloOpcode::kTuple ||
        instr->opcode() == HloOpcode::kParameter ||
        (instr->opcode() == HloOpcode::kBitcast &&
@@ -93,8 +101,8 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	// 2) Now that we have found a fusion that we want to modify,
 	//    create the new fusion. We do so by:
 	//    a) Cloning the old fusion.
-	//    b) Recursively walk the graph from the root and lift
-	//       the bitcast one instruction at a time.
+	//    b) Recursively walk the graph from the root and lift the
+	//       bitcast up across one instruction at a time.
 	std::unique_ptr<HloInstruction> cloned_fusion =
 	  fusion->Clone("bitcast");
 	std::vector<HloInstruction*> stack(
