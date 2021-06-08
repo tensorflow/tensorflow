@@ -19605,6 +19605,20 @@ def TF__ArrayToListOp : TF_Op<"_ArrayToList", [NoSideEffect]> {
   TF_DerivedResultTypeListAttr out_types = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF__EagerConstOp : TF_Op<"_EagerConst", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF__FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
   let summary = "Internal FusedBatchNorm operation: reserved for internal use.";
 

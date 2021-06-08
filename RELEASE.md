@@ -80,6 +80,7 @@
         performance. Default behavior is unchanged.
     *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
         Hermitian tridiagonal matrix.
+    *   `tf.constant` now places its output on the current default device.
     *   SavedModel
         *   Added `tf.saved_model.experimental.TrackableResource`, which allows
             the creation of custom wrapper objects for resource tensors.

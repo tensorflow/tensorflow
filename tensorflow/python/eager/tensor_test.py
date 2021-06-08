@@ -378,9 +378,10 @@ class TFETensorTest(test_util.TensorFlowTestCase):
           constant_op.constant(t.min, dtype=t).numpy(), t.min)
 
   def test_numpyIsView(self):
-    t = constant_op.constant([0.0])
-    t._numpy()[0] = 42.0
-    self.assertAllClose(t, constant_op.constant([42.0]))
+    with ops.device("CPU"):
+      t = constant_op.constant([0.0])
+      t._numpy()[0] = 42.0
+      self.assertAllClose(t, constant_op.constant([42.0]))
 
   def test_numpyFailsForResource(self):
     v = variables.Variable(42)

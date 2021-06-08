@@ -1872,6 +1872,17 @@ class ConvertIdentityNOp : public OpRewritePattern<TF::IdentityNOp> {
   }
 };
 
+// Bypass _EagerConst
+class ConvertEagerConstOp : public OpRewritePattern<TF::_EagerConstOp> {
+ public:
+  using OpRewritePattern<TF::_EagerConstOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::_EagerConstOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, op.getOperand());
+    return success();
+  }
+};
+
 template <typename OpTy>
 class ConvertFFTOp : public OpRewritePattern<OpTy> {
  public:
@@ -6643,6 +6654,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertFusedBatchNormV3Op,
     ConvertInfeedDequeueTupleOp,
     ConvertIdentityNOp,
+    ConvertEagerConstOp,
     ConvertInplaceUpdateOp,
     ConvertLinSpaceOp,
     ConvertMaxOp,
