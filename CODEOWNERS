@@ -12,6 +12,6 @@
 /tensorflow/python/debug @caisq
 /tensorflow/python/eager @rohan100jain @kkimdev
 /tensorflow/python/tools/api/generator/ @annarev
-/tensorflow/tools/docs/ @markdaoust
+/tensorflow/tools/docs/ @markdaoust @rmothukuru
 
 /third_party/systemlibs/ @perfinion
