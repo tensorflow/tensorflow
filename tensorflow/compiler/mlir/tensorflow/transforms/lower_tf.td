@@ -290,7 +290,7 @@ def LowerRoundOpOnIntTensor : Pat<
 // as RoundHalfToEven to be compatible with Numpy.
 def LowerRoundOpOnFloatTensor : Pat<
   (TF_RoundOp:$res TF_FloatTensor:$input),
-  (TF_SelectOp
+  (TF_SelectV2Op
     (TF_LogicalOrOp
       (TF_GreaterOp
         (TF_SubOp:$fraction $input, (TF_FloorOp:$round_val $input)),

@@ -402,7 +402,7 @@ func @fake_quant_with_min_max_vars(%arg0 : tensor<?x?xf32>, %arg1 : tensor<f32>,
   // CHECK-DAG: %[[VAL19:.*]] = "tf.LogicalAnd"(%[[VAL13]], %[[VAL18]]) : (tensor<i1>, tensor<i1>) -> tensor<i1>
   // CHECK-DAG: %[[VAL20:.*]] = "tf.LogicalOr"(%[[VAL12]], %[[VAL19]]) : (tensor<i1>, tensor<i1>) -> tensor<i1>
   // CHECK-DAG: %[[VAL21:.*]] = "tf.AddV2"(%[[VAL10]], %[[VAL3]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK-DAG: %[[VAL22:.*]] = "tf.Select"(%[[VAL20]], %[[VAL21]], %[[VAL10]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL22:.*]] = "tf.SelectV2"(%[[VAL20]], %[[VAL21]], %[[VAL10]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK-DAG: %[[VAL23:.*]] = "tf.ClipByValue"(%[[VAL22]], %[[VAL0]], %[[VAL1]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK-DAG: %[[VAL24:.*]] = "tf.Sub"(%[[VAL0]], %[[VAL23]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK-DAG: %[[VAL25:.*]] = "tf.Sub"(%[[VAL1]], %[[VAL23]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -799,7 +799,7 @@ func @round(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[AND:.*]] = "tf.LogicalAnd"(%[[EQ]], %[[IS_ODD]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   // CHECK: %[[OR:.*]] = "tf.LogicalOr"(%[[GT]], %[[AND]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ROUND_VAL]], %[[ONE]]) : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
-  // CHECK: %[[SELECT:.*]] = "tf.Select"(%[[OR]], %[[ADD]], %[[ROUND_VAL]]) : (tensor<2xi1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: %[[SELECT:.*]] = "tf.SelectV2"(%[[OR]], %[[ADD]], %[[ROUND_VAL]]) : (tensor<2xi1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Round"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
 
   // CHECK: return %[[SELECT]]
@@ -830,7 +830,7 @@ func @rint_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: %[[AND:.*]] = "tf.LogicalAnd"(%[[EQ]], %[[IS_ODD]]) : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
   // CHECK: %[[OR:.*]] = "tf.LogicalOr"(%[[GT]], %[[AND]]) : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
   // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ROUND_VAL]], %[[ONE]]) : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
-  // CHECK: %[[SELECT:.*]] = "tf.Select"(%[[OR]], %[[ADD]], %[[ROUND_VAL]]) : (tensor<?xi1>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  // CHECK: %[[SELECT:.*]] = "tf.SelectV2"(%[[OR]], %[[ADD]], %[[ROUND_VAL]]) : (tensor<?xi1>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %0 = "tf.Rint"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
 
   // CHECK: return %[[SELECT]]
