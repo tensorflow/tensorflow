@@ -62,9 +62,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
           .TypeConstraint<segment_ids_type>("Tsegmentids"),                    \
       SparseSegmentReductionMeanWithNumSegmentsOp<CPUDevice, type, index_type, \
                                                   segment_ids_type>);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(float);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
@@ -84,9 +82,7 @@ REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
           .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
       SparseSegmentReductionSqrtNWithNumSegmentsOp<                     \
           CPUDevice, type, index_type, segment_ids_type>);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(float);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
@@ -110,9 +106,7 @@ REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
           .TypeConstraint<index_type>("Tidx")                           \
           .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
       SparseSegmentMeanGradOp<type, index_type, segment_ids_type>);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(float);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
@@ -123,9 +117,7 @@ REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
           .TypeConstraint<index_type>("Tidx")                           \
           .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
       SparseSegmentSqrtNGradOp<type, index_type, segment_ids_type>);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(float);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(double);
-REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(bfloat16);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
 #undef REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE

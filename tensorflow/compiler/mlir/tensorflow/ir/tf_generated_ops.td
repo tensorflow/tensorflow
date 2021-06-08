@@ -15433,18 +15433,72 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>:$data,
+    TF_FloatTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>, [{Has same shape as data, except for dimension 0 which
+    Res<TF_FloatTensor, [{Has same shape as data, except for dimension 0 which
 has size `k`, the number of segments.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_SparseSegmentMeanGradOp : TF_Op<"SparseSegmentMeanGrad", [NoSideEffect]> {
+  let summary = "Computes gradients for SparseSegmentMean.";
+
+  let description = [{
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+  }];
+
+  let arguments = (ins
+    Arg<TF_FloatTensor, [{gradient propagated to the SparseSegmentMean op.}]>:$grad,
+    Arg<TF_I32OrI64Tensor, [{indices passed to the corresponding SparseSegmentMean op.}]>:$indices,
+    Arg<TF_I32OrI64Tensor, [{segment_ids passed to the corresponding SparseSegmentMean op.}]>:$segment_ids,
+    Arg<TF_Int32Tensor, [{dimension 0 of "data" passed to SparseSegmentMean op.}]>:$output_dim0
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_SparseSegmentMeanWithNumSegmentsOp : TF_Op<"SparseSegmentMeanWithNumSegments", [NoSideEffect]> {
+  let summary = "Computes the mean along sparse segments of a tensor.";
+
+  let description = [{
+Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
+missing, the `output` tensor at that position will be zeroed.
+
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+  }];
+
+  let arguments = (ins
+    TF_FloatTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{Should equal the number of distinct segment IDs.}]>:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_FloatTensor, [{Has same shape as data, except for dimension 0 which has size
+`num_segments`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<3>;
   TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
 }
 
@@ -15460,18 +15514,76 @@ See `tf.sparse.segment_sum` for usage examples.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>:$data,
+    TF_FloatTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>, [{Has same shape as data, except for dimension 0 which
+    Res<TF_FloatTensor, [{Has same shape as data, except for dimension 0 which
 has size `k`, the number of segments.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_SparseSegmentSqrtNGradOp : TF_Op<"SparseSegmentSqrtNGrad", [NoSideEffect]> {
+  let summary = "Computes gradients for SparseSegmentSqrtN.";
+
+  let description = [{
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+  }];
+
+  let arguments = (ins
+    Arg<TF_FloatTensor, [{gradient propagated to the SparseSegmentSqrtN op.}]>:$grad,
+    Arg<TF_I32OrI64Tensor, [{indices passed to the corresponding SparseSegmentSqrtN op.}]>:$indices,
+    Arg<TF_I32OrI64Tensor, [{segment_ids passed to the corresponding SparseSegmentSqrtN op.}]>:$segment_ids,
+    Arg<TF_Int32Tensor, [{dimension 0 of "data" passed to SparseSegmentSqrtN op.}]>:$output_dim0
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_SparseSegmentSqrtNWithNumSegmentsOp : TF_Op<"SparseSegmentSqrtNWithNumSegments", [NoSideEffect]> {
+  let summary = [{
+Computes the sum along sparse segments of a tensor divided by the sqrt of N.
+  }];
+
+  let description = [{
+N is the size of the segment being reduced.
+
+Like `SparseSegmentSqrtN`, but allows missing ids in `segment_ids`. If an id is
+missing, the `output` tensor at that position will be zeroed.
+
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+  }];
+
+  let arguments = (ins
+    TF_FloatTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{Should equal the number of distinct segment IDs.}]>:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_FloatTensor, [{Has same shape as data, except for dimension 0 which
+has size `k`, the number of segments.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<3>;
   TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
 }
 
