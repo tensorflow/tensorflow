@@ -21,6 +21,7 @@ py_library(
         ":strategy_combinations",
         ":strategy_test_lib",
         ":test_util",
+        ":values_v2",
         "//tensorflow/python/distribute/v1:all_reduce",
     ],
 )
@@ -776,6 +777,42 @@ py_library(
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/types",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
+    name = "values_v2",
+    srcs = ["values_v2.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":reduce_util",
+        ":tpu_util",
+        ":values",
+        ":values_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/types",
+    ],
+)
+
+distribute_py_test(
+    name = "values_v2_test",
+    srcs = ["values_v2_test.py"],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        ":test_util",
+        ":values_v2",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1863,6 +1900,7 @@ py_library(
     deps = [
         ":collective_all_reduce_strategy",
         ":multi_process_runner",
+        ":tpu_strategy",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:config",
@@ -1870,6 +1908,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:context",
+        "@absl_py//absl:app",
     ],
 )
 
