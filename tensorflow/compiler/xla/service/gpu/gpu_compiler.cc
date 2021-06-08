@@ -1156,21 +1156,10 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
 
   TF_ASSIGN_OR_RETURN(auto ir_emitter, IrEmitterUnnested::Create(
                                            module_config, ir_emitter_context));
-  ThunkSequence thunk_sequence;
-  for (mlir::Operation& op :
-       entry_function.getBody().front().without_terminator()) {
-    MlirEmitterInput input;
-    input.op = &op;
-    TF_RETURN_IF_ERROR(ir_emitter->EmitOp(input));
-    std::unique_ptr<ThunkSequence> thunks = ir_emitter->ConsumeThunkSequence();
-    TF_RET_CHECK(thunks->size() <= 1);
-    if (!thunks->empty()) {
-      auto thunk = std::move(thunks->front());
-      thunk_sequence.push_back(std::move(thunk));
-    }
-  }
-  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      std::make_unique<ThunkSequence>(std::move(thunk_sequence)));
+  TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+
+  auto thunk_schedule =
+      absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
 
   using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,

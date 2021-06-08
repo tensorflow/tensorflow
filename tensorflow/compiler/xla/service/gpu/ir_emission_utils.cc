@@ -837,7 +837,7 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
   return func_arg.getArgNumber();
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation> allocations,
     std::string* constant_name) {
   if (constant_name) {
@@ -913,8 +913,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     return false;
   }
 
-  auto maybe_lhs = GetAllocationSliceForMlir(parameter.memref(), allocations);
-  auto maybe_rhs = GetAllocationSliceForMlir(output_buffers[0], allocations);
+  auto maybe_lhs = GetAllocationSlice(parameter.memref(), allocations);
+  auto maybe_rhs = GetAllocationSlice(output_buffers[0], allocations);
   return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
 }
 
