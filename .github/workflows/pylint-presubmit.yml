@@ -32,4 +32,4 @@ jobs:
           echo "No python files changed."
           exit 0
         fi
-        cat files.txt | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
+        grep ".py$" files.txt | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
