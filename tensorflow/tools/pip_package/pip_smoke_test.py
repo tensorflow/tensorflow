@@ -144,6 +144,8 @@ def main():
       "_test", "_test.py", "_test_gpu", "_test_gpu.py", "_test_lib"
   ]
 
+  deliberate_bad_function_call()
+
   ignored_files_count = 0
   denylisted_dependencies_count = len(DEPENDENCY_DENYLIST)
   # Compare dependencies
