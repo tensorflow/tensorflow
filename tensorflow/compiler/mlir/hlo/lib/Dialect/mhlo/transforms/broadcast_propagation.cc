@@ -355,8 +355,8 @@ struct MoveUpBroadcastInDimOpPattern
   }
 };
 
-struct MoveUpDynamicBroadcastsForFusionPass
-    : public PassWrapper<MoveUpDynamicBroadcastsForFusionPass, FunctionPass> {
+struct BroadcastPropagationPass
+    : public PassWrapper<BroadcastPropagationPass, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }
@@ -364,7 +364,7 @@ struct MoveUpDynamicBroadcastsForFusionPass
   void runOnFunction() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    mhlo::PopulateMoveUpDynamicBroadcastsForFusionPatterns(ctx, &patterns);
+    mhlo::PopulateBroadcastsPropagationPatterns(ctx, &patterns);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
       return signalPassFailure();
@@ -374,8 +374,8 @@ struct MoveUpDynamicBroadcastsForFusionPass
 
 }  // namespace
 
-void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns) {
+void PopulateBroadcastsPropagationPatterns(MLIRContext *context,
+                                           OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
@@ -397,8 +397,8 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass() {
-  return std::make_unique<MoveUpDynamicBroadcastsForFusionPass>();
+std::unique_ptr<FunctionPass> createBroadcastPropagationPass() {
+  return std::make_unique<BroadcastPropagationPass>();
 }
 
 }  // namespace mhlo
