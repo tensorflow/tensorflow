@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -197,6 +198,7 @@ def _descending_sort(values, axis, return_argsort=False):
   Returns:
     The sorted values.
   """
+  # TODO(b/190410105): replace with a proper sort kernel.
   k = array_ops.shape(values)[axis]
   rank = array_ops.rank(values)
   static_rank = values.shape.ndims
@@ -240,11 +242,51 @@ def _descending_sort(values, axis, return_argsort=False):
 
 
 def _ascending_sort(values, axis, return_argsort=False):
-  # Negate the values to get the ascending order from descending sort.
-  values_or_indices = _descending_sort(-values, axis, return_argsort)
-  # If not argsort, negate the values again.
-  return values_or_indices if return_argsort else -values_or_indices
+  """Sorts values in ascending order.
 
+  Args:
+    values: Tensor of numeric values.
+    axis: Index of the axis which values should be sorted along.
+    return_argsort: If False, return the sorted values. If True, return the
+      indices that would sort the values.
+
+  Returns:
+    The sorted values.
+  """
+  # TODO(b/190410105): replace with a proper sort kernel.
+  # If values are integers, we need special handling.
+  dtype = values.dtype
+  if dtype.is_unsigned:
+    # Subtract values from dtype.max to reverse sort order.
+    offset = dtype.max
+    values_or_indices = _descending_sort(offset - values, axis, return_argsort)
+    return values_or_indices if return_argsort else offset - values_or_indices
+
+  elif dtype.is_integer:
+    # Convert to unsigned and subtract from max to avoid signed integer
+    # overflows and properly handle dtype.min. Although more complex and
+    # slightly slower than descend+reverse, this preserves stability.
+    udtype = _MAKE_UNSIGNED[dtype]
+    offset = udtype.max + dtype.min
+    values = offset - math_ops.cast(values, dtype=udtype)
+    values_or_indices = _descending_sort(values, axis, return_argsort)
+    if return_argsort:
+      return values_or_indices
+    return math_ops.cast(offset - values_or_indices, dtype=dtype)
+
+  else:
+    # Otherwise, negate the values and use descending sort.
+    values_or_indices = _descending_sort(-values, axis, return_argsort)
+    # If not argsort, negate the values again.
+    return values_or_indices if return_argsort else -values_or_indices
+
+
+_MAKE_UNSIGNED = {
+    dtypes.int8: dtypes.uint8,
+    dtypes.int16: dtypes.uint16,
+    dtypes.int32: dtypes.uint32,
+    dtypes.int64: dtypes.uint64,
+}
 
 _SORT_IMPL = {
     'ASCENDING': _ascending_sort,
