@@ -96,6 +96,7 @@ class Executor {
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
+    int64 start_time_usecs;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
