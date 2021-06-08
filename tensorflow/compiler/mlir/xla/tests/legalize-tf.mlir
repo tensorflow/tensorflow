@@ -2195,14 +2195,6 @@ func @tan_unranked(%arg : tensor<*xf32>) -> tensor<*xf32> {
   return %result : tensor<*xf32>
 }
 
-// CHECK-LABEL: @sinh_complex
-// CHLO-LABEL: @sinh_complex
-func @sinh_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
-  // CHLO: tf.Sinh
-  %0 = "tf.Sinh"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
-  return %0 : tensor<2xcomplex<f32>>
-}
-
 // CHECK-LABEL: func @cast_dynamic_i2f
 func @cast_dynamic_i2f(%arg0: tensor<?xi32>) -> tensor<?xf32> {
   // CHECK: "mhlo.convert"(%arg0) : (tensor<?xi32>) -> tensor<?xf32>

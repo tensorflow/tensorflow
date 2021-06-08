@@ -994,9 +994,22 @@ Value MaterializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
                                             Location loc, ValueRange operands) {
   SinhOp::Adaptor transformed(operands);
   Value x = transformed.operand();
+  auto result_ty = x.getType().cast<ShapedType>();
 
-  Value log_one_half =
-      rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
+  // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
+  Value two = rewriter.create<mhlo::ConstOp>(
+      loc, hlo::GetScalarOfType(getElementTypeOrSelf(x.getType()), 2));
+  Type extent_tensor_type = shape::getExtentTensorType(x.getContext());
+  Value uncasted_shape =
+      rewriter.create<shape::ShapeOfOp>(loc, extent_tensor_type, x);
+  Type shape_ty =
+      RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType());
+  Value shape = rewriter.create<tensor::CastOp>(loc, shape_ty, uncasted_shape);
+  Value two_with_x_shape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+      loc, result_ty, two, shape, rewriter.getI64TensorAttr({}));
+
+  Value log_two = rewriter.create<mhlo::LogOp>(loc, two_with_x_shape);
+  Value log_one_half = rewriter.create<mhlo::NegOp>(loc, log_two);
   Value exp_add = rewriter.create<mhlo::ExpOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
   Value exp_sub = rewriter.create<mhlo::ExpOp>(
@@ -1039,10 +1052,9 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
     SinhOp::Adaptor transformed(operands);
     Value x = transformed.operand();
     if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
-      // TODO(hinsu): Support operands with complex element types by always
-      // using the formula for large x. The compare op is not legal for complex
-      // numbers.
-      return failure();
+      rewriter.replaceOp(op, MaterializeSinhApproximationForLargeX(
+                                 rewriter, op.getLoc(), operands));
+      return success();
     }
     rewriter.replaceOp(op,
                        MaterializeWithUpcast(rewriter, op.getLoc(), operands,
