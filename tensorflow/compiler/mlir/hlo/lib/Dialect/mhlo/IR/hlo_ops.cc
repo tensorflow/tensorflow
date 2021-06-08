@@ -190,12 +190,8 @@ static LogicalResult rngInferReturnTypeComponents(
 // an integer or index type.
 Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
   if (type == value.getType()) return value;
-  if (type.isIndex() || value.getType().isIndex()) {
-    return b.create<IndexCastOp>(loc, value, type);
-  } else {
-    auto v = b.create<IndexCastOp>(loc, value, b.getIndexType());
-    return b.create<IndexCastOp>(loc, value, type);
-  }
+  assert(type.isIndex() || value.getType().isIndex());
+  return b.create<IndexCastOp>(loc, value, type);
 }
 
 }  // namespace
@@ -2424,13 +2420,12 @@ LogicalResult DynamicPadOp::reifyReturnTypeShapes(
     Value value_dim = to_shape_scalar_type(
         builder.create<memref::DimOp>(loc, operand, element.index()));
     Value offset = builder.create<ConstantIndexOp>(loc, element.index());
-    SmallVector<Value, 1> ivs(1, offset);
     Value value_low =
-        builder.create<tensor::ExtractOp>(loc, edge_padding_low, ivs);
+        builder.create<tensor::ExtractOp>(loc, edge_padding_low, offset);
     Value value_high =
-        builder.create<tensor::ExtractOp>(loc, edge_padding_high, ivs);
+        builder.create<tensor::ExtractOp>(loc, edge_padding_high, offset);
     Value value_interior =
-        builder.create<tensor::ExtractOp>(loc, interior_padding, ivs);
+        builder.create<tensor::ExtractOp>(loc, interior_padding, offset);
     // output_size = input_size + padding_low + padding_high + interior *
     // max(input_size - 1, 0)
     Value value_dim_less_than_one =
