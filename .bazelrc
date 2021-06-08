@@ -106,7 +106,7 @@ build --host_java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
-build --spawn_strategy=standalone
+build --spawn_strategy=sandboxed
 build -c opt
 
 # Make Bazel print out all options from rc files.
