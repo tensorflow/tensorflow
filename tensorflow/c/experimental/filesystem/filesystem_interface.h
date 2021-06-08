@@ -83,8 +83,9 @@ typedef struct TF_TransactionToken {
   TF_Filesystem* owner;
 } TF_TransactionToken;
 
-// The named union is needed here in as otherwise
-// compilation fails on Windows C++ compiler.
+// The named union is needed here (as opposed to
+// inside the `TF_Filesystem_Option_Value` struct)
+// as MSVC does not recognize `typeof`.
 typedef union TF_Filesystem_Option_Value_Union {
   int64_t inv_val;
   double real_val;
