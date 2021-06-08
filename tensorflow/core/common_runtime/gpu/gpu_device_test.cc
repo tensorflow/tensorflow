@@ -129,7 +129,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
     EXPECT_EQ(devices.size(), 1);
     Device* device = devices[0].get();
     auto* device_info = device->tensorflow_gpu_device_info();
-    CHECK(device_info);
+    EXPECT_NE(device_info, nullptr);
     DeviceContext* device_context = device_info->default_context;
 
     AllocatorAttributes allocator_attributes = AllocatorAttributes();
