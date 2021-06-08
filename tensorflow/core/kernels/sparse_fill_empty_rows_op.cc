@@ -66,7 +66,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
                                 default_value_t->shape().DebugString()));
     // TODO(ebrevdo): add shape checks between values, indices,
     // dense_shape.  Also add check that dense rank > 0.
-    OP_REQUIRES(context, dense_shape_t.NumElements() != 0,
+    OP_REQUIRES(context, dense_shape_t->NumElements() != 0,
                 errors::InvalidArgument("Dense shape cannot be empty."));
     const T& default_value = default_value_t->scalar<T>()();
     const auto indices = indices_t->matrix<int64>();
