@@ -653,6 +653,25 @@ class CudnnFilterDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnFilterDescriptor);
 };
 
+// The errata sheet (JSON format) for marking the cudnn engines that might be
+// buggy. For example, we don't want the engine 999 of forward convolution:
+// R"({ "version" : 1,
+//      "rules"   : [
+//        { "rule_id"             : "ConvFwd_eng999",
+//          "operation"           : "ConvFwd",
+//          "engine"              : 999,
+//          "knob"                : [],
+//          "cudnn_version_start" : 8000,
+//          "cudnn_version_end"   : -1
+//        }
+// ]})"
+// We intentionally return an empty string for now. Alternately, users can also
+// specify an additional errata JSON file via CUDNN_ERRATA_JSON_FILE at runtime.
+std::string CudnnExecutionPlanEngineFilter() {
+  static std::string filter_str = "";
+  return filter_str;
+}
+
 // A helper function to decide whether to use
 // CUDNN_BATCHNORM_SPATIAL_PERSISTENT in batchnorm. This mode can be faster in
 // some tasks because an optimized path may be selected for CUDNN_DATA_FLOAT
@@ -3822,12 +3841,37 @@ GetFirstWorkingExecutionPlan(
   cudnn_frontend::filter(engine_config, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_list, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  json json_handle_static;
+  json json_handle_runtime;
+  std::string errata_str = CudnnExecutionPlanEngineFilter();
+  bool use_static_errata = false;
+  if (errata_str != "") {
+    use_static_errata = true;
+    json_handle_static = json::parse(errata_str);
+  }
+  bool use_runtime_errata = cudnn_frontend::load_from_config(
+                                json_handle_runtime, "");
+
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
                     .setHandle(cudnn.handle())
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (use_static_errata &&
+          cudnn_frontend::check_errata(json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (use_runtime_errata &&
+          cudnn_frontend::check_errata(json_handle_runtime, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       bool specify_workspace_limit = scratch_allocator != nullptr;
       auto memory_limit_bytes =
           specify_workspace_limit
@@ -4450,6 +4494,18 @@ bool CudnnSupport::GetConvolveExecutionPlans(
   cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  json json_handle_static;
+  json json_handle_runtime;
+  std::string errata_str = CudnnExecutionPlanEngineFilter();
+  bool use_static_errata = false;
+  if (errata_str != "") {
+    use_static_errata = true;
+    json_handle_static = json::parse(errata_str);
+  }
+  bool use_runtime_errata = cudnn_frontend::load_from_config(
+                                json_handle_runtime, "");
+
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
@@ -4459,6 +4515,19 @@ bool CudnnSupport::GetConvolveExecutionPlans(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (use_static_errata &&
+          cudnn_frontend::check_errata(json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (use_runtime_errata &&
+          cudnn_frontend::check_errata(json_handle_runtime, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       out_exec_plans->push_back(std::unique_ptr<dnn::ConvolveExecutionPlan>(
           new CudnnConvolveExecutionPlan(std::move(plan))));
       // We will use the first working plan when determinism is required.
@@ -4534,6 +4603,18 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
   cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  json json_handle_static;
+  json json_handle_runtime;
+  std::string errata_str = CudnnExecutionPlanEngineFilter();
+  bool use_static_errata = false;
+  if (errata_str != "") {
+    use_static_errata = true;
+    json_handle_static = json::parse(errata_str);
+  }
+  bool use_runtime_errata = cudnn_frontend::load_from_config(
+                                json_handle_runtime, "");
+
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
@@ -4543,6 +4624,19 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (use_static_errata &&
+          cudnn_frontend::check_errata(json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (use_runtime_errata &&
+          cudnn_frontend::check_errata(json_handle_runtime, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       out_exec_plans->push_back(std::unique_ptr<dnn::ConvolveExecutionPlan>(
           new CudnnConvolveExecutionPlan(std::move(plan))));
       // We will use the first working plan when determinism is required.
