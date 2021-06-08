@@ -664,7 +664,13 @@ message ConfigProto {
     // Currently only effective in multi-client setup.
     string coordination_service = 19;
 
-    // Next: 20
+    // Whether the remote devices in the cluster should be fetched during setup
+    // of multi-client cluster. If enabled, the workers will run an extra device
+    // information exchange step during startup and the workers' EagerContexts
+    // will become aware of remote devices in the cluster as well.
+    bool fetch_remote_devices_in_multi_client = 20;
+
+    // Next: 21
   }
 
   Experimental experimental = 16;
