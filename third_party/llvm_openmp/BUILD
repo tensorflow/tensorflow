@@ -1,5 +1,6 @@
 # Build file for OpenMP library that is part of llvm
 
+load("@rules_cc//cc:defs.bzl", "cc_binary")
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
     "cmake_var_string",
@@ -22,6 +23,7 @@ genrule(
     name = "kmp_i18n_id",
     srcs = [
         "runtime/tools/message-converter.pl",
+        "runtime/tools/lib/tools.pm",
         "runtime/src/i18n/en_US.txt",
     ],
     outs = ["include/kmp_i18n_id.inc"],
@@ -32,6 +34,7 @@ genrule(
     name = "kmp_i18n_default",
     srcs = [
         "runtime/tools/message-converter.pl",
+        "runtime/tools/lib/tools.pm",
         "runtime/src/i18n/en_US.txt",
     ],
     outs = ["include/kmp_i18n_default.inc"],
@@ -110,6 +113,9 @@ expand_cmake_vars(
 )
 
 cppsources = [
+    "runtime/src/kmp.h",
+    "runtime/src/kmp_platform.h",
+    "runtime/src/kmp_os.h",
     "runtime/src/kmp_alloc.cpp",
     "runtime/src/kmp_atomic.cpp",
     "runtime/src/kmp_csupport.cpp",
