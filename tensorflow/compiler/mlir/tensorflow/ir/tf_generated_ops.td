@@ -9735,6 +9735,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_OneHotOp : TF_Op<"OneHot", [NoSideEffect]> {
