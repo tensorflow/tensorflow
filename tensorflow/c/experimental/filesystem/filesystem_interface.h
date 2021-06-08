@@ -95,8 +95,8 @@ typedef union TF_Filesystem_Option_Value_Union {
 } TF_Filesystem_Option_Value_Union;
 
 typedef struct TF_Filesystem_Option_Value {
-  int type_tag;
-  int num_values;
+  int type_tag;       // type of values in the values union
+  int num_values; // number of values
   TF_Filesystem_Option_Value_Union* values;  // owned
 } TF_Filesystem_Option_Value;
 
