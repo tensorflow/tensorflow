@@ -1696,6 +1696,15 @@ class HloInstruction {
     metadata_ = metadata;
     metadata_.set_creation_pass_id(creation_pass_id);
   }
+
+  void set_size_of_generated_code_in_bytes(int64 code_size_in_bytes) {
+    metadata_.set_size_of_generated_code_in_bytes(code_size_in_bytes);
+  }
+  void set_size_of_memory_working_set_in_bytes(
+      int64 working_set_size_in_bytes) {
+    metadata_.set_size_of_memory_working_set_in_bytes(
+        working_set_size_in_bytes);
+  }
   void set_creation_pass_id(int64 pass_id) {
     metadata_.set_creation_pass_id(pass_id);
   }
