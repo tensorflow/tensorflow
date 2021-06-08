@@ -27,7 +27,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.platform import test
 
 
