@@ -545,6 +545,7 @@ class Function(core.GenericFunction):
   by the TF API contract, and are subject to future changes.
   """
 
+  PR_49310 = True
   def __init__(self,
                python_function,
                name,
@@ -904,7 +905,11 @@ class Function(core.GenericFunction):
   def _call(self, *args, **kwds):
     """Calls the graph function."""
     self._lock.acquire()
-    if self._created_variables and self._stateful_fn is None:
+    if self.PR_49310:
+      condition = self._created_variables and self._stateful_fn is None
+    else:
+      condition = self._created_variables
+    if condition:
       # Release the lock early so that multiple threads can perform the call
       # in parallel.
       self._lock.release()
@@ -918,6 +923,9 @@ class Function(core.GenericFunction):
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
       results = self._stateful_fn(*args, **kwds)
+      if self._created_variables and not self.PR_49310:
+        raise ValueError("Creating variables on a non-first call to a function"
+                         " decorated with tf.function.")
       return results
 
     try:
