@@ -265,8 +265,9 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(foo.trace_count, 2)
     self.assertAllEqual(foo(True), 1.0)
     self.assertEqual(foo.trace_count, 2)
-    self.assertAllEqual(foo(False), 2.0)
-    self.assertEqual(foo.trace_count, 3)
+    if def_function.PR_49310:
+      self.assertAllEqual(foo(False), 2.0)
+      self.assertEqual(foo.trace_count, 3)
 
   def test_functools_partial(self):
     self.assertAllClose(
