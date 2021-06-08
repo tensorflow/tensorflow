@@ -405,15 +405,18 @@ Status ModularFileSystem::SetConfiguration(const std::string& name,
   memset(&option, 0, sizeof(option));
   option.name = const_cast<char*>(name.c_str());
   option.per_file = 0;
-  option.num_values = values.size();
-  std::vector<TF_Filesystem_Option_Value> option_values(values.size());
+  TF_Filesystem_Option_Value option_value;
+  memset(&option_value, 0, sizeof(option_value));
+  option_value.type_tag = TF_Filesystem_Option_Type_Buffer;
+  option_value.num_values = values.size();
+  std::vector<TF_Filesystem_Option_Value_Union> option_values(values.size());
   for (size_t i = 0; i < values.size(); i++) {
-    memset(&option_values[i], 0, sizeof(TF_Filesystem_Option_Value));
-    option_values[i].type_tag = TF_Filesystem_Option_Type_Buffer;
-    option_values[i].u.buffer_val.buf = const_cast<char*>(values[i].c_str());
-    option_values[i].u.buffer_val.buf_length = values[i].size();
+    memset(&option_values[i], 0, sizeof(TF_Filesystem_Option_Value_Union));
+    option_values[i].buffer_val.buf = const_cast<char*>(values[i].c_str());
+    option_values[i].buffer_val.buf_length = values[i].size();
   }
-  option.value = &option_values[0];
+  option_value.values = &option_values[0];
+  option.value = &option_value;
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   ops_->set_filesystem_configuration(
       filesystem_.get(), &option, 1, plugin_status.get());

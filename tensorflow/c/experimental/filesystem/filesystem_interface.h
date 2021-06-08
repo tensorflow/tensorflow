@@ -83,29 +83,34 @@ typedef struct TF_TransactionToken {
   TF_Filesystem* owner;
 } TF_TransactionToken;
 
+// The named union is needed here in as otherwise
+// compilation fails on Windows C++ compiler.
+typedef union TF_Filesystem_Option_Value_Union {
+  int64_t inv_val;
+  double real_val;
+  struct {
+    char* buf;
+    int buf_length;
+  } buffer_val;
+} TF_Filesystem_Option_Value_Union;
+
 typedef struct TF_Filesystem_Option_Value {
-  int type_tag; // type of the value (int, real, buffer)
-  union {
-    int64_t inv_val;
-    double real_val;
-    struct {
-      char* buf;
-      int buf_length;
-    } buffer_val;
-  } u;
+  int type_tag;
+  int num_values;
+  TF_Filesystem_Option_Value_Union* values;  // owned
 } TF_Filesystem_Option_Value;
 
 typedef enum TF_Filesystem_Option_Type {
   TF_Filesystem_Option_Type_Int = 0,
   TF_Filesystem_Option_Type_Real,
   TF_Filesystem_Option_Type_Buffer,
+  TF_Filesystem_Num_Option_Types, // must always be the last item
 } TF_Filesystem_Option_Type;
 
 typedef struct TF_Filesystem_Option {
   char* name;                         // null terminated, owned
   char* description;                  // null terminated, owned
   int per_file;                       // bool actually, but bool is not a C type
-  int num_values;                     // num of values
   TF_Filesystem_Option_Value* value;  // owned
 } TF_Filesystem_Option;
 
@@ -899,9 +904,7 @@ typedef struct TF_FilesystemOps {
   ///
   /// DEFAULT IMPLEMENTATION: return `TF_NOT_FOUND`.
   void (*set_filesystem_configuration_option)(
-      const TF_Filesystem* filesystem,
-      const char* key,
-      const TF_Filesystem_Option* option,
+      const TF_Filesystem* filesystem, const TF_Filesystem_Option* option,
       TF_Status* status);
 
   /// Returns a list of valid configuration keys in `keys` array and number of
