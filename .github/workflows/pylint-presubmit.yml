@@ -28,8 +28,8 @@ jobs:
     - name: Run pylint
       run: |
         echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" > files.txt
-        if ! grep -q ".py$" files.txt then 
+        if ! grep -q ".py$" files.txt; then 
           echo "No python files changed."
-          exit 0;
+          exit 0
         fi
         cat files.txt | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
