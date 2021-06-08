@@ -882,8 +882,6 @@ class Function(core.GenericFunction):
       compiler = "xla" if self._jit_compile else "nonXla"
 
       with OptionalXlaContext(self._jit_compile):
-        if self._stateful_fn is not None:
-          self._created_variables= False
         result = self._call(*args, **kwds)
 
       new_tracing_count = self.experimental_get_tracing_count()
@@ -906,9 +904,7 @@ class Function(core.GenericFunction):
   def _call(self, *args, **kwds):
     """Calls the graph function."""
     self._lock.acquire()
-    print("**"*80)
-    print(self._stateful_fn)
-    if self._created_variables:
+    if self._created_variables and self._stateful_fn is None:
       # Release the lock early so that multiple threads can perform the call
       # in parallel.
       self._lock.release()
