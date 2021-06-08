@@ -206,10 +206,6 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
-      delete gpu_bfc_allocator;
-      delete sub_allocator;
-      gpu_bfc_allocator = nullptr;
-      sub_allocator = nullptr;
       gpu_allocator = new GPUcudaMallocAllocator(platform_device_id);
     } else if (UseCudaMallocAsyncAllocator() ||
                options.experimental().use_cuda_malloc_async()) {
@@ -219,10 +215,6 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // TODO: useful for doing memory debugging with tools like
       // compute-sanitizer.
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
-      delete gpu_bfc_allocator;
-      delete sub_allocator;
-      gpu_bfc_allocator = nullptr;
-      sub_allocator = nullptr;
       gpu_allocator =
           new GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
     }
