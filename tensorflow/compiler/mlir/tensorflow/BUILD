@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 package(
     default_visibility = [":friends"],
@@ -16,21 +16,22 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/mlir/bridge/...",
-        "//learning/brain/experimental/dtensor/...",
+        "//tensorflow/compiler/...",
+        "//tensorflow/core/tfrt/utils/...",
+        "//tensorflow/python/...",
+    ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
+        "//learning/brain/experimental/dtensor/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/mlir/bridge/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
         "//learning/brain/mobile/lite/tf_runtime/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/darwinn/contrib/waymo/...",
         "//platforms/xla/sparse_core/...",
-        "//tensorflow/compiler/...",
-        "//tensorflow/core/tfrt/utils/...",
-        "//tensorflow/python/...",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server/...",
-    ],
+    ]),
 )
 
 exports_files([
