@@ -213,6 +213,11 @@ class EventForest {
   // Sets the is_eager stat to true for the eagerly executed CPU TF op events.
   void MarkEagerlyExecutedCpuTfOps();
 
+  // Populate all the step ids that associated with tf.data pipeline.
+  // Because FunctionRun is considered as root, but we want to exclude those
+  // FunctionRuns from tf.data.
+  void ProcessTfDataSteps();
+
   // Processes the TF loops and registers the first TF executor event of each
   // iteraton to `tf_loop_root_events_`.
   void ProcessTensorFlowLoop();
@@ -228,7 +233,9 @@ class EventForest {
   std::vector<XPlaneVisitor> visitors_;
   // std::deque for pointer stability.
   std::deque<std::pair<XPlane*, XPlaneVisitor>> planes_;
-  EventList root_events_;
+  // The "step" id (actually it is "function" id that are associated with
+  // the tf.data pipeline.
+  absl::flat_hash_set<int64> tf_data_step_ids_;
   EventList tf_loop_root_events_;
   GroupMetadataMap group_metadata_map_;
 };
