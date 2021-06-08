@@ -458,6 +458,7 @@ void TF_OpKernelConstruction_GetAttrTensorList(TF_OpKernelConstruction* ctx,
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
   ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
+
   if (!status->status.ok()) return;
 
   const auto len = std::min(max_values, static_cast<int>(v.size()));
