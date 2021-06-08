@@ -39,7 +39,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.ops.parallel_for.control_flow_ops import vectorized_map
+from tensorflow.python.ops.parallel_for import control_flow_ops as parallel_control_flow_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import tf_decorator
 
@@ -432,9 +432,9 @@ def _update_confusion_matrix_variables_optimized(
       label, bucket_index = label_and_bucket_index[0], label_and_bucket_index[1]
       return math_ops.unsorted_segment_sum(
           data=label, segment_ids=bucket_index, num_segments=num_thresholds)
-    tp_bucket_v = vectorized_map(
+    tp_bucket_v = parallel_control_flow_ops.vectorized_map(
         gather_bucket, (true_labels, bucket_indices))
-    fp_bucket_v = vectorized_map(
+    fp_bucket_v = parallel_control_flow_ops.vectorized_map(
         gather_bucket, (false_labels, bucket_indices))
     tp = array_ops.transpose_v2(
         math_ops.cumsum(tp_bucket_v, reverse=True, axis=1))
