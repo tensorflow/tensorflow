@@ -972,11 +972,11 @@ def _tf_repositories():
     # https://github.com/bazelbuild/rules_apple/releases
     tf_http_archive(
         name = "build_bazel_rules_apple",
-        sha256 = "ee9e6073aeb5a65c100cb9c44b0017c937706a4ae03176e14a7e78620a198079",
-        strip_prefix = "rules_apple-5131f3d46794bf227d296c82f30c2499c9de3c5b",
+        sha256 = "a0b7066d9f4193e8a800db2a66f4fe867a7806b8cdeecc3f0b9c9b3fc415338e",
+        strip_prefix = "rules_apple-709d8b12d68b571f23a1187b1cf7b10bb89fa46f",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_apple/archive/5131f3d46794bf227d296c82f30c2499c9de3c5b.tar.gz",
-            "https://github.com/bazelbuild/rules_apple/archive/5131f3d46794bf227d296c82f30c2499c9de3c5b.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_apple/archive/709d8b12d68b571f23a1187b1cf7b10bb89fa46f.tar.gz",
+            "https://github.com/bazelbuild/rules_apple/archive/709d8b12d68b571f23a1187b1cf7b10bb89fa46f.tar.gz",
         ],
     )
 
@@ -994,11 +994,10 @@ def _tf_repositories():
     # https://github.com/bazelbuild/apple_support/releases
     tf_http_archive(
         name = "build_bazel_apple_support",
-        sha256 = "ad8ae80e93612b8151019367a3d1604d7a51c14480dae1254e10252007e8260c",
-        strip_prefix = "apple_support-501b4afb27745c4813a88ffa28acd901408014e4",
+        sha256 = "741366f79d900c11e11d8efd6cc6c66a31bfb2451178b58e0b5edc6f1db17b35",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/apple_support/archive/501b4afb27745c4813a88ffa28acd901408014e4.tar.gz",
-            "https://github.com/bazelbuild/apple_support/archive/501b4afb27745c4813a88ffa28acd901408014e4.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/apple_support/releases/download/0.10.0/apple_support.0.10.0.tar.gz",
+            "https://github.com/bazelbuild/apple_support/releases/download/0.10.0/apple_support.0.10.0.tar.gz",
         ],
     )
 
