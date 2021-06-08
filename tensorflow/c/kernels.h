@@ -334,7 +334,8 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
     TF_Status* status);
 
 // Interprets the named kernel construction attribute as tensor array and places
-// it into *vals. `vals` must point to an array of length at least `max_values`
+// it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values`
 // (ideally set to list_size from TF_OpKernelConstruction_GetAttrSize(ctx,
 // attr_name, list_size, total_size)).
 //
