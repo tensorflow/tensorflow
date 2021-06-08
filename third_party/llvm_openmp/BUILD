@@ -113,7 +113,6 @@ expand_cmake_vars(
 )
 
 cppsources = [
-    "runtime/src/kmp_config.h",
     "runtime/src/kmp_debug.h",
     "runtime/src/kmp_dispatch.h",
     "runtime/src/kmp_dispatch_hier.h",
