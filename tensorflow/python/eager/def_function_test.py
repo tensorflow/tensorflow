@@ -239,6 +239,34 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
+  
+  def testMethodVariable(self):
+
+    class Foo:
+
+      def __init__(self):
+        self._flag_keyed_vars = {}
+        self.trace_count = 0
+
+      def __call__(self, var_creation_flag):
+        self.compute(var_creation_flag)
+        return self._flag_keyed_vars[var_creation_flag]
+
+      @def_function.function
+      def compute(self, var_creation_flag):
+        self.trace_count += 1
+        if var_creation_flag not in self._flag_keyed_vars:
+          if var_creation_flag:
+            self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
+          else:
+            self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
+    foo = Foo()
+    self.assertAllEqual(foo(True), 1.0)
+    self.assertEqual(foo.trace_count, 2)
+    self.assertAllEqual(foo(True), 1.0)
+    self.assertEqual(foo.trace_count, 2)
+    self.assertAllEqual(foo(False), 2.0)
+    self.assertEqual(foo.trace_count, 3)
 
   def test_functools_partial(self):
     self.assertAllClose(

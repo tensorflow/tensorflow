@@ -918,9 +918,6 @@ class Function(core.GenericFunction):
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
       results = self._stateful_fn(*args, **kwds)
-      if self._created_variables:
-        raise ValueError("Creating variables on a non-first call to a function"
-                         " decorated with tf.function.")
       return results
 
     try:
