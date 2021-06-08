@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sort_ops
@@ -33,144 +34,103 @@ from tensorflow.python.platform import test
 
 class SortTest(test.TestCase):
 
-  def random_array(self, shape, dtype):
-    if np.issubdtype(dtype, np.integer):
-      imin = np.iinfo(dtype).min
-      imax = np.iinfo(dtype).max
-      return np.random.randint(imin, imax, shape, dtype)
-    else:
-      return np.random.random(shape).astype(dtype)
-
-  def _test_sort(self, values, axis, direction):
-    expected = np.sort(values, axis=axis)
-    if direction == 'DESCENDING':
-      expected = np.flip(expected, axis=axis)
-    self.assertAllEqual(
-        expected,
-        sort_ops.sort(
-            constant_op.constant(values), axis=axis, direction=direction))
-
+  @test_util.run_deprecated_v1
   def testRandom_lowDimensionality(self):
-    self._testRandom_lowDimensionality(
-        negative_axis=False, dtype=np.float32, direction='ASCENDING')
+    self._testRandom_lowDimensionality(negative_axis=False)
 
+  @test_util.run_deprecated_v1
   def testRandom_lowDimensionality_negative(self):
-    self._testRandom_lowDimensionality(
-        negative_axis=True, dtype=np.float32, direction='ASCENDING')
+    self._testRandom_lowDimensionality(negative_axis=True)
 
-  def _testRandom_lowDimensionality(self, negative_axis, dtype, direction):
+  def _testRandom_lowDimensionality(self, negative_axis):
     np.random.seed(42)
     for _ in range(20):
       rank = np.random.randint(1, 3)
       shape = [np.random.randint(0, 20) for _ in range(rank)]
-      arr = self.random_array(shape, dtype)
+      arr = np.random.random(shape)
       sort_axis = np.random.choice(rank)
       if negative_axis:
         sort_axis = -1 - sort_axis
       with self.cached_session():
-        self._test_sort(arr, sort_axis, direction)
+        self.assertAllEqual(
+            np.sort(arr, axis=sort_axis),
+            sort_ops.sort(constant_op.constant(arr), axis=sort_axis).eval())
 
+  @test_util.run_deprecated_v1
   def testRandom_highDimensionality(self):
-    self._testRandom_highDimensionality(np.float32)
-
-  def _testRandom_highDimensionality(self, dtype):
     np.random.seed(100)
     for _ in range(20):
       rank = np.random.randint(5, 15)
       shape = [np.random.randint(1, 4) for _ in range(rank)]
-      arr = self.random_array(shape, dtype)
+      arr = np.random.random(shape)
       sort_axis = np.random.choice(rank)
       with self.cached_session():
-        self._test_sort(arr, sort_axis, 'ASCENDING')
+        self.assertAllEqual(
+            np.sort(arr, axis=sort_axis),
+            sort_ops.sort(constant_op.constant(arr), axis=sort_axis).eval())
 
-  def testIntArray(self):
-    dtype = np.int64
-    self._testRandom_lowDimensionality(
-        negative_axis=False, dtype=dtype, direction='ASCENDING')
-    self._testRandom_lowDimensionality(
-        negative_axis=False, dtype=dtype, direction='DESCENDING')
-    edges = np.linspace(
-        np.iinfo(dtype).min, np.iinfo(dtype).max, 10, dtype=dtype)
-    self._test_sort(edges, 0, 'ASCENDING')
-    self._test_sort(edges, 0, 'DESCENDING')
-
-  def testUIntArray(self):
-    dtype = np.uint64
-    self._testRandom_lowDimensionality(
-        negative_axis=False, dtype=dtype, direction='ASCENDING')
-    self._testRandom_lowDimensionality(
-        negative_axis=False, dtype=dtype, direction='DESCENDING')
-    edges = np.linspace(
-        np.iinfo(dtype).min, np.iinfo(dtype).max, 10, dtype=dtype)
-    self._test_sort(edges, 0, 'ASCENDING')
-    self._test_sort(edges, 0, 'DESCENDING')
-
+  @test_util.run_deprecated_v1
   def testScalar(self):
     # Create an empty scalar where the static shape is unknown.
     zeros_length_1 = array_ops.zeros(
         random_ops.random_uniform([1], minval=0, maxval=1, dtype=dtypes.int32),
         dtype=dtypes.int32)
     scalar = array_ops.zeros(zeros_length_1)
-    with self.cached_session():
-      with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                  'out of bounds'):
-        self.evaluate(sort_ops.sort(scalar))
 
+    sort = sort_ops.sort(scalar)
+    with self.cached_session():
+      with self.assertRaises(errors.InvalidArgumentError):
+        sort.eval()
+
+  @test_util.run_deprecated_v1
   def testNegativeOutOfBounds_staticShape(self):
     arr = constant_op.constant([3, 4, 5])
-    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                'slice index .* out of bounds'):
-      self.evaluate(sort_ops.sort(arr, axis=-4))
+    with self.assertRaises(ValueError):
+      sort_ops.sort(arr, axis=-4)
 
+  @test_util.run_deprecated_v1
   def testDescending(self):
     arr = np.random.random((10, 5, 5))
     with self.cached_session():
       self.assertAllEqual(
           np.sort(arr, axis=0)[::-1],
           sort_ops.sort(
-              constant_op.constant(arr), axis=0, direction='DESCENDING'))
+              constant_op.constant(arr), axis=0, direction='DESCENDING').eval())
 
+  @test_util.run_deprecated_v1
   def testSort_staticallyKnownRank_constantTransposition(self):
-    with ops.Graph().as_default():
-      # The transposition array should be a constant if the rank of "values" is
-      # statically known.
-      tensor = random_ops.random_uniform(
-          # Rank is statically known to be 5, but the dimension lengths are not
-          # known.
-          random_ops.random_uniform(
-              shape=(5,), minval=0, maxval=10, dtype=dtypes.int32))
-      sort_ops.sort(tensor, axis=1)
-      transposition = (
-          ops.get_default_graph().get_tensor_by_name('sort/transposition:0'))
-      self.assertIsNot(tensor_util.constant_value(transposition), None)
-      self.assertAllEqual(
-          # Swaps "1" and "4" to put "1" at the end.
-          tensor_util.constant_value(transposition),
-          [0, 4, 2, 3, 1])
+    # The transposition array should be a constant if the rank of "values" is
+    # statically known.
+    tensor = random_ops.random_uniform(
+        # Rank is statically known to be 5, but the dimension lengths are not
+        # known.
+        random_ops.random_uniform(
+            shape=(5,), minval=0, maxval=10, dtype=dtypes.int32))
+    sort_ops.sort(tensor, axis=1)
+    transposition = (
+        ops.get_default_graph().get_tensor_by_name('sort/transposition:0'))
+    self.assertFalse(tensor_util.constant_value(transposition) is None)
+    self.assertAllEqual(
+        # Swaps "1" and "4" to put "1" at the end.
+        tensor_util.constant_value(transposition),
+        [0, 4, 2, 3, 1])
 
+  @test_util.run_deprecated_v1
   def testArgsort_1d(self):
     arr = np.random.random(42)
     with self.cached_session():
       self.assertAllEqual(
-          np.sort(arr), array_ops.gather(arr, sort_ops.argsort(arr)))
+          np.sort(arr),
+          array_ops.gather(arr, sort_ops.argsort(arr)).eval())
 
-  def testArgsortStable(self):
-    arr = constant_op.constant([1, 5, 2, 2, 3], dtype=dtypes.int32)
-    ascending = [0, 2, 3, 4, 1]
-    descending = [1, 4, 2, 3, 0]
-    with self.cached_session():
-      self.assertAllEqual(
-          sort_ops.argsort(arr, direction='ASCENDING', stable=True), ascending)
-      self.assertAllEqual(
-          sort_ops.argsort(arr, direction='DESCENDING', stable=True),
-          descending)
-
+  @test_util.run_deprecated_v1
   def testArgsort(self):
     arr = np.random.random((5, 6, 7, 8))
     for axis in range(4):
       with self.cached_session():
         self.assertAllEqual(
-            np.argsort(arr, axis=axis), sort_ops.argsort(arr, axis=axis))
+            np.argsort(arr, axis=axis),
+            sort_ops.argsort(arr, axis=axis).eval())
 
 
 if __name__ == '__main__':
