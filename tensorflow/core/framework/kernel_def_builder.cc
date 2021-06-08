@@ -40,7 +40,6 @@ KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64>(
   constraint->set_name(attr_name);
   auto* allowed_values = constraint->mutable_allowed_values()->mutable_list();
   for (const int64 integer : allowed) {
-    LOG(INFO) << integer;
     allowed_values->add_i(integer);
   }
   return *this;
