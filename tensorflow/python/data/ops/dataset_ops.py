@@ -3579,7 +3579,7 @@ class Options(options_lib.OptionsBase):
       ty=threading_options.ThreadingOptions,
       docstring=
       "The threading options associated with the dataset. See "
-      "`tf.data.experimental.ThreadingOptions` for more details.",
+      "`tf.data.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
 
   experimental_external_state_policy = options_lib.create_option(
