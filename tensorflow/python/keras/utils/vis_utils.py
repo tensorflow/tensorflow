@@ -103,10 +103,9 @@ def model_to_dot(model,
     expand_nested: whether to expand nested models into clusters.
     dpi: Dots per inch.
     subgraph: whether to return a `pydot.Cluster` instance.
-    layer_range: range of layers passed as `list` or `Tensor` of `int` or `str`
-        of shape (2,) indicating the range of layers for which the `pyDot.Dot`
-        will be generated. `layer_range` can be either layer indexes or layer
-        names. By default `None` and considers all layers of model.
+    layer_range: range of layer names passed as `list` of `str` of shape (2,)
+        indicating the range of layers for which the `pyDot.Dot` will be
+        generated. By default `None` and considers all layers of model.
         Note that you must pass range such that the resultant subgraph must
         be complete.
 
@@ -148,24 +147,25 @@ def model_to_dot(model,
     dot.set_node_defaults(shape='record')
 
   if layer_range is None:
-    layer_range = [0, len(model.layers)]
+    layer_range = [
+      model.get_layer(index=0).name,
+      model.get_layer(index=len(model.layers)-1).name
+    ]
   
   # check point for layer range whether its string or integer 
   # layer range must be same dtype (mixed dtype is not allowed)
-  if all(map(lambda x: str(x).isdigit(), layer_range)):
-    layer_range = list(map(int, layer_range))
-    if len(layer_range) >= 2:
-      layer_range = [min(layer_range), max(layer_range)]
-    elif len(layer_range) != [2]:
-      raise ValueError("layer_range must be of shape (2,)")
+  if len(set([type(x) for x in layer_range])) > 1:
+    raise ValueError("layer_range should not contain mixed data type,",
+                     "got layer_range:", layer_range)
+  elif len(layer_range) != 2:
+    raise ValueError("layer_range must be of shape (2,)")
+  elif not isinstance(layer_range[0], str):
+    raise ValueError("layer_range must only contain str type elements")
+  else:
+    layer_range = get_layer_index_bound_by_layer_name(model, layer_range)
     if layer_range[0] < 0 or layer_range[1] > len(model.layers):
       raise ValueError("Both values in layer_range should be in",
                        "range (%d, %d)"%(0, len(model.layers)))
-  elif all(isinstance(item, str) for item in layer_range):
-    layer_range = get_layer_index_bound_by_layer_name(model, layer_range)
-  elif any(map(lambda x: str(x), layer_range)):
-    raise ValueError("layer_range should not contain mixed data type,",
-                     "got layer_range:", layer_range)
 
   sub_n_first_node = {}
   sub_n_last_node = {}
@@ -363,10 +363,9 @@ def plot_model(model,
         'LR' creates a horizontal plot.
     expand_nested: Whether to expand nested models into clusters.
     dpi: Dots per inch.
-    layer_range: range of layers passed as `list` or `Tensor` of `int` or `str`
-        of shape (2,) indicating the range of layers for which the plot
-        will be generated. `layer_range` can be either layer indexes or layer
-        names. By default `None` and considers all layers of model.
+    layer_range: range of layer names passed as `list` of `str` of shape (2,)
+        indicating the range of layers for which the plot will be generated.
+        By default `None` and considers all layers of model.
         Note that you must pass range such that the resultant subgraph must
         be complete.
 
