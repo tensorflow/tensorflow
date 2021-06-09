@@ -122,7 +122,6 @@ cppsources = [
     "runtime/src/kmp_ftn_entry.h",
     "runtime/src/kmp_ftn_os.h",
     "runtime/src/kmp.h",
-    "runtime/src/kmp_i18n_default.inc",
     "runtime/src/kmp_i18n.h",
     "runtime/src/kmp_io.h",
     "runtime/src/kmp_itt.h",
