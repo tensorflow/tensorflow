@@ -183,6 +183,11 @@ if [[ ${IS_OSS_SERIAL} == 1 ]]; then
   BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
 fi
 
+GIT_VERSION=$(git describe --long --tags)
+TF_VERSION=$(python -c "import sys; sys.path.remove(''); import tensorflow as tf; print(tf.version.GIT_VERSION)")
+echo -e "\nSource code version: $GIT_VERSION"
+echo -e "TF wheel version   : $TF_VERSION\n"
+
 # Actually run the tests.
 bazel test ${BAZEL_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} -- \
     ${BAZEL_TEST_TARGETS}
