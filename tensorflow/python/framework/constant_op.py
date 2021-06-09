@@ -25,7 +25,6 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import types_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
@@ -33,7 +32,6 @@ from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.profiler import trace
 from tensorflow.python.util.tf_export import tf_export
 
@@ -72,11 +70,8 @@ def _eager_identity(tensor, ctx):
 def _eager_const(tensor, ctx):
   """Copy a constant to the current device."""
   attrs = ("T", tensor.dtype.as_datatype_enum)
-  if compat.forward_compatible(2021, 6, 29):
-    result, = execute.execute(
-        b"_EagerConst", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
-  else:
-    result = gen_array_ops.identity(tensor)
+  result, = execute.execute(
+      b"_EagerConst", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
   return result
 
 
