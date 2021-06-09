@@ -754,8 +754,8 @@ def ShapeMatchesReduceWithKeepAxes : Constraint<CPred<
 
 // Fold reshapes re-inserting reduced dimensions into the results of a reduction
 // with `keep_dims=false` by changing it to one using `keep_dims=true`.
-foreach ReduceOp = [TFL_ReduceMaxOp, TFL_ReduceMinOp, TFL_ReduceProdOp,
-                    TFL_SumOp] in {
+foreach ReduceOp = [TFL_MeanOp, TFL_ReduceMaxOp, TFL_ReduceMinOp,
+                    TFL_ReduceProdOp, TFL_SumOp] in {
   def FoldReshapeTo#ReduceOp : Pat<
     (TFL_ReshapeOp
       (ReduceOp:$reduce $input, (ConstantOp I32ElementsAttr: $axes),
