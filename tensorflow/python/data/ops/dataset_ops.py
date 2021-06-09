@@ -3579,6 +3579,15 @@ class Options(options_lib.OptionsBase):
       ty=threading_options.ThreadingOptions,
       docstring=
       "The threading options associated with the dataset. See "
+      "`tf.data.experimental.ThreadingOptions` for more details."
+      "This option is deprecated. Please use `threading` instead.",
+      default_factory=threading_options.ThreadingOptions)
+
+  threading = options_lib.create_option(
+      name="threading",
+      ty=threading_options.ThreadingOptions,
+      docstring=
+      "The threading options associated with the dataset. See "
       "`tf.data.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
 
@@ -3604,7 +3613,12 @@ class Options(options_lib.OptionsBase):
     pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
-    pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
+    # If `threading` doesn't have default values, then we save it to proto,
+    # else we go with `experimental_threading`.
+    if not self.threading._has_default_values():
+      pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
+    else:
+      pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
     return pb
 
   def _from_proto(self, pb):
@@ -3619,6 +3633,7 @@ class Options(options_lib.OptionsBase):
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
     self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
+    self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -3627,6 +3642,7 @@ class Options(options_lib.OptionsBase):
     self.experimental_distribute._set_mutable(mutable)
     self.experimental_optimization._set_mutable(mutable)
     self.experimental_threading._set_mutable(mutable)
+    self.threading._set_mutable(mutable)
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
