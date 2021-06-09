@@ -758,6 +758,15 @@ func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x
 
 // -----
 
+// CHECK-LABEL: test_quant_stats
+func @test_quant_stats(%arg0: tensor<2x1xf32>) -> (tensor<2x1xf32>) {
+  // CHECK-NOT: quant.stats
+  %0 = "quant.stats"(%arg0) {layerStats = dense<[1.0, 1.0]> : tensor<2xf32>}: (tensor<2x1xf32>) -> tensor<2x1xf32>
+  return %0 : tensor<2x1xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_add_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg1)
