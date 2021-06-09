@@ -140,14 +140,35 @@ Status Env::RegisterFileSystem(const std::string& scheme,
   return file_system_registry_->Register(scheme, std::move(filesystem));
 }
 
-Status Env::SetConfiguration(const std::string& scheme, const std::string& key,
-                             const std::vector<string>& values) {
+Status Env::SetOption(const std::string& scheme, const std::string& key,
+                      const std::vector<string>& values) {
   FileSystem* file_system = file_system_registry_->Lookup(scheme);
   if (!file_system) {
     return errors::Unimplemented("File system scheme '", scheme,
                                  "' not found to set configuration");
   }
-  return file_system->SetConfiguration(key, values);
+  return file_system->SetOption(key, values);
+}
+
+Status Env::SetOption(const std::string& scheme, const std::string& key,
+                      const std::vector<int64>& values) {
+  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  if (!file_system) {
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not found to set configuration");
+  }
+  return file_system->SetOption(key, values);
+}
+
+
+Status Env::SetOption(const std::string& scheme, const std::string& key,
+                      const std::vector<double>& values) {
+  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  if (!file_system) {
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not found to set configuration");
+  }
+  return file_system->SetOption(key, values);
 }
 
 Status Env::FlushFileSystemCaches() {

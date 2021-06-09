@@ -87,7 +87,7 @@ typedef struct TF_TransactionToken {
 // inside the `TF_Filesystem_Option_Value` struct)
 // as MSVC does not recognize `typeof`.
 typedef union TF_Filesystem_Option_Value_Union {
-  int64_t inv_val;
+  int64_t int_val;
   double real_val;
   struct {
     char* buf;
@@ -98,7 +98,7 @@ typedef union TF_Filesystem_Option_Value_Union {
 typedef struct TF_Filesystem_Option_Value {
   int type_tag;   // type of values in the values union
   int num_values; // number of values
-  TF_Filesystem_Option_Value_Union* values;  // owned
+  TF_Filesystem_Option_Value_Union* values;  // owned (plugins must make a copy if storing this)
 } TF_Filesystem_Option_Value;
 
 typedef enum TF_Filesystem_Option_Type {
