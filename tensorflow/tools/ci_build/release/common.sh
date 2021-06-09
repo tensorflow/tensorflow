@@ -116,43 +116,12 @@ function install_ubuntu_16_pip_deps {
     shift
   done
 
-  # LINT.IfChange(linux_pip_installations_orig)
-  # To have reproducible builds, these dependencies should be pinned always.
-  # Prefer pinning to the same version as in setup.py
   # First, upgrade pypi wheels
   "${PIP_CMD}" install --user --upgrade 'setuptools<53' pip wheel
-  # NOTE: As numpy has releases that break semver guarantees and several other
-  # deps depend on numpy without an upper bound, we must install numpy before
-  # everything else.
-  # TODO(mihaimaruseac): Convert to requirements.txt
-  "${PIP_CMD}" install --user --upgrade 'numpy ~= 1.19.2'
-  # Now, install the deps, as listed in setup.py
-  "${PIP_CMD}" install --user 'absl-py ~= 0.10'
-  "${PIP_CMD}" install --user 'astunparse ~= 1.6.3'
-  "${PIP_CMD}" install --user 'flatbuffers ~= 1.12.0'
-  "${PIP_CMD}" install --user 'google_pasta ~= 0.2'
-  "${PIP_CMD}" install --user 'h5py ~= 3.1.0'
-  "${PIP_CMD}" install --user 'keras_preprocessing ~= 1.1.2'
-  "${PIP_CMD}" install --user 'opt_einsum ~= 3.3.0'
-  "${PIP_CMD}" install --user 'protobuf >= 3.9.2'
-  "${PIP_CMD}" install --user 'six ~= 1.15.0'
-  "${PIP_CMD}" install --user 'termcolor ~= 1.1.0'
-  "${PIP_CMD}" install --user 'typing_extensions ~= 3.7.4'
-  "${PIP_CMD}" install --user 'wheel ~= 0.35'
-  "${PIP_CMD}" install --user 'wrapt ~= 1.12.1'
-  # We need to pin gast dependency exactly
-  "${PIP_CMD}" install --user 'gast == 0.4.0'
-  # Finally, install tensorboard and estimator
-  # Note that here we want the latest version that matches (b/156523241)
-  "${PIP_CMD}" install --user --upgrade 'tb-nightly ~= 2.4.0.a'
-  "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.5.0'
-  # Test dependencies
-  "${PIP_CMD}" install --user 'grpcio >= 1.37.0, < 2.0'
-  "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
-  "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
+
+  # LINT.IfChange(linux_pip_installations_orig)
+  "${PIP_CMD}" install --user -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
   # LINT.ThenChange(:mac_pip_installations)
-  # Need to be addressed later. Unblocking 2.4 branchcut
-  "${PIP_CMD}" install --user 'PyYAML ~= 5.3.1'
 }
 
 # Gradually replace function install_ubuntu_16_pip_deps.
@@ -173,85 +142,23 @@ function install_ubuntu_16_python_pip_deps {
     shift
   done
 
-  # LINT.IfChange(linux_pip_installations)
-  # To have reproducible builds, these dependencies should be pinned always.
-  # Prefer pinning to the same version as in setup.py
   # First, upgrade pypi wheels
   ${PIP_CMD} install --user --upgrade 'setuptools<53' pip wheel
-  # NOTE: As numpy has releases that break semver guarantees and several other
-  # deps depend on numpy without an upper bound, we must install numpy before
-  # everything else.
-  # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install --user --upgrade 'numpy ~= 1.19.2'
-  # Now, install the deps, as listed in setup.py
-  ${PIP_CMD} install --user 'absl-py ~= 0.10'
-  ${PIP_CMD} install --user 'astunparse ~= 1.6.3'
-  ${PIP_CMD} install --user 'flatbuffers ~= 1.12.0'
-  ${PIP_CMD} install --user 'google_pasta ~= 0.2'
-  ${PIP_CMD} install --user 'h5py ~= 3.1.0'
-  ${PIP_CMD} install --user 'keras_preprocessing ~= 1.1.2'
-  ${PIP_CMD} install --user 'opt_einsum ~= 3.3.0'
-  ${PIP_CMD} install --user 'protobuf >= 3.9.2'
-  ${PIP_CMD} install --user 'six ~= 1.15.0'
-  ${PIP_CMD} install --user 'termcolor ~= 1.1.0'
-  ${PIP_CMD} install --user 'typing_extensions ~= 3.7.4'
-  ${PIP_CMD} install --user 'wheel ~= 0.35'
-  ${PIP_CMD} install --user 'wrapt ~= 1.12.1'
-  # We need to pin gast dependency exactly
-  ${PIP_CMD} install --user 'gast == 0.4.0'
-  # Finally, install tensorboard and estimator
-  # Note that here we want the latest version that matches (b/156523241)
-  ${PIP_CMD} install --user --upgrade 'tb-nightly ~= 2.4.0.a'
-  ${PIP_CMD} install --user --upgrade 'tensorflow_estimator ~= 2.5.0'
-  # Test dependencies
-  ${PIP_CMD} install --user 'grpcio >= 1.37.0, < 2.0'
-  ${PIP_CMD} install --user 'portpicker ~= 1.3.1'
-  ${PIP_CMD} install --user 'scipy ~= 1.5.2'
+
+  # LINT.IfChange(linux_pip_installations)
+  ${PIP_CMD} install --user -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
   # LINT.ThenChange(:mac_pip_installations)
-  # Need to be addressed later. Unblocking 2.4 branchcut
-  ${PIP_CMD} install --user 'PyYAML ~= 5.3.1'
 }
 
 function install_macos_pip_deps {
 
   PIP_CMD="python -m pip"
 
-  # LINT.IfChange(mac_pip_installations)
-  # To have reproducible builds, these dependencies should be pinned always.
-  # Prefer pinning to the same version as in setup.py
   # First, upgrade pypi wheels
   ${PIP_CMD} install --upgrade 'setuptools<53' pip wheel
-  # NOTE: As numpy has releases that break semver guarantees and several other
-  # deps depend on numpy without an upper bound, we must install numpy before
-  # everything else.
-  # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install --upgrade 'numpy ~= 1.19.2'
-  # Now, install the deps, as listed in setup.py
-  ${PIP_CMD} install 'absl-py ~= 0.10'
-  ${PIP_CMD} install 'astunparse ~= 1.6.3'
-  ${PIP_CMD} install 'flatbuffers ~= 1.12.0'
-  ${PIP_CMD} install 'google_pasta ~= 0.2'
-  ${PIP_CMD} install 'h5py ~= 3.1.0'
-  ${PIP_CMD} install 'keras_preprocessing ~= 1.1.2'
-  ${PIP_CMD} install 'opt_einsum ~= 3.3.0'
-  ${PIP_CMD} install 'protobuf >= 3.9.2'
-  ${PIP_CMD} install 'six ~= 1.15.0'
-  ${PIP_CMD} install 'termcolor ~= 1.1.0'
-  ${PIP_CMD} install 'typing_extensions ~= 3.7.4'
-  ${PIP_CMD} install 'wheel ~= 0.35'
-  ${PIP_CMD} install 'wrapt ~= 1.12.1'
-  # We need to pin gast dependency exactly
-  ${PIP_CMD} install 'gast == 0.4.0'
-  # Finally, install tensorboard and estimator
-  # Note that here we want the latest version that matches (b/156523241)
-  ${PIP_CMD} install --upgrade 'tb-nightly ~= 2.4.0.a'
-  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.5.0'
-  # Test dependencies
-  ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0'
-  ${PIP_CMD} install 'portpicker ~= 1.3.1'
-  ${PIP_CMD} install 'scipy ~= 1.5.2'
-  ${PIP_CMD} install --upgrade certifi
 
+  # LINT.IfChange(mac_pip_installations)
+  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_mac.txt
   # LINT.ThenChange(:linux_pip_installations_orig)
   # LINT.ThenChange(:install_macos_pip_deps_no_venv)
   # LINT.ThenChange(:linux_pip_installations)
@@ -263,42 +170,11 @@ function install_macos_pip_deps_no_venv {
 
   PIP_CMD="${1} -m pip"
 
-  # LINT.IfChange(mac_pip_installations)
-  # To have reproducible builds, these dependencies should be pinned always.
-  # Prefer pinning to the same version as in setup.py
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --upgrade 'setuptools<53' pip wheel --user
-  # NOTE: As numpy has releases that break semver guarantees and several other
-  # deps depend on numpy without an upper bound, we must install numpy before
-  # everything else.
-  # TODO(mihaimaruseac): Convert to requirements.txt
-  ${PIP_CMD} install --upgrade 'numpy ~= 1.19.2' --user
-  # Now, install the deps, as listed in setup.py
-  ${PIP_CMD} install 'absl-py ~= 0.10' --user
-  ${PIP_CMD} install 'astunparse ~= 1.6.3' --user
-  ${PIP_CMD} install 'flatbuffers ~= 1.12.0' --user
-  ${PIP_CMD} install 'google_pasta ~= 0.2' --user
-  ${PIP_CMD} install 'h5py ~= 3.1.0' --user
-  ${PIP_CMD} install 'keras_preprocessing ~= 1.1.2' --user
-  ${PIP_CMD} install 'opt_einsum ~= 3.3.0' --user
-  ${PIP_CMD} install 'protobuf >= 3.9.2' --user
-  ${PIP_CMD} install 'six ~= 1.15.0' --user
-  ${PIP_CMD} install 'termcolor ~= 1.1.0' --user
-  ${PIP_CMD} install 'typing_extensions ~= 3.7.4' --user
-  ${PIP_CMD} install 'wheel ~= 0.35' --user
-  ${PIP_CMD} install 'wrapt ~= 1.12.1' --user
-  # We need to pin gast dependency exactly
-  ${PIP_CMD} install 'gast == 0.4.0' --user
-  # Finally, install tensorboard and estimator
-  # Note that here we want the latest version that matches (b/156523241)
-  ${PIP_CMD} install --upgrade 'tb-nightly ~= 2.4.0.a' --user
-  ${PIP_CMD} install --upgrade 'tensorflow_estimator ~= 2.5.0' --user
-  # Test dependencies
-  ${PIP_CMD} install 'grpcio >= 1.37.0, < 2.0' --user
-  ${PIP_CMD} install 'portpicker ~= 1.3.1' --user
-  ${PIP_CMD} install 'scipy ~= 1.5.2' --user
-  ${PIP_CMD} install --upgrade certifi --user
+  ${PIP_CMD} install --user --upgrade 'setuptools<53' pip wheel
 
+  # LINT.IfChange(mac_pip_installations)
+  ${PIP_CMD} install --user -r tensorflow/tools/ci_build/release/requirements_mac.txt
   # LINT.ThenChange(:install_macos_pip_deps)
 }
 
