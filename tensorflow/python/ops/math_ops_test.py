@@ -95,6 +95,10 @@ class ReduceTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.var(x_np), 0.25)
     self.assertEqual(self.evaluate(math_ops.reduce_variance(x_np)), 0.25)
 
+    x = ragged_factory_ops.constant([[5., 1., 4., 1.], [], [5., 9., 2.], [5.],
+                                     []])
+    self.assertAllClose(math_ops.reduce_variance(x, axis=0), [0., 16., 1., 0.])
+
   def testReduceVarComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
     complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
