@@ -1016,6 +1016,12 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_TILE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
     case BuiltinOperator_UNPACK:
       property.inputs = {{0, {}}};
       property.arbitrary_outputs = true;
