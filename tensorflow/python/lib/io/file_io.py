@@ -796,7 +796,7 @@ def join(path, *paths):
   "ram://folder/file.py"  # on Windows or Linux/Unix
 
   >>> tf.io.gfile.join("folder", "file.py")
-  "folder/file.p"
+  "folder/file.py"  # on Linux/Unix, would be "folder\\file.py" on Windows
 
   Args:
     path: string, path to a directory
