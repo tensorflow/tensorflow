@@ -110,11 +110,11 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options2 = dataset_ops.Options()
     self.assertIsNot(options1.experimental_optimization,
                      options2.experimental_optimization)
-    self.assertIsNot(options1.experimental_threading,
-                     options2.experimental_threading)
+    self.assertIsNot(options1.threading,
+                     options2.threading)
     self.assertEqual(options1.experimental_optimization,
                      optimization_options.OptimizationOptions())
-    self.assertEqual(options1.experimental_threading,
+    self.assertEqual(options1.threading,
                      threading_options.ThreadingOptions())
 
   @combinations.generate(test_base.default_test_combinations())
@@ -169,8 +169,8 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.reorder_data_discarding_ops = True
     options.experimental_optimization.shuffle_and_repeat_fusion = True
     options.experimental_slack = True
-    options.experimental_threading.max_intra_op_parallelism = 30
-    options.experimental_threading.private_threadpool_size = 40
+    options.threading.max_intra_op_parallelism = 30
+    options.threading.private_threadpool_size = 40
     pb = options._to_proto()
     result = dataset_ops.Options()
     result._from_proto(pb)

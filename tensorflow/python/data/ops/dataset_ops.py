@@ -3613,14 +3613,13 @@ class Options(options_lib.OptionsBase):
     pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
-    # If `threading` doesn't have default values, then we save it to proto,
-    # else we go with `experimental_threading`.
+    # (kvignesh1420): We try to keep the values of `threading` and
+    # `experimental_threading` the same, to prevent unexpected behaviours.
     if not self.threading._has_default_values():
-      pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
       self.experimental_threading = self.threading
     else:
-      pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
       self.threading = self.experimental_threading
+    pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access  
     return pb
 
   def _from_proto(self, pb):
