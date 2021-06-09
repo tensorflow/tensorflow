@@ -783,20 +783,23 @@ def list_directory_v2(path):
 def join(path, *paths):
   """Join one or more path components intelligently.
 
-  This is the same as os.path.join except that it guarantees correct
-  handling of tensorflow specific filesystems like `gcs://` and `ram://`
-  on all platforms.
-
-  Examples:
+  TensorFlow specific filesystems will be joined
+  like a url (using "/" as the path seperator) on all platforms:
 
   >>> tf.io.gfile.join("gcs://folder", "file.py")
-  "gcs://folder/file.py"  # on Windows or Linux/Unix
+  'gcs://folder/file.py'  # on Windows or Linux/Unix
 
   >>> tf.io.gfile.join("ram://folder", "file.py")
-  "ram://folder/file.py"  # on Windows or Linux/Unix
+  'ram://folder/file.py'  # on Windows or Linux/Unix
 
-  >>> tf.io.gfile.join("folder", "file.py")
-  "folder/file.py"  # on Linux/Unix, would be "folder\\file.py" on Windows
+  But the native filesystem is handled just like os.path.join:
+
+  >>> path = tf.io.gfile.join("folder", "file.py")
+  ... if os.name == "nt":
+  ...   print(path == "folder\\file.py")  # Windows
+  ... else:
+  ...   print(path == "folder/file.py")  # Unix/Linux
+  True
 
   Args:
     path: string, path to a directory
