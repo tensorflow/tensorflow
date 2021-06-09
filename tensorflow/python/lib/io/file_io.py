@@ -790,10 +790,13 @@ def join(path, *paths):
   Examples:
 
   >>> tf.io.gfile.join("gcs://folder", "file.py")
-  "gcs://folder/file.py"
+  "gcs://folder/file.py"  # on Windows or Linux/Unix
 
   >>> tf.io.gfile.join("ram://folder", "file.py")
-  "ram://folder/file.py"
+  "ram://folder/file.py"  # on Windows or Linux/Unix
+
+  >>> tf.io.gfile.join("folder", "file.py")
+  "folder/file.p"
 
   Args:
     path: string, path to a directory
