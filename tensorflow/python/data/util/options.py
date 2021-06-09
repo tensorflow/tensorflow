@@ -61,9 +61,13 @@ class OptionsBase(object):
                        "update dataset options.")
     if hasattr(self, name):
       if name=="experimental_threading":
-        logging.warning("options.experimental_threading is deprecated."
+        logging.warning("options.experimental_threading is deprecated. "
                         "Use options.threading instead.")
         object.__setattr__(self, "threading", value)
+      elif name=="threading":
+        # ensure backward-compatibility until total deprecation of
+        # `experimental_threading`
+        object.__setattr__(self, "experimental_threading", value)
       object.__setattr__(self, name, value)
     else:
       raise AttributeError(

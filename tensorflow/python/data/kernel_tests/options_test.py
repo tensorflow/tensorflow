@@ -202,6 +202,31 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertProtoEquals(expected_pb, result)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testThreadingOptionsBackwardCompatibility(self):
+    options = dataset_ops.Options()
+    t_opts = threading_options.ThreadingOptions()
+    t_opts.max_intra_op_parallelism = 20
+    options.threading = t_opts
+    self.assertEqual(options.threading, options.experimental_threading)
+    t_opts.private_threadpool_size = 80
+    options.experimental_threading = t_opts
+    self.assertEqual(options.threading, options.experimental_threading)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExperimentalThreadingOptionsOverride(self):
+    options = dataset_ops.Options()
+    self.assertEqual(options.threading, options.experimental_threading)
+    options.threading.max_intra_op_parallelism = 20
+    options.experimental_threading.max_intra_op_parallelism = 40
+    pb = options._to_proto()
+    result = dataset_ops.Options()
+    result._from_proto(pb)
+    self.assertEqual(
+      result.experimental_threading.max_intra_op_parallelism,
+      result.threading.max_intra_op_parallelism
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
   def testPersistenceOptionsSetOutsideFunction(self):
 
     @def_function.function

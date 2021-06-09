@@ -29,6 +29,7 @@ import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
+from absl import logging
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
@@ -3613,7 +3614,24 @@ class Options(options_lib.OptionsBase):
     pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
-    pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access  
+    # (kvignesh1420): We try to keep the values of `threading` and
+    # `experimental_threading` the same, to prevent unexpected behaviours
+    # and ensure backward-compatibility.
+    if self.threading._has_non_default_values():
+      if self.experimental_threading._has_non_default_values():
+        override_options = []
+        for name in self.threading._get_option_names():
+          if (object.__getattribute__(self.threading, name) !=
+              object.__getattribute__(self.experimental_threading, name)):
+            override_options.append(name)
+        if override_options:
+          logging.warning("overriding options '{}' of experimental_threading "
+                "with respective values in threading.".format(
+                  ",".join(override_options)))
+      self.experimental_threading = self.threading
+    else:
+      self.threading = self.experimental_threading
+    pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
   def _from_proto(self, pb):

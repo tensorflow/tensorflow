@@ -35,7 +35,7 @@ class ThreadingOptions(options.OptionsBase):
 
   ```python
   options = tf.data.Options()
-  options.experimental_threading.private_threadpool_size = 10
+  options.threading.private_threadpool_size = 10
   dataset = dataset.with_options(options)
   ```
   """
@@ -53,6 +53,16 @@ class ThreadingOptions(options.OptionsBase):
       "If set, the dataset will use a private threadpool of the given size. "
       "The value 0 can be used to indicate that the threadpool size should be "
       "determined at runtime based on the number of available CPU cores.")
+
+  def _get_option_names(self):
+    return ["max_intra_op_parallelism", "private_threadpool_size"]
+
+  def _has_non_default_values(self):
+    attrs = self._get_option_names()
+    for attr in attrs:
+      if object.__getattribute__(self, attr) is not None:
+        return True
+    return False
 
   def _to_proto(self):
     pb = dataset_options_pb2.ThreadingOptions()
