@@ -528,16 +528,12 @@ cc_library(
 cc_library(
     name = "lhlo",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc",
         "lib/Dialect/mhlo/IR/lhlo_ops.cc",
         "lib/Dialect/mhlo/IR/lhlo_ops_structs.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
     ],
     includes = ["include"],
     deps = [
