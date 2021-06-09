@@ -83,6 +83,9 @@ class Executor {
   //
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
+  //
+  // "start_time_usecs" is a timestamp for the start of RunAsync()
+  // execution. Used for system-wide latency metrics.
   struct Args {
     int64 step_id = 0;
     RendezvousInterface* rendezvous = nullptr;
@@ -96,7 +99,7 @@ class Executor {
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
-    int64 start_time_usecs;
+    int64 start_time_usecs = 0;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
