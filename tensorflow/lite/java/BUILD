@@ -380,9 +380,6 @@ java_test_with_tflite(
     javacopts = JAVACOPTS,
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-        "noasan",  # b/190034516
-        "nomsan",  # b/190034516
-        "notsan",  # b/190034516
     ],
     test_class = "org.tensorflow.lite.TensorTest",
     tflite_jni_binaries = [
