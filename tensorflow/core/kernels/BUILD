@@ -7533,6 +7533,7 @@ exports_files([
     "cwise_op_select.cc",
     "cwise_op_sigmoid.cc",
     "cwise_op_sin.cc",
+    "cwise_op_sign.cc",
     "cwise_op_sqrt.cc",
     "cwise_op_square.cc",
     "cwise_op_squared_difference.cc",
