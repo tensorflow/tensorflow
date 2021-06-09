@@ -49,10 +49,25 @@ from tensorflow.python.util import tf_inspect
 
 
 # Helper function to accommodate MKL-enabled TensorFlow:
-# MatMul op is supported by MKL and its name is prefixed with "_Mkl" during the
-# MKL graph rewrite pass.
+# MatMul op is supported by MKL for some data types and its name is prefixed
+# with "_Mkl" during the MKL graph rewrite pass.
 def _matmul_op_name():
-  return "_MklMatMul" if test_util.IsMklEnabled() else "MatMul"
+  if (test_util.IsMklEnabled() and
+      _get_graph_matmul_dtype() in _mkl_matmul_supported_types()):
+    return "_MklMatMul"
+  else:
+    return "MatMul"
+
+
+# Helper function to get MklMatMul supported types
+def _mkl_matmul_supported_types():
+  return {"float32", "bfloat16"}
+
+
+# Helper function to get dtype used in the graph of SetUpClass()
+def _get_graph_matmul_dtype():
+  # default dtype of matmul op created is float64
+  return "float64"
 
 
 def _cli_config_from_temp_file():
@@ -672,7 +687,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "simple_mul_add/add:0"
     ], [
         "VariableV2", "VariableV2", "Identity", "Identity",
-        _matmul_op_name(), "Add"
+        _matmul_op_name(), "AddV2"
     ])
 
     # Check the main menu.
@@ -689,7 +704,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
         ], [
             "VariableV2", "VariableV2", "Identity", "Identity",
-            _matmul_op_name(), "Add"
+            _matmul_op_name(), "AddV2"
         ],
         sort_by="timestamp",
         reverse=True)
@@ -705,7 +720,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
         ], [
             "VariableV2", "VariableV2", "Identity", "Identity",
-            _matmul_op_name(), "Add"
+            _matmul_op_name(), "AddV2"
         ],
         sort_by="dump_size")
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -720,7 +735,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
         ], [
             "VariableV2", "VariableV2", "Identity", "Identity",
-            _matmul_op_name(), "Add"
+            _matmul_op_name(), "AddV2"
         ],
         sort_by="dump_size",
         reverse=True)
@@ -742,7 +757,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
         ], [
             "VariableV2", "VariableV2", "Identity", "Identity",
-            _matmul_op_name(), "Add"
+            _matmul_op_name(), "AddV2"
         ],
         sort_by="op_type",
         reverse=False)
@@ -759,7 +774,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
         ], [
             "VariableV2", "VariableV2", "Identity", "Identity",
-            _matmul_op_name(), "Add"
+            _matmul_op_name(), "AddV2"
         ],
         sort_by="op_type",
         reverse=True)
@@ -776,7 +791,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
         ], [
             "VariableV2", "VariableV2", "Identity", "Identity",
-            _matmul_op_name(), "Add"
+            _matmul_op_name(), "AddV2"
         ],
         sort_by="tensor_name",
         reverse=False)
@@ -793,7 +808,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
         ], [
             "VariableV2", "VariableV2", "Identity", "Identity",
-            _matmul_op_name(), "Add"
+            _matmul_op_name(), "AddV2"
         ],
         sort_by="tensor_name",
         reverse=True)
@@ -826,7 +841,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     assert_listed_tensors(
         self,
         out, ["simple_mul_add/add:0", "simple_mul_add/matmul:0"],
-        ["Add", _matmul_op_name()],
+        ["AddV2", _matmul_op_name()],
         op_type_regex=("(Add|" + _matmul_op_name() + ")"))
     check_main_menu(self, out, list_tensors_enabled=False)
 
@@ -835,7 +850,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "list_tensors", ["-t", "(Add|MatMul)", "-n", ".*add$"])
     assert_listed_tensors(
         self,
-        out, ["simple_mul_add/add:0"], ["Add"],
+        out, ["simple_mul_add/add:0"], ["AddV2"],
         node_name_regex=".*add$",
         op_type_regex="(Add|MatMul)")
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -863,7 +878,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     assert_listed_tensors(
         self,
         out, ["simple_mul_add/matmul:0", "simple_mul_add/add:0"],
-        [_matmul_op_name(), "Add"],
+        [_matmul_op_name(), "AddV2"],
         tensor_filter_name="is_2x1_vector")
 
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -902,7 +917,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     node_name = "simple_mul_add/matmul"
     out = self._registry.dispatch_command("node_info", [node_name])
 
-    recipients = [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")]
+    recipients = [("AddV2", "simple_mul_add/add"),
+                  ("AddV2", "simple_mul_add/add")]
 
     assert_node_attribute_lines(self, out, node_name, _matmul_op_name(),
                                 self._main_device,
@@ -939,7 +955,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         _matmul_op_name(),
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
-        [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
+        [("AddV2", "simple_mul_add/add"), ("AddV2", "simple_mul_add/add")], [],
         attr_key_val_pairs=test_attr_key_val_pairs)
     check_main_menu(
         self,
@@ -960,7 +976,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         _matmul_op_name(),
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
-        [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
+        [("AddV2", "simple_mul_add/add"), ("AddV2", "simple_mul_add/add")], [],
         num_dumped_tensors=1)
     check_main_menu(
         self,
@@ -986,7 +1002,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         _matmul_op_name(),
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
-        [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
+        [("AddV2", "simple_mul_add/add"), ("AddV2", "simple_mul_add/add")], [],
         show_stack_trace=True,
         stack_trace_available=False)
     check_main_menu(
@@ -1010,7 +1026,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         _matmul_op_name(),
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
-        [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
+        [("AddV2", "simple_mul_add/add"), ("AddV2", "simple_mul_add/add")], [],
         show_stack_trace=True,
         stack_trace_available=True)
     check_main_menu(
@@ -1755,12 +1771,12 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     out = self._registry.dispatch_command("node_info",
                                           ["control_deps/ctrl_dep_y"])
 
-    assert_node_attribute_lines(
-        self, out, "control_deps/ctrl_dep_y", "Identity",
-        self._main_device, [("Add", "control_deps/y")],
-        [("VariableV2", "control_deps/x")],
-        [("Mul", "control_deps/z")],
-        [("Identity", "control_deps/ctrl_dep_z")])
+    assert_node_attribute_lines(self, out, "control_deps/ctrl_dep_y",
+                                "Identity", self._main_device,
+                                [("AddV2", "control_deps/y")],
+                                [("VariableV2", "control_deps/x")],
+                                [("Mul", "control_deps/z")],
+                                [("Identity", "control_deps/ctrl_dep_z")])
 
     # Call node info on a node with control recipients.
     out = self._registry.dispatch_command("ni", ["control_deps/x"])
@@ -1901,14 +1917,14 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
         "|  |- (2) [Identity] control_deps/x/read",
         "|  |  |- (3) [VariableV2] control_deps/x",
         "|  |- (2) [Identity] control_deps/ctrl_dep_y",
-        "|     |- (3) [Add] control_deps/y",
+        "|     |- (3) [AddV2] control_deps/y",
         "|     |  |- (4) [Identity] control_deps/x/read",
         "|     |  |  |- (5) [VariableV2] control_deps/x",
         "|     |  |- (4) [Identity] control_deps/x/read",
         "|     |     |- (5) [VariableV2] control_deps/x",
         "|     |- (3) (Ctrl) [VariableV2] control_deps/x",
         "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
-        "|  |- (2) [Add] control_deps/y",
+        "|  |- (2) [AddV2] control_deps/y",
         "|  |  |- (3) [Identity] control_deps/x/read",
         "|  |  |  |- (4) [VariableV2] control_deps/x",
         "|  |  |- (3) [Identity] control_deps/x/read",
@@ -1947,7 +1963,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
         "|  |- (2) [Identity] control_deps/x/read", "|  |  |- ...",
         "|  |- (2) [Identity] control_deps/ctrl_dep_y", "|     |- ...",
         "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
-        "|  |- (2) [Add] control_deps/y", "|  |  |- ...",
+        "|  |- (2) [AddV2] control_deps/y", "|  |  |- ...",
         "|  |- (2) (Ctrl) [VariableV2] control_deps/x",
         "|- (1) (Ctrl) [VariableV2] control_deps/x", "", "Legend:",
         "  (d): recursion depth = d.", "  (Ctrl): Control input.",

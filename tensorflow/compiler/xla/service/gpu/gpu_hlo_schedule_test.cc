@@ -94,9 +94,9 @@ TEST_F(GpuHloScheduleTest, SequentialMatMul) {
   // Parameters x,y,z are mutually unordered, while dot1 and dot2 are
   // transitively ordered by operands.
   auto order = schedule->ConsumeHloOrdering();
-  EXPECT_TRUE(order->ExecutesBefore(x, y));
+  EXPECT_TRUE(order->ExecutesBefore(y, x));
   EXPECT_TRUE(order->ExecutesBefore(y, dot1));
-  EXPECT_TRUE(order->ExecutesBefore(dot1, z));
+  EXPECT_TRUE(order->ExecutesBefore(z, dot1));
   EXPECT_TRUE(order->ExecutesBefore(z, dot2));
 }
 
@@ -134,9 +134,9 @@ TEST_F(GpuHloScheduleTest, SequentialAdd) {
   // Parameters x,y,z are mutually unordered, while add1, add2 and add3 are
   // transitively ordered by operands.
   auto order = schedule->ConsumeHloOrdering();
-  EXPECT_TRUE(order->ExecutesBefore(x, y));
+  EXPECT_TRUE(order->ExecutesBefore(y, x));
   EXPECT_TRUE(order->ExecutesBefore(y, add1));
-  EXPECT_TRUE(order->ExecutesBefore(add1, z));
+  EXPECT_TRUE(order->ExecutesBefore(z, add1));
   EXPECT_TRUE(order->ExecutesBefore(z, add2));
   EXPECT_TRUE(order->ExecutesBefore(add2, add3));
 }
@@ -345,6 +345,141 @@ TEST_F(GpuHloScheduleTest, DISABLED_LatticeMatMul) {
 
     EXPECT_FALSE(order->ExecutesBefore(d40, op));
   }
+}
+
+TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
+  HloComputation::Builder builder("entry_computation");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
+  HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, x, y));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add0, y));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
+  // Create nonblocking_call(add0).
+  HloInstruction* nonblocking_call =
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
+          f32_2x2_, {add0},
+          /*custom_call_target=*/"nonblocking-call-start",
+          /*opaque=*/""));
+  static_cast<HloCustomCallInstruction*>(nonblocking_call)
+      ->set_custom_call_schedule(SCHEDULE_EARLIEST);
+  // In addition, add control_dependency: add1->nonblocking_call.
+  TF_CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
+  // Blocking call, which only add4 depends on.
+  HloInstruction* blocking_call =
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
+          f32_2x2_, {nonblocking_call},
+          /*custom_call_target=*/"blocking-call-done",
+          /*opaque=*/""));
+  static_cast<HloCustomCallInstruction*>(blocking_call)
+      ->set_custom_call_schedule(SCHEDULE_LATEST);
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
+  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32_2x2_, HloOpcode::kAdd, add3, blocking_call));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build(add4));
+
+  std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
+
+  auto schedule = BuildGpuHloSchedule(module.get(), *streams);
+  auto order = schedule->ConsumeHloOrdering();
+  VLOG(2) << order->ToString();
+
+  // Order constrained by data dependency.
+  EXPECT_TRUE(order->ExecutesBefore(add0, nonblocking_call));
+  // Order constrained by control dependency.
+  EXPECT_TRUE(order->ExecutesBefore(add1, nonblocking_call));
+  // Test that nonblocking_call is scheduled before add2, so that we know
+  // EARLIEST is in effect.
+  EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add2));
+  EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add3));
+  EXPECT_TRUE(order->ExecutesBefore(nonblocking_call, add4));
+
+  // Test that blocking_call is scheduled after add3, so that we know
+  // LATEST is in effect.
+  EXPECT_TRUE(order->ExecutesBefore(add3, blocking_call));
+  EXPECT_TRUE(order->ExecutesBefore(blocking_call, add4));
+}
+
+TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
+  // All-reduce reduction computation.
+  HloComputation::Builder reduction_builder("add");
+  HloInstruction* x0 =
+      reduction_builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, ShapeUtil::MakeScalarShape(F32),
+          /*name=*/"x"));
+  HloInstruction* y0 =
+      reduction_builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/1, ShapeUtil::MakeScalarShape(F32),
+          /*name=*/"y"));
+  HloInstruction* add =
+      reduction_builder.AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, x0, y0));
+
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  HloComputation* reduction_computation =
+      module->AddEmbeddedComputation(reduction_builder.Build(add));
+
+  HloComputation::Builder builder("entry_computation");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
+  HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, x, y));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add0, y));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
+
+  Shape all_reduce_start_shape =
+      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_});
+  HloInstruction* all_reduce_start =
+      builder.AddInstruction(HloInstruction::CreateAllReduceStart(
+          all_reduce_start_shape, {add0}, reduction_computation,
+          /*replica_groups=*/{}, /*constrain_layout=*/false,
+          /*channel_id=*/absl::nullopt, /*use_global_device_ids=*/true));
+  // In addition, add control_dependency: add1->nonblocking_call.
+  TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
+  // Blocking call, which only add4 depends on.
+  HloInstruction* all_reduce_done =
+      builder.AddInstruction(HloInstruction::CreateUnary(
+          f32_2x2_, HloOpcode::kAllReduceDone, all_reduce_start));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
+  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32_2x2_, HloOpcode::kAdd, add3, all_reduce_done));
+
+  module->AddEntryComputation(builder.Build(add4));
+
+  std::unique_ptr<StreamAssignment> streams = AssignStreams(*module);
+  std::unique_ptr<GpuHloSchedule> schedule =
+      BuildGpuHloSchedule(module.get(), *streams);
+  std::unique_ptr<HloOrdering> order = schedule->ConsumeHloOrdering();
+  VLOG(2) << order->ToString();
+
+  // Order constrained by data dependency.
+  EXPECT_TRUE(order->ExecutesBefore(add0, all_reduce_start));
+  // Order constrained by control dependency.
+  EXPECT_TRUE(order->ExecutesBefore(add1, all_reduce_start));
+  // Test that all_reduce_start is scheduled before add2.
+  EXPECT_TRUE(order->ExecutesBefore(all_reduce_start, add2));
+  EXPECT_TRUE(order->ExecutesBefore(all_reduce_start, add3));
+  EXPECT_TRUE(order->ExecutesBefore(all_reduce_start, add4));
+
+  // Test that all_reduce_done is scheduled after add3.
+  EXPECT_TRUE(order->ExecutesBefore(add3, all_reduce_done));
+  EXPECT_TRUE(order->ExecutesBefore(all_reduce_done, add4));
 }
 
 }  // namespace gpu

@@ -5,6 +5,18 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CheckpointInitialValue"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CheckpointInitialValueCallable"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ObjectGraphView"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Trackable"
     mtype: "<type \'type\'>"
   }
@@ -15,6 +27,14 @@ tf_module {
   member {
     name: "TrackableReference"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TrackableSaver"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "no_automatic_dependency_tracking"
+    argspec: "args=[\'method\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "register_session_provider"

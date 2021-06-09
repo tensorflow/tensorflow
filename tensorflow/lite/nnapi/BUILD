@@ -5,7 +5,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -34,7 +34,7 @@ cc_library(
     ),
     deps = [
         ":nnapi_lib",
-    ],
+    ] + if_nnapi(["//tensorflow/lite/nnapi/sl:nnapi_support_library_headers"]),
 )
 
 cc_library(

@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -53,6 +53,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
+        "//tensorflow/lite/python:convert_phase",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:util",
         "//third_party/py/numpy",

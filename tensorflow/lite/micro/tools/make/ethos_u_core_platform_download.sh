@@ -50,8 +50,8 @@ if [ -d ${DOWNLOADED_ETHOS_U_CORE_PLATFORM_PATH} ]; then
 else
   UNAME_S=`uname -s`
   if [ ${UNAME_S} == Linux ]; then
-    ETHOS_U_CORE_PLATFORM_URL=https://git.mlplatform.org/ml/ethos-u/ethos-u-core-platform.git/snapshot/ethos-u-core-platform-6663630bb3feea222fd38278a962297c08d0b320.tar.gz
-    EXPECTED_MD5=11683ce5cbf4e4d1003ca93a85ad0b08
+    ETHOS_U_CORE_PLATFORM_URL=https://git.mlplatform.org/ml/ethos-u/ethos-u-core-platform.git/snapshot/ethos-u-core-platform-b5f7cfe253dfeadd83caf60fde34b5b66f356782.tar.gz
+    EXPECTED_MD5=9431cd98f9d42d3bca9742dd7cab7229
   else
     echo "OS type ${UNAME_S} not supported."
     exit 1
@@ -75,6 +75,23 @@ else
   fi
   LINKER_PATH=${DOWNLOADED_ETHOS_U_CORE_PLATFORM_PATH}/targets/corstone-300
   ${COMPILER} -E -x c -P -o ${LINKER_PATH}/platform_parsed.ld ${LINKER_PATH}/platform.ld
+
+  # Move rodata from ITCM to DDR in order to support a bigger model without a specified section.
+  sed -i '/rodata/d' ${LINKER_PATH}/platform_parsed.ld
+  sed -i 's/network_model_sec/\.rodata\*/' ${LINKER_PATH}/platform_parsed.ld
+
+  # Allow tensor_arena in namespace. This will put tensor arena in SRAM intended by linker file.
+  sed -i 's/tensor_arena/\*tensor_arena\*/' ${LINKER_PATH}/platform_parsed.ld
+
+  # Patch retarget.c so that g++ can find _exit symbol.
+  cat <<EOT >> ${DOWNLOADED_ETHOS_U_CORE_PLATFORM_PATH}/targets/corstone-300/retarget.c
+
+void RETARGET(exit)(int return_code) {
+  _exit(return_code);
+  while (1) {}
+}
+EOT
+
 fi
 
 echo "SUCCESS"

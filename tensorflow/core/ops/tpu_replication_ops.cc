@@ -31,7 +31,7 @@ REGISTER_OP("TPUReplicateMetadata")
     // Deprecated. Use num_cores_per_replica instead.
     .Attr("computation_shape: list(int) = []")
     .Attr("host_compute_core: list(string) = []")
-    .Attr("padding_map: list(string) = []")
+    .Attr("padding_map: list(string) = []")  // Deprecated.
     .Attr("step_marker_location: string = \"STEP_MARK_AT_ENTRY\"")
     .Attr("allow_soft_placement: bool = false")
     .Attr("use_spmd_for_xla_partitioning: bool = false")
@@ -108,7 +108,7 @@ REGISTER_OP("_TPUReplicate")
     .Attr("NumVariables: int >= 0")
     .Attr("Tguaranteed_constants: list(type) >= 0")
     .Attr("output_types: list(type) >= 0")
-    .Attr("padding_map: list(string) = []")
+    .Attr("padding_map: list(string) = []")  // Deprecated.
     .Attr("step_marker_location: string = \"STEP_MARK_AT_ENTRY\"")
     .Attr("allow_soft_placement: bool = false")
     .Attr("num_distributed_variables: int = 0")

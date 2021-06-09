@@ -820,7 +820,7 @@ class RNN(Layer):
 
     if self.return_sequences:
       output = backend.maybe_convert_to_ragged(
-          is_ragged_input, outputs, row_lengths)
+          is_ragged_input, outputs, row_lengths, go_backwards=self.go_backwards)
     else:
       output = last_output
 
@@ -1314,6 +1314,9 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
+    if units < 0:
+      raise ValueError(f'Received an invalid value for units, expected '
+                       f'a positive integer, got {units}.')
     # By default use cached variable under v2 mode, see b/143699808.
     if ops.executing_eagerly_outside_functions():
       self._enable_caching_device = kwargs.pop('enable_caching_device', True)
@@ -1752,6 +1755,9 @@ class GRUCell(DropoutRNNCellMixin, Layer):
                recurrent_dropout=0.,
                reset_after=False,
                **kwargs):
+    if units < 0:
+      raise ValueError(f'Received an invalid value for units, expected '
+                       f'a positive integer, got {units}.')
     # By default use cached variable under v2 mode, see b/143699808.
     if ops.executing_eagerly_outside_functions():
       self._enable_caching_device = kwargs.pop('enable_caching_device', True)
@@ -2312,6 +2318,9 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
+    if units < 0:
+      raise ValueError(f'Received an invalid value for units, expected '
+                       f'a positive integer, got {units}.')
     # By default use cached variable under v2 mode, see b/143699808.
     if ops.executing_eagerly_outside_functions():
       self._enable_caching_device = kwargs.pop('enable_caching_device', True)
@@ -3043,22 +3052,23 @@ def _caching_device(rnn_cell):
   # prevents forward computations in loop iterations from re-reading the
   # updated weights.
   if control_flow_util.IsInWhileLoop(ops.get_default_graph()):
-    logging.warn('Variable read device caching has been disabled because the '
-                 'RNN is in tf.while_loop loop context, which will cause '
-                 'reading stalled value in forward path. This could slow down '
-                 'the training due to duplicated variable reads. Please '
-                 'consider updating your code to remove tf.while_loop if '
-                 'possible.')
+    logging.warning(
+        'Variable read device caching has been disabled because the '
+        'RNN is in tf.while_loop loop context, which will cause '
+        'reading stalled value in forward path. This could slow down '
+        'the training due to duplicated variable reads. Please '
+        'consider updating your code to remove tf.while_loop if possible.')
     return None
   if (rnn_cell._dtype_policy.compute_dtype !=
       rnn_cell._dtype_policy.variable_dtype):
-    logging.warn('Variable read device caching has been disabled since it '
-                 'doesn\'t work with the mixed precision API. This is '
-                 'likely to cause a slowdown for RNN training due to '
-                 'duplicated read of variable for each timestep, which '
-                 'will be significant in a multi remote worker setting. '
-                 'Please consider disabling mixed precision API if '
-                 'the performance has been affected.')
+    logging.warning(
+        'Variable read device caching has been disabled since it '
+        'doesn\'t work with the mixed precision API. This is '
+        'likely to cause a slowdown for RNN training due to '
+        'duplicated read of variable for each timestep, which '
+        'will be significant in a multi remote worker setting. '
+        'Please consider disabling mixed precision API if '
+        'the performance has been affected.')
     return None
   # Cache the value on the device that access the variable.
   return lambda op: op.device

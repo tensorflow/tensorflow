@@ -35,8 +35,6 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::testing::UnorderedElementsAre;
-
 TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
   constexpr int64 kStepNum = 123;
   constexpr int64 kStepId = 0;
@@ -160,9 +158,12 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   EXPECT_EQ(device_plane_visitor.GetStatType(
                 device_plane->lines(0).events(0).stats(1).metadata_id()),
             StatType::kGroupId);
-  EXPECT_EQ(device_plane->lines(0).events(0).stats(1).int64_value(), 10);
+  // group_id is assigned using a list of consecutive number starting from 0.
+  EXPECT_EQ(device_plane->lines(0).events(0).stats(1).int64_value(), 0);
   EXPECT_EQ(group_metadata_map.size(), 1);
-  EXPECT_EQ(group_metadata_map.at(10).name, "10");
+  // group name of ExecutorState::Process event is assigned using iter_num.
+  ASSERT_TRUE(group_metadata_map.contains(0));
+  EXPECT_EQ(group_metadata_map.at(0).name, "10");
 }
 
 // When there are multiple TF loops, group_id is assigned in the order of TF
@@ -205,10 +206,19 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   const GroupMetadataMap& group_metadata_map =
       event_forest.GetGroupMetadataMap();
   EXPECT_EQ(group_metadata_map.size(), 4);
-  EXPECT_TRUE(group_metadata_map.count(10));
-  EXPECT_TRUE(group_metadata_map.count(11));
-  EXPECT_TRUE(group_metadata_map.count(12));
-  EXPECT_TRUE(group_metadata_map.count(13));
+  // group_id is assigned using a list of consecutive number starting from 0,
+  // event with an earlier start time will get a smaller group_id.
+  // group name of ExecutorState::Process event is assigned using iter_num.
+  ASSERT_TRUE(group_metadata_map.contains(0));
+  // iter_num 10 starts at timestamp 20, so it has the smallest group_id.
+  EXPECT_EQ(group_metadata_map.at(0).name, "10");
+  ASSERT_TRUE(group_metadata_map.contains(1));
+  EXPECT_EQ(group_metadata_map.at(1).name, "11");
+  ASSERT_TRUE(group_metadata_map.contains(2));
+  EXPECT_EQ(group_metadata_map.at(2).name, "0");
+  ASSERT_TRUE(group_metadata_map.contains(3));
+  // iter_num 1 starts at timestamp 320, so it has the largest group_id.
+  EXPECT_EQ(group_metadata_map.at(3).name, "1");
 }
 
 TEST(GroupEventsTest, GroupFunctionalOp) {
@@ -579,22 +589,13 @@ TEST(GroupEventsTest, WorkerTest) {
       });
 }
 
-absl::flat_hash_set<int64> ParseGroupIds(absl::string_view selected_group_ids) {
-  absl::flat_hash_set<int64> group_ids;
-  std::vector<absl::string_view> strs = absl::StrSplit(selected_group_ids, '=');
-  std::vector<absl::string_view> group_id_strs = absl::StrSplit(strs[1], ',');
-  for (absl::string_view group_id_str : group_id_strs) {
-    int64 group_id;
-    if (absl::SimpleAtoi(group_id_str, &group_id)) group_ids.insert(group_id);
-  }
-  return group_ids;
-}
-
 TEST(GroupEventsTest, BatchingSessionTest) {
   constexpr absl::string_view kSchedule = "Schedule";
   constexpr int64 kBatchContextType =
       static_cast<int64>(ContextType::kSharedBatchScheduler);
   constexpr int64 kBatchContextId = 123;
+  constexpr int64 kBatchingSessionRunRootLevel = 1;
+  constexpr int64 kProcessBatchRootLevel = 2;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
@@ -603,20 +604,21 @@ TEST(GroupEventsTest, BatchingSessionTest) {
   auto request_thread = plane.GetOrCreateLine(0);
   // First request.
   CreateXEvent(&plane, &request_thread, HostEventType::kBatchingSessionRun, 0,
-               100);
+               100, {{StatType::kIsRoot, kBatchingSessionRunRootLevel}});
   CreateXEvent(&plane, &request_thread, kSchedule, 0, 100,
                {{StatType::kProducerType, kBatchContextType},
                 {StatType::kProducerId, kBatchContextId}});
   // Second request.
   CreateXEvent(&plane, &request_thread, HostEventType::kBatchingSessionRun, 200,
-               100);
+               100, {{StatType::kIsRoot, kBatchingSessionRunRootLevel}});
   CreateXEvent(&plane, &request_thread, kSchedule, 200, 100,
                {{StatType::kProducerType, kBatchContextType},
                 {StatType::kProducerId, kBatchContextId}});
   auto batch_thread = plane.GetOrCreateLine(1);
   CreateXEvent(&plane, &batch_thread, HostEventType::kProcessBatch, 200, 100,
                {{StatType::kConsumerType, kBatchContextType},
-                {StatType::kConsumerId, kBatchContextId}});
+                {StatType::kConsumerId, kBatchContextId},
+                {StatType::kIsRoot, kProcessBatchRootLevel}});
 
   EventForest event_forest;
   GroupTfEvents(&raw_space, &event_forest);
@@ -642,20 +644,11 @@ TEST(GroupEventsTest, BatchingSessionTest) {
                 group_id = stat->IntValue();
               }
               EXPECT_TRUE(group_id.has_value());
-              absl::string_view selected_group_ids;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kSelectedGroupIds)) {
-                selected_group_ids = stat->StrOrRefValue();
-              }
-              if (line.Id() == 0) {
-                if (event.Type() == HostEventType::kBatchingSessionRun) {
-                  EXPECT_THAT(ParseGroupIds(selected_group_ids),
-                              UnorderedElementsAre(*group_id, 0));
-                  ++num_checked;
-                }
-              } else if (line.Id() == 1) {
-                EXPECT_THAT(ParseGroupIds(selected_group_ids),
-                            UnorderedElementsAre(0, 1, 2));
+              if (line.Id() == 0 &&
+                  event.Type() == HostEventType::kBatchingSessionRun) {
+                ++num_checked;
+              } else if (line.Id() == 1 &&
+                         event.Type() == HostEventType::kProcessBatch) {
                 ++num_checked;
               }
             });

@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
@@ -56,16 +60,27 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 // Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Acos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputBetweenZeroAndOne<Eigen::half>(), std::acos,
+    test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
-    std::acos, test::OpsTestConfig().ExpectStrictlyEqual())
+    std::acos, test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
-    std::acos, test::OpsTestConfig().ExpectStrictlyEqual())
+    std::acos, test::OpsTestConfig())
 
 /// Test `tf.Acosh`.
 
 // TODO(herhut): Give this better input once TF testing also supports NaN.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Acosh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputGreaterEqualOne<Eigen::half>(), std::acosh,
+    test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acosh, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterEqualOne<float>(),
     std::acosh, test::OpsTestConfig())
@@ -91,14 +106,23 @@ GENERATE_DEFAULT_TEST(Angle, DT_COMPLEX128, DT_DOUBLE, baseline_angle,
 
 // Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Asin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputBetweenZeroAndOne<Eigen::half>(), std::asin,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
     std::asin, test::OpsTestConfig().ExpectStrictlyEqual())
+
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::asin, test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Asinh`.
+
+GENERATE_DEFAULT_TEST_2(Asinh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::asinh,
+                        test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST(Asinh, DT_FLOAT, DT_FLOAT, std::asinh,
                       test::OpsTestConfig())
@@ -108,6 +132,9 @@ GENERATE_DEFAULT_TEST(Asinh, DT_DOUBLE, DT_DOUBLE, std::asinh,
 
 /// Test `tf.Atan`.
 
+GENERATE_DEFAULT_TEST_2(Atan, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::atan,
+                        test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST(Atan, DT_FLOAT, DT_FLOAT, std::atan,
                       test::OpsTestConfig())
 
@@ -115,6 +142,11 @@ GENERATE_DEFAULT_TEST(Atan, DT_DOUBLE, DT_DOUBLE, std::atan,
                       test::OpsTestConfig())
 
 /// Test `tf.Atanh`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Atanh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputBetweenZeroAndOne<Eigen::half>(), std::atanh,
+    test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Atanh, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
@@ -210,6 +242,9 @@ GENERATE_DEFAULT_TEST_2(Cos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cos,
                         test::OpsTestConfig())
 
 /// Test `tf.Cosh`.
+
+GENERATE_DEFAULT_TEST_2(Cosh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cosh,
+                        test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
                       test::OpsTestConfig())
@@ -437,6 +472,32 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX64, DT_FLOAT, baseline_imag,
 GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
                       test::OpsTestConfig().AddTout().NoBufferReuse())
 
+/// Test `tf.Inv`.
+
+template <typename T>
+T baseline_inv(T x) {
+  return T(1) / x;
+}
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Inv, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64>(), baseline_inv,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Inv, DT_FLOAT, DT_FLOAT, baseline_inv,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Inv, DT_DOUBLE, DT_DOUBLE, baseline_inv,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Inv, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, baseline_inv,
+                        test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Inv, DT_COMPLEX64, DT_COMPLEX64, baseline_inv,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Inv, DT_COMPLEX128, DT_COMPLEX128, baseline_inv,
+                      test::OpsTestConfig())
+
 /// Test `tf.Invert`.
 
 /// Reference implementation.
@@ -627,6 +688,48 @@ GENERATE_DEFAULT_TEST(Real, DT_COMPLEX64, DT_FLOAT, baseline_real,
 GENERATE_DEFAULT_TEST(Real, DT_COMPLEX128, DT_DOUBLE, baseline_real,
                       test::OpsTestConfig().AddTout().NoBufferReuse())
 
+/// Test `tf.Reciprocal`.
+
+template <typename T>
+T baseline_reciprocal(T x) {
+  return T(1) / x;
+}
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Reciprocal, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64>(),
+    baseline_reciprocal, test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Reciprocal, DT_FLOAT, DT_FLOAT, baseline_reciprocal,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Reciprocal, DT_DOUBLE, DT_DOUBLE, baseline_reciprocal,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Reciprocal, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_reciprocal, test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Reciprocal, DT_COMPLEX64, DT_COMPLEX64,
+                      baseline_reciprocal, test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Reciprocal, DT_COMPLEX128, DT_COMPLEX128,
+                      baseline_reciprocal, test::OpsTestConfig())
+
+/// Test `tf.Relu`.
+
+template <typename T>
+T baseline_relu(T x) {
+  return std::max(x, static_cast<T>(0.0));
+}
+
+GENERATE_DEFAULT_TEST(Relu, DT_FLOAT, DT_FLOAT, baseline_relu,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Relu, DT_DOUBLE, DT_DOUBLE, baseline_relu,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Relu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_relu, test::OpsTestConfig())
+
 /// Test `tf.Rsqrt`.
 
 /// Reference implementation.
@@ -681,6 +784,9 @@ GENERATE_DEFAULT_TEST_2(Sin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sin,
 
 /// Test `tf.Sinh`.
 
+GENERATE_DEFAULT_TEST_2(Sinh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sinh,
+                        test::OpsTestConfig())
+
 GENERATE_DEFAULT_TEST(Sinh, DT_FLOAT, DT_FLOAT, std::sinh,
                       test::OpsTestConfig())
 
@@ -732,6 +838,13 @@ TEST_F(UnaryOpsTest, TanhSmallAndLarge) {
       test::InputAsVector<float>({-100.0, -10.5, 12.0, 123.0, 10000.0}),
       baseline_tanh_limits,
       test::OpsTestConfig().ExpectStrictlyEqual().SuppressTolerance());
+}
+
+TEST_F(UnaryOpsTest, TanhNaN) {
+  Test<float, float, float, float>(
+      "Tanh", test::DefaultInputShape(),
+      test::InputAsVector<float>({std::numeric_limits<float>::quiet_NaN()}),
+      std::tanh, test::OpsTestConfig().ExpectStrictlyEqual());
 }
 
 /// Test `tf.Square`.

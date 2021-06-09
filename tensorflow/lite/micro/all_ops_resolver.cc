@@ -32,14 +32,17 @@ AllOpsResolver::AllOpsResolver() {
   AddConcatenation();
   AddConv2D();
   AddCos();
+  AddCumSum();
+  AddDepthToSpace();
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();
-  AddDiv();
   AddElu();
   AddEqual();
   AddEthosU();
   AddFloor();
+  AddFloorDiv();
+  AddFloorMod();
   AddFullyConnected();
   AddGreater();
   AddGreaterEqual();
@@ -70,6 +73,7 @@ AllOpsResolver::AllOpsResolver() {
   AddRelu();
   AddRelu6();
   AddReshape();
+  AddResizeBilinear();
   AddResizeNearestNeighbor();
   AddRound();
   AddRsqrt();
@@ -87,6 +91,7 @@ AllOpsResolver::AllOpsResolver() {
   AddSvdf();
   AddTanh();
   AddTransposeConv();
+  AddTranspose();
   AddUnpack();
 }
 

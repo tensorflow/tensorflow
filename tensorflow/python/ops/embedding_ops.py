@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -512,17 +511,20 @@ def embedding_lookup_sparse(params,
 
     embeddings = embedding_lookup(
         params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
-    if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
-      embeddings = math_ops.cast(embeddings, dtypes.float32)
     if not ignore_weights:
       if segment_ids.dtype != dtypes.int32:
         segment_ids = math_ops.cast(segment_ids, dtypes.int32)
 
       weights = sp_weights.values
+      embeddings = array_ops.gather(embeddings, idx)
+
+      original_dtype = embeddings.dtype
+      if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
+        # Cast low-precision embeddings to float32 during the computation to
+        # avoid numerical issues.
+        embeddings = math_ops.cast(embeddings, dtypes.float32)
       if weights.dtype != embeddings.dtype:
         weights = math_ops.cast(weights, embeddings.dtype)
-
-      embeddings = array_ops.gather(embeddings, idx)
 
       # Reshape weights to allow broadcast
       ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
@@ -547,22 +549,20 @@ def embedding_lookup_sparse(params,
       elif combiner == "mean":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weight_sum = math_ops.segment_sum(weights, segment_ids)
-        embeddings = math_ops.divide(embeddings, weight_sum, name=name)
+        embeddings = math_ops.div_no_nan(embeddings, weight_sum, name=name)
       elif combiner == "sqrtn":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weights_squared = math_ops.pow(weights, 2)
         weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
         weight_sum_sqrt = math_ops.sqrt(weight_sum)
-        embeddings = math_ops.divide(embeddings, weight_sum_sqrt, name=name)
+        embeddings = math_ops.div_no_nan(embeddings, weight_sum_sqrt, name=name)
       else:
         assert False, "Unrecognized combiner"
+      if embeddings.dtype != original_dtype:
+        embeddings = math_ops.cast(embeddings, original_dtype)
     else:
-      if compat.forward_compatible(2020, 5, 14):
-        if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
-          segment_ids = math_ops.cast(segment_ids, dtypes.int32)
-      else:
-        if segment_ids.dtype != dtypes.int32:
-          segment_ids = math_ops.cast(segment_ids, dtypes.int32)
+      if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
+        segment_ids = math_ops.cast(segment_ids, dtypes.int32)
       assert idx is not None
       if combiner == "sum":
         embeddings = math_ops.sparse_segment_sum(

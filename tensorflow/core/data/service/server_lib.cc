@@ -139,16 +139,16 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
       /*replace_all=*/false);
   std::string transfer_address = worker_address;
   std::string transfer_protocol = config_.data_transfer_protocol();
-  if (!transfer_protocol.empty()) {
+  if (!transfer_protocol.empty() && transfer_protocol != "grpc") {
     TF_RETURN_IF_ERROR(DataTransferServer::Build(
         transfer_protocol, service_->get_element_getter(), &transfer_server_));
     TF_RETURN_IF_ERROR(transfer_server_->Start());
     LOG(INFO) << "Data transfer server started at 0.0.0.0:"
               << transfer_server_->get_port();
-    transfer_address =
-        str_util::StringReplace(base_address, kPortPlaceholder,
-                                absl::StrCat(transfer_server_->get_port()),
-                                /*replace_all=*/false);
+    transfer_address = str_util::StringReplace(
+        config_.data_transfer_address(), kPortPlaceholder,
+        absl::StrCat(transfer_server_->get_port()),
+        /*replace_all=*/false);
   }
   TF_RETURN_IF_ERROR(service_->Start(worker_address, transfer_address));
   return Status::OK();

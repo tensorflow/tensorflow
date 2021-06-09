@@ -16,8 +16,6 @@
 # pylint: disable=g-classes-have-attributes
 """Contains the InputSpec class."""
 
-from six.moves import zip  # pylint: disable=redefined-builtin
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec

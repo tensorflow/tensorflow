@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -803,7 +804,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
     item.graph.mutable_node(i)->set_device(devices[i]);
   }
 
-  ArithmeticOptimizer optimizer;
+  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   DisableAddToAddNCombining(&optimizer);
 
   GraphDef output;
@@ -885,7 +886,7 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorMul) {
       TF_CHECK_OK(s.ToGraphDef(&item.graph));
       auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
       ASSERT_EQ(tensors_expected.size(), 1);
-      ArithmeticOptimizer optimizer;
+      ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
       EnableOnlyHoistCommonFactor(&optimizer);
 
       GraphDef output;
@@ -968,7 +969,7 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorDiv) {
         auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
         ASSERT_EQ(tensors_expected.size(), 1);
 
-        ArithmeticOptimizer optimizer;
+        ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
         EnableOnlyHoistCommonFactor(&optimizer);
 
         GraphDef output;
@@ -1254,250 +1255,6 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
   test::ExpectTensorNear<complex64>(tensors[0], tensors_expected[0], 1e-6);
 }
 
-TEST_F(ArithmeticOptimizerTest, ReorderReshapeAroundUnary) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs =
-      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({1, 300, 300, 1}));
-  Output reshape0 = ops::Reshape(s.WithOpName("Reshape0"), inputs,
-                                 ops::Const(s, {1, 90000, 1}, {3}));
-  Output unary = ops::Sigmoid(s, reshape0);
-  Output reshape1 = ops::Reshape(s.WithOpName("Reshape1"), unary,
-                                 ops::Const(s, {1, 300, 300, 1}, {4}));
-  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape1);
-
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  auto t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 300, 300, 1}));
-  auto expected = EvaluateNodes(item.graph, item.fetch, {{"Placeholder", t}});
-  ASSERT_EQ(expected.size(), 1);
-
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyReorderReshapeAroundUnary(&optimizer);
-  OptimizeTwice(&optimizer, &item, &output);
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 3);
-
-  NodeMap node_map(&output);
-  const NodeDef* reshape0_node = node_map.GetNode("Reshape0");
-  ASSERT_NE(reshape0_node, nullptr);
-  ASSERT_EQ(reshape0_node->input_size(), 2);
-  EXPECT_EQ(reshape0_node->input(0), "Placeholder");
-
-  const NodeDef* unary_node = node_map.GetNode("Sigmoid");
-  ASSERT_NE(unary_node, nullptr);
-  ASSERT_EQ(unary_node->input_size(), 1);
-  EXPECT_EQ(unary_node->input(0), "Placeholder");
-
-  const string p = "ArithmeticOptimizer/ReorderReshapeAroundUnary";
-  const NodeDef* new_reshape_node =
-      node_map.GetNode(absl::StrCat(p, "_", "Reshape0"));
-  ASSERT_NE(new_reshape_node, nullptr);
-  ASSERT_EQ(new_reshape_node->input_size(), 2);
-  EXPECT_EQ(new_reshape_node->input(0), "Sigmoid");
-  EXPECT_EQ(new_reshape_node->input(1), reshape0_node->input(1));
-
-  const NodeDef* reshape1_node = node_map.GetNode("Reshape1");
-  ASSERT_NE(reshape1_node, nullptr);
-  ASSERT_EQ(reshape1_node->input_size(), 2);
-  EXPECT_EQ(reshape1_node->input(0), new_reshape_node->name());
-
-  // Reshapes should be removed after pruning
-  EnableOnlyRemoveRedundantReshape(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 0);
-
-  auto actual = EvaluateNodes(output, item.fetch, {{"Placeholder", t}});
-  ASSERT_EQ(actual.size(), 1);
-  test::ExpectTensorNear<float>(actual[0], expected[0], 1e-6);
-}
-
-TEST_F(ArithmeticOptimizerTest, ReorderReshapeAroundUnaryNotOutput) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs =
-      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({1, 300, 300, 1}));
-  Output reshape0 = ops::Reshape(s, inputs, ops::Const(s, {1, 90000, 1}, {3}));
-  Output unary = ops::Sigmoid(s.WithOpName("sigmoid"), reshape0);
-  Output reshape1 =
-      ops::Reshape(s, unary, ops::Const(s, {1, 300, 300, 1}, {4}));
-  Output outputs = ops::Identity(s.WithOpName("output"), reshape1);
-
-  GrapplerItem item;
-  item.fetch = {"output"};
-  item.keep_ops = {"sigmoid"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  auto t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 300, 300, 1}));
-  auto expected = EvaluateNodes(item.graph, item.fetch, {{"Placeholder", t}});
-  ASSERT_EQ(expected.size(), 1);
-
-  // Reshape should not be moved since unary is a keep op
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyReorderReshapeAroundUnary(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
-  EnableOnlyRemoveRedundantReshape(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
-
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 2);
-  auto actual = EvaluateNodes(output, item.fetch, {{"Placeholder", t}});
-  ASSERT_EQ(actual.size(), 1);
-  test::ExpectTensorNear<float>(actual[0], expected[0], 1e-6);
-}
-
-TEST_F(ArithmeticOptimizerTest, ReorderReshapeAroundUnaryNotIdentity) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs =
-      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({1, 300, 300, 1}));
-  Output reshape0 = ops::Reshape(s, inputs, ops::Const(s, {1, 90000, 1}, {3}));
-  Output unary = ops::Sigmoid(s, reshape0);
-  // [1, 300, 300, 1] is not equivalent to [1, 300, 1, 300]
-  Output reshape1 =
-      ops::Reshape(s, unary, ops::Const(s, {1, 300, 1, 300}, {4}));
-  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape1);
-
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  auto t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 300, 300, 1}));
-  auto expected = EvaluateNodes(item.graph, item.fetch, {{"Placeholder", t}});
-  ASSERT_EQ(expected.size(), 1);
-
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyReorderReshapeAroundUnary(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 2);
-
-  EnableOnlyRemoveRedundantReshape(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
-
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 1);
-  auto actual = EvaluateNodes(output, item.fetch, {{"Placeholder", t}});
-  ASSERT_EQ(actual.size(), 1);
-  test::ExpectTensorNear<float>(actual[0], expected[0], 1e-6);
-}
-
-TEST_F(ArithmeticOptimizerTest, ReorderReshapeAroundUnaryWithControl) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs = ops::Const(s, {1.0f, 2.0f, 3.0f, 4.0f}, {1, 2, 2, 1});
-  Output reshape0 = ops::Reshape(s, inputs, ops::Const(s, {1, 4, 1}, {3}));
-  Output unary = ops::Sigmoid(s.WithControlDependencies(reshape0), reshape0);
-  Output reshape1 = ops::Reshape(s, unary, ops::Const(s, {1, 2, 2, 1}, {4}));
-  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape1);
-
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  auto expected = EvaluateNodes(item.graph, item.fetch, {});
-  ASSERT_EQ(expected.size(), 1);
-
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyReorderReshapeAroundUnary(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 3);
-
-  NodeMap node_map(&output);
-  const NodeDef* unary_node = node_map.GetNode("Sigmoid");
-  ASSERT_NE(unary_node, nullptr);
-  ASSERT_EQ(unary_node->input_size(), 2);
-  EXPECT_EQ(unary_node->input(0), "Const");
-  EXPECT_EQ(unary_node->input(1), "^Reshape");
-
-  auto actual = EvaluateNodes(output, item.fetch, {});
-  ASSERT_EQ(actual.size(), 1);
-  test::ExpectTensorNear<float>(actual[0], expected[0], 1e-6);
-}
-
-TEST_F(ArithmeticOptimizerTest, ReorderReshapeAroundUnaryBranch) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs = ops::Placeholder(s.WithOpName("input"), DT_FLOAT,
-                                   ops::Placeholder::Shape({1, 2, 3, 4}));
-  Output reshape_a = ops::Reshape(s.WithOpName("reshape_a"), inputs,
-                                  ops::Const(s, {1, 2, 3, 2, 2}));
-  Output unary = ops::Sigmoid(s, reshape_a);
-  Output reshape_b = ops::Reshape(s.WithOpName("reshape_b"), unary,
-                                  ops::Const(s, {1, 2, 3, 4}));
-  Output output = ops::Identity(s.WithOpName("output"), reshape_b);
-
-  // Branches
-  Output branch_1 = ops::Identity(s.WithOpName("branch_1"), reshape_a);
-  Output branch_2 = ops::Identity(s.WithOpName("branch_2"), unary);
-  Output branch_3 = ops::Identity(s.WithOpName("branch_3"), reshape_b);
-
-  GrapplerItem item;
-  item.fetch = {"output", "branch_1", "branch_2", "branch_3"};
-  auto t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 2, 3, 4}));
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  auto expected = EvaluateNodes(item.graph, item.fetch, {{"input", t}});
-  ASSERT_EQ(expected.size(), 4);
-
-  GraphDef g;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyReorderReshapeAroundUnary(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &g);
-  EXPECT_EQ(CountOpNodes(g, "Reshape"), 3);
-
-  NodeMap node_map(&g);
-  const NodeDef* unary_node = node_map.GetNode("Sigmoid");
-  ASSERT_NE(unary_node, nullptr);
-  ASSERT_EQ(unary_node->input_size(), 1);
-  EXPECT_EQ(unary_node->input(0), "input");
-
-  auto actual = EvaluateNodes(g, item.fetch, {{"input", t}});
-  ASSERT_EQ(actual.size(), 4);
-  for (int i = 0; i < 4; ++i) {
-    test::ExpectTensorNear<float>(actual[i], expected[i], 1e-6);
-  }
-}
-
-TEST_F(ArithmeticOptimizerTest, ReorderReshapeAroundUnarySymbolicShapes) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs =
-      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, -1, -1}));
-  Output inputs_shape = ops::Shape(s, inputs);
-  // The target shape of the reshape is the concatenation of `batch_size`, 3,
-  // `height, and `width`.
-  Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
-                                 ops::Const(s, {1}, {1}));
-  Output height = ops::Slice(s, inputs_shape, ops::Const(s, {2}, {1}),
-                             ops::Const(s, {1}, {1}));
-  Output width = ops::Slice(s, inputs_shape, ops::Const(s, {3}, {1}),
-                            ops::Const(s, {1}, {1}));
-  Output shape_a =
-      ops::Concat(s.WithOpName("shape_a"),
-                  {batch_size, ops::Const(s, {3}, {1}), height, width},
-                  ops::Const(s, {0}, {}));
-  Output shape_b =
-      ops::Concat(s.WithOpName("shape_b"),
-                  {height, batch_size, width, ops::Const(s, {3}, {1})},
-                  ops::Const(s, {0}, {}));
-  Output reshape_a = ops::Reshape(s.WithOpName("reshape_a"), inputs, shape_a);
-  Output unary = ops::Identity(s.WithOpName("unary"), reshape_a);
-  Output reshape_b = ops::Reshape(s.WithOpName("reshape_b"), unary, shape_b);
-  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape_b);
-
-  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 3, 5, 7}));
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  item.feed = {{"Placeholder", x_t}};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
-  ASSERT_EQ(tensors_expected.size(), 1);
-
-  GraphDef output;
-  // Assume valid feed shape in aggressive mode.
-  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
-  EnableOnlyReorderReshapeAroundUnary(&optimizer);
-  OptimizeTwice(&optimizer, &item, &output);
-
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 3);
-  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-  ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
-}
-
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeIdentityReshape) {
   for (bool is_broadcastto : {false, true}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1691,68 +1448,99 @@ TEST_F(ArithmeticOptimizerTest,
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeCombineReshapes) {
-  // Converts an NCHW_VECT_C tensor to NHWC and then flattens it to 2D. The two
-  // reshapes should be combined.
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output nchw_vect_c =
-      ops::Placeholder(s.WithOpName("nchw_vect_c"), DT_INT8,
-                       ops::Placeholder::Shape({8, 3, 28, 28, 4}));
-  Output transpose =
-      ops::Transpose(s.WithOpName("transpose"), nchw_vect_c,
-                     ops::Const(s.WithOpName("perm"), {0, 2, 3, 1, 4}, {5}));
-  Output nhwc = ops::Reshape(
-      s.WithOpName("nhwc"), transpose,
-      ops::Const(
-          s.WithControlDependencies(nchw_vect_c).WithOpName("nhwc_shape"),
-          {8, 28, 28, 12}, {4}));
-  Output flatten = ops::Reshape(
-      s.WithOpName("flatten"), nhwc,
-      ops::Const(s.WithOpName("flatten_shape"), {8, 28 * 28 * 12}, {2}));
-  Output outputs = ops::Identity(s.WithOpName("outputs"), flatten);
+  for (bool include_unary_chain : {false, true}) {
+    // Converts an NCHW_VECT_C tensor to NHWC and then flattens it to 2D. The
+    // two reshapes should be combined.
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output nchw_vect_c =
+        ops::Placeholder(s.WithOpName("nchw_vect_c"), DT_FLOAT,
+                         ops::Placeholder::Shape({8, 3, 28, 28, 4}));
+    Output transpose =
+        ops::Transpose(s.WithOpName("transpose"), nchw_vect_c,
+                       ops::Const(s.WithOpName("perm"), {0, 2, 3, 1, 4}, {5}));
+    Output nhwc = ops::Reshape(
+        s.WithOpName("nhwc"), transpose,
+        ops::Const(
+            s.WithControlDependencies(nchw_vect_c).WithOpName("nhwc_shape"),
+            {8, 28, 28, 12}, {4}));
+    Output flatten = ops::Reshape(
+        s.WithOpName("flatten"),
+        (include_unary_chain ? ops::Cos(s.WithOpName("Cos"), nhwc) : nhwc),
+        ops::Const(s.WithOpName("flatten_shape"), {8, 28 * 28 * 12}, {2}));
+    Output output0 = ops::Identity(s.WithOpName("output0"), flatten);
+    Output output1 = ops::Identity(s.WithOpName("output1"), flatten);
 
-  GraphDef graph;
-  TF_CHECK_OK(s.ToGraphDef(&graph));
-  auto x_t = GenerateRandomTensor<DT_INT8>(TensorShape({8, 3, 28, 28, 4}));
-  auto eval = EvaluateNodes(graph, {"outputs", "nhwc"}, {{"nchw_vect_c", x_t}});
+    GraphDef graph;
+    TF_CHECK_OK(s.ToGraphDef(&graph));
+    auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({8, 3, 28, 28, 4}));
+    auto eval =
+        EvaluateNodes(graph, {"output0", "nhwc"}, {{"nchw_vect_c", x_t}});
 
-  ASSERT_EQ(eval.size(), 2);
-  auto expected_output_t = eval[0];
-  auto nhwc_t = eval[1];
+    ASSERT_EQ(eval.size(), 2);
+    auto expected_output_t = eval[0];
+    auto nhwc_t = eval[1];
 
-  {
-    GrapplerItem item;
-    item.graph = graph;
-    item.fetch = {"outputs"};
-    item.feed = {{"nchw_vect_c", x_t}};
+    {
+      GrapplerItem item;
+      item.graph = graph;
+      item.fetch = {"output0", "output1"};
+      item.feed = {{"nchw_vect_c", x_t}};
 
-    GraphDef output;
-    ArithmeticOptimizer optimizer;
-    EnableOnlyRemoveRedundantReshape(&optimizer);
-    OptimizeTwiceAndPrune(&optimizer, &item, &output);
+      GraphDef output;
+      ArithmeticOptimizer optimizer;
+      EnableOnlyRemoveRedundantReshape(&optimizer);
+      OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
-    EXPECT_EQ(CountOpNodes(output, "Reshape"), 1);
-    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-    ASSERT_EQ(tensors.size(), 1);
-    test::ExpectTensorEqual<int8>(tensors[0], expected_output_t);
-  }
+      EXPECT_EQ(CountOpNodes(output, "Reshape"), 1);
+      auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+      ASSERT_EQ(tensors.size(), 2);
+      test::ExpectTensorEqual<float>(tensors[0], expected_output_t);
+      test::ExpectTensorEqual<float>(tensors[1], expected_output_t);
+    }
 
-  // Test when the first reshape node output is the feed tensor.
-  // (Expected no reshape removal to happen.)
-  {
-    GrapplerItem item;
-    item.graph = graph;
-    item.fetch = {"outputs"};
-    item.feed = {{"nhwc", nhwc_t}};
+    // Test when the first reshape node output is the feed tensor.
+    // (Expected no reshape removal to happen.)
+    {
+      GrapplerItem item;
+      item.graph = graph;
+      item.fetch = {"output0", "output1"};
+      item.feed = {{"nhwc", nhwc_t}};
 
-    GraphDef output;
-    ArithmeticOptimizer optimizer;
-    EnableOnlyRemoveRedundantReshape(&optimizer);
-    OptimizeTwiceAndPrune(&optimizer, &item, &output);
+      GraphDef output;
+      ArithmeticOptimizer optimizer;
+      EnableOnlyRemoveRedundantReshape(&optimizer);
+      OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
-    EXPECT_EQ(CountOpNodes(output, "Reshape"), 2);
-    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-    ASSERT_EQ(tensors.size(), 1);
-    test::ExpectTensorEqual<int8>(tensors[0], expected_output_t);
+      EXPECT_EQ(CountOpNodes(output, "Reshape"), 2);
+      auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+      ASSERT_EQ(tensors.size(), 2);
+      test::ExpectTensorEqual<float>(tensors[0], expected_output_t);
+      test::ExpectTensorEqual<float>(tensors[1], expected_output_t);
+    }
+
+    // Test when the first reshape node output is consumed by multiple nodes
+    // (Expected no reshape removal to happen.)
+    {
+      Output output2 = ops::Identity(s.WithOpName("output2"), nhwc);
+      GraphDef graph;
+      TF_CHECK_OK(s.ToGraphDef(&graph));
+      GrapplerItem item;
+      item.graph = graph;
+      item.fetch = {"output0", "output1", "output2"};
+      item.feed = {{"nchw_vect_c", x_t}};
+
+      GraphDef output;
+      ArithmeticOptimizer optimizer;
+      EnableOnlyRemoveRedundantReshape(&optimizer);
+      OptimizeTwiceAndPrune(&optimizer, &item, &output);
+
+      EXPECT_EQ(CountOpNodes(output, "Reshape"), 2);
+      auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+      ASSERT_EQ(tensors.size(), 3);
+      test::ExpectTensorEqual<float>(tensors[0], expected_output_t);
+      test::ExpectTensorEqual<float>(tensors[1], expected_output_t);
+      test::ExpectTensorEqual<float>(tensors[2], nhwc_t);
+    }
   }
 }
 
@@ -4874,6 +4662,78 @@ TEST_F(ArithmeticOptimizerTest, SimplifyEmbeddingLookup) {
       }
       EXPECT_NE(node.op(), "Unique");
       EXPECT_NE(node.op(), "Gather");
+    }
+
+    auto tensors = EvaluateNodes(output, item.fetch);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, SimplifyResourceEmbeddingLookup) {
+  for (DataType unique_idx_type : {DT_INT32, DT_INT64}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output embeddings = ops::Const(s.WithOpName("embeddings"),
+                                   {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+    Output segment_ids =
+        ops::Const(s.WithOpName("segment_ids"), {0, 1, 1, 2, 2, 2, 2});
+    Output indices = ops::Const(s.WithOpName("indices"), {0, 0, 1, 0, 1, 0, 1});
+    auto unique = ops::Unique(s.WithOpName("unique"), indices,
+                              /*attrs=*/{unique_idx_type});
+    Output ids = unique.y;
+    Output idx = unique.idx;
+
+    auto var =
+        ops::VarHandleOp(s.WithOpName("var"), DT_FLOAT, TensorShape({2, 2}));
+    ops::AssignVariableOp assign_op(s.WithOpName("assign_var_handle"), var,
+                                    embeddings);
+
+    Output gathered_rows = ops::ResourceGather(
+        s.WithOpName("gathered_rows")
+            .WithControlDependencies(std::vector<Operation>{assign_op}),
+        var, ids, DT_FLOAT);
+    gathered_rows.node()->AddAttr("_class", {"test_class"});
+    Output result =
+        ops::SparseSegmentSum(s.WithOpName("result").WithControlDependencies(
+                                  std::vector<Operation>{assign_op}),
+                              gathered_rows, idx, segment_ids);
+    Output id = ops::Identity(s.WithOpName("id"), result);
+
+    GrapplerItem item;
+    item.init_ops.push_back("assign_var_handle");
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch = {"id"};
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+    ASSERT_EQ(tensors_expected.size(), 1);
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlySimplifyEmbeddingLookup(&optimizer);
+    OptimizeAndPrune(&optimizer, &item, &output);
+    bool read_var_node_found = false;
+    for (const auto& node : output.node()) {
+      if (node.name() == "result") {
+        EXPECT_EQ(
+            node.input(0),
+            "ArithmeticOptimizer/SimplifyEmbeddingLookupStage_ReadVar_result");
+        EXPECT_EQ(node.input(1), "indices");
+      }
+      if (node.op() == "ReadVariableOp") {
+        read_var_node_found = true;
+        EXPECT_EQ(node.attr().at("_class").list().s(0), "test_class");
+      }
+      EXPECT_NE(node.op(), "Unique");
+      EXPECT_NE(node.op(), "Gather");
+    }
+    EXPECT_TRUE(read_var_node_found);
+    // Add a control dependency to the ReadVar to do the AssignVar first. This
+    // shouldn't be an issue in actual use as variables are assumed initialized
+    // during setup.
+    for (int i = 0; i < output.node_size(); ++i) {
+      if (output.node(i).name() ==
+          "ArithmeticOptimizer/SimplifyEmbeddingLookupStage_ReadVar_result") {
+        output.mutable_node(i)->add_input("^assign_var_handle");
+      }
     }
 
     auto tensors = EvaluateNodes(output, item.fetch);

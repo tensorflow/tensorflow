@@ -1292,7 +1292,9 @@ _TRUEDIV_TABLE = {
     dtypes.int8: dtypes.float32,
     dtypes.uint16: dtypes.float32,
     dtypes.int16: dtypes.float32,
+    dtypes.uint32: dtypes.float64,
     dtypes.int32: dtypes.float64,
+    dtypes.uint64: dtypes.float64,
     dtypes.int64: dtypes.float64,
     dtypes.bfloat16: None,
     dtypes.float16: None,
@@ -3305,6 +3307,7 @@ def matmul(a,
            adjoint_b=False,
            a_is_sparse=False,
            b_is_sparse=False,
+           output_type=None,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
@@ -3313,7 +3316,8 @@ def matmul(a,
   and any further outer dimensions specify matching batch size.
 
   Both matrices must be of the same type. The supported types are:
-  `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
+  `bfloat16`, `float16`, `float32`, `float64`, `int32`, `int64`,
+  `complex64`, `complex128`.
 
   Either matrix can be transposed or adjointed (conjugated and transposed) on
   the fly by setting one of the corresponding flag to `True`. These are `False`
@@ -3398,6 +3402,9 @@ def matmul(a,
       that assume most values in `a` are zero.
       See `tf.sparse.sparse_dense_matmul`
       for some support for `tf.sparse.SparseTensor` multiplication.
+    output_type: The output datatype if needed. Defaults to None in which case
+      the output_type is the same as input type. Currently only works when input
+      tensors are type int8 and output_type can be int32.
     name: Name for the operation (optional).
 
   Returns:
@@ -3414,7 +3421,10 @@ def matmul(a,
   Raises:
     ValueError: If `transpose_a` and `adjoint_a`, or `transpose_b` and
       `adjoint_b` are both set to `True`.
+    TypeError: If output_type is specified but the types of `a`, `b` and
+      `output_type` is not int8, int8 and int32.
   """
+
   with ops.name_scope(name, "MatMul", [a, b]) as name:
     if transpose_a and adjoint_a:
       raise ValueError("Only one of transpose_a and adjoint_a can be True.")
@@ -3438,6 +3448,13 @@ def matmul(a,
         (a_shape is None or len(a_shape) > 2) or
         (b_shape is None or len(b_shape) > 2))
 
+    # TODO(b/178749687): remove this boolean and all related branches once the
+    # bridges are ready.
+    # batch_matmul_v3 is for when input type is different from output type.
+    use_batch_matmul_v3 = False
+    if output_type and (output_type != a.dtype or output_type != b.dtype):
+      use_batch_matmul_v3 = True
+
     if (not a_is_sparse and
         not b_is_sparse) and output_may_have_non_empty_batch_shape:
       # BatchMatmul does not support transpose, so we conjugate the matrix and
@@ -3448,8 +3465,12 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return gen_math_ops.batch_mat_mul_v2(
-          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      if use_batch_matmul_v3:
+        return gen_math_ops.batch_mat_mul_v3(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+      else:
+        return gen_math_ops.batch_mat_mul_v2(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -3466,9 +3487,11 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if ((a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16) and
+    if (((a.dtype == dtypes.bfloat16 and b.dtype != dtypes.int8) or
+         (b.dtype == dtypes.bfloat16 and a.dtype != dtypes.int8)) and
         a.dtype != b.dtype):
-      # matmul currently doesn't handle mixed-precision inputs.
+      # matmul currently doesn't handle mixed-precision inputs other than
+      # fp16 * int8 which is supported in BatchMatMulV3.
       use_sparse_matmul = True
     if use_sparse_matmul:
       ret = sparse_matmul(
@@ -3486,8 +3509,14 @@ def matmul(a,
         ret = cast(ret, dtypes.bfloat16)
       return ret
     else:
-      return gen_math_ops.mat_mul(
-          a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
+      if use_batch_matmul_v3:
+        adjoint_a = adjoint_a or transpose_a
+        adjoint_b = adjoint_b or transpose_b
+        return gen_math_ops.batch_mat_mul_v3(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+      else:
+        return gen_math_ops.mat_mul(
+            a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
 
 @tf_export("linalg.matvec")
@@ -3623,6 +3652,7 @@ def _calc_mat_mul_flops(graph, node):
 
 @ops.RegisterStatistics("BatchMatMul", "flops")
 @ops.RegisterStatistics("BatchMatMulV2", "flops")
+@ops.RegisterStatistics("BatchMatMulV3", "flops")
 def _calc_batch_mat_mul_flops(graph, node):
   """Calculates the compute resources needed for BatchMatMul."""
   transpose_a = node.attr["transpose_a"].b
@@ -3695,6 +3725,86 @@ def _as_indexed_slices_list(inputs, optimize=True):
     else:
       casted_outputs.append(o)
   return casted_outputs
+
+
+@tf_export("math.add", "add")
+@dispatch.add_dispatch_support
+def add(x, y, name=None):
+  """Returns x + y element-wise.
+
+  Example usages below.
+
+  Add a scalar and a list:
+
+  >>> x = [1, 2, 3, 4, 5]
+  >>> y = 1
+  >>> tf.add(x, y)
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([2, 3, 4, 5, 6],
+  dtype=int32)>
+
+  Note that binary `+` operator can be used instead:
+
+  >>> x = tf.convert_to_tensor([1, 2, 3, 4, 5])
+  >>> y = tf.convert_to_tensor(1)
+  >>> x + y
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([2, 3, 4, 5, 6],
+  dtype=int32)>
+
+  Add a tensor and a list of same shape:
+
+  >>> x = [1, 2, 3, 4, 5]
+  >>> y = tf.constant([1, 2, 3, 4, 5])
+  >>> tf.add(x, y)
+  <tf.Tensor: shape=(5,), dtype=int32,
+  numpy=array([ 2,  4,  6,  8, 10], dtype=int32)>
+
+  **Warning**: If one of the inputs (`x` or `y`) is a tensor and the other is a
+  non-tensor, the non-tensor input will adopt (or get casted to) the data type
+  of the tensor input. This can potentially cause unwanted overflow or underflow
+  conversion.
+
+  For example,
+
+  >>> x = tf.constant([1, 2], dtype=tf.int8)
+  >>> y = [2**7 + 1, 2**7 + 2]
+  >>> tf.add(x, y)
+  <tf.Tensor: shape=(2,), dtype=int8, numpy=array([-126, -124], dtype=int8)>
+
+  When adding two input values of different shapes, `Add` follows NumPy
+  broadcasting rules. The two input array shapes are compared element-wise.
+  Starting with the trailing dimensions, the two dimensions either have to be
+  equal or one of them needs to be `1`.
+
+  For example,
+
+  >>> x = np.ones(6).reshape(1, 2, 1, 3)
+  >>> y = np.ones(6).reshape(2, 1, 3, 1)
+  >>> tf.add(x, y).shape.as_list()
+  [2, 2, 3, 3]
+
+  Another example with two arrays of different dimension.
+
+  >>> x = np.ones([1, 2, 1, 4])
+  >>> y = np.ones([3, 4])
+  >>> tf.add(x, y).shape.as_list()
+  [1, 2, 3, 4]
+
+  The reduction version of this elementwise operation is `tf.math.reduce_sum`
+
+  Args:
+    x: A `tf.Tensor`. Must be one of the following types: bfloat16, half,
+      float32, float64, uint8, int8, int16, int32, int64, complex64, complex128,
+      string.
+    y: A `tf.Tensor`. Must have the same type as x.
+    name: A name for the operation (optional)
+  """
+  with ops.name_scope(name, "Add", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
+    if x.dtype == dtypes.string:
+      return gen_math_ops.add(x, y, name=name)
+    else:
+      return gen_math_ops.add_v2(x, y, name=name)
 
 
 @tf_export("math.add_n", "add_n")
@@ -3926,7 +4036,7 @@ def log_sigmoid(x, name=None):
   """
   with ops.name_scope(name, "LogSigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)
+    return gen_math_ops.neg(gen_nn_ops.softplus(-x), name=name)  # pylint: disable=invalid-unary-operand-type
 
 
 @tf_export("math.cumsum", "cumsum")
@@ -4636,17 +4746,11 @@ def tensordot(a, b, axes, name=None):
   r"""Tensor contraction of a and b along specified axes and outer product.
 
   Tensordot (also known as tensor contraction) sums the product of elements
-  from `a` and `b` over the indices specified by `a_axes` and `b_axes`.
-  The lists `a_axes` and `b_axes` specify those pairs of axes along which to
-  contract the tensors. The axis `a_axes[i]` of `a` must have the same dimension
-  as axis `b_axes[i]` of `b` for all `i` in `range(0, len(a_axes))`. The lists
-  `a_axes` and `b_axes` must have identical length and consist of unique
-  integers that specify valid axes for each of the tensors. Additionally
-  outer product is supported by passing `axes=0`.
+  from `a` and `b` over the indices specified by `axes`.
 
   This operation corresponds to `numpy.tensordot(a, b, axes)`.
 
-  Example 1: When `a` and `b` are matrices (order 2), the case `axes = 1`
+  Example 1: When `a` and `b` are matrices (order 2), the case `axes=1`
   is equivalent to matrix multiplication.
 
   Example 2: When `a` and `b` are matrices (order 2), the case

@@ -19,7 +19,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.keras.benchmarks import benchmark_util
-from tensorflow.python.platform import benchmark
+from tensorflow.python.platform import benchmark   # pylint: disable=unused-import
 
 # Loss function and optimizer.
 _LOSS = 'binary_crossentropy'
@@ -27,7 +27,7 @@ _OPTIMIZER = 'rmsprop'
 
 
 class KerasModelCPUBenchmark(  # pylint: disable=undefined-variable
-    benchmark.ParameterizedBenchmark, metaclass=tf.test.Benchmark):
+    tf.test.Benchmark, metaclass=benchmark.ParameterizedBenchmark):
   """Required Arguments for measure_performance.
 
       x: Input data, it could be Numpy or load from tfds.

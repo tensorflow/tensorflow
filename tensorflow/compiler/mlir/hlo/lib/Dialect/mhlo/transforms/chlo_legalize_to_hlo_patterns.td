@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // This is the legalization pattern definition file for CHLO to MHLO.
+// These are included in the PopulateDecomposeChloPatterns factory
+// and should only include canonical expansions which are not actually
+// ambiguous/different for various backends. Avoid patterns that are actually
+// lowering to non-canonical forms.
 
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
@@ -306,48 +310,6 @@ def : Pat<(HLOClient_IsNegInfOp NonComplexElementType:$input),
     (HLO_ConstantLikeNegInfValue $input),
     HLO_COMPARISON_DIRECTION_EQ,
     (HLO_DEFAULT_COMPARISON_TYPE)
-  )>;
-
-// Express `sinh` as
-//   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
-//           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
-// TODO(hinsu): Support operands with complex element types by always using the
-// second formula. The compare op below is not legal for complex numbers.
-def : Pat<(HLOClient_SinhOp NonComplexElementType:$input),
-  (HLO_SelectOp
-    (HLO_CompareOp
-      (HLO_AbsOp $input),
-      (HLO_ConstantLike<"1"> $input),
-      HLO_COMPARISON_DIRECTION_LT,
-      (HLO_DEFAULT_COMPARISON_TYPE)
-    ),
-    (HLO_DivOp
-      (HLO_SubOp
-        (HLO_ExpOp $input),
-        (HLO_ExpOp
-          (HLO_NegOp $input)
-        )
-      ),
-      (HLO_ConstantLike<"2"> $input)
-    ),
-    (HLO_SubOp
-      (HLO_ExpOp
-        (HLO_AddOp
-          $input,
-          (HLO_LogOp
-            (HLO_ConstantLike<"0.5"> $input)
-          )
-        )
-      ),
-      (HLO_ExpOp
-        (HLO_SubOp
-          (HLO_LogOp
-            (HLO_ConstantLike<"0.5"> $input)
-          ),
-          $input
-        )
-      )
-    )
   )>;
 
 // Express tan in MHLO dialect as

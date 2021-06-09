@@ -21,10 +21,24 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
 
 // Order matters, this .inc header is not self-contained, and relies on the
 // #includes above.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h.inc"
+
+namespace mlir {
+namespace mhlo {
+
+// Custom printer and parser for struct attributes.
+void printConvolutionDimensions(OpAsmPrinter &p, Operation *op,
+                                ConvDimensionNumbers dnums);
+ParseResult parseConvolutionDimensions(OpAsmParser &parser,
+                                       ConvDimensionNumbers &dnums);
+
+}  // namespace mhlo
+}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_STRUCTS_H_

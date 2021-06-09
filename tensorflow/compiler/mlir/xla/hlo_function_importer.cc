@@ -381,19 +381,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "infeed_config",
           mlir::StringAttr::get(builder_->getContext(),
                                 instruction->infeed_config())));
-      // TODO(kramm): Support tuples and tokens.
-      if (instruction->shape().IsArray()) {
-        const xla::Layout l = instruction->shape().layout();
-        absl::Span<const int64> minor_to_major = l.minor_to_major();
-        std::vector<mlir::Attribute> v;
-        for (int64 i : minor_to_major) {
-          v.push_back(builder_->getI32IntegerAttr(i));
-        }
-        llvm::ArrayRef<mlir::Attribute> array_ref(v);
-        mlir::ArrayAttr layout = builder_->getArrayAttr(array_ref);
-        attributes.push_back(builder_->getNamedAttr("layout", layout));
-      }
-
+      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
+                          ConvertShapeToMlirLayout(instruction->shape()));
+      attributes.push_back(builder_->getNamedAttr("layout", layout));
       MakeAndReturn(InfeedOp);
     }
     case HloOpcode::kOutfeed: {
@@ -548,6 +538,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               loc, result_type, operands,
               builder_->getI64IntegerAttr(instruction->concatenate_dimension()))
           .getOperation();
+    }
+    case HloOpcode::kAllGather: {
+      auto all_gather = Cast<HloAllGatherInstruction>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "all_gather_dim",
+          builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
+      attributes.push_back(
+          ConvertReplicaGroups(all_gather->replica_groups(), builder_));
+      attributes.push_back(ConvertChannelHandle(all_gather->channel_id()));
+      MakeAndReturn(AllGatherOp);
     }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
@@ -732,6 +732,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getNamedAttr("fft_length", Convert(fft_length)));
       MakeAndReturn(FftOp);
     }
+
+    case HloOpcode::kAdd: {
+      // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
+      // AddOps on i1 are just addition with overflow; so, we have to implement
+      // the special behavior of HLO add ops on PRED here by creating an OrOp
+      // instead.
+      if (instruction->shape().element_type() == PRED) {
+        MakeAndReturn(OrOp);
+      } else {
+        MakeAndReturn(AddOp);
+      }
+    }
 #define NoAttributeCase(hlo_op_code, mlir_op) \
   case HloOpcode::hlo_op_code: {              \
     MakeAndReturn(mlir_op);                   \
@@ -741,7 +753,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
       NoAttributeCase(kAbs, AbsOp);
-      NoAttributeCase(kAdd, AddOp);
       NoAttributeCase(kAfterAll, AfterAllOp);
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
@@ -804,11 +815,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                          &fusion.fused_computation()));
       return fusion.getOperation();
     }
-    case HloOpcode::kBitcast:
-      return func_builder
-          ->create<mlir::mhlo::BitcastOp>(loc, result_type, operands,
-                                          attributes)
-          .getOperation();
+    case HloOpcode::kBitcast: {
+      auto bitcast = func_builder->create<mlir::mhlo::BitcastOp>(
+          loc, result_type, operands, attributes);
+      // Store the source and result layout as attributes. Although the MHLO
+      // Bitcast operates on tensors, these layouts are relevant as they define
+      // the mapping between the elements of the source and result.
+      SetLayoutForMlir(bitcast, instruction->shape(), "result_layout");
+      SetLayoutForMlir(bitcast, instruction->operand(0)->shape(),
+                       "source_layout");
+      return bitcast.getOperation();
+    }
     case HloOpcode::kReducePrecision: {
       auto op = func_builder->create<mlir::mhlo::ReducePrecisionOp>(
           loc, result_type, operands[0], attributes);
@@ -986,13 +1003,39 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
 }
 
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
-                                           const Shape& shape) {
+                                           const Shape& shape,
+                                           llvm::StringRef attr_name) {
   llvm::SmallVector<int64_t, 4> minor_to_major(
       shape.layout().minor_to_major().begin(),
       shape.layout().minor_to_major().end());
   op->setAttr(
-      "minor_to_major",
+      attr_name,
       mlir::Builder(op->getContext()).getIndexTensorAttr(minor_to_major));
+}
+
+StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
+    const xla::Shape& shape) {
+  if (shape.IsToken()) return builder_->getUnitAttr();
+  if (shape.IsTuple()) {
+    std::vector<mlir::Attribute> tuple_layouts;
+    for (int64 i = 0; i < shape.tuple_shapes_size(); i++) {
+      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
+                          ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
+      tuple_layouts.push_back(layout);
+    }
+    llvm::ArrayRef<mlir::Attribute> array_ref(tuple_layouts);
+    return builder_->getArrayAttr(array_ref);
+  }
+  if (shape.IsArray()) {
+    const xla::Layout l = shape.layout();
+    std::vector<mlir::Attribute> minor_to_major;
+    for (int64 i : l.minor_to_major()) {
+      minor_to_major.push_back(builder_->getI64IntegerAttr(i));
+    }
+    llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
+    return builder_->getArrayAttr(array_ref);
+  }
+  return tensorflow::errors::Internal("Couldn't convert layout.");
 }
 
 }  // namespace xla

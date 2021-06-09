@@ -102,6 +102,11 @@ GrpcServer::~GrpcServer() {
   delete worker_service_;
   delete eager_service_;
 
+  for (auto& kv : extra_services_) {
+    AsyncServiceInterface* service = kv.second;
+    delete service;
+  }
+
   // TODO(mrry): Refactor the *Env classes so that it is less fiddly
   // to destroy them.
 
@@ -179,6 +184,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   TF_RETURN_IF_ERROR(GetHostAndPort(server_def_, &host_name_, &requested_port));
 
   SessionOptions sess_opts;
+  VLOG(3) << "Grpc Server Init Definition: " << server_def_.DebugString();
   ConfigProto config = server_def_.default_session_config();
   sess_opts.config = config;
 
@@ -190,7 +196,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     std::vector<std::unique_ptr<Device>> devices;
     TF_RETURN_IF_ERROR(
         DeviceFactory::AddDevices(sess_opts, name_prefix, &devices));
-    worker_env_.device_mgr = new StaticDeviceMgr(std::move(devices));
+    worker_env_.device_mgr = new DynamicDeviceMgr(std::move(devices));
     owned_device_manager_.reset(worker_env_.device_mgr);
   } else {
     worker_env_.device_mgr = opts.local_device_mgr;
@@ -252,6 +258,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
 
   profiler_service_ = profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
+
+  // Add any extra services to be started.
+  extra_services_ = ExtraServices(&builder);
 
   // extra service:
   if (opts.service_func != nullptr) {
@@ -370,8 +379,12 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
 
-  std::shared_ptr<GrpcChannelCache> channel_cache(
-      NewGrpcChannelCache(channel_spec, GetChannelCreationFunction()));
+  if (options.rpc_options == nullptr) {
+    return errors::InvalidArgument(
+        "rpc_options not set in WorkerCacheFactoryOptions");
+  }
+  std::shared_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
+      channel_spec, GetChannelCreationFunction(), *options.rpc_options));
 
   string name_prefix = strings::StrCat("/job:", *options.job_name, "/replica:0",
                                        "/task:", options.task_index);
@@ -407,6 +420,18 @@ Status GrpcServer::Start() {
       eager_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_eager_service",
                             [this] { eager_service_->HandleRPCsLoop(); }));
+
+      for (const auto& kv : extra_services_) {
+        const std::string& service_name = kv.first;
+        AsyncServiceInterface* service = kv.second;
+        std::unique_ptr<Thread> extra_service_thread;
+        extra_service_thread.reset(env_->StartThread(
+            ThreadOptions(), service_name,
+            [service = service] { service->HandleRPCsLoop(); }));
+        extra_service_threads_.push_back(std::move(extra_service_thread));
+        VLOG(3) << "Started extra service: " << service_name;
+      }
+
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
       return Status::OK();
@@ -494,6 +519,9 @@ Status GrpcServer::Join() {
       master_thread_.reset();
       worker_thread_.reset();
       eager_thread_.reset();
+      for (auto& thread : extra_service_threads_) {
+        thread.reset();
+      }
       return Status::OK();
     default:
       LOG(FATAL);
@@ -521,7 +549,7 @@ std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
 
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
-                          const DeviceMgr* local_device_mgr,
+                          DeviceMgr* local_device_mgr,
                           std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));

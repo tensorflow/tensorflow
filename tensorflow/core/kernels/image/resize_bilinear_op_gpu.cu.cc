@@ -50,7 +50,6 @@ __global__ void ResizeBilinearKernel_faster(
     const int y = idx % out_height;
 
     const float in_y = (static_cast<float>(y) + 0.5f) * height_scale - 0.5f;
-
     const int top_y_index = in_y > 0.0 ? floorf(in_y) : 0;
     const int bottom_y_index =
         (in_y < in_height - 1) ? ceilf(in_y) : in_height - 1;
@@ -60,7 +59,7 @@ __global__ void ResizeBilinearKernel_faster(
     const int left_x_index = in_x > 0.0 ? floorf(in_x) : 0;
     const int right_x_index =
         (in_x < in_width - 1) ? ceilf(in_x) : in_width - 1;
-    const float x_lerp = in_x - left_x_index;
+    const float x_lerp = in_x - floorf(in_x);
 
     float top_left_reg[kChannelsPerThread];
     float top_right_reg[kChannelsPerThread];
@@ -129,7 +128,6 @@ __global__ void ResizeBilinearKernel(
     const int b = idx / out_height;
 
     const float in_y = (static_cast<float>(y) + 0.5f) * height_scale - 0.5f;
-
     const int top_y_index = in_y > 0.0 ? floorf(in_y) : 0;
     const int bottom_y_index =
         (in_y < in_height - 1) ? ceilf(in_y) : in_height - 1;
@@ -139,7 +137,7 @@ __global__ void ResizeBilinearKernel(
     const int left_x_index = in_x > 0.0 ? floorf(in_x) : 0;
     const int right_x_index =
         (in_x < in_width - 1) ? ceilf(in_x) : in_width - 1;
-    const float x_lerp = in_x - left_x_index;
+    const float x_lerp = in_x - floorf(in_x);
 
     const float top_left(
         images[((b * in_height + top_y_index) * in_width + left_x_index) *

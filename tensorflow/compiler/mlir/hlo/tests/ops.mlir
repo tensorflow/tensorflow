@@ -52,6 +52,42 @@ func @alltoall_invalid_split_dim_size(%data: tensor<4x16xf32>) -> tensor<16x4xf3
 
 // -----
 
+func @allgather_incompatible_types(%arg0: tensor<128x32xf32>) -> tensor<128x100xf32> {
+  // expected-error@+1 {{result gather dimension has size 100, expected to be a multiple of operand gather dimension size 32}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x100xf32>
+  return %0 : tensor<128x100xf32>
+}
+
+// -----
+
+func @allgather_gather_along_zero_dimension(%arg0: tensor<128x0x32xf32>) -> tensor<128x100xf32> {
+  // expected-error@+1 {{operand gather dimension cannot be zero}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x0x32xf32>) -> tensor<128x100xf32>
+  return %0 : tensor<128x100xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @allgather_dynamic_gather_dim
+func @allgather_dynamic_gather_dim(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x?xf32>
+  return %0 : tensor<128x?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @broadcast
 func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
   %0 = "mhlo.broadcast"(%arg0) {broadcast_sizes = dense<[1, 2]> : tensor<2xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
@@ -204,8 +240,89 @@ func @broadcast_in_dim_unranked_operand(%arg0 : tensor<*xf32>) -> tensor<2xf32> 
 
 // -----
 
+// CHECK-LABEL: @if_nested_different_return_types(
+func @if_nested_different_return_types(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
+  %0 = "mhlo.if"(%pred, %branch_operand, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
+  }, {
+    ^bb1(%arg1 : tensor<f32>):
+      %2 = "mhlo.if"(%pred, %arg1, %arg1) ({
+        ^bb0 (%arg2 : tensor<f32>):
+          "mhlo.return"(%pred) : (tensor<i1>) -> ()
+      }, {
+        ^bb1 (%arg3 : tensor<f32>):
+          "mhlo.return"(%pred) : (tensor<i1>) -> ()
+      }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<i1>
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+func @if_mismatch_arg_type(%pred : tensor<i1>, %branch_operand : tensor<f32>, %wrong_type : tensor<3xf32>) {
+  // @expected-error@+1 {{true_arg type ('tensor<3xf32>') does not match true_branch block arg type ('tensor<f32>')}}
+  %0 = "mhlo.if"(%pred, %wrong_type, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
+    }, {
+    ^bb0(%arg1 : tensor<f32>):
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+    }) : (tensor<i1>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+func @if_mismatch_return_type(%pred : tensor<i1>, %branch_operand : tensor<f32>, %wrong_type : tensor<3xf32>) {
+  // @expected-error@+1 {{true_branch returned types ('tensor<3xf32>') do not match op result types ('tensor<f32>')}}
+  %0 = "mhlo.if"(%pred, %branch_operand, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%wrong_type) : (tensor<3xf32>) -> ()
+    }, {
+    ^bb0(%arg1 : tensor<f32>):
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+    }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+func @if_mismatch_num_return_types(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
+  // @expected-error@+1 {{true_branch returned types ('tensor<f32>', 'tensor<f32>') do not match op result types ('tensor<f32>')}}
+  %0 = "mhlo.if"(%pred, %branch_operand, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%branch_operand, %branch_operand) : (tensor<f32>, tensor<f32>) -> ()
+    }, {
+    ^bb0(%arg1 : tensor<f32>):
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+    }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @case_nested_different_return_types(
+func @case_nested_different_return_types(%index : tensor<i32>, %branch_operand : tensor<f32>) {
+  %0 = "mhlo.case"(%index, %branch_operand, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
+  }, {
+    ^bb1(%arg1 : tensor<f32>):
+      %2 = "mhlo.case"(%index, %arg1) ({
+        ^bb0 (%arg2 : tensor<f32>):
+          "mhlo.return"(%index) : (tensor<i32>) -> ()
+      }) : (tensor<i32>, tensor<f32>) -> tensor<i32>
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+  }) : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
 func @case_mismatch_num_args(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{expects branch regions to have single argument, but found 2 for branch 1}}
+  // expected-error@+1 {{branch 1 block should have single argument, but found 2}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
     ^bb0(%arg0: tensor<f32>):
       %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -226,7 +343,7 @@ func @case_mismatch_num_args(%index: tensor<i32>, %operand_1: tensor<f32>, %oper
 // -----
 
 func @case_mismatch_num_results(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{branch 1 returned values do not match op result types}}
+  // expected-error@+1 {{branch 1 returned types ('tensor<f32>', 'tensor<f32>') do not match op result types ('tensor<f32>')}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
     ^bb0(%arg0: tensor<f32>):
       %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -247,7 +364,7 @@ func @case_mismatch_num_results(%index: tensor<i32>, %operand_1: tensor<f32>, %o
 // -----
 
 func @case_mismatch_arg_type(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{expects operand 2 to be of type 'tensor<i32>', but found 'tensor<f32>'}}
+  // expected-error@+1 {{branch_operand 1 type ('tensor<f32>') does not match branch 1 block arg type ('tensor<i32>')}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
     ^bb0(%arg0: tensor<f32>):
       %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -268,7 +385,7 @@ func @case_mismatch_arg_type(%index: tensor<i32>, %operand_1: tensor<f32>, %oper
 // -----
 
 func @case_mismatch_return_type(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{branch 1 returned values do not match op result types}}
+  // expected-error@+1 {{branch 1 returned types ('tensor<i32>') do not match op result types ('tensor<f32>')}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
     ^bb0(%arg0: tensor<f32>):
       %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -284,14 +401,6 @@ func @case_mismatch_return_type(%index: tensor<i32>, %operand_1: tensor<f32>, %o
     }
   ) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
-}
-
-// -----
-
-func @case_empty_region(%index: tensor<i32>, %operand_1: tensor<f32>) -> () {
-  // expected-error@+1 {{cannot have empty regions}}
-  "mhlo.case"(%index, %operand_1) ( {} ) : (tensor<i32>, tensor<f32>) -> tensor<f32>
-  return
 }
 
 // -----
@@ -609,7 +718,7 @@ func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> 
 func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token> {
   // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
   %0 = "mhlo.recv"(%token) {
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
@@ -623,7 +732,7 @@ func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi3
 func @recv_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
   // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
   %0 = "mhlo.recv"(%token) {
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
@@ -1315,4 +1424,81 @@ func @custom_call_multiple_outputs(%x: tensor<2xf32>) -> tensor<2xf32> {
   %0:2 = "mhlo.custom_call"(%x) {backend_config="", call_target_name = "foo", has_side_effect = false} : (tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
   %1 = "mhlo.add"(%0#0, %0#1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   return %1 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK: func @reduce_window
+func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>, %b1: tensor<i32>):  // no predecessors
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+              "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
+  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}
+
+// -----
+
+func @reduce_window_invalid(%arg0: tensor<4x2xf32>, %arg1: tensor<4x3xi32>, %init0: tensor<f32>, %init1: tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
+  // expected-error @+1 {{requires same shape for all inputs}}
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>, %b1: tensor<i32>):  // no predecessors
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+              "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x3xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
+  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}
+
+// -----
+
+func @rng_normal_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+  %cst = "mhlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
+  // expected-error @+1 {{tensor<7xf32>}}
+  %0 = "mhlo.rng_normal"(%arg0, %arg1, %cst) : (tensor<f32>, tensor<f32>, tensor<1xi64>) -> tensor<12xf32>
+  return
+}
+
+// -----
+
+func @rng_uniform_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<7xi64>) {
+  // expected-error @+1 {{tensor<?x?x?x?x?x?x?xf32>}}
+  %0 = "mhlo.rng_uniform"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<7xi64>) -> tensor<?xf32>
+  return
+}
+
+// -----
+// CHECK: func @conv2d_generic
+// CHECK: mhlo.convolution
+// CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+// CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+func @conv2d_generic(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers =
+       {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>},
+       feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = ["DEFAULT", "DEFAULT"], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
+       (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+  return %0 : tensor<1x8x8x16xf32>
+}
+
+// CHECK: func @conv2d
+// CHECK: mhlo.convolution
+// CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+// CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+         window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+         {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]} :
+       (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+  return %0 : tensor<1x8x8x16xf32>
 }

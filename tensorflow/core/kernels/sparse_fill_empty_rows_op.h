@@ -26,9 +26,11 @@ namespace functor {
 
 template <typename Device, typename T, typename Tindex>
 struct SparseFillEmptyRows {
+  // Note that the done callback is only used by the GPU implementation.
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
                     const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t);
+                    const Tensor& dense_shape_t,
+                    typename AsyncOpKernel::DoneCallback done = nullptr);
 };
 
 template <typename Device, typename T, typename Tindex>

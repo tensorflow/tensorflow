@@ -885,6 +885,8 @@ struct Conv3DParams {
   float float_activation_max;
 };
 
+typedef Conv3DParams Conv3DTransposeParams;
+
 struct DepthToSpaceParams {
   int32_t block_size;
 };
@@ -1019,9 +1021,9 @@ struct PackParams {
 
 struct PadParams {
   int8_t left_padding_count;
-  int32_t left_padding[4];
+  int32_t left_padding[5];
   int8_t right_padding_count;
-  int32_t right_padding[4];
+  int32_t right_padding[5];
   ResizingCategory resizing_category;
 };
 
@@ -1196,6 +1198,23 @@ inline void GetActivationParams(const P& params, int64_t* min, int64_t* max) {
   *min = params.int64_activation_min;
   *max = params.int64_activation_max;
 }
+
+// Type trait to check of given type has size smaller than 4 bytes.
+template <typename T>
+struct is_small_integer
+    : public std::integral_constant<bool,
+                                    std::is_same<T, int8_t>::value ||
+                                        std::is_same<T, uint8_t>::value ||
+                                        std::is_same<T, int16_t>::value ||
+                                        std::is_same<T, uint16_t>::value> {};
+
+// Type trait to check of given type is int32 or int64.
+template <typename T>
+struct is_int32_or_int64
+    : public std::integral_constant<bool, std::is_same<T, int32_t>::value ||
+                                              std::is_same<T, int64_t>::value> {
+};
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_

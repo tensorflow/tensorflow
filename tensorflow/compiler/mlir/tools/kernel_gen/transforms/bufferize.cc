@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -408,15 +409,15 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
     return success();
   }
 };
+
 }  // namespace
 
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
                                       RewritePatternSet *patterns) {
-  patterns
-      ->insert<BufferizeConstantOp, BufferizeDimOp,
-               BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp>(
-          *converter, context);
+  patterns->insert<BufferizeAndConvertMinimumBroadcastShapesOp,
+                   BufferizeConstantOp, BufferizeDimOp, BufferizeRankOp>(
+      *converter, context);
 }
 
 }  // namespace transforms

@@ -106,7 +106,7 @@ build --host_java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
-build --spawn_strategy=standalone
+build --spawn_strategy=sandboxed
 build -c opt
 
 # Make Bazel print out all options from rc files.
@@ -141,6 +141,10 @@ build --define=with_xla_support=true
 build --config=short_logs
 
 build --config=v2
+
+# Disable AWS/HDFS support by default
+build --define=no_aws_support=true
+build --define=no_hdfs_support=true
 
 # Default options should come above this line.
 
@@ -215,7 +219,8 @@ build:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool -c opt
 
-# Config setting to build with oneDNN for Arm.
+# Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
+# This build is for the inference regime only.
 build:mkl_aarch64 --define=build_with_mkl_aarch64=true --define=enable_mkl=true
 build:mkl_aarch64 --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_aarch64 --define=build_with_mkl_opensource=true
@@ -247,8 +252,6 @@ build:tensorrt --repo_env TF_NEED_TENSORRT=1
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm=true --define=using_rocm_hipcc=true
 build:rocm --repo_env TF_NEED_ROCM=1
-# Generated kernels are not yet supported on ROCm.
-build:rocm --//tensorflow/core/kernels/mlir_generated:enable_gpu=false
 
 # Options extracted from configure script
 build:numa --define=with_numa_support=true
@@ -336,7 +339,6 @@ build:windows --linkopt=/OPT:REF
 build:windows --host_linkopt=/OPT:REF
 build:windows --linkopt=/OPT:ICF
 build:windows --host_linkopt=/OPT:ICF
-build:windows --experimental_strict_action_env=true
 
 # Verbose failure logs when something goes wrong
 build:windows --verbose_failures
@@ -500,10 +502,16 @@ build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchai
 build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
 build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
 build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
+build:rbe_win --experimental_strict_action_env=true
 
 # TODO(gunan): Remove once we use MSVC 2019 with latest patches.
 build:rbe_win --define=override_eigen_strong_inline=true
 build:rbe_win --jobs=100
+
+# Don't build the python zip archive in the RBE build.
+build:rbe_win --remote_download_minimal
+build:rbe_win --enable_runfiles
+build:rbe_win --nobuild_python_zip
 
 build:rbe_win_py37 --config=rbe
 build:rbe_win_py37 --repo_env=TF_PYTHON_CONFIG_REPO="@windows_py37_config_python"
@@ -591,7 +599,7 @@ build:asan --linkopt -fsanitize=address
 # CC=clang bazel build --config msan
 build:msan --strip=never
 build:msan --copt -fsanitize=memory
-build:msan --copt -DADDRESS_SANITIZER
+build:msan --copt -DMEMORY_SANITIZER
 build:msan --copt -g
 build:msan --copt -O3
 build:msan --copt -fno-omit-frame-pointer
@@ -601,6 +609,7 @@ build:msan --linkopt -fsanitize=memory
 # CC=clang bazel build --config ubsan
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
+build:msan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
 build:ubsan --copt -g
 build:ubsan --copt -O3
 build:ubsan --copt -fno-omit-frame-pointer

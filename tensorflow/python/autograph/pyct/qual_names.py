@@ -167,16 +167,10 @@ class QN(object):
             self.has_attr() == other.has_attr())
 
   def __lt__(self, other):
-    if isinstance(other, QN):
-      return self.qn < other.qn
-    else:
-      return str(self) < str(other)
+    return str(self) < str(other)
 
   def __gt__(self, other):
-    if isinstance(other, QN):
-      return self.qn > other.qn
-    else:
-      return str(self) > str(other)
+    return str(self) > str(other)
 
   def __str__(self):
     root = self.qn[0]

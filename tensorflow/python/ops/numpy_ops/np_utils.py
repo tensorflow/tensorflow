@@ -365,7 +365,8 @@ def set_is_sig_mismatch_an_error(value):
   _is_sig_mismatch_an_error = value
 
 
-def np_doc(np_fun_name, np_fun=None, export=True, link=None):
+def np_doc(np_fun_name, np_fun=None, export=True, unsupported_params=None,
+           link=None):
   """Attachs numpy docstring to a function.
 
   Args:
@@ -376,6 +377,8 @@ def np_doc(np_fun_name, np_fun=None, export=True, link=None):
       `tf.experimental.numpy`. Note that if `export` is `True`, `np_fun` must be
       a function directly under the `numpy` module, not under any submodule of
       `numpy` (e.g. `numpy.random`).
+    unsupported_params: (optional) the list of parameters not supported
+      by tf.numpy.
     link: (optional) which link to use. If `None`, a default link generated from
       `np_fun_name` will be used. If an instance of `AliasOf`, `link.value` will
       be used in place of `np_fun_name` for the link generation. If an instance
@@ -388,10 +391,11 @@ def np_doc(np_fun_name, np_fun=None, export=True, link=None):
   """
   np_fun_name, np_fun = _prepare_np_fun_name_and_fun(np_fun_name, np_fun)
   np_sig = _np_signature(np_fun)
+  if unsupported_params is None:
+    unsupported_params = []
 
   def decorator(f):
     """The decorator."""
-    unsupported_params = []
     if hasattr(inspect, 'signature') and np_sig is not None:
       try:
         sig = inspect.signature(f)

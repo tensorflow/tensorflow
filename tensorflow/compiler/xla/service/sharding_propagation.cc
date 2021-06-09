@@ -31,9 +31,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dot_as_convolution_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
@@ -130,12 +132,17 @@ bool IsConvolutionKernelSmall(const HloInstruction* instruction) {
   CHECK_EQ(instruction->opcode(), HloOpcode::kConvolution);
   const HloInstruction* rhs = instruction->operand(1);
   const auto& dnums = instruction->convolution_dimension_numbers();
+  int64 kernel_dim_prod = 1;
+  int64 output_dim_prod = 1;
   for (int64 i = 0; i < dnums.input_spatial_dimensions().size(); ++i) {
     int64 kernel_dim =
         rhs->shape().dimensions(dnums.kernel_spatial_dimensions(i));
+    kernel_dim_prod *= kernel_dim;
     int64 output_dim =
         instruction->shape().dimensions(dnums.output_spatial_dimensions(i));
-    if (kernel_dim >= output_dim) {
+    output_dim_prod *= output_dim;
+    if (kernel_dim >= output_dim &&
+        (i < 2 || kernel_dim > 3 || kernel_dim_prod >= output_dim_prod)) {
       return false;
     }
   }
@@ -178,6 +185,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kCos:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
@@ -229,6 +237,8 @@ const HloInstruction* PickRepresentativeOperand(
     // There is no suitable operand for the rest of the opcodes.
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -319,8 +329,10 @@ bool SupportSpatialPartitioning(const HloInstruction* instruction,
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
     case HloOpcode::kReduce:
+    case HloOpcode::kRngBitGenerator:
       return true;
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
       // Only if channel_id is not specified.
       return instruction->channel_id() == absl::nullopt;
     case HloOpcode::kParameter:
@@ -561,7 +573,10 @@ bool CanPropagateThroughAtAgressiveLevel(const HloInstruction& inst,
   // At minimum agressiveness, only allow pass-through ops.
   if (aggressiveness < 1 && !inst.IsElementwise() &&
       inst.opcode() != HloOpcode::kTranspose &&
-      inst.opcode() != HloOpcode::kReshape) {
+      inst.opcode() != HloOpcode::kReshape &&
+      inst.opcode() != HloOpcode::kTuple &&
+      inst.opcode() != HloOpcode::kGetTupleElement &&
+      inst.opcode() != HloOpcode::kWhile) {
     return false;
   }
   // Broadcast propagation should have at least aggressiveness 2.
@@ -616,6 +631,15 @@ bool InferShardingFromOperands(HloInstruction* instruction,
     }
     return false;
   }
+
+  auto get_maybe_tuple_sharding = [&](HloSharding sharding) {
+    if (instruction->shape().IsArray()) {
+      return sharding;
+    }
+    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes_size(),
+                                   std::move(sharding));
+    return HloSharding::Tuple(instruction->shape(), tuple);
+  };
 
   switch (instruction->opcode()) {
     case HloOpcode::kGetTupleElement: {
@@ -685,20 +709,11 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       // the arrays to reduce, and the second half of operands are the init
       // values.
       bool changed = false;
-      for (int64 operand_id = 0; operand_id < instruction->operand_count() / 2;
-           ++operand_id) {
-        const HloInstruction* operand = instruction->operand(operand_id);
+      auto* reduce = Cast<HloReduceInstruction>(instruction);
+      for (HloInstruction* operand : reduce->inputs()) {
         if (!IsSpatiallyPartitioned(operand)) {
           continue;
         }
-        auto get_maybe_tuple_sharding = [&](HloSharding sharding) {
-          if (instruction->operand_count() == 2) {
-            return sharding;
-          }
-          std::vector<HloSharding> tuple(instruction->operand_count() / 2,
-                                         std::move(sharding));
-          return HloSharding::Tuple(instruction->shape(), tuple);
-        };
         if (operand->sharding().IsReplicated() ||
             (!is_spmd &&
              absl::c_any_of(instruction->dimensions(), [operand](int64 dim) {
@@ -709,17 +724,17 @@ bool InferShardingFromOperands(HloInstruction* instruction,
           changed |= MaybeImproveInstructionSharding(
               get_maybe_tuple_sharding(
                   HloSharding::Replicate(operand->sharding().metadata())),
-              instruction, may_combine_partial_sharding);
+              reduce, may_combine_partial_sharding);
           continue;
         }
         auto after_partial_replication =
             operand->sharding().IsReplicated()
                 ? operand->sharding()
                 : hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-                      operand->sharding(), instruction->dimensions());
+                      operand->sharding(), reduce->dimensions());
         if (after_partial_replication.IsReplicated()) {
           changed |= MaybeImproveInstructionSharding(
-              get_maybe_tuple_sharding(after_partial_replication), instruction,
+              get_maybe_tuple_sharding(after_partial_replication), reduce,
               may_combine_partial_sharding);
           continue;
         }
@@ -727,9 +742,9 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         // of the same reduce instruction.
         HloSharding new_sharding =
             get_maybe_tuple_sharding(hlo_sharding_util::RemoveShapeDimensions(
-                after_partial_replication, instruction->dimensions()));
+                after_partial_replication, reduce->dimensions()));
         changed |= MaybeImproveInstructionSharding(
-            std::move(new_sharding), instruction, may_combine_partial_sharding);
+            std::move(new_sharding), reduce, may_combine_partial_sharding);
       }
       return changed;
     }
@@ -787,15 +802,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
                                              may_combine_partial_sharding);
     }
     case HloOpcode::kReduceWindow: {
-      if (instruction->shape().IsTuple()) {
-        // TODO (b/73062247) variadic reduce window is not yet supported here.
-        return false;
-      }
-      const HloInstruction* lhs = instruction->operand(0);
-      if (!IsSpatiallyPartitioned(lhs)) {
-        return false;
-      }
-
+      auto* reduce_window = Cast<HloReduceWindowInstruction>(instruction);
       auto has_dilation = [](const WindowDimension& dimensions) {
         return dimensions.base_dilation() > 1 ||
                dimensions.window_dilation() > 1;
@@ -803,11 +810,19 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       if (absl::c_any_of(instruction->window().dimensions(), has_dilation)) {
         VLOG(2) << "Not applying sharding to reduce window because dilatation "
                    "isn't supported yet: "
-                << instruction->ToString();
+                << reduce_window->ToString();
         return false;
       }
-      return MaybeImproveInstructionSharding(lhs->sharding(), instruction,
-                                             may_combine_partial_sharding);
+      bool changed = false;
+      for (HloInstruction* operand : reduce_window->inputs()) {
+        if (!IsSpatiallyPartitioned(operand)) {
+          continue;
+        }
+        changed |= MaybeImproveInstructionSharding(
+            get_maybe_tuple_sharding(operand->sharding()), reduce_window,
+            may_combine_partial_sharding);
+      }
+      return changed;
     }
     case HloOpcode::kSelectAndScatter: {
       // Shard according to first operand, as output keeps the same shape.
@@ -1234,15 +1249,17 @@ absl::optional<HloSharding> GetShardingFromUser(
       return user.sharding();
     }
     case HloOpcode::kReduceWindow: {
-      if (user.shape().IsTuple()) {
-        auto sub_sharding = user.sharding().GetSubSharding(
-            user.shape(), {user.operand_index(&instruction)});
-        return sub_sharding;
-      }
-      if (&instruction != user.operand(0)) {
+      auto* reduce_window = Cast<HloReduceWindowInstruction>(&user);
+      if (!absl::c_linear_search(reduce_window->inputs(), &instruction)) {
         return absl::nullopt;
       }
-      return user.sharding();
+      if (reduce_window->shape().IsTuple()) {
+        auto sub_sharding = reduce_window->sharding().GetSubSharding(
+            reduce_window->shape(),
+            {reduce_window->operand_index(&instruction)});
+        return sub_sharding;
+      }
+      return reduce_window->sharding();
     }
     case HloOpcode::kReshape: {
       return hlo_sharding_util::ReshapeSharding(
@@ -1588,7 +1605,8 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
       } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
                  // Cross-replica AllReduces don't have a channel_id, and we
                  // don't enforce any invariant about their device assignment.
-                 (opcode == HloOpcode::kAllReduce &&
+                 ((opcode == HloOpcode::kAllReduce ||
+                   opcode == HloOpcode::kAllReduceScatter) &&
                   instruction->channel_id())) {
         channel_instruction = instruction;
         unique_device = device;

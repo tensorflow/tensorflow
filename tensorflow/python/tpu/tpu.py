@@ -309,12 +309,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(
-      self,
-      name: Text,
-      vars_: List[variables.Variable],
-      is_mirrored: bool = False,
-      is_packed: bool = False) -> core_types.Tensor:
+  def get_replicated_var_handle(self,
+                                name: Text,
+                                vars_: Union[List[core_types.Tensor],
+                                             List[variables.Variable]],
+                                is_mirrored: bool = False,
+                                is_packed: bool = False) -> core_types.Tensor:
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -322,7 +322,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     Args:
       name: The common name of the variable.
-      vars_: The replicated TPU variables.
+      vars_: The replicated TPU variables or handles.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
       is_packed: Whether the replicated variables are packed into one variable.
@@ -371,7 +371,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # pylint: disable=protected-access
       saved_context = graph._get_control_flow_context()
       graph._set_control_flow_context(self.outer_context)
-      handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
+      # If replicated_vars are variables, get the handles. Note that this can be
+      # done inside TPUReplicateContext because replicated_vars.handle may
+      # create new ops.
+      if isinstance(replicated_vars[0], variables.Variable):
+        replicated_vars = [v.handle for v in replicated_vars]
+      handle = tpu_ops.tpu_replicated_input(replicated_vars,
                                             name=name + "/handle",
                                             is_mirrored_variable=is_mirrored,
                                             is_packed=is_packed)
@@ -894,7 +899,7 @@ def replicate(
     infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
     device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
     name: Optional[Text] = None,
-    maximum_shapes: Any = None,
+    maximum_shapes: Optional[Any] = None,
     padding_spec: Optional[PaddingSpec] = None,
     xla_options: Optional[XLAOptions] = None) -> List[Any]:
   """Builds a graph operator that runs a replicated TPU computation.
@@ -1175,8 +1180,7 @@ def _flatten_and_filter_composite(maybe_composite, non_composite_output,
   """
 
   if isinstance(maybe_composite, composite_tensor.CompositeTensor):
-    num_components = len(
-        maybe_composite._type_spec._to_components(maybe_composite))  # pylint: disable=protected-access
+    num_components = len(nest.flatten(maybe_composite, expand_composites=True))
     return (composite_output,) * num_components
   return non_composite_output
 
@@ -1188,7 +1192,7 @@ def split_compile_and_replicate(
     device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
     name: Optional[Text] = None,
     use_tpu: bool = True,
-    maximum_shapes: Any = None,
+    maximum_shapes: Optional[Any] = None,
     padding_spec: Optional[PaddingSpec] = None,
     xla_options: Optional[XLAOptions] = None,
 ) -> List[List[core_types.Tensor]]:
@@ -1718,7 +1722,7 @@ def _postprocess_non_flat_outputs(
 
 def split_compile_and_shard(
     computation: Callable[..., Any],
-    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
     num_shards: int = 1,
     input_shard_axes: Optional[List[int]] = None,
     outputs_from_all_shards: Union[bool, List[bool]] = True,
@@ -1961,7 +1965,7 @@ def shard(
 @tf_export(v1=["tpu.batch_parallel"])
 def batch_parallel(
     computation: Callable[..., Any],
-    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
     num_shards: int = 1,
     infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
     device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
@@ -2023,7 +2027,7 @@ def batch_parallel(
 @tf_export(v1=["tpu.rewrite"])
 def rewrite(
     computation: Callable[..., Any],
-    inputs: List[List[Optional[core_types.Tensor]]] = None,
+    inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
     infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
     device_assignment: Optional[device_assignment_lib.DeviceAssignment] = None,
     name: Optional[Text] = None,

@@ -285,7 +285,8 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
           }
         }
       };
-      if (Parallel) {
+      if (Parallel &&
+          c->device()->tensorflow_cpu_worker_threads()->num_threads > 1) {
         auto thread_pool =
             c->device()->tensorflow_cpu_worker_threads()->workers;
         size_t total_indices_size = 0;

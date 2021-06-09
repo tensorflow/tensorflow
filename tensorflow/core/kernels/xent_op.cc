@@ -17,14 +17,16 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/xent_op.h"
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/xent_op.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/determinism.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -57,6 +59,16 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                 errors::InvalidArgument("logits and labels must be either "
                                         "2-dimensional, or broadcasted to be "
                                         "2-dimensional"));
+
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(context, !OpDeterminismRequired(),
+                  errors::Unimplemented(
+                      "The GPU implementation of SoftmaxCrossEntropyWithLogits"
+                      " that would have been executed is not deterministic."
+                      " Note that the Python API uses an alternative,"
+                      " deterministic, GPU-accelerated path when determinism is"
+                      " enabled."));
+    }
 
     // loss is 1-D (one per example), and size is batch_size.
 

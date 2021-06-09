@@ -34,8 +34,8 @@ namespace {
 
 class ConvertResultsBroadcastableShapeOp : public RewritePattern {
  public:
-  ConvertResultsBroadcastableShapeOp()
-      : RewritePattern(1, MatchAnyOpTypeTag()) {}
+  ConvertResultsBroadcastableShapeOp(MLIRContext* context)
+      : RewritePattern(MatchAnyOpTypeTag(), 1, context) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override;
@@ -189,7 +189,7 @@ void BroadcastFoldPass::runOnFunction() {
   OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
 
-  patterns.insert<ConvertResultsBroadcastableShapeOp>();
+  patterns.insert<ConvertResultsBroadcastableShapeOp>(func.getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

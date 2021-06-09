@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -19,9 +19,6 @@ py_test(
     name = "mlir_test",
     srcs = ["mlir_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_tfrt",  # TODO(b/179308349)
-    ],
     deps = [
         ":mlir",
         "//tensorflow/python:client_testlib",

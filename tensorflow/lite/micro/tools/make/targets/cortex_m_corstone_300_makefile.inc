@@ -1,3 +1,18 @@
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # ARM Cortex M makefile targeted for a FVP based on Arm Corstone-300 software.
 # For more info see: tensorflow/lite/micro/cortex_m_corstone_300/README.md
 
@@ -21,6 +36,12 @@ ifeq ($(CMSIS_PATH), $(CMSIS_DEFAULT_DOWNLOAD_PATH))
   ifneq ($(DOWNLOAD_RESULT), SUCCESS)
     $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
   endif
+endif
+
+# Convert downloaded person detect int8 model.
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/person_detection_int8_vela_convert.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the person detection int8 model conversion: $(DOWNLOAD_RESULT))
 endif
 
 FLOAT := soft
@@ -82,10 +103,13 @@ ifneq ($(filter cortex-m55%,$(TARGET_ARCH)),)
 endif
 
 ifeq ($(TOOLCHAIN), gcc)
-  export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
-  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
-  ifneq ($(DOWNLOAD_RESULT), SUCCESS)
-    $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+  TARGET_DEFAULT_TOOLCHAIN_ROOT := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/
+  TARGET_TOOLCHAIN_ROOT := $(TARGET_DEFAULT_TOOLCHAIN_ROOT)
+  ifeq ($(TARGET_TOOLCHAIN_ROOT), $(TARGET_DEFAULT_TOOLCHAIN_ROOT))
+    DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
+    ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+      $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+    endif
   endif
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 
@@ -129,6 +153,9 @@ ARM_CPU := $(subst +nofp,,$(ARM_CPU))
 CXXFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 CCFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 
+# For Ethos-U Core Driver. Header file name is depending on target architecture.
+CXXFLAGS += -DCMSIS_DEVICE_ARM_CORTEX_M_XX_HEADER_FILE=\"$(ARM_CPU).h\"
+
 THIRD_PARTY_CC_SRCS += \
   $(ETHOS_U_CORE_PLATFORM)/retarget.c \
   $(ETHOS_U_CORE_PLATFORM)/uart.c
@@ -141,9 +168,6 @@ THIRD_PARTY_CC_SRCS += \
 INCLUDES += \
   -I$(CMSIS_PATH)/Device/ARM/$(ARM_CPU)/Include \
   -I$(CMSIS_PATH)/CMSIS/Core/Include
-
-# TODO(#47071): Examine why Micro benchmarks fails.
-MICRO_LITE_BENCHMARKS := $(filter-out tensorflow/lite/micro/benchmarks/Makefile.inc, $(MICRO_LITE_BENCHMARKS))
 
 # TODO(#47070): Examine why some tests fail here.
 EXCLUDED_TESTS := \
@@ -159,7 +183,6 @@ MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
   tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
-  tensorflow/lite/micro/examples/person_detection/Makefile.inc \
   tensorflow/lite/micro/examples/hello_world/Makefile.inc \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))

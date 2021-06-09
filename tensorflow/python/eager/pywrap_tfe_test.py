@@ -249,10 +249,10 @@ class Tests(test.TestCase):
                                         "num_split", 1000000000000)
 
     value = constant_op.constant(value)
-    attrs = ("num_splits", 1000000000000)
+    attrs = ("num_split", 1000000000000, "T", value.dtype.as_datatype_enum)
     with self.assertRaisesRegex(ValueError, "Number of outputs is too big"):
-      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [value], attrs,
-                                1000000000000)
+      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [split_dim, value],
+                                attrs, 1000000000000)
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
@@ -297,8 +297,11 @@ class Tests(test.TestCase):
                                         False)
 
   def testOpDefDefaultType(self):
-    im = np.random.randint(
-        low=0, high=65535, size=100, dtype=np.uint16).reshape(10, 10, 1)
+    im = np.random.randint(  # pylint: disable=too-many-function-args
+        low=0,
+        high=65535,
+        size=100,
+        dtype=np.uint16).reshape(10, 10, 1)
 
     context.ensure_initialized()
 

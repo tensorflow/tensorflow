@@ -28,6 +28,9 @@ namespace builtin {
 // needed. In such cases, the client can selectively add only the registrations
 // their model requires, using a custom `OpResolver` or `MutableOpResolver`.
 // Selective registration in turn allows the linker to strip unused kernels.
+//
+// TODO(b/184734878): auto-generate this header file from the BuiltinOperator
+// enum in the FlatBuffer schema.
 
 TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_ADD();
@@ -47,6 +50,7 @@ TfLiteRegistration* Register_COMPLEX_ABS();
 TfLiteRegistration* Register_CONCATENATION();
 TfLiteRegistration* Register_CONV_2D();
 TfLiteRegistration* Register_CONV_3D();
+TfLiteRegistration* Register_CONV_3D_TRANSPOSE();
 TfLiteRegistration* Register_COS();
 TfLiteRegistration* Register_CUMSUM();
 TfLiteRegistration* Register_DENSIFY();
@@ -114,6 +118,7 @@ TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_RANGE();
 TfLiteRegistration* Register_RANK();
 TfLiteRegistration* Register_REAL();
+TfLiteRegistration* Register_REDUCE_ALL();
 TfLiteRegistration* Register_REDUCE_ANY();
 TfLiteRegistration* Register_REDUCE_MAX();
 TfLiteRegistration* Register_REDUCE_MIN();

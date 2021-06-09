@@ -370,7 +370,9 @@ enum BuiltinOperator : int32 {
   HASHTABLE = 136,
   HASHTABLE_FIND = 137,
   HASHTABLE_IMPORT = 138,
-  HASHTABLE_SIZE = 139
+  HASHTABLE_SIZE = 139,
+  REDUCE_ALL = 140,
+  CONV_3D_TRANSPOSE = 141,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -508,6 +510,7 @@ table Conv2DOptions {
   dilation_h_factor:int = 1;
 }
 
+// Options for both Conv3D and Conv3DTranspose.
 table Conv3DOptions {
   padding:Padding;
   stride_d:int;
@@ -633,6 +636,7 @@ table MulOptions {
 }
 
 table L2NormOptions {
+  // This field is currently ignored in the L2 Norm Op.
   fused_activation_function:ActivationFunctionType;
 }
 

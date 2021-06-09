@@ -54,8 +54,7 @@ def make_strided_slice_np_style_tests(options):
       {
           "dtype": [tf.float32],
           "shape": [[21, 15, 7]],
-          "spec": [[slice(3, 7, 2), Ellipsis], [Ellipsis,
-                                                slice(3, 7, 2)],
+          "spec": [[slice(3, 7, 2), Ellipsis],
                    [slice(1, 11, 3), Ellipsis,
                     slice(3, 7, 2)]],
       },
@@ -63,10 +62,7 @@ def make_strided_slice_np_style_tests(options):
       {
           "dtype": [tf.float32],
           "shape": [[21, 15, 7, 9]],
-          "spec": [[slice(3, 7, 2), Ellipsis], [Ellipsis,
-                                                slice(3, 7, 2)],
-                   [slice(1, 11, 3), Ellipsis,
-                    slice(3, 7, 2)]],
+          "spec": [[slice(3, 7, 2), Ellipsis]],
       },
       # Ellipsis 5d.
       {
@@ -78,29 +74,75 @@ def make_strided_slice_np_style_tests(options):
               slice(None),
               slice(None),
               slice(None)
-          ], [Ellipsis, slice(3, 7, 2)]],
+          ]],
       },
       # Ellipsis + Shrink Mask
       {
           "dtype": [tf.float32],
           "shape": [[22, 15, 7]],
-          "spec": [[2,  # shrink before ellipsis
-                    Ellipsis],
-                   [Ellipsis,  # shrink after ellipsis
-                    2]],
+          "spec": [
+              [
+                  2,  # shrink before ellipsis
+                  Ellipsis
+              ],
+          ],
       },
       # Ellipsis + New Axis Mask
       {
           "dtype": [tf.float32],
           "shape": [[23, 15, 7]],
-          "spec": [[tf.newaxis,  # new_axis before ellipsis
-                    slice(3, 7, 2),
-                    slice(None), Ellipsis],
-                   [tf.newaxis,  # new_axis after (and before) ellipsis
-                    slice(3, 7, 2),
-                    slice(None), Ellipsis, tf.newaxis]],
+          "spec": [
+              [
+                  tf.newaxis,  # new_axis before ellipsis
+                  slice(3, 7, 2),
+                  slice(None),
+                  Ellipsis
+              ],
+              [
+                  tf.newaxis,  # new_axis after (and before) ellipsis
+                  slice(3, 7, 2),
+                  slice(None),
+                  Ellipsis,
+                  tf.newaxis
+              ]
+          ],
       },
   ]
+
+  if options.use_experimental_converter:
+    # The case when Ellipsis is expanded to multiple dimension is only supported
+    # by MLIR converter (b/183902491).
+    test_parameters = test_parameters + [
+        # Ellipsis 3d.
+        {
+            "dtype": [tf.float32],
+            "shape": [[21, 15, 7]],
+            "spec": [[Ellipsis, slice(3, 7, 2)]],
+        },
+        # Ellipsis 4d.
+        {
+            "dtype": [tf.float32],
+            "shape": [[21, 15, 7, 9]],
+            "spec": [[Ellipsis, slice(3, 7, 2)],
+                     [slice(1, 11, 3), Ellipsis,
+                      slice(3, 7, 2)]],
+        },
+        # Ellipsis 5d.
+        {
+            "dtype": [tf.float32],
+            "shape": [[11, 21, 15, 7, 9]],
+            "spec": [[Ellipsis, slice(3, 7, 2)]],
+        },
+        # Ellipsis + Shrink Mask
+        {
+            "dtype": [tf.float32],
+            "shape": [[22, 15, 7]],
+            "spec": [[
+                Ellipsis,  # shrink after ellipsis
+                2
+            ]],
+        },
+    ]
 
   def build_graph(parameters):
     """Build a simple graph with np style strided_slice."""

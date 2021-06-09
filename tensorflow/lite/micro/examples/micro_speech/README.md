@@ -267,7 +267,7 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="cmsis_nn" micro_speech_bin
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge OPTIMIZED_KERNEL_DIR=cmsis_nn micro_speech_bin
 ```
 
 The binary will be created in the following location:
@@ -407,28 +407,27 @@ Before we begin, you'll need the following:
 
 - STM32F7 discovery kit board
 - Mini-USB cable
-- ARM Mbed CLI ([installation instructions](https://os.mbed.com/docs/mbed-os/v5.12/tools/installation-and-setup.html). Check it out for MacOS Catalina - [mbed-cli is broken on MacOS Catalina #930](https://github.com/ARMmbed/mbed-cli/issues/930#issuecomment-660550734))
-- Python 2.7 and pip
+- ARM Mbed CLI ([installation instructions](https://os.mbed.com/docs/mbed-os/v6.9/quick-start/build-with-mbed-cli.html). Check it out for MacOS Catalina - [mbed-cli is broken on MacOS Catalina #930](https://github.com/ARMmbed/mbed-cli/issues/930#issuecomment-660550734))
+- Python 3 and pip3
 
 Since Mbed requires a special folder structure for projects, we'll first run a
 command to generate a subfolder containing the required source files in this
 structure:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_mbed_project
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=disco_f746ng OPTIMIZED_KERNEL_DIR=cmsis_nn generate_micro_speech_mbed_project
 ```
 
 Running the make command will result in the creation of a new folder:
 
 ```
-tensorflow/lite/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed
+tensorflow/lite/micro/tools/make/gen/disco_f746ng_cortex-m4_default/prj/micro_speech/mbed
 ```
 
 This folder contains all of the example's dependencies structured in the correct
 way for Mbed to be able to build it.
 
-Change into the directory and run the following commands, making sure you are
-using Python 2.7.15.
+Change into the directory and run the following commands.
 
 First, tell Mbed that the current directory is the root of an Mbed project:
 
@@ -442,16 +441,23 @@ Next, tell Mbed to download the dependencies and prepare to build:
 mbed deploy
 ```
 
-By default, Mbed will build the project using C++98. However, TensorFlow Lite
-requires C++11. Run the following Python snippet to modify the Mbed
+Older versions of Mbed will build the project using C++98. However, TensorFlow Lite
+requires C++11. If needed, run the following Python snippet to modify the Mbed
 configuration files so that it uses C++11:
 
 ```
 python -c 'import fileinput, glob;
 for filename in glob.glob("mbed-os/tools/profiles/*.json"):
   for line in fileinput.input(filename, inplace=True):
-    print line.replace("\"-std=gnu++98\"","\"-std=c++11\", \"-fpermissive\"")'
+    print(line.replace("\"-std=gnu++98\"","\"-std=c++11\", \"-fpermissive\""))'
+```
 
+Note: Mbed has a dependency to an old version of arm_math.h and cmsis_gcc.h (adapted from the general [CMSIS-NN MBED example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/kernels/cmsis_nn#example-2---mbed)). Therefore you need to copy the newer version as follows:
+```bash
+cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/DSP/Include/\
+arm_math.h mbed-os/cmsis/TARGET_CORTEX_M/arm_math.h
+cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
+cmsis_gcc.h mbed-os/cmsis/TARGET_CORTEX_M/cmsis_gcc.h
 ```
 
 Finally, run the following command to compile:

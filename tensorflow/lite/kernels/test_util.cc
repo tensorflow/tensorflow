@@ -106,7 +106,6 @@ int SingleOpModel::AddIntermediate(TensorType type,
                                    const std::vector<float>& scale,
                                    const std::vector<int64_t>& zero_point) {
   // Currently supports only int16 intermediate types.
-  // TODO(jianlijianli): make use of the type.
   int id = tensors_.size();
   flatbuffers::Offset<QuantizationParameters> q_params =
       CreateQuantizationParameters(builder_, /*min=*/0, /*max=*/0,
@@ -193,10 +192,22 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   UpdateOpVersion(buffer_pointer);
 
   if (!resolver_) {
+    // If we have a manually-set TfLite delegate, we assume the intention of
+    // the test is to test against the particular delegate, hence bypassing
+    // applying TfLite default delegates (i.e. the XNNPACK delegate).
+    bool bypass_default_delegates = (delegate_ != nullptr);
+    if (!bypass_default_delegates) {
+      // Check if any delegates are specified via the commandline flags.
+      const auto specified_delegates =
+          tflite::KernelTestDelegateProviders::Get()->CreateAllDelegates();
+      if (!specified_delegates.empty()) {
+        bypass_default_delegates = true;
+      }
+    }
     MutableOpResolver* resolver =
-        apply_delegate
-            ? new ops::builtin::BuiltinOpResolver()
-            : new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
+        bypass_default_delegates
+            ? new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates()
+            : new ops::builtin::BuiltinOpResolver();
     for (const auto& reg : custom_registrations_) {
       resolver->AddCustom(reg.first.data(), reg.second());
     }
@@ -239,9 +250,9 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
     }
     for (auto& one : delegate_providers->CreateAllDelegates()) {
       // The raw ptr always points to the actual TfLiteDegate object.
-      auto* delegate_raw_ptr = one.get();
+      auto* delegate_raw_ptr = one.delegate.get();
       TF_LITE_ENSURE_STATUS(
-          interpreter_->ModifyGraphWithDelegate(std::move(one)));
+          interpreter_->ModifyGraphWithDelegate(std::move(one.delegate)));
       // Note: 'delegate_' is always set to the last successfully applied one.
       delegate_ = delegate_raw_ptr;
       ++num_applied_delegates_;
@@ -365,6 +376,7 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
     EXPECT_EQ(CountPartitionsDelegatedTo(interpreter_.get(), delegate_), 1)
         << "Expecting operation to be accelerated but cannot find a partition "
            "associated to the NNAPI delegate";
+    EXPECT_GT(num_applied_delegates_, 0) << "No delegates were applied.";
   }
 }
 

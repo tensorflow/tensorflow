@@ -62,15 +62,8 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
 Status InitializeTableFromTextFile(
     const string& filename, int64 vocab_size, char delimiter, int32 key_index,
     int32 value_index, int64 offset, Env* env,
-    absl::optional<InitializableLookupTable::InitializerAsGraphDefFunc>&& func,
+    std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table);
-
-// Initializes `table` from `dataset` by iterating over it. Caller retains
-// ownership of `dataset`.
-void InitializeTableFromDataset(OpKernelContext* ctx,
-                                data::DatasetBase* dataset,
-                                InitializableLookupTable* table,
-                                AsyncOpKernel::DoneCallback done);
 
 }  // namespace lookup
 }  // namespace tensorflow

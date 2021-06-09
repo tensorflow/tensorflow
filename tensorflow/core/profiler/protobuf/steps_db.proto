@@ -22,11 +22,13 @@ message DeviceMemoryTransfer {
   uint64 bytes_transferred = 3;
 }
 
-// Next ID: 5
+// Next ID: 6
 // Result proto for StepInfo.
 message StepInfoResult {
   // The step number.
   uint32 step_num = 1;
+  // The step name.
+  string step_name = 5;
   // The step duration in picoseconds.
   uint64 duration_ps = 2;
   // The start time of this step in picoseconds.
@@ -122,4 +124,9 @@ message StepDatabaseResult {
   bool use_incomplete_step = 2;
   // Number of steps dropped during post processing.
   uint32 num_steps_dropped = 3;
+  // If the step_sequence is empty because:
+  //   * there is no step profiled on any host, then empty_intersect is false.
+  //   * there are steps profiled on some host, but the intersection of steps
+  //     over all hosts is empty, then empty_intersect is true.
+  bool empty_intersect = 4;
 }

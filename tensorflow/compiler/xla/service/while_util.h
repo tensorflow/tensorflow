@@ -86,6 +86,19 @@ class WhileUtil {
       const LoopBodyGeneratorTy& loop_body_generator,
       const OpMetadata& metadata);
 
+  struct OwningLoopStateTy {
+    std::vector<std::unique_ptr<HloInstruction>> instructions_to_add;
+    WhileUtil::LoopStateTy while_results;
+  };
+  // As above but does not add the while loop or other instructions created
+  // around it in any particular computation. The caller can instead add it to a
+  // computation of their choosing.
+  static StatusOr<OwningLoopStateTy> MakeCountedLoop(
+      HloModule* module, int32 trip_count,
+      const WhileUtil::LoopStateTy& init_values,
+      const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+      const OpMetadata& metadata);
+
   // Returns the GetTupleElement instructions in `while_body` that access
   // elements in the parameter tuple that don't change across iterations.
   // Assumes `while_body` is the body computation of the while loop in question.

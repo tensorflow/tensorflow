@@ -346,6 +346,12 @@ message UserDefinedProgramParameters {
   repeated float padding_values = 2;
 }
 
+// Optimizer that just sets the variable to the value of the gradient. To be
+// correct, this requires either gradient accumulation (to sum the values of a
+// computed expression across the samples) or to deduplicate IDs within a single
+// host (to assign the value from an arbitrary sample).
+message AssignParameters {}
+
 // Status of using gradient accumulation (doing two passes over the input
 // gradients: one to accumulate them into a temporary array and another to apply
 // them using the actual optimization algorithm). The extra message is to wrap
@@ -425,6 +431,7 @@ message OptimizationParameters {
     ProximalYogiParameters proximal_yogi = 21;
     FrequencyEstimatorParameters frequency_estimator = 23;
     UserDefinedProgramParameters user_defined_program = 24;
+    AssignParameters assign = 25;
   }
 
   reserved 15;  // Old use_gradient_accumulation.

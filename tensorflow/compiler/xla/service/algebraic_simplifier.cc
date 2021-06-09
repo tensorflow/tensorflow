@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -342,7 +343,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleReduce(HloInstruction* hlo) override;
 
-  Status HandleReduceWindow(HloInstruction* reduce_window) override;
+  Status HandleReduceWindow(HloInstruction* hlo) override;
 
   Status HandleReverse(HloInstruction* reverse) override;
 
@@ -1244,18 +1245,25 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   // Check if we can merge "adjacent" slice operands which take slices from the
   // same other op. For simplicity we only merge unstrided slices.
   int64 concatenate_dimension = concatenate->concatenate_dimension();
-  for (int64 i = 0; i < operands.size(); ++i) {
+  std::vector<HloInstruction*> new_operands;
+  int64 i = 0;
+  while (i < operands.size()) {
     if (operands[i]->opcode() != HloOpcode::kSlice ||
         !IsUnstridedSlice(operands[i])) {
+      new_operands.push_back(operands[i]);
+      ++i;
       continue;
     }
     int64 slice_end = operands[i]->slice_limits(concatenate_dimension);
     HloInstruction* slice_operand = operands[i]->mutable_operand(0);
     int64 j = i + 1;
-    while (j < operands.size() && operands[j]->opcode() == HloOpcode::kSlice &&
-           IsUnstridedSlice(operands[j]) &&
-           operands[j]->operand(0) == slice_operand &&
-           operands[j]->slice_starts(concatenate_dimension) == slice_end) {
+    while (j < operands.size()) {
+      if (operands[j]->opcode() != HloOpcode::kSlice ||
+          !IsUnstridedSlice(operands[j]) ||
+          operands[j]->operand(0) != slice_operand ||
+          operands[j]->slice_starts(concatenate_dimension) != slice_end) {
+        break;
+      }
       // Check that all the slice_start values are the same in all other
       // dimensions. This implies that the slice_limit values are also the same,
       // because operands of concatenate need to have the same shape, and we
@@ -1290,28 +1298,17 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
               /*start_indices=*/operands[i]->slice_starts(),
               /*limit_indices=*/new_limit_indices,
               /*strides=*/operands[i]->slice_strides()));
-      std::vector<HloInstruction*> new_operands;
-      for (int64 k = 0; k < i; ++k) {
-        new_operands.push_back(operands[k]);
-      }
       new_operands.push_back(new_slice_op);
-      for (int64 k = j; k < operands.size(); ++k) {
-        new_operands.push_back(operands[k]);
-      }
-      auto replacement =
-          computation_->AddInstruction(concatenate->CloneWithNewOperands(
-              concatenate->shape(), new_operands));
-
-      // Recurse to handle multiple disjoint sequence of inputs. The
-      // logic above merge only 1 sequential series of
-      // inputs. Otherwise, it can lead to the FixPass optimization
-      // hitting its threshold.
-      if (ReplaceInstructionIfSameShape(concatenate, replacement)) {
-        return HandleConcatenate(replacement);
-      }
-
-      return Status::OK();
+    } else {
+      new_operands.push_back(operands[i]);
     }
+    i = j;
+  }
+  if (new_operands.size() < operands.size()) {
+    auto replacement = computation_->AddInstruction(
+        concatenate->CloneWithNewOperands(concatenate->shape(), new_operands));
+    ReplaceInstructionIfSameShape(concatenate, replacement);
+    return Status::OK();
   }
 
   if (operands.size() == 2) {
@@ -1411,12 +1408,23 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
   }
 
   // If a literal is an increasing sequence from zero, replace it with an iota.
-  if (constant->shape().rank() == 1 &&
-      ShapeUtil::ElementsIn(constant->shape()) > 1 &&
+  if (ShapeUtil::ElementsIn(constant->shape()) > 1 &&
       constant->literal().IsR1Iota()) {
     return ReplaceWithNewInstruction(
         constant, HloInstruction::CreateIota(constant->shape(), 0));
   }
+
+  if (absl::optional<int64> stride = constant->literal().IsR1StridedIota()) {
+    // Replace the constant with iota * stride.
+    HloInstruction* stride_hlo = MakeScalarLike(constant, *stride);
+    HloInstruction* iota = computation_->AddInstruction(
+        HloInstruction::CreateIota(constant->shape(), 0));
+    return ReplaceWithNewInstruction(
+        constant,
+        HloInstruction::CreateBinary(constant->shape(), HloOpcode::kMultiply,
+                                     iota, stride_hlo));
+  }
+
   return Status::OK();
 }
 
@@ -2545,8 +2553,10 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     };
     auto result = get_value(0);
     auto pred_shape = ShapeUtil::ChangeElementType(gather->shape(), PRED);
+    simplifier_->UpdateLayout(&pred_shape);
     auto iter_shape = ShapeUtil::ChangeElementType(gather->shape(),
                                                    index_shape.element_type());
+    simplifier_->UpdateLayout(&iter_shape);
     for (int64 i = 0; i < operand_elements; ++i) {
       auto index_mask =
           computation_->AddInstruction(HloInstruction::CreateCompare(
@@ -2565,7 +2575,7 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
 namespace {
 StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
     HloInstruction* clamp_lower_bound_bcast, HloInstruction* to_clamp,
-    HloInstruction* clamp_upper_bound_bcast) {
+    HloInstruction* clamp_upper_bound_bcast, AlgebraicSimplifier* simplifier) {
   HloInstruction* clamp_lower_bound;
   CHECK(Match(clamp_lower_bound_bcast,
               m::Broadcast(m::ConstantEffectiveScalar(&clamp_lower_bound))))
@@ -2581,16 +2591,22 @@ StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
   const Literal& upper_bound =
       Cast<HloConstantInstruction>(clamp_upper_bound)->literal();
 
+  TF_ASSIGN_OR_RETURN(Literal lower_bound_literal_reshaped,
+                      lower_bound.Reshape({}));
+  TF_ASSIGN_OR_RETURN(Literal upper_bound_literal_reshaped,
+                      upper_bound.Reshape({}));
   std::unique_ptr<HloInstruction> lower_bound_instr =
-      HloInstruction::CreateConstant(lower_bound.Clone());
+      HloInstruction::CreateConstant(std::move(lower_bound_literal_reshaped));
   std::unique_ptr<HloInstruction> upper_bound_instr =
-      HloInstruction::CreateConstant(upper_bound.Clone());
+      HloInstruction::CreateConstant(std::move(upper_bound_literal_reshaped));
 
+  Shape compare_shape =
+      ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED);
+  simplifier->UpdateLayout(&compare_shape);
   std::unique_ptr<HloInstruction> cloned_instruction =
-      HloInstruction::CreateCompare(
-          ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED),
-          lower_bound_instr.get(), upper_bound_instr.get(),
-          ComparisonDirection::kLt);
+      HloInstruction::CreateCompare(compare_shape, lower_bound_instr.get(),
+                                    upper_bound_instr.get(),
+                                    ComparisonDirection::kLt);
 
   HloEvaluator evaluator;
   TF_ASSIGN_OR_RETURN(auto result,
@@ -2620,7 +2636,7 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
                                           m::ConstantEffectiveScalar()))))) {
     TF_ASSIGN_OR_RETURN(auto clamp,
                         MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
-                                      clamp_upper_bound_bcast));
+                                      clamp_upper_bound_bcast, simplifier_));
     if (clamp) {
       return ReplaceWithNewInstruction(maximum, std::move(clamp));
     }
@@ -2660,7 +2676,7 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
                                           m::ConstantEffectiveScalar()))))) {
     TF_ASSIGN_OR_RETURN(auto clamp,
                         MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
-                                      clamp_upper_bound_bcast));
+                                      clamp_upper_bound_bcast, simplifier_));
     if (clamp) {
       return ReplaceWithNewInstruction(minimum, std::move(clamp));
     }
@@ -2681,6 +2697,26 @@ Status AlgebraicSimplifierVisitor::HandleClamp(HloInstruction* clamp) {
                                m::Op().Is(clamp_upper_bound))) &&
       ReplaceInstructionIfSameShape(clamp, to_clamp)) {
     return Status::OK();
+  }
+
+  // Eliminate redundant clamping of replica-id or partition-id.
+  if ((Match(to_clamp, m::PartitionId()) || Match(to_clamp, m::ReplicaId())) &&
+      Match(clamp_lower_bound, m::ConstantScalar(0U)) &&
+      Match(clamp_upper_bound, m::ConstantScalar())) {
+    int64 upper_bound = Cast<HloConstantInstruction>(clamp_upper_bound)
+                            ->literal()
+                            .GetFirstElement<uint32_t>();
+    const HloModuleConfig& config = clamp->GetModule()->config();
+    int64 runtime_bound = Match(to_clamp, m::PartitionId())
+                              ? config.num_partitions()
+                              : config.replica_count();
+
+    // If num_partitions or replica_count is 1, infer it as unknown.
+    // pid/rid < runtime_bound => The clamp(0, pid/rid, upper_bound) is
+    // redundant if the runtime_bound <= upper_bound + 1;
+    if (runtime_bound != 1 && runtime_bound <= upper_bound + 1) {
+      return ReplaceInstruction(clamp, to_clamp);
+    }
   }
 
   return Status::OK();
@@ -3701,10 +3737,11 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
       HloInstruction* zero_like_a = BroadcastZeros(
           computation, a->shape().element_type(), a->shape().dimensions());
 
+      Shape compare_shape = ShapeUtil::ChangeElementType(a->shape(), PRED);
+      simplifier->UpdateLayout(&compare_shape);
       auto* dividend_is_negative =
           computation->AddInstruction(HloInstruction::CreateCompare(
-              ShapeUtil::ChangeElementType(a->shape(), PRED), a, zero_like_a,
-              ComparisonDirection::kLt));
+              compare_shape, a, zero_like_a, ComparisonDirection::kLt));
 
       auto* negated_dividend = computation->AddInstruction(
           HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));
@@ -4416,6 +4453,80 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
         HloInstruction::CreateSlice(dynamic_slice->shape(), operand,
                                     slice_starts, slice_limits, slice_strides));
   }
+
+  // Convert the dynamic slice of an iota to just a reference to the index
+  // (possibly clamped and scaled). Index is always a scalar integer. Output
+  // should be a rank 1 array of size 1 with element type matching that of the
+  // scalar index (except the signedness).
+  const PrimitiveType element_type = dynamic_slice->shape().element_type();
+  if (operand->shape().rank() == 1 && dynamic_slice->shape().rank() == 1 &&
+      dynamic_slice->shape().dimensions(0) == 1 &&
+      (element_type == S32 || element_type == U32)) {
+    // Match multiply(x, broadcast(scalar)) and return the scalar
+    // constant.
+    auto match_multiply_with_scalar =
+        [&](HloInstruction* hlo) -> HloInstruction* {
+      if (hlo->opcode() != HloOpcode::kMultiply) {
+        return nullptr;
+      }
+      HloInstruction* broadcast = hlo->mutable_operand(1);
+      if (broadcast->opcode() == HloOpcode::kBroadcast &&
+          broadcast->dimensions().empty() &&
+          ShapeUtil::IsScalar(broadcast->operand(0)->shape())) {
+        return broadcast->mutable_operand(0);
+      }
+      return nullptr;
+    };
+
+    HloInstruction* multiplier = match_multiply_with_scalar(operand);
+    if (multiplier) {
+      operand = operand->mutable_operand(0);
+    }
+
+    if (operand->opcode() == HloOpcode::kIota) {
+      // This dynamic_slice will have a single start_index operand (since its
+      // operand is rank 1).
+      HloInstruction* index = dynamic_slice->mutable_operand(1);
+      const PrimitiveType index_type = index->shape().element_type();
+
+      auto create_constant = [&](int64 value) {
+        if (index_type == S32) {
+          return MakeScalarLike<int32_t>(index, value);
+        } else {
+          return MakeScalarLike<uint32_t>(index, value);
+        }
+      };
+
+      if (index_type == S32 || index_type == U32) {
+        // Clamp the index to the range of the iota.
+        int64 iota_size = operand->shape().dimensions(0);
+        HloInstruction* low = create_constant(0);
+        HloInstruction* high = create_constant(iota_size - 1);
+        HloInstruction* clamped =
+            computation_->AddInstruction(HloInstruction::CreateTernary(
+                index->shape(), HloOpcode::kClamp, low, index, high));
+
+        // Convert the clamped index from index_type to element_type and
+        // multiply with the multiplier.
+        HloInstruction* result = clamped;
+        if (index_type != element_type) {
+          result = computation_->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::MakeScalarShape(element_type), clamped));
+        }
+
+        if (multiplier) {
+          result = computation_->AddInstruction(HloInstruction::CreateBinary(
+              result->shape(), HloOpcode::kMultiply, result, multiplier));
+        }
+
+        return ReplaceWithNewInstruction(
+            dynamic_slice,
+            HloInstruction::CreateReshape(
+                ShapeUtil::MakeShape(element_type, {1}), result));
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -4596,17 +4707,51 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // A Transpose feeding a reduce can simply permute the reduction dimensions
   // field if the output of the reduce is a vector or scalar. Higher ranked
   // result may require a transpose of the output.
-  if (reduce_result_shape.rank() <= 1 &&
-      arg->opcode() == HloOpcode::kTranspose) {
+  if (arg->opcode() == HloOpcode::kTranspose &&
+      (reduce->shape().rank() < 2 || arg->user_count() == 1 ||
+       absl::c_all_of(arg->users(), [](HloInstruction* use) {
+         return use->opcode() == HloOpcode::kReduce;
+       }))) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64> new_reduce_dimensions;
     for (auto dim : dimensions) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
-    return ReplaceWithNewInstruction(
-        reduce, HloInstruction::CreateReduce(
-                    reduce_result_shape, arg->mutable_operand(0), init_value,
-                    new_reduce_dimensions, function));
+
+    Shape new_reduce_result_shape = ShapeUtil::FilterDimensions(
+        [&](const int64 dim) {
+          return !absl::c_linear_search(new_reduce_dimensions, dim);
+        },
+        arg->mutable_operand(0)->shape());
+    HloInstruction* new_reduce =
+        computation_->AddInstruction(HloInstruction::CreateReduce(
+            new_reduce_result_shape, arg->mutable_operand(0), init_value,
+            new_reduce_dimensions, function));
+    reduce->SetupDerivedInstruction(new_reduce);
+    std::vector<int64> new_transpose_dimensions;
+    for (auto dim : transpose_dimensions) {
+      if (absl::c_linear_search(new_reduce_dimensions, dim)) {
+        continue;
+      }
+      new_transpose_dimensions.push_back(dim);
+    }
+
+    // If new transpose dimensions are sorted, then there is no need to
+    // transpose reduce result.
+    if (absl::c_is_sorted(new_transpose_dimensions)) {
+      return ReplaceInstruction(reduce, new_reduce);
+    }
+    for (auto& d : new_transpose_dimensions) {
+      auto old_dim = d;
+      for (auto reduced_dim : new_reduce_dimensions) {
+        if (old_dim > reduced_dim) {
+          --d;
+        }
+      }
+    }
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_transpose,
+                        MakeTransposeHlo(new_reduce, new_transpose_dimensions));
+    return ReplaceInstruction(reduce, new_transpose);
   }
 
   // If a reduce feeds a reduce with the same computation and initial value,
@@ -4760,29 +4905,94 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status AlgebraicSimplifierVisitor::HandleReduceWindow(
-    HloInstruction* reduce_window) {
+Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
+  auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
+  const bool multi_output_reduce_window = reduce_window->shape().IsTuple();
+  auto inputs = reduce_window->inputs();
+  auto init_values = reduce_window->init_values();
+  auto input_count = reduce_window->input_count();
+  auto input_shapes = reduce_window->input_shapes();
+  auto output_shapes = reduce_window->output_shapes();
+  auto replace_with_span = [&](const std::vector<HloInstruction*>& elements) {
+    CHECK(multi_output_reduce_window || elements.size() == 1);
+    if (multi_output_reduce_window) {
+      return ReplaceWithNewInstruction(reduce_window,
+                                       HloInstruction::CreateTuple(elements));
+    }
+    return ReplaceInstruction(reduce_window, elements[0]);
+  };
+  // For tuple reduce, we require all reduce shapes to be the same, up to the
+  // element types, so we can use just the first operand and the first result as
+  // a representative.
+  if (ShapeUtil::IsZeroElementArray(*input_shapes[0]) ||
+      ShapeUtil::IsZeroElementArray(*output_shapes[0])) {
+    std::vector<HloInstruction*> broadcast_inits;
+    for (int64 i = 0; i < input_count; ++i) {
+      broadcast_inits.push_back(
+          computation_->AddInstruction(HloInstruction::CreateBroadcast(
+              *output_shapes[i], init_values[i], {})));
+    }
+    return replace_with_span(broadcast_inits);
+  }
+  if (ShapeUtil::IsScalar(*input_shapes[0]) &&
+      (!multi_output_reduce_window ||
+       reduce_window->to_apply()->root_instruction()->opcode() ==
+           HloOpcode::kTuple)) {
+    std::vector<HloInstruction*> maps;
+    for (int64 i = 0; i < input_count; ++i) {
+      TF_RET_CHECK(ShapeUtil::IsScalar(*input_shapes[i]));
+      TF_RET_CHECK(ShapeUtil::IsScalar(*output_shapes[i]));
+      HloInstruction* map_computation_root;
+      absl::flat_hash_map<const HloInstruction*,
+                          std::unique_ptr<HloInstruction>>
+          replacements;
+      if (multi_output_reduce_window) {
+        map_computation_root =
+            reduce_window->to_apply()->root_instruction()->mutable_operand(i);
+        replacements[reduce_window->to_apply()->root_instruction()] = nullptr;
+      } else {
+        map_computation_root = reduce_window->to_apply()->root_instruction();
+      }
+      auto map_computation = computation_->parent()->AddEmbeddedComputation(
+          reduce_window->to_apply()->CloneWithReplacements(
+              std::move(replacements),
+              /*extra_parameters=*/{}, nullptr, "clone", map_computation_root));
+      auto map = computation_->AddInstruction(HloInstruction::CreateMap(
+          reduce_window->shape(), {init_values[i], inputs[i]},
+          map_computation));
+      maps.push_back(map);
+    }
+    return replace_with_span(maps);
+  }
+  // Turn trivial variadic reduce windows into normal reduce windows.
+  auto reduce_function_root = reduce_window->to_apply()->root_instruction();
+  if (multi_output_reduce_window && input_count == 1 &&
+      Match(reduce_function_root, m::Tuple())) {
+    // Make a new reducer which is identical but does not have a tuple
+    // instruction at the bottom.
+    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+        replacements;
+    replacements[reduce_function_root] = nullptr;
+    auto new_function = computation_->parent()->AddEmbeddedComputation(
+        reduce_window->to_apply()->CloneWithReplacements(
+            std::move(replacements), /*extra_parameters=*/{},
+            /*context=*/nullptr,
+            /*suffix=*/"clone",
+            /*new_root=*/reduce_function_root->operand(0)));
+    auto new_reduce =
+        computation_->AddInstruction(HloInstruction::CreateReduceWindow(
+            *output_shapes[0], inputs[0], init_values[0],
+            reduce_window->window(), new_function));
+    return ReplaceWithNewInstruction(reduce_window,
+                                     HloInstruction::CreateTuple({new_reduce}));
+  }
   // TODO(b/73062247) Variadic reduce window is not yet supported in simplifier.
-  if (reduce_window->shape().IsTuple()) {
+  if (multi_output_reduce_window) {
     return Status::OK();
   }
-  if (ShapeUtil::IsZeroElementArray(reduce_window->operand(0)->shape())) {
-    return ReplaceWithNewInstruction(
-        reduce_window,
-        HloInstruction::CreateBroadcast(reduce_window->shape(),
-                                        reduce_window->mutable_operand(1), {}));
-  }
   auto operand = reduce_window->mutable_operand(0);
-  const Window& window = reduce_window->window();
   auto function = reduce_window->to_apply();
-  if (ShapeUtil::IsScalar(operand->shape())) {
-    TF_RET_CHECK(ShapeUtil::IsScalar(reduce_window->shape()));
-    return ReplaceWithNewInstruction(
-        reduce_window,
-        HloInstruction::CreateMap(reduce_window->shape(),
-                                  {reduce_window->mutable_operand(1), operand},
-                                  function));
-  }
+  const Window& window = reduce_window->window();
 
   if (options_.enable_window_reduce_to_reduce_replacement()) {
     // A reduce window can be expressed as a reduce and a reshape if all

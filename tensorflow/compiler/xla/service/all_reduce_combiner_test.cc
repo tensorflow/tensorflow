@@ -346,7 +346,7 @@ ENTRY entry {
   EXPECT_TRUE(changed);
 }
 
-TEST_F(AllReduceCombinerTest, DoNotCombineCrossShardAndCrosReplicaInSPMD) {
+TEST_F(AllReduceCombinerTest, DoNotCombineCrossShardAndCrossReplicaInSPMD) {
   const char* const hlo_string = R"(
 HloModule Module
 
@@ -415,16 +415,13 @@ ENTRY entry {
   EXPECT_EQ(AllReduceCount(*module), 2);
   EXPECT_TRUE(changed);
 
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      op::Add(op::Domain(op::GetTupleElement(
-                  AllOf(op::AllReduce(op::Parameter(0), op::Parameter(0)),
-                        op::Shape("(f32[128], f32[128])")),
-                  1)),
-              op::GetTupleElement(
-                  AllOf(op::AllReduce(op::Parameter(1), op::Parameter(1)),
-                        op::Shape("(f32[128], f32[128])")),
-                  0)));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Add(op::Domain(op::GetTupleElement(AllOf(
+                          op::AllReduce(op::Parameter(0), op::Parameter(0)),
+                          op::Shape("(f32[128], f32[128])")))),
+                      op::GetTupleElement(AllOf(
+                          op::AllReduce(op::Parameter(1), op::Parameter(1)),
+                          op::Shape("(f32[128], f32[128])")))));
 }
 
 TEST_F(AllReduceCombinerTest, CrossCombineGroupCycle) {

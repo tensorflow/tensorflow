@@ -29,7 +29,9 @@ extern "C" {
 // library.
 #ifdef SWIG
 #define TFL_CAPI_EXPORT
-#else
+#elif defined(TFL_STATIC_LIBRARY_BUILD)
+#define TFL_CAPI_EXPORT
+#else  // not definded TFL_STATIC_LIBRARY_BUILD
 #if defined(_WIN32)
 #ifdef TFL_COMPILE_LIBRARY
 #define TFL_CAPI_EXPORT __declspec(dllexport)
@@ -54,7 +56,15 @@ typedef enum TfLiteStatus {
   // incompatibility between runtime and delegate, e.g., this error is returned
   // when trying to apply a TfLite delegate onto a model graph that's already
   // immutable.
-  kTfLiteApplicationError = 3
+  kTfLiteApplicationError = 3,
+
+  // Generally referring to serialized delegate data not being found.
+  // See tflite::delegates::Serialization.
+  kTfLiteDelegateDataNotFound = 4,
+
+  // Generally referring to data-writing issues in delegate serialization.
+  // See tflite::delegates::Serialization.
+  kTfLiteDelegateDataWriteError = 5,
 } TfLiteStatus;
 
 // Types supported by tensor

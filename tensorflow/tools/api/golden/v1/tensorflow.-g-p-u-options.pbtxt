@@ -108,6 +108,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_INT32
       }
+      field {
+        name: "internal_fragmentation_fraction"
+        number: 10
+        label: LABEL_OPTIONAL
+        type: TYPE_DOUBLE
+      }
       nested_type {
         name: "VirtualDevices"
         field {

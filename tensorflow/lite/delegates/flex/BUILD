@@ -1,7 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_android", "tf_opts_nortti_if_lite_protos")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
-load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
+load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 #
@@ -13,11 +13,13 @@ package(
         "//tensorflow/lite/android:__subpackages__",
         "//tensorflow/lite/toco/tflite:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
     "delegate.h",
+    "exported_symbols.lds",
+    "version_script.lds",
 ])
 
 cc_library(
@@ -26,9 +28,32 @@ cc_library(
     hdrs = ["buffer_map.h"],
     copts = tf_opts_nortti_if_lite_protos(),
     deps = [
-        ":util",
+        ":buffer_map_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/c:c_api_internal",
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
+cc_library(
+    name = "buffer_map_util",
+    srcs = ["buffer_map_util.cc"],
+    hdrs = ["buffer_map_util.h"],
+    copts = tf_opts_nortti_if_lite_protos(),
+    deps = [
+        ":util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:string_util",
     ] + select({
         "//tensorflow:android": [
@@ -41,6 +66,7 @@ cc_library(
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:status",
         ],
     }),
 )
@@ -55,7 +81,7 @@ tf_cc_test(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -73,6 +99,15 @@ tf_cc_test(
 tflite_flex_cc_library(
     name = "delegate",
     visibility = ["//visibility:public"],
+)
+
+# Shared lib target for convenience, pulls in the standard set of TensorFlow
+# ops and kernels. The output library name is platform dependent:
+#   - Linux/Android: `libtensorflowlite_flex.so`
+#   - Mac: `libtensorflowlite_flex.dylib`
+#   - Windows: `libtensorflowlite_flex.dll`
+tflite_flex_shared_library(
+    name = "tensorflowlite_flex",
 )
 
 # Delegate implementation that does *not* pull in the standard set of TensorFlow
@@ -93,6 +128,7 @@ cc_library(
         ":buffer_map",
         ":delegate_data",
         ":util",
+        ":tflite_subgraph_execute",
         "@flatbuffers",
         "@com_google_absl//absl/strings:strings",
         "//tensorflow/lite/core/api",
@@ -136,7 +172,7 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -147,7 +183,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
+        ":subgraph_resource",
+        ":util",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:util",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -159,7 +202,9 @@ cc_library(
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -170,12 +215,38 @@ tf_cc_test(
     srcs = ["delegate_data_test.cc"],
     deps = [
         ":delegate_data",
+        "//tensorflow/core:test",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_library(
+    name = "subgraph_resource",
+    hdrs = ["subgraph_resource.h"],
+    deps = [
+        "//tensorflow/lite:cc_api",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -187,7 +258,7 @@ tf_cc_test(
         ":delegate",
         ":delegate_data",
         ":test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -196,6 +267,7 @@ cc_library(
     testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    visibility = internal_visibility_allowlist(),
     deps = [
         "//tensorflow/c:c_api_internal",
         "//tensorflow/lite:string",
@@ -235,7 +307,7 @@ tf_cc_test(
         ":util",
         "//tensorflow/lite:string",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -272,7 +344,7 @@ tf_cc_test(
     deps = [
         ":delegate",
         ":allowlisted_flex_ops_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -296,4 +368,32 @@ cc_library(
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core/lib/png:png_io",
     ],
+)
+
+cc_library(
+    name = "tflite_subgraph_execute",
+    srcs = ["tflite_subgraph_execute.cc"],
+    copts = tf_opts_nortti_if_android(),
+    deps = [
+        ":buffer_map_util",
+        ":subgraph_resource",
+        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
+    alwayslink = 1,
 )

@@ -91,6 +91,13 @@ struct CollGroupParams {
 struct CollImplDetails {
   string collective_name;
   std::vector<std::vector<int>> subdiv_permutations;
+  // subdiv_offsets and max_subdivs_per_device are used together as follows:
+  // When subdiv_offsets is provided (non-empty) it is used as is. When
+  // subdiv_offsets is not provided subdivisons are generated dynamically
+  // constrained by max_subdivs_per_device. When subdiv_offsets is empty AND
+  // max_subdivs_per_device = 0 an internal default kMaxSubdivsPerDeviceDefault
+  // is used. When max_subdivs_per_device = -1, no subivision is done.
+  int max_subdivs_per_device = -1;  // Upper bound on subdivisions per device.
   std::vector<int> subdiv_offsets;
   std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
   std::vector<int32>
@@ -198,6 +205,12 @@ class ParamResolverInterface {
 
   // Aborts the resolver. After abortion the resolver can no longer be used.
   virtual void StartAbort(const Status& s) = 0;
+
+  // Updates |device_attrs| with the DeviceAttributes of devices in group
+  // |group_key|. If fetching devices for an unused group, this will be a
+  // no-op appending nothing to |device_attrs|.
+  virtual void FetchDeviceAttributes(
+      int group_key, std::vector<DeviceAttributes>* device_attrs) const = 0;
 };
 
 // Graphs which utilize Collective Ops in a common instance must

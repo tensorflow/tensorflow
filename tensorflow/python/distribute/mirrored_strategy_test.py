@@ -94,7 +94,7 @@ class MirroredTwoDeviceDistributionTest(
     self._test_call_and_merge_exceptions(distribution)
 
   def testRunRegroupError(self, distribution):
-    if not getattr(distribution, "_use_merge_call", True):
+    if not distribution.extended._use_merge_call():
       self.skipTest("Collective all-reduce does not support int32 on GPU.")
     def run_fn():
       replica_id = int(self.evaluate(_replica_id()))
@@ -106,7 +106,7 @@ class MirroredTwoDeviceDistributionTest(
       distribution.extended.call_for_each_replica(run_fn)
 
   def testReduceToCpu(self, distribution):
-    if not getattr(distribution, "_use_merge_call", True):
+    if not distribution.extended._use_merge_call():
       self.skipTest("Collective all-reduce does not support int32 on GPU.")
 
     with distribution.scope():
@@ -116,7 +116,7 @@ class MirroredTwoDeviceDistributionTest(
       self.assertEqual(expected, self.evaluate(reduced))
 
   def testReduceToCpuNested(self, distribution):
-    if not getattr(distribution, "_use_merge_call", True):
+    if not distribution.extended._use_merge_call():
       self.skipTest("Collective all-reduce does not support int32 on GPU.")
 
     with distribution.scope():
@@ -147,7 +147,7 @@ class MirroredTwoDeviceDistributionTest(
       self.assertNear(expected, self.evaluate(reduced), 0.00001)
 
   def testReduceAxisToCpu(self, distribution):
-    if not getattr(distribution, "_use_merge_call", True):
+    if not distribution.extended._use_merge_call():
       self.skipTest("Collective all-reduce does not support int32 on GPU.")
     for dtype in (dtypes.float32, dtypes.int32):
       def replica_squared_fn(dtype=dtype):
@@ -165,7 +165,7 @@ class MirroredTwoDeviceDistributionTest(
       tensor_shape.disable_v2_tensorshape()
 
   def testReduceAxisToCpuUnknownShape(self, distribution):
-    if not getattr(distribution, "_use_merge_call", True):
+    if not distribution.extended._use_merge_call():
       self.skipTest("Collective all-reduce does not support int32 on GPU.")
     original_v2 = tensor_shape._TENSORSHAPE_V2_OVERRIDE  # pylint: disable=protected-access
     try:
@@ -734,7 +734,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      if getattr(distribution.extended, "_use_merge_call", True):
+      if distribution.extended._use_merge_call():
         with self.assertRaisesRegex(
             ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
             "with the given reduce op ReduceOp.SUM."):

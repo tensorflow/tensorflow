@@ -23,7 +23,6 @@ import threading
 import time
 
 import numpy as np
-import six
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
@@ -372,7 +371,7 @@ class SliceAggregator(Aggregator):
   def aggregate(self, batch_element, batch_start, batch_end):
     # Fail early.
     if self._errors:
-      six.reraise(type(self._errors[0]), self._errors[0])
+      raise self._errors[0]
 
     # In the special case of single batch inference, no copy is needed.
     if batch_end - batch_start == self.num_samples:
@@ -420,7 +419,7 @@ class SliceAggregator(Aggregator):
         raise ValueError('Timed out waiting for copy to complete.')
 
     if self._errors:
-      six.reraise(self._errors[0].__class__, self._errors[0])
+      raise self._errors[0]
 
 
 class OutputsAggregator(Aggregator):
@@ -1095,7 +1094,7 @@ def has_tensors(ls):
     return any(
         tensor_util.is_tf_type(v) and
         not isinstance(v, ragged_tensor.RaggedTensor)
-        for _, v in six.iteritems(ls))
+        for _, v in ls.items())
   return tensor_util.is_tf_type(ls) and not isinstance(
       ls, ragged_tensor.RaggedTensor)
 
@@ -1112,7 +1111,7 @@ def get_metric_name(metric, weighted=False):
   """
   if tf2.enabled():
     # We keep the string that the user has set in compile as the metric name.
-    if isinstance(metric, six.string_types):
+    if isinstance(metric, str):
       return metric
 
     metric = metrics_module.get(metric)
@@ -1487,7 +1486,7 @@ def prepare_loss_functions(loss, output_names):
             'this was done on purpose. The fit and evaluate APIs will not be '
             'expecting any data to be passed to {0}.'.format(name))
       loss_functions.append(get_loss_function(loss.get(name, None)))
-  elif isinstance(loss, six.string_types):
+  elif isinstance(loss, str):
     loss_functions = [get_loss_function(loss) for _ in output_names]
   elif isinstance(loss, collections.abc.Sequence):
     if len(loss) != len(output_names):

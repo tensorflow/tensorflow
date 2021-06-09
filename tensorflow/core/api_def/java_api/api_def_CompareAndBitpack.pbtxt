@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "CompareAndBitpack"
-  endpoint {
-    name: "math.CompareAndBitpack"
-  }
-}

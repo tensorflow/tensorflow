@@ -7,7 +7,7 @@ load(
     "go_grpc_library",
 )
 
-licenses(["notice"])  # Apache 2.0
+licenses(["notice"])
 
 package(default_visibility = ["//visibility:public"])
 

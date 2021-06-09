@@ -275,9 +275,34 @@ def MatchHardSwishPattern2 : Pat<
      TFL_AF_None),
   (TFL_HardSwishOp $x)>;
 
+def MatchHardSwishPattern3 : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     $x,
+     (TFL_AddOp
+      $x,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     TFL_AF_None),
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+    TFL_AF_None),
+  (TFL_HardSwishOp $x)>;
+
+def MatchHardSwishPattern4 : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     (TFL_AddOp
+      $x,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+    $x,
+    TFL_AF_None),
+  (TFL_HardSwishOp $x)>;
+
 // Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
 // incorrect placement in the quantization aware training.
-// TODO(b/149735743): We should make the placement automatically.
 def MatchHardSwishQuantized : Pat<
   (TFL_MulOp (TFL_DequantizeOp (TFL_QuantizeOp
     (TFL_MulOp
@@ -698,6 +723,18 @@ def OptimizePow2ToSquare : Pat<
     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
   (TFL_MulOp $input, $input, TFL_AF_None)>;
 
+// Optimize X^(1/2) to √X
+def OptimizePow2ToSqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.5f">)),
+  (TFL_SqrtOp $input)>;
+
+// Optimize X^(-1/2) to 1/√X == rsqrt(x)
+def OptimizePow2ToRsqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "-0.5f">)),
+  (TFL_RsqrtOp $input)>;
+
 def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
   "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("
   "$0, $1.cast<DenseIntElementsAttr>())">>;
@@ -775,11 +812,11 @@ class AllElementsAreF32<string val> : Constraint<CPred<
 
 // Optimize X*1 to X
 def OptimizeMul1ToIdentity : Pat<
-  (TFL_MulOp $input,
+  (TFL_MulOp:$result $input,
              (ConstantOp $constant),
              TFL_AF_None),
   (replaceWithValue $input),
-  [(HaveSameType $input, $constant),
+  [(HaveSameType $input, $result),
    (AllElementsAreF32<"1.0f"> $constant)]>;
 
 class AllElementsAreBool<string val> : Constraint<CPred<

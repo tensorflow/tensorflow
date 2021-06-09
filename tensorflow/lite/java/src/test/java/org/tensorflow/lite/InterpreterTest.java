@@ -25,6 +25,7 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -59,6 +60,11 @@ public final class InterpreterTest {
   private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
   private static final ByteBuffer MODEL_WITH_SIGNATURE_BUFFER =
       TestUtils.getTestFileAsBuffer(MODEL_WITH_SIGNATURE_PATH);
+
+  @Before
+  public void setUp() {
+    TestInit.init();
+  }
 
   @Test
   public void testInterpreter() throws Exception {
@@ -471,12 +477,10 @@ public final class InterpreterTest {
   @Test
   public void testNullOutputs() throws Exception {
     Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    try {
-      interpreter.run(new float[2][8][8][3], null);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Expected failure.
-    }
+    float[] input = {1.f};
+    interpreter.run(input, null);
+    float output = interpreter.getOutputTensor(0).asReadOnlyBuffer().getFloat(0);
+    assertThat(output).isEqualTo(3.f);
     interpreter.close();
   }
 
@@ -538,36 +542,6 @@ public final class InterpreterTest {
     // provided for the inputs/outputs (as the client can reference the buffer directly).
     interpreter.run(new float[2][8][8][3], null);
     interpreter.run(null, new float[2][8][8][3]);
-    interpreter.close();
-  }
-
-  @Test
-  // modifyGraphWithDelegate(...) is deprecated, suppress the warning to allow testing.
-  @SuppressWarnings("deprecation")
-  public void testModifyGraphWithDelegate() throws Exception {
-    System.loadLibrary("tensorflowlite_test_jni");
-    Delegate delegate =
-        new Delegate() {
-          @Override
-          public long getNativeHandle() {
-            return getNativeHandleForDelegate();
-          }
-        };
-    Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(false));
-    interpreter.modifyGraphWithDelegate(delegate);
-
-    // The native delegate stubs out the graph with a single op that produces the scalar value 7.
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {7.0f, 7.0f, 7.0f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-
     interpreter.close();
   }
 
@@ -722,6 +696,31 @@ public final class InterpreterTest {
 
       interpreter.runForMultipleInputsOutputs(inputs, outputs);
 
+      FloatBuffer expected = fill(FloatBuffer.allocate(8 * 1 * 1024), 2.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+    }
+  }
+
+  @Test
+  public void testDynamicShapesWithEmptyOutputs() {
+    try (Interpreter interpreter = new Interpreter(DYNAMIC_SHAPES_MODEL_BUFFER)) {
+      ByteBuffer input0 =
+          ByteBuffer.allocateDirect(8 * 42 * 1024 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer input1 =
+          ByteBuffer.allocateDirect(1 * 90 * 1024 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer input2 = ByteBuffer.allocateDirect(1 * 4).order(ByteOrder.nativeOrder());
+      Object[] inputs = {input0, input1, input2};
+
+      fill(input0.asFloatBuffer(), 2.0f);
+      fill(input1.asFloatBuffer(), 0.5f);
+      fill(input2.asFloatBuffer(), 1.0f);
+
+      // Use an empty output map; the output data will be retrieved directly from the tensor.
+      Map<Integer, Object> outputs = new HashMap<>();
+      interpreter.runForMultipleInputsOutputs(inputs, outputs);
+
+      FloatBuffer output = FloatBuffer.allocate(8 * 1 * 1024);
+      output.put(interpreter.getOutputTensor(0).asReadOnlyBuffer().asFloatBuffer());
       FloatBuffer expected = fill(FloatBuffer.allocate(8 * 1 * 1024), 2.0f);
       assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
     }

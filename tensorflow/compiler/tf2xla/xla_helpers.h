@@ -18,10 +18,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
@@ -74,8 +77,8 @@ class XlaHelpers {
   static xla::XlaOp ConvertElementType(const xla::XlaOp& operand,
                                        const DataType new_element_type);
 
-  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
-                                                  bool)>
+  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType,
+                                             bool)>
       ShapeRepresentationFn;
 };
 
@@ -90,7 +93,7 @@ Status RewriteLayoutWithShardedShape(
 
 // Adds reshapes to fix the layout of an output, if a shape_representation_fn or
 // sharding is present.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     absl::optional<xla::OpSharding> sharding, bool fast_mem);
@@ -165,7 +168,25 @@ struct XlaCompilationResult {
 
   // The XLA computation built from the tensorflow subgraph.
   std::shared_ptr<xla::XlaComputation> computation;
+
+  // Meta-info about encountered CollectiveReduceV2Ops.
+  struct CollectiveReduceV2OpInfo {
+    int group_key;
+    int group_size;
+  };
+
+  // Group keys of the collectives encountered during the translation.
+  // Mapping from group keys to group sizes.
+  absl::optional<CollectiveReduceV2OpInfo> collective_reduce_info;
 };
+
+// Resolves the device assignment based on CollectiveReduceV2OpInfo.
+// CollectiveReduceV2OpInfo records collective ops in the cluster. Note that
+// this relies on a rendezvous and blocks until all replicas are there.
+StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
+    OpKernelContext* ctx,
+    const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
+        collective_reduce_info);
 
 }  // end namespace tensorflow
 

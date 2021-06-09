@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/xla_config_registry.h"
 
 namespace tensorflow {
@@ -112,15 +113,8 @@ FunctionDefLibrary GetFunctionDefLibraryStub(
 }
 
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
-  const uint64 kTwentyMinutesInUsec = 20 * 60 * 1000 * 1000;
-  if (cfg.meta_optimizer_timeout_ms() < 0) {
-    return 0;
-  } else {
-    return cfg.meta_optimizer_timeout_ms() == 0
-               ? Env::Default()->NowMicros() + kTwentyMinutesInUsec
-               : Env::Default()->NowMicros() +
-                     cfg.meta_optimizer_timeout_ms() * 1000;
-  }
+  if (cfg.meta_optimizer_timeout_ms() <= 0) return 0;  // no deadline
+  return Env::Default()->NowMicros() + cfg.meta_optimizer_timeout_ms() * 1000;
 }
 
 // A helper function to decide whether to enable the automatic mixed precision
@@ -218,8 +212,12 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
              /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   MK_OPT("auto_mixed_precision", "auto_mixed_precision",
          new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
-  MK_OPT("auto_mixed_precision_mkl", "auto_mixed_precision_mkl",
-         new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
+#ifdef INTEL_MKL
+  if (IsMKLEnabled()) {
+    MK_OPT("auto_mixed_precision_mkl", "auto_mixed_precision_mkl",
+           new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
+  }
+#endif
   MK_OPT("memory", "memory_optimization",
          new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("common_subgraph_elimination", "common_subgraph_elimination",
@@ -307,12 +305,15 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
   }
+#ifdef INTEL_MKL
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl()) &&
       AutoMixedPrecisionEnabled(
-          plugin_configs.toggle_config["auto_mixed_precision_mkl"])) {
+          plugin_configs.toggle_config["auto_mixed_precision_mkl"]) &&
+      IsMKLEnabled()) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
   }
+#endif
   if (BOTH_ARE_ON(pin_to_host_optimization)) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }

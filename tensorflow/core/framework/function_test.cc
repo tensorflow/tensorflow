@@ -914,7 +914,10 @@ TEST(FunctionCallFrame, Void_Void) {
   HasError(frame.SetArgs({a}), "Invalid argument");
   const Tensor* v;
   HasError(frame.GetArg(0, &v), "Invalid argument");
-  HasError(frame.SetRetval(0, *v), "Invalid argument");
+  if (v != nullptr) {
+    // v is null in certain environments.
+    HasError(frame.SetRetval(0, *v), "Invalid argument");
+  }
   std::vector<Tensor> rets;
   TF_EXPECT_OK(frame.GetRetvals(&rets));
   EXPECT_EQ(rets.size(), 0);

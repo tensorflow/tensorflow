@@ -29,4 +29,4 @@ func @main() -> (tensor<1x2xf16>, tensor<2xf16>) {
 // CHECK: name: "const4"
 // CHECK-NEXT: op: "Const"
 // CHECK: dtype: DT_BFLOAT16
-// CHECK: half_val: 0
+// CHECK-NOT: half_val: 0

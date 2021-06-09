@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -60,6 +61,26 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   return DenseIntElementsAttr::get(ty, vals);
 }
 
+// Return an Attr representation of the value.
+static DenseElementsAttr GetF32Scalar(OpBuilder *builder, float value) {
+  return DenseElementsAttr::get(
+      RankedTensorType::get({}, builder->getF32Type()),
+      FloatAttr::get(builder->getF32Type(), value));
+}
+
+// Returns a TF_CastOp to F32. This function is used for CastOps that are
+// intermediate nodes in a TableGen pattern result. In such a case, the
+// destination type is not inferred and must be given explicitly.
+//
+// Preconditions: The given value must have a ShapedType.
+static Value CreateTFCastOpF32(OpBuilder *builder, Location loc, Value x,
+                               BoolAttr truncate) {
+  auto x_type = x.getType().dyn_cast_or_null<ShapedType>();
+  if (!x_type) llvm_unreachable("unsupported type");
+  Type type = x_type.clone(builder->getF32Type());
+  return builder->create<CastOp>(loc, type, x, truncate);
+}
+
 static APFloat ConvertToAPFloat(double val, Type type) {
   if (type.getIntOrFloatBitWidth() == 32) {
     return APFloat(static_cast<float>(val));
@@ -90,6 +111,31 @@ static DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
     }
   }
   llvm_unreachable("unsupported type");
+}
+
+// Return true if the passed quantized type is unsigned.
+bool QuantizedTypeIsUnsigned(Type type) {
+  return TypeSwitch<Type, bool>(type)
+      .Case<mlir::TF::Qint8Type>([](Type) { return false; })
+      .Case<mlir::TF::Qint16Type>([](Type) { return false; })
+      .Case<mlir::TF::Qint32Type>([](Type) { return false; })
+      .Case<mlir::TF::Quint8Type>([](Type) { return true; })
+      .Case<mlir::TF::Quint16Type>([](Type) { return true; })
+      .Default([](Type) {
+        llvm_unreachable("QuantizedTypeIsUnsigned: not a quantized type");
+        return false;
+      });
+}
+
+// Return the half_range value that is used by DequantizeOp. half_range is used
+// to offset the quantized representation before it gets scaled. In the case
+// of negative quantize types, this offset is half the type's range.
+static DenseElementsAttr DequantizeHalfRange(OpBuilder *builder, Value input) {
+  auto input_type = input.getType().dyn_cast_or_null<ShapedType>();
+  if (!input_type) llvm_unreachable("DequantizeHalfRange: not a ShapedType");
+  bool is_unsigned = QuantizedTypeIsUnsigned(input_type.getElementType());
+  float half_range = is_unsigned ? 0 : 128;
+  return GetScalarOfType(builder->getF32Type(), half_range);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -179,8 +225,8 @@ Value ValuesToRank1(PatternRewriter &rewriter, Location loc, Type dtype,
 class LowerAddNOp : public RewritePattern {
  public:
   explicit LowerAddNOp(MLIRContext *context)
-      : RewritePattern(AddNOp::getOperationName(),
-                       {AddV2Op::getOperationName()}, 1, context) {}
+      : RewritePattern(AddNOp::getOperationName(), 1, context,
+                       {AddV2Op::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -243,10 +289,9 @@ class LowerDynamicStitchOp : public RewritePattern {
  public:
   explicit LowerDynamicStitchOp(MLIRContext *context)
       : RewritePattern(
-            OpT::getOperationName(),
+            OpT::getOperationName(), 1, context,
             {ConstOp::getOperationName(), ReshapeOp::getOperationName(),
-             UnpackOp::getOperationName(), PackOp::getOperationName()},
-            1, context) {}
+             UnpackOp::getOperationName(), PackOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -326,12 +371,11 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
  public:
   explicit ConvertFakeQuantWithMinMaxVarsOp(MLIRContext *context)
       : RewritePattern(
-            FakeQuantWithMinMaxVarsOp::getOperationName(),
+            FakeQuantWithMinMaxVarsOp::getOperationName(), 1, context,
             {AddV2Op::getOperationName(), SubOp::getOperationName(),
              ConstOp::getOperationName(), MulOp::getOperationName(),
              FloorOp::getOperationName(), ClipByValueOp::getOperationName(),
-             DivOp::getOperationName(), RoundOp::getOperationName()},
-            1, context) {}
+             DivOp::getOperationName(), RoundOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -455,11 +499,10 @@ class LowerInvertPermutationOp : public RewritePattern {
  public:
   explicit LowerInvertPermutationOp(MLIRContext *context)
       : RewritePattern(
-            InvertPermutationOp::getOperationName(),
+            InvertPermutationOp::getOperationName(), 1, context,
             {ConstOp::getOperationName(), RangeOp::getOperationName(),
              ReshapeOp::getOperationName(),
-             TensorScatterUpdateOp::getOperationName()},
-            1, context) {}
+             TensorScatterUpdateOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -520,7 +563,7 @@ static constexpr std::array<double, 8> kLanczosCoefficients = {
 class LowerLgammaOp : public RewritePattern {
  public:
   explicit LowerLgammaOp(MLIRContext *context)
-      : RewritePattern(LgammaOp::getOperationName(),
+      : RewritePattern(LgammaOp::getOperationName(), 1, context,
                        {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
@@ -540,8 +583,7 @@ class LowerLgammaOp : public RewritePattern {
                            GreaterOp::getOperationName(),
                            SinOp::getOperationName(),
                            IsFiniteOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -734,10 +776,9 @@ class LowerPackOp : public RewritePattern {
  public:
   explicit LowerPackOp(MLIRContext *context)
       : RewritePattern(
-            PackOp::getOperationName(),
+            PackOp::getOperationName(), 1, context,
             {ConstOp::getOperationName(), ConcatV2Op::getOperationName(),
-             ExpandDimsOp::getOperationName()},
-            1, context) {}
+             ExpandDimsOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -800,7 +841,7 @@ class LowerPackOp : public RewritePattern {
 class LowerSpaceToBatchNDOp : public RewritePattern {
  public:
   explicit LowerSpaceToBatchNDOp(MLIRContext *context)
-      : RewritePattern(SpaceToBatchNDOp::getOperationName(),
+      : RewritePattern(SpaceToBatchNDOp::getOperationName(), 1, context,
                        {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
@@ -813,8 +854,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                            MulOp::getOperationName(),
                            ReshapeOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1017,14 +1057,13 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 class LowerBatchToSpaceND : public RewritePattern {
  public:
   explicit LowerBatchToSpaceND(MLIRContext *context)
-      : RewritePattern(BatchToSpaceNDOp::getOperationName(),
+      : RewritePattern(BatchToSpaceNDOp::getOperationName(), 1, context,
                        {
                            ConstOp::getOperationName(),
                            ReshapeOp::getOperationName(),
                            SliceOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1193,9 +1232,8 @@ class LowerSparseMatMulOp : public RewritePattern {
  public:
   explicit LowerSparseMatMulOp(MLIRContext *context)
       : RewritePattern(
-            SparseMatMulOp::getOperationName(),
-            {CastOp::getOperationName(), MatMulOp::getOperationName()}, 1,
-            context) {}
+            SparseMatMulOp::getOperationName(), 1, context,
+            {CastOp::getOperationName(), MatMulOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1277,7 +1315,7 @@ class Lower_UnaryOpsComposition
 class LowerResizeNearestNeighbor : public RewritePattern {
  public:
   explicit LowerResizeNearestNeighbor(MLIRContext *context)
-      : RewritePattern(ResizeNearestNeighborOp::getOperationName(),
+      : RewritePattern(ResizeNearestNeighborOp::getOperationName(), 1, context,
                        {
                            BroadcastToOp::getOperationName(),
                            ConstOp::getOperationName(),
@@ -1288,8 +1326,7 @@ class LowerResizeNearestNeighbor : public RewritePattern {
                            ShapeOp::getOperationName(),
                            SplitOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1566,6 +1603,14 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerXlog1pyOp,
       LowerXlogyOp,
       LowerZerosLikeOp>(context);
+  // clang-format on
+}
+
+void PopulateLoweringQuantizedPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns) {
+  // clang-format off
+  patterns->insert<
+      LowerDequantizeOp>(context);
   // clang-format on
 }
 

@@ -179,7 +179,7 @@ Status GraphMgr::InitItem(
       return PartitionOptions::kIllegalIncarnation;
     }
   };
-  popts.flib_def = &graph.flib_def();
+  popts.flib_def = item->lib_def.get();
   popts.control_flow_added = true;
   popts.scheduling_for_recvs = graph_options.enable_recv_scheduling();
   TF_RETURN_IF_ERROR(Partition(popts, &graph, &partitions));
@@ -488,7 +488,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   StartParallelExecutors(
       handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
-      cancellation_manager, session,
+      cancellation_manager, session, start_time_usecs,
       [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
        step_id](const Status& s) {
         profiler::TraceMeConsumer activity(
@@ -512,7 +512,7 @@ void GraphMgr::StartParallelExecutors(
     const string& handle, int64 step_id, Item* item, Rendezvous* rendezvous,
     CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
     CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-    WorkerSession* session, StatusCallback done) {
+    WorkerSession* session, int64 start_time_usecs, StatusCallback done) {
   const int num_units = item->units.size();
   CHECK_GE(num_units, 1);
   ScopedStepContainer* step_container = new ScopedStepContainer(
@@ -535,6 +535,7 @@ void GraphMgr::StartParallelExecutors(
   args.stats_collector = collector;
   args.step_container = step_container;
   args.sync_on_finish = sync_on_finish_;
+  args.start_time_usecs = start_time_usecs;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }

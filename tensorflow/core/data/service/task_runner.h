@@ -15,12 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TASK_RUNNER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TASK_RUNNER_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
-#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
@@ -61,13 +68,14 @@ class TaskRunner {
   // Creates a `TaskRunner` and stores it in `out`.
   static Status Create(const experimental::WorkerConfig& worker_config,
                        const TaskDef& task_def,
-                       CancellationManager& cancellation_manager,
                        std::unique_ptr<TaskIterator> iterator,
                        std::unique_ptr<TaskRunner>& out);
   virtual ~TaskRunner() = default;
   // Gets the next element for the given request.
   virtual Status GetNext(const GetElementRequest& req,
                          GetElementResult& result) = 0;
+  // Cancels in-progress `GetNext` requests.
+  virtual void Cancel() = 0;
 };
 
 // A task runner which provides elements on a first-come first-served basis.
@@ -76,13 +84,31 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
  public:
   explicit FirstComeFirstServedTaskRunner(
       std::unique_ptr<TaskIterator> iterator);
+  ~FirstComeFirstServedTaskRunner() override;
+
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
+  void Cancel() override;
 
  private:
+  // Function to continually prefetch the next element. Returns an error if the
+  // task has been cancelled.
+  Status PrefetchFn();
+
+  // Runs `PrefetchFn` on a dedicated thread.
+  void RunPrefetchThread();
+
+  // Gets the next element from the input iterator.
+  StatusOr<GetElementResult> GetNextFromInputIterator() TF_LOCKS_EXCLUDED(mu_);
+
   mutex mu_;
   std::unique_ptr<TaskIterator> iterator_ TF_GUARDED_BY(mu_);
   int64 element_index_ TF_GUARDED_BY(mu_) = 0;
+
+  ThreadSafeBuffer<GetElementResult> buffer_;
+  std::unique_ptr<Thread> prefetch_thread_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(FirstComeFirstServedTaskRunner);
 };
 
 // An element produced by a task.
@@ -150,12 +176,11 @@ class PrefetchThread {
 class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
-                       int64 num_consumers, string worker_address,
-                       CancellationManager& cancellation_manager);
-  ~RoundRobinTaskRunner() override;
+                       int64 num_consumers, string worker_address);
 
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
+  void Cancel() override;
 
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before
@@ -187,7 +212,6 @@ class RoundRobinTaskRunner : public TaskRunner {
   // Thread which constantly tries to prepare `num_consumers` elements for the
   // next round.
   PrefetchThread prefetch_thread_;
-  std::function<void()> deregister_cancel_callback_;
 };
 
 }  // namespace data

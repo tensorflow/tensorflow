@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.python import _dtypes
+from tensorflow.python.framework import _dtypes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest

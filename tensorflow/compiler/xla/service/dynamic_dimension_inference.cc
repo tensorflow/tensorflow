@@ -412,11 +412,10 @@ Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
-        HloInstruction* reduce = hlo;
+        auto* reduce = Cast<HloReduceInstruction>(hlo);
         int64 operand_count = reduce->operand_count();
-        bool is_variadic_reduce = operand_count > 2;
         CHECK_EQ(operand_count % 2, 0);
-        if (operand_index >= operand_count / 2) {
+        if (operand_index >= reduce->input_count()) {
           // Init values doesn't have dynamic size.
           return Status::OK();
         }
@@ -429,21 +428,21 @@ Status DynamicDimensionInferenceVisitor::HandleReduce(HloInstruction* hlo) {
         int64 dimensions_not_reduced_count = 0;
         for (int i = 0; i < operand->shape().rank(); ++i) {
           if (dimension == i) {
-            ShapeIndex result_index = {};
-
-            if (is_variadic_reduce) {
-              // The dimensions of all data operands of a variadic reduce have
-              // to be the same.  This means that if one operand of variadic
-              // reduce has a dynamic dimension, we set all outputs to use the
-              // same dynamic size in corresponding dimensions.
-              for (int64 i = 0; i < operand_count / 2; ++i) {
-                parent_->SetDynamicSize(
-                    reduce, {i}, dimensions_not_reduced_count, dynamic_size);
-              }
-            } else {
-              parent_->SetDynamicSize(reduce, {}, dimensions_not_reduced_count,
-                                      dynamic_size);
-            }
+            // The dimensions of all data operands of a variadic reduce have
+            // to be the same.  This means that if one operand of variadic
+            // reduce has a dynamic dimension, we set all outputs to use the
+            // same dynamic size in corresponding dimensions.
+            ShapeUtil::ForEachSubshape(
+                reduce->shape(),
+                [&](const Shape& subshape, ShapeIndex reduce_result_index) {
+                  if (!ShapeUtil::IsLeafIndex(reduce->shape(),
+                                              reduce_result_index)) {
+                    return;
+                  }
+                  parent_->SetDynamicSize(reduce, reduce_result_index,
+                                          dimensions_not_reduced_count,
+                                          dynamic_size);
+                });
 
             return Status::OK();
           }
@@ -1094,20 +1093,36 @@ Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
-        HloInstruction* reduce_window = hlo;
+        auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
         const WindowDimension& window_dim =
             reduce_window->window().dimensions(dimension);
+
+        if (operand_index >= reduce_window->input_count()) {
+          // Init values doesn't have dynamic size.
+          return Status::OK();
+        }
 
         if (!window_util::IsTrivialWindowDimension(window_dim)) {
           DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
               dynamic_size, window_dim.size(), window_dim.window_dilation(),
               window_dim.stride(), PaddingType::PADDING_VALID);
-          parent_->SetDynamicSize(hlo, {}, dimension,
-                                  dynamic_window_dims.output_size);
-          return Status::OK();
+          dynamic_size = dynamic_window_dims.output_size;
         }
 
-        parent_->SetDynamicSize(reduce_window, {}, dimension, dynamic_size);
+        // The dimensions of all data operands of a variadic reduce window have
+        // to be the same.  This means that if one operand of variadic
+        // reduce has a dynamic dimension, we set all outputs to use the
+        // same dynamic size in corresponding dimensions.
+        ShapeUtil::ForEachSubshape(
+            reduce_window->shape(),
+            [&](const Shape& subshape, ShapeIndex reduce_window_result_index) {
+              if (!ShapeUtil::IsLeafIndex(reduce_window->shape(),
+                                          reduce_window_result_index)) {
+                return;
+              }
+              parent_->SetDynamicSize(reduce_window, reduce_window_result_index,
+                                      dimension, dynamic_size);
+            });
 
         return Status::OK();
       });

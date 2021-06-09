@@ -44,6 +44,12 @@ namespace tensorflow {
 
 const char* const kColocationAttrName = "_class";
 const char* const kColocationGroupPrefix = "loc:@";
+// For TPU distributed rewrite, TPU args are collected and "staged" on the local
+// host using an IdentityN TF op. Some args may result from a remote source.
+// When all arg tensors are available, the TPUExecute op can be inovoked. See
+// DistributedTPURewritePass for more details.
+const char* const kTpuExecuteStagingOp = "IdentityN";
+const char* const kTpuExecuteStagingNodeName = "_variable_copy";
 
 AttrSlice::AttrSlice() : ndef_(nullptr) {
   static const AttrValueMap* const kEmptyAttrValueMap = new AttrValueMap;
@@ -944,6 +950,27 @@ Status MaybeAddPrefixToColocationConstraints(
       if (match.find(string(original)) != match.end()) {
         (*constraints_list->mutable_s(i)) =
             strings::StrCat(kColocationGroupPrefix, prefix, original);
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status MaybeUpdateColocationConstraintsWithMap(
+    const std::map<absl::string_view, absl::string_view>& node_name_map,
+    NodeDef* node_def) {
+  auto attr = node_def->mutable_attr()->find(kColocationAttrName);
+  if (attr == node_def->mutable_attr()->end()) {
+    return Status::OK();
+  }
+  auto constraints_list = attr->second.mutable_list();
+  auto constraints_size = constraints_list->s_size();
+  for (size_t i = 0; i < constraints_size; ++i) {
+    StringPiece original(constraints_list->s(i));
+    if (absl::ConsumePrefix(&original, kColocationGroupPrefixStringPiece)) {
+      if (node_name_map.find(original) != node_name_map.end()) {
+        (*constraints_list->mutable_s(i)) =
+            strings::StrCat(kColocationGroupPrefix, node_name_map.at(original));
       }
     }
   }

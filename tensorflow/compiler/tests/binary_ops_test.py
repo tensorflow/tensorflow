@@ -710,6 +710,17 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([3, 3, -1, -9, -8], dtype=dtype),
           np.array([2, -2, 7, 2, -4], dtype=dtype),
           expected=np.array([1, -2, -1, -5, 2], dtype=dtype))
+    if dtype in self.signed_int_types:
+      # Overflow cases.
+      int_min = np.iinfo(dtype).min
+      int_max = np.iinfo(dtype).max
+      self._testBinary(
+          gen_math_ops.floor_div,
+          np.array([int_min, -1, 1, int_max], dtype=dtype).reshape([1, 4]),
+          np.array([int_min, -1, 1, int_max], dtype=dtype).reshape([4, 1]),
+          expected=np.array([[1, 0, -1, -1], [int_min, 1, -1, -1 * int_max],
+                             [int_min, -1, 1, int_max], [-2, -1, 0, 1]],
+                            dtype=dtype))
 
   def testIntDivision(self):
     for dtype in self.signed_int_types:
@@ -731,13 +742,29 @@ class BinaryOpsTest(xla_test.XLATestCase):
         np.array([3, 3, -1, -8], dtype=dtype),
         np.array([2, -2, 7, -4], dtype=dtype),
         expected=np.array([1, 1, -1, 0], dtype=dtype))
+    if dtype in self.signed_int_types:
+      # Overflow cases.
+      int_min = np.iinfo(dtype).min
+      int_max = np.iinfo(dtype).max
+      self._testBinary(
+          gen_math_ops.floor_mod,
+          np.array([int_min, -1, 1, int_max], dtype=dtype).reshape([1, 4]),
+          np.array([int_min, -1, 1, int_max], dtype=dtype).reshape([4, 1]),
+          expected=np.array([[0, -1, -1 * int_max, -1], [0, 0, 0, 0],
+                             [0, 0, 0, 0], [int_max - 1, int_max - 1, 1, 0]],
+                            dtype=dtype))
+      self._testBinary(
+          gen_math_ops.truncate_mod,
+          np.array([int_min, -1, 1, int_max], dtype=dtype).reshape([1, 4]),
+          np.array([int_min, -1, 1, int_max], dtype=dtype).reshape([4, 1]),
+          expected=np.array(
+              [[0, -1, 1, int_max], [0, 0, 0, 0], [0, 0, 0, 0], [-1, -1, 1, 0]],
+              dtype=dtype))
 
   def testIntRemainder(self):
     for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
-  @test_util.disable_mlir_bridge(
-      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatRemainder(self):
     for dtype in self.float_types:
       self._testRemainder(dtype)
@@ -1091,7 +1118,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           math_ops.matmul,
           np.array([], dtype=dtype).reshape((0, 2, 4)),
           np.array([], dtype=dtype).reshape((0, 4, 3)),
-          expected=np.array([], dtype=dtype).reshape(0, 2, 3))
+          expected=np.array([], dtype=dtype).reshape(0, 2, 3))  # pylint: disable=too-many-function-args
 
       # Regression test for b/31472796.
       if dtype != np.float16 and hasattr(np, "matmul"):
@@ -1105,6 +1132,15 @@ class BinaryOpsTest(xla_test.XLATestCase):
             x,
             x,
             expected=np.matmul(x, x.transpose([0, 1, 3, 2])))
+
+  def testBatchMatMulMixedPrecision(self):
+    # Verify that accumulation happens in the specified output type int32 by
+    # using a result (16 * 16 * 16) that doesn't fit in int8.
+    self._testBinary(
+        lambda x, y: math_ops.matmul(x, y, output_type=np.int32),
+        np.tile(np.array([[[16]]], dtype=np.int8), (1, 1, 16)),
+        np.tile(np.array([[[16]]], dtype=np.int8), (1, 16, 1)),
+        expected=np.array([[[16 * 16 * 16]]], dtype=np.int32))
 
   def testExpandDims(self):
     for dtype in self.numeric_types:

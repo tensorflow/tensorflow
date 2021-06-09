@@ -1,10 +1,12 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
+    "if_google",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -19,7 +21,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # -----------------------------------------------------------------------------
@@ -97,11 +99,11 @@ tf_cuda_library(
         "//tensorflow:internal",
         "//tensorflow/c:__subpackages__",
     ],
-    deps = select({
+    deps = selects.with_or({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
-        "//tensorflow:chromiumos": [
+        ("//tensorflow:chromiumos", "//tensorflow:fuchsia"): [
             ":tf_attrtype",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
@@ -258,6 +260,9 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",
+        # copybara:uncomment_begin(google-only)
+        # "//tensorflow/cc/experimental/libtf:__pkg__",
+        # copybara:uncomment_end
         "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
     ],
     deps = select({
@@ -723,11 +728,15 @@ tf_cc_test(
         "testdata/tf_record",
         "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device.so",
     ],
+    extra_copts = if_google(["-DTENSORFLOW_NO_SHARED_OBJECTS=1"]),
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["notsan"],  # b/149031034
+    tags = [
+        "nomsan",  # b/149031034
+        "notsan",  # b/149031034
+    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -877,7 +886,7 @@ tf_cuda_library(
         ":c_api",
         ":c_api_internal",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
-        "//tensorflow/python:cpp_shape_inference_proto_cc",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_cc",
     ],
     alwayslink = 1,
 )

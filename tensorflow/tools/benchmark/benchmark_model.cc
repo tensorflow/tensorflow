@@ -234,7 +234,7 @@ void SleepSeconds(double sleep_seconds) {
     return;
   }
 #ifdef PLATFORM_WINDOWS
-  Sleep(sleep_seconds * 1000);
+  Env::Default()->SleepForMicroseconds(sleep_seconds * 1000 * 1000);
 #else
   // Convert the inference_delay string into a timespec.
   timespec req;

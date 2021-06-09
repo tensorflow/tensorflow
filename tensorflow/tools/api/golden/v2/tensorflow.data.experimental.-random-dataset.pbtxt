@@ -1,6 +1,7 @@
 path: "tensorflow.data.experimental.RandomDataset"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.ops.random_ops.RandomDatasetV2\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.RandomDataset\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetSource\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
   is_instance: "<class \'collections.abc.Iterable\'>"
@@ -23,6 +24,10 @@ tf_class {
   member_method {
     name: "batch"
     argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "bucket_by_sequence_length"
+    argspec: "args=[\'self\', \'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
   member_method {
     name: "cache"
@@ -61,6 +66,14 @@ tf_class {
     argspec: "args=[\'tensors\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_single_element"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "group_by_window"
+    argspec: "args=[\'self\', \'key_func\', \'reduce_func\', \'window_size\', \'window_size_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "interleave"
     argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
@@ -85,6 +98,10 @@ tf_class {
     argspec: "args=[\'self\', \'buffer_size\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "random"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "range"
     argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }
@@ -95,6 +112,10 @@ tf_class {
   member_method {
     name: "repeat"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "scan"
+    argspec: "args=[\'self\', \'initial_state\', \'scan_func\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "shard"
@@ -111,6 +132,10 @@ tf_class {
   member_method {
     name: "take"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "take_while"
+    argspec: "args=[\'self\', \'predicate\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "unbatch"

@@ -954,6 +954,8 @@ TEST_F(OperatorTest, VersioningTanhTest) {
 TEST_F(OperatorTest, VersioningStridedSliceTest) {
   StridedSliceOperator op;
   op.inputs = {"input1"};
+  op.ellipsis_mask = 0;
+  op.new_axis_mask = 0;
   auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
   const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
 

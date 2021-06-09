@@ -37,10 +37,9 @@ load(
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
-package(
-    default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
-)
+package(default_visibility = [":internal"])
+
+licenses(["notice"])
 
 exports_files([
     "LICENSE",
@@ -482,7 +481,10 @@ config_setting(
 
 config_setting(
     name = "no_nccl_support",
-    define_values = {"no_nccl_support": "true"},
+    define_values = dict(
+        if_google({"GOOGLE_CUDA_COMPILER": "clang"}),
+        no_nccl_support = "true",
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -684,6 +686,7 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
+        ":fuchsia",
         ":emscripten",
         ":ios",
     ],
@@ -785,10 +788,13 @@ package_group(
     packages = [
         "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
+        "//learning/brain/tfrt/...",
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
+        "//tensorflow_federated/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/yggdrasil_decision_forests/...",
     ],
 )
 
@@ -931,7 +937,7 @@ tf_cc_shared_object(
         "//tensorflow/c:env",
         "//tensorflow/c:kernels",
         "//tensorflow/c:logging",
-        "//tensorflow/c:ops_hdrs",
+        "//tensorflow/c:ops",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
@@ -979,6 +985,17 @@ tf_cc_shared_object(
         ],
         "//tensorflow:windows": [
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cpp:asan_build": [
+        # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
+        # ],
+        # "//tools/cpp:msan_build": [
+        # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
+        # ],
+        # "//tools/cpp:tsan_build": [
+        # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
+        # ],
+        # copybara:uncomment_end
         "//conditions:default": [
             "-z defs",
             "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",

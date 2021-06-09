@@ -282,10 +282,18 @@ class Allocator {
   // Fills in 'stats' with statistics collected by this allocator.
   virtual absl::optional<AllocatorStats> GetStats() { return absl::nullopt; }
 
-  // Clears the internal stats except for the `in_use` field.
-  virtual void ClearStats() {}
+  // If implemented, clears the internal stats except for the `in_use` fields
+  // and sets the `peak_bytes_in_use` to be equal to the `bytes_in_use`. Returns
+  //  true if implemented.
+  //
+  // REQUIRES: GetStats is overridden.
+  virtual bool ClearStats() TF_MUST_USE_RESULT { return false; }
 
   virtual void SetSafeFrontier(uint64 count) {}
+
+  // For allocator that are stream aware, allow to specify the compute
+  // stream this allocator is used for.
+  virtual void SetStream(void* stream) {}
 };
 
 // An implementation of Allocator that delegates all calls to another Allocator.

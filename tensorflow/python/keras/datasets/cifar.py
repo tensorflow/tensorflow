@@ -15,7 +15,6 @@
 """Utilities common to CIFAR10 and CIFAR100 datasets."""
 
 import _pickle as cPickle
-import sys
 
 
 def load_batch(fpath, label_key='labels'):
@@ -30,15 +29,12 @@ def load_batch(fpath, label_key='labels'):
       A tuple `(data, labels)`.
   """
   with open(fpath, 'rb') as f:
-    if sys.version_info < (3,):
-      d = cPickle.load(f)
-    else:
-      d = cPickle.load(f, encoding='bytes')
-      # decode utf8
-      d_decoded = {}
-      for k, v in d.items():
-        d_decoded[k.decode('utf8')] = v
-      d = d_decoded
+    d = cPickle.load(f, encoding='bytes')
+    # decode utf8
+    d_decoded = {}
+    for k, v in d.items():
+      d_decoded[k.decode('utf8')] = v
+    d = d_decoded
   data = d['data']
   labels = d[label_key]
 

@@ -130,6 +130,7 @@ REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Negative);
                                "AvgPool3D",                      \
                                "AvgPool3DGrad",                  \
                                "BatchMatMul",                    \
+                               "Einsum",                         \
                                "FusedBatchNorm",                 \
                                "FusedBatchNormV2",               \
                                "FusedBatchNormV3",               \

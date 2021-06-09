@@ -15,7 +15,6 @@
 """Tests for trackable object SavedModel save."""
 
 import os
-import sys
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -61,10 +60,6 @@ class MemoryTests(test.TestCase):
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
     self._model.call(x, y)
-    if sys.version_info[0] < 3:
-      # TODO(allenl): debug reference cycles in Python 2.x
-      self.skipTest("This test only works in Python 3+. Reference cycles are "
-                    "created in older Python versions.")
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(self._model, save_dir, self._model.call)
 

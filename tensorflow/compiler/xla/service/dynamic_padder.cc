@@ -85,21 +85,22 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
   }
   switch (inst->opcode()) {
     case HloOpcode::kReduce: {
-      TF_RET_CHECK(operand_number < inst->operand_count() / 2)
+      auto* reduce = Cast<HloReduceInstruction>(inst);
+      TF_RET_CHECK(operand_number < reduce->input_count())
           << "Only data operand with dynamic dimension is valid.";
       // Variadic reduce has different init value for different operand, given
       // a data operand number, find the init value index.
-      int64 init_value_index = inst->operand_count() / 2 + operand_number;
+      int64 init_value_index = reduce->input_count() + operand_number;
       return inst->mutable_operand(init_value_index);
     }
     case HloOpcode::kReduceWindow: {
-      if (inst->shape().IsTuple()) {
-        return Unimplemented("Variadic reduce window not yet supported. ");
-      }
-      // Because of the way we do reduce, we already require the `init`
-      // operand of hlo reduce instruction to be identity value. Here we reuse
-      // the operand.
-      return inst->mutable_operand(1);
+      auto* reduce_window = Cast<HloReduceWindowInstruction>(inst);
+      TF_RET_CHECK(operand_number < reduce_window->input_count())
+          << "Only data operand with dynamic dimension is valid.";
+      // Variadic reduce has different init value for different operand, given
+      // a data operand number, find the init value index.
+      int64 init_value_index = reduce_window->input_count() + operand_number;
+      return inst->mutable_operand(init_value_index);
     }
 
     case HloOpcode::kConvolution:
@@ -134,6 +135,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kReverse:
     case HloOpcode::kTuple:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kBroadcast:
     case HloOpcode::kTranspose:
     case HloOpcode::kSort:
@@ -220,10 +222,16 @@ StatusOr<bool> ReplaceSetBound(HloInstruction* instr) {
 
 bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64 operand_num,
                             int64 dimension) {
-  if ((inst->opcode() == HloOpcode::kReduceWindow ||
-       inst->opcode() == HloOpcode::kSelectAndScatter) &&
-      operand_num == 0 && inst->window().dimensions(dimension).size() == 1) {
+  if (inst->opcode() == HloOpcode::kSelectAndScatter && operand_num == 0 &&
+      inst->window().dimensions(dimension).size() == 1) {
     return true;
+  }
+
+  if (auto* reduce_window = DynCast<HloReduceWindowInstruction>(inst)) {
+    if (operand_num < reduce_window->input_count() &&
+        inst->window().dimensions(dimension).size() == 1) {
+      return true;
+    }
   }
 
   if (operand_num == 0 && inst->opcode() == HloOpcode::kConvolution &&
@@ -1020,7 +1028,7 @@ StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
     DynamicDimensionInference* dynamic_dimension_inference) {
   if (hlo->shape().IsTuple()) {
     // TODO (b/73062247) variadic reduce window is not yet supported here.
-    return Unimplemented("Variadic reduce window net yet supported.");
+    return Unimplemented("DynamicReduceWindowSamePadding not yet supported.");
   }
   HloInstruction* input = hlo->mutable_operand(0);
   HloInstruction* init = hlo->mutable_operand(1);

@@ -81,7 +81,9 @@ class LLVMTargetMachineFeatures : public TargetMachineFeatures {
 
   int vector_register_byte_size(const llvm::Function& function) const override {
     llvm::TargetTransformInfo* tti = GetTargetTransformInfoFor(function);
-    return tti->getRegisterBitWidth(/*Vector=*/true) / 8;
+    return tti->getRegisterBitWidth(
+               llvm::TargetTransformInfo::RGK_FixedWidthVector) /
+           8;
   }
 
   int vector_register_num_elements(const llvm::Function& function,

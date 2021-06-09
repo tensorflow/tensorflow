@@ -25,7 +25,9 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -45,8 +47,10 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -58,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -103,6 +108,15 @@ Value CreateI32SplatConst(Location loc, PatternRewriter *rewriter,
   return rewriter->create<ConstantOp>(loc, type, attr);
 }
 
+Value CreateI64SplatConst(Location loc, PatternRewriter *rewriter,
+                          ArrayRef<int64_t> shape, int64_t val) {
+  RankedTensorType type =
+      RankedTensorType::get(shape, rewriter->getIntegerType(64));
+  DenseElementsAttr attr =
+      DenseElementsAttr::get(type, rewriter->getI64IntegerAttr(val));
+  return rewriter->create<ConstantOp>(loc, type, attr);
+}
+
 Value CreateI32SplatTensor(Location loc, PatternRewriter *rewriter,
                            Value shape_tensor, int32_t val) {
   Value scalar_val = CreateI32SplatConst(loc, rewriter, {}, val);
@@ -133,6 +147,30 @@ Type GetTensorTypeForTensorList(Type element_type, TF::VariantType handle_dtype,
     return UnrankedTensorType::get(element_type);
   }
   return PrependLeadingDimIfRanked(-1, handle_dtype.getSubtypes()[0], rewriter);
+}
+
+// Gets the index of tensorlist arguments which size might get changed by the
+// function.
+llvm::SmallSet<int, 4> GetResizedTensorListIndexes(
+    FuncOp func, const llvm::SmallSet<int, 4> &tensor_list_args) {
+  // `indexes` stores the argument index of tensorlists which size may get
+  // updated in the function.
+  llvm::SmallSet<int, 4> indexes;
+  for (BlockArgument &arg : func.getArguments()) {
+    if (tensor_list_args.contains(arg.getArgNumber())) {
+      for (const mlir::OpOperand &use : arg.getUses()) {
+        mlir::Operation *op = use.getOwner();
+        // Currently we only check if the tensorlist argument is consumed by
+        // `TensorListPushBack` or `TensorListResize`, since those are the only
+        // length-mutating ops supported in this pass.
+        if (llvm::isa<TF::TensorListPushBackOp>(op) ||
+            llvm::isa<TF::TensorListResizeOp>(op)) {
+          indexes.insert(arg.getArgNumber());
+        }
+      }
+    }
+  }
+  return indexes;
 }
 
 // Creates a slice of the tensorlist `input_list`, starting from
@@ -352,7 +390,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
           dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
           dtype.isInteger(32) || dtype.isInteger(64))) {
-      llvm::Twine error_info =
+      const char *error_info =
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "
           "transformation pass";
@@ -412,7 +450,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
           if (element_shape_acquired) break;
         }
         if (!element_shape_acquired) {
-          llvm::Twine error_info =
+          const char *error_info =
               "requires element_shape to be 1D tensor during TF Lite "
               "transformation pass";
           return allow_tensorlist_pass_through_
@@ -517,6 +555,12 @@ struct ConvertTensorListReserve
     IntegerAttr attr;
     if (matchPattern(num_elements, m_Constant(&attr))) {
       return CreateI32SplatConst(op.getLoc(), rewriter, {1}, attr.getInt());
+    }
+    if (auto const_op = num_elements.getDefiningOp<TF::ConstOp>()) {
+      return CreateI32SplatConst(
+          op->getLoc(), rewriter, {1},
+          (*const_op.value().cast<DenseElementsAttr>().getIntValues().begin())
+              .getSExtValue());
     }
     return rewriter->create<TF::ExpandDimsOp>(
         op.getLoc(), RankedTensorType::get({1}, shape_dtype), num_elements,
@@ -808,6 +852,78 @@ struct ConvertTensorListStack
   }
 };
 
+// Converts `TensorListConcatV2` into Unpack and Concat. First we unpack
+// the input tensorlist along the first dimension, which results in N (where N
+// is the first dim's size) tensors (each with shape [element_shape]). Then
+// we concatenate all those tensors along the first dimension.
+// The pattern will be rejected if either `element_shape` is not constant, or
+// the first dimension of `input` is not known.
+// TODO(b/184168136): Consider rewrite in tablegen.
+struct ConvertTensorListConcatV2
+    : public TensorListOpConverterBase<TF::TensorListConcatV2Op> {
+  using TensorListOpConverterBase<
+      TF::TensorListConcatV2Op>::TensorListOpConverterBase;
+  using TensorListOpConverterBase<
+      TF::TensorListConcatV2Op>::allow_tensorlist_pass_through_;
+
+  LogicalResult matchAndRewrite(
+      TF::TensorListConcatV2Op op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value input = operands[0];
+    Value element_shape = operands[1];
+
+    // Only match when `element_shape` is a constant.
+    DenseIntElementsAttr dense_elem_attr;
+    if (!matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
+      const char *error_info = "requires element_shape to be a constant";
+      return allow_tensorlist_pass_through_
+                 ? rewriter.notifyMatchFailure(op, error_info)
+                 : op.emitOpError(error_info);
+    }
+    llvm::SmallVector<int64_t, 4> output_shape;
+    for (const auto &dim : dense_elem_attr.getIntValues()) {
+      output_shape.push_back(dim.getSExtValue());
+    }
+
+    // First unpack the input tensor along the first dimension.
+    Type input_element_type = getElementTypeOrSelf(input);
+    int64_t num_unpacked = 0;
+    if (auto type = input.getType().dyn_cast<RankedTensorType>()) {
+      if (type.getDimSize(0) > 0) {
+        num_unpacked = type.getDimSize(0);
+      } else {
+        const char *error_info =
+            "requires the first dimension of input tensor to have > 0 "
+            "dimension";
+        return allow_tensorlist_pass_through_
+                   ? rewriter.notifyMatchFailure(op, error_info)
+                   : op.emitOpError(error_info);
+      }
+    }
+    llvm::SmallVector<Type, 1> unpack_output_type;
+    unpack_output_type.insert(
+        unpack_output_type.begin(), num_unpacked,
+        RankedTensorType::get(output_shape, input_element_type));
+    auto unpack = rewriter.create<TF::UnpackOp>(loc, unpack_output_type, input,
+                                                /*axis=*/0);
+
+    // Concatenate the unpacked tensors along the first dimension.
+    // Since we're concatenating along first dimension, change its dim size to
+    // -1.
+    output_shape[0] = -1;
+    Value scalar_zero = CreateI32SplatConst(loc, &rewriter, {}, 0);
+    auto concat = rewriter.create<TF::ConcatOp>(
+        loc, RankedTensorType::get(output_shape, input_element_type),
+        scalar_zero, unpack->getResults());
+    // `lengths` is only useful for computing gradient. For now we just return
+    // a placeholder tensor.
+    rewriter.replaceOp(
+        op, {concat.getResult(), CreateI64SplatConst(loc, &rewriter, {0}, 0)});
+    return success();
+  }
+};
+
 struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -824,45 +940,160 @@ struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
 // Returns an unranked tensor type with an element of the same type as `value`
 // if `type` is a tensor of variant. Otherwise, returns `type` unmodified.
 Type VariantToUnrankedTensorType(Type type, Value value) {
-  if (getElementTypeOrSelf(type).isa<TF::VariantType>())
-    return UnrankedTensorType::get(getElementTypeOrSelf(value.getType()));
-  return type;
+  TF::VariantType variant_ty =
+      getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
+  if (!variant_ty) {
+    return type;
+  }
+  if (!variant_ty.getSubtypes().empty()) {
+    // Short-circut if the variant type has subtype info.
+    return UnrankedTensorType::get(
+        variant_ty.getSubtypes()[0].getElementType());
+  }
+  Type value_type = value.getType();
+  Type element_type;
+  variant_ty = value_type.dyn_cast<TF::VariantType>();
+  if (variant_ty && !variant_ty.getSubtypes().empty()) {
+    element_type = variant_ty.getSubtypes()[0].getElementType();
+  } else {
+    element_type = getElementTypeOrSelf(value_type);
+  }
+  return UnrankedTensorType::get(element_type);
 }
 
-llvm::SmallSet<int, 4> GetTensorListArgumentsFromWhileOp(TF::WhileOp op) {
+// Returns true if we can deduce the type is tensorlist.
+bool IsTensorListType(Type type, llvm::Optional<Value> value) {
+  TF::VariantType variant_ty =
+      getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
+  if (!variant_ty) {
+    return false;
+  }
+  // Check there is only one subtype contained in the variant type. Note that
+  // when `subtypes.size() == 1` does not always mean the type is actually
+  // a tensorlist. We probably need some form of data flow analysis.
+  if (variant_ty.getSubtypes().size() == 1) {
+    return true;
+  }
+  // If subtype info is not available, check if the value is used by any of
+  // the following TensorList operations.
+  if (!value.hasValue()) {
+    return false;
+  }
+  for (const mlir::OpOperand &use : value.getValue().getUses()) {
+    mlir::Operation *op = use.getOwner();
+    if (llvm::isa<TF::TensorListGetItemOp>(op) ||
+        llvm::isa<TF::TensorListLengthOp>(op) ||
+        llvm::isa<TF::TensorListPushBackOp>(op) ||
+        llvm::isa<TF::TensorListReserveOp>(op) ||
+        llvm::isa<TF::TensorListSetItemOp>(op) ||
+        llvm::isa<TF::TensorListStackOp>(op) ||
+        llvm::isa<TF::TensorListResizeOp>(op)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Returns a set of integers that correspond to the tensorlist arguments in
+// the function.
+llvm::SmallSet<int, 4> GetTensorListArgumentsIndex(FuncOp func) {
   llvm::SmallSet<int, 4> set;
-  for (FuncOp func : {op.cond_function(), op.body_function()}) {
-    if (!func) continue;
-
-    for (auto arg_and_idx : llvm::enumerate(func.getArguments())) {
-      mlir::BlockArgument arg = arg_and_idx.value();
-      auto variant_ty =
-          getElementTypeOrSelf(arg.getType()).dyn_cast<TF::VariantType>();
-      if (!variant_ty) continue;
-
-      for (auto &op_operand : arg.getUses()) {
-        auto op = op_operand.getOwner();
-        if (llvm::isa<TF::TensorListGetItemOp>(op) ||
-            llvm::isa<TF::TensorListLengthOp>(op) ||
-            llvm::isa<TF::TensorListPushBackOp>(op) ||
-            llvm::isa<TF::TensorListReserveOp>(op) ||
-            llvm::isa<TF::TensorListSetItemOp>(op) ||
-            llvm::isa<TF::TensorListStackOp>(op) ||
-            llvm::isa<TF::TensorListResizeOp>(op)) {
-          set.insert(arg_and_idx.index());
-          break;
-        }
-      }
+  for (const auto &arg_and_idx : llvm::enumerate(func.getArguments())) {
+    if (IsTensorListType(arg_and_idx.value().getType(), arg_and_idx.value())) {
+      set.insert(arg_and_idx.index());
     }
   }
   return set;
 }
 
+// Returns a set of integers that correspond to the tensorlist results in the
+// function.
+llvm::SmallSet<int, 4> GetTensorListResultsIndex(FuncOp func) {
+  llvm::SmallSet<int, 4> set;
+
+  for (const auto &result_and_idx :
+       llvm::enumerate(func.getType().getResults())) {
+    if (IsTensorListType(result_and_idx.value(), llvm::None)) {
+      set.insert(result_and_idx.index());
+    }
+  }
+  return set;
+}
+
+// Updates the tensorlist types based on the input index. If the tensorlist's
+// size isn't changed(which is indicated by `resized_tensor_list_index`), then
+// we will use the original operand's type, otherwise update it with the
+// unranked tensor type.
+template <typename R>
+void UpdateTensorListTypes(
+    const llvm::SmallSet<int, 4> &tensor_list_index,
+    const llvm::SmallSet<int, 4> &resized_tensor_list_index,
+    ArrayRef<Type> types, R &&range, ArrayRef<Value> operands,
+    llvm::SmallVectorImpl<Type> *updated_types) {
+  int i = 0;
+  for (const auto it : llvm::zip(types, range, operands)) {
+    if (tensor_list_index.count(i)) {
+      // Only change the tensorlist's type to unranked tensor if it has been
+      // resized.
+      if (resized_tensor_list_index.count(i)) {
+        updated_types->push_back(
+            VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+      } else {
+        updated_types->push_back(std::get<2>(it).getType());
+      }
+    } else {
+      updated_types->push_back(std::get<0>(it));
+    }
+    ++i;
+  }
+}
+
+// Updates the tensorlist types to unranked tensor types based on the input
+// index.
+template <typename R>
+void ChangeVariantToUnrankedTensorType(
+    const llvm::SmallSet<int, 4> &tensor_list_index, ArrayRef<Type> types,
+    R &&range, llvm::SmallVectorImpl<Type> *updated_types) {
+  int i = 0;
+  for (const auto it : llvm::zip(types, range)) {
+    if (tensor_list_index.count(i)) {
+      updated_types->push_back(
+          VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+    } else {
+      updated_types->push_back(std::get<0>(it));
+    }
+    ++i;
+  }
+}
+
+// Updates the specified function's type and region signature.
+void UpdateFunctionAndRegionType(ConversionPatternRewriter &rewriter,
+                                 FuncOp func,
+                                 llvm::ArrayRef<Type> updated_argument_types,
+                                 llvm::ArrayRef<Type> updated_result_types) {
+  // Change `func`'s argument type to `unranked_argument_types`. If its
+  // return types contain a `DT_VARIANT`, change it to the unranked type
+  // derived from the corresponding argument.
+  rewriter.updateRootInPlace(func, [&] {
+    func.setType(FunctionType::get(func.getContext(), updated_argument_types,
+                                   updated_result_types));
+  });
+  Region &entry = func.getRegion();
+  TypeConverter::SignatureConversion signature_conversion(
+      entry.getNumArguments());
+  for (const BlockArgument &arg : entry.getArguments()) {
+    signature_conversion.addInputs(arg.getArgNumber(),
+                                   updated_argument_types[arg.getArgNumber()]);
+  }
+  rewriter.applySignatureConversion(&entry, signature_conversion);
+}
+
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
-LogicalResult UpdateFunctionTypes(ConversionPatternRewriter &rewriter,
-                                  TF::WhileOp op,
-                                  llvm::SmallSet<int, 4> tensor_list_args) {
+LogicalResult UpdateFunctionTypesForWhileOp(
+    ConversionPatternRewriter &rewriter, TF::WhileOp op,
+    ArrayRef<Value> operands, const llvm::SmallSet<int, 4> &tensor_list_args,
+    const llvm::SmallSet<int, 4> &resized_tensor_lists) {
   int func_index = 0;
   for (FuncOp func : {op.cond_function(), op.body_function()}) {
     ++func_index;
@@ -876,52 +1107,183 @@ LogicalResult UpdateFunctionTypes(ConversionPatternRewriter &rewriter,
     // tensor type if it's a variant type.
     SmallVector<Type, 8> updated_argument_types;
     updated_argument_types.reserve(num_inputs);
-    int i = 0;
-    for (auto it : llvm::zip(func_type.getInputs(), op.getOperands())) {
-      if (tensor_list_args.count(i)) {
-        updated_argument_types.push_back(
-            VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
-      } else {
-        updated_argument_types.push_back(std::get<0>(it));
-      }
-      ++i;
-    }
+    UpdateTensorListTypes<mlir::OperandRange>(
+        tensor_list_args, resized_tensor_lists, func_type.getInputs(),
+        op.getOperands(), operands, &updated_argument_types);
 
     // Change all DT_VARIANT result types in function results to unranked tensor
     // type with element type derived from the corresponding input operand. This
     // is correct because while body's inputs and results have the same type.
     SmallVector<Type, 8> updated_result_types;
     updated_result_types.reserve(num_results);
-    i = 0;
-    for (auto it : llvm::zip(func_type.getResults(), op.getOperands())) {
-      // Only update body's results.
-      if (func_index != 1 && tensor_list_args.count(i)) {
-        updated_result_types.push_back(
-            VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
-      } else {
-        updated_result_types.push_back(std::get<0>(it));
+    if (func_index == 1) {
+      // We only update the result types for the body function.
+      for (Type ty : func_type.getResults()) {
+        updated_result_types.push_back(ty);
       }
-      ++i;
+    } else {
+      UpdateTensorListTypes<mlir::OperandRange>(
+          tensor_list_args, resized_tensor_lists, func_type.getResults(),
+          op.getOperands(), operands, &updated_result_types);
     }
 
-    // Change `func`'s argument type to `unranked_argument_types`. If it
-    // return types contain a `DT_VARIANT`, change it to the unranked type
-    // derived from the corresponding argument.
-    rewriter.updateRootInPlace(func, [&] {
-      func.setType(FunctionType::get(op.getContext(), updated_argument_types,
-                                     updated_result_types));
-    });
-    Region &entry = func.getRegion();
-    TypeConverter::SignatureConversion signature_conversion(
-        entry.getNumArguments());
-    for (auto arg : entry.getArguments()) {
-      signature_conversion.addInputs(
-          arg.getArgNumber(), updated_argument_types[arg.getArgNumber()]);
-    }
-    rewriter.applySignatureConversion(&entry, signature_conversion);
+    UpdateFunctionAndRegionType(rewriter, func, updated_argument_types,
+                                updated_result_types);
   }
   return success();
 }
+
+// Changes the function type of `then_function` and `else_function` for the
+// given If op.
+LogicalResult UpdateFunctionTypesForIfOp(
+    ConversionPatternRewriter &rewriter, TF::IfOp op,
+    llvm::ArrayRef<Value> operands,
+    const llvm::SmallSet<int, 4> &tensor_list_args,
+    const llvm::SmallSet<int, 4> &resized_tensor_lists,
+    llvm::ArrayRef<Type> updated_result_types) {
+  for (FuncOp func : {op.else_function(), op.then_function()}) {
+    if (!func) continue;
+
+    FunctionType func_type = func.getType();
+    int num_inputs = func_type.getNumInputs();
+
+    // Update the argument types of the function. If it's a tensorlist and
+    // is not resized inside the function, we will use the corresponding
+    // operand's type, otherwise change its type to unranked tensor type.
+    SmallVector<Type, 8> updated_argument_types;
+    updated_argument_types.reserve(num_inputs);
+    UpdateTensorListTypes<mlir::OperandRange>(
+        tensor_list_args, resized_tensor_lists, func_type.getInputs(),
+        op.getOperands().drop_front(), operands.drop_front(),
+        &updated_argument_types);
+
+    UpdateFunctionAndRegionType(rewriter, func, updated_argument_types,
+                                updated_result_types);
+  }
+  return success();
+}
+
+// Returns a `llvm::DenseMap` which maps from the index of tensorlist in the
+// result, to the index of the same tensorlist in the arguments. For `If` op's
+// branch functions, the results and arguments are not usually matched 1-1. This
+// will let us konw which tensorlist result maps to which tensorlist in the
+// arguments. Once we know this info it will help us decide the types of the
+// result tensorlist based on the operand's of the `If` op.
+llvm::DenseMap<int, int> MapTensorListResultToArgument(FuncOp func) {
+  // `map_fn` will trace upwards along the use-def chain of the ssa value. It
+  // starts from the last ssa value (returned by the function), and check its
+  // parent op iteratively. If the root ssa value appears in the function's
+  // argument list, it will return the index of the corresponding argument,
+  // otherwise it will return -1.
+  auto map_fn = [](Value value) -> int {
+    Value parent = value;
+    while (true) {
+      if (auto identity = parent.getDefiningOp<TF::IdentityOp>()) {
+        parent = identity.input();
+      } else if (auto set_item =
+                     parent.getDefiningOp<TF::TensorListSetItemOp>()) {
+        parent = set_item.input_handle();
+      } else {
+        break;
+      }
+    }
+    if (auto block_arg = parent.dyn_cast<mlir::BlockArgument>()) {
+      return block_arg.getArgNumber();
+    }
+    // Returns -1 if we don't find which this result maps to.
+    return -1;
+  };
+
+  llvm::SmallVector<Value, 4> returns;
+  for (auto res : func.getBody().back().getTerminator()->getOperands()) {
+    returns.push_back(res);
+  }
+  llvm::DenseMap<int, int> result;
+  for (const auto &result_and_idx : llvm::enumerate(returns)) {
+    if (IsTensorListType(result_and_idx.value().getType(),
+                         result_and_idx.value())) {
+      int arg_idx = map_fn(result_and_idx.value());
+      if (arg_idx != -1) {
+        result.insert({result_and_idx.index(), arg_idx});
+      }
+    }
+  }
+  return result;
+}
+
+// Updates the tensorlist result types for the `If` Op. If the tensorlist result
+// maps to a specific argument (indicated by `tensor_list_map`), and also that
+// tensorlist argument's shape isn't changed (indicated by
+// `resized_tensor_list_index`), we will update this tensorlist's result type to
+// the corresponding operand's type. In all other cases we change the
+// tensorlist's type to unranked tensor type.
+template <typename R>
+void UpdateTensorListResultTypesForIf(
+    const llvm::SmallSet<int, 4> &tensor_list_index,
+    const llvm::SmallSet<int, 4> &resized_tensor_list_index,
+    const llvm::DenseMap<int, int> &tensor_list_map, ArrayRef<Type> types,
+    R &&range, ArrayRef<Value> operands,
+    llvm::SmallVectorImpl<Type> *updated_types) {
+  int i = 0;
+  for (const auto it : llvm::zip(types, range)) {
+    if (!tensor_list_index.count(i)) {
+      updated_types->push_back(std::get<0>(it));
+      ++i;
+      continue;
+    }
+    auto iter = tensor_list_map.find(i);
+    if (iter != tensor_list_map.end()) {
+      int arg_idx = iter->second;
+      if (!resized_tensor_list_index.count(arg_idx)) {
+        // If the mapped tensorlist argument's size isn't changed, we will
+        // use the corresponding `operand` type.
+        updated_types->push_back(operands[arg_idx].getType());
+        ++i;
+        continue;
+      }
+    }
+    updated_types->push_back(
+        VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
+    ++i;
+  }
+}
+
+struct ConvertIf : public OpConversionPattern<TF::IfOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TF::IfOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // Find all Tensor List arugments.
+    auto tensor_list_args = GetTensorListArgumentsIndex(op.else_function());
+    auto tensor_list_results = GetTensorListResultsIndex(op.else_function());
+    auto tensor_list_map = MapTensorListResultToArgument(op.else_function());
+    llvm::SmallSet<int, 4> resized_tensor_lists =
+        GetResizedTensorListIndexes(op.else_function(), tensor_list_args);
+
+    llvm::SmallVector<Type, 8> result_types;
+    result_types.reserve(op.getNumResults());
+    llvm::SmallVector<Type, 4> op_result_types;
+    for (Type ty : op.getResultTypes()) {
+      op_result_types.push_back(ty);
+    }
+
+    UpdateTensorListResultTypesForIf<mlir::ResultRange>(
+        tensor_list_results, resized_tensor_lists, tensor_list_map,
+        op_result_types, op->getResults(), operands.drop_front(),
+        &result_types);
+
+    // Create a new if op with new operands and updated result types.
+    auto converted = rewriter.create<TF::IfOp>(op.getLoc(), result_types,
+                                               operands, op->getAttrs());
+    converted->removeAttr("T");
+    (void)UpdateFunctionTypesForIfOp(rewriter, converted, operands,
+                                     tensor_list_args, resized_tensor_lists,
+                                     result_types);
+    rewriter.replaceOp(op, converted.getResults());
+    return success();
+  }
+};
 
 struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -930,27 +1292,28 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
       TF::WhileOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     // Find all Tensor List arugments.
-    auto tensor_list_args = GetTensorListArgumentsFromWhileOp(op);
+    auto tensor_list_args = GetTensorListArgumentsIndex(op.body_function());
 
     llvm::SmallVector<Type, 8> result_types;
     result_types.reserve(op.getNumOperands());
     // Change all DT_VARIANT result types to unranked tensor type.
-    int i = 0;
-    for (auto it : llvm::zip(op.getResultTypes(), operands)) {
-      if (tensor_list_args.count(i)) {
-        result_types.push_back(
-            VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
-      } else {
-        result_types.push_back(std::get<0>(it));
-      }
-      ++i;
+    llvm::SmallVector<Type, 4> op_result_types;
+    for (Type ty : op.getResultTypes()) {
+      op_result_types.push_back(ty);
     }
+
+    llvm::SmallSet<int, 4> resized_tensor_lists =
+        GetResizedTensorListIndexes(op.body_function(), tensor_list_args);
+    UpdateTensorListTypes<mlir::OperandRange>(
+        tensor_list_args, resized_tensor_lists, op_result_types,
+        op.getOperands(), operands, &result_types);
 
     // Create a new while op with new operands and updated result types.
     auto converted = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
                                                   operands, op->getAttrs());
     converted->removeAttr("T");
-    (void)UpdateFunctionTypes(rewriter, converted, tensor_list_args);
+    (void)UpdateFunctionTypesForWhileOp(rewriter, converted, operands,
+                                        tensor_list_args, resized_tensor_lists);
 
     rewriter.replaceOp(op, converted.getResults());
     return success();
@@ -1041,10 +1404,11 @@ void LowerStaticTensorListPass::runOnOperation() {
   patterns.insert<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
                   ConvertTensorListLength, ConvertTensorListPushBack,
                   ConvertTensorListSetItem, ConvertTensorListStack,
-                  ConvertTensorListResize, ConvertWhile, ConvertWhileRegion>(
-      context);
-  patterns.insert<ConvertEmptyTensorList, ConvertTensorListReserve>(
-      context, allow_tensorlist_pass_through);
+                  ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
+                  ConvertIf>(context);
+  patterns.insert<ConvertEmptyTensorList, ConvertTensorListReserve,
+                  ConvertTensorListConcatV2>(context,
+                                             allow_tensorlist_pass_through);
   if (!allow_tensorlist_pass_through) {
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {

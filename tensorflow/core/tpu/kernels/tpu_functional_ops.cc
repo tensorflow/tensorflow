@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/op_kernel.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/base/call_once.h"
@@ -65,6 +67,9 @@ namespace {
 constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
 constexpr int kLastDimOfTpuInputFastPath = 128;
 constexpr int kOtherDimOfTpuInputFastPath = 8;
+
+constexpr char kXLAShardingAttrName[] = "sharding";
+constexpr char kXLAShardingAttrAltName[] = "_XlaSharding";
 
 Status GenerateDeviceNaturalOrder(int x_num_cores, int y_num_cores,
                                   int z_num_cores, int num_cores_per_chip,
@@ -169,6 +174,31 @@ bool IsSupportedTPUOp(const string& op_name) {
          op_name == kInfeedEnqueueTupleOp || op_name == kOutfeedDequeueOp ||
          op_name == kOutfeedDequeueTupleOp || op_name == kOutfeedDequeueV2Op ||
          op_name == kOutfeedDequeueTupleV2Op;
+}
+
+// Sets the sharding attributes for an XlaSharding node.
+void SetXlaShardingNodeAttr(Node* xla_sharding_node, int num_cores_per_replica,
+                            int rank, int shard_dim) {
+  auto sharding = absl::make_optional<xla::OpSharding>();
+  sharding->set_type(xla::OpSharding::OTHER);
+
+  std::vector<int64> dims(rank, 1LL);
+  dims[shard_dim] = num_cores_per_replica;
+  for (auto dim : dims) {
+    sharding->add_tile_assignment_dimensions(dim);
+  }
+
+  // Sets up tile_assignment_devices.
+  for (int d = 0; d < num_cores_per_replica; ++d) {
+    sharding->add_tile_assignment_devices(d);
+  }
+
+  xla_sharding_node->ClearAttr(kXLAShardingAttrName);
+  xla_sharding_node->ClearAttr(kXLAShardingAttrAltName);
+  xla_sharding_node->AddAttr(kXLAShardingAttrName,
+                             sharding->SerializeAsString());
+  xla_sharding_node->AddAttr(kXLAShardingAttrAltName,
+                             sharding->SerializeAsString());
 }
 
 // If 'device_name' is a TPU device, set its device_ordinal to 'device_ordinal'
@@ -278,16 +308,16 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
 // Returns the number of nodes that were removed.
 int64 RemoveDescendantNodeOfArg(Graph* graph,
                                 const std::string& node_type_to_remove,
-                                bool must_be_child_of_arg) {
+                                const std::set<std::string>& must_be_child_of) {
   int64 nodes_removed = 0;
   std::vector<std::pair<const Edge*, std::vector<const Edge*>>> edges_to_remove;
 
   for (Node* node : graph->nodes()) {
     if (node_type_to_remove != node->type_string()) continue;
-    if (must_be_child_of_arg) {
+    if (!must_be_child_of.empty()) {
       bool has_arg_parent = false;
       for (const Edge* edge : node->in_edges()) {
-        if (edge->src()->type_string() == "_Arg") {
+        if (must_be_child_of.count(edge->src()->type_string()) > 0) {
           has_arg_parent = true;
         }
       }
@@ -420,7 +450,8 @@ Status ConvertEdgeShapesToTensorShapes(
   return Status::OK();
 }
 
-// Get the TF fingerprint with the information from the TPUCompileOp.
+// Get the TF fingerprint with the information from the TPUCompileOp or
+// _TPUCompileMlirOp.
 Status MaybeRegisterFingerprint(
     Graph* graph,
     const std::map<std::string, std::vector<int>>& named_input_shapes,
@@ -429,16 +460,19 @@ Status MaybeRegisterFingerprint(
   tpu::TPUCompileMetadataProto metadata_proto;
   std::map<std::string, std::vector<int>> inputs_to_keep;
   int num_dynamic_shapes = -1;
+  tensorflow::uint64 fingerprint = 0;
+
   for (Node* node : graph->op_nodes()) {
-    if (node->type_string() == "TPUCompile") {
+    if (node->type_string() == "TPUCompile" ||
+        node->type_string() == "_TPUCompileMlir") {
       num_dynamic_shapes = node->attrs().Find("NumDynamicShapes")->i();
       if (num_dynamic_shapes <= 0) {
         break;
       }
       int visited = 0;
-      // TPUCompileOp takes Shape nodes as inputs. The number of Shape nodes
-      // matches the number of dynamic shaped inputs. The Shape nodes come from
-      // the input nodes:
+      // TPUCompileOp/_TPUCompileMlirOp take Shape nodes as inputs.
+      // The number of Shape nodes matches the number of dynamic shaped inputs.
+      // The Shape nodes come from the input nodes:
       //   [TPU Input] --> [Input Shape] --> [TPUCompileOp]
       for (auto in_node : node->in_nodes()) {
         if (in_node->type_string() != "Shape") {
@@ -457,6 +491,14 @@ Status MaybeRegisterFingerprint(
       }
       std::string metadata = node->attrs().Find("metadata")->s();
       metadata_proto.ParseFromString(metadata);
+
+      if (node->type_string() == "_TPUCompileMlir") {
+        std::string mlir_module = node->attrs().Find("mlir_module")->s();
+        fingerprint = tensorflow::Fingerprint64(mlir_module);
+      } else {
+        fingerprint = metadata_proto.function_library_fingerprint();
+      }
+
       break;
     }
   }
@@ -477,11 +519,9 @@ Status MaybeRegisterFingerprint(
     VLOG(2) << status.error_message();
     return Status::OK();
   }
-
-  VLOG(2) << "library_fingerprint: "
-          << metadata_proto.function_library_fingerprint();
-  uint64 tf_fingerprint = tpu::CreateFingerprintWithNameAndShapes(
-      metadata_proto.function_library_fingerprint(), arg_shapes);
+  uint64 tf_fingerprint =
+      tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
+  VLOG(2) << "fingerprint: " << fingerprint;
   VLOG(2) << "TF fingerprint: " << tf_fingerprint;
 
   ResourceMgr* rm = GetTPUConfigResourceMgr();
@@ -737,7 +777,9 @@ Status CreateConcatAndSplitNodesForInputTensor(
     Node* split_node = nullptr;
     Node* input_to_split_node = concat_node;
     Node* output_from_concat_node = nullptr;
-    if (xla_spmd_input_sharded) {
+    if (xla_spmd_input_sharded &&
+        tpu_replicated_input_info.count(src_name) > 0 &&
+        xla_sharding_info.count(src_name) > 0) {
       // Create new TPUReplicatedInput and XLAShardingOp nodes
       //
       // Rewrite the graph from:
@@ -762,6 +804,9 @@ Status CreateConcatAndSplitNodesForInputTensor(
               .Attr("is_mirrored_variable", false)
               .Attr("is_packed", false)
               .Finalize(graph, &tpu_replicated_input));
+      VLOG(2) << "Created new TPUReplicatedInput node "
+              << tpu_replicated_input->DebugString();
+
       TF_RETURN_IF_ERROR(
           NodeBuilder(strings::StrCat(iter.first, "/XlaSharding"),
                       "XlaSharding")
@@ -772,6 +817,8 @@ Status CreateConcatAndSplitNodesForInputTensor(
               .Attr("_tpu_replicate",
                     std::get<2>(xla_sharding_info.at(src_name)))
               .Finalize(graph, &xla_sharding_op));
+      VLOG(2) << "Created new XLA sharding node "
+              << xla_sharding_op->DebugString();
 
       input_to_split_node = xla_sharding_op;
       output_from_concat_node = tpu_replicated_input;
@@ -965,12 +1012,27 @@ Status CreateConcatAndSplitNodesForOutputTensor(
 }
 
 Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
-                              EdgeShapes* tpu_input_shapes) {
+                              EdgeShapes* tpu_input_shapes,
+                              int num_cores_per_replica) {
   std::vector<const Edge*> tpu_input_edges_original;
   for (const auto& it : *tpu_input_shapes)
     if (!it.second.empty()) tpu_input_edges_original.push_back(it.first);
   for (const Edge* edge : tpu_input_edges_original) {
     VLOG(3) << "Reshape input: " << edge->DebugString();
+
+    // Check if there is a TPUReplicatedInput and XlaSharding in the middle
+    bool xla_sharded_input = false;
+    Node* xla_sharding_node = nullptr;
+    if (edge->dst()->type_string() == "TPUReplicatedInput" &&
+        edge->dst()->out_nodes().begin()->type_string() == "XlaSharding") {
+      VLOG(3) << "Detected TPUReplicatedInput " << edge->dst()->DebugString()
+              << " and XlaSharding "
+              << edge->dst()->out_nodes().begin()->DebugString()
+              << ", setting xla_sharded_input = true";
+      xla_sharded_input = true;
+      xla_sharding_node = *(edge->dst()->out_nodes().begin());
+    }
+
     // 1. Build Reshape node for flatten.
 
     // 1.1 Build Const node for shape
@@ -1017,20 +1079,54 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
             .Finalize(graph, &recover_reshape_shape_node));
 
     // 2.2 Build Reshape node for recover.
+    Node* recover_reshape_input_node = flatten_reshape_node;
+    const Edge* original_recover_reshape_input_edge = nullptr;
+    if (xla_sharded_input) {
+      // We want to find the node after the XlaSharding node
+      original_recover_reshape_input_edge =
+          *(edge->dst()->out_nodes().begin()->out_edges().begin());
+      recover_reshape_input_node = *(edge->dst()->out_nodes().begin());
+      VLOG(3) << "Recover reshape input node: "
+              << recover_reshape_input_node->DebugString()
+              << ", recover reshape input edge: "
+              << original_recover_reshape_input_edge->DebugString();
+    }
+
     Node* recover_reshape_node = nullptr;
     TF_RETURN_IF_ERROR(
         NodeBuilder(absl::StrCat(edge->src()->name(), "/recover/Reshape"),
                     "Reshape")
-            .Input(flatten_reshape_node)
+            .Input(recover_reshape_input_node)
             .Input(recover_reshape_shape_node)
             .Attr("T", edge->src()->output_type(edge->src_output()))
             .Attr("Tshape", DT_INT32)
             .Attr(kTpuReplicateAttr, cluster_name)  // This node is on TPU.
             .Finalize(graph, &recover_reshape_node));
 
-    // 3. Connect / disconnect nodes.
-    graph->AddEdge(recover_reshape_node, 0, edge->dst(), edge->dst_input());
+    // 3. Rewrite XlaSharding attribute if necessary
+    if (xla_sharding_node != nullptr) {
+      // The flattened tensor always has rank = 1 and we want to shard the only
+      // dimension (0).
+      SetXlaShardingNodeAttr(xla_sharding_node, num_cores_per_replica, 1, 0);
+    }
+
+    // 4. Connect / disconnect nodes.
+    if (xla_sharded_input) {
+      graph->AddEdge(flatten_reshape_node, 0, edge->dst(), edge->dst_input());
+    }
+
+    if (original_recover_reshape_input_edge != nullptr) {
+      graph->AddEdge(recover_reshape_node, 0,
+                     original_recover_reshape_input_edge->dst(),
+                     original_recover_reshape_input_edge->dst_input());
+    } else {
+      graph->AddEdge(recover_reshape_node, 0, edge->dst(), edge->dst_input());
+    }
+
     graph->RemoveEdge(edge);
+    if (original_recover_reshape_input_edge != nullptr) {
+      graph->RemoveEdge(original_recover_reshape_input_edge);
+    }
 
     // 4. Update EdgeShapes.
     int dimension = 1;
@@ -1127,65 +1223,15 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                                               &enable_spmd_xla_partitioning),
                          done);
 
-    std::map<std::string, std::vector<int>> named_input_shapes;
-
     VLOG(1) << DumpGraphToFile("before_input_output_optimizations", *graph,
                                flib_def_.get());
 
-    // Input and output optimizations.
-    GraphShapeInfo tpu_inferred_info;
-    std::map<int, InferredShape> arg_shapes;
-    EdgeShapes tpu_input_shapes;
-    absl::flat_hash_map<const Edge*, DataType> tpu_input_dtypes;
-
-    // Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op.
-    XlaShardingInfoMap xla_sharding_ops;
-
-    // Contains attrs "T", and a pointer to tpu_replicated_metadata for ctrl dep
-    TpuReplicatedInputInfoMap tpu_replicated_input_ops;
-
-    bool xla_spmd_input_sharded = false;
-
-    if (enable_spmd_xla_partitioning && num_cores_per_replica > 1) {
-      xla_spmd_input_sharded = FindTpuReplicatedInputAndXlaSharding(
-          graph.get(), xla_sharding_ops, tpu_replicated_input_ops);
-    }
-
-    if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1 ||
-        (xla_spmd_input_sharded &&
-         runtime_params_.minimum_input_tensors_packing > 1)) {
-      if (xla_spmd_input_sharded) {
-        // We are setting must_be_child_of_arg == true because we do not want
-        // to remove other XlaSharding ops that might be in the graph. We only
-        // want the XlaSharding ops that are directly attached to the input
-        // arguments to be removed.
-        RemoveDescendantNodeOfArg(graph.get(), "XlaSharding",
-                                  /*must_be_child_of_arg=*/true);
-      }
-
-      RemoveDescendantNodeOfArg(graph.get(), "TPUReplicatedInput",
-                                /*must_be_child_of_arg=*/false);
-
-      VLOG(1) << DumpGraphToFile("before_get_input_output_info", *graph,
-                                 flib_def_.get());
-
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetInputOutputInfo(graph.get(), tpu_inferred_info, arg_shapes,
-                             tpu_input_shapes, tpu_input_dtypes, ctx),
-          done);
-
-      VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors",
-                                 *graph, flib_def_.get());
-
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          OptimizeTpuInputOutputTensors(
-              graph.get(), tpu_inferred_info, arg_shapes, tpu_input_shapes,
-              tpu_input_dtypes, named_input_shapes, xla_spmd_input_sharded,
-              xla_sharding_ops, tpu_replicated_input_ops, ctx),
-          done);
-    }
+    std::map<std::string, std::vector<int>> named_input_shapes;
+    OP_REQUIRES_OK_ASYNC(ctx,
+                         OptimizeTpuInputOutputTensors(
+                             graph.get(), enable_spmd_xla_partitioning,
+                             num_cores_per_replica, named_input_shapes, ctx),
+                         done);
 
     VLOG(1) << DumpGraphToFile(
         "before_replace_resource_args_with_var_handle_ops", *graph,
@@ -1534,6 +1580,18 @@ bool TPUPartitionedCallOp::IsInputToTPUReplicate(Node* node) {
 Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
     Graph* graph, OpKernelContext* ctx, int device_ordinal,
     int num_cores_per_replica, bool enable_spmd_xla_partitioning) {
+  // Currently variable deduplication is not supported for XLA SPMD
+  // partitioning. It is possible that it could be supported in the future.
+  const bool enable_variable_deduplication =
+      runtime_params_.enable_variable_deduplication;
+  if (enable_spmd_xla_partitioning && enable_variable_deduplication) {
+    // If enable_spmd_xla_partitioning is true, the user set the
+    // enable_auto_xla_input_sharding flag. Warn them that only one of the flags
+    // can be set safely.
+    return errors::InvalidArgument(
+        "The following flags are incompatible: enable_auto_xla_input_sharding "
+        "and enable_variable_deduplication. Only enable one of the flags.");
+  }
   std::vector<Node*> tpu_resource_args;
   std::vector<int> arg_indices;
   absl::flat_hash_map<const Node*, xla::OpSharding> variable_to_xla_sharding;
@@ -1555,6 +1613,11 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
   }
 
   VLOG(3) << "tpu_resource_args.size(): " << tpu_resource_args.size();
+  // Create a mapping from ResourceHandle to variable node. When a
+  // ResourceHandle backs several variable nodes, the variable nodes refer to
+  // the same underlying resource. In that case, only one variable node needs
+  // to be mirrored to the TPU for that resource.
+  absl::flat_hash_map<uint64, Node*> tpu_variables;
   for (int i = 0; i < tpu_resource_args.size(); i++) {
     Node* node = tpu_resource_args[i];
     ResourceHandle handle = HandleFromInput(ctx, arg_indices[i]);
@@ -1570,69 +1633,91 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
     // Only respect graph's placement when model parallelism enabled.
     if (num_cores_per_replica > 1) device_ordinal = var_info.device_ordinal;
 
-    uint64 fp =
-        Fingerprint64(strings::StrCat(handle.container(), handle.name(), i));
-    NodeDef ndef;
-    ndef.set_name(strings::StrCat(handle.name(), fp));
-    ndef.set_op(kVarHandleOp);
-    if (num_cores_per_replica > 1) {
-      ndef.set_device(strings::StrCat(kTPUDeviceNamePrefix, device_ordinal));
+    const uint64 handle_fp =
+        Fingerprint64(strings::StrCat(handle.container(), handle.name()));
+    if (enable_variable_deduplication && tpu_variables.contains(handle_fp) &&
+        num_cores_per_replica == 1) {
+      Node* tpu_variable = tpu_variables.at(handle_fp);
+      std::vector<Node*> dst_nodes;
+      std::vector<int> src_indices;
+      std::vector<int> dst_indices;
+      for (const Edge* edge : node->out_edges()) {
+        dst_nodes.push_back(edge->dst());
+        src_indices.push_back(edge->src_output());
+        dst_indices.push_back(edge->dst_input());
+      }
+      graph->RemoveNode(node);
+      for (int i = 0; i < dst_nodes.size(); i++) {
+        graph->AddEdge(tpu_variable, src_indices[i], dst_nodes[i],
+                       dst_indices[i]);
+      }
     } else {
-      // Assign this new VarHandleOp to TPU:0 so the partitioner only partiitons
-      // the graph into two subgraphs, one on CPU and one on TPU. The actual
-      // device ordinal on which this VarHandleOp runs is assigned after
-      // partitioning (in SetDeviceOrdinal).
-      ndef.set_device(
-          strings::StrCat(kTPUDeviceNamePrefix, kTPUDefaultDeviceOrdinal));
-    }
+      uint64 fp =
+          Fingerprint64(strings::StrCat(handle.container(), handle.name(), i));
+      NodeDef ndef;
+      ndef.set_name(strings::StrCat(handle.name(), fp));
+      ndef.set_op(kVarHandleOp);
+      if (num_cores_per_replica > 1) {
+        ndef.set_device(strings::StrCat(kTPUDeviceNamePrefix, device_ordinal));
+      } else {
+        // Assign this new VarHandleOp to TPU:0 so the partitioner only
+        // partiitons the graph into two subgraphs, one on CPU and one on TPU.
+        // The actual device ordinal on which this VarHandleOp runs is assigned
+        // after partitioning (in SetDeviceOrdinal).
+        ndef.set_device(
+            strings::StrCat(kTPUDeviceNamePrefix, kTPUDefaultDeviceOrdinal));
+      }
 
-    // Replace each _Arg node of type DT_RESOURCE that goes into a TPU node
-    // by a VarHandleOp on TPU with shared_name "v_tpu_x" where "v" is the
-    // shared_name of the variable on CPU and "x" is the rewritten device
-    // ordinal.
-    const string sname =
-        strings::StrCat(handle.name(), "_tpu_", device_ordinal);
-    AddNodeAttr("shared_name", sname, &ndef);
-    const string cname = ctx->resource_manager()->default_container();
-    AddNodeAttr("container", cname, &ndef);
-    core::RefCountPtr<Var> var;
-    TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
-    AddNodeAttr("dtype", var->tensor()->dtype(), &ndef);
-    TensorShapeProto proto;
-    var->tensor()->shape().AsProto(&proto);
-    AddNodeAttr("shape", proto, &ndef);
-    Status status;
-    Node* new_node = graph->AddNode(ndef, &status);
-    TF_RETURN_IF_ERROR(status);
-    std::vector<const Edge*> in_edges(node->in_edges().begin(),
-                                      node->in_edges().end());
-    for (const Edge* edge : in_edges) {
-      graph->AddEdge(edge->src(), edge->src_output(), new_node,
-                     edge->dst_input());
-    }
-    std::vector<Node*> dst_nodes;
-    std::vector<int> src_indices;
-    std::vector<int> dst_indices;
-    for (const Edge* edge : node->out_edges()) {
-      dst_nodes.push_back(edge->dst());
-      src_indices.push_back(edge->src_output());
-      dst_indices.push_back(edge->dst_input());
-    }
-    graph->RemoveNode(node);
-    for (int i = 0; i < dst_nodes.size(); i++) {
-      graph->AddEdge(new_node, src_indices[i], dst_nodes[i], dst_indices[i]);
-    }
-    // Don't initialize variables on TPU if it is done for the ordinal already.
-    if (seen_ordinals_.contains(device_ordinal)) continue;
+      // Replace each _Arg node of type DT_RESOURCE that goes into a TPU node
+      // by a VarHandleOp on TPU with shared_name "v_tpu_x" where "v" is the
+      // shared_name of the variable on CPU and "x" is the rewritten device
+      // ordinal.
+      const string sname =
+          strings::StrCat(handle.name(), "_tpu_", device_ordinal);
+      AddNodeAttr("shared_name", sname, &ndef);
+      const string cname = ctx->resource_manager()->default_container();
+      AddNodeAttr("container", cname, &ndef);
+      core::RefCountPtr<Var> var;
+      TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
+      AddNodeAttr("dtype", var->tensor()->dtype(), &ndef);
+      TensorShapeProto proto;
+      var->tensor()->shape().AsProto(&proto);
+      AddNodeAttr("shape", proto, &ndef);
+      Status status;
+      Node* new_node = graph->AddNode(ndef, &status);
+      TF_RETURN_IF_ERROR(status);
+      std::vector<const Edge*> in_edges(node->in_edges().begin(),
+                                        node->in_edges().end());
+      for (const Edge* edge : in_edges) {
+        graph->AddEdge(edge->src(), edge->src_output(), new_node,
+                       edge->dst_input());
+      }
+      std::vector<Node*> dst_nodes;
+      std::vector<int> src_indices;
+      std::vector<int> dst_indices;
+      for (const Edge* edge : node->out_edges()) {
+        dst_nodes.push_back(edge->dst());
+        src_indices.push_back(edge->src_output());
+        dst_indices.push_back(edge->dst_input());
+      }
+      graph->RemoveNode(node);
+      for (int i = 0; i < dst_nodes.size(); i++) {
+        graph->AddEdge(new_node, src_indices[i], dst_nodes[i], dst_indices[i]);
+      }
+      // Don't initialize variables on TPU if it is done for the ordinal
+      // already.
+      if (seen_ordinals_.contains(device_ordinal)) continue;
 
-    Device* d;
-    TF_RETURN_IF_ERROR(library_runtime_->device_mgr()->LookupDevice(
-        strings::StrCat(kTPUDeviceNamePrefix, device_ordinal), &d));
-    Var* tpu_var;
-    status = d->resource_manager()->Lookup(cname, sname, &tpu_var);
-    if (!status.ok()) {
-      TF_RETURN_IF_ERROR(InitializeVarOnTPU(ctx, var, &ndef, device_ordinal,
-                                            var_info.fast_mem));
+      Device* d;
+      TF_RETURN_IF_ERROR(library_runtime_->device_mgr()->LookupDevice(
+          strings::StrCat(kTPUDeviceNamePrefix, device_ordinal), &d));
+      Var* tpu_var;
+      status = d->resource_manager()->Lookup(cname, sname, &tpu_var);
+      if (!status.ok()) {
+        TF_RETURN_IF_ERROR(InitializeVarOnTPU(ctx, var, &ndef, device_ordinal,
+                                              var_info.fast_mem));
+      }
+      tpu_variables[handle_fp] = new_node;
     }
   }
 
@@ -1887,34 +1972,191 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
   return Status::OK();
 }
 
+Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
+    Graph* graph, int num_cores_per_replica, OpKernelContext* ctx) {
+  for (Node* replicated_input_node : graph->nodes()) {
+    if (replicated_input_node->type_string() != "TPUReplicatedInput") continue;
+
+    Node* arg_node;
+    auto input_node_status = replicated_input_node->input_node(0, &arg_node);
+    if (!input_node_status.ok()) {
+      VLOG(2) << "Skip because cannot retrieve input node 0 of "
+              << replicated_input_node->name() << " because "
+              << input_node_status.ToString();
+      continue;
+    }
+
+    // Check if this TPUReplicatedInput can qualify because it has _Arg
+    // as input and doesn't have XlaSharding already as an output, then
+    // try to shard inputs automatically.
+    //
+    // In short, we want to see the following graph:
+    //    _Arg -> TPUReplicatedInput -> (not XlaSharding op)
+    // and transform it to:
+    //    _Arg -> TPUReplicatedInput -> XlaSharding -> (not XlaSharding op)
+    if (arg_node->IsArg() &&
+        replicated_input_node->out_nodes().begin()->type_string() !=
+            "XlaSharding") {
+      int arg_id;
+      if (!absl::SimpleAtoi(absl::StripPrefix(arg_node->name(), "arg_"),
+                            &arg_id)) {
+        VLOG(3) << "Skip auto-sharding because we are unable to extract "
+                   "argument number from "
+                << arg_node->name();
+        continue;
+      }
+
+      auto shape = ctx->input(arg_id).shape();
+
+      VLOG(3) << "Identified arg node " << arg_node->DebugString()
+              << " for TPUReplicatedInput "
+              << replicated_input_node->DebugString();
+      VLOG(3) << "Shape within TPUReplicatedInput is: " << shape.DebugString();
+
+      int rank = shape.dims();
+      int shard_dim =
+          (runtime_params_.auto_xla_input_sharding_dim + rank) % rank;
+
+      if (shape.dim_size(shard_dim) % num_cores_per_replica != 0) {
+        VLOG(3) << "Skip auto-sharding " << replicated_input_node->name()
+                << " because the specified sharding dimension " << shard_dim
+                << " cannot be evenly split by " << num_cores_per_replica;
+        continue;
+      }
+
+      auto sharding = absl::make_optional<xla::OpSharding>();
+      sharding->set_type(xla::OpSharding::OTHER);
+
+      // Sets up tile_assignment_dimensions.
+      std::vector<int64> dims(rank, 1LL);
+      dims[shard_dim] = num_cores_per_replica;
+      for (auto dim : dims) {
+        sharding->add_tile_assignment_dimensions(dim);
+      }
+
+      // Sets up tile_assignment_devices.
+      for (int d = 0; d < num_cores_per_replica; ++d) {
+        sharding->add_tile_assignment_devices(d);
+      }
+
+      std::vector<const Edge*> edges_to_remove;
+      for (const Edge* edge : replicated_input_node->out_edges()) {
+        if (edge->IsControlEdge()) continue;
+        edges_to_remove.push_back(edge);
+      }
+
+      // Create XlaSharding Op.
+      Node* sharding_op = nullptr;
+      TF_RETURN_IF_ERROR(
+          NodeBuilder(absl::StrCat(replicated_input_node->name(), "/sharding"),
+                      "XlaSharding")
+              .Input(replicated_input_node, 0)
+              .Attr("T", replicated_input_node->output_type(0))
+              .Attr(kXLAShardingAttrName, sharding->SerializeAsString())
+              .Attr(kXLAShardingAttrAltName, sharding->SerializeAsString())
+              .Attr("_tpu_replicate", "cluster")
+              .Finalize(graph, &sharding_op));
+      for (const Edge* edge : edges_to_remove) {
+        VLOG(3) << "XlaSharding op creation output edge "
+                << edge->DebugString();
+        graph->RemoveEdge(edge);
+        graph->AddEdge(sharding_op, 0, edge->dst(), edge->dst_input());
+      }
+
+      VLOG(3) << "Auto shard " << replicated_input_node->name() << " by dim "
+              << shard_dim << " into " << num_cores_per_replica << " slices";
+
+      VLOG(3) << "Created XlaSharding Op " << sharding_op->DebugString();
+    }
+  }
+
+  return Status::OK();
+}
+
 // OptimizeTpuInputOutputTensors does the following things;
-//  (1) Pack multiple input tensors into one tensor by a concat to avoid PCIe
+//  (1) Detect input arguments, and add XlaSharding op to the arguments if the
+//  enable_auto_xla_input_sharding is turned on
+//  (2) Pack multiple input tensors into one tensor by a concat to avoid PCIe
 //  transfer overheads for small tensors.
-//  (2) Reshape input tensors to R1 to leverage the fast path in TPU input
+//  (3) Reshape input tensors to R1 to leverage the fast path in TPU input
 //  preparation done by runtime.
-//  (3) Pack multiple output tensors into one tensor by a concat.
-// (1) and (2) are controlled by flags --minimum_input_tensors_packing
-// and --input_shape_opt, respectively, while (3) is controlled by
+//  (4) Pack multiple output tensors into one tensor by a concat.
+//
+// (1) is controlled by --enable_auto_xla_input_sharding and
+// --auto_xla_input_sharding_dim
+// (2) and (3) are controlled by flags --minimum_input_tensors_packing
+// and --input_shape_opt, respectively, while (4) is controlled by
 // --minimum_output_tensors_packing.
 Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
-    Graph* graph, GraphShapeInfo& tpu_inferred_info,
-    std::map<int, InferredShape>& arg_shapes, EdgeShapes& tpu_input_shapes,
-    absl::flat_hash_map<const Edge*, DataType>& tpu_input_dtypes,
+    Graph* graph, bool enable_spmd_xla_partitioning, int num_cores_per_replica,
     std::map<std::string, std::vector<int>>& named_input_shapes,
-    bool enable_xla_spmd_partitioning,
-    const XlaShardingInfoMap& xla_sharding_info,
-    const TpuReplicatedInputInfoMap& tpu_replicated_input_info,
     OpKernelContext* ctx) {
+  if (runtime_params_.enable_auto_xla_input_sharding) {
+    VLOG(2) << DumpGraphToFile("before_enable_auto_xla_input_sharding", *graph,
+                               flib_def_.get());
+
+    TF_RETURN_IF_ERROR(
+        ShardInputsWithXlaSharding(graph, num_cores_per_replica, ctx));
+  }
+
+  GraphShapeInfo tpu_inferred_info;
+  std::map<int, InferredShape> arg_shapes;
+  EdgeShapes tpu_input_shapes;
+  absl::flat_hash_map<const Edge*, DataType> tpu_input_dtypes;
+
+  // Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op.
+  XlaShardingInfoMap xla_sharding_ops;
+
+  // Contains attrs "T", and a pointer to tpu_replicated_metadata for ctrl dep
+  TpuReplicatedInputInfoMap tpu_replicated_input_ops;
+
+  bool xla_spmd_input_sharded = false;
+
+  if (enable_spmd_xla_partitioning) {
+    xla_spmd_input_sharded = FindTpuReplicatedInputAndXlaSharding(
+        graph, xla_sharding_ops, tpu_replicated_input_ops);
+  }
+
+  VLOG(1) << "xla_spmd_input_sharded: " << xla_spmd_input_sharded;
+  VLOG(2) << DumpGraphToFile("before_remove_descendant_nodes", *graph,
+                             flib_def_.get());
+
+  if (!xla_spmd_input_sharded ||
+      runtime_params_.minimum_input_tensors_packing > 1 ||
+      runtime_params_.enable_auto_xla_input_sharding) {
+    // Currently we remove `TPUReplicatedInput` nodes when the input tensors are
+    // not sharded, input tensors packing optimization is enabled or when
+    // auto xla input sharding is there.
+    //
+    // In all thse cases, we want to remove both the TPUReplicatedInput and
+    // XlaSharding ops or else downstream rewrites will be confused.
+    RemoveDescendantNodeOfArg(graph, "TPUReplicatedInput",
+                              /*must_be_child_of=*/{});
+  }
+
+  if (xla_spmd_input_sharded) {
+    // We are setting must_be_child_of to {"Arg"} because we do not want
+    // to remove other XlaSharding ops that might be in the graph. We only
+    // want the XlaSharding ops that are directly attached to the input
+    // arguments to be removed.
+    RemoveDescendantNodeOfArg(graph, "XlaSharding",
+                              /*must_be_child_of=*/{"_Arg"});
+  }
+
+  VLOG(2) << DumpGraphToFile("before_get_input_output_info", *graph,
+                             flib_def_.get());
+
+  TF_RETURN_IF_ERROR(GetInputOutputInfo(graph, tpu_inferred_info, arg_shapes,
+                                        tpu_input_shapes, tpu_input_dtypes,
+                                        ctx));
+
+  VLOG(2) << DumpGraphToFile("before_optimize_tpu_input_output_tensors", *graph,
+                             flib_def_.get());
+
   string cluster_name;
   TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
 
   if (runtime_params_.minimum_output_tensors_packing > 1) {
-    if (enable_xla_spmd_partitioning) {
-      return errors::Unimplemented(
-          "minimum_output_tensors_packing > 1 is not implemented for XLA SPMD "
-          "partitioning.");
-    }
-
     // Copy graph to shape_inference_graph
     EdgeShapes tpu_output_shapes;
     TF_RETURN_IF_ERROR(
@@ -1940,12 +2182,12 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
         tpu_functional_internal::CreateConcatAndSplitNodesForInputTensor(
             graph, cluster_name, &tpu_input_shapes, grouped_input_edges,
             runtime_params_.minimum_input_tensors_packing,
-            enable_xla_spmd_partitioning, xla_sharding_info,
-            tpu_replicated_input_info));
+            xla_spmd_input_sharded, xla_sharding_ops,
+            tpu_replicated_input_ops));
   }
   if (runtime_params_.input_shape_opt) {
     TF_RETURN_IF_ERROR(tpu_functional_internal::InsertReshapeNodePairs(
-        graph, cluster_name, &tpu_input_shapes));
+        graph, cluster_name, &tpu_input_shapes, num_cores_per_replica));
   }
   VLOG(1) << DumpGraphToFile("optim_result", *graph);
 
@@ -2060,7 +2302,8 @@ Status TPUPartitionedCallOp::PlacementHelper(
     const string& function_name) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
-  Placer placer(optimization_options.graph->get(), function_name, &device_set);
+  Placer placer(optimization_options.graph->get(), function_name,
+                optimization_options.flib_def, &device_set);
   TF_RETURN_IF_ERROR(placer.Run());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));

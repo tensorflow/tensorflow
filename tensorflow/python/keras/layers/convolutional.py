@@ -58,7 +58,8 @@ class Conv(Layer):
   Args:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
     filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
+      of filters in the convolution). Could be "None", eg in the case of
+      depth wise convolution.
     kernel_size: An integer or tuple/list of n integers, specifying the
       length of the convolution window.
     strides: An integer or tuple/list of n integers,
@@ -135,6 +136,9 @@ class Conv(Layer):
 
     if isinstance(filters, float):
       filters = int(filters)
+    if filters is not None and filters < 0:
+      raise ValueError(f'Received a negative value for `filters`.'
+                       f'Was expecting a positive value, got {filters}.')
     self.filters = filters
     self.groups = groups or 1
     self.kernel_size = conv_utils.normalize_tuple(
@@ -2106,7 +2110,8 @@ class SeparableConv2D(SeparableConv):
     strides: An integer or tuple/list of 2 integers,
       specifying the strides of the convolution along the height and width.
       Can be a single integer to specify the same value for
-      all spatial dimensions.
+      all spatial dimensions. Current implementation only supports equal 
+      length strides in the row and column dimensions.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).

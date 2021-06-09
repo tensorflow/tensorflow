@@ -127,14 +127,27 @@ class ShapeInference {
 
   // Infers the shape produced by an all-gather with the given operand shape,
   // concat dimension, and shard count.
-  static StatusOr<Shape> InferAllGatherShape(const Shape& operand_shape,
-                                             int64 all_gather_dimension,
-                                             int64 shard_count);
+  static StatusOr<Shape> InferAllGatherShape(
+      absl::Span<const Shape* const> operand_shapes, int64 all_gather_dimension,
+      int64 shard_count);
 
   // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
   static StatusOr<Shape> InferAllReduceShape(
       absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape produced by an all-reduce-scatter with the given operand
+  // shape, scatter dimension, and shard count.
+  static StatusOr<Shape> InferAllReduceScatterShape(
+      absl::Span<const Shape* const> operand_shapes, int64 scatter_dimension,
+      int64 shard_count);
+
+  // Infers the shape produced by a cross replica sum start.
+  static StatusOr<Shape> InferAllReduceStartShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape produced by a cross replica sum done.
+  static StatusOr<Shape> InferAllReduceDoneShape(const Shape& operand_shape);
 
   // Infers final shape of an Alltoall operation that is created by the xla
   // builder.
@@ -148,7 +161,16 @@ class ShapeInference {
       absl::Span<const Shape* const> operand_shapes);
 
   // Infers the shape of a collective permute operation.
-  static StatusOr<Shape> InferCollectivePermuteShape(const Shape& shape);
+  static StatusOr<Shape> InferCollectivePermuteShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape of a collective permute start operation.
+  static StatusOr<Shape> InferCollectivePermuteStartShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape of a collective permute operation.
+  static StatusOr<Shape> InferCollectivePermuteDoneShape(
+      const Shape& operand_shape);
 
   // Infers the shape produced by applying the given reduction computation
   // shape to the given input operand shape.

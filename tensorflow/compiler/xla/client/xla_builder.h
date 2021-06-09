@@ -637,7 +637,9 @@ class XlaBuilder {
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal);
+      const Literal* literal, absl::optional<Window> window,
+      absl::optional<ConvolutionDimensionNumbers> dnums,
+      CustomCallSchedule schedule);
 
   // Internal version of CustomCall without computation that doesn't do op
   // specific error handling and expects arguments to be legal. CustomCall
@@ -649,7 +651,9 @@ class XlaBuilder {
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal);
+      const Literal* literal, absl::optional<Window> window,
+      absl::optional<ConvolutionDimensionNumbers> dnums,
+      CustomCallSchedule schedule);
 
   XlaOp CustomCall(
       const string& call_target_name, absl::Span<const XlaOp> operands,
@@ -659,7 +663,7 @@ class XlaBuilder {
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal);
+      const Literal* literal, CustomCallSchedule schedule);
 
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
@@ -723,6 +727,13 @@ class XlaBuilder {
       absl::Span<const ReplicaGroup> replica_groups = {},
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
       const absl::optional<Shape>& shape_with_layout = absl::nullopt);
+
+  XlaOp AllReduceScatter(
+      XlaOp operand, const XlaComputation& computation, int64 scatter_dimension,
+      int64 shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+      const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+      const absl::optional<Layout>& layout = absl::nullopt,
+      const absl::optional<bool> use_global_device_ids = absl::nullopt);
 
   XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                  int64 split_count,
@@ -956,7 +967,7 @@ class XlaBuilder {
   // operation such as `RngNormal` or `Infeed`. The visitor walks the
   // computation starting at a given operation and sets is_constant to false iff
   // a parameter or stateful operation is encountered.
-  void IsConstantVisitor(const int64 op_handle,
+  void IsConstantVisitor(const int64 op_handle, int depth,
                          absl::flat_hash_set<int64>* visited,
                          bool* is_constant) const;
 
@@ -1002,6 +1013,15 @@ class XlaBuilder {
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
   absl::flat_hash_map<int64, int64> handle_to_index_;
+
+  // Track imported instructions by their computation id and the position in
+  // their computation's instruction list.
+  struct ImportedInstruction {
+    int64 computation_id;
+    int64 instruction_index;
+  };
+
+  absl::flat_hash_map<int64, ImportedInstruction> handle_to_imported_index_;
 
   // The embedded computations used by this computation. Each computation was
   // the entry computation of some XlaComputation, the key is the unique id of
@@ -1199,14 +1219,14 @@ class XlaBuilder {
       const string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal);
+      const Literal* literal, CustomCallSchedule schedule);
   friend XlaOp CustomCallWithComputation(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const XlaComputation& computation,
       const Shape& shape, const string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal);
+      const Literal* literal, CustomCallSchedule schedule);
   friend XlaOp CustomCallWithLayout(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
@@ -1214,7 +1234,16 @@ class XlaBuilder {
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal);
+      const Literal* literal, CustomCallSchedule schedule);
+  friend XlaOp CustomCallWithConvDnums(
+      XlaBuilder* builder, const string& call_target_name,
+      absl::Span<const XlaOp> operands, const Shape& shape,
+      absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
+      bool has_side_effect,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+          output_operand_aliasing,
+      const Literal* literal, Window window, ConvolutionDimensionNumbers dnums,
+      CustomCallSchedule schedule);
   friend XlaOp Complex(XlaOp real, XlaOp imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(XlaOp operand);
@@ -1273,6 +1302,15 @@ class XlaBuilder {
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
+  friend XlaOp ReduceWindowWithGeneralPadding(
+      absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+      const XlaComputation& computation,
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
+      absl::Span<const std::pair<int64, int64>> padding);
+
   friend XlaOp CrossReplicaSum(XlaOp operand,
                                absl::Span<const ReplicaGroup> replica_groups);
   friend XlaOp AllGather(XlaOp operand, int64 all_gather_dimension,
@@ -1285,6 +1323,13 @@ class XlaBuilder {
                          absl::Span<const ReplicaGroup> replica_groups,
                          const absl::optional<ChannelHandle>& channel_id,
                          const absl::optional<Shape>& shape_with_layout);
+  friend XlaOp AllReduceScatter(
+      XlaOp operand, const XlaComputation& computation, int64 scatter_dimension,
+      int64 shard_count, absl::Span<const ReplicaGroup> replica_groups,
+      const absl::optional<ChannelHandle>& channel_id,
+      const absl::optional<Layout>& layout,
+      const absl::optional<bool> use_global_device_ids);
+
   friend XlaOp AllToAll(XlaOp operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups,
@@ -1436,6 +1481,14 @@ class XlaBuilder {
       int64 handle) const {
     auto it = handle_to_index_.find(handle);
     if (it == handle_to_index_.end()) {
+      // Try look for the instruction in the imported instructions.
+      auto imported_it = handle_to_imported_index_.find(handle);
+      if (imported_it != handle_to_imported_index_.end()) {
+        ImportedInstruction imported = imported_it->second;
+        return const_cast<InstructionType>(
+            &embedded_.at(imported.computation_id)
+                 .instructions(imported.instruction_index));
+      }
       return InvalidArgument("No XlaOp with handle %d", handle);
     }
     return const_cast<InstructionType>(&instructions_.at(it->second));
@@ -2015,7 +2068,8 @@ XlaOp CustomCall(
     const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing = {},
-    const Literal* literal = nullptr);
+    const Literal* literal = nullptr,
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE);
 
 // Overload which constructs a custom call that applies an Xla computation.
 XlaOp CustomCallWithComputation(
@@ -2024,7 +2078,8 @@ XlaOp CustomCallWithComputation(
     const Shape& shape, const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing = {},
-    const Literal* literal = nullptr);
+    const Literal* literal = nullptr,
+    CustomCallSchedule = CustomCallSchedule::SCHEDULE_NONE);
 
 // Overload which constructs a custom call with fixed layouts. The operands will
 // have the layouts specified by |operand_shapes_with_layout| when provided to
@@ -2038,7 +2093,24 @@ XlaOp CustomCallWithLayout(
     const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing = {},
-    const Literal* literal = nullptr);
+    const Literal* literal = nullptr,
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE);
+
+// Overload which annotates a custom call with the given Window and
+// ConvolutionDimensionNumbers.  Useful for custom-calls which represent
+// convolutions.
+//
+// This sets the layout of its operands if operand_shapes_with_layout is
+// nonempty, and it sets the layout of its result if `shape` has a layout.
+XlaOp CustomCallWithConvDnums(
+    XlaBuilder* builder, const string& call_target_name,
+    absl::Span<const XlaOp> operands, const Shape& shape,
+    absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing,
+    const Literal* literal, Window window, ConvolutionDimensionNumbers dnums,
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
@@ -2161,6 +2233,14 @@ XlaOp ReduceWindowWithGeneralPadding(
     absl::Span<const int64> base_dilations,
     absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding);
+XlaOp ReduceWindowWithGeneralPadding(
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
+    absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns the sum of the operand value within each subgroup of replicas. All
 // replicas supply one input to the sum and all replicas receive the resulting
@@ -2198,6 +2278,13 @@ XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups = {},
                 const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
                 const absl::optional<Shape>& shape_with_layout = absl::nullopt);
+
+XlaOp AllReduceScatter(
+    XlaOp operand, const XlaComputation& computation, int64 scatter_dimension,
+    int64 shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+    const absl::optional<Layout>& layout = absl::nullopt,
+    const absl::optional<bool> use_global_device_ids = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
 // An optional `layout` can be specified to force the layout of the instruction.

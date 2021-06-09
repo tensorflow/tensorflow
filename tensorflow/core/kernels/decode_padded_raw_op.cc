@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
@@ -83,14 +84,13 @@ class DecodePaddedRawOp : public OpKernel {
     // can copy the memory directly.
     if (!convert_data_endianness_ || sizeof(T) == 1) {
       for (int64 i = 0; i < flat_in.size(); ++i) {
-        const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
-
-        if (flat_in(i).size() > fixed_length) {
-          memcpy(out_data, in_data, fixed_length);
-        } else {
-          memcpy(out_data, in_data, flat_in(i).size());
-        }
-        out_data += fixed_length;
+        const auto to_copy =
+            std::min(flat_in(i).size(), static_cast<size_t>(fixed_length));
+        memcpy(out_data, flat_in(i).data(), to_copy);
+        // Note: increase out_data by width since it's already of type T* so
+        // each shift amount is implicitly multiplied by sizeof(T) according to
+        // pointer arithmetic rules.
+        out_data += width;
       }
     } else {
       // Otherwise, the data is not in the host's byte order, and rather than a
@@ -105,7 +105,10 @@ class DecodePaddedRawOp : public OpKernel {
              p_in += sizeof(T), p_out += sizeof(T)) {
           std::reverse_copy(p_in, p_in + sizeof(T), p_out);
         }
-        out_data += fixed_length;
+        // Note: increase out_data by width since it's already of type T* so
+        // each shift amount is implicitly multiplied by sizeof(T) according to
+        // pointer arithmetic rules.
+        out_data += width;
       }
     }
   }
@@ -133,6 +136,7 @@ REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);
 REGISTER(int64);
+REGISTER(bfloat16);
 
 #undef REGISTER
 

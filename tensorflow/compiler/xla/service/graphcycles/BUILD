@@ -6,7 +6,7 @@ package(
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/compiler/xla:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

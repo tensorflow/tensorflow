@@ -240,11 +240,11 @@ To do this, you need to add a new map entry in
 In this example, you need to add the following entry into `op_version_map`:
 
 ```
-{{BuiltinOperator_DEPTHWISE_CONV_2D, 2}, kPendingReleaseOpVersion}
+{{BuiltinOperator_DEPTHWISE_CONV_2D, 2}, %CURRENT_RUNTIME_VERSION%}
 ```
 
-(`kPendingReleaseOpVersion` will be replaced with the appropriate release
-version in the next stable release.)
+where `%CURRENT_RUNTIME_VERSION%` corresponds to the current runtime version
+defined in [tensorflow/core/public/version.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/public/version.h).
 
 ### Delegation implementation
 

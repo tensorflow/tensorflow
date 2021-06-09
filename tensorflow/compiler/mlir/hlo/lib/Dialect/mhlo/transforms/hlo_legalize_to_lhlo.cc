@@ -17,9 +17,11 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -93,6 +95,8 @@ Value InsertAlloc(Location loc, OpResult result,
 /// to the `results` vector.
 LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
                              ConversionPatternRewriter& rewriter) {
+  size_t num_operands = results.size();
+  SmallVector<Value, 2> tensor_operands;
   for (auto result : llvm::enumerate(op->getResults())) {
     RankedTensorType resultType =
         result.value().getType().dyn_cast<RankedTensorType>();
@@ -105,8 +109,19 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
     auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
     if (!shape_type_op) return failure();
 
+    if (tensor_operands.empty()) {
+      for (auto operand : ArrayRef<Value>(results).take_front(num_operands)) {
+        auto tp = operand.getType().cast<ShapedType>();
+        tensor_operands.push_back(rewriter.create<memref::TensorLoadOp>(
+            op->getLoc(),
+            RankedTensorType::get(tp.getShape(), tp.getElementType()),
+            operand));
+      }
+    }
+
     SmallVector<Value, 1> results_shape;
-    auto status = shape_type_op.reifyReturnTypeShapes(rewriter, results_shape);
+    auto status = shape_type_op.reifyReturnTypeShapes(rewriter, tensor_operands,
+                                                      results_shape);
     if (failed(status)) return failure();
     results.push_back(
         InsertDynamicAllocAndDealloc(op->getLoc(), result.value(),
@@ -389,7 +404,8 @@ struct HloToLhloDotGeneralOpConverter
     } else {
       SmallVector<Value, 1> results_shape;
       auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
-      if (failed(shape_type_op.reifyReturnTypeShapes(rewriter, results_shape)))
+      if (failed(shape_type_op.reifyReturnTypeShapes(rewriter, operands,
+                                                     results_shape)))
         return failure();
 
       bufferArgs[2] = InsertDynamicAllocAndDealloc(
@@ -561,10 +577,17 @@ class HloToLhloTensorStoreOpLegacyConverter
 //   "lmhlo.terminator"() : () -> ()
 // }
 
-struct HloLegalizeToLhlo
-    : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
+struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
+  using HloLegalizeToLhloPassBase<HloLegalizeToLhlo>::HloLegalizeToLhloPassBase;
+  explicit HloLegalizeToLhlo(bool convert_to_lmhlo_only)
+      : HloLegalizeToLhloPassBase<
+            HloLegalizeToLhlo>::HloLegalizeToLhloPassBase() {
+    this->convert_to_lmhlo_only_ = convert_to_lmhlo_only;
+  }
+
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<lmhlo::LmhloDialect>();
+    registry.insert<lmhlo::LmhloDialect, memref::MemRefDialect,
+                    shape::ShapeDialect>();
   }
 
  public:
@@ -581,9 +604,9 @@ struct HloLegalizeToLhlo
     target.addLegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    // Declare tensor_load and tensor_store illegal.
-    target.addIllegalOp<mlir::memref::TensorLoadOp,
-                        mlir::memref::TensorStoreOp>();
+    // Declare tensor_store illegal. tensor_load may be used to reify output
+    // shape computation during dialect conversion and will be handled later.
+    target.addIllegalOp<mlir::memref::TensorStoreOp>();
     // buffer_cast is illegal if it has uses.
     // TODO(b/175670649) Make buffer_cast illegal.
     target.addDynamicallyLegalOp<mlir::memref::BufferCastOp>(
@@ -607,7 +630,8 @@ struct HloLegalizeToLhlo
                          isMemRefType);
     });
 
-    populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
+    populateHLOToLHLOConversionPattern(&context, &converter, &patterns,
+                                       convert_to_lmhlo_only_);
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
@@ -627,7 +651,9 @@ struct HloLegalizeToLhlo
 };
 }  // namespace
 
-void populateDynamicHLOToLHLOConversionPattern(
+// Lowers some metadata-only mhlo ops (e.g. reshape) to memref dialect
+// directly and Lowers others to their lmhlo counterparts.
+void populateDynamicHLOToLHLOOrMemRefConversionPattern(
     MLIRContext* context, BufferizeTypeConverter* converter,
     OwningRewritePatternList* patterns, bool insert_copy) {
   patterns->insert<HloToLhloDynamicBroadcastInDimOpConverter>(
@@ -636,10 +662,28 @@ void populateDynamicHLOToLHLOConversionPattern(
                    HloToLhloReshapeUnrankedConverter>(*converter, context);
 }
 
+// Simply lowers all mhlo ops to their lmhlo counterparts, do not apply
+// any optimization (e.g. elide any buffer copy).
+void populateDynamicHLOToLHLOOnlyConversionPattern(
+    MLIRContext* context, BufferizeTypeConverter* converter,
+    OwningRewritePatternList* patterns) {
+  // clang-format off
+  patterns->insert<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
+                   HloToLhloOpConverter<mhlo::DynamicReshapeOp>
+  >(*converter, context);
+  // clang-format on
+}
+
 void populateHLOToLHLOConversionPattern(MLIRContext* context,
                                         BufferizeTypeConverter* converter,
-                                        OwningRewritePatternList* patterns) {
-  populateDynamicHLOToLHLOConversionPattern(context, converter, patterns);
+                                        OwningRewritePatternList* patterns,
+                                        bool convert_to_lmhlo_only) {
+  if (convert_to_lmhlo_only) {
+    populateDynamicHLOToLHLOOnlyConversionPattern(context, converter, patterns);
+  } else {
+    populateDynamicHLOToLHLOOrMemRefConversionPattern(context, converter,
+                                                      patterns);
+  }
   // clang-format off
   patterns->insert<
       HloToLhloCustomCallOpConverter,
@@ -696,8 +740,9 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {
-  return std::make_unique<HloLegalizeToLhlo>();
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
+    bool convert_to_lmhlo_only) {
+  return std::make_unique<HloLegalizeToLhlo>(convert_to_lmhlo_only);
 }
 
 }  // namespace mhlo

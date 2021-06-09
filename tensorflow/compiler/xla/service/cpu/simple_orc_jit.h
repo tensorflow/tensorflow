@@ -75,11 +75,12 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   const llvm::DataLayout& data_layout() const { return data_layout_; }
 
-  const llvm::Triple& target_triple() const {
-    return target_machine_->getTargetTriple();
-  }
+  const llvm::Triple& target_triple() const { return target_triple_; }
 
   llvm::Error AddModule(llvm::orc::ThreadSafeModule module);
+
+  // Discards objects we no longer need once we are done compiling.
+  void DoneCompiling();
 
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
@@ -108,6 +109,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   void notifyFreeingObject(llvm::JITEventListener::ObjectKey key) override;
 
   std::unique_ptr<llvm::TargetMachine> target_machine_;
+  llvm::Triple target_triple_;
   const llvm::DataLayout data_layout_;
   std::unique_ptr<llvm::orc::TargetProcessControl> target_process_control_;
   std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;

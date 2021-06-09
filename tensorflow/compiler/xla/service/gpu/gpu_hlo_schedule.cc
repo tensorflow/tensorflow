@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
+
 #include <deque>
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
-
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
@@ -184,6 +185,127 @@ void BFSLaunchOrder(const HloComputation* computation,
   }
 }
 
+bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
+  switch (instr.opcode()) {
+    case HloOpcode::kAllReduceStart:
+      return true;
+    case HloOpcode::kCustomCall:
+      return static_cast<const HloCustomCallInstruction&>(instr)
+                 .custom_call_schedule() ==
+             CustomCallSchedule::SCHEDULE_EARLIEST;
+    default:
+      return false;
+  }
+}
+
+bool ShouldScheduleSuccessor(
+    const HloInstruction& sussessor,
+    const std::function<bool(const HloInstruction*)>& is_scheduled) {
+  return ShouldScheduleAsEarlyAsPossible(sussessor) &&
+         absl::c_all_of(sussessor.operands(), is_scheduled) &&
+         absl::c_all_of(sussessor.control_predecessors(), is_scheduled);
+}
+
+bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
+  switch (instr.opcode()) {
+    case HloOpcode::kAllReduceDone:
+      return true;
+    case HloOpcode::kCustomCall:
+      return static_cast<const HloCustomCallInstruction&>(instr)
+                 .custom_call_schedule() == CustomCallSchedule::SCHEDULE_LATEST;
+    default:
+      return false;
+  }
+}
+
+bool ShouldSchedulePredecessor(
+    const HloInstruction& predecessor,
+    const std::function<bool(const HloInstruction*)>& is_scheduled) {
+  return ShouldScheduleAsLateAsPossible(predecessor) &&
+         absl::c_all_of(predecessor.users(), is_scheduled) &&
+         absl::c_all_of(predecessor.control_successors(), is_scheduled);
+}
+
+// Schedules certain ops as early or late as possible. This supports a
+// custom-call use case, where a logical operation is lowered into two HLOs
+// (e.g., PerformX and PerformXDone). We utilize this mechanism to either hide
+// host latencies between the pair of the custom-calls or more accurately
+// identify the def-use relationship of the two calls (typically PerformX is
+// scheduled right after all of its producers have been scheduled and
+// PerformXDone is scheduled right before its first consumer.)
+HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
+    const HloInstructionSequence& input) {
+  std::vector<HloInstruction*> earliest_scheduled;
+  {
+    absl::flat_hash_set<HloInstruction*> scheduled;
+    auto is_scheduled = [&](const HloInstruction* instr) -> bool {
+      return scheduled.contains(instr);
+    };
+    auto add_to_schedule = [&](HloInstruction* instr) {
+      earliest_scheduled.push_back(instr);
+      scheduled.insert(instr);
+    };
+    for (HloInstruction* instr : input.instructions()) {
+      if (is_scheduled(instr)) {
+        continue;
+      }
+
+      add_to_schedule(instr);
+
+      // Schedule any successor that should be scheduled as early as possible if
+      // all of its producers and control_predecessors have been scheduled.
+      for (HloInstruction* user : instr->users()) {
+        if (ShouldScheduleSuccessor(*user, is_scheduled)) {
+          add_to_schedule(user);
+        }
+      }
+      for (HloInstruction* successor : instr->control_successors()) {
+        if (ShouldScheduleSuccessor(*successor, is_scheduled)) {
+          add_to_schedule(successor);
+        }
+      }
+    }
+  }
+
+  std::deque<HloInstruction*> latest_scheduled;
+  {
+    absl::flat_hash_set<HloInstruction*> scheduled;
+    auto is_scheduled = [&](const HloInstruction* instr) -> bool {
+      return scheduled.contains(instr);
+    };
+    auto add_to_schedule = [&](HloInstruction* instr) {
+      latest_scheduled.push_front(instr);
+      scheduled.insert(instr);
+    };
+    for (auto it = earliest_scheduled.rbegin(); it != earliest_scheduled.rend();
+         it++) {
+      if (is_scheduled(*it)) {
+        continue;
+      }
+
+      add_to_schedule(*it);
+
+      // Schedule any predecessor that should be scheduled as late as possible
+      // if all of its users and control_successors have been scheduled.
+      for (HloInstruction* operand : (*it)->operands()) {
+        if (ShouldSchedulePredecessor(*operand, is_scheduled)) {
+          add_to_schedule(operand);
+        }
+      }
+      for (HloInstruction* predecessor : (*it)->control_predecessors()) {
+        if (ShouldSchedulePredecessor(*predecessor, is_scheduled)) {
+          add_to_schedule(predecessor);
+        }
+      }
+    }
+  }
+
+  HloInstructionSequence result;
+  absl::c_for_each(latest_scheduled,
+                   [&](HloInstruction* i) { result.push_back(i); });
+  return result;
+}
+
 }  // end namespace
 
 GpuHloSchedule::GpuHloSchedule() {}
@@ -197,10 +319,8 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
   // Initialize thunk_launch_order_, the total order of thunk launches.
   HloComputation* entry_computation = module->entry_computation();
   if (stream_assignment.StreamCount() == 1) {
-    // Use `DFSMemoryScheduler` to be consistent with previous / CPU backend
-    // behavior.
-    // TODO(timshen): Using the default schedule seems to cause tests to fail.
-    // The exact reason unknown. Investigate it.
+    // All kernels are launched on a single stream, so there's no loss of
+    // concurrency by optimizing for minimal memory usage.
     TF_ASSIGN_OR_RETURN(
         HloSchedule sequences,
         ScheduleModule(
@@ -208,7 +328,9 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
             [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             },
-            ComputationSchedulerToModuleScheduler(DFSMemoryScheduler)));
+            ComputationSchedulerToModuleScheduler(
+                DefaultMemoryScheduler,
+                PostprocessorToScheduleAsEarlyOrLateAsPossible)));
     schedule->thunk_launch_order_ =
         sequences.sequence(entry_computation).instructions();
     schedule->hlo_ordering_ =

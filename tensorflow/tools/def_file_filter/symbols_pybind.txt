@@ -107,7 +107,6 @@ tensorflow::swig::TryFindKernelClass
 
 [//tensorflow/lite/toco/python:toco_python_api] # toco_python_api
 toco::TocoConvert
-toco::TocoGetPotentiallySupportedOps
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
@@ -136,7 +135,7 @@ tensorflow::TensorToNdarray
 tensorflow::detail::PyDecrefDeleter
 tensorflow::make_safe
 
-[//tensorflow/python:python_op_gen] # python_op_gen
+[//tensorflow/python/framework:python_op_gen] # python_op_gen
 tensorflow::GetPythonWrappers
 
 [//tensorflow/python/eager:pywrap_tfe_lib] # tfe
@@ -238,7 +237,7 @@ tensorflow::AddWhileInputHack
 tensorflow::ImportNumpy
 _tensorflow_numpy_api
 
-[//tensorflow/python:tf_session_helper] # tf_session
+[//tensorflow/python/client:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef
 tensorflow::TF_SessionMakeCallable
 tensorflow::TF_SessionRunCallable
@@ -381,7 +380,6 @@ tensorflow::tensor_float_32_execution_enabled
 
 [//tensorflow/compiler/jit:get_compiler_ir] # tfe
 tensorflow::GetCompilerIr
-stream_executor::port::internal_statusor::Helper::Crash
 
 [//tensorflow/core/common_runtime/eager:tensor_handle] # tfe
 tensorflow::TensorHandle::Tensor
@@ -398,3 +396,9 @@ tensorflow::PythonAPIInfo
 [//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
 tensorflow::ConvertPythonAPIParameters
 tensorflow::CopyPythonAPITensorLists
+
+[//tensorflow/core/platform:statusor] # tfe
+tensorflow::internal_statusor::Helper::Crash
+
+[//tensorflow/core:protos_all_cc] # tf_text
+tensorflow::AttrValue

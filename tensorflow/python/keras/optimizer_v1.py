@@ -19,8 +19,6 @@
 For more examples see the base class `tf.compat.v1.keras.optimizers.Optimizer`.
 """
 
-from six.moves import zip  # pylint: disable=redefined-builtin
-
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import ops

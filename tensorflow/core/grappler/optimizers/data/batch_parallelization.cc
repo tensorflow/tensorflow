@@ -33,7 +33,6 @@ namespace {
 
 constexpr char kBatchDataset[] = "BatchDatasetV2";
 constexpr char kParallelBatchDataset[] = "ParallelBatchDataset";
-constexpr char kParallelCopy[] = "parallel_copy";
 
 NodeDef MakeParallelBatch(const string& name, MutableGraphView* graph) {
   // The inputs of the node to be parallelized could be changed by the
@@ -50,7 +49,6 @@ NodeDef MakeParallelBatch(const string& name, MutableGraphView* graph) {
   string drop_remainder_name = parallel_batch.input(2);
   parallel_batch.set_input(2, num_parallel_calls->name());
   parallel_batch.add_input(drop_remainder_name);
-  parallel_batch.mutable_attr()->erase(kParallelCopy);
 
   return parallel_batch;
 }

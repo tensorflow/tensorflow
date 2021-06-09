@@ -21,11 +21,20 @@ import threading
 import unittest
 
 from absl import flags
+from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.xla.python import xla_client
+
+# pylint: disable=g-import-not-at-top
+try:
+  # This import is only used for GPU; the dependency is incompatible with TPU
+  # so it results in an import error.
+  from tensorflow.python.framework import test_util
+except ImportError:
+  test_util = None
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -43,7 +52,8 @@ FLAGS = flags.FLAGS
 # pylint: disable=g-complex-comprehension
 
 
-def TestFactory(xla_backend, cloud_tpu=False):
+def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
+                external_tpu=False):
   tests = []
 
   if not cloud_tpu:
@@ -143,11 +153,42 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertIn("fusion", hlo_text)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
+    def testCompiledHloModuleAsSerializedProto(self):
+      computation = self.ExampleComputation()
+      executable = self.backend.compile(computation)
+      hlo_modules = executable.hlo_modules()
+      self.assertLen(hlo_modules, 1)
+      hlo_text = hlo_modules[0].to_string()
+      proto = hlo_modules[0].as_serialized_hlo_module_proto()
+      hlo_module_roundtrip = xla_client.XlaComputation(proto).get_hlo_module()
+      hlo_text_roundtrip = hlo_module_roundtrip.to_string()
+      self.assertEqual(hlo_text, hlo_text_roundtrip)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testStableComputationSerialization(self):
+      # Ideally we would test identical computations produced in different
+      # processes. For now we have this limited smoke test.
+      computation = self.ExampleComputation()
+      ref = computation.as_serialized_hlo_module_proto()
+      for _ in range(10):
+        self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
           self.backend, computation.as_hlo_module())
       self.assertEqual(properties["flops"], 8.0)
+
+    def testFingerprint(self):
+      computation = self.ExampleComputation()
+      executable = self.backend.compile(computation)
+      fingerprint = executable.fingerprint
+      if self.backend.platform == "tpu" and not cloud_tpu:
+        logging.info("fingerprint: %s", fingerprint)
+        self.assertNotEmpty(fingerprint)
+      else:
+        self.assertIsNone(fingerprint)
 
   tests.append(ComputationPrinting)
 
@@ -447,6 +488,13 @@ def TestFactory(xla_backend, cloud_tpu=False):
       xla_shape = local_buffer.xla_shape()
       self.assertEqual(xla_shape.dimensions(), (1, 2))
       self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
+
+    def testXlaShapeIndex(self):
+      a = xla_client.ShapeIndex((1, 2))
+      b = xla_client.ShapeIndex((1, 2))
+      c = xla_client.ShapeIndex((2, 3))
+      self.assertEqual(a, b)
+      self.assertNotEqual(b, c)
 
     def testBlockHostUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
@@ -1751,6 +1799,40 @@ def TestFactory(xla_backend, cloud_tpu=False):
           padding=padding)
       self._ExecuteAndCompareClose(c, expected=[[[5., 9.]]])
 
+    def testReduceWindowVariadic(self):
+      c = self._NewComputation("reducer")
+      shape = xla_client.shape_from_pyval(np.array(0, dtype=np.int32))
+      shape = shape.with_major_to_minor_layout_if_absent()
+      ps = [ops.Parameter(c, i, shape) for i in range(4)]
+      which = ops.Ge(ps[0], ps[2])
+      ops.Tuple(
+          c, [ops.Select(which, ps[0], ps[2]),
+              ops.Select(which, ps[1], ps[3])])
+      reducer = c.build()
+
+      key_array = np.array([[1, 5, 6], [4, 2, 3]], dtype=np.int32)
+      val_array = np.array([[7, 8, 9], [10, 11, 12]], dtype=np.int32)
+      c = self._NewComputation()
+      window_dimensions = (2, 1)
+      window_strides = (1, 1)
+      padding = xla_client.window_padding_type_to_pad_values(
+          xla_client.PaddingType.VALID, key_array.shape, window_dimensions,
+          window_strides)
+      ops.ReduceWindowWithGeneralPadding(
+          operands=[ops.Constant(c, key_array),
+                    ops.Constant(c, val_array)],
+          init_values=[
+              ops.Constant(c, np.int32(0)),
+              ops.Constant(c, np.int32(0))
+          ],
+          computation=reducer,
+          window_dimensions=window_dimensions,
+          window_strides=window_strides,
+          base_dilations=[],
+          window_dilations=[],
+          padding=padding)
+      self._ExecuteAndCompareClose(c, expected=[[[4, 5, 6]], [[10, 8, 9]]])
+
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2172,10 +2254,17 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.backend = xla_backend()
 
     def testPlatformVersion(self):
-      # Check doesn't crash
       version = self.backend.platform_version
       if self.backend.platform == "cpu":
         self.assertEqual(version, "<unknown>")
+      elif self.backend.platform == "gpu":
+        # Following is false if not built with --config=cuda
+        if test_util.is_gpu_available(cuda_only=True):
+          self.assertTrue(
+              re.match(r"^cuda \d{4,}$", version),
+              msg=f"Expected CUDA version string; got {repr(version)}")
+        else:
+          self.assertEqual(version, "<unknown>")
 
   tests.append(ClientTest)
 
@@ -2208,7 +2297,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
             memoryview(buf)
 
     # 1D reshape of full size, half size, and size of 0.
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
     @parameterized.parameters((5), (3), (0))
     def testReshape1D(self, reshape_size):
       full_size = 5
@@ -2226,7 +2315,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
     # where the strides may differ between the host and devices. The reshaped
     # physical memory layout is not consecutive, and we test if the program can
     # return the correct logical view of the data.
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2242,7 +2331,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self._CompareToPyAndBufferProtocol(c, [arg0, arg1], [expected],
                                          np.testing.assert_equal)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2293,8 +2382,14 @@ def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
     globals_dict[test.__name__] = test
 
 
+backends = {
+    "cpu": xla_client.make_cpu_client,
+    "gpu": xla_client.make_gpu_client,
+}
+
 if __name__ == "__main__":
-  flags.DEFINE_string("backend", "cpu", "Target backend.")
-  InstantiateTests(globals(),
-                   lambda: xla_client.get_local_backend(FLAGS.backend))
+  flags.DEFINE_string("backend", "cpu", "Target platform.")
+  # pylint: disable=unnecessary-lambda
+  InstantiateTests(globals(), lambda: backends[FLAGS.backend]())
+  # pylint: enable=unnecessary-lambda
   absltest.main()

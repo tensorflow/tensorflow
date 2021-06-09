@@ -218,6 +218,8 @@ void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
   // Record the number of steps that are dropped.
   combined_step_db->set_num_steps_dropped(step_intersection.StepsDropped());
 
+  combined_step_db->set_empty_intersect(step_intersection.EmptyIntersect());
+
   // Set the default value of per_core_batch_size in <combined_op_stats>
   combined_op_stats->mutable_run_environment()->set_per_core_batch_size(-1);
 

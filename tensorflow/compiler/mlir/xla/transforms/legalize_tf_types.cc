@@ -118,7 +118,7 @@ class TfTypeConversionTarget : public ConversionTarget {
 class TfTypePattern : public ConversionPattern {
  public:
   TfTypePattern(MLIRContext *ctx, TypeConverter &converter)
-      : ConversionPattern(1, converter, MatchAnyOpTypeTag()) {}
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, ctx) {}
 
   // The dialect conversion framework will call this matchAndRewrite on each
   // Operation in the IR tree. This call matchAndRewrite needs to update the
@@ -163,10 +163,6 @@ void LegalizeTfTypesPass::runOnOperation() {
   if (failed(applyFullConversion(getOperation(), target, std::move(patterns))))
     return signalPassFailure();
 }
-
-static PassRegistration<LegalizeTfTypesPass> registration(
-    "xla-legalize-tf-types",
-    "Replace TensorFlow types with types that are legal in the MHLO dialect");
 
 }  // namespace
 

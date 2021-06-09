@@ -52,7 +52,8 @@ namespace tflite {
 ///
 /// Returns a kTfLiteOk when successful and sets interpreter to a valid
 /// Interpreter. Note: The user must ensure the lifetime of the model (and error
-/// reporter, if provided) is at least as long as interpreter's lifetime.
+/// reporter, if provided) is at least as long as interpreter's lifetime, and
+/// a single model instance may safely be used with multiple interpreters.
 class InterpreterBuilder {
  public:
   /// For this constructor, the ErrorReporter will be extracted from the
@@ -69,9 +70,21 @@ class InterpreterBuilder {
   InterpreterBuilder(const InterpreterBuilder&) = delete;
   InterpreterBuilder& operator=(const InterpreterBuilder&) = delete;
 
+  /// Builds an interpreter and stores it in `*interpreter`.
+  /// On success, returns kTfLiteOk and sets `*interpreter` to a valid
+  /// Interpreter.
+  /// On failure, returns an error status and sets `*interpreter` to nullptr.
   TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter);
+
+  /// Same as above, but also sets the number of CPU threads to use
+  /// (overriding any previous call to SetNumThreads).
+  /// Deprecated: use the SetNumThreads method instead.
   TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter,
                           int num_threads);
+
+  /// Sets the number of CPU threads to use for the interpreter.
+  /// Returns kTfLiteOk on success, kTfLiteError on error.
+  TfLiteStatus SetNumThreads(int num_threads);
 
   /// Enables preserving intermediates for debugging. Otherwise, by default
   /// intermediates are undefined due to memory planning and reuse.
@@ -95,7 +108,7 @@ class InterpreterBuilder {
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
       Subgraph* subgraph);
-  TfLiteStatus ApplyDelegates(Interpreter* interpreter, int num_threads);
+  TfLiteStatus ApplyDelegates(Interpreter* interpreter);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
                                  const std::vector<int>& dims);
@@ -119,6 +132,7 @@ class InterpreterBuilder {
   bool has_flex_op_ = false;
   int num_fp32_tensors_ = 0;
   bool preserve_all_tensors_ = false;
+  int num_threads_ = -1;
 };
 
 }  // namespace tflite

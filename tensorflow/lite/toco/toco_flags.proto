@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 35.
+// Next ID to use: 39.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -235,4 +235,22 @@ message TocoFlags {
   // Whether to enable tflite resource variables during conversion or not.
   // Note: This is an experimental feature.
   optional bool enable_tflite_resource_variables = 34;
+
+  // Whether to unfold tf.BatchMatMul to a set of tfl.fully_connected ops. If
+  // not, translate to tfl.batch_matmul.
+  // WARNING: Experimental interface, subject to change.
+  optional bool unfold_batchmatmul = 35 [default = true];
+
+  // Whether to lower static Tensor List ops to builtin ops. If not, use Flex
+  // tensor list ops.
+  // WARNING: Experimental interface, subject to change.
+  optional bool lower_tensor_list_ops = 36 [default = true];
+
+  // The accumulation type to use when quantize_to_float16 is true. Typical
+  // choices would be either float16 or float32.
+  optional IODataType accumulation_type = 37;
+
+  // Whether this model supports inference in bfloat16.
+  // Note: This is an experimental feature.
+  optional bool allow_bfloat16 = 38 [default = false];
 }

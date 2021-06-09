@@ -14,9 +14,12 @@ package(
     default_visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/c/experimental/saved_model/internal:__pkg__",
+        # copybara:uncomment_begin(google-only)
+        # "//tensorflow/cc/experimental/libtf:__pkg__",
+        # copybara:uncomment_end
         "//tensorflow/core:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -47,8 +50,9 @@ cc_library(
     deps = [
         ":concrete_function",
         ":signature_def_function",
+        "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -173,24 +177,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
-    name = "pywrap_required_hdrs",
-    textual_hdrs = [
-        "concrete_function.h",
-        "function_metadata.h",
-        "saved_model_api.h",
-    ],
-    visibility = ["//tensorflow/python:__pkg__"],
-    deps = [
-        "//tensorflow/c/eager:immediate_execution_operation",
-        "//tensorflow/c/eager:immediate_execution_tensor_handle",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
     ],
 )
 

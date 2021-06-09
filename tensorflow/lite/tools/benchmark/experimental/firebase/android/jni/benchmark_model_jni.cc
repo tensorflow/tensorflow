@@ -181,7 +181,7 @@ class CsvExportingListener : public BenchmarkListener {
   std::string tag_;
 };
 
-std::string GetScenarioConfig(const string& library_dir, int scenario,
+std::string GetScenarioConfig(const std::string& library_dir, int scenario,
                               std::vector<std::string>& args) {
   // The number of scenarios should equal to the value specified in
   // AndroidManifest.xml file.
@@ -223,7 +223,7 @@ std::string GetScenarioConfig(const string& library_dir, int scenario,
   return tag;
 }
 
-void RunScenario(const string& library_dir, int scenario, int report_fd) {
+void RunScenario(const std::string& library_dir, int scenario, int report_fd) {
   std::vector<std::string> args;
   std::string tag = GetScenarioConfig(library_dir, scenario, args);
   std::vector<char*> argv;

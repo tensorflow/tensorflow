@@ -49,24 +49,45 @@ if [ -d ${DOWNLOADED_GCC_PATH} ]; then
   echo >&2 "${DOWNLOADED_GCC_PATH} already exists, skipping the download."
 else
 
-  UNAME_S=`uname -s`
-  if [ ${UNAME_S} == Linux ]; then
+  HOST_OS=
+  if [ "${OS}" == "Windows_NT" ]; then
+    HOST_OS=windows
+  else
+    UNAME_S=`uname -s`
+    if [ "${UNAME_S}" == "Linux" ]; then
+      HOST_OS=linux
+    elif [ "${UNAME_S}" == "Darwin" ]; then
+      HOST_OS=osx
+    fi
+  fi
+
+  if [ "${HOST_OS}" == "linux" ]; then
     GCC_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2"
     EXPECTED_MD5="8312c4c91799885f222f663fc81f9a31"
-  elif [ ${UNAME_S} == Darwin ]; then
+  elif [ "${HOST_OS}" == "osx" ]; then
     GCC_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-mac.tar.bz2"
     EXPECTED_MD5="e588d21be5a0cc9caa60938d2422b058"
+  elif [ "${HOST_OS}" == "windows" ]; then
+    GCC_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-win32.zip"
+    EXPECTED_MD5="5ee6542a2af847934177bc8fa1294c0d"
   else
-    echo "OS type ${UNAME_S} not supported."
+    echo "OS type ${HOST_OS} not supported."
     exit 1
   fi
 
-  TEMPFILE=$(mktemp -d)/temp_file
+  TEMPDIR=$(mktemp -d)
+  TEMPFILE=${TEMPDIR}/temp_file
   wget ${GCC_URL} -O ${TEMPFILE} >&2
   check_md5 ${TEMPFILE} ${EXPECTED_MD5}
 
   mkdir ${DOWNLOADED_GCC_PATH}
-  tar -C ${DOWNLOADED_GCC_PATH} --strip-components=1 -xjf ${TEMPFILE} >&2
+
+  if [ "${HOST_OS}" == "windows" ]; then
+    unzip -q ${TEMPFILE} -d ${TEMPDIR} >&2
+    mv ${TEMPDIR}/*/* ${DOWNLOADED_GCC_PATH}
+  else
+    tar -C ${DOWNLOADED_GCC_PATH} --strip-components=1 -xjf ${TEMPFILE} >&2
+  fi
   echo >&2 "Unpacked to directory: ${DOWNLOADED_GCC_PATH}"
 fi
 

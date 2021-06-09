@@ -102,16 +102,8 @@ class MlirOp : public OpKernel {
   explicit MlirOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    llvm::SmallVector<::UnrankedMemRefType<InputDataType>, 2> input_descs;
-    for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {
-      input_descs.push_back(
-          std::move(ConvertTensorToDescriptor<InputDataType>(ctx->input(i))));
-    }
     VLOG(4) << ctx->op_kernel().TraceString(*ctx, true);
-    auto result_desc = Kernel::Invoke(ctx, input_descs);
-    for (const auto& input_desc : input_descs) {
-      free(input_desc.descriptor);
-    }
+    auto result_desc = Kernel::Invoke(ctx);
     if (!ctx->status().ok()) {
       free(result_desc.descriptor);
       return;
@@ -203,16 +195,55 @@ class MlirOp : public OpKernel {
                       typename EnumToDataType<input_type>::Type> {             \
    public:                                                                     \
     using MlirOp::MlirOp;                                                      \
+    using InputDataType = EnumToDataType<input_type>::Type;                    \
     using ResultDataType = EnumToDataType<output_type>::Type;                  \
                                                                                \
-    static ::UnrankedMemRefType<ResultDataType> Invoke(                        \
-        OpKernelContext* ctx,                                                  \
-        llvm::ArrayRef<                                                        \
-            ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>>   \
-            args) {                                                            \
+    static ::UnrankedMemRefType<ResultDataType> Invoke(OpKernelContext* ctx) { \
+      auto arg0 = ConvertTensorToDescriptor<InputDataType>(ctx->input(0));     \
+      auto arg1 = ConvertTensorToDescriptor<InputDataType>(ctx->input(1));     \
       UntypedUnrankedMemRefType result;                                        \
       MLIR_FUNCTION(tf_op, platform, input_type, output_type)                  \
-      (&result, ctx, &args[0], &args[1]);                                      \
+      (&result, ctx, &arg0, &arg1);                                            \
+      free(arg0.descriptor);                                                   \
+      free(arg1.descriptor);                                                   \
+      return ConvertToTyped<ResultDataType>(result);                           \
+    }                                                                          \
+  };                                                                           \
+  }
+
+#define GENERATE_AND_REGISTER_SELECT_KERNEL(tf_op, platform, input_type) \
+  GENERATE_SELECT_KERNEL(tf_op, platform, input_type)                    \
+  REGISTER_KERNEL(tf_op, platform, input_type, input_type)
+
+#define GENERATE_SELECT_KERNEL(tf_op, platform, input_type)                    \
+  extern "C" void MLIR_FUNCTION(tf_op, platform, input_type, input_type)(      \
+      UntypedUnrankedMemRefType * result, tensorflow::OpKernelContext * ctx,   \
+      const ::UnrankedMemRefType<bool>* arg1,                                  \
+      const ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>*   \
+          arg2,                                                                \
+      const ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>*   \
+          arg3);                                                               \
+                                                                               \
+  namespace {                                                                  \
+  class MLIR_OP(tf_op, platform, input_type, input_type)                       \
+      : public MlirOp<input_type, typename EnumToDataType<input_type>::Type,   \
+                      MLIR_OP(tf_op, platform, input_type, input_type),        \
+                      typename EnumToDataType<input_type>::Type> {             \
+   public:                                                                     \
+    using MlirOp::MlirOp;                                                      \
+    using InputDataType = EnumToDataType<input_type>::Type;                    \
+    using ResultDataType = EnumToDataType<input_type>::Type;                   \
+                                                                               \
+    static ::UnrankedMemRefType<ResultDataType> Invoke(OpKernelContext* ctx) { \
+      auto arg0 = ConvertTensorToDescriptor<bool>(ctx->input(0));              \
+      auto arg1 = ConvertTensorToDescriptor<InputDataType>(ctx->input(1));     \
+      auto arg2 = ConvertTensorToDescriptor<InputDataType>(ctx->input(2));     \
+      UntypedUnrankedMemRefType result;                                        \
+      MLIR_FUNCTION(tf_op, platform, input_type, input_type)                   \
+      (&result, ctx, &arg0, &arg1, &arg2);                                     \
+      free(arg0.descriptor);                                                   \
+      free(arg1.descriptor);                                                   \
+      free(arg2.descriptor);                                                   \
       return ConvertToTyped<ResultDataType>(result);                           \
     }                                                                          \
   };                                                                           \
@@ -238,16 +269,15 @@ class MlirOp : public OpKernel {
                       typename EnumToDataType<input_type>::Type> {             \
    public:                                                                     \
     using MlirOp::MlirOp;                                                      \
+    using InputDataType = EnumToDataType<input_type>::Type;                    \
     using ResultDataType = EnumToDataType<output_type>::Type;                  \
                                                                                \
-    static ::UnrankedMemRefType<ResultDataType> Invoke(                        \
-        OpKernelContext* ctx,                                                  \
-        llvm::ArrayRef<                                                        \
-            ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>>   \
-            args) {                                                            \
+    static ::UnrankedMemRefType<ResultDataType> Invoke(OpKernelContext* ctx) { \
+      auto arg0 = ConvertTensorToDescriptor<InputDataType>(ctx->input(0));     \
       UntypedUnrankedMemRefType result;                                        \
       MLIR_FUNCTION(tf_op, platform, input_type, output_type)                  \
-      (&result, ctx, &args[0]);                                                \
+      (&result, ctx, &arg0);                                                   \
+      free(arg0.descriptor);                                                   \
       return ConvertToTyped<ResultDataType>(result);                           \
     }                                                                          \
   };                                                                           \

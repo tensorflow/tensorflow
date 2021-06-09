@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/zip_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -146,7 +146,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       out_tensors->reserve(dataset()->output_dtypes().size());
       Status status = Status::OK();
       *end_of_sequence = false;
-      for (const auto& input_impl : input_impls_) {
+      for (int i = 0; i < input_impls_.size(); ++i) {
+        const auto& input_impl = input_impls_[i];
         std::vector<Tensor> input_tensors;
         bool component_end_of_sequence = false;
         status.Update(input_impl->GetNext(ctx, &input_tensors,
@@ -158,6 +159,13 @@ class ZipDatasetOp::Dataset : public DatasetBase {
           continue;
         }
         if (*end_of_sequence) {
+          // Fetch one last time from each input so that we call GetNext the
+          // same number of times for each input. This will finalize caches
+          // when cached datasets of the same size are zipped together.
+          for (int j = i + 1; j < input_impls_.size(); ++j) {
+            Status s = input_impls_[j]->GetNext(ctx, &input_tensors,
+                                                &component_end_of_sequence);
+          }
           break;
         }
         out_tensors->insert(out_tensors->end(), input_tensors.begin(),

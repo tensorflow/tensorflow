@@ -47,9 +47,9 @@ void ValidateDequantizeGoldens(TfLiteTensor* tensors, int tensors_size,
 }
 
 template <typename T>
-void TestDequantizeToFloat(const int* input_dims_data, const float* input_data,
+void TestDequantizeToFloat(int* input_dims_data, const float* input_data,
                            T* input_data_quantized, float scale, int zero_point,
-                           const int* output_dims_data,
+                           int* output_dims_data,
                            const float* expected_output_data,
                            float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -69,9 +69,9 @@ void TestDequantizeToFloat(const int* input_dims_data, const float* input_data,
 }
 
 template <typename T>
-void TestDequantizeToInt32(const int* input_dims_data, const float* input_data,
+void TestDequantizeToInt32(int* input_dims_data, const float* input_data,
                            T* input_data_quantized, float input_scale,
-                           int input_zero_point, const int* output_dims_data,
+                           int input_zero_point, int* output_dims_data,
                            const int32_t* expected_output_data,
                            float output_scale, int output_zero_point,
                            int32_t* output_data) {
@@ -102,7 +102,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(DequantizeOpTestUint8) {
   const int length = 10;
-  const int dims[] = {2, 5, 2};
+  int dims[] = {2, 5, 2};
   const float values[] = {-63.5, -63,  -62.5, -62,  -61.5,
                           62,    62.5, 63,    63.5, 64};
   const float scale = 0.5;
@@ -115,7 +115,7 @@ TF_LITE_MICRO_TEST(DequantizeOpTestUint8) {
 
 TF_LITE_MICRO_TEST(DequantizeOpTestInt8) {
   const int length = 10;
-  const int dims[] = {2, 5, 2};
+  int dims[] = {2, 5, 2};
   const float values[] = {-63.5, -63,  -62.5, -62,  -61.5,
                           62,    62.5, 63,    63.5, 64};
   const float scale = 0.5;
@@ -128,7 +128,7 @@ TF_LITE_MICRO_TEST(DequantizeOpTestInt8) {
 
 TF_LITE_MICRO_TEST(DequantizeOpTestInt16) {
   const int length = 10;
-  const int dims[] = {2, 5, 2};
+  int dims[] = {2, 5, 2};
   const float values[] = {-63.5, -63,  -62.5, -62,  -61.5,
                           62,    62.5, 63,    63.5, 64};
   const float scale = 0.5;

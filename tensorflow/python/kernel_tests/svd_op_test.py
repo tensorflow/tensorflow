@@ -61,6 +61,20 @@ class SvdOpTest(test.TestCase):
       linalg_ops.svd(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def DISABLED_testBadInputs(self):
+    # TODO(b/185822300): re-enable after the bug is fixed in CUDA-11.x
+    # The input to svd should be a tensor of at least rank 2.
+    for bad_val in [np.nan, np.inf]:
+      matrix = np.array([[1, bad_val], [0, 1]])
+      s, u, v = linalg_ops.svd(matrix, compute_uv=True)
+      s, u, v = self.evaluate([s, u, v])
+      for i in range(2):
+        self.assertTrue(np.isnan(s[i]))
+        for j in range(2):
+          self.assertTrue(np.isnan(u[i, j]))
+          self.assertTrue(np.isnan(v[i, j]))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testExecuteMultipleWithoutError(self):
     all_ops = []
     shape = [6, 5]

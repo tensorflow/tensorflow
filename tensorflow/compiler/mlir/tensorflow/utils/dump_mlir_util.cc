@@ -171,7 +171,7 @@ std::string GetDumpDirFromEnvVar() {
   if (!prefix_env) {
     LOG(WARNING)
         << "Failed to dump MLIR module because dump location is not "
-        << " specified through TF_DUMP_GRAPH_PREFIX environment variable.";
+        << "specified through TF_DUMP_GRAPH_PREFIX environment variable.";
     return "";
   }
 

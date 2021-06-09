@@ -23,6 +23,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
@@ -33,12 +34,12 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
 INT = "int"
-BINARY = "binary"
+MULTI_HOT = "multi_hot"
 COUNT = "count"
 
 
 @keras_export("keras.layers.experimental.preprocessing.CategoryEncoding")
-class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
+class CategoryEncoding(base_layer.Layer):
   """Category encoding layer.
 
   This layer provides options for condensing data into a categorical encoding
@@ -53,7 +54,7 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
   **Multi-hot encoding data**
 
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
-  ...           num_tokens=4, output_mode="binary")
+  ...           num_tokens=4, output_mode="multi_hot")
   >>> layer([[0, 1], [0, 0], [1, 2], [3, 1]])
   <tf.Tensor: shape=(4, 4), dtype=float32, numpy=
     array([[1., 1., 0., 0.],
@@ -61,7 +62,7 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
            [0., 1., 1., 0.],
            [0., 1., 0., 1.]], dtype=float32)>
 
-  **Using weighted inputs in `count` mode**
+  **Using weighted inputs in `"count"` mode**
 
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
   ...           num_tokens=4, output_mode="count")
@@ -78,13 +79,13 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
       to the layer must integers in the range 0 <= value < num_tokens or an
       error will be thrown.
     output_mode: Specification for the output of the layer.
-      Defaults to "binary". Values can
-      be "binary" or "count", configuring the layer as follows:
-        "binary": Outputs a single int array per batch, of num_tokens size,
-          containing 1s in all elements where the token mapped to that index
-          exists at least once in the batch item.
-        "count": As "binary", but the int array contains a count of the number
-          of times the token at that index appeared in the batch item.
+      Defaults to `"multi_hot"`. Values can be `"multi_hot"` or `"count"`,
+      configuring the layer as follows:
+        - `"multi_hot"`: Outputs a single int array per batch, of num_tokens
+          size, containing 1s in all elements where the token mapped to that
+          index exists at least once in the batch item.
+        - `"count"`: As `"multi_hot"`, but the int array contains a count of the
+          number of times the token at that index appeared in the batch item.
     sparse: Boolean. If true, returns a `SparseTensor` instead of a dense
       `Tensor`. Defaults to `False`.
 
@@ -92,12 +93,12 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
     inputs: A 2D tensor `(samples, timesteps)`.
     count_weights: A 2D tensor in the same shape as `inputs` indicating the
       weight for each sample value when summing up in `count` mode. Not used in
-      `binary` mode.
+      `"multi_hot"` mode.
   """
 
   def __init__(self,
                num_tokens=None,
-               output_mode=BINARY,
+               output_mode=MULTI_HOT,
                sparse=False,
                **kwargs):
     # max_tokens is an old name for the num_tokens arg we continue to support
@@ -109,11 +110,16 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
       del kwargs["max_tokens"]
 
     super(CategoryEncoding, self).__init__(**kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell("CategoryEncoding").set(
+        True)
 
-    # 'output_mode' must be one of (COUNT, BINARY)
+    # Support deprecated names for output_modes.
+    if output_mode == "binary":
+      output_mode = MULTI_HOT
+    # 'output_mode' must be one of (COUNT, MULTI_HOT)
     layer_utils.validate_string_arg(
         output_mode,
-        allowable_strings=(COUNT, BINARY),
+        allowable_strings=(COUNT, MULTI_HOT),
         layer_name="CategoryEncoding",
         arg_name="output_mode")
 
@@ -155,11 +161,11 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
       inputs = array_ops.expand_dims(inputs, 1)
 
     if count_weights is not None and self.output_mode != COUNT:
-      raise ValueError("count_weights is not used in `output_mode='binary'`. "
-                       "Please pass a single input.")
+      raise ValueError("count_weights is not used in "
+                       "`output_mode='multi_hot'`. Please pass a single input.")
 
     out_depth = self.num_tokens
-    binary_output = (self.output_mode == BINARY)
+    multi_hot_output = (self.output_mode == MULTI_HOT)
     if isinstance(inputs, sparse_tensor.SparseTensor):
       max_value = math_ops.reduce_max(inputs.values)
       min_value = math_ops.reduce_min(inputs.values)
@@ -171,17 +177,20 @@ class CategoryEncoding(base_preprocessing_layer.PreprocessingLayer):
             math_ops.cast(out_depth, max_value.dtype), max_value),
         math_ops.greater_equal(
             min_value, math_ops.cast(0, min_value.dtype)))
-    control_flow_ops.Assert(condition, [
+    assertion = control_flow_ops.Assert(condition, [
         "Input values must be in the range 0 <= values < num_tokens"
         " with num_tokens={}".format(out_depth)
     ])
-    if self.sparse:
-      return sparse_bincount(inputs, out_depth, binary_output, count_weights)
-    else:
-      return dense_bincount(inputs, out_depth, binary_output, count_weights)
+    with ops.control_dependencies([assertion]):
+      if self.sparse:
+        return sparse_bincount(inputs, out_depth, multi_hot_output,
+                               count_weights)
+      else:
+        return dense_bincount(inputs, out_depth, multi_hot_output,
+                              count_weights)
 
 
-def sparse_bincount(inputs, out_depth, binary_output, count_weights=None):
+def sparse_bincount(inputs, out_depth, multi_hot_output, count_weights=None):
   """Apply binary or count encoding to an input and return a sparse tensor."""
   result = bincount_ops.sparse_bincount(
       inputs,
@@ -189,7 +198,7 @@ def sparse_bincount(inputs, out_depth, binary_output, count_weights=None):
       minlength=out_depth,
       maxlength=out_depth,
       axis=-1,
-      binary_output=binary_output)
+      binary_output=multi_hot_output)
   result = math_ops.cast(result, backend.floatx())
   batch_size = array_ops.shape(result)[0]
   result = sparse_tensor.SparseTensor(
@@ -199,7 +208,7 @@ def sparse_bincount(inputs, out_depth, binary_output, count_weights=None):
   return result
 
 
-def dense_bincount(inputs, out_depth, binary_output, count_weights=None):
+def dense_bincount(inputs, out_depth, multi_hot_output, count_weights=None):
   """Apply binary or count encoding to an input."""
   result = bincount_ops.bincount(
       inputs,
@@ -208,7 +217,7 @@ def dense_bincount(inputs, out_depth, binary_output, count_weights=None):
       maxlength=out_depth,
       dtype=backend.floatx(),
       axis=-1,
-      binary_output=binary_output)
+      binary_output=multi_hot_output)
   batch_size = inputs.shape.as_list()[0]
   result.set_shape(tensor_shape.TensorShape((batch_size, out_depth)))
   return result

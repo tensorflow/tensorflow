@@ -84,6 +84,12 @@ absl::Status RequestGpuInfo(GpuInfo* gpu_info) {
                 &info.opengl_info.max_fragment_image_units);
   glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_VECTORS,
                 &info.opengl_info.max_fragment_uniform_vec4_count);
+  glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE,
+                &info.opengl_info.max_renderbuffer_size);
+  GLint max_viewport_dims[2];
+  glGetIntegerv(GL_MAX_VIEWPORT_DIMS, max_viewport_dims);
+  info.opengl_info.max_viewport_width = max_viewport_dims[0];
+  info.opengl_info.max_viewport_height = max_viewport_dims[1];
   GLint max_color_atttachments;
   glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &max_color_atttachments);
   GLint max_draw_buffers;

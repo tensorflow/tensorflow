@@ -491,6 +491,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           const InlineFunctionBodyOptions& options) {
   VLOG(3) << "Inline function call: " << SummarizeNode(*caller) << " ["
           << options.DebugString() << "]";
+  VLOG(4) << "Inlining function: " << fbody->fdef.DebugString();
+  VLOG(4) << "Current graphdef: " << g->ToGraphDefDebug().DebugString();
+  VLOG(4) << "Caller: " << caller->DebugString();
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
@@ -582,6 +585,16 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     VLOG(3) << "Created input control node: " << input_control_node->name();
   }
 
+  // We create one Identity node for each input.
+  std::vector<Node*> input_nodes;
+  std::map<absl::string_view, absl::string_view> input_node_name_map;
+  for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
+    Node* n = input_identity("input", inputs[i], i);
+    input_node_name_map[arg_name(fbody->fdef.signature().input_arg(), i)] =
+        n->name();
+    input_nodes.push_back(n);
+  }
+
   // ------------------------------------------------------------------------ //
   // Duplicate fbody->graph into 'g'.  First, we copy the nodes of
   // fbody->graph into 'g' except the source and sink nodes.  We copy
@@ -611,6 +624,12 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     const string prefix = strings::StrCat(caller->name(), "/");
     TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef,
                                                 options.uniquify_frame_names));
+
+    // If the colocation attribute is an input arg, we need to change it to the
+    // new input (Identity) node now.
+    TF_RETURN_IF_ERROR(
+        MaybeUpdateColocationConstraintsWithMap(input_node_name_map, &ndef));
+
     TF_RETURN_IF_ERROR(
         MaybeAddPrefixToColocationConstraints(fn_nodes, prefix, &ndef));
 
@@ -679,17 +698,16 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // ------------------------------------------------------------------------ //
   // Connect input edges.
   //
-  // We create one Identity node for each input. Then, we connect inputs[i] to
-  // the i-th identity node added. The nodes that previously connected
-  // to the j-th output of i-th arg node are reconnected to the i-th
-  // identity node.
+  // Then, we connect inputs[i] to the i-th identity node added. The nodes that
+  // previously connected to the j-th output of i-th arg node are reconnected
+  // to the i-th identity node.
   //
   // The added identity nodes depend on "input_control_node".
   VLOG(4) << "Add input Identity nodes for each function argument:";
 
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
-    Node* n = input_identity("input", inputs[i], i);
+    Node* n = input_nodes[i];
     VLOG(4) << "    [index " << i << "] "
             << arg_name(fbody->fdef.signature().input_arg(), i) << " as "
             << n->name() << " (input: " << inputs[i].name()
@@ -840,6 +858,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // to keep it fetchable.
   VLOG(3) << "Successfully inlined function call node: " << caller->name();
   g->RemoveNode(caller);
+
+  VLOG(4) << "Final graph: " << g->ToGraphDefDebug().DebugString();
 
   return Status::OK();
 }

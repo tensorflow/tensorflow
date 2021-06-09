@@ -135,14 +135,14 @@ void UpdateGraphOptimizationPassTime(const string& pass_name,
 void UpdateGrapplerPassTime(const string& pass_name,
                             const uint64 running_time_usecs);
 
+// Updates metrics for time to distribute variables to all TPU hosts.
+void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
+
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
 
 // Updates the metrics stored about time BFC allocator spents during delay.
 void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
-
-// Increment the number of jobs that failed during import to mlir.
-void IncrementMLIRImportFailureCount();
 
 }  // namespace metrics
 }  // namespace tensorflow

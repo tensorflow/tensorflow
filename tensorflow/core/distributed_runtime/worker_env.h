@@ -26,6 +26,7 @@ class ThreadPool;
 }  // namespace thread
 
 class CollectiveExecutorMgrInterface;
+class CoordinationServiceInterface;
 class Device;
 class DeviceMgr;
 class Env;
@@ -53,7 +54,7 @@ struct WorkerEnv {
   // Note: Please use the device_mgr associated with your session if appropriate
   // instead of this one. Using this device_mgr does not support ClusterSpec
   // propagated sessions.
-  const DeviceMgr* device_mgr = nullptr;
+  DeviceMgr* device_mgr = nullptr;
 
   // A set of rendezvous keyed by step ids.
   RendezvousMgrInterface* rendezvous_mgr = nullptr;
@@ -64,6 +65,9 @@ struct WorkerEnv {
 
   // A pool of threads for scheduling compute work.
   thread::ThreadPool* compute_pool = nullptr;
+
+  // Coordination service.
+  CoordinationServiceInterface* coord_service;
 };
 
 }  // end namespace tensorflow

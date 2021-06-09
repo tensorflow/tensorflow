@@ -12,7 +12,7 @@ load(
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 objc_library(
@@ -418,6 +418,31 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "resampler_test_lib",
+    testonly = 1,
+    srcs = ["resampler_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "resampler_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = [
+        "no_mac",  # TODO(b/183905399)
+        "notap",
+        "tflite_mobile_test_jet",
+        "tflite_not_portable_android",
+    ],
+    deps = [":resampler_test_lib"],
+)
+
+objc_library(
     name = "resize_test_lib",
     testonly = 1,
     srcs = ["resize_test.mm"],
@@ -708,6 +733,7 @@ objc_library(
         "quantize_and_dequantize_test.mm",
         "reduce_test.mm",
         "relu_test.mm",
+        "resampler_test.mm",
         "reshape_test.mm",
         "resize_test.mm",
         "slice_test.mm",
@@ -756,6 +782,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:reduce_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",

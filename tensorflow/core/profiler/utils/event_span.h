@@ -130,6 +130,7 @@ enum class StepMarkerType {
 struct StepMarker {
   StepMarkerType type;
   std::string event_name;  // name of this event.
+  std::string step_name;
   Timespan span;           // timespan of this event.
   StepMarker(StepMarkerType step_marker_type, absl::string_view name,
              Timespan s)
@@ -188,6 +189,10 @@ class StepDetails {
   // Accumulates the device memory transfers from another step to this step.
   void AggregateDeviceMemoryTransfers(
       const std::vector<DeviceMemoryTransfer> device_memory_transfers);
+  // Returns the step name.
+  std::string StepName() const { return step_name_; }
+  // Sets the name of this step.
+  void SetStepName(std::string step_name) { step_name_ = step_name; }
   // Equality test.
   bool operator==(const StepDetails& other) const;
   // Inequality test.
@@ -210,6 +215,7 @@ class StepDetails {
   // TODO(jiesun): Consider to use IntervalSet instead of just sum up the event
   // durations.
   std::vector<DeviceMemoryTransfer> device_memory_transfers_;
+  std::string step_name_;
 };
 
 // Map from step_id to the events happened in that step.

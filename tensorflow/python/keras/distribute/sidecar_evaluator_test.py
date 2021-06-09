@@ -15,14 +15,18 @@
 # ==============================================================================
 """Test covering sidecar_evaluator.py."""
 
+import enum
 import os
 
 from absl import logging
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import sidecar_evaluator as sidecar_evaluator_lib
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.lib.io import file_io
@@ -34,16 +38,47 @@ from tensorflow.python.training.tracking import util as tracking_util
 _BATCH_SIZE = 32
 
 
-class SidecarEvaluatorTest(test.TestCase):
+class TestModel(keras.Model):
 
-  def createTestModel(self, compile_model):
+  def __init__(self):
+    super().__init__(name='test_model')
+    self.dense = keras.layers.Dense(10)
+
+  def call(self, inputs):
+    return self.dense(inputs)
+
+
+class DictMetric(keras.metrics.MeanSquaredError):
+
+  def result(self):
+    res = super().result()
+    return {'mean_squared_error_1': res, 'mean_squared_error_2': res}
+
+
+class ModelType(enum.Enum):
+  SEQUENTIAL = 'sequential'
+  SUBCLASS = 'subclass'
+
+
+def _test_model_builder(model_type: ModelType, compile_model, build_model):
+  if model_type == ModelType.SEQUENTIAL:
     model = keras.Sequential([keras.layers.Dense(10)])
-    if compile_model:
-      model.compile(
-          gradient_descent.SGD(),
-          loss='mse',
-          metrics=keras.metrics.CategoricalAccuracy())
-    return model
+  elif model_type == ModelType.SUBCLASS:
+    model = TestModel()
+
+  if compile_model:
+    model.compile(
+        gradient_descent.SGD(),
+        loss='mse',
+        metrics=[keras.metrics.CategoricalAccuracy(),
+                 DictMetric()])
+  if build_model:
+    model.build((None, 32))
+
+  return model
+
+
+class SidecarEvaluatorTest(test.TestCase, parameterized.TestCase):
 
   def assertSummaryEventsWritten(self, log_dir):
     # Asserts summary files do get written when log_dir is provided.
@@ -64,7 +99,9 @@ class SidecarEvaluatorTest(test.TestCase):
           event_pb_written = True
     self.assertCountEqual(event_tags, [
         'evaluation_categorical_accuracy_vs_iterations',
-        'evaluation_loss_vs_iterations'
+        'evaluation_loss_vs_iterations',
+        'evaluation_mean_squared_error_1_vs_iterations',
+        'evaluation_mean_squared_error_2_vs_iterations',
     ])
 
     # Verifying at least one non-zeroth step is written to summary.
@@ -78,8 +115,13 @@ class SidecarEvaluatorTest(test.TestCase):
     for var_a, var_b in zip(model_a.variables, model_b.variables):
       self.assertAllEqual(var_a.numpy(), var_b.numpy())
 
-  def testIterationsNotSavedWillRaiseError(self):
-    model = self.createTestModel(compile_model=False)
+  @ds_combinations.generate(
+      combinations.combine(
+          mode=['eager'], model_type=[ModelType.SEQUENTIAL,
+                                      ModelType.SUBCLASS]))
+  def testIterationsNotSavedWillRaiseError(self, model_type):
+    model = _test_model_builder(
+        model_type=model_type, compile_model=False, build_model=True)
 
     checkpoint_dir = self.get_temp_dir()
     checkpoint = tracking_util.Checkpoint(model=model)
@@ -89,14 +131,39 @@ class SidecarEvaluatorTest(test.TestCase):
 
     sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
         model, data=None, checkpoint_dir=checkpoint_dir)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         RuntimeError, '`iterations` cannot be loaded '
         'from the checkpoint file.'):
       sidecar_evaluator.start()
 
-  def testSidecarEvaluatorOutputsSummary(self):
+  @ds_combinations.generate(
+      combinations.combine(
+          mode=['eager'], model_type=[ModelType.SEQUENTIAL,
+                                      ModelType.SUBCLASS]))
+  def testModelNotBuiltRaiseError(self, model_type):
+    model = _test_model_builder(
+        model_type=model_type, compile_model=False, build_model=False)
+
+    checkpoint_dir = self.get_temp_dir()
+    checkpoint = tracking_util.Checkpoint(model=model)
+    checkpoint_manager = checkpoint_management.CheckpointManager(
+        checkpoint, checkpoint_dir, max_to_keep=2)
+    checkpoint_manager.save()
+
+    sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
+        model, data=None, checkpoint_dir=checkpoint_dir)
+    with self.assertRaisesRegex(AssertionError, 'Nothing to load.'):
+      sidecar_evaluator.start()
+
+  @ds_combinations.generate(
+      combinations.combine(
+          mode=['eager'],
+          model_type=[ModelType.SEQUENTIAL, ModelType.SUBCLASS],
+          build_model=[True, False]))
+  def testSidecarEvaluatorOutputsSummary(self, model_type, build_model):
     # Create a model with synthetic data, and fit for one epoch.
-    model = self.createTestModel(compile_model=True)
+    model = _test_model_builder(
+        model_type=model_type, compile_model=True, build_model=False)
     data = np.random.random((1000, 32))
     labels = np.random.random((1000, 10))
     dataset = dataset_ops.Dataset.from_tensor_slices((data, labels))
@@ -118,14 +185,16 @@ class SidecarEvaluatorTest(test.TestCase):
         'checkpoint_dir should not be empty.')
 
     # Create a new model used for evaluation.
-    eval_model = self.createTestModel(compile_model=True)
-    # Have an sidecar_evaluator evaluate once.
-    sidecar_evaluator_lib.SidecarEvaluator(
+    eval_model = _test_model_builder(
+        model_type=model_type, compile_model=True, build_model=build_model)
+    # Have a sidecar_evaluator evaluate once.
+    sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
         eval_model,
         data=dataset,
         checkpoint_dir=checkpoint_dir,
         max_evaluations=1,
-        callbacks=[keras.callbacks.TensorBoard(log_dir=log_dir)]).start()
+        callbacks=[keras.callbacks.TensorBoard(log_dir=log_dir)])
+    sidecar_evaluator.start()
     # Eval model has been restored to the same state as the original model, so
     # their weights should match. If not, restoration of the model didn't
     # work.
@@ -133,11 +202,18 @@ class SidecarEvaluatorTest(test.TestCase):
 
     self.assertSummaryEventsWritten(os.path.join(log_dir, 'validation'))
 
-  def testSidecarEvaluatorOutputsSummarySavedWithCallback(self):
+  @ds_combinations.generate(
+      combinations.combine(
+          mode=['eager'],
+          model_type=[ModelType.SEQUENTIAL, ModelType.SUBCLASS],
+          build_model=[True, False]))
+  def testSidecarEvaluatorOutputsSummarySavedWithCallback(
+      self, model_type, build_model):
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'checkpoints')
     log_dir = os.path.join(self.get_temp_dir(), 'summary')
     # Create a model with synthetic data, and fit for one epoch.
-    model = self.createTestModel(compile_model=True)
+    model = _test_model_builder(
+        model_type=model_type, compile_model=True, build_model=False)
     data = np.random.random((1000, 32))
     labels = np.random.random((1000, 10))
     dataset = dataset_ops.Dataset.from_tensor_slices((data, labels))
@@ -152,7 +228,8 @@ class SidecarEvaluatorTest(test.TestCase):
         'checkpoint_dir should not be empty.')
 
     # Create a new model used for evaluation.
-    eval_model = self.createTestModel(compile_model=True)
+    eval_model = _test_model_builder(
+        model_type=model_type, compile_model=True, build_model=build_model)
     # Have an sidecar_evaluator evaluate once.
     sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
         eval_model,
@@ -160,7 +237,19 @@ class SidecarEvaluatorTest(test.TestCase):
         checkpoint_dir=checkpoint_dir,
         max_evaluations=1,
         callbacks=[keras.callbacks.TensorBoard(log_dir=log_dir)])
-    sidecar_evaluator.start()
+    with self.assertLogs() as cm:
+      sidecar_evaluator.start()
+
+    metrics_logging = [
+        line for line in cm.output if 'End of evaluation' in line
+    ]
+    self.assertLen(metrics_logging, 1)
+    expected_logged_metrics = [
+        'loss', 'categorical_accuracy', 'mean_squared_error_1',
+        'mean_squared_error_2'
+    ]
+    for metric_name in expected_logged_metrics:
+      self.assertRegex(metrics_logging[0], f'{metric_name}=')
 
     # Eval model has been restored to the same state as the original model, so
     # their weights should match. If not, restoration of the model didn't

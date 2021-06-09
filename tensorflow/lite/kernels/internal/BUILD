@@ -9,7 +9,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 HARD_FP_FLAGS_IF_APPLICABLE = select({
@@ -432,7 +432,7 @@ cc_test(
     srcs = ["transpose_utils_test.cc"],
     deps = [
         ":transpose_utils",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -467,6 +467,8 @@ cc_library(
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/conv3d.h",
+        "reference/conv3d_transpose.h",
+        "reference/cumsum.h",
         "reference/densify.h",
         "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
@@ -496,6 +498,7 @@ cc_library(
         "reference/l2normalization.h",
         "reference/leaky_relu.h",
         "reference/logistic.h",
+        "reference/log_softmax.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
@@ -507,6 +510,7 @@ cc_library(
         "reference/quantize.h",
         "reference/reduce.h",
         "reference/requantize.h",
+        "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
@@ -575,6 +579,7 @@ cc_library(
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/conv3d.h",
+        "reference/cumsum.h",
         "reference/densify.h",
         "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
@@ -593,6 +598,7 @@ cc_library(
         "reference/l2normalization.h",
         "reference/leaky_relu.h",
         "reference/legacy_reference_ops.h",
+        "reference/log_softmax.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -807,7 +813,10 @@ cc_library(
         ): [":neon_tensor_utils"],
         (
             ":x86_any",
-        ): [":sse_tensor_utils"],
+        ): [
+            ":portable_tensor_utils",  # If SSSE3 isn't available, we fall back to portable
+            ":sse_tensor_utils",
+        ],
         (
             "//tensorflow/lite:tf_lite_static_memory",
             "//conditions:default",

@@ -167,14 +167,16 @@ auto* xla_tpu_spmd_cores_per_replica = monitoring::Counter<1>::New(
     "/tensorflow/tpu/xla_spmd_cores_per_replica",
     "The number of cores used by XLA SPMD-replicated models.", "cores");
 
-auto* mlir_import_failure_count = monitoring::Counter<0>::New(
-    "/tensorflow/mlir/import_failure_count",
-    "The number of jobs that failed during mlir import or verification.");
-
 auto* bfc_allocator_delay =
     monitoring::Counter<0>::New("/tensorflow/core/bfc_allocator_delay",
                                 "The total time spent running each graph "
                                 "optimization pass in microseconds.");
+
+auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/tpu/variable_distribution_time",
+    "Time spent sending variables from primary task to other worker tasks "
+    "at the start of a call to TPUExecute.  Timer starts at RunGraph "
+    "invocation and ends when TPUExecute args are ready on the current task.");
 
 }  // namespace
 
@@ -319,6 +321,13 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   }
 }
 
+void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {
+  if (distribution_time_usecs > 0) {
+    tpu_variable_distribution_time_usecs->GetCell()->IncrementBy(
+        distribution_time_usecs);
+  }
+}
+
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
   if (compilation_time_usecs > 0) {
     static auto* xla_compilations_cell = xla_compilations->GetCell();
@@ -334,12 +343,6 @@ void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs) {
   if (delay_usecs > 0) {
     bfc_allocator_delay_cell->IncrementBy(delay_usecs);
   }
-}
-
-void IncrementMLIRImportFailureCount() {
-  static auto* mlir_import_failure_count_cell =
-      mlir_import_failure_count->GetCell();
-  mlir_import_failure_count_cell->IncrementBy(1);
 }
 
 void RecordUnusedOutput(const string& op_name) {

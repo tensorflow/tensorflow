@@ -26,7 +26,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -95,8 +94,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
     """Tests that result and expeted are exactly equal."""
     self.assertAllEqual(result, expected)
 
-  @test_util.disable_mlir_bridge(
-      "Handle complex element type in DiagPart lowering")
   def testAllTypeOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
@@ -528,9 +525,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
               ],
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/155501444): Handle _UnaryOpsComposition ops from Grappler")
-  def testFloatOpsDisabledOnMlirBridge(self):
+  def testSigmoidNumericalStability(self):
     for dtype in self.float_types:
       if dtype != np.float16:
         self._assertOpOutputMatchesExpected(
@@ -545,10 +540,21 @@ class UnaryOpsTest(xla_test.XLATestCase):
         return array_ops.quantize_and_dequantize(
             x, -127, 127, signed_input=True, num_bits=8)
 
-      self._assertOpOutputMatchesExpected(
-          quantize_and_dequantize_v2,
-          np.array([-1, -0.5, 0, 0.3], dtype=dtype),
-          expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
+      def quantize_and_dequantize_v3(x):
+        return array_ops.quantize_and_dequantize_v3(
+            x, -127, 127, num_bits=8, signed_input=True, range_given=False)
+
+      def quantize_and_dequantize_v4(x):
+        return array_ops.quantize_and_dequantize_v2(
+            x, -127, 127, signed_input=True, num_bits=8)
+
+      test_fns = (quantize_and_dequantize_v2, quantize_and_dequantize_v3,
+                  quantize_and_dequantize_v4)
+      for test_fn in test_fns:
+        self._assertOpOutputMatchesExpected(
+            test_fn,
+            np.array([-1, -0.5, 0, 0.3], dtype=dtype),
+            expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
       def quantize_and_dequantize_v2_round_half_up(x):
         return array_ops.quantize_and_dequantize(
@@ -615,15 +621,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
                   1,
               ],
               dtype=dtype))
-
-      def quantize_and_dequantize_v3(x):
-        return array_ops.quantize_and_dequantize_v3(
-            x, -127, 127, num_bits=8, signed_input=True, range_given=False)
-
-      self._assertOpOutputMatchesExpected(
-          quantize_and_dequantize_v3,
-          np.array([-1, -0.5, 0, 0.3], dtype=dtype),
-          expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
   def testComplexOps(self):
     for dtype in self.complex_types:

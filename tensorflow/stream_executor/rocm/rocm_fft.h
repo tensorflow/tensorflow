@@ -20,11 +20,23 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 
+#if TENSORFLOW_USE_ROCM
+
+#include "rocm/rocm_config.h"
+
+#if TF_ROCM_VERSION < 40100
 #include "rocm/include/rocfft/hipfft.h"
+#else
+#include "rocm/include/hipfft/hipfft.h"
+#endif
+
+#endif
+
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace stream_executor {
 
@@ -79,8 +91,11 @@ class ROCMFftPlan : public fft::Plan {
   port::Status UpdateScratchAllocator(Stream *stream,
                                       ScratchAllocator *scratch_allocator);
 
+  ScratchAllocator *GetScratchAllocator() const { return scratch_allocator_; }
+
  protected:
   bool IsInitialized() const { return is_initialized_; }
+  ScratchAllocator *scratch_allocator_;
 
  private:
   GpuExecutor *parent_;

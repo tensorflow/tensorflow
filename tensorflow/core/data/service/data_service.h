@@ -107,7 +107,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.
-  Status RegisterDataset(GraphDef dataset, int64& dataset_id);
+  Status RegisterDataset(const GraphDef& dataset, int64& dataset_id);
 
   // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
   // absent or no matching job is found, creates a new job. The resulting job

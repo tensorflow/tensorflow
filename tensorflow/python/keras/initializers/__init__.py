@@ -12,14 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras initializer serialization / deserialization.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Keras initializer serialization / deserialization."""
 
 import threading
-import six
 
 from tensorflow.python import tf2
 from tensorflow.python.keras.initializers import initializers_v1
@@ -155,7 +150,7 @@ def get(identifier):
 
   >>> identifier = 'Ones'
   >>> tf.keras.initializers.deserialize(identifier)
-  <...tensorflow.python.keras.initializers.initializers_v2.Ones...>
+  <...keras.initializers.initializers_v2.Ones...>
 
   You can also specify `config` of the initializer to this function by passing
   dict containing `class_name` and `config` as an identifier. Also note that the
@@ -163,7 +158,7 @@ def get(identifier):
 
   >>> cfg = {'class_name': 'Ones', 'config': {}}
   >>> tf.keras.initializers.deserialize(cfg)
-  <...tensorflow.python.keras.initializers.initializers_v2.Ones...>
+  <...keras.initializers.initializers_v2.Ones...>
 
   In the case that the `identifier` is a class, this method will return a new
   instance of the class by its constructor.
@@ -184,7 +179,7 @@ def get(identifier):
     return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     identifier = str(identifier)
     return deserialize(identifier)
   elif callable(identifier):

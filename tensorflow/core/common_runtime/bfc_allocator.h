@@ -75,7 +75,7 @@ class BFCAllocator : public Allocator {
 
   absl::optional<AllocatorStats> GetStats() override;
 
-  void ClearStats() override;
+  bool ClearStats() override;
 
   void SetTimingCounter(SharedCounter* sc) { timing_counter_ = sc; }
 
@@ -84,6 +84,14 @@ class BFCAllocator : public Allocator {
   bool ShouldRecordOpName() const { return true; }
 
   MemoryDump RecordMemoryMap();
+
+ protected:
+  // This setting controls when a chunk should be split, if its size exceeds the
+  // requested allocation size. It is not expected to be changed after
+  // initialization.
+  void SetInternalFragmentationFraction(double fraction) {
+    internal_fragmentation_fraction_ = fraction;
+  }
 
  private:
   struct Bin;
@@ -585,6 +593,8 @@ class BFCAllocator : public Allocator {
   string name_;
   SharedCounter* timing_counter_ = nullptr;
   std::deque<ChunkHandle> timestamped_chunks_;
+
+  double internal_fragmentation_fraction_ = {0.0};
 
   std::atomic<uint64> safe_frontier_ = {0};
 

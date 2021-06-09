@@ -28,6 +28,7 @@ from absl import app
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
@@ -112,7 +113,6 @@ def main(enable_v2_behavior=True, config_logical_devices=True):
     v2_compat.enable_v2_behavior()
   else:
     v2_compat.disable_v2_behavior()
-  # TODO(b/131360402): configure default logical devices.
   multi_process_runner.test_main()
 
 
@@ -249,3 +249,22 @@ def show_backref(target, max_depth=3):
   graph = string_io.getvalue()
   string_io.close()
   return graph
+
+
+def create_per_replica(strategy, value_list):
+  """Creates a PerReplica of Tensors from the value_list."""
+  if len(strategy.extended.worker_devices) != len(value_list):
+    raise ValueError(
+        "the length of values must be the same as the number of worker devices")
+  tensors = []
+  for device, value in zip(strategy.extended.worker_devices, value_list):
+    with ops.device(device):
+      tensors.append(ops.convert_to_tensor(value))
+  return values.PerReplica(tensors)
+
+
+def is_tpu_strategy(strategy):
+  """Returns whether the strategy is a TPU strategy."""
+  return isinstance(strategy,
+                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
+                     tpu_strategy.TPUStrategyV2))

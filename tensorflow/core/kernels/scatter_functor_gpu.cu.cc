@@ -45,6 +45,7 @@ DEFINE_GPU_SPECS(float);
 DEFINE_GPU_SPECS(double);
 DEFINE_GPU_SPECS_OP(bool, int32, scatter_op::UpdateOp::ASSIGN);
 DEFINE_GPU_SPECS_OP(bool, int64, scatter_op::UpdateOp::ASSIGN);
+DEFINE_GPU_SPECS_OP(int64, int64, scatter_op::UpdateOp::ASSIGN);
 
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX

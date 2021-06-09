@@ -277,7 +277,7 @@ def _maybe_get_remote_value(val):
 
 
 def _maybe_as_type_spec(val):
-  if isinstance(val, RemoteValue):
+  if isinstance(val, (RemoteValue, PerWorkerValues)):
     if val._type_spec is None:  # pylint: disable=protected-access
       raise ValueError("Output of a scheduled function that is not "
                        "tf.function cannot be the input of another function.")
@@ -640,7 +640,11 @@ class WorkerPreemptionHandler(object):
 
   def _validate_preemption_failure(self, e):
     """Validates that the given exception represents worker preemption."""
-    if _is_worker_failure(e):
+
+    # Only categorize the failure as a worker preemption if the cancellation
+    # manager did not attempt to cancel the blocking operations.
+    if _is_worker_failure(e) and (
+        not self._cluster._closure_queue._cancellation_mgr.is_cancelled):  # pylint: disable=protected-access
       return
     raise e
 
@@ -668,6 +672,22 @@ class WorkerPreemptionHandler(object):
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
+        if on_failure_fn:
+          on_failure_fn()
+        return
+
+      # Ignoring derived CancelledErrors to tolerate transient failures in
+      # PS-worker communication, which initially exposed as an UnavailableError
+      # and then lead to sub-function cancellation, subsequently getting
+      # reported from worker to chief as CancelledError.
+      # We do not mark either worker or PS as failed due to only CancelledError.
+      # If there are real (non-transient) failures, they must also be reported
+      # as other errors (UnavailableError most likely) in closure executions.
+      if isinstance(e, errors.CancelledError):
+        logging.error(
+            "Remote function on worker %s failed with %r:%s\n"
+            "This derived error is ignored and not reported to users.",
+            worker_device_name, e, e)
         if on_failure_fn:
           on_failure_fn()
         return
@@ -1456,5 +1476,12 @@ def _is_worker_failure(error):
     if ("is neither a type of a primitive operation nor a name of a function "
         "registered" in str(error)):
       return True
+
+  # NOTE(b/179061495): During worker preemptions, if multiple functions are
+  # running concurrently (especially with subfunctions spanning chief/PS),
+  # CancelledError can be returned due to chief/PS cancelling outstanding RPCs
+  # to the failing workers.
+  if isinstance(error, errors.CancelledError):
+    return True
 
   return False

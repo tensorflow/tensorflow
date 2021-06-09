@@ -442,7 +442,7 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
       return False
 
   def __init__(self, *args, **kwargs):
-    logging.warn(
+    logging.warning(
         "Keras is training/fitting/evaluating on array-like data. Keras may "
         "not be optimized for this format, so if your input data format is "
         "supported by TensorFlow I/O (https://github.com/tensorflow/io) we "
@@ -501,15 +501,22 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
 class DatasetCreatorAdapter(DataAdapter):
   """Adapter that handles dataset functions."""
 
-  def __init__(self, x, *args, **kwargs):
-    super(DatasetCreatorAdapter, self).__init__(x, *args, **kwargs)
+  def __init__(self, x, y, steps=None, distribution_strategy=None, **kwargs):
+    super(DatasetCreatorAdapter, self).__init__(x, **kwargs)
 
     if not isinstance(x, dataset_creator.DatasetCreator):
       raise TypeError("The input of a `DatasetCreatorAdapter` should be a "
                       "`DatasetCreator` but it received type {}.".format(
                           type(x)))
+    if steps is None:
+      raise ValueError("When using a "
+                       "`tf.keras.utils.experimental.DatasetCreator`, "
+                       "`steps_per_epoch`, `validation_steps` or `steps` "
+                       "argument must be provided in `Model.fit`, "
+                       "`Model.evaluate`, or `Model.predict`.")
     self.dataset_creator = x
-    self.strategy = kwargs.get("distribution_strategy", None)
+    self.steps = steps
+    self.strategy = distribution_strategy
 
   @staticmethod
   def can_handle(x, y=None):
@@ -527,7 +534,8 @@ class DatasetCreatorAdapter(DataAdapter):
     return None  # To be inferred by `DataHandler`.
 
   def get_dataset(self):
-    return self.strategy.distribute_datasets_from_function(self.dataset_creator)
+    return self.strategy.distribute_datasets_from_function(
+        self.dataset_creator, options=self.dataset_creator.input_options)
 
   def batch_size(self):
     raise NotImplementedError()
@@ -1144,7 +1152,6 @@ class DataHandler(object):
       self._steps_per_execution_value = steps_per_execution.numpy().item()
 
     adapter_cls = select_data_adapter(x, y)
-    self._verify_data_adapter_compatibility(adapter_cls)
     self._adapter = adapter_cls(
         x,
         y,
@@ -1167,9 +1174,6 @@ class DataHandler(object):
 
     self._configure_dataset_and_inferred_steps(strategy, x, steps_per_epoch,
                                                class_weight, distribute)
-
-  def _verify_data_adapter_compatibility(self, adapter_cls):
-    pass
 
   def _configure_dataset_and_inferred_steps(self, strategy, x, steps_per_epoch,
                                             class_weight, distribute):
@@ -1323,17 +1327,34 @@ class DataHandler(object):
           "`steps_per_execution > 1`, you must specify the number of steps "
           "to run.")
 
-  def resolve_logs(self, logs):
-    return logs
-
 
 class _ClusterCoordinatorDataHandler(DataHandler):
   """A `DataHandler` that is compatible with `ClusterCoordinator`."""
 
-  def _verify_data_adapter_compatibility(self, adapter_cls):
-    if adapter_cls != DatasetCreatorAdapter:
-      raise NotImplementedError("Only `DatasetCreator` input is supported in "
-                                "`ParameterServerStrategy` at this time.")
+  def __init__(self, x, y=None, **kwargs):
+    if not isinstance(x, dataset_creator.DatasetCreator):
+      x = self._convert_to_dataset_creator(x, y, **kwargs)
+
+    super().__init__(x=x, **kwargs)
+
+  def _convert_to_dataset_creator(self, x, y, **kwargs):
+    """Converts non-tf.data.Dataset to `DatasetCreator` instances."""
+
+    def _dataset_fn(input_context):
+      del input_context
+      data_adapter_cls = select_data_adapter(x, y)
+      return data_adapter_cls(x=x, y=y, **kwargs).get_dataset()
+
+    # This check is needed because types like `tf.data.Dataset` don't work with
+    # PSS yet. So only apply this logic to the types we can support.
+    if (isinstance(x, _get_tensor_types()) and
+        isinstance(y, _get_tensor_types())):
+      return dataset_creator.DatasetCreator(_dataset_fn)
+    else:
+      raise NotImplementedError(
+          "Only `tf.keras.utils.experimental.DatasetCreator`, `tf.Tensor`, "
+          "numpy arrays and pandas dataframes are supported types at this "
+          "time.")
 
   def _configure_dataset_and_inferred_steps(self, strategy, x, steps_per_epoch,
                                             class_weight, distribute):
@@ -1342,7 +1363,9 @@ class _ClusterCoordinatorDataHandler(DataHandler):
                       "`DatasetCreator`.")
 
     def per_worker_dataset_fn():
-      return strategy.distribute_datasets_from_function(x)
+
+      return strategy.distribute_datasets_from_function(
+          x, options=x.input_options)
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)
@@ -1353,9 +1376,6 @@ class _ClusterCoordinatorDataHandler(DataHandler):
 
   def sync(self):
     self._model._cluster_coordinator.join()  # pylint: disable=protected-access
-
-  def resolve_logs(self, logs):
-    return logs.fetch()
 
 
 def get_data_handler(*args, **kwargs):

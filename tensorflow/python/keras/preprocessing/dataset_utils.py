@@ -200,10 +200,11 @@ def labels_to_dataset(labels, label_mode, num_classes):
 
   Args:
     labels: list/tuple of labels to be converted into a tf.data.Dataset.
-    label_mode: - 'binary' indicates that the labels (there can be only 2) are
-      encoded as `float32` scalars with values 0 or 1 (e.g. for
-      `binary_crossentropy`). - 'categorical' means that the labels are mapped
-      into a categorical vector. (e.g. for `categorical_crossentropy` loss).
+    label_mode:
+    - 'binary' indicates that the labels (there can be only 2) are encoded as
+      `float32` scalars with values 0 or 1 (e.g. for `binary_crossentropy`).
+    - 'categorical' means that the labels are mapped into a categorical vector.
+      (e.g. for `categorical_crossentropy` loss).
     num_classes: number of classes of labels.
   """
   label_ds = dataset_ops.Dataset.from_tensor_slices(labels)

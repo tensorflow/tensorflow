@@ -142,9 +142,12 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // These are ops with embedded computations where it suffices to convert
       // the embedded computations instead of converting the ops themselves.
       if (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
-          opcode == HloOpcode::kAllReduce || opcode == HloOpcode::kFusion ||
-          opcode == HloOpcode::kMap || opcode == HloOpcode::kReduce ||
-          opcode == HloOpcode::kReduceWindow || opcode == HloOpcode::kScatter ||
+          opcode == HloOpcode::kAllReduce ||
+          opcode == HloOpcode::kAllReduceScatter ||
+          opcode == HloOpcode::kAllReduceStart ||
+          opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
+          opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||
+          opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
           opcode == HloOpcode::kSort || opcode == HloOpcode::kConditional) {
         continue;

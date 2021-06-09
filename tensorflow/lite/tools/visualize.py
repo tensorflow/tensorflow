@@ -30,7 +30,14 @@ import re
 import sys
 import numpy as np
 
-from tensorflow.lite.python import schema_py_generated as schema_fb
+# pylint: disable=g-import-not-at-top
+if not os.path.splitext(__file__)[0].endswith(
+    os.path.join("tflite_runtime", "visualize")):
+  # This file is part of tensorflow package.
+  from tensorflow.lite.python import schema_py_generated as schema_fb
+else:
+  # This file is part of tflite_runtime package.
+  from tflite_runtime import schema_py_generated as schema_fb
 
 # A CSS description for making the visualizer
 _CSS = """
@@ -293,7 +300,7 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
   second = {}
   pixel_mult = 200  # TODO(aselle): multiplier for initial placement
   width_mult = 170  # TODO(aselle): multiplier for initial placement
-  for op_index, op in enumerate(g["operators"]):
+  for op_index, op in enumerate(g["operators"] or []):
 
     for tensor_input_position, tensor_index in enumerate(op["inputs"]):
       if tensor_index not in first:
@@ -419,8 +426,8 @@ def CreateDictFromFlatbuffer(buffer_data):
   return FlatbufferToDict(model, preserve_as_numpy=False)
 
 
-def CreateHtmlFile(tflite_input, html_output):
-  """Given a tflite model in `tflite_input` file, produce html description."""
+def create_html(tflite_input):
+  """Returns html description with the given tflite model in `tflite_input` file."""
 
   # Convert the model into a JSON flatbuffer using flatc (build if doesn't
   # exist.
@@ -456,7 +463,7 @@ def CreateHtmlFile(tflite_input, html_output):
                               ("version", None)]
 
   # Update builtin code fields.
-  for idx, d in enumerate(data["operator_codes"]):
+  for d in data["operator_codes"]:
     d["builtin_code"] = max(d["builtin_code"], d["deprecated_builtin_code"])
 
   for subgraph_idx, g in enumerate(data["subgraphs"]):
@@ -487,8 +494,9 @@ def CreateHtmlFile(tflite_input, html_output):
     html += GenerateTableHtml(g["tensors"], tensor_keys_to_display)
 
     # Print the ops.
-    html += "<h3>Ops</h3>\n"
-    html += GenerateTableHtml(g["operators"], op_keys_to_display)
+    if g["operators"]:
+      html += "<h3>Ops</h3>\n"
+      html += GenerateTableHtml(g["operators"], op_keys_to_display)
 
     # Visual graph.
     html += "<svg id='subgraph%d' width='1600' height='900'></svg>\n" % (
@@ -506,8 +514,7 @@ def CreateHtmlFile(tflite_input, html_output):
 
   html += "</body></html>\n"
 
-  with open(html_output, "w") as output_file:
-    output_file.write(html)
+  return html
 
 
 def main(argv):
@@ -517,7 +524,9 @@ def main(argv):
   except IndexError:
     print("Usage: %s <input tflite> <output html>" % (argv[0]))
   else:
-    CreateHtmlFile(tflite_input, html_output)
+    html = create_html(tflite_input)
+    with open(html_output, "w") as output_file:
+      output_file.write(html)
 
 
 if __name__ == "__main__":

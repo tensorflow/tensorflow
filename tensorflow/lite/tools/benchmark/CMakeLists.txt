@@ -28,6 +28,7 @@ list(APPEND TFLITE_BENCHMARK_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/time.cc
   ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
@@ -35,7 +36,6 @@ list(APPEND TFLITE_BENCHMARK_SRCS
 
 list(APPEND TFLITE_BENCHMARK_LIBS
   tensorflow-lite
-  ${CMAKE_DL_LIBS}
 )
 
 # TODO(b/171007016): Enable performance options on Windows.

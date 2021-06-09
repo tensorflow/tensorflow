@@ -54,6 +54,7 @@ class KernelThunk : public Thunk {
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
 
+  std::string ToStringExtra(int indent) const override;
   const string& kernel_name() const { return kernel_name_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
