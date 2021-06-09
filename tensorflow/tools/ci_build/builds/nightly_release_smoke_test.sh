@@ -92,6 +92,32 @@ function test_tf_imports() {
     return 1
   fi
 
+  # test for gcs file system import
+  # Note: The following tests availability of gcs file system on Windows.
+  # While the path gs://1234567890 is not visible, the error should be
+  # something like tf.errors.InvalidArgumentError:
+  # `GCS path doesn't contain an object name: gs://1234567`
+  # On the other hand, if gcs file system is not available, the error will
+  # be `UnimplementedError: File system scheme 'gs' not implemented`
+  # See https://github.com/tensorflow/tensorflow/issues/49515 for details.
+  # Note `echo` is used as we need to deal with multiple line to
+  # capture right exception.
+  # The expanded code is:
+  #
+  # import tensorflow as tf;
+  # try:
+  #   tf.io.gfile.GFile('gs://1234567890').read()
+  # except tf.errors.InvalidArgumentError:
+  #   print('SUCCESS')
+  # except:
+  #   print('FAILURE')
+  RET_VAL=$(echo -e "import tensorflow as tf;\ntry:\n  tf.io.gfile.GFile('gs://1234567890').read()\nexcept tf.errors.InvalidArgumentError:\n  print('SUCCESS')\nexcept:\n  print('FAILURE')" | python)
+  if ! [[ ${RET_VAL} == 'SUCCESS' ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
+    echo "GCS file system import test on virtualenv FAILED, will not upload ${WHL_NAME} package."
+    return 1
+  fi
+
   RESULT=$?
 
   popd
