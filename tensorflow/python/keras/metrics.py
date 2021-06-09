@@ -892,7 +892,7 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
     Returns:
       Update op.
     """
-    super(SparseCategoricalAccuracy, self).update_state(
+    return super(SparseCategoricalAccuracy, self).update_state(
       y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
 
 
