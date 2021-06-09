@@ -3617,8 +3617,10 @@ class Options(options_lib.OptionsBase):
     # else we go with `experimental_threading`.
     if not self.threading._has_default_values():
       pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
+      self.experimental_threading = self.threading
     else:
       pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
+      self.threading = self.experimental_threading
     return pb
 
   def _from_proto(self, pb):
