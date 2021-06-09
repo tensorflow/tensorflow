@@ -728,6 +728,13 @@ class XlaBuilder {
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
       const absl::optional<Shape>& shape_with_layout = absl::nullopt);
 
+  XlaOp AllReduceScatter(
+      XlaOp operand, const XlaComputation& computation, int64 scatter_dimension,
+      int64 shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+      const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+      const absl::optional<Layout>& layout = absl::nullopt,
+      const absl::optional<bool> use_global_device_ids = absl::nullopt);
+
   XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                  int64 split_count,
                  const std::vector<ReplicaGroup>& replica_groups,
@@ -1316,6 +1323,13 @@ class XlaBuilder {
                          absl::Span<const ReplicaGroup> replica_groups,
                          const absl::optional<ChannelHandle>& channel_id,
                          const absl::optional<Shape>& shape_with_layout);
+  friend XlaOp AllReduceScatter(
+      XlaOp operand, const XlaComputation& computation, int64 scatter_dimension,
+      int64 shard_count, absl::Span<const ReplicaGroup> replica_groups,
+      const absl::optional<ChannelHandle>& channel_id,
+      const absl::optional<Layout>& layout,
+      const absl::optional<bool> use_global_device_ids);
+
   friend XlaOp AllToAll(XlaOp operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups,
@@ -2264,6 +2278,13 @@ XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups = {},
                 const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
                 const absl::optional<Shape>& shape_with_layout = absl::nullopt);
+
+XlaOp AllReduceScatter(
+    XlaOp operand, const XlaComputation& computation, int64 scatter_dimension,
+    int64 shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+    const absl::optional<Layout>& layout = absl::nullopt,
+    const absl::optional<bool> use_global_device_ids = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
 // An optional `layout` can be specified to force the layout of the instruction.
