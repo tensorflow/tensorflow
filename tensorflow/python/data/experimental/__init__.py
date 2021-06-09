@@ -30,6 +30,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@DatasetStructure
 @@DistributeOptions
 @@ExternalStatePolicy
+@@MapVectorizationOptions
 @@OptimizationOptions
 @@Optional
 @@OptionalStructure
@@ -126,6 +127,7 @@ from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_f
 from tensorflow.python.data.experimental.ops.lookup_ops import DatasetInitializer
 from tensorflow.python.data.experimental.ops.lookup_ops import index_table_from_dataset
 from tensorflow.python.data.experimental.ops.lookup_ops import table_from_dataset
+from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
 from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device

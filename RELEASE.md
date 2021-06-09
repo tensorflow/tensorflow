@@ -127,9 +127,6 @@
         *   `tf.data.experimental.StatsOptions.*`
         *   `tf.data.experimental.bytes_produced_stats`
         *   `tf.data.experimental.latency_stats`
-    *   Removed experimental tf.data API for map vectorization:
-        *   `tf.data.experimental.OptimizationOptions.map_vectorization`
-        *   `tf.data.experimental.MapVectorizationOptions.*`
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.

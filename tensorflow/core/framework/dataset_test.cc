@@ -117,19 +117,24 @@ INSTANTIATE_TEST_SUITE_P(
     MergeOptionsTest, MergeOptionsTest,
     ::testing::ValuesIn(std::vector<MergeOptionsTestParam>{
         // Destination is empty.
-        {/*source=*/"deterministic: false", /*destination=*/"",
-         /*expected=*/"deterministic: false"},
+        {"optimization_options { map_vectorization { enabled: true }}", "",
+         "optimization_options { map_vectorization { enabled: true }}"},
         // Source and destination have the same values.
-        {/*source=*/"deterministic: false",
-         /*destination=*/"deterministic: false",
-         /*expected=*/"deterministic: false"},
+        {"optimization_options { map_vectorization { enabled: true }}",
+         "optimization_options { map_vectorization { enabled: true }}",
+         "optimization_options { map_vectorization { enabled: true }}"},
         // Source values override destination values.
-        {/*source=*/"deterministic: false",
-         /*destination=*/"deterministic: true",
-         /*expected=*/"deterministic: false"},
+        {"slack: true "
+         "optimization_options { map_vectorization { enabled: true }}",
+         "slack: false "
+         "deterministic: true "
+         "optimization_options { map_vectorization { enabled: false }}",
+         "slack: true "
+         "deterministic: true "
+         "optimization_options { map_vectorization { enabled: true }}"},
         // Values are enums.
-        {/*source=*/"external_state_policy: POLICY_IGNORE",
-         /*destination=*/"external_state_policy: POLICY_FAIL",
-         /*expected=*/"external_state_policy: POLICY_IGNORE"}}));
+        {"external_state_policy: POLICY_IGNORE",
+         "external_state_policy: POLICY_FAIL",
+         "external_state_policy: POLICY_IGNORE"}}));
 
 }  // namespace tensorflow
