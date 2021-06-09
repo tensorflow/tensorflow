@@ -303,10 +303,11 @@ PersistentCompilationCache::PersistentCompilationCache()
 #if !defined(PLATFORM_POSIX)
   // The current peristent cache design requires an atomic rename.
   LOG(WARNING) << "XLA persistent cache is only supported on POSIX platforms.";
+  in_use_ = false;
   return;
 #endif
   tensorflow::Env* env = tensorflow::Env::Default();
-  std::vector<string> files;
+  std::vector<std::string> files;
   in_use_ = env->GetChildren(cache_dir_, &files).ok();
   if (!in_use_) {
     LOG(WARNING) << "Can't read XLA persistent cache directory \""
@@ -330,12 +331,12 @@ PersistentCompilationCache::PersistentCompilationCache()
     }
     // Read the file, and store in cache on success.
     std::string text;
-    string fullpath = tensorflow::io::JoinPath(cache_dir_, file);
+    std::string fullpath = tensorflow::io::JoinPath(cache_dir_, file);
     if (!tensorflow::ReadFileToString(env, fullpath, &text).ok()) {
       LOG(WARNING) << "Skippping entry \"" << fullpath << "\". Can't read it.";
       continue;
     }
-    // store PTX or cubin in memory cache
+    // Store the PTX/cubin in the memory cache.
     in_memory_cache_[key] = text;
   }
   VLOG(2) << "Persistent cache has " << in_memory_cache_.size()
@@ -353,7 +354,7 @@ int64 PersistentCompilationCache::CreateKey(
     llvm::Module* llvm_module,
     const se::CudaComputeCapability &compute_capability,
     const se::GpuAsmOpts &options){
-  string llvm_str = llvm_ir::DumpModuleToString(*llvm_module);
+  std::string llvm_str = llvm_ir::DumpModuleToString(*llvm_module);
   std::string ptx_options;
   if (options.disable_gpuasm_optimizations) {
     ptx_options += "-O0";
@@ -373,7 +374,7 @@ int64 PersistentCompilationCache::CreateKey(
 }
 
 void PersistentCompilationCache::AddToCache(int64 key, absl::string_view text,
-                                            const string &kind) {
+                                            const std::string &kind) {
   VLOG(2) << "Attempting to add " << kind << " to cache for key: "
           << key << ".";
   tensorflow::Env* env = tensorflow::Env::Default();
@@ -386,10 +387,11 @@ void PersistentCompilationCache::AddToCache(int64 key, absl::string_view text,
       LOG(ERROR) << "Don't add to cache: can't write " << kind << ". Please "
                  << "check that there's space on the device, and that the "
 		 << "cache \"" << cache_dir_ << "\" has the right permissions.";
+      (void)env->DeleteFile(text_tmp);
     } else {
       // Rename file.
-      string key_str = std::to_string(key);
-      string text_file = tensorflow::io::JoinPath(cache_dir_, key_str);
+      std::string key_str = std::to_string(key);
+      std::string text_file = tensorflow::io::JoinPath(cache_dir_, key_str);
       // add cache entry "key -> text".
       // rename is atomic, making this multi thread/process safe.
       if (!env->RenameFile(text_tmp, text_file).ok()) {
@@ -397,18 +399,16 @@ void PersistentCompilationCache::AddToCache(int64 key, absl::string_view text,
 	           << "\" to \"" << text_file << "\". Please check that "
 		   << "there's space on the device, and that the cache \""
                    << cache_dir_ << "\" has the right permissions.";
+        (void)env->DeleteFile(text_tmp);
       } else {
 	VLOG(2) << "Added " << kind << ": " << key << " to cache directory "
         	<< cache_dir_ << ".";
       }
     }
-    // On success, the temp file is no longer present, but  WriteStringToFile
-    // can fail after file has been created. Delete here in case of failures.
-    (void)env->DeleteFile(text_tmp);
   }
 }
 
-void PersistentCompilationCache::AddToCache(int64 key, const string &ptx) {
+void PersistentCompilationCache::AddToCache(int64 key, const std::string &ptx) {
   int64 ptx_key = tensorflow::Hash64Combine(key, kPtxHash);
   AddToCache(ptx_key, ptx, "PTX");
 }
@@ -425,11 +425,11 @@ void PersistentCompilationCache::AddToCache(int64 key,
 
 template <typename T>
 bool PersistentCompilationCache::LookupCache(int64 key, T &text,
-                                             const string &kind) {
+                                             const std::string &kind) {
   VLOG(2) << "Attempting to lookup " << kind << " in cache for key: " << key << ".";
   bool in_cache = in_memory_cache_.contains(key);
   if (in_cache) {
-    const string &text_str = in_memory_cache_[key];
+    const std::string &text_str = in_memory_cache_[key];
     // Make a copy in order to not return a reference to the cache. 
     std::copy_n(text_str.data(), text_str.size(), std::back_inserter(text));
     VLOG(2) << "Found " << kind << " in cache for key: " << key << ".";
@@ -437,7 +437,7 @@ bool PersistentCompilationCache::LookupCache(int64 key, T &text,
   return in_cache;
 }
 
-bool PersistentCompilationCache::LookupCache(int64 key, string &ptx) {
+bool PersistentCompilationCache::LookupCache(int64 key, std::string &ptx) {
   int64 ptx_key = tensorflow::Hash64Combine(key, kPtxHash);
 
   return LookupCache(ptx_key, ptx, "PTX");
@@ -474,7 +474,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   bool use_cache = persistent_compilation_cache_.InUse();
   bool have_ptx = false;
   int64 key;
-  string ptx;
+  std::string ptx;
   if (use_cache) {
     key = persistent_compilation_cache_.CreateKey(
       llvm_module, compute_capability, PtxOptsFromConfig(module_config));
@@ -508,9 +508,8 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
           MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
       XLA_SCOPED_LOGGING_TIMER(
           "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-      TF_ASSIGN_OR_RETURN(ptx,
-                          nvptx::CompileToPtx(selected_module, gpu_version,
-                                              module_config, libdevice_dir));
+      TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
+                                                   module_config, libdevice_dir));
       if (use_cache) {
 	persistent_compilation_cache_.AddToCache(key, ptx);
       }
@@ -519,7 +518,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 
   bool have_cubin = false;
   std::vector<uint8> cubin;
-  if (use_cache && have_ptx) {
+  if (have_ptx) {
     have_cubin = persistent_compilation_cache_.LookupCache(key, cubin);
   }
   if (!have_cubin) {
