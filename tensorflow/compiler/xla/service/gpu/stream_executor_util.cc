@@ -216,7 +216,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       return InternalError(
           "Invalid input shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
-          ShapeUtil::HumanString(input),
+          ShapeUtil::HumanStringWithLayout(input),
           ConvolutionDimensionNumbersToString(dnums), vect_size);
     }
   } else if (LayoutUtil::Equal(input.layout(), nhwc_input)) {
@@ -240,7 +240,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       return InternalError(
           "Invalid filter shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
-          ShapeUtil::HumanString(filter),
+          ShapeUtil::HumanStringWithLayout(filter),
           ConvolutionDimensionNumbersToString(dnums), vect_size);
     }
   } else if (LayoutUtil::Equal(filter.layout(), nhwc_filter)) {
@@ -264,7 +264,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       return InternalError(
           "Invalid output shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
-          ShapeUtil::HumanString(output),
+          ShapeUtil::HumanStringWithLayout(output),
           ConvolutionDimensionNumbersToString(dnums), vect_size);
     }
   } else if (LayoutUtil::Equal(output.layout(), nhwc_output)) {
@@ -276,6 +276,42 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   }
 
   return std::make_tuple(input_layout, filter_layout, output_layout);
+}
+
+// Given unique integers D = {d0, d1, ds...}, finds the first integer less than
+// `rank` which is not in D.  If there is no such number (because all the values
+// in [0, rank) appear), returns nullopt.
+//
+// When D is the set of dimensions in a ConvolutionDimensionNumbers, this finds
+// the dimension number that corresponds to the vectorized-features dimension in
+// the convolution.
+static absl::optional<int64> FindVectorizedDim(int64 rank, int64 d0, int64 d1,
+                                               absl::Span<const int64> ds) {
+  for (int64 i = 0; i < rank; i++) {
+    if (i == d0 || i == d1 || absl::c_linear_search(ds, i)) {
+      continue;
+    }
+    return i;
+  }
+  return absl::nullopt;
+}
+
+std::tuple<absl::optional<int64>, absl::optional<int64>, absl::optional<int64>>
+FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
+                          const Shape& input, const Shape& filter,
+                          const Shape& output) {
+  return {
+      FindVectorizedDim(input.dimensions_size(), dnums.input_batch_dimension(),
+                        dnums.input_feature_dimension(),
+                        dnums.input_spatial_dimensions()),
+      FindVectorizedDim(filter.dimensions_size(),
+                        dnums.kernel_input_feature_dimension(),
+                        dnums.kernel_output_feature_dimension(),
+                        dnums.kernel_spatial_dimensions()),
+      FindVectorizedDim(
+          output.dimensions_size(), dnums.output_batch_dimension(),
+          dnums.output_feature_dimension(), dnums.output_spatial_dimensions()),
+  };
 }
 
 tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {

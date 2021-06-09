@@ -44,6 +44,12 @@ namespace tensorflow {
 
 const char* const kColocationAttrName = "_class";
 const char* const kColocationGroupPrefix = "loc:@";
+// For TPU distributed rewrite, TPU args are collected and "staged" on the local
+// host using an IdentityN TF op. Some args may result from a remote source.
+// When all arg tensors are available, the TPUExecute op can be inovoked. See
+// DistributedTPURewritePass for more details.
+const char* const kTpuExecuteStagingOp = "IdentityN";
+const char* const kTpuExecuteStagingNodeName = "_variable_copy";
 
 AttrSlice::AttrSlice() : ndef_(nullptr) {
   static const AttrValueMap* const kEmptyAttrValueMap = new AttrValueMap;

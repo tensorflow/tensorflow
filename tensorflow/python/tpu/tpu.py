@@ -309,12 +309,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(
-      self,
-      name: Text,
-      vars_: List[variables.Variable],
-      is_mirrored: bool = False,
-      is_packed: bool = False) -> core_types.Tensor:
+  def get_replicated_var_handle(self,
+                                name: Text,
+                                vars_: Union[List[core_types.Tensor],
+                                             List[variables.Variable]],
+                                is_mirrored: bool = False,
+                                is_packed: bool = False) -> core_types.Tensor:
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -322,7 +322,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     Args:
       name: The common name of the variable.
-      vars_: The replicated TPU variables.
+      vars_: The replicated TPU variables or handles.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
       is_packed: Whether the replicated variables are packed into one variable.
@@ -371,7 +371,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # pylint: disable=protected-access
       saved_context = graph._get_control_flow_context()
       graph._set_control_flow_context(self.outer_context)
-      handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
+      # If replicated_vars are variables, get the handles. Note that this can be
+      # done inside TPUReplicateContext because replicated_vars.handle may
+      # create new ops.
+      if isinstance(replicated_vars[0], variables.Variable):
+        replicated_vars = [v.handle for v in replicated_vars]
+      handle = tpu_ops.tpu_replicated_input(replicated_vars,
                                             name=name + "/handle",
                                             is_mirrored_variable=is_mirrored,
                                             is_packed=is_packed)

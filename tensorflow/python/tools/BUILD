@@ -114,7 +114,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow/python/summary",
     ],
 )
 

@@ -1152,7 +1152,6 @@ class DataHandler(object):
       self._steps_per_execution_value = steps_per_execution.numpy().item()
 
     adapter_cls = select_data_adapter(x, y)
-    self._verify_data_adapter_compatibility(adapter_cls)
     self._adapter = adapter_cls(
         x,
         y,
@@ -1175,9 +1174,6 @@ class DataHandler(object):
 
     self._configure_dataset_and_inferred_steps(strategy, x, steps_per_epoch,
                                                class_weight, distribute)
-
-  def _verify_data_adapter_compatibility(self, adapter_cls):
-    pass
 
   def _configure_dataset_and_inferred_steps(self, strategy, x, steps_per_epoch,
                                             class_weight, distribute):
@@ -1335,15 +1331,30 @@ class DataHandler(object):
 class _ClusterCoordinatorDataHandler(DataHandler):
   """A `DataHandler` that is compatible with `ClusterCoordinator`."""
 
-  def _verify_data_adapter_compatibility(self, adapter_cls):
-    if adapter_cls != DatasetCreatorAdapter:
-      # TODO(b/186414920): Update the error message once `DatasetCreator` is no
-      # longer experimental.
+  def __init__(self, x, y=None, **kwargs):
+    if not isinstance(x, dataset_creator.DatasetCreator):
+      x = self._convert_to_dataset_creator(x, y, **kwargs)
+
+    super().__init__(x=x, **kwargs)
+
+  def _convert_to_dataset_creator(self, x, y, **kwargs):
+    """Converts non-tf.data.Dataset to `DatasetCreator` instances."""
+
+    def _dataset_fn(input_context):
+      del input_context
+      data_adapter_cls = select_data_adapter(x, y)
+      return data_adapter_cls(x=x, y=y, **kwargs).get_dataset()
+
+    # This check is needed because types like `tf.data.Dataset` don't work with
+    # PSS yet. So only apply this logic to the types we can support.
+    if (isinstance(x, _get_tensor_types()) and
+        isinstance(y, _get_tensor_types())):
+      return dataset_creator.DatasetCreator(_dataset_fn)
+    else:
       raise NotImplementedError(
-          "Only `tf.keras.utils.experimental.DatasetCreator` input is "
-          "supported with `ParameterServerStrategy` at this time. Please see "
-          "`tf.keras.utils.experimental.DatasetCreator` class docstring for "
-          "more information.")
+          "Only `tf.keras.utils.experimental.DatasetCreator`, `tf.Tensor`, "
+          "numpy arrays and pandas dataframes are supported types at this "
+          "time.")
 
   def _configure_dataset_and_inferred_steps(self, strategy, x, steps_per_epoch,
                                             class_weight, distribute):

@@ -726,6 +726,34 @@ static LogicalResult Verify(AllToAllOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// AllGatherOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllGatherOp op) {
+  // If operand and result are both ranked, then the size of the gather
+  // dimension in the result should be a multiple of the size of the gather
+  // dimension in the operand.
+  auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+  auto resultType = op.getType().dyn_cast<RankedTensorType>();
+  uint64_t allGatherDimIndex = op.all_gather_dim();
+  if (!operandType || !resultType ||
+      operandType.isDynamicDim(allGatherDimIndex) ||
+      resultType.isDynamicDim(allGatherDimIndex))
+    return success();
+  if (operandType.getDimSize(allGatherDimIndex) == 0)
+    return op.emitOpError() << "operand gather dimension cannot be zero.";
+  if ((resultType.getDimSize(allGatherDimIndex) %
+       operandType.getDimSize(allGatherDimIndex)) != 0)
+    return op.emitOpError()
+           << "result gather dimension has size "
+           << resultType.getDimSize(allGatherDimIndex)
+           << ", expected to be a multiple of operand gather dimension size "
+           << operandType.getDimSize(allGatherDimIndex);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastOp
 //===----------------------------------------------------------------------===//
 
@@ -991,12 +1019,6 @@ void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
                  DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
                  DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
-}
-
-LogicalResult DynamicBroadcastInDimOp::inferReturnTypeComponents(
-    MLIRContext*, llvm::Optional<mlir::Location>, ValueRange, DictionaryAttr,
-    RegionRange, llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
-  return failure();
 }
 
 LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
@@ -1380,6 +1402,14 @@ static LogicalResult Verify(DynamicReshapeOp op) {
     return op.emitError() << "output should have a rank equal to the number of "
                              "elements in output_shape";
   }
+  return success();
+}
+
+LogicalResult DynamicReshapeOp::reifyReturnTypeShapes(
+    OpBuilder&, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  DynamicReshapeOp::Adaptor adaptor(operands);
+  reifiedReturnShapes.push_back(adaptor.output_shape());
   return success();
 }
 

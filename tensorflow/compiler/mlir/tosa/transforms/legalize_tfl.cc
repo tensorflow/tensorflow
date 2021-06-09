@@ -257,7 +257,6 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
   return success();
 }
 
-// TODO: Use a utility function for common code in comparison ops.
 LogicalResult ConvertTFLEqualOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_equal_op = cast<TFL::EqualOp>(op);
@@ -518,7 +517,6 @@ LogicalResult ConvertTFLGreaterEqualOp::matchAndRewrite(
   return success();
 }
 
-// TODO: Use a utility function for common code in elementwise binary ops.
 LogicalResult ConvertTFLAddOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_add_op = cast<TFL::AddOp>(op);
@@ -666,7 +664,6 @@ LogicalResult ConvertTFLSubOp::matchAndRewrite(
     // 2. Extra left shift to input to increase precision
     // Where input_shift = 20 if input is 8-bit
     // input_shift = 15 if input is 16-bit
-    // TODO: support 16-bit
     double in_lhs_scale = input_lhs_qtype.getScale();
     double in_rhs_scale = input_rhs_qtype.getScale();
     double output_scale = output_qtype.getScale();
@@ -2452,29 +2449,17 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!input_type) return failure();
 
-  auto input_shape = input_type.getShape();
-
   // TFL hardswish: f(x) -> (x * relu6(x+3))/6
 
   if (input_type.getElementType().isa<mlir::quant::QuantizedType>() &&
       output_type.getElementType().isa<mlir::quant::QuantizedType>()) {
     // Should match TFLite reference numerical behavior
-    mlir::quant::UniformQuantizedType in_quant_type =
+    mlir::quant::UniformQuantizedType input_qtype =
         input_type.getElementType()
             .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
-    mlir::quant::UniformQuantizedType out_quant_type =
+    mlir::quant::UniformQuantizedType output_qtype =
         output_type.getElementType()
             .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
-
-    UniformQuantizedType int16_element_qtype =
-        mlir::quant::UniformQuantizedType::get(
-            true, rewriter.getIntegerType(16), rewriter.getF32Type(), 1.0f, 0,
-            -32768, 32767);
-
-    RankedTensorType int16_type =
-        RankedTensorType::get(input_shape, int16_element_qtype);
-    RankedTensorType int32_type =
-        RankedTensorType::get(input_shape, rewriter.getI32Type());
 
     auto hardswish_func = [](double v) -> double {
       double w = v + 3.0;
@@ -2482,44 +2467,14 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
       return v * w / 6.0;
     };
 
-    if (in_quant_type.getStorageTypeIntegralWidth() == 8) {
+    if (input_qtype.getStorageTypeIntegralWidth() == 8) {
+      // Implement with 8-bit table lookup.
       Value table_const = getTosaConst8bitTable(
-          rewriter, op, in_quant_type.getScale(), in_quant_type.getZeroPoint(),
-          out_quant_type.getScale(), out_quant_type.getZeroPoint(),
-          hardswish_func);
+          rewriter, op, input_qtype.getScale(), input_qtype.getZeroPoint(),
+          output_qtype.getScale(), output_qtype.getZeroPoint(), hardswish_func);
 
-      // Rescale input to 9.7 precision.
-      // No real rescaled other than left shift 7 bits
-      Value op1_rescale_in =
-          buildRescale(rewriter, op, int16_type, tfl_hardswish_op.input(),
-                       128.0, 0, 0, false, true);
-
-      auto op2_table_op1 = rewriter.create<tosa::TableOp>(
-          op->getLoc(), int32_type, op1_rescale_in, table_const);
-
-      Value op3_rescale_op2 =
-          buildRescale(rewriter, op, output_type, op2_table_op1.getResult(),
-                       1.0 / 128.0, 0, 0, false, true);
-
-      rewriter.replaceOp(op, {op3_rescale_op2});
-
-    } else {  // int16
-      // Table valid input ranges [-256, 256], valid int16 ranges [-32768,
-      // 32767] To map [-256, 256] to [-32768, 32767], an extra 128.0 factor is
-      // passed with input scale
-      Value table_const = getTosaConst8bitTable(
-          rewriter, op, in_quant_type.getScale() * 128.0,
-          in_quant_type.getZeroPoint(), out_quant_type.getScale(),
-          out_quant_type.getZeroPoint(), hardswish_func);
-
-      auto op1_table_in = rewriter.create<tosa::TableOp>(
-          op->getLoc(), int32_type, tfl_hardswish_op.input(), table_const);
-
-      Value op2_rescale_op1 =
-          buildRescale(rewriter, op, output_type, op1_table_in.getResult(),
-                       1.0 / 128.0, 0, 0, false, true);
-
-      rewriter.replaceOp(op, {op2_rescale_op1});
+      rewriter.replaceOpWithNewOp<tosa::TableOp>(
+          op, output_type, tfl_hardswish_op.input(), table_const);
     }
 
   } else {
@@ -2580,12 +2535,6 @@ LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
   }
 
   if (input_is_qtype) {
-    UniformQuantizedType int16_element_qtype =
-        mlir::quant::UniformQuantizedType::get(
-            true, rewriter.getIntegerType(16), rewriter.getF32Type(), 1.0f, 0,
-            -32768, 32767);
-    RankedTensorType int16_type =
-        RankedTensorType::get(output_type.getShape(), int16_element_qtype);
     RankedTensorType int32_type = RankedTensorType::get(
         output_type.getShape(), rewriter.getIntegerType(32));
     mlir::quant::UniformQuantizedType input_qtype =
@@ -2600,36 +2549,26 @@ LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
     };
 
     if (input_qtype.getStorageTypeIntegralWidth() == 8) {
-      // Generate table with 16 bit entry, where in input/output's scale and zp
-      // are baked into the table generation. In 8-bit case, only 8-bit LSB out
-      // of a 16 bit entry is used. Reference:
-      // tensorflow/lite/kernels/activations.cc
       Value table_const = getTosaConst8bitTable(
           rewriter, op, input_qtype.getScale(), input_qtype.getZeroPoint(),
           output_qtype.getScale(), output_qtype.getZeroPoint(), sigmoid_func);
 
-      // Rescale input to 9.7 precision.
-      // No real rescaled other than left shift 7 bits
-      Value op1_rescale_in =
-          buildRescale(rewriter, op, int16_type, tfl_logistic_op.x(), 128.0, 0,
-                       0, false, true);
-
-      auto op2_table_op1 = rewriter.create<tosa::TableOp>(
-          op->getLoc(), int32_type, op1_rescale_in, table_const);
-
-      Value op3_rescale_op2 =
-          buildRescale(rewriter, op, output_type, op2_table_op1.getResult(),
-                       1.0 / 128.0, 0, 0, false, true);
-
-      rewriter.replaceOp(op, {op3_rescale_op2});
+      rewriter.replaceOpWithNewOp<tosa::TableOp>(
+          op, output_type, tfl_logistic_op.x(), table_const);
     } else {  // int16
-      // Table valid input ranges [-256, 256], valid int16 ranges [-32768,
-      // 32767] To map [-256, 256] to [-32768, 32767], an extra 128.0 factor is
-      // passed with input scale
-      Value table_const = getTosaConst8bitTable(
-          rewriter, op, input_qtype.getScale() * 128.0,
-          input_qtype.getZeroPoint(), output_qtype.getScale(),
-          output_qtype.getZeroPoint(), sigmoid_func);
+      if (input_qtype.getZeroPoint() != 0 || output_qtype.getZeroPoint() != 0) {
+        op->emitOpError(
+            "ConvertTFLLogistic: input/output zeropoint should be 0 in 16-bit "
+            "mode");
+        return failure();
+      }
+      double input_min = -32768 * input_qtype.getScale();
+      double input_max = 32767 * input_qtype.getScale();
+
+      // Generate table with gen_lut() in
+      // tensorflow/lite/kernels/internal/common.h
+      Value table_const = getTosaConst16bitTable(rewriter, op, sigmoid_func,
+                                                 input_min, input_max);
 
       auto op1_table_in = rewriter.create<tosa::TableOp>(
           op->getLoc(), int32_type, tfl_logistic_op.x(), table_const);
@@ -2669,12 +2608,6 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
   }
 
   if (input_is_qtype) {
-    UniformQuantizedType int16_element_qtype =
-        mlir::quant::UniformQuantizedType::get(
-            true, rewriter.getIntegerType(16), rewriter.getF32Type(), 1.0f, 0,
-            -32768, 32767);
-    RankedTensorType int16_type =
-        RankedTensorType::get(output_type.getShape(), int16_element_qtype);
     RankedTensorType int32_type = RankedTensorType::get(
         output_type.getShape(), rewriter.getIntegerType(32));
     mlir::quant::UniformQuantizedType input_qtype =
@@ -2690,36 +2623,26 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
     };
 
     if (input_qtype.getStorageTypeIntegralWidth() == 8) {
-      // Generate table with 16 bit entry, where in input/output's scale and zp
-      // are baked into the table generation. In 8-bit case, only 8-bit LSB out
-      // of a 16 bit entry is used. Reference:
-      // tensorflow/lite/kernels/activations.cc
       Value table_const = getTosaConst8bitTable(
           rewriter, op, input_qtype.getScale(), input_qtype.getZeroPoint(),
           output_qtype.getScale(), output_qtype.getZeroPoint(), tanh_func);
 
-      // Rescale input to 9.7 precision.
-      // No real rescaled other than left shift 7 bits
-      Value op1_rescale_in =
-          buildRescale(rewriter, op, int16_type, tfl_tanh_op.input(), 128.0, 0,
-                       0, false, true);
-
-      auto op2_table_op1 = rewriter.create<tosa::TableOp>(
-          op->getLoc(), int32_type, op1_rescale_in, table_const);
-
-      Value op3_rescale_op2 =
-          buildRescale(rewriter, op, output_type, op2_table_op1.getResult(),
-                       1.0 / 128.0, 0, 0, false, true);
-
-      rewriter.replaceOp(op, {op3_rescale_op2});
+      rewriter.replaceOpWithNewOp<tosa::TableOp>(
+          op, output_type, tfl_tanh_op.input(), table_const);
     } else {  // int16
-      // Table valid input ranges [-256, 256], valid int16 ranges [-32768,
-      // 32767] To map [-256, 256] to [-32768, 32767], an extra 128.0 factor is
-      // passed with input scale
-      Value table_const = getTosaConst8bitTable(
-          rewriter, op, input_qtype.getScale() * 128.0,
-          input_qtype.getZeroPoint(), output_qtype.getScale(),
-          output_qtype.getZeroPoint(), tanh_func);
+      if (input_qtype.getZeroPoint() != 0 || output_qtype.getZeroPoint() != 0) {
+        op->emitOpError(
+            "ConvertTFLLogistic: input/output zeropoint should be 0 in 16-bit "
+            "mode");
+        return failure();
+      }
+      double input_min = -32768 * input_qtype.getScale();
+      double input_max = 32767 * input_qtype.getScale();
+
+      // Generate table with gen_lut() in
+      // tensorflow/lite/kernels/internal/common.h
+      Value table_const =
+          getTosaConst16bitTable(rewriter, op, tanh_func, input_min, input_max);
 
       auto op1_table_in = rewriter.create<tosa::TableOp>(
           op->getLoc(), int32_type, tfl_tanh_op.input(), table_const);

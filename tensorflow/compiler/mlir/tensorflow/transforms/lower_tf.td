@@ -290,7 +290,7 @@ def LowerRoundOpOnIntTensor : Pat<
 // as RoundHalfToEven to be compatible with Numpy.
 def LowerRoundOpOnFloatTensor : Pat<
   (TF_RoundOp:$res TF_FloatTensor:$input),
-  (TF_SelectOp
+  (TF_SelectV2Op
     (TF_LogicalOrOp
       (TF_GreaterOp
         (TF_SubOp:$fraction $input, (TF_FloorOp:$round_val $input)),
@@ -427,12 +427,12 @@ class BinaryXopyPat<dag From, dag To> : Pat<
   (TF_SelectV2Op
     (TF_EqualOp
       $x,
-      (TF_ConstOp:$zero
+      (TF_ConstOp
         (GetScalarOfType<0> $x)
       ),
       /*incompatible_shape_error*/ConstBoolAttrTrue
     ),
-    $zero,
+    $x,
     To
   )>;
 

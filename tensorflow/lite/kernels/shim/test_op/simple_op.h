@@ -63,7 +63,7 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
     return {absl::StrCat(kOutput2SizeAttr, ": int")};
   }
 
-  // Parses a serialized config being passed in
+  // Initializes the op
   absl::Status Init(InitContext* ctx) {
     SH_RETURN_IF_ERROR(ctx->GetAttr(kOutput2SizeAttr, &output2_size_));
     if (output2_size_ < 1) {

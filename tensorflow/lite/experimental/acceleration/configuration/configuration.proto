@@ -496,8 +496,10 @@ message BenchmarkError {
   optional int32 exit_code = 2;
   // Signal the process received.
   optional int32 signal = 3;
-  // Handled error.
+  // Handled tflite error.
   repeated ErrorCode error_code = 4;
+  // Mini-benchmark error code.
+  optional int32 mini_benchmark_error_code = 5;
 }
 
 // Top-level benchmarking event stored on-device. All events for a model are

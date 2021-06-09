@@ -288,6 +288,19 @@ def MatchHardSwishPattern3 : Pat<
     TFL_AF_None),
   (TFL_HardSwishOp $x)>;
 
+def MatchHardSwishPattern4 : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     (TFL_AddOp
+      $x,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+    $x,
+    TFL_AF_None),
+  (TFL_HardSwishOp $x)>;
+
 // Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
 // incorrect placement in the quantization aware training.
 def MatchHardSwishQuantized : Pat<

@@ -5,6 +5,8 @@ load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
@@ -75,7 +77,6 @@ tpu_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:training_util",
@@ -84,6 +85,7 @@ tpu_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/summary",
     ],
 )
 

@@ -146,6 +146,10 @@ tf_class {
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "scan"
+    argspec: "args=[\'self\', \'initial_state\', \'scan_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "shard"
     argspec: "args=[\'self\', \'num_shards\', \'index\'], varargs=None, keywords=None, defaults=None"
   }
@@ -160,6 +164,10 @@ tf_class {
   member_method {
     name: "take"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "take_while"
+    argspec: "args=[\'self\', \'predicate\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "unbatch"

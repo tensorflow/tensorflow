@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
+
 #include <queue>
 
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 
@@ -100,7 +102,9 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
 
   const auto add_input = [&channel_group, &inputs](HloInstruction* input) {
     inputs.push_back(input);
-    if (input->opcode() == HloOpcode::kAllReduce && input->channel_id()) {
+    if ((input->opcode() == HloOpcode::kAllReduce ||
+         input->opcode() == HloOpcode::kAllReduceScatter) &&
+        input->channel_id()) {
       auto it = channel_group.find(*input->channel_id());
       if (it != channel_group.end()) {
         inputs.insert(inputs.end(), it->second.begin(), it->second.end());
@@ -133,7 +137,8 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
         }
         break;
       }
-      case HloOpcode::kAllReduce: {
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllReduceScatter: {
         auto channel_id = hlo->channel_id();
         if (channel_id) {
           auto it = channel_group.find(channel_id.value());

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.scan()`."""
+"""Tests for `tf.data.Dataset.scan()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,7 +22,6 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -47,11 +46,12 @@ from tensorflow.python.platform import test
 class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _counting_dataset(self, start, scan_fn):
-    return dataset_ops.Dataset.from_tensors(0).repeat().apply(
-        scan_ops.scan(start, scan_fn))
+    return dataset_ops.Dataset.from_tensors(0).repeat().scan(
+        initial_state=start, scan_func=scan_fn)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCount(self):
+
     def make_scan_fn(step):
       return lambda state, _: (state + step, state)
 
@@ -59,8 +59,8 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       return self._counting_dataset(start, make_scan_fn(step)).take(take)
 
     for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
-                                          (10, 2, 10), (10, -1, 10), (10, -2,
-                                                                      10)]:
+                                          (10, 2, 10), (10, -1, 10),
+                                          (10, -2, 10)]:
       next_element = self.getNext(dataset_fn(start_val, step_val, take_val))
       for expected, _ in zip(
           itertools.count(start_val, step_val), range(take_val)):
@@ -70,8 +70,9 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testFibonacci(self):
-    data = dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
-        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1])))
+    data = dataset_ops.Dataset.from_tensors(1).repeat(None).scan(
+        initial_state=[0, 1],
+        scan_func=lambda a, _: ([a[1], a[0] + a[1]], a[1]))
     next_element = self.getNext(data)
 
     self.assertEqual(1, self.evaluate(next_element()))
@@ -98,8 +99,8 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
                                     make_scan_fn(step)).take(take)
 
     for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
-                                          (10, 2, 10), (10, -1, 10), (10, -2,
-                                                                      10)]:
+                                          (10, 2, 10), (10, -1, 10),
+                                          (10, -2, 10)]:
       next_element = self.getNext(dataset_fn(start_val, step_val, take_val))
       for expected, _ in zip(
           itertools.count(start_val, step_val), range(take_val)):
@@ -114,13 +115,11 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       return (ta.write(ta.size(), x), ta.stack())
 
     start = tensor_array_ops.TensorArray(
-        size=0,
-        element_shape=[],
-        dtype=dtypes.int64,
-        dynamic_size=True)
+        size=0, element_shape=[], dtype=dtypes.int64, dynamic_size=True)
     start = start.write(0, -1)
 
-    ds = dataset_ops.Dataset.range(5).apply(scan_ops.scan(start, scan_fn))
+    ds = dataset_ops.Dataset.range(5).scan(
+        initial_state=start, scan_func=scan_fn)
 
     self.assertDatasetProduces(
         ds,
@@ -150,7 +149,8 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
     start = empty()
     start = start.write(0, -1)
 
-    ds = dataset_ops.Dataset.range(6).apply(scan_ops.scan(start, scan_fn))
+    ds = dataset_ops.Dataset.range(6).scan(
+        initial_state=start, scan_func=scan_fn)
 
     self.assertDatasetProduces(
         ds,
@@ -188,7 +188,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(
         NotImplementedError,
         r"construct a new TensorArray inside the function"):
-      dataset_ops.Dataset.range(6).apply(scan_ops.scan(start, scan_fn))
+      dataset_ops.Dataset.range(6).scan(initial_state=start, scan_func=scan_fn)
 
   @combinations.generate(test_base.default_test_combinations())
   def testChangingStateShape(self):
@@ -202,14 +202,15 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       ret_larger_rank = array_ops.expand_dims(state[1], 0)
       return (ret_longer_vector, ret_larger_rank), (state, input_value)
 
-    dataset = dataset_ops.Dataset.from_tensors(0).repeat(5).apply(
-        scan_ops.scan(([0], 1), _scan_fn))
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(5).scan(
+        initial_state=([0], 1), scan_func=_scan_fn)
     self.assertEqual(
-        [None], dataset_ops.get_legacy_output_shapes(dataset)[0][0].as_list())
-    self.assertIs(
-        None, dataset_ops.get_legacy_output_shapes(dataset)[0][1].ndims)
-    self.assertEqual(
-        [], dataset_ops.get_legacy_output_shapes(dataset)[1].as_list())
+        [None],
+        dataset_ops.get_legacy_output_shapes(dataset)[0][0].as_list())
+    self.assertIs(None,
+                  dataset_ops.get_legacy_output_shapes(dataset)[0][1].ndims)
+    self.assertEqual([],
+                     dataset_ops.get_legacy_output_shapes(dataset)[1].as_list())
 
     next_element = self.getNext(dataset)
 
@@ -230,8 +231,9 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(
         TypeError,
         "The element types for the new state must match the initial state."):
-      dataset.apply(
-          scan_ops.scan(constant_op.constant(1, dtype=dtypes.int32), _scan_fn))
+      dataset.scan(
+          initial_state=constant_op.constant(1, dtype=dtypes.int32),
+          scan_func=_scan_fn)
 
   @combinations.generate(test_base.default_test_combinations())
   def testIncorrectReturnType(self):
@@ -244,8 +246,9 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
         TypeError,
         "The scan function must return a pair comprising the new state and the "
         "output value."):
-      dataset.apply(
-          scan_ops.scan(constant_op.constant(1, dtype=dtypes.int32), _scan_fn))
+      dataset.scan(
+          initial_state=constant_op.constant(1, dtype=dtypes.int32),
+          scan_func=_scan_fn)
 
   @combinations.generate(test_base.default_test_combinations())
   def testPreserveCardinality(self):
@@ -257,8 +260,8 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       return state, script_ops.py_func(py_fn, [val], dtypes.int64)
 
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        scan_ops.scan(constant_op.constant(1), scan_fn))
+    dataset = dataset_ops.Dataset.from_tensors(0).scan(
+        initial_state=constant_op.constant(1), scan_func=scan_fn)
     get_next = self.getNext(dataset)
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
@@ -282,7 +285,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     data = variables.Variable(initial_value=array_ops.zeros((1, 1000, 1000)))
     dataset = dataset_ops.Dataset.from_tensor_slices(data)
-    dataset = scan_ops._ScanDataset(
+    dataset = dataset_ops._ScanDataset(
         dataset, np.int64(1), scan_fn, use_default_device=use_default_device)
     get_next = self.getNext(dataset)
 
@@ -296,8 +299,10 @@ class ScanCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                          parameterized.TestCase):
 
   def _build_dataset(self, num_elements):
-    return dataset_ops.Dataset.from_tensors(1).repeat(num_elements).apply(
-        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1])))
+    dataset = dataset_ops.Dataset.from_tensors(1).repeat(num_elements)
+    return dataset.scan(
+        initial_state=[0, 1],
+        scan_func=lambda a, _: ([a[1], a[0] + a[1]], a[1]))
 
   @combinations.generate(test_base.default_test_combinations())
   def testScanCore(self):

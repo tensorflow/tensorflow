@@ -110,6 +110,9 @@ class SegmentReductionOp : public OpKernel {
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
 
+    OP_REQUIRES(context, input.dims() >= 1,
+                errors::InvalidArgument("Shape must be at least rank 1"));
+
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
 
@@ -236,6 +239,10 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(
         context, TensorShapeUtils::IsVector(segment_ids.shape()),
         errors::InvalidArgument("segment_ids should be a vector."), done);
+
+    OP_REQUIRES_ASYNC(context, input.dims() >= 1,
+                      errors::InvalidArgument("Shape must be at least rank 1"),
+                      done);
 
     const int64 num_indices = segment_ids.NumElements();
     OP_REQUIRES_ASYNC(
@@ -508,6 +515,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
 
+    OP_REQUIRES(context, input.dims() >= 1,
+                errors::InvalidArgument("Shape must be at least rank 1"));
+
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
 
@@ -526,7 +536,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
     auto output_flat = output->flat_outer_dims<T>();
 
     Tensor temp;
-    if (input.dtype() == DT_BFLOAT16) {
+    if (input.dtype() == DT_BFLOAT16 || input.dtype() == DT_HALF) {
       temp = tensorflow::Tensor(DT_FLOAT, output_shape);
     }
     auto temp_flat = temp.flat_outer_dims<float>();
@@ -597,19 +607,23 @@ class SparseSegmentReductionOpBase : public OpKernel {
 
  private:
   template <typename Tin>
-  using EnableIfBfloat16 =
-      typename std::enable_if<std::is_same<Tin, bfloat16>::value, int>::type;
+  using EnableIfBfloat16OrHalf =
+      typename std::enable_if<std::is_same<Tin, bfloat16>::value ||
+                                  std::is_same<Tin, Eigen::half>::value,
+                              int>::type;
   template <typename Tin>
-  using EnableIfNotBfloat16 =
-      typename std::enable_if<!std::is_same<Tin, bfloat16>::value, int>::type;
+  using EnableIfNotBfloat16OrHalf =
+      typename std::enable_if<!std::is_same<Tin, bfloat16>::value &&
+                                  !std::is_same<Tin, Eigen::half>::value,
+                              int>::type;
 
-  template <typename Tin, typename Tindex, EnableIfNotBfloat16<Tin> = 0>
+  template <typename Tin, typename Tindex, EnableIfNotBfloat16OrHalf<Tin> = 0>
   EIGEN_ALWAYS_INLINE auto fetch_val(
       const typename TTypes<Tin>::ConstMatrix& input_flat, Tindex index) {
     return input_flat.template chip<0>(index);
   }
 
-  template <typename Tin, typename Tindex, EnableIfBfloat16<Tin> = 0>
+  template <typename Tin, typename Tindex, EnableIfBfloat16OrHalf<Tin> = 0>
   EIGEN_ALWAYS_INLINE auto fetch_val(
       const typename TTypes<Tin>::ConstMatrix& input_flat, Tindex index) {
     return input_flat.template chip<0>(index).template cast<float>();
@@ -627,7 +641,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
     return Tout(1) / m;
   }
 
-  template <typename Tin, typename Tindex, EnableIfNotBfloat16<Tin> = 0>
+  template <typename Tin, typename Tindex, EnableIfNotBfloat16OrHalf<Tin> = 0>
   int64 Reduce(
       const typename TTypes<Tin>::ConstMatrix& input_flat,
       const typename TTypes<Tindex>::ConstVec& indices_vec, int64 start,
@@ -637,7 +651,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
                                         out, get_scaling_factor<Tin>(num));
   }
 
-  template <typename Tin, typename Tindex, EnableIfBfloat16<Tin> = 0>
+  template <typename Tin, typename Tindex, EnableIfBfloat16OrHalf<Tin> = 0>
   int64 Reduce(
       const typename TTypes<Tin>::ConstMatrix& input_flat,
       const typename TTypes<Tindex>::ConstVec& indices_vec, int64 start,
@@ -646,7 +660,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
     int64 res =
         ReduceImpl<Tin, Tindex, float>(input_flat, indices_vec, start, num,
                                        temp, get_scaling_factor<float>(num));
-    out = temp.template cast<bfloat16>();
+    out = temp.template cast<Tin>();
     return res;
   }
 

@@ -33,6 +33,7 @@ from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -630,12 +631,21 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     lookup_checks = []
 
     if self.num_oov_indices == 0 and not self.invert:
-      oov_indices = array_ops.where_v2(math_ops.equal(lookup_result, -1))
-      oov_inputs = array_ops.gather_nd(inputs, oov_indices)
+      if tf_utils.is_sparse(inputs):
+        lookup_values = lookup_result.values
+        input_values = inputs.values
+      elif tf_utils.is_ragged(inputs):
+        lookup_values = lookup_result.flat_values
+        input_values = inputs.flat_values
+      else:
+        lookup_values = lookup_result
+        input_values = inputs
+      oov_indices = array_ops.where_v2(math_ops.equal(lookup_values, -1))
+      oov_inputs = array_ops.gather_nd(input_values, oov_indices)
       msg = string_ops.string_format(
           "When `num_oov_indices=0` all inputs should be in vocabulary, "
-          "found OOV values {} at indices {}, consider setting "
-          "`num_oov_indices=1`.", (oov_inputs, oov_indices))
+          "found OOV values {}, consider setting `num_oov_indices=1`.",
+          (oov_inputs,))
       assertion = control_flow_ops.Assert(
           math_ops.equal(array_ops.size(oov_indices), 0), [msg])
       lookup_checks.append(assertion)

@@ -63,6 +63,10 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   void StartAbort(const Status& s) override;
 
+  void FetchDeviceAttributes(
+      int group_key,
+      std::vector<DeviceAttributes>* device_attrs) const override;
+
  protected:
   // For access to InstanceRec and CompleteDefaultRanking.
   friend class CollectiveParamResolverLocalTest;
@@ -189,7 +193,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   const DeviceMgr* dev_mgr_;
   DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;
-  mutex group_mu_;
+  mutable mutex group_mu_;
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_
       TF_GUARDED_BY(group_mu_);
   mutex instance_mu_;

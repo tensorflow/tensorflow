@@ -440,17 +440,17 @@ class BinaryOpsTestBase : public OpsTestBase {
         #op_name, lhs_input, rhs_input, config);                              \
   }
 
-#define GENERATE_DEFAULT_TESTS(op_name, test_name, T, OutT, baseline_callback) \
+#define GENERATE_DEFAULT_TESTS(op_name, test_name, T, OutT, baseline_callback, \
+                               config)                                         \
   GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, T, OutT, OutT,               \
                            test::DefaultInput<T>(), test::DefaultInput<T>(),   \
-                           baseline_callback,                                  \
-                           test::OpsTestConfig().ExpectStrictlyEqual())
+                           baseline_callback, config)
 
 #define GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(                  \
-    op_name, test_name, T, OutT, lhs_input, rhs_input, baseline_callback)   \
+    op_name, test_name, T, OutT, lhs_input, rhs_input, baseline_callback,   \
+    config)                                                                 \
   GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, T, OutT, OutT, lhs_input, \
-                           rhs_input, baseline_callback,                    \
-                           test::OpsTestConfig().ExpectStrictlyEqual())
+                           rhs_input, baseline_callback, config)
 
 }  // namespace tensorflow
 

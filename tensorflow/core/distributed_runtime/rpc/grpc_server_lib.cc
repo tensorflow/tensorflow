@@ -260,7 +260,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   builder.RegisterService(profiler_service_.get());
 
   // Add any extra services to be started.
-  extra_services_ = ExtraServices();
+  extra_services_ = ExtraServices(&builder);
 
   // extra service:
   if (opts.service_func != nullptr) {

@@ -698,6 +698,16 @@ class HloInstruction {
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
+  // Creates a all-reduce-scatter operation which reduces its inputs across the
+  // given replica groups and then scatters the reduced data across the N
+  // participants.
+  static std::unique_ptr<HloInstruction> CreateAllReduceScatter(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids,
+      int64 scatter_dimension);
+
   // Creates an asynchronous cross replica reduction op.
   //
   // `reduction_computation`: the reduction function.
@@ -1685,6 +1695,15 @@ class HloInstruction {
     int64 creation_pass_id = metadata_.creation_pass_id();
     metadata_ = metadata;
     metadata_.set_creation_pass_id(creation_pass_id);
+  }
+
+  void set_size_of_generated_code_in_bytes(int64 code_size_in_bytes) {
+    metadata_.set_size_of_generated_code_in_bytes(code_size_in_bytes);
+  }
+  void set_size_of_memory_working_set_in_bytes(
+      int64 working_set_size_in_bytes) {
+    metadata_.set_size_of_memory_working_set_in_bytes(
+        working_set_size_in_bytes);
   }
   void set_creation_pass_id(int64 pass_id) {
     metadata_.set_creation_pass_id(pass_id);

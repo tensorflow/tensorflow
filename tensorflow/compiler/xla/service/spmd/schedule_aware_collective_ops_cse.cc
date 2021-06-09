@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/spmd/schedule_aware_all_gather_cse.h"
+#include "tensorflow/compiler/xla/service/spmd/schedule_aware_collective_ops_cse.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -49,16 +49,26 @@ const HloInstruction* PassthroughDegenerateAddingReshapes(
   return inst;
 }
 
-HloCollectiveInstruction* MayConsiderAsAllGather(HloInstruction* hlo,
-                                                 bool for_replicas) {
+bool ShouldConsiderSchedule(HloInstruction* hlo) {
+  return hlo->opcode() != HloOpcode::kCollectivePermute;
+}
+
+HloInstruction* MayConsiderCollective(HloInstruction* hlo, bool for_replicas) {
+  auto chan_instr = DynCast<HloChannelInstruction>(hlo);
+  if (!chan_instr) {
+    return nullptr;
+  }
+  if (for_replicas == chan_instr->channel_id().has_value()) {
+    return nullptr;
+  }
+  if (hlo->opcode() == HloOpcode::kCollectivePermute) {
+    return hlo;
+  }
   auto coll = DynCast<HloCollectiveInstruction>(hlo);
   if (!coll) {
     return nullptr;
   }
   if (coll->constrain_layout()) {
-    return nullptr;
-  }
-  if (for_replicas == coll->channel_id().has_value()) {
     return nullptr;
   }
   if (coll->opcode() == HloOpcode::kAllGather) {
@@ -101,41 +111,44 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
     return lowest;
   };
 
-  absl::flat_hash_map<const HloInstruction*,
-                      std::vector<HloCollectiveInstruction*>>
-      operand_to_ag;
-  for (auto hlo : ordered_hlos) {
-    auto ag = MayConsiderAsAllGather(hlo, for_replicas);
-    if (!ag) {
+  absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
+      operand_to_collective;
+  for (HloInstruction* hlo : ordered_hlos) {
+    HloInstruction* coll = MayConsiderCollective(hlo, for_replicas);
+    if (!coll) {
       continue;
     }
-    auto& earlier_ags =
-        operand_to_ag[PassthroughDegenerateAddingReshapes(ag->operand(0))];
+    auto& earlier_colls =
+        operand_to_collective[PassthroughDegenerateAddingReshapes(
+            coll->operand(0))];
     bool found = false;
-    int64 ag_height = height[ag];
-    for (auto& eag : earlier_ags) {
-      if (!ShapeUtil::Equal(eag->shape(), ag->shape())) {
+    int64 coll_height = height[coll];
+    for (HloInstruction* earlier_coll : earlier_colls) {
+      if (!ShapeUtil::Equal(earlier_coll->shape(), coll->shape())) {
         continue;
       }
-      HloInstruction* ag_operand = ag->mutable_operand(0);
-      TF_RETURN_IF_ERROR(ag->ReplaceOperandWith(0, eag->mutable_operand(0)));
-      if (!eag->IdenticalIgnoringChannelIdValues(*ag)) {
-        TF_RETURN_IF_ERROR(ag->ReplaceOperandWith(0, ag_operand));
+      HloInstruction* coll_operand = coll->mutable_operand(0);
+      TF_RETURN_IF_ERROR(
+          coll->ReplaceOperandWith(0, earlier_coll->mutable_operand(0)));
+      if (!earlier_coll->IdenticalIgnoringChannelIdValues(*coll)) {
+        TF_RETURN_IF_ERROR(coll->ReplaceOperandWith(0, coll_operand));
         continue;
       }
       found = true;
-      if (lowest_user_height(eag) > ag_height + distance_threshold) {
-        TF_RETURN_IF_ERROR(ag->ReplaceOperandWith(0, ag_operand));
-        eag = ag;
+      if (ShouldConsiderSchedule(coll) &&
+          lowest_user_height(earlier_coll) > coll_height + distance_threshold) {
+        TF_RETURN_IF_ERROR(coll->ReplaceOperandWith(0, coll_operand));
+        earlier_coll = coll;
         continue;
       }
       changed = true;
-      VLOG(1) << "Replacing " << ag->ToString() << " with " << eag->ToString();
-      TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(eag));
+      VLOG(1) << "Replacing " << coll->ToString() << " with "
+              << earlier_coll->ToString();
+      TF_RETURN_IF_ERROR(coll->ReplaceAllUsesWith(earlier_coll));
       break;
     }
     if (!found) {
-      earlier_ags.push_back(ag);
+      earlier_colls.push_back(coll);
     }
   }
   return changed;
@@ -143,7 +156,7 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
 
 }  // namespace
 
-StatusOr<bool> ScheduleAwareAllGatherCSE::Run(HloModule* module) {
+StatusOr<bool> ScheduleAwareCollectiveOpsCSE::Run(HloModule* module) {
   bool changed = false;
   for (auto comp : module->computations()) {
     TF_ASSIGN_OR_RETURN(

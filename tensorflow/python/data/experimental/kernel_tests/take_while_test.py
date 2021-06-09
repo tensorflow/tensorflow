@@ -56,26 +56,17 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(
-              num_elements=[10], upper_bound=[2], out_of_bounds=[False]) +
-          combinations.combine(
-              num_elements=[16], upper_bound=[7], out_of_bounds=[False]) +
-          combinations.combine(
-              num_elements=[100], upper_bound=[99], out_of_bounds=[False]) +
-          combinations.combine(
-              num_elements=[100], upper_bound=[101], out_of_bounds=[True]) +
-          combinations.combine(
-              num_elements=[0], upper_bound=[1], out_of_bounds=[True])))
-  def testTakeWhileDatasetRange(self, num_elements, upper_bound, out_of_bounds):
+          combinations.combine(num_elements=[10], upper_bound=[2]) +
+          combinations.combine(num_elements=[16], upper_bound=[7]) +
+          combinations.combine(num_elements=[100], upper_bound=[99]) +
+          combinations.combine(num_elements=[100], upper_bound=[101]) +
+          combinations.combine(num_elements=[0], upper_bound=[1])))
+  def testTakeWhileDatasetRange(self, num_elements, upper_bound):
     dataset = dataset_ops.Dataset.range(num_elements).apply(
         take_while_ops.take_while(lambda x: x < upper_bound))
 
-    if out_of_bounds:
-      with self.assertRaises(errors.OutOfRangeError):
-        self.assertDatasetProduces(dataset, np.arange(upper_bound))
-
-    else:
-      self.assertDatasetProduces(dataset, np.arange(upper_bound))
+    self.assertDatasetProduces(dataset,
+                               np.arange(min(num_elements, upper_bound)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testTakeWhileDatasetString(self):

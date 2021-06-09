@@ -848,9 +848,12 @@ class MathOpsOverloadTest(test.TestCase):
 
   def _compareBinary(self, x, y, dtype, np_func, tf_func):
     # astype and assertAllClose do not properly handle bfloat16 values
-    np_ans = np_func(x, y).astype(np.float32 if dtype == dtypes_lib.bfloat16
-                                  else dtype.as_numpy_dtype)
-    rtol = 1e-2 if dtype == dtypes_lib.bfloat16 else 1e-6
+    np_ans = np_func(x, y)
+    if np_func != np.true_divide:
+      # for true_divide the result is a float, event for integer args.
+      np_ans = np_ans.astype(np.float32 if dtype == dtypes_lib.bfloat16
+                             else dtype.as_numpy_dtype)
+    rtol = 1e-2 if dtype in (dtypes_lib.bfloat16, dtypes_lib.float16) else 1e-6
     self.assertAllClose(np_ans,
                         self._computeTensorAndLiteral(x, y, dtype, tf_func),
                         rtol=rtol)
@@ -870,6 +873,7 @@ class MathOpsOverloadTest(test.TestCase):
         dtypes_lib.float32,
         dtypes_lib.float64,
         dtypes_lib.bfloat16,
+        dtypes_lib.uint8,
         dtypes_lib.uint16,
         dtypes_lib.uint32,
         dtypes_lib.uint64,
@@ -887,22 +891,18 @@ class MathOpsOverloadTest(test.TestCase):
         (np.power, _POW),
         (np.true_divide, _TRUEDIV),
         (np.floor_divide, _FLOORDIV),
+        (np.mod, _MOD),
     ]
     for dtype in dtypes:
       for np_func, tf_func in funcs:
         with self.subTest(dtype=dtype, np_func=np_func, tf_func=tf_func):
           if dtype in (dtypes_lib.complex64,
-                       dtypes_lib.complex128) and tf_func == _FLOORDIV:
+                       dtypes_lib.complex128) and tf_func in (_FLOORDIV, _MOD):
             continue  # floordiv makes no sense for complex
-          if dtype in (dtypes_lib.uint16, dtypes_lib.uint32,
-                       dtypes_lib.uint64) and tf_func in (_POW, _FLOORDIV,
-                                                          _TRUEDIV):
-            continue  # power and div not supported for unsigned types
-          self._compareBinary(10, 5, dtype, np_func, tf_func)
-    # Mod only works for int32 and int64.
-    for dtype in [dtypes_lib.int32, dtypes_lib.int64]:
-      with self.subTest(dtype=dtype):
-        self._compareBinary(10, 3, dtype, np.mod, _MOD)
+          if dtype in (dtypes_lib.uint8, dtypes_lib.uint16, dtypes_lib.uint32,
+                       dtypes_lib.uint64) and tf_func == _POW:
+            continue  # power not supported for unsigned types
+          self._compareBinary(10, 3, dtype, np_func, tf_func)
 
   def testOverloadComparisons(self):
     dtypes = [

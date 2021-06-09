@@ -73,6 +73,13 @@ absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
   return tf_stats;
 }
 
+bool XlaDeviceAllocator::ClearStats() {
+  if (!stream_executor_->SynchronizeAllActivity()) {
+    return false;
+  }
+  return stream_executor_->ClearAllocatorStats();
+}
+
 XlaDeviceContext::XlaDeviceContext(
     std::shared_ptr<se::Stream> compute_stream,
     std::shared_ptr<se::Stream> host_to_device_stream,

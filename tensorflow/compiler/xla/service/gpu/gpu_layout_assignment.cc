@@ -54,6 +54,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   constexpr auto kAllNCHW =
       std::make_tuple(DataLayout::kBatchDepthYX, FilterLayout::kOutputInputYX,
                       DataLayout::kBatchDepthYX);
+  // kBatchDepthYX4 has the same layout as kBatchDepthYX32; they're both VECT_C
+  // layouts as far as cudnn is concerned.
   constexpr auto kAllNCHW_VECT_C =
       std::make_tuple(DataLayout::kBatchDepthYX4, FilterLayout::kOutputInputYX4,
                       DataLayout::kBatchDepthYX4);

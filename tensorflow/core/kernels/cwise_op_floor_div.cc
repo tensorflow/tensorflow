@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER6(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
-          int8, int16, int32, int64);
+REGISTER8(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
+          uint32, uint64, int8, int16, int32, int64);
 REGISTER4(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, bfloat16, double);
 

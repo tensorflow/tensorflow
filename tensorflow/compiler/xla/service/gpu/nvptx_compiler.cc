@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
@@ -83,6 +84,12 @@ void PrintCantFindCudaMessage(absl::string_view msg,
          "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
 }
 
+std::pair<int, int> ComputeCapability(stream_executor::StreamExecutor& se) {
+  int major, minor;
+  CHECK(se.GetDeviceDescription().cuda_compute_capability(&major, &minor));
+  return {major, minor};
+}
+
 }  // namespace
 
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
@@ -119,8 +126,9 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
-  pipeline.AddPass<CudnnPadForConvolutions>(IsVoltaOrLater(*stream_exec));
-  // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leaves
+  pipeline.AddPass<CudnnPadForConvolutions>(ComputeCapability(*stream_exec));
+  pipeline.AddPass<CudnnVectorizeConvolutions>(ComputeCapability(*stream_exec));
+  // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leave
   // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
   // fixes.
   pipeline.AddPass<TupleSimplifier>();
