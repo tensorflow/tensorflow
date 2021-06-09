@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -43,52 +42,35 @@ struct TensorDeviceCopyConversionPass
   void runOnFunction() override;
 };
 
-// Folds tf.IdentityOp and tf.IdentityNOp if op device and the argument devices
-// from the defining ops match.
 void TensorDeviceCopyConversionPass::runOnFunction() {
   FuncOp func_op = getFunction();
-
-  auto should_fold_op_func = [&func_op](const mlir::Value &arg,
-                                        const StringAttr &op_device) {
+  StringAttr empty_string = StringAttr::get(func_op.getContext(), "");
+  func_op.walk([&](TF::IdentityOp op) {
+    StringAttr arg_device = empty_string;
+    mlir::Value arg = op.getOperand();
     if (BlockArgument block_arg = arg.dyn_cast<BlockArgument>()) {
       // Skip the folding logic if the block argument is not from the function
       // arguments. This can happen when the argument is from a while loop.
       if (block_arg.getParentRegion() != &func_op.getRegion()) {
-        return false;
+        return WalkResult::advance();
       }
       if (StringAttr attr = func_op.getArgAttrOfType<StringAttr>(
               block_arg.getArgNumber(), kTFDeviceAttr)) {
-        return op_device == attr;
+        arg_device = attr;
       }
     } else if (StringAttr attr = arg.getDefiningOp()->getAttrOfType<StringAttr>(
                    kDeviceAttr)) {
-      return op_device == attr;
+      arg_device = attr;
     }
-    // when arg device is not defined, fold op if op device is not defined
-    // either.
-    return !op_device;
-  };
 
-  func_op.walk([&should_fold_op_func](TF::IdentityOp op) {
     StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
-    if (should_fold_op_func(op.getOperand(), op_device)) {
-      op.replaceAllUsesWith(op.getOperand());
-      op.erase();
-    }
-    return WalkResult::advance();
-  });
+    if (!op_device) op_device = empty_string;
+    // Skip the folding logic if the argument's device is different from the
+    // operation's device.
+    if (op_device != arg_device) return WalkResult::advance();
 
-  func_op.walk([&should_fold_op_func](TF::IdentityNOp op) {
-    StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
-    bool should_fold = llvm::all_of(
-        op.getOperands(),
-        [&op_device, &should_fold_op_func](const mlir::Value &arg) {
-          return should_fold_op_func(arg, op_device);
-        });
-    if (should_fold) {
-      op.replaceAllUsesWith(op.getOperands());
-      op.erase();
-    }
+    op.replaceAllUsesWith(op.getOperand());
+    op.erase();
     return WalkResult::advance();
   });
 }
