@@ -1321,10 +1321,8 @@ class ConvertPadOpDynamic : public OpRewritePattern<TF::PadV2Op> {
     if (!input_type || !paddings_type || !paddings_type.hasStaticShape()) 
       return failure();
     
-    // TODO: Remove this constraint once fold and canonicalization is implemented.
-    DenseIntElementsAttr padding_attr;
-    if (input_type.hasStaticShape() &&
-        matchPattern(paddings, m_Constant(&padding_attr)))
+    // TODO: Remove this constraint, once fold and canonicalization is implemented.
+    if (input_type.hasStaticShape())
       return failure();
       
     int input_rank = input_type.getRank();

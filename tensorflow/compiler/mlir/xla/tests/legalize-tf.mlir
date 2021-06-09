@@ -1023,14 +1023,14 @@ func @padv2_i32_paddings(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<6
 }
 
 // CHECK-LABEL: func @padv2_dynamic
-func @padv2_dynamic(%arg0: tensor<3xf32>, %arg1: tensor<f32>, %arg2: tensor<1x2xi64>) -> tensor<6xf32> {
-  // CHECK: "mhlo.transpose"({{.*}})
+func @padv2_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<f32>, %arg2: tensor<1x2xi64>) -> tensor<?xf32> {
+  // CHECK: "mhlo.transpose"({{.*}}) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<1x2xi64>) -> tensor<2x1xi64>
   // CHECK: "mhlo.reshape"({{.*}}) : (tensor<2x1xi64>) -> tensor<2xi64>
-  // CHECK: "mhlo.slice"({{.*}}) 
-  // CHECK: "mhlo.slice"({{.*}})
-  // CHECK: "mhlo.dynamic_pad"({{.*}}) : (tensor<3xf32>, tensor<f32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<6xf32>
-  %1 = "tf.PadV2"(%arg0, %arg2, %arg1) : (tensor<3xf32>, tensor<1x2xi64>, tensor<f32>) -> tensor<6xf32>
-  return %1 : tensor<6xf32>
+  // CHECK: "mhlo.slice"({{.*}}) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: "mhlo.slice"({{.*}}) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: "mhlo.dynamic_pad"({{.*}}) : (tensor<?xf32>, tensor<f32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<?xf32>
+  %1 = "tf.PadV2"(%arg0, %arg2, %arg1) : (tensor<?xf32>, tensor<1x2xi64>, tensor<f32>) -> tensor<?xf32>
+  return %1 : tensor<?xf32>
 }
 
 //===----------------------------------------------------------------------===//
