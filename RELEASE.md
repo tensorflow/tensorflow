@@ -62,10 +62,6 @@
 *   TF Core:
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
         peak memory returned by `tf.config.experimental.get_memory_info`.
-    *   Added support for each worker in a cluster to fetch all the remote
-        devices in a cluster (via running dummy collectives) in multi-client
-        setup. This is disabled by default and guarded by
-        `tf.config.experimental.fetch_remote_devices_in_multi_client`
 
 ## Bug Fixes and Other Changes
 

@@ -61,10 +61,6 @@ class TestParamResolver : public ParamResolverInterface {
   }
 
   void StartAbort(const Status& s) override { return; }
-
-  void FetchDeviceAttributes(
-      int group_key,
-      std::vector<DeviceAttributes>* device_attrs) const override {}
 };
 
 class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
