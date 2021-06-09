@@ -3030,6 +3030,13 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
       return failure();
     }
 
+    // If there's nothing to slice that means the output is an empty tensor and
+    // there is dead code. We do nothing here and rely on other passes to clean
+    // this up.
+    if (subset_size == 0) {
+      return failure();
+    }
+
     if (subset_size > 1 && !concat.getResult().hasOneUse()) {
       return failure();
     }
