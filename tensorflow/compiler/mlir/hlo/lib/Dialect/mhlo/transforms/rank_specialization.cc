@@ -181,7 +181,10 @@ struct MergeRankSpecializationClusterOpsPattern
     SmallVector<Value, 8> new_operands;
     for (Value v : preceding_op.operands()) new_operands.push_back(v);
     for (Value v : op.operands()) {
-      if (v.getDefiningOp() != preceding_op) new_operands.push_back(v);
+      if (v.getDefiningOp() != preceding_op &&
+          !llvm::is_contained(preceding_op.operands(), v)) {
+        new_operands.push_back(v);
+      }
     }
 
     // Merge cluster results. Consider only those results of the preceding
@@ -221,7 +224,6 @@ struct MergeRankSpecializationClusterOpsPattern
     // Map operands and copy operations of the second cluster. If they result
     // from the preceeding cluster, we can simply map the corresponding value
     // internally.
-    int64_t block_arg_offset = preceding_op->getNumOperands();
     for (auto it : llvm::zip(body->getArguments(), op.operands())) {
       Value block_arg, operand;
       std::tie(block_arg, operand) = it;
@@ -231,7 +233,8 @@ struct MergeRankSpecializationClusterOpsPattern
         bvm.map(block_arg,
                 bvm.lookup(preceding_yield_op.getOperand(where.getIndex())));
       } else {
-        bvm.map(block_arg, new_body->getArgument(block_arg_offset++));
+        auto where = llvm::find(new_op.operands(), operand);
+        bvm.map(block_arg, new_body->getArgument(where.getIndex()));
       }
     }
     for (Operation &nested_op : body->without_terminator()) {

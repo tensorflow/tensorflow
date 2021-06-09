@@ -565,19 +565,22 @@ func @merge_clusters(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG0]], %[[ARG1]])
   // CHECK: ^bb0(%[[ARG0_:.*]]: tensor<*xf64>, %[[ARG1_:.*]]: tensor<*xf64>):
   // CHECK:   %[[TMP0:.*]] = "mhlo.tanh"(%[[ARG0_]])
-  // CHECK:   %[[TMP1:.*]] = chlo.broadcast_add %[[TMP0]], %[[ARG1_]]
-  // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[TMP1]])
+  // CHECK:   %[[TMP1:.*]] = chlo.broadcast_add %[[TMP0]], %[[ARG0_]]
+  // CHECK:   %[[TMP2:.*]] = chlo.broadcast_add %[[TMP1]], %[[ARG1_]]
+  // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[TMP2]])
   // CHECK: return %[[RES]]
   %0 = "chlo.rank_specialization_cluster"(%arg0) ({
   ^bb0(%arg0_: tensor<*xf64>):
     %1 = "mhlo.tanh"(%arg0_) : (tensor<*xf64>) -> tensor<*xf64>
     "chlo.rank_specialization_cluster_yield"(%1) : (tensor<*xf64>) -> ()
   }) : (tensor<*xf64>) -> (tensor<*xf64>)
-  %2 = "chlo.rank_specialization_cluster"(%0, %arg1) ({
-  ^bb0(%3: tensor<*xf64>, %4: tensor<*xf64>):
-    %5 = "chlo.broadcast_add"(%3, %4)
+  %2 = "chlo.rank_specialization_cluster"(%0, %arg0, %arg1) ({
+  ^bb0(%3: tensor<*xf64>, %4: tensor<*xf64>, %5: tensor<*xf64>):
+    %6 = "chlo.broadcast_add"(%3, %4)
         : (tensor<*xf64>, tensor<*xf64>) -> tensor<*xf64>
-    "chlo.rank_specialization_cluster_yield"(%5) : (tensor<*xf64>) -> ()
-  }) : (tensor<*xf64>, tensor<*xf64>) -> (tensor<*xf64>)
+    %7 = "chlo.broadcast_add"(%6, %5)
+        : (tensor<*xf64>, tensor<*xf64>) -> tensor<*xf64>
+    "chlo.rank_specialization_cluster_yield"(%7) : (tensor<*xf64>) -> ()
+  }) : (tensor<*xf64>, tensor<*xf64>, tensor<*xf64>) -> (tensor<*xf64>)
   return %2 : tensor<*xf64>
 }
