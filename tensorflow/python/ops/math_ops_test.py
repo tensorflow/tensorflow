@@ -306,9 +306,14 @@ class MatMulTest(test_util.TensorFlowTestCase):
       b = constant_op.constant(
           np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
       if context.executing_eagerly():
-        with self.assertRaisesRegex(errors.NotFoundError,
-                                    "Could not find device for node:"):
-          math_ops.matmul(a, b, output_type=dtypes.float32)
+        if context.is_tfrt_enabled():
+          with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                      "NodeDef expected inputs"):
+            math_ops.matmul(a, b, output_type=dtypes.float32)
+        else:
+          with self.assertRaisesRegex(errors.NotFoundError,
+                                      "Could not find device for node:"):
+            math_ops.matmul(a, b, output_type=dtypes.float32)
       else:
         with self.assertRaisesRegex(errors.InvalidArgumentError,
                                     "No OpKernel was registered to support Op"):
