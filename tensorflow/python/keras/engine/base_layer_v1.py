@@ -567,16 +567,7 @@ class Layer(base_layer.Layer):
           inputs = nest.map_structure(
               base_layer_utils.generate_placeholders_from_shape, input_shape)
           try:
-            if (base_layer_utils.is_subclassed(self) and
-                not base_layer_utils.from_saved_model(self)):
-              call_fn = autograph.tf_convert(self.call,
-                                             ag_ctx.control_status_ctx())
-            else:
-              call_fn = self.call
-            if self._expects_training_arg:
-              outputs = call_fn(inputs, training=False)
-            else:
-              outputs = call_fn(inputs)
+            outputs = self(inputs, training=False)
           except TypeError as e:
             raise NotImplementedError(
                 'We could not automatically infer the static shape of the '
