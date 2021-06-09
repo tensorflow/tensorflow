@@ -507,10 +507,15 @@ def embedding_lookup_sparse(params,
     segment_ids = sp_ids.indices[:, 0]
 
     ids = sp_ids.values
-    ids, idx = array_ops.unique(ids)
 
-    embeddings = embedding_lookup(
-        params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
+    if len(params) == 1 and max_norm is None:
+      idx = ids
+      embeddings = params[0]
+    else:
+      ids, idx = array_ops.unique(ids)
+      embeddings = embedding_lookup(
+          params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
+
     if not ignore_weights:
       if segment_ids.dtype != dtypes.int32:
         segment_ids = math_ops.cast(segment_ids, dtypes.int32)
