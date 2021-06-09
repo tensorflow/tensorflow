@@ -117,11 +117,14 @@ class PjRtDevice {
 class PjRtBuffer;
 
 // Helper struct for cross host transfers, returned by the callback from a call
-// to PjRtBuffer::MakeCrossHostReceiveBuffers.
+// to PjRtBuffer::MakeCrossHostReceiveBuffers or
+// PjRtBuffer::MakeCrossHostReceiveBuffersForGather.
 struct PjRtCrossHostRecvBuffer {
-  // serialized_descriptor should be transmitted to the sender and passed to a
-  // call to src_buffer->CopyToRemoteDevice.
-  std::string serialized_descriptor;
+  // There is one serialized_descriptor per sub-buffer being gathered (i.e. a
+  // single descriptor if the buffer is returned from a call to
+  // MakeCrossHostReceiveBuffers). The descriptor should be transmitted to the
+  // sender(s) and passed to a call to src_buffer->CopyToRemoteDevice.
+  absl::InlinedVector<std::string, 1> serialized_descriptors;
   // The buffer that will hold the result of the transfer.
   std::unique_ptr<PjRtBuffer> buffer;
 };
@@ -378,6 +381,39 @@ class PjRtClient {
   virtual void MakeCrossHostReceiveBuffers(
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) = 0;
+
+  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
+  // cross host transfers, as in MakeCrossHostReceiveBuffers above, however
+  // each buffer expects to be "gathered" using multiple sends, one for each of
+  // a set of sub-slices of the destination buffer.
+  //
+  // For each value in shapes there is a corresponding FullGatherDetails struct
+  // that describes the sub-slices.
+  struct GatherDetails {
+    // The dimensions of the corresponding buffer that the gather slices
+    // into. These dimensions must be the major dimensions in the on-device
+    // layout of the buffer, and must all be untiled. The scatter acts as if
+    // the buffer were transposed/reshaped so that all of these dimensions were
+    // combined into a single dimension whose size is the product of the
+    // dimensions, and the slice indices correspond to indices in that single
+    // combined dimension.
+    //
+    // For example, if the shape is [3, 4, 128, 128] with [3, 4] as the major
+    // dimensions in the layout, and dimensions = {0, 1}, then the buffer is
+    // treated as if it were shape [12, 128, 128] and the indices in
+    // slice_boundaries range in [0, 12].
+    absl::InlinedVector<int, 3> dimensions;
+    // The cumulative indices in dimension of the slices. For example, if
+    // shape.dimensions(dimension)==10, setting slice_boundaries to {2, 5, 10}
+    // would correspond to 3 slices of sizes {2, 3, 5} respectively. If the last
+    // entry in slice_boundaries is less than the size of the combined gather
+    // dimension, the trailing data in the buffer is undefined after the receive
+    // completes.
+    std::vector<int64> slice_boundaries;
+  };
+  virtual void MakeCrossHostReceiveBuffersForGather(
+      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) = 0;
 
   // Create ChannelHandles for XLA send/recv.
   virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;

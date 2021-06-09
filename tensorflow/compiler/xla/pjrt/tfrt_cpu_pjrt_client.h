@@ -159,6 +159,12 @@ class TfrtCpuClient final : public PjRtClient {
     LOG(FATAL) << "MakeCrossHostReceiveBuffers not implemented.";
   }
 
+  void MakeCrossHostReceiveBuffersForGather(
+      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override {
+    LOG(FATAL) << "MakeCrossHostReceiveBuffersForGather not implemented.";
+  }
+
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback) override;
