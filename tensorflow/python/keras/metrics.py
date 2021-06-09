@@ -877,7 +877,7 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
     The shapes of `y_true` and `y_pred` are different.
 
     Args:
-      y_true: Ground truth label values. shape = `[batch_size, d1, .. dN-1]` or shape = `[batch_size, d1, .. dN-1, 1]`.
+      y_true: Ground truth label values. shape = `[batch_size, d0, .. dN-1]` or shape = `[batch_size, d0, .. dN-1, 1]`.
       y_pred: The predicted probability values. shape = `[batch_size, d0, .. dN]`.
       sample_weight: Optional `sample_weight` acts as a
         coefficient for the metric. If a scalar is provided, then the metric is
