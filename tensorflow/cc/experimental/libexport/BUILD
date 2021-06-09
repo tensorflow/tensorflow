@@ -74,6 +74,11 @@ cc_library(
     name = "metrics",
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
+    visibility = [
+        "//tensorflow/cc/saved_model:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/saved_model:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core:lib",
     ],

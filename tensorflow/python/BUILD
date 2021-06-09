@@ -3153,6 +3153,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
+        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -3214,9 +3215,10 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
-        "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
-        "//tensorflow/core/platform:statusor",  #tfe
-        "//tensorflow/compiler/jit:flags",  #tfe
+        "//tensorflow/cc/experimental/libexport:metrics",  # SavedModel metrics
+        "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
+        "//tensorflow/core/platform:statusor",  # tfe
+        "//tensorflow/compiler/jit:flags",  # tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training

@@ -369,6 +369,12 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
+[//tensorflow/cc/experimental/libexport:metrics] # SavedModel metrics
+tensorflow::libexport::metrics::Write
+tensorflow::libexport::metrics::Read
+tensorflow::libexport::metrics::WriteApi
+tensorflow::libexport::metrics::ReadApi
+
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
