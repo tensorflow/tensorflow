@@ -63,6 +63,7 @@ class OptionsBase(object):
       if name=="experimental_threading":
         logging.warning("options.experimental_threading is deprecated."
                         "Use options.threading instead.")
+        object.__setattr__(self, "threading", value)
       object.__setattr__(self, name, value)
     else:
       raise AttributeError(
