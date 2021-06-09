@@ -1487,7 +1487,7 @@ def TFL_DivOp : TFL_Op<"div", [
 def TFL_EluOp: TFL_Op<"elu", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Exponential Linear Unit operator";
   let description = [{
     Computes the exponential linear
