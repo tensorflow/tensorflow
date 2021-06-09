@@ -225,6 +225,16 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
       options.max_number_delegated_partitions = max_delegated_partitions;
     }
 
+    // Serialization.
+    std::string serialize_dir =
+        params.Get<std::string>("delegate_serialize_dir");
+    std::string serialize_token =
+        params.Get<std::string>("delegate_serialize_token");
+    if (!serialize_dir.empty() && !serialize_token.empty()) {
+      options.cache_dir = serialize_dir.c_str();
+      options.model_token = serialize_token.c_str();
+    }
+
     if (params.Get<std::string>("nnapi_support_library_path").empty()) {
       const auto* nnapi_impl = NnApiImplementation();
       if (!nnapi_impl->nnapi_exists) {
