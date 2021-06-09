@@ -35,10 +35,10 @@ py_library(
 
 cc_binary(
     name = "_cpu_feature_guard.so",
+    linkshared = True,
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard",
     ],
-    linkshared = True,
 )
 
 py_library(
@@ -54,6 +54,10 @@ py_library(
             "device_context.py",  # In platform_device_context.
         ],
     ) + ["build_info.py"],
+    data = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": [":_cpu_feature_guard.so"],
+    }),
     srcs_version = "PY3",
     deps = [
         ":build_info",
@@ -66,10 +70,6 @@ py_library(
         "@rules_python//python/runfiles",
         "@six_archive//:six",
     ],
-    data = select({
-        "//tensorflow:windows": [],
-        "//conditions:default": [":_cpu_feature_guard.so"],
-    }),
 )
 
 py_library(
