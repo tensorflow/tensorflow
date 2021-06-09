@@ -8,7 +8,7 @@ The upper regularized incomplete Gamma function is defined as:
 
 where
 
-\\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+\\(Gamma(a, x) = \int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
 
 is the upper incomplete Gama function.
 
