@@ -800,7 +800,7 @@ def join(path, *paths):
   """
   # os.path.join won't take mixed bytes/str, so don't overwrite the incoming `path` var
   path_ = compat.as_str_any(compat.path_to_str(path))
-  if "://" in path_[1:] and not path_.startswith("file://"):
+  if "://" in path_[1:]:
     return urljoin(path, *paths)
   return os.path.join(path, *paths)
 
