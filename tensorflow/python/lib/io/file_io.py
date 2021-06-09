@@ -787,9 +787,13 @@ def join(path, *paths):
   handling of tensorflow specific filesystems like `gcs://` and `ram://`
   on all platforms.
 
-  For example:
-  >>> tf.io.join("gcs://folder", "file.py")  # "gcs://folder/file.py"
-  >>> tf.io.join("ram://folder", "file.py")  # "ram://folder/file.py"
+  Examples:
+
+  >>> tf.io.gfile.join("gcs://folder", "file.py")
+  "gcs://folder/file.py"
+
+  >>> tf.io.gfile.join("ram://folder", "file.py")
+  "ram://folder/file.py"
 
   Args:
     path: string, path to a directory
@@ -800,7 +804,7 @@ def join(path, *paths):
   """
   # os.path.join won't take mixed bytes/str, so don't overwrite the incoming `path` var
   path_ = compat.as_str_any(compat.path_to_str(path))
-  if "://" in path_[1:]:
+  if "://" in path_[1:] and not path_.startswith("file://"):
     return urljoin(path, *paths)
   return os.path.join(path, *paths)
 
