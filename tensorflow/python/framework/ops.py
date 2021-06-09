@@ -37,7 +37,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
-# pywrap_tensorflow must be imported first to avoid profobuf issues.
+# pywrap_tensorflow must be imported first to avoid protobuf issues.
 # (b/143110113)
 # pylint: disable=invalid-import-order,g-bad-import-order,unused-import
 from tensorflow.python import pywrap_tensorflow
