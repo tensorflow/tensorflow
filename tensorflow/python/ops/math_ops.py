@@ -2557,6 +2557,7 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   """
   name = name if name else "reduce_std"
   with ops.name_scope(name):
+    input_tensor = ops.convert_to_tensor(input_tensor)
     variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
     return gen_math_ops.sqrt(variance)
 

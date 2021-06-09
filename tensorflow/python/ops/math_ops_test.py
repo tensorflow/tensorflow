@@ -33,6 +33,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
 
 
@@ -120,6 +121,10 @@ class ReduceTest(test_util.TensorFlowTestCase):
     x_np = np.array(x)
     self.assertEqual(np.std(x_np), 0.5)
     self.assertEqual(self.evaluate(math_ops.reduce_std(x_np)), 0.5)
+
+    x = ragged_factory_ops.constant([[5., 1., 4., 1.], [], [5., 9., 2.], [5.],
+                                     []])
+    self.assertAllClose(math_ops.reduce_std(x, axis=0), [0., 4., 1., 0.])
 
   def testReduceStdComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
