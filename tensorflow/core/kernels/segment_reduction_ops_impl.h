@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -305,7 +306,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       // (required for OP_REQUIRES_ASYNC) is not available inside the functor.
       bool determinism_requirement_met =
           SegmentReductionFunctor::atomic_reduction_is_associative ||
-          !RequireDeterminism() ||
+          !OpDeterminismRequired() ||
           DisableSegmentReductionOpDeterminismExceptions();
       OP_REQUIRES_ASYNC(
           context, determinism_requirement_met,

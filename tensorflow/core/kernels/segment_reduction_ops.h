@@ -32,7 +32,6 @@ namespace tensorflow {
 
 class OpKernelContext;
 
-bool RequireDeterminism();
 bool DisableSegmentReductionOpDeterminismExceptions();
 
 namespace functor {

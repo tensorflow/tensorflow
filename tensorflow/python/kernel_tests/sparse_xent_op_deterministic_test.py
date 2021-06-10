@@ -58,7 +58,7 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(
           with self.assertRaisesRegex(
               errors_impl.UnimplementedError,
               "Deterministic GPU implementation of " +
-              "SparseSoftmaxCrossEntropyWithLogits not available."):
+              "SparseSoftmaxXentWithLogitsOp not available."):
             result = nn_ops.sparse_softmax_cross_entropy_with_logits_v2(
                 labels=labels, logits=logits)
             self.evaluate(result)
