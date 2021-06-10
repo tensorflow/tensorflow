@@ -369,7 +369,7 @@ TfLiteStatus FlatBufferVectorToTfLiteTypeArray(
     // flatbuffers::Vector<kFlatBufferVectorType>. Allocate from the tail and
     // copy values from the flatbuffer into the newly allocated chunk.
     kTfLiteArrayType* array =
-        reinterpret_cast<kTfLiteArrayType*>(allocator->AllocateFromTail(
+        reinterpret_cast<kTfLiteArrayType*>(allocator->SimpleMemoryAllocator::AllocateFromTail(
             TfLiteIntArrayGetSizeInBytes(flatbuffer_array->Length()),
             alignof(kTfLiteArrayType)));
     if (array == nullptr) {
