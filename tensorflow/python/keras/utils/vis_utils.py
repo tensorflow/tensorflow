@@ -162,7 +162,7 @@ def model_to_dot(model,
     dot.set('concentrate', True)
     dot.set('dpi', dpi)
     dot.set_node_defaults(shape='record')
-  
+
   if layer_range is not None:
     if len(layer_range) != 2:
       raise ValueError("layer_range must be of shape (2,)")
