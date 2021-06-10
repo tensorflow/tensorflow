@@ -322,7 +322,10 @@ message DebugOptions {
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
-  // Next id: 152
+  // Convert synchronous all-reduces ops into asynchronous.
+  bool xla_gpu_enable_async_all_reduce = 152;
+
+  // Next id: 153
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

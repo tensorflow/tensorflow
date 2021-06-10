@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 package(
     default_visibility = [":friends"],
@@ -16,20 +16,22 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/mlir/bridge/...",
-        "//learning/brain/experimental/dtensor/...",
-        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
-        "//learning/brain/experimental/tfrt/...",
-        "//learning/brain/mobile/lite/tf_runtime/...",
-        "//learning/pathways/data_parallel/tf2xla/...",
-        "//learning/serving/contrib/tfrt/mlir/...",
-        "//platforms/xla/sparse_core/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
         "//tensorflow/python/...",
+    ] + if_google([
+        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
+        "//learning/brain/experimental/dtensor/...",
+        "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/mlir/bridge/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
-    ],
+        "//learning/brain/mobile/lite/tf_runtime/...",
+        "//learning/pathways/data_parallel/tf2xla/...",
+        "//learning/serving/contrib/tfrt/mlir/...",
+        "//platforms/darwinn/contrib/waymo/...",
+        "//platforms/xla/sparse_core/...",
+    ]),
 )
 
 exports_files([
@@ -1045,6 +1047,7 @@ cc_library(
         "transforms/device_index_selector.cc",
         "transforms/drop_while_shape_invariant.cc",
         "transforms/einsum.cc",
+        "transforms/ensure_static_shapes_pass.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
         "transforms/executor_tpuv1_island_coarsening.cc",
@@ -1884,6 +1887,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core/platform:logging",
     "//tensorflow/core/tpu:tpu_defs",
     "//tensorflow/stream_executor/lib",
+    "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary

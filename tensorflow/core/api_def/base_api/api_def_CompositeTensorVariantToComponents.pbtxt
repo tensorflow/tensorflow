@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "CompositeTensorVariantToComponents"
+  visibility: HIDDEN
+  in_arg {
+    name: "encoded"
+    description:
+      "A scalar `variant` Tensor containing an encoded ExtensionType value."
+  }
+  out_arg {
+    name: "components"
+    description:
+      "The component tensors for the ExtensionType value in `encoded`."
+  }
+  attr {
+    name: "metadata"
+    description: <<END
+String serialization for the TypeSpec.  Must be compatible with the
+`TypeSpec` contained in `encoded`.  (Note: the encoding for the TypeSpec
+may change in future versions of TensorFlow.)
+END
+  }
+  attr {
+    name: "Tcomponents"
+    description: "Expected dtypes for components."
+  }
+  summary: "Decodes a `variant` scalar Tensor into an `ExtensionType` value."
+  description: <<END
+Returns the Tensor components encoded in a `CompositeTensorVariant`.
+
+Raises an error if `type_spec_proto` doesn't match the TypeSpec
+in `encoded`.
+END
+}

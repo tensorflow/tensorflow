@@ -14,6 +14,40 @@ exports_files(glob([
 ]))
 
 cc_library(
+    name = "reduced_precision_support",
+    srcs = [],
+    hdrs = [
+        "reduced_precision_support.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+tf_cc_test(
+    name = "reduced_precision_support_test",
+    srcs = ["reduced_precision_support_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":reduced_precision_support",
+        ":test_util",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "modify_model_interface",
     srcs = ["modify_model_interface.cc"],
     hdrs = ["modify_model_interface.h"],

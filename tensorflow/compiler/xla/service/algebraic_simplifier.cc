@@ -4707,7 +4707,11 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // A Transpose feeding a reduce can simply permute the reduction dimensions
   // field if the output of the reduce is a vector or scalar. Higher ranked
   // result may require a transpose of the output.
-  if (arg->opcode() == HloOpcode::kTranspose) {
+  if (arg->opcode() == HloOpcode::kTranspose &&
+      (reduce->shape().rank() < 2 || arg->user_count() == 1 ||
+       absl::c_all_of(arg->users(), [](HloInstruction* use) {
+         return use->opcode() == HloOpcode::kReduce;
+       }))) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64> new_reduce_dimensions;
     for (auto dim : dimensions) {

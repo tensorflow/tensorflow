@@ -519,6 +519,8 @@ def set_visible_devices(devices, device_type=None):
   context.context().set_visible_devices(devices, device_type)
 
 
+# TODO(b/188089869): Redesign memory stats related APIs before move them out of
+# experimental.
 @tf_export('config.experimental.get_memory_info')
 def get_memory_info(device):
   """Get memory info for the chosen device, as a dict.
@@ -539,7 +541,8 @@ def get_memory_info(device):
 
   More keys may be added in the future, including device-specific keys.
 
-  Currently raises an exception for the CPU.
+  Currently only supports GPU and TPU. If called on a CPU device, an exception
+  will be raised.
 
   For GPUs, TensorFlow will allocate all the memory by default, unless changed
   with `tf.config.experimental.set_memory_growth`. The dict specifies only the
@@ -547,9 +550,9 @@ def get_memory_info(device):
   TensorFlow has allocated on the GPU.
 
   Args:
-    device: Device string to get the memory information for, e.g. `"GPU:0"`. See
-      https://www.tensorflow.org/api_docs/python/tf/device for specifying device
-        strings.
+    device: Device string to get the memory information for, e.g. `"GPU:0"`,
+    `"TPU:0"`. See https://www.tensorflow.org/api_docs/python/tf/device for
+      specifying device strings.
 
   Returns:
     A dict with keys `'current'` and `'peak'`, specifying the current and peak
@@ -564,6 +567,9 @@ def get_memory_info(device):
   return context.context().get_memory_info(device)
 
 
+# TODO(b/188089869): Redesign memory stats related APIs before move them out of
+# experimental.
+# TODO(b/189498350): Unify the behavior on CPU, GPU and TPU.
 @tf_export('config.experimental.reset_memory_stats')
 def reset_memory_stats(device):
   """Resets the tracked memory stats for the chosen device.
@@ -587,12 +593,13 @@ def reset_memory_stats(device):
   ...   peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
   ...   assert peak2 < peak1  # tf.float32 consumes less memory than tf.float64.
 
-  Currently raises an exception for the CPU.
+  Currently only supports GPU and TPU. If called on a CPU device, an exception
+  will be raised.
 
   Args:
-    device: Device string to reset the memory stats, e.g. `"GPU:0"`. See
-      https://www.tensorflow.org/api_docs/python/tf/device for specifying device
-        strings.
+    device: Device string to reset the memory stats, e.g. `"GPU:0"`, `"TPU:0"`.
+      See https://www.tensorflow.org/api_docs/python/tf/device for specifying
+      device strings.
 
   Raises:
     ValueError: No device found with the device name, like '"nonexistent"'.

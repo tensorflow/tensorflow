@@ -207,6 +207,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
 
+  void MakeCrossHostReceiveBuffersForGather(
+      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override;
+
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback) override;
@@ -253,13 +257,20 @@ class PjRtStreamExecutorClient : public PjRtClient {
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier&& notifier) const {
+      PjRtCrossHostRecvNotifier&& notifier,
+      absl::optional<std::vector<GatherDetails>> gather_details) const {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
 
   virtual Status CopyToRemoteDevice(
       PjRtBuffer* buffer, absl::string_view serialized_descriptor) const {
     return Unimplemented("Cross host sends not implemented.");
+  }
+
+  virtual Status CopyToRemoteDeviceScattered(
+      PjRtBuffer* buffer, absl::Span<const std::string> serialized_descriptors,
+      const PjRtBuffer::ScatterDetails& scatter_details) const {
+    return Unimplemented("Scattered cross host sends not implemented.");
   }
 
   virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
@@ -275,6 +286,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
 
+  // Device memory allocator. If owned, the allocator must outlive the devices,
+  // because it is the device destructor that waits for any outstanding work to
+  // complete.
+  se::DeviceMemoryAllocator* allocator_;
+  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
+
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> owned_devices_;
   // Pointers to `owned_devices_`.
@@ -284,9 +301,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
   int process_index_;
-
-  se::DeviceMemoryAllocator* allocator_;
-  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
   // Should we always prefer to stage host-to-device transfers via memory
   // allocated on host_memory_allocator_? True only on GPU, where we prefer to
@@ -546,6 +560,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       PjRtDevice* dst_device) override;
 
   Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override;
+
+  Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) override;
 
   Status BlockHostUntilReady() override;
 

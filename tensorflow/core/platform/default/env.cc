@@ -244,35 +244,6 @@ class PosixEnv : public Env {
   }
 };
 
-#if defined(LIBTPU_ON_GCE)
-// This is a temporary fix for including GCS file system on TPU builds.
-// Will be removed once b/176954917 is fully resolved with the build fix.
-bool RegisterGcsFileSystemForTpu() {
-  int fd = shm_open(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data(),
-                    O_RDWR, S_IRUSR | S_IWUSR);
-  if (fd == -1) {
-    LOG(WARNING) << "Unable to register GCS file system for the TPU build.";
-    return false;
-  }
-
-  void* (**fn)() = reinterpret_cast<void* (**)()>(mmap(
-      nullptr, sizeof(void* (*)()), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
-  if (fn == MAP_FAILED) {
-    LOG(WARNING) << "Unable to register GCS file system for the TPU build.";
-    return false;
-  }
-
-  FileSystem* fs = reinterpret_cast<FileSystem*>((*fn)());
-  tensorflow::Env::Default()
-      ->RegisterFileSystem("gs", std::unique_ptr<FileSystem>(fs))
-      .IgnoreError();
-
-  munmap(fn, sizeof(void* (*)()));
-  close(fd);
-  return true;
-}
-#endif
-
 }  // namespace
 
 #if defined(PLATFORM_POSIX) || defined(__APPLE__) || defined(__ANDROID__)
@@ -280,9 +251,6 @@ REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 REGISTER_FILE_SYSTEM("ram", RamFileSystem);
 
-#if defined(LIBTPU_ON_GCE)
-bool register_gcs_for_tpu = RegisterGcsFileSystemForTpu();
-#endif
 
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;

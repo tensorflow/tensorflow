@@ -573,6 +573,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseSegmentSum`
 *   `raw_ops.SparseSegmentSumGrad`
 *   `raw_ops.SparseSegmentSumWithNumSegments`
+*   `raw_ops.SparseSlice`
 *   `raw_ops.SparseSoftmaxCrossEntropyWithLogits`
 *   `raw_ops.SparseToDense`
 *   `raw_ops.SparseToSparseSetOperation`

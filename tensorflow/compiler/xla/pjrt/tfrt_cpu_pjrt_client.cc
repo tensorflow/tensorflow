@@ -889,6 +889,9 @@ static ShapedBuffer AsShapedBuffer(
 }
 
 StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
+  if (on_device_shape_.is_static()) {
+    return on_device_shape_;
+  }
   ScopedHold device_buffer(this, ScopedHold::kUsage);
   {
     absl::MutexLock lock(&mu_);

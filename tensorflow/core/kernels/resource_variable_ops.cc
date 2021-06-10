@@ -1042,6 +1042,13 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .TypeConstraint<int64>("Tindices"),
                         ResourceScatterUpdateOp<GPUDevice, Variant, int64,
                                                 scatter_op::UpdateOp::ASSIGN>)
+REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .TypeConstraint<int64>("dtype")
+                            .TypeConstraint<int64>("Tindices"),
+                        ResourceScatterUpdateOp<GPUDevice, int64, int64,
+                                                scatter_op::UpdateOp::ASSIGN>)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

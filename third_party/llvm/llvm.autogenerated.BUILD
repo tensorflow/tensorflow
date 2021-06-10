@@ -1254,6 +1254,7 @@ cc_library(
         ":CodeGen",
         ":Core",
         ":GlobalISel",
+        ":IPO",
         ":MC",
         ":Scalar",
         ":SelectionDAG",

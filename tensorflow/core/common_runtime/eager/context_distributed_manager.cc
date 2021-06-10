@@ -702,6 +702,22 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
           "Currently, TF eager runtime only supports tensorflow::GrpcServer."));
     }
+    const auto& config = server_def.default_session_config();
+    if (!config.experimental().coordination_service().empty()) {
+      auto worker_cache = grpc_server->worker_env()
+                              ->session_mgr->LegacySession()
+                              ->worker_cache();
+      std::unique_ptr<CoordinationClientCache> cache;
+      LOG_AND_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&cache));
+      coordination_service_ =
+          CoordinationServiceInterface::EnableCoordinationService(
+              config.experimental().coordination_service(),
+              grpc_server->worker_env(), server_def, std::move(cache),
+              [this](Status s) {
+                context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
+              });
+      LOG_AND_RETURN_IF_ERROR(coordination_service_->Start());
+    }
     LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
     LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(

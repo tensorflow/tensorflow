@@ -237,7 +237,7 @@ tensorflow::AddWhileInputHack
 tensorflow::ImportNumpy
 _tensorflow_numpy_api
 
-[//tensorflow/python:tf_session_helper] # tf_session
+[//tensorflow/python/client:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef
 tensorflow::TF_SessionMakeCallable
 tensorflow::TF_SessionRunCallable
@@ -369,6 +369,12 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
+[//tensorflow/cc/experimental/libexport:metrics] # SavedModel metrics
+tensorflow::libexport::metrics::Write
+tensorflow::libexport::metrics::Read
+tensorflow::libexport::metrics::WriteApi
+tensorflow::libexport::metrics::ReadApi
+
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
@@ -400,5 +406,5 @@ tensorflow::CopyPythonAPITensorLists
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
 
-[//tensorflow/core/framework:attr_value_proto] # tf_text
+[//tensorflow/core:protos_all_cc] # tf_text
 tensorflow::AttrValue

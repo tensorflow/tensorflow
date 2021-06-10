@@ -35,8 +35,8 @@ func @and_fold() -> (tensor<i1>, tensor<i1>) {
   }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi1>, tensor<i1>) -> tensor<i1>
   return %4, %5 : tensor<i1>, tensor<i1>
 
- // CHECK: %[[CST:.*]] = mhlo.constant dense<true> : tensor<i1>
- // CHECK: %[[CST1:.*]] = mhlo.constant dense<false> : tensor<i1>
+ // CHECK-DAG: %[[CST:.*]] = mhlo.constant dense<true> : tensor<i1>
+ // CHECK-DAG: %[[CST1:.*]] = mhlo.constant dense<false> : tensor<i1>
  // CHECK: return %[[CST]], %[[CST1]] : tensor<i1>, tensor<i1>
 }
 
@@ -60,7 +60,7 @@ func @or_fold() -> (tensor<i1>, tensor<i1>) {
   }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi1>, tensor<i1>) -> tensor<i1>
   return %4, %5 : tensor<i1>, tensor<i1>
 
- // CHECK: %[[CST:.*]] = mhlo.constant dense<false> : tensor<i1>
- // CHECK: %[[CST1:.*]] = mhlo.constant dense<true> : tensor<i1>
+ // CHECK-DAG: %[[CST:.*]] = mhlo.constant dense<false> : tensor<i1>
+ // CHECK-DAG: %[[CST1:.*]] = mhlo.constant dense<true> : tensor<i1>
  // CHECK: return %[[CST]], %[[CST1]] : tensor<i1>, tensor<i1>
 }

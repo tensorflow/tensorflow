@@ -1209,7 +1209,7 @@ static LogicalResult Verify(SliceOp op) {
 
   auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
   if (input_ty && begin_ty.getNumElements() != input_ty.getRank()) {
-    return op.emitOpError() << "requires number of elements in begin and size"
+    return op.emitOpError() << "requires number of elements in begin and size "
                                "are equal to input rank";
   }
 

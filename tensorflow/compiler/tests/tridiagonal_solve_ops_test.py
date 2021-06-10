@@ -508,5 +508,34 @@ class TridiagonalSolveOpsTest(xla_test.XLATestCase):
   # Dimensions have to be all known statically.
 
 
+class TridiagonalSolveSpeedTest(xla_test.XLATestCase):
+  """Test for benchmarking tridiagonal_solve."""
+
+  def _run_test(self, batch_size, num_dims, num_rhs):
+    diagonals_np = np.random.normal(size=(batch_size, 3,
+                                          num_dims)).astype(np.float32)
+    rhs_np = np.random.normal(size=(batch_size, num_dims,
+                                    num_rhs)).astype(np.float32)
+
+    with self.session() as sess, self.test_scope():
+      diags = array_ops.placeholder(
+          shape=(batch_size, 3, num_dims), dtype=dtypes.float32)
+      rhs = array_ops.placeholder(
+          shape=(batch_size, num_dims, num_rhs), dtype=dtypes.float32)
+      x_np = sess.run(
+          linalg_impl.tridiagonal_solve(diags, rhs, partial_pivoting=False),
+          feed_dict={
+              diags: diagonals_np,
+              rhs: rhs_np
+          })
+      self.assertEqual(x_np.shape, (batch_size, num_dims, num_rhs))
+
+  def testBatch1024NumDims1024NumRhs1(self):
+    batch_size = 1024
+    num_dims = 1024
+    num_rhs = 1
+    self._run_test(batch_size, num_dims, num_rhs)
+
+
 if __name__ == "__main__":
   test.main()

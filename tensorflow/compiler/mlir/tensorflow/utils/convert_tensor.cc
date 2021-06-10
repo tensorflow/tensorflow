@@ -285,12 +285,13 @@ void ConvertFloatElementsAttr(const mlir::DenseElementsAttr attr,
 void ConvertHalfElementsAttr(const mlir::DenseElementsAttr attr,
                              protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<Eigen::half>().x != Eigen::half(0))
-      output->Add(attr.getSplatValue<Eigen::half>().x);
+    if (attr.getSplatValue<Eigen::half>() != Eigen::half(0))
+      output->Add(
+          Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<Eigen::half>()));
   } else {
     output->Reserve(attr.getNumElements());
     for (const Eigen::half value : attr.getValues<Eigen::half>())
-      output->AddAlreadyReserved(value.x);
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
   }
 }
 
@@ -325,12 +326,13 @@ void ConvertUIntElementsAttr(const mlir::DenseElementsAttr attr,
 void ConvertBfloat16ElementsAttr(const mlir::DenseElementsAttr attr,
                                  protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<bfloat16>().value != bfloat16(0))
-      output->Add(attr.getSplatValue<bfloat16>().value);
+    if (attr.getSplatValue<bfloat16>() != bfloat16(0))
+      output->Add(
+          Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<bfloat16>()));
   } else {
     output->Reserve(attr.getNumElements());
     for (const bfloat16 value : attr.getValues<bfloat16>())
-      output->AddAlreadyReserved(value.value);
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
   }
 }
 

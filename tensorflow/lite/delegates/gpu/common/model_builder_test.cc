@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder_internal.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/interpreter.h"
@@ -1248,6 +1249,280 @@ TEST(ModelBuilderTest, GetOpsToReplace_AllowQuantOps) {
 
   TfLiteIntArrayFree(ops_to_replace);
   TfLiteIntArrayFree(ops_to_replace_without_quant);
+}
+
+// StubTfLiteContext is a TfLiteContext which has 3 nodes as the followings.
+// dummyAdd -> target op -> dummyAdd
+class StubTfLiteContext : public TfLiteContext {
+ public:
+  StubTfLiteContext(const int builtin_code, const int op_version,
+                    const int num_inputs)
+      : TfLiteContext({0}) {
+    // Stub execution plan
+    exec_plan_ = TfLiteIntArrayCreate(3);
+    for (int i = 0; i < 3; ++i) exec_plan_->data[i] = i;
+
+    int tensor_no = 0;
+
+    // Node 0, dummyAdd
+    nodes_[0].inputs = TfLiteIntArrayCreate(1);
+    nodes_[0].inputs->data[0] = tensor_no++;
+    nodes_[0].outputs = TfLiteIntArrayCreate(1);
+    nodes_[0].outputs->data[0] = tensor_no;
+    nodes_[0].builtin_data = nullptr;
+
+    // Node 1, target op
+    nodes_[1].inputs = TfLiteIntArrayCreate(num_inputs);
+    for (int i = 0; i < num_inputs; i++) {
+      nodes_[1].inputs->data[i] = tensor_no++;
+    }
+    nodes_[1].outputs = TfLiteIntArrayCreate(1);
+    nodes_[1].outputs->data[0] = tensor_no;
+    nodes_[1].builtin_data = malloc(1024);
+    memset(nodes_[1].builtin_data, 0, 1024);
+
+    // Node 2, dummyAdd
+    nodes_[2].inputs = TfLiteIntArrayCreate(1);
+    nodes_[2].inputs->data[0] = tensor_no++;
+    nodes_[2].outputs = TfLiteIntArrayCreate(1);
+    nodes_[2].outputs->data[0] = tensor_no++;
+    nodes_[2].builtin_data = nullptr;
+
+    // Create tensors
+    tensors_.resize(tensor_no);
+    for (size_t i = 0; i < tensors_.size(); i++) {
+      memset(&tensors_[i], 0, sizeof(tensors_[i]));
+      tensors_[i].buffer_handle = kTfLiteNullBufferHandle;
+      tensors_[i].type = kTfLiteFloat32;
+    }
+    tensors = tensors_.data();
+    tensors_size = tensors_.size();
+
+    // Create registrations
+    registrations_[0].builtin_code = kTfLiteBuiltinAdd;
+    registrations_[1].builtin_code = builtin_code;
+    registrations_[1].version = op_version;
+    registrations_[2].builtin_code = kTfLiteBuiltinAdd;
+
+    this->GetExecutionPlan = StubGetExecutionPlan;
+    this->GetNodeAndRegistration = StubGetNodeAndRegistration;
+  }
+  ~StubTfLiteContext() {
+    for (auto& node : nodes_) {
+      TfLiteIntArrayFree(node.inputs);
+      TfLiteIntArrayFree(node.outputs);
+      if (node.builtin_data) {
+        free(node.builtin_data);
+      }
+    }
+    TfLiteIntArrayFree(exec_plan_);
+  }
+
+  TfLiteIntArray* exec_plan() const { return exec_plan_; }
+  TfLiteNode* node() { return &nodes_[1]; }
+  TfLiteRegistration* registration() { return &registrations_[1]; }
+  TfLiteNode* node(int node_index) { return &nodes_[node_index]; }
+  TfLiteRegistration* registration(int reg_index) {
+    return &registrations_[reg_index];
+  }
+  TfLiteTensor* tensor(int tensor_index) { return &tensors_[tensor_index]; }
+
+ private:
+  static TfLiteStatus StubGetExecutionPlan(TfLiteContext* context,
+                                           TfLiteIntArray** execution_plan) {
+    StubTfLiteContext* stub = reinterpret_cast<StubTfLiteContext*>(context);
+    *execution_plan = stub->exec_plan();
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus StubGetNodeAndRegistration(
+      TfLiteContext* context, int node_index, TfLiteNode** node,
+      TfLiteRegistration** registration) {
+    StubTfLiteContext* stub = reinterpret_cast<StubTfLiteContext*>(context);
+    *node = stub->node(node_index);
+    *registration = stub->registration(node_index);
+    return kTfLiteOk;
+  }
+
+  TfLiteIntArray* exec_plan_;
+  TfLiteNode nodes_[3];
+  TfLiteRegistration registrations_[3];
+  std::vector<TfLiteTensor> tensors_;
+};
+
+TEST(AddOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinAdd,
+                                                     /*op_version=*/3,
+                                                     /*num_inputs=*/2);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinAdd,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/2);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(BatchMatMulOperationParserTest, TestIsSupported) {
+  // Invalid num_inputs
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinBatchMatmul,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/3);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinBatchMatmul,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(CastOperationParserTest, TestIsSupported) {
+  // Invalid num_inputs
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCast,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/2);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid consumer operator
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCast,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/1);
+  context->tensor(1)->type = kTfLiteBool;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context->registration(0)->builtin_code = kTfLiteBuiltinGreater;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(ClampOperationsParserTest, TestIsSupported) {
+  // Always valid
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinReluN1To1,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/2);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(ConcatenationOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context =
+      std::make_unique<StubTfLiteContext>(kTfLiteBuiltinConcatenation,
+                                          /*op_version=*/3,
+                                          /*num_inputs=*/2);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinConcatenation,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/2);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(Conv2DOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinConv2d,
+                                                     /*op_version=*/6,
+                                                     /*num_inputs=*/2);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid strides and dilation
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinConv2d,
+                                                /*op_version=*/5,
+                                                /*num_inputs=*/2);
+  TfLiteConvParams* tf_options =
+      static_cast<TfLiteConvParams*>(context->node()->builtin_data);
+  tf_options->stride_width = 0;
+  tf_options->stride_height = 0;
+  tf_options->dilation_width_factor = 0;
+  tf_options->dilation_height_factor = 0;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid dilation
+  tf_options->stride_width = 1;
+  tf_options->stride_height = 1;
+  tf_options->dilation_width_factor = 0;
+  tf_options->dilation_height_factor = 0;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid activation
+  tf_options->stride_width = 1;
+  tf_options->stride_height = 1;
+  tf_options->dilation_width_factor = 1;
+  tf_options->dilation_height_factor = 1;
+  tf_options->activation = kTfLiteActSignBit;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options->stride_width = 1;
+  tf_options->stride_height = 1;
+  tf_options->dilation_width_factor = 1;
+  tf_options->dilation_height_factor = 1;
+  tf_options->activation = kTfLiteActRelu;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(DensifyOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinDensify,
+                                                     /*op_version=*/2,
+                                                     /*num_inputs=*/0);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinDensify,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/0);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
 }
 
 }  // namespace

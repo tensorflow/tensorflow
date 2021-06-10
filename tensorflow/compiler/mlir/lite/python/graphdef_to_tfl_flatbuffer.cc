@@ -48,6 +48,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                          const GraphDebugInfo& debug_info,
                                          const GraphDef& input,
                                          string* result) {
+  using ::tflite::optimize::ReducedPrecisionSupport;
   mlir::MLIRContext context;
   GraphImportConfig specs;
   mlir::TFL::QuantizationSpecs quant_specs;
@@ -67,11 +68,33 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   TF_RETURN_IF_ERROR(tensorflow::ParseInputArrayInfo(
       node_names, node_dtypes, node_shapes, &specs.inputs));
 
+  if (toco_flags.quantize_to_float16() || toco_flags.allow_bfloat16()) {
+    ReducedPrecisionSupport mask = ReducedPrecisionSupport::None;
+    if (toco_flags.quantize_to_float16()) {
+      mask |= ReducedPrecisionSupport::Float16Inference;
+    }
+    if (toco_flags.allow_bfloat16()) {
+      mask |= ReducedPrecisionSupport::Bfloat16Inference;
+    }
+    if (toco_flags.accumulation_type() == toco::IODataType::FLOAT16) {
+      mask |= ReducedPrecisionSupport::Float16Accumulation;
+    } else {
+      mask |= ReducedPrecisionSupport::Float32Accumulation;
+    }
+    quant_specs.support_mask = mask;
+  }
   // Parse output arrays.
   std::vector<string> output_arrays(model_flags.output_arrays().begin(),
                                     model_flags.output_arrays().end());
   TF_RETURN_IF_ERROR(
       tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
+
+  // Parse control output arrays.
+  std::vector<string> control_output_arrays(
+      model_flags.control_output_arrays().begin(),
+      model_flags.control_output_arrays().end());
+  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(control_output_arrays,
+                                                      &specs.control_outputs));
 
   specs.prune_unused_nodes = true;
   specs.convert_legacy_fed_inputs = true;

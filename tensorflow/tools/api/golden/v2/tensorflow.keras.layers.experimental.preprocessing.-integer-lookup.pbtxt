@@ -244,7 +244,7 @@ tf_class {
   }
   member_method {
     name: "get_vocabulary"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'include_special_tokens\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
   member_method {
     name: "get_weights"

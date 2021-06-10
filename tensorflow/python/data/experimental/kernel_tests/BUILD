@@ -238,6 +238,8 @@ tf_py_test(
     srcs = ["io_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:io",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -558,31 +560,6 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "scan_test",
-    size = "small",
-    srcs = ["scan_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_v2_toggles",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:tensor_array_ops",
-        "//tensorflow/python:test_ops",
-        "//tensorflow/python/data/experimental/ops:scan_ops",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
-    ],
-)
-
 tf_py_test(
     name = "shuffle_and_repeat_test",
     size = "small",
@@ -649,29 +626,6 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "@org_sqlite//:python",
-    ],
-)
-
-tf_py_test(
-    name = "take_while_test",
-    size = "small",
-    srcs = ["take_while_test.py"],
-    shard_count = 4,
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/experimental/ops:take_while_ops",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 

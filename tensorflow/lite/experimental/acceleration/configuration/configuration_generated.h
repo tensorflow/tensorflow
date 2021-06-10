@@ -73,6 +73,9 @@ struct BenchmarkErrorT;
 struct BenchmarkEvent;
 struct BenchmarkEventT;
 
+struct BestAccelerationDecision;
+struct BestAccelerationDecisionT;
+
 bool operator==(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs);
 bool operator!=(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs);
 bool operator==(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs);
@@ -107,6 +110,8 @@ bool operator==(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs);
 bool operator!=(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs);
 bool operator==(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs);
 bool operator!=(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs);
+bool operator==(const BestAccelerationDecisionT &lhs, const BestAccelerationDecisionT &rhs);
+bool operator!=(const BestAccelerationDecisionT &lhs, const BestAccelerationDecisionT &rhs);
 
 enum ExecutionPreference {
   ExecutionPreference_ANY = 0,
@@ -294,6 +299,42 @@ inline const char *EnumNameGPUBackend(GPUBackend e) {
   return EnumNamesGPUBackend()[index];
 }
 
+enum GPUInferencePriority {
+  GPUInferencePriority_GPU_PRIORITY_AUTO = 0,
+  GPUInferencePriority_GPU_PRIORITY_MAX_PRECISION = 1,
+  GPUInferencePriority_GPU_PRIORITY_MIN_LATENCY = 2,
+  GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE = 3,
+  GPUInferencePriority_MIN = GPUInferencePriority_GPU_PRIORITY_AUTO,
+  GPUInferencePriority_MAX = GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE
+};
+
+inline const GPUInferencePriority (&EnumValuesGPUInferencePriority())[4] {
+  static const GPUInferencePriority values[] = {
+    GPUInferencePriority_GPU_PRIORITY_AUTO,
+    GPUInferencePriority_GPU_PRIORITY_MAX_PRECISION,
+    GPUInferencePriority_GPU_PRIORITY_MIN_LATENCY,
+    GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesGPUInferencePriority() {
+  static const char * const names[5] = {
+    "GPU_PRIORITY_AUTO",
+    "GPU_PRIORITY_MAX_PRECISION",
+    "GPU_PRIORITY_MIN_LATENCY",
+    "GPU_PRIORITY_MIN_MEMORY_USAGE",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameGPUInferencePriority(GPUInferencePriority e) {
+  if (flatbuffers::IsOutRange(e, GPUInferencePriority_GPU_PRIORITY_AUTO, GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesGPUInferencePriority()[index];
+}
+
 namespace EdgeTpuDeviceSpec_ {
 
 enum PlatformType {
@@ -381,6 +422,46 @@ inline const char *EnumNameEdgeTpuPowerState(EdgeTpuPowerState e) {
   const size_t index = static_cast<size_t>(e);
   return EnumNamesEdgeTpuPowerState()[index];
 }
+
+namespace EdgeTpuSettings_ {
+
+enum FloatTruncationType {
+  FloatTruncationType_UNSPECIFIED = 0,
+  FloatTruncationType_NO_TRUNCATION = 1,
+  FloatTruncationType_BFLOAT16 = 2,
+  FloatTruncationType_HALF = 3,
+  FloatTruncationType_MIN = FloatTruncationType_UNSPECIFIED,
+  FloatTruncationType_MAX = FloatTruncationType_HALF
+};
+
+inline const FloatTruncationType (&EnumValuesFloatTruncationType())[4] {
+  static const FloatTruncationType values[] = {
+    FloatTruncationType_UNSPECIFIED,
+    FloatTruncationType_NO_TRUNCATION,
+    FloatTruncationType_BFLOAT16,
+    FloatTruncationType_HALF
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesFloatTruncationType() {
+  static const char * const names[5] = {
+    "UNSPECIFIED",
+    "NO_TRUNCATION",
+    "BFLOAT16",
+    "HALF",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameFloatTruncationType(FloatTruncationType e) {
+  if (flatbuffers::IsOutRange(e, FloatTruncationType_UNSPECIFIED, FloatTruncationType_HALF)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesFloatTruncationType()[index];
+}
+
+}  // namespace EdgeTpuSettings_
 
 namespace CoralSettings_ {
 
@@ -615,13 +696,15 @@ struct NNAPISettingsT : public flatbuffers::NativeTable {
   tflite::NNAPIExecutionPriority execution_priority;
   bool allow_dynamic_dimensions;
   bool allow_fp16_precision_for_fp32;
+  bool use_burst_computation;
   NNAPISettingsT()
       : execution_preference(tflite::NNAPIExecutionPreference_UNDEFINED),
         no_of_nnapi_instances_to_cache(0),
         allow_nnapi_cpu_on_android_10_plus(false),
         execution_priority(tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED),
         allow_dynamic_dimensions(false),
-        allow_fp16_precision_for_fp32(false) {
+        allow_fp16_precision_for_fp32(false),
+        use_burst_computation(false) {
   }
 };
 
@@ -637,7 +720,8 @@ struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_ALLOW_NNAPI_CPU_ON_ANDROID_10_PLUS = 16,
     VT_EXECUTION_PRIORITY = 18,
     VT_ALLOW_DYNAMIC_DIMENSIONS = 20,
-    VT_ALLOW_FP16_PRECISION_FOR_FP32 = 22
+    VT_ALLOW_FP16_PRECISION_FOR_FP32 = 22,
+    VT_USE_BURST_COMPUTATION = 24
   };
   const flatbuffers::String *accelerator_name() const {
     return GetPointer<const flatbuffers::String *>(VT_ACCELERATOR_NAME);
@@ -669,6 +753,9 @@ struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool allow_fp16_precision_for_fp32() const {
     return GetField<uint8_t>(VT_ALLOW_FP16_PRECISION_FOR_FP32, 0) != 0;
   }
+  bool use_burst_computation() const {
+    return GetField<uint8_t>(VT_USE_BURST_COMPUTATION, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_ACCELERATOR_NAME) &&
@@ -685,6 +772,7 @@ struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_EXECUTION_PRIORITY) &&
            VerifyField<uint8_t>(verifier, VT_ALLOW_DYNAMIC_DIMENSIONS) &&
            VerifyField<uint8_t>(verifier, VT_ALLOW_FP16_PRECISION_FOR_FP32) &&
+           VerifyField<uint8_t>(verifier, VT_USE_BURST_COMPUTATION) &&
            verifier.EndTable();
   }
   NNAPISettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -725,6 +813,9 @@ struct NNAPISettingsBuilder {
   void add_allow_fp16_precision_for_fp32(bool allow_fp16_precision_for_fp32) {
     fbb_.AddElement<uint8_t>(NNAPISettings::VT_ALLOW_FP16_PRECISION_FOR_FP32, static_cast<uint8_t>(allow_fp16_precision_for_fp32), 0);
   }
+  void add_use_burst_computation(bool use_burst_computation) {
+    fbb_.AddElement<uint8_t>(NNAPISettings::VT_USE_BURST_COMPUTATION, static_cast<uint8_t>(use_burst_computation), 0);
+  }
   explicit NNAPISettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -748,7 +839,8 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(
     bool allow_nnapi_cpu_on_android_10_plus = false,
     tflite::NNAPIExecutionPriority execution_priority = tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
     bool allow_dynamic_dimensions = false,
-    bool allow_fp16_precision_for_fp32 = false) {
+    bool allow_fp16_precision_for_fp32 = false,
+    bool use_burst_computation = false) {
   NNAPISettingsBuilder builder_(_fbb);
   builder_.add_execution_priority(execution_priority);
   builder_.add_fallback_settings(fallback_settings);
@@ -757,6 +849,7 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(
   builder_.add_model_token(model_token);
   builder_.add_cache_directory(cache_directory);
   builder_.add_accelerator_name(accelerator_name);
+  builder_.add_use_burst_computation(use_burst_computation);
   builder_.add_allow_fp16_precision_for_fp32(allow_fp16_precision_for_fp32);
   builder_.add_allow_dynamic_dimensions(allow_dynamic_dimensions);
   builder_.add_allow_nnapi_cpu_on_android_10_plus(allow_nnapi_cpu_on_android_10_plus);
@@ -774,7 +867,8 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettingsDirect(
     bool allow_nnapi_cpu_on_android_10_plus = false,
     tflite::NNAPIExecutionPriority execution_priority = tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
     bool allow_dynamic_dimensions = false,
-    bool allow_fp16_precision_for_fp32 = false) {
+    bool allow_fp16_precision_for_fp32 = false,
+    bool use_burst_computation = false) {
   auto accelerator_name__ = accelerator_name ? _fbb.CreateString(accelerator_name) : 0;
   auto cache_directory__ = cache_directory ? _fbb.CreateString(cache_directory) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
@@ -789,7 +883,8 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettingsDirect(
       allow_nnapi_cpu_on_android_10_plus,
       execution_priority,
       allow_dynamic_dimensions,
-      allow_fp16_precision_for_fp32);
+      allow_fp16_precision_for_fp32,
+      use_burst_computation);
 }
 
 flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -799,10 +894,16 @@ struct GPUSettingsT : public flatbuffers::NativeTable {
   bool is_precision_loss_allowed;
   bool enable_quantized_inference;
   tflite::GPUBackend force_backend;
+  tflite::GPUInferencePriority inference_priority1;
+  tflite::GPUInferencePriority inference_priority2;
+  tflite::GPUInferencePriority inference_priority3;
   GPUSettingsT()
       : is_precision_loss_allowed(false),
         enable_quantized_inference(true),
-        force_backend(tflite::GPUBackend_UNSET) {
+        force_backend(tflite::GPUBackend_UNSET),
+        inference_priority1(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO),
+        inference_priority2(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO),
+        inference_priority3(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO) {
   }
 };
 
@@ -811,7 +912,10 @@ struct GPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_IS_PRECISION_LOSS_ALLOWED = 4,
     VT_ENABLE_QUANTIZED_INFERENCE = 6,
-    VT_FORCE_BACKEND = 8
+    VT_FORCE_BACKEND = 8,
+    VT_INFERENCE_PRIORITY1 = 10,
+    VT_INFERENCE_PRIORITY2 = 12,
+    VT_INFERENCE_PRIORITY3 = 14
   };
   bool is_precision_loss_allowed() const {
     return GetField<uint8_t>(VT_IS_PRECISION_LOSS_ALLOWED, 0) != 0;
@@ -822,11 +926,23 @@ struct GPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::GPUBackend force_backend() const {
     return static_cast<tflite::GPUBackend>(GetField<int32_t>(VT_FORCE_BACKEND, 0));
   }
+  tflite::GPUInferencePriority inference_priority1() const {
+    return static_cast<tflite::GPUInferencePriority>(GetField<int32_t>(VT_INFERENCE_PRIORITY1, 0));
+  }
+  tflite::GPUInferencePriority inference_priority2() const {
+    return static_cast<tflite::GPUInferencePriority>(GetField<int32_t>(VT_INFERENCE_PRIORITY2, 0));
+  }
+  tflite::GPUInferencePriority inference_priority3() const {
+    return static_cast<tflite::GPUInferencePriority>(GetField<int32_t>(VT_INFERENCE_PRIORITY3, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_IS_PRECISION_LOSS_ALLOWED) &&
            VerifyField<uint8_t>(verifier, VT_ENABLE_QUANTIZED_INFERENCE) &&
            VerifyField<int32_t>(verifier, VT_FORCE_BACKEND) &&
+           VerifyField<int32_t>(verifier, VT_INFERENCE_PRIORITY1) &&
+           VerifyField<int32_t>(verifier, VT_INFERENCE_PRIORITY2) &&
+           VerifyField<int32_t>(verifier, VT_INFERENCE_PRIORITY3) &&
            verifier.EndTable();
   }
   GPUSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -846,6 +962,15 @@ struct GPUSettingsBuilder {
   void add_force_backend(tflite::GPUBackend force_backend) {
     fbb_.AddElement<int32_t>(GPUSettings::VT_FORCE_BACKEND, static_cast<int32_t>(force_backend), 0);
   }
+  void add_inference_priority1(tflite::GPUInferencePriority inference_priority1) {
+    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY1, static_cast<int32_t>(inference_priority1), 0);
+  }
+  void add_inference_priority2(tflite::GPUInferencePriority inference_priority2) {
+    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY2, static_cast<int32_t>(inference_priority2), 0);
+  }
+  void add_inference_priority3(tflite::GPUInferencePriority inference_priority3) {
+    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY3, static_cast<int32_t>(inference_priority3), 0);
+  }
   explicit GPUSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -862,8 +987,14 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(
     flatbuffers::FlatBufferBuilder &_fbb,
     bool is_precision_loss_allowed = false,
     bool enable_quantized_inference = true,
-    tflite::GPUBackend force_backend = tflite::GPUBackend_UNSET) {
+    tflite::GPUBackend force_backend = tflite::GPUBackend_UNSET,
+    tflite::GPUInferencePriority inference_priority1 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferencePriority inference_priority2 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferencePriority inference_priority3 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO) {
   GPUSettingsBuilder builder_(_fbb);
+  builder_.add_inference_priority3(inference_priority3);
+  builder_.add_inference_priority2(inference_priority2);
+  builder_.add_inference_priority1(inference_priority1);
   builder_.add_force_backend(force_backend);
   builder_.add_enable_quantized_inference(enable_quantized_inference);
   builder_.add_is_precision_loss_allowed(is_precision_loss_allowed);
@@ -1195,9 +1326,11 @@ struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   int32_t inference_priority;
   std::unique_ptr<tflite::EdgeTpuDeviceSpecT> edgetpu_device_spec;
   std::string model_token;
+  tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type;
   EdgeTpuSettingsT()
       : inference_power_state(tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE),
-        inference_priority(-1) {
+        inference_priority(-1),
+        float_truncation_type(tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
   }
 };
 
@@ -1208,7 +1341,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_INACTIVE_POWER_CONFIGS = 6,
     VT_INFERENCE_PRIORITY = 8,
     VT_EDGETPU_DEVICE_SPEC = 10,
-    VT_MODEL_TOKEN = 12
+    VT_MODEL_TOKEN = 12,
+    VT_FLOAT_TRUNCATION_TYPE = 14
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
     return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
@@ -1225,6 +1359,9 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *model_token() const {
     return GetPointer<const flatbuffers::String *>(VT_MODEL_TOKEN);
   }
+  tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type() const {
+    return static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(GetField<int32_t>(VT_FLOAT_TRUNCATION_TYPE, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_POWER_STATE) &&
@@ -1236,6 +1373,7 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(edgetpu_device_spec()) &&
            VerifyOffset(verifier, VT_MODEL_TOKEN) &&
            verifier.VerifyString(model_token()) &&
+           VerifyField<int32_t>(verifier, VT_FLOAT_TRUNCATION_TYPE) &&
            verifier.EndTable();
   }
   EdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1261,6 +1399,9 @@ struct EdgeTpuSettingsBuilder {
   void add_model_token(flatbuffers::Offset<flatbuffers::String> model_token) {
     fbb_.AddOffset(EdgeTpuSettings::VT_MODEL_TOKEN, model_token);
   }
+  void add_float_truncation_type(tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type) {
+    fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_FLOAT_TRUNCATION_TYPE, static_cast<int32_t>(float_truncation_type), 0);
+  }
   explicit EdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1279,8 +1420,10 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>> inactive_power_configs = 0,
     int32_t inference_priority = -1,
     flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
-    flatbuffers::Offset<flatbuffers::String> model_token = 0) {
+    flatbuffers::Offset<flatbuffers::String> model_token = 0,
+    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
   EdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_float_truncation_type(float_truncation_type);
   builder_.add_model_token(model_token);
   builder_.add_edgetpu_device_spec(edgetpu_device_spec);
   builder_.add_inference_priority(inference_priority);
@@ -1295,7 +1438,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     const std::vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> *inactive_power_configs = nullptr,
     int32_t inference_priority = -1,
     flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
-    const char *model_token = nullptr) {
+    const char *model_token = nullptr,
+    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
   auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   return tflite::CreateEdgeTpuSettings(
@@ -1304,7 +1448,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
       inactive_power_configs__,
       inference_priority,
       edgetpu_device_spec,
-      model_token__);
+      model_token__,
+      float_truncation_type);
 }
 
 flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -1418,7 +1563,7 @@ struct CPUSettingsT : public flatbuffers::NativeTable {
   typedef CPUSettings TableType;
   int32_t num_threads;
   CPUSettingsT()
-      : num_threads(0) {
+      : num_threads(-1) {
   }
 };
 
@@ -1428,7 +1573,7 @@ struct CPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_NUM_THREADS = 4
   };
   int32_t num_threads() const {
-    return GetField<int32_t>(VT_NUM_THREADS, 0);
+    return GetField<int32_t>(VT_NUM_THREADS, -1);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -1444,7 +1589,7 @@ struct CPUSettingsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_num_threads(int32_t num_threads) {
-    fbb_.AddElement<int32_t>(CPUSettings::VT_NUM_THREADS, num_threads, 0);
+    fbb_.AddElement<int32_t>(CPUSettings::VT_NUM_THREADS, num_threads, -1);
   }
   explicit CPUSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -1460,7 +1605,7 @@ struct CPUSettingsBuilder {
 
 inline flatbuffers::Offset<CPUSettings> CreateCPUSettings(
     flatbuffers::FlatBufferBuilder &_fbb,
-    int32_t num_threads = 0) {
+    int32_t num_threads = -1) {
   CPUSettingsBuilder builder_(_fbb);
   builder_.add_num_threads(num_threads);
   return builder_.Finish();
@@ -2194,6 +2339,84 @@ inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(
 
 flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct BestAccelerationDecisionT : public flatbuffers::NativeTable {
+  typedef BestAccelerationDecision TableType;
+  int32_t number_of_source_events;
+  std::unique_ptr<tflite::BenchmarkEventT> min_latency_event;
+  int64_t min_inference_time_us;
+  BestAccelerationDecisionT()
+      : number_of_source_events(0),
+        min_inference_time_us(0) {
+  }
+};
+
+struct BestAccelerationDecision FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef BestAccelerationDecisionT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NUMBER_OF_SOURCE_EVENTS = 4,
+    VT_MIN_LATENCY_EVENT = 6,
+    VT_MIN_INFERENCE_TIME_US = 8
+  };
+  int32_t number_of_source_events() const {
+    return GetField<int32_t>(VT_NUMBER_OF_SOURCE_EVENTS, 0);
+  }
+  const tflite::BenchmarkEvent *min_latency_event() const {
+    return GetPointer<const tflite::BenchmarkEvent *>(VT_MIN_LATENCY_EVENT);
+  }
+  int64_t min_inference_time_us() const {
+    return GetField<int64_t>(VT_MIN_INFERENCE_TIME_US, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_NUMBER_OF_SOURCE_EVENTS) &&
+           VerifyOffset(verifier, VT_MIN_LATENCY_EVENT) &&
+           verifier.VerifyTable(min_latency_event()) &&
+           VerifyField<int64_t>(verifier, VT_MIN_INFERENCE_TIME_US) &&
+           verifier.EndTable();
+  }
+  BestAccelerationDecisionT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BestAccelerationDecisionT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BestAccelerationDecision> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct BestAccelerationDecisionBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_number_of_source_events(int32_t number_of_source_events) {
+    fbb_.AddElement<int32_t>(BestAccelerationDecision::VT_NUMBER_OF_SOURCE_EVENTS, number_of_source_events, 0);
+  }
+  void add_min_latency_event(flatbuffers::Offset<tflite::BenchmarkEvent> min_latency_event) {
+    fbb_.AddOffset(BestAccelerationDecision::VT_MIN_LATENCY_EVENT, min_latency_event);
+  }
+  void add_min_inference_time_us(int64_t min_inference_time_us) {
+    fbb_.AddElement<int64_t>(BestAccelerationDecision::VT_MIN_INFERENCE_TIME_US, min_inference_time_us, 0);
+  }
+  explicit BestAccelerationDecisionBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  BestAccelerationDecisionBuilder &operator=(const BestAccelerationDecisionBuilder &);
+  flatbuffers::Offset<BestAccelerationDecision> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<BestAccelerationDecision>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<BestAccelerationDecision> CreateBestAccelerationDecision(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t number_of_source_events = 0,
+    flatbuffers::Offset<tflite::BenchmarkEvent> min_latency_event = 0,
+    int64_t min_inference_time_us = 0) {
+  BestAccelerationDecisionBuilder builder_(_fbb);
+  builder_.add_min_inference_time_us(min_inference_time_us);
+  builder_.add_min_latency_event(min_latency_event);
+  builder_.add_number_of_source_events(number_of_source_events);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<BestAccelerationDecision> CreateBestAccelerationDecision(flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 
 inline bool operator==(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs) {
   return
@@ -2255,7 +2478,8 @@ inline bool operator==(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs) {
       (lhs.allow_nnapi_cpu_on_android_10_plus == rhs.allow_nnapi_cpu_on_android_10_plus) &&
       (lhs.execution_priority == rhs.execution_priority) &&
       (lhs.allow_dynamic_dimensions == rhs.allow_dynamic_dimensions) &&
-      (lhs.allow_fp16_precision_for_fp32 == rhs.allow_fp16_precision_for_fp32);
+      (lhs.allow_fp16_precision_for_fp32 == rhs.allow_fp16_precision_for_fp32) &&
+      (lhs.use_burst_computation == rhs.use_burst_computation);
 }
 
 inline bool operator!=(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs) {
@@ -2282,6 +2506,7 @@ inline void NNAPISettings::UnPackTo(NNAPISettingsT *_o, const flatbuffers::resol
   { auto _e = execution_priority(); _o->execution_priority = _e; }
   { auto _e = allow_dynamic_dimensions(); _o->allow_dynamic_dimensions = _e; }
   { auto _e = allow_fp16_precision_for_fp32(); _o->allow_fp16_precision_for_fp32 = _e; }
+  { auto _e = use_burst_computation(); _o->use_burst_computation = _e; }
 }
 
 inline flatbuffers::Offset<NNAPISettings> NNAPISettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -2302,6 +2527,7 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(flatbuffers::FlatB
   auto _execution_priority = _o->execution_priority;
   auto _allow_dynamic_dimensions = _o->allow_dynamic_dimensions;
   auto _allow_fp16_precision_for_fp32 = _o->allow_fp16_precision_for_fp32;
+  auto _use_burst_computation = _o->use_burst_computation;
   return tflite::CreateNNAPISettings(
       _fbb,
       _accelerator_name,
@@ -2313,7 +2539,8 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(flatbuffers::FlatB
       _allow_nnapi_cpu_on_android_10_plus,
       _execution_priority,
       _allow_dynamic_dimensions,
-      _allow_fp16_precision_for_fp32);
+      _allow_fp16_precision_for_fp32,
+      _use_burst_computation);
 }
 
 
@@ -2321,7 +2548,10 @@ inline bool operator==(const GPUSettingsT &lhs, const GPUSettingsT &rhs) {
   return
       (lhs.is_precision_loss_allowed == rhs.is_precision_loss_allowed) &&
       (lhs.enable_quantized_inference == rhs.enable_quantized_inference) &&
-      (lhs.force_backend == rhs.force_backend);
+      (lhs.force_backend == rhs.force_backend) &&
+      (lhs.inference_priority1 == rhs.inference_priority1) &&
+      (lhs.inference_priority2 == rhs.inference_priority2) &&
+      (lhs.inference_priority3 == rhs.inference_priority3);
 }
 
 inline bool operator!=(const GPUSettingsT &lhs, const GPUSettingsT &rhs) {
@@ -2341,6 +2571,9 @@ inline void GPUSettings::UnPackTo(GPUSettingsT *_o, const flatbuffers::resolver_
   { auto _e = is_precision_loss_allowed(); _o->is_precision_loss_allowed = _e; }
   { auto _e = enable_quantized_inference(); _o->enable_quantized_inference = _e; }
   { auto _e = force_backend(); _o->force_backend = _e; }
+  { auto _e = inference_priority1(); _o->inference_priority1 = _e; }
+  { auto _e = inference_priority2(); _o->inference_priority2 = _e; }
+  { auto _e = inference_priority3(); _o->inference_priority3 = _e; }
 }
 
 inline flatbuffers::Offset<GPUSettings> GPUSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -2354,11 +2587,17 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(flatbuffers::FlatBuffe
   auto _is_precision_loss_allowed = _o->is_precision_loss_allowed;
   auto _enable_quantized_inference = _o->enable_quantized_inference;
   auto _force_backend = _o->force_backend;
+  auto _inference_priority1 = _o->inference_priority1;
+  auto _inference_priority2 = _o->inference_priority2;
+  auto _inference_priority3 = _o->inference_priority3;
   return tflite::CreateGPUSettings(
       _fbb,
       _is_precision_loss_allowed,
       _enable_quantized_inference,
-      _force_backend);
+      _force_backend,
+      _inference_priority1,
+      _inference_priority2,
+      _inference_priority3);
 }
 
 
@@ -2544,7 +2783,8 @@ inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs)
       (lhs.inactive_power_configs == rhs.inactive_power_configs) &&
       (lhs.inference_priority == rhs.inference_priority) &&
       ((!lhs.edgetpu_device_spec && !rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == *rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && !rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == decltype(lhs.edgetpu_device_spec)::element_type()) || (rhs.edgetpu_device_spec && !lhs.edgetpu_device_spec && *rhs.edgetpu_device_spec == decltype(rhs.edgetpu_device_spec)::element_type())) &&
-      (lhs.model_token == rhs.model_token);
+      (lhs.model_token == rhs.model_token) &&
+      (lhs.float_truncation_type == rhs.float_truncation_type);
 }
 
 inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
@@ -2566,6 +2806,7 @@ inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::r
   { auto _e = inference_priority(); _o->inference_priority = _e; }
   { auto _e = edgetpu_device_spec(); if (_e) _o->edgetpu_device_spec = std::unique_ptr<tflite::EdgeTpuDeviceSpecT>(_e->UnPack(_resolver)); }
   { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
+  { auto _e = float_truncation_type(); _o->float_truncation_type = _e; }
 }
 
 inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -2581,13 +2822,15 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
   auto _inference_priority = _o->inference_priority;
   auto _edgetpu_device_spec = _o->edgetpu_device_spec ? CreateEdgeTpuDeviceSpec(_fbb, _o->edgetpu_device_spec.get(), _rehasher) : 0;
   auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
+  auto _float_truncation_type = _o->float_truncation_type;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       _inference_power_state,
       _inactive_power_configs,
       _inference_priority,
       _edgetpu_device_spec,
-      _model_token);
+      _model_token,
+      _float_truncation_type);
 }
 
 
@@ -3033,6 +3276,51 @@ inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(flatbuffers::Fla
       _error,
       _boottime_us,
       _wallclock_us);
+}
+
+
+inline bool operator==(const BestAccelerationDecisionT &lhs, const BestAccelerationDecisionT &rhs) {
+  return
+      (lhs.number_of_source_events == rhs.number_of_source_events) &&
+      ((!lhs.min_latency_event && !rhs.min_latency_event) || (lhs.min_latency_event && rhs.min_latency_event && *lhs.min_latency_event == *rhs.min_latency_event) || (lhs.min_latency_event && !rhs.min_latency_event && *lhs.min_latency_event == decltype(lhs.min_latency_event)::element_type()) || (rhs.min_latency_event && !lhs.min_latency_event && *rhs.min_latency_event == decltype(rhs.min_latency_event)::element_type())) &&
+      (lhs.min_inference_time_us == rhs.min_inference_time_us);
+}
+
+inline bool operator!=(const BestAccelerationDecisionT &lhs, const BestAccelerationDecisionT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline BestAccelerationDecisionT *BestAccelerationDecision::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new BestAccelerationDecisionT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void BestAccelerationDecision::UnPackTo(BestAccelerationDecisionT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = number_of_source_events(); _o->number_of_source_events = _e; }
+  { auto _e = min_latency_event(); if (_e) _o->min_latency_event = std::unique_ptr<tflite::BenchmarkEventT>(_e->UnPack(_resolver)); }
+  { auto _e = min_inference_time_us(); _o->min_inference_time_us = _e; }
+}
+
+inline flatbuffers::Offset<BestAccelerationDecision> BestAccelerationDecision::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateBestAccelerationDecision(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<BestAccelerationDecision> CreateBestAccelerationDecision(flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BestAccelerationDecisionT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _number_of_source_events = _o->number_of_source_events;
+  auto _min_latency_event = _o->min_latency_event ? CreateBenchmarkEvent(_fbb, _o->min_latency_event.get(), _rehasher) : 0;
+  auto _min_inference_time_us = _o->min_inference_time_us;
+  return tflite::CreateBestAccelerationDecision(
+      _fbb,
+      _number_of_source_events,
+      _min_latency_event,
+      _min_inference_time_us);
 }
 
 }  // namespace tflite
