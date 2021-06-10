@@ -149,13 +149,6 @@ StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
   return algorithms;
 }
 
-string AlgorithmToString(const AlgorithmDesc& algo) {
-  if (algo.tensor_ops_enabled()) {
-    return absl::StrCat(algo.algo_id(), "+TC");
-  }
-  return absl::StrCat(algo.algo_id());
-}
-
 string NumBytesToString(int64 bytes) {
   return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
                       bytes, "B)");
@@ -451,19 +444,19 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
-                     AlgorithmToString(alg)),
+                     alg.ToString()),
         2);
 
     if (absl::c_linear_search(disabled_algos, alg)) {
-      LOG(INFO) << "Omitted potentially buggy algorithm "
-                << AlgorithmToString(alg) << " for conv " << instr->ToString();
+      LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
+                << " for conv " << instr->ToString();
       continue;
     }
 
     se::RedzoneAllocator scratch_allocator(
         stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
-    VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
+    VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
             << instr->ToString();
 
     // Use assignment instead of brace-list to make GCC 4.9 happy.
@@ -532,8 +525,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       StatusOr<bool> compare_result = comparator->CompareEqual(
           stream, reference_result_buffer, result_buffer);
       if (!compare_result.ok()) {
-        LOG(ERROR) << "Unable to compare " << AlgorithmToString(first_algorithm)
-                   << " against " << AlgorithmToString(alg) << " for "
+        LOG(ERROR) << "Unable to compare " << first_algorithm.ToString()
+                   << " against " << alg.ToString() << " for "
                    << instr->ToString() << ": " << compare_result.status();
         if (compare_result.status().code() ==
             tensorflow::error::RESOURCE_EXHAUSTED) {
@@ -545,9 +538,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         LOG(ERROR)
             << "Results mismatch between different convolution algorithms. "
                "This is likely a bug/unexpected loss of precision in cudnn.\n"
-            << instr->ToString() << " for "
-            << AlgorithmToString(first_algorithm) << " vs "
-            << AlgorithmToString(alg);
+            << instr->ToString() << " for " << first_algorithm.ToString()
+            << " vs " << alg.ToString();
         PrintPlatformInfo(stream);
         VLOG(1) << "Full module on failure: \n"
                 << instr->GetModule()->ToString();
@@ -679,11 +671,11 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       const auto& alg = miopen_alg.algorithm();
       XLA_SCOPED_LOGGING_TIMER_LEVEL(
           absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
-                       AlgorithmToString(alg)),
+                       alg.ToString()),
           2);
 
       se::dnn::ProfileResult profile_result;
-      VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
+      VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
               << instr->ToString();
 
       // Use assignment instead of brace-list to make GCC 4.9 happy.
