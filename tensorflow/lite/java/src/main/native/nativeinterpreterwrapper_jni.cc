@@ -465,8 +465,10 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: SetAllowFp16PrecisionForFp32");
+  if (allow) {
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                   "Not supported: SetAllowFp16PrecisionForFp32(true)");
+  }
 #else
   interpreter->SetAllowFp16PrecisionForFp32(static_cast<bool>(allow));
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
@@ -476,8 +478,10 @@ JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
     JNIEnv* env, jclass clazz, jlong handle, jboolean allow) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: allowBufferHandleOutput");
+  if (allow) {
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                   "Not supported: allowBufferHandleOutput(true)");
+  }
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;

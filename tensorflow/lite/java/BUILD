@@ -275,15 +275,13 @@ java_test_with_tflite(
     ],
 )
 
-# TODO(b/188906055): use java_test_with_tflite rather than java_test,
-# and move libtensorflowlite_test_jni.so from deps to tflite_jni_binaries,
-# after first fixing tests that don't work with java_test_with_tflite.
 # TODO: generate large models at runtime, instead of storing them.
-java_test(
+java_test_with_tflite(
     name = "InterpreterTest",
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
         "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
@@ -301,22 +299,22 @@ java_test(
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
     ],
     test_class = "org.tensorflow.lite.InterpreterTest",
+    tflite_jni_binaries = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflowlite_javalib",
-        "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
         "@com_google_truth",
         "@junit",
     ],
 )
 
-# TODO(b/188906055): use java_test_with_tflite rather than java_test,
-# and move libtensorflowlite_test_jni.so from deps to tflite_jni_binaries,
-# after first fixing XNNPack test that doesn't work with java_test_with_tflite.
-java_test(
+java_test_with_tflite(
     name = "NnApiDelegateTest",
     size = "small",
     srcs = [
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
         "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
         "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
@@ -327,10 +325,12 @@ java_test(
     javacopts = JAVACOPTS,
     tags = ["no_mac"],
     test_class = "org.tensorflow.lite.nnapi.NnApiDelegateTest",
+    tflite_jni_binaries = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflowlite_javalib",
-        "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
         "@com_google_truth",
         "@junit",
     ],
@@ -426,6 +426,7 @@ filegroup(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterMobileNetTest.java",
         "src/test/java/org/tensorflow/lite/InterpreterTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
         "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
         "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
