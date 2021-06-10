@@ -1,11 +1,7 @@
 # To have reproducible builds, these dependencies should be pinned always.
 # Prefer pinning to the same version as in setup.py
 
-# NOTE: As numpy has releases that break semver guarantees and several other
-# deps depend on numpy without an upper bound, we must install numpy before
-# everything else.
-numpy ~= 1.19.2
-# Now, install the deps, as listed in setup.py
+numpy >= 1.19.2, <1.21
 absl-py ~= 0.10
 astunparse ~= 1.6.3
 flatbuffers ~= 1.12.0
@@ -22,7 +18,6 @@ wheel ~= 0.35
 wrapt ~= 1.12.1
 # We need to pin the gast dependency exactly
 gast == 0.4.0
-# Finally, install tensorboard and estimator
 # Note that here we want the latest version that matches
 tb-nightly ~= 2.4.0.a
 tensorflow_estimator ~= 2.5.0
