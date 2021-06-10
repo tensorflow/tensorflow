@@ -396,7 +396,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       raise AttributeError("""
         '{}' object has no attribute '{}'.
         If you are looking for numpy-related methods, please run the following:
-        import tensorflow.python.ops.numpy_ops.np_config
+        from tensorflow.python.ops.numpy_ops import np_config
         np_config.enable_numpy_behavior()""".format(type(self).__name__, name))
     self.__getattribute__(name)
 
