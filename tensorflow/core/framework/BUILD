@@ -246,6 +246,7 @@ filegroup(
         "variant_op_registry.h",
         "variant_tensor_data.h",
         "versions.h",
+        "//tensorflow/core/framework/experimental:type_inference.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
     ],
@@ -429,6 +430,7 @@ filegroup(
         "thread_factory.h",
         "versions.cc",
         "versions.h",
+        "//tensorflow/core/framework/experimental:type_inference.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
     ],
@@ -987,11 +989,16 @@ cc_library(
 
 cc_library(
     name = "full_type_util",
-    srcs = ["full_type_util.cc"],
-    hdrs = ["full_type_util.h"],
+    srcs = [
+        "full_type_util.cc",
+    ],
+    hdrs = [
+        "full_type_util.h",
+    ],
     deps = [
         ":full_type_proto_cc",
         ":op_def_builder",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -1004,6 +1011,7 @@ cc_library(
         ":full_type_util",
         ":op_def_builder",
         ":op_def_util",
+        # "//tensorflow/core/framework/experimental:type_inference",
         "//tensorflow/core/framework/registration",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
