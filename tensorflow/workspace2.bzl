@@ -127,11 +127,11 @@ def _tf_repositories():
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "5482fb0fcdc1df8b4842f8edf944443ea67ffe712a5cd846f0af484abe4f9a79",
-        strip_prefix = "XNNPACK-8f15372eb67ffab0d54cfe3752acaf8f8415af17",
+        sha256 = "7320355409ae5dd2c8600cafbd07b56c379cd13666a7c971ffd3a01025c0f63e",
+        strip_prefix = "XNNPACK-56b78a03e359ac04a3ba758596cd28b198a8000f",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/8f15372eb67ffab0d54cfe3752acaf8f8415af17.zip",
-            "https://github.com/google/XNNPACK/archive/8f15372eb67ffab0d54cfe3752acaf8f8415af17.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/56b78a03e359ac04a3ba758596cd28b198a8000f.zip",
+            "https://github.com/google/XNNPACK/archive/56b78a03e359ac04a3ba758596cd28b198a8000f.zip",
         ],
     )
 
@@ -570,6 +570,7 @@ def _tf_repositories():
         system_build_file = "//third_party/systemlibs:protobuf.BUILD",
         system_link_files = {
             "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
+            "//third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
         },
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",

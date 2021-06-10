@@ -804,6 +804,9 @@ py_library(
 distribute_py_test(
     name = "values_v2_test",
     srcs = ["values_v2_test.py"],
+    tags = [
+        "no_mac",  # b/190644499
+    ],
     deps = [
         ":combinations",
         ":strategy_combinations",

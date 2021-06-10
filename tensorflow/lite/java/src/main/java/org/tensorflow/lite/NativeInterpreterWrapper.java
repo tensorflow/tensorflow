@@ -266,11 +266,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     numThreads(interpreterHandle, numThreads);
   }
 
-  void modifyGraphWithDelegate(Delegate delegate) {
-    applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
-    delegates.add(delegate);
-  }
-
   void resetVariableTensors() {
     resetVariableTensors(interpreterHandle, errorHandle);
   }

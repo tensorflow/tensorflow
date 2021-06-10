@@ -885,9 +885,15 @@ class RandomZoom(base_layer.Layer):
     seed: Integer. Used to create a random seed.
     fill_value: a float represents the value to be filled outside the boundaries
       when `fill_mode` is "constant".
-  Example:  >>> input_img = np.random.random((32, 224, 224, 3)) >>> layer =
-    tf.keras.layers.experimental.preprocessing.RandomZoom(.5, .2) >>> out_img =
-    layer(input_img) >>> out_img.shape TensorShape([32, 224, 224, 3])
+
+  Example:
+
+  >>> input_img = np.random.random((32, 224, 224, 3))
+  >>> layer = tf.keras.layers.experimental.preprocessing.RandomZoom(.5, .2)
+  >>> out_img = layer(input_img)
+  >>> out_img.shape
+  TensorShape([32, 224, 224, 3])
+
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
@@ -1219,7 +1225,7 @@ class RandomWidth(base_layer.Layer):
       lower bound. For instance, `factor=(0.2, 0.3)` results in an output with
       width changed by a random amount in the range `[20%, 30%]`. `factor=(-0.2,
       0.3)` results in an output with width changed by a random amount in the
-      range `[-20%, +30%]. `factor=0.2` results in an output with width changed
+      range `[-20%, +30%]`. `factor=0.2` results in an output with width changed
       by a random amount in the range `[-20%, +20%]`.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,

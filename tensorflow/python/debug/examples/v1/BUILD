@@ -65,21 +65,75 @@ py_binary(
 )
 
 sh_test(
-    name = "examples_v1_test",
-    size = "medium",
-    srcs = ["examples_v1_test.sh"],
+    name = "examples_v1_debug_errors_test",
+    srcs = ["examples_v1_debug_errors_test.sh"],
     data = [
         ":debug_errors",
+    ],
+    tags = [
+        "no_windows",
+        "noasan",  # TODO(b/190625515)
+        "v1only",
+    ],
+)
+
+sh_test(
+    name = "examples_v1_debug_fibonacci_test",
+    srcs = ["examples_v1_debug_fibonacci_test.sh"],
+    data = [
         ":debug_fibonacci",
+    ],
+    tags = [
+        "no_windows",
+        "v1only",
+    ],
+)
+
+sh_test(
+    name = "examples_v1_debug_keras_test",
+    size = "medium",
+    srcs = ["examples_v1_debug_keras_test.sh"],
+    data = [
         ":debug_keras",
+    ],
+    tags = [
+        "no_windows",
+        "v1only",
+    ],
+)
+
+sh_test(
+    name = "examples_v1_debug_mnist_test",
+    srcs = ["examples_v1_debug_mnist_test.sh"],
+    data = [
         ":debug_mnist",
+    ],
+    tags = [
+        "no_windows",
+        "v1only",
+    ],
+)
+
+sh_test(
+    name = "examples_v1_debug_tflearn_iris_test",
+    srcs = ["examples_v1_debug_tflearn_iris_test.sh"],
+    data = [
         ":debug_tflearn_iris",
+    ],
+    tags = [
+        "no_windows",
+        "v1only",
+    ],
+)
+
+sh_test(
+    name = "examples_v1_offline_analyzer_test",
+    srcs = ["examples_v1_offline_analyzer_test.sh"],
+    data = [
         "//tensorflow/python/debug/cli:offline_analyzer",
     ],
     tags = [
         "no_windows",
-        "noasan",  # TODO(b/143150907)
-        "nomsan",  # TODO(b/143150907)
         "v1only",
     ],
 )

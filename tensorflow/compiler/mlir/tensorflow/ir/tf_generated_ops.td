@@ -10464,6 +10464,30 @@ gradients in some corner cases.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_PrintOp : TF_Op<"Print", []> {
+  let summary = "Prints a list of tensors.";
+
+  let description = [{
+Passes `input` through to `output` and prints `data` when evaluating.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor passed to `output`}]>:$input,
+    Arg<Variadic<TF_Tensor>, [{A list of tensors to print out when op is evaluated.}]>:$data,
+
+    DefaultValuedAttr<StrAttr, "">:$message,
+    DefaultValuedAttr<I64Attr, "-1">:$first_n,
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The unmodified `input` tensor}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr U = TF_DerivedOperandTypeListAttr<1>;
+}
+
 def TF_PrintV2Op : TF_Op<"PrintV2", []> {
   let summary = "Prints a string scalar.";
 

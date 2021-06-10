@@ -116,6 +116,8 @@ where applicable. For details about each parameter, please refer to
 #### Common parameters
 * `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
+* `delegate_serialize_dir`: `str` (default="")
+* `delegate_serialize_token`: `str` (default="")
 
 #### GPU delegate
 * `use_gpu`: `bool` (default=false)

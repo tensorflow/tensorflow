@@ -106,7 +106,7 @@ build --host_java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
-build --spawn_strategy=sandboxed
+build --spawn_strategy=standalone
 build -c opt
 
 # Make Bazel print out all options from rc files.
@@ -609,7 +609,7 @@ build:msan --linkopt -fsanitize=memory
 # CC=clang bazel build --config ubsan
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
-build:msan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
+build:ubsan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
 build:ubsan --copt -g
 build:ubsan --copt -O3
 build:ubsan --copt -fno-omit-frame-pointer

@@ -468,7 +468,8 @@ class RandomContrastTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(('random_contrast_2_by_5', 0.2, 0.5),
                                   ('random_contrast_2_by_13', 0.2, 1.3),
-                                  ('random_contrast_5_by_2', 0.5, 0.2))
+                                  ('random_contrast_5_by_2', 0.5, 0.2),
+                                  ('random_contrast_10_by_10', 1.0, 1.0))
   def test_random_contrast(self, lower, upper):
     with CustomObjectScope(
         {'RandomContrast': image_preprocessing.RandomContrast}):

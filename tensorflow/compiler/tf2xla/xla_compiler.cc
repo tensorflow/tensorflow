@@ -987,7 +987,8 @@ Status XlaCompiler::BuildArguments(
                 absl::get<TensorShape>(arg.shape), xla::XlaOp(),
                 /*max_array_size=*/arg.max_array_size,
                 /*tensor_array_gradients=*/arg.tensor_array_gradients,
-                /*tensor_array_multiple_writes_aggregate=*/true));
+                /*tensor_array_multiple_writes_aggregate=*/true,
+                arg.definition_stack_trace));
         arg_expression =
             arg.kind == XlaCompiler::Argument::kResource
                 ? XlaExpression::Resource(resource)

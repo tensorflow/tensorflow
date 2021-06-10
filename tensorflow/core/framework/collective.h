@@ -205,12 +205,6 @@ class ParamResolverInterface {
 
   // Aborts the resolver. After abortion the resolver can no longer be used.
   virtual void StartAbort(const Status& s) = 0;
-
-  // Updates |device_attrs| with the DeviceAttributes of devices in group
-  // |group_key|. If fetching devices for an unused group, this will be a
-  // no-op appending nothing to |device_attrs|.
-  virtual void FetchDeviceAttributes(
-      int group_key, std::vector<DeviceAttributes>* device_attrs) const = 0;
 };
 
 // Graphs which utilize Collective Ops in a common instance must

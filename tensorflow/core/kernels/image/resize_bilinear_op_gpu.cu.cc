@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/image/resize_bilinear_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -446,17 +446,6 @@ struct ResizeBilinear<GPUDevice, T> {
   }
 };
 
-bool RequireDeterminism() {
-  static bool require_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return require_determinism;
-}
-
 // Partial specialization of ResizeBilinearGrad functor for a GPUDevice.
 template <typename T>
 struct ResizeBilinearGrad<GPUDevice, T> {
@@ -480,7 +469,7 @@ struct ResizeBilinearGrad<GPUDevice, T> {
     if (total_count == 0) return;
     config = GetGpuLaunchConfig(total_count, d);
 
-    if (RequireDeterminism()) {
+    if (OpDeterminismRequired()) {
       // The scale values below should never be zero, enforced by
       // ImageResizerGradientState
       float inverse_height_scale = 1 / height_scale;

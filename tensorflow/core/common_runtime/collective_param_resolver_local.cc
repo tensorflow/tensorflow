@@ -885,23 +885,4 @@ void CollectiveParamResolverLocal::StartAbortLocal(const Status& s) {
   }
 }
 
-void CollectiveParamResolverLocal::FetchDeviceAttributes(
-    int group_key, std::vector<DeviceAttributes>* device_attrs) const {
-  GroupRec* gr = nullptr;
-  {
-    // Group membership should never change. Once a record is in group_table_
-    // it never gets removed.
-    mutex_lock l(group_mu_);
-    auto it = group_table_.find(group_key);
-    if (it == group_table_.end()) return;
-    gr = it->second.get();
-  }
-  {
-    mutex_lock grl(gr->mu);
-    for (const auto& device : gr->devices) {
-      device_attrs->push_back(device.second);
-    }
-  }
-}
-
 }  // namespace tensorflow

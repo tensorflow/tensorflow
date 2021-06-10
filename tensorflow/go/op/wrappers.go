@@ -29363,7 +29363,7 @@ func PrintSummarize(value int64) PrintAttr {
 //	input: The tensor passed to `output`
 //	data: A list of tensors to print out when op is evaluated.
 //
-// Returns = The unmodified `input` tensor
+// Returns The unmodified `input` tensor
 func Print(scope *Scope, input tf.Output, data []tf.Output, optional ...PrintAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return

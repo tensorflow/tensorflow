@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -1302,6 +1303,167 @@ using ConvertConv3DOp = ConvertConvOp<TF::Conv3DOp, /*num_spatial_dims=*/3>;
 using ConvertDepthConv2DOp =
     ConvertConvOp<TF::DepthwiseConv2dNativeOp, /*num_spatial_dims=*/2,
                   /*depthwise_conv=*/true>;
+
+// Converts tf.PadV2Op to mhlo.DynamicPadOp. Padding values must be const.
+class ConvertPadOpDynamic : public OpRewritePattern<TF::PadV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  // TODO(disc): To recover static special case's performance with folding and
+  // canonicalization.
+  LogicalResult matchAndRewrite(TF::PadV2Op op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto input = op.input();
+    auto paddings = op.paddings();
+    auto constant_values = op.constant_values();
+    auto input_type = input.getType().dyn_cast<RankedTensorType>();
+    auto paddings_type = paddings.getType().dyn_cast<RankedTensorType>();
+    if (!input_type || !paddings_type || !paddings_type.hasStaticShape())
+      return failure();
+
+    // TODO(disc): Remove this constraint once fold and canonicalization is
+    // implemented.
+    if (input_type.hasStaticShape()) return failure();
+
+    int input_rank = input_type.getRank();
+    // interior padding
+    std::vector<int64_t> interior_values(input_rank, 0);
+    auto interior_attr = GetI64ElementsAttr(interior_values, &rewriter);
+
+    Value interior_padding_tensor =
+        rewriter.create<mhlo::ConstOp>(loc, interior_attr);
+    Type paddings_elem_ty = paddings_type.getElementType();
+    if (!paddings_elem_ty.isInteger(64)) {
+      interior_padding_tensor = rewriter.create<mhlo::ConvertOp>(
+          loc, interior_padding_tensor, paddings_elem_ty);
+    }
+    llvm::SmallVector<int64_t, 2> transposed_shape = {2, input_rank};
+    auto transpose_attr = GetI64ElementsAttr({1, 0}, &rewriter);
+    Value transposed_paddings = rewriter.create<mhlo::TransposeOp>(
+        loc, RankedTensorType::get(transposed_shape, paddings_elem_ty),
+        paddings, transpose_attr);
+    Value reshaped_paddings = rewriter.create<mhlo::ReshapeOp>(
+        loc, RankedTensorType::get({input_rank * 2}, paddings_elem_ty),
+        transposed_paddings);
+
+    auto left_padding_start_attr = GetI64ElementsAttr({0}, &rewriter);
+    auto left_padding_limit_attr = GetI64ElementsAttr({input_rank}, &rewriter);
+    auto left_padding_stride_attr = GetI64ElementsAttr({1}, &rewriter);
+    Value left_padding_tensor = rewriter.create<mhlo::SliceOp>(
+        loc, reshaped_paddings, left_padding_start_attr,
+        left_padding_limit_attr, left_padding_stride_attr);
+
+    auto right_padding_start_attr = GetI64ElementsAttr({input_rank}, &rewriter);
+    auto right_padding_limit_attr =
+        GetI64ElementsAttr({2 * input_rank}, &rewriter);
+    auto right_padding_stride_attr = GetI64ElementsAttr({1}, &rewriter);
+    Value right_padding_tensor = rewriter.create<mhlo::SliceOp>(
+        loc, reshaped_paddings, right_padding_start_attr,
+        right_padding_limit_attr, right_padding_stride_attr);
+
+    rewriter.replaceOpWithNewOp<mhlo::DynamicPadOp>(
+        op, op.getType(), input, constant_values, left_padding_tensor,
+        right_padding_tensor, interior_padding_tensor);
+
+    return success();
+  }
+};
+
+class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
+  using OpRewritePattern<TF::GatherNdOp>::OpRewritePattern;
+  // Converts tf.GatherNdOp to mhlo.DynamicGatherOp.
+  // Here we leave 'slice_sizes' as an Attr, without defining a new
+  // DynamicGatherOp, since GatherDimensionNumbers has already provide enough
+  // information for shape inference and code generation of mhlo::GatherOp. '?'
+  // will be filled into slice_sizes for dimensions that are dynamic sized.
+  // TODO(disc): To recover static special case's performance with folding and
+  // canonicalization.
+  LogicalResult matchAndRewrite(TF::GatherNdOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto params = op.params();
+    auto params_ty = params.getType().dyn_cast<RankedTensorType>();
+    auto indices = op.indices();
+    auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
+    auto params_rank = params_ty.getRank();
+    auto indices_rank = indices_ty.getRank();
+    int64_t num_index_dims = indices_ty.getDimSize(indices_rank - 1);
+    if (!params_ty || !indices_ty) return failure();
+    // the last dim of indices of GatherNdOp must be fixed shaped
+    if (num_index_dims == ShapedType::kDynamicSize) return failure();
+
+    // TODO(disc): Remove this constraint once fold and canonicalization is
+    // implemented.
+    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape())
+      return failure();
+
+    SmallVector<int64_t, 4> slice_sizes;
+    slice_sizes.reserve(params_rank);
+    for (int64_t i = 0; i < params_rank; ++i) {
+      if (i < num_index_dims) {
+        slice_sizes.push_back(1);
+      } else {
+        // potentially dynamic
+        int64_t dim_size = params_ty.getDimSize(i);
+        slice_sizes.push_back(dim_size);
+      }
+    }
+    SmallVector<Value, 4> slice_sizes_vals;
+    Value slice_sizes_value = nullptr;
+    for (int64_t i = 0; i < params_rank; ++i) {
+      if (i < num_index_dims) {
+        slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
+            loc, rewriter.getIntegerAttr(indices_ty.getElementType(), 1)));
+      } else {
+        int64_t dim_size = params_ty.getDimSize(i);
+        if (dim_size != ShapedType::kDynamicSize) {
+          slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
+              loc,
+              rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
+        } else {
+          slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
+              loc, rewriter.create<memref::DimOp>(loc, params, i),
+              indices_ty.getElementType()));
+        }
+      }
+    }
+    slice_sizes_value =
+        rewriter.create<tensor::FromElementsOp>(loc, slice_sizes_vals);
+
+    // collapsed_slice_dims
+    SmallVector<int64_t, 4> collapsed_slice_dims;
+    collapsed_slice_dims.reserve(num_index_dims);
+    for (int64_t i = 0; i < num_index_dims; ++i) {
+      collapsed_slice_dims.push_back(i);
+    }
+    // offset_dims
+    SmallVector<int64_t, 4> offset_dims;
+    offset_dims.reserve(params_rank - num_index_dims);
+    for (int64_t i = num_index_dims; i < params_rank; i++) {
+      offset_dims.push_back(i + indices_rank - 1 - num_index_dims);
+    }
+    // start_index_map
+    SmallVector<int64_t, 4> start_index_map;
+    offset_dims.reserve(num_index_dims);
+    for (int64_t i = 0; i < num_index_dims; i++) {
+      start_index_map.push_back(i);
+    }
+    // index_vector_dim
+    int64_t index_vector_dim = indices_rank - 1;
+
+    auto dims_attr = GatherDimensionNumbers::get(
+        /*offset_dims=*/GetI64ElementsAttr(offset_dims, &rewriter),
+        /*collapsed_slice_dims=*/
+        GetI64ElementsAttr(collapsed_slice_dims, &rewriter),
+        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
+        /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
+        rewriter.getContext());
+    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
+        op, op.getType(), op.params(), op.indices(), slice_sizes_value,
+        dims_attr);
+    return success();
+  }
+};
 
 // Converts BF16 FloorDiv op to have casting operators on either end as BF16
 // division can result in strange behavior.
@@ -6598,6 +6760,10 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<CallOp>();
+  // TODO(disc): replace by tensor::DimOp if it implemented.
+  // See:
+  // https://llvm.discourse.group/t/rfc-split-the-memref-dialect-from-std/2667/6
+  target.addLegalOp<memref::DimOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
@@ -6699,7 +6865,9 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaAllReduceOp,
     ConvertRollOp,
     ConvertLeakyReluOp,
-    ConvertLeakyReluGradOp>(context);
+    ConvertLeakyReluGradOp,
+    ConvertPadOpDynamic,
+    ConvertGatherNdOpDynamic>(context);
   // clang-format on
 }
 

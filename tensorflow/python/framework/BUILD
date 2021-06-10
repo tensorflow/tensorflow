@@ -765,7 +765,6 @@ cc_library(
 # Note: this target is only used by python_api_dispatcher_test.
 tf_python_pybind_extension(
     name = "_pywrap_python_api_dispatcher",
-    # testonly = True,
     srcs = ["python_api_dispatcher_wrapper.cc"],
     hdrs = ["python_api_dispatcher.h"],
     module_name = "_pywrap_python_api_dispatcher",
