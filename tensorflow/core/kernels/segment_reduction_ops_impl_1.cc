@@ -19,51 +19,84 @@ limitations under the License.
 namespace tensorflow {
 namespace internal {
 // Static routines not in the templated class to reduce code size
-void SegmentReductionValidationHelper(OpKernelContext* context,
-                                      const Tensor& input,
-                                      const Tensor& segment_ids) {
-  OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(input.shape()),
-              errors::InvalidArgument("input must be at least rank 1"));
-  OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
-              errors::InvalidArgument("segment_ids should be a vector."));
+Status ValidateSegmentReduction(OpKernelContext* context, const Tensor& input,
+                                const Tensor& segment_ids) {
+  if (!TensorShapeUtils::IsVectorOrHigher(input.shape())) {
+    return errors::InvalidArgument("input must be at least rank 1");
+  }
+  if (!TensorShapeUtils::IsVector(segment_ids.shape())) {
+    return errors::InvalidArgument("segment_ids should be a vector.");
+  }
   const int64 num_indices = segment_ids.NumElements();
-  OP_REQUIRES(context, num_indices == input.dim_size(0),
-              errors::InvalidArgument(
-                  "segment_ids should be the same size as dimension 0 of"
-                  " input."));
-}
+  if (num_indices != input.dim_size(0)) {
+    return errors::InvalidArgument(
+        "segment_ids should be the same size as dimension 0 of"
+        " input.");
+  }
 
-bool SegmentReductionDoValidation(OpKernelContext* c, const Tensor& input,
-                                  const Tensor& segment_ids) {
-  SegmentReductionValidationHelper(c, input, segment_ids);
-  return c->status().ok();
+  return Status::OK();
 }
 
 // check routines not in the templated class to reduce code size
-void UnsortedSegmentReductionValidation(OpKernel* op_kernel,
+Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
                                         OpKernelContext* context,
                                         const Tensor& data,
                                         const Tensor& segment_ids,
                                         const Tensor& num_segments) {
-  OP_REQUIRES(
-      context, TensorShapeUtils::IsScalar(num_segments.shape()),
-      errors::InvalidArgument("num_segments should be a scalar, not shape ",
-                              num_segments.shape().DebugString()));
-  OP_REQUIRES(
-      context, TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape()),
-      errors::InvalidArgument("data.shape = ", data.shape().DebugString(),
-                              " does not start with segment_ids.shape = ",
-                              segment_ids.shape().DebugString()));
+  if (!TensorShapeUtils::IsScalar(num_segments.shape())) {
+    return errors::InvalidArgument(
+        "num_segments should be a scalar, not shape ",
+        num_segments.shape().DebugString());
+  }
+
+  if (!TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape())) {
+    return errors::InvalidArgument("data.shape = ", data.shape().DebugString(),
+                                   " does not start with segment_ids.shape = ",
+                                   segment_ids.shape().DebugString());
+  }
+
+  return Status::OK();
 }
 
-bool UnsortedSegmentReductionDoValidation(OpKernel* op_kernel,
-                                          OpKernelContext* context,
-                                          const Tensor& data,
-                                          const Tensor& segment_ids,
-                                          const Tensor& num_segments) {
-  UnsortedSegmentReductionValidation(op_kernel, context, data, segment_ids,
-                                     num_segments);
-  return context->status().ok();
+Status ValidateSparseSegmentReduction(OpKernelContext* context,
+                                      const Tensor& input,
+                                      const Tensor& indices,
+                                      const Tensor& segment_ids,
+                                      bool has_num_segments) {
+  if (has_num_segments) {
+    const Tensor& num_segments_t = context->input(3);
+    if (!TensorShapeUtils::IsScalar(num_segments_t.shape())) {
+      return errors::InvalidArgument(
+          "num_segments should be a scalar, not shape ",
+          num_segments_t.shape().DebugString());
+    }
+    int64 output_rows = internal::SubtleMustCopy(
+        num_segments_t.dtype() == DT_INT32 ? num_segments_t.scalar<int32>()()
+                                           : num_segments_t.scalar<int64>()());
+    if (output_rows < 0) {
+      return errors::InvalidArgument("segment ids must be >= 0");
+    }
+  }
+
+  if (!TensorShapeUtils::IsVector(indices.shape())) {
+    return errors::InvalidArgument("indices should be a vector.");
+  }
+
+  if (!TensorShapeUtils::IsVector(segment_ids.shape())) {
+    return errors::InvalidArgument("segment_ids should be a vector.");
+  }
+
+  const int64 num_indices = indices.NumElements();
+  if (num_indices != segment_ids.NumElements()) {
+    return errors::InvalidArgument(
+        "segment_ids and indices should have same size.");
+  }
+
+  if (input.dims() < 1) {
+    return errors::InvalidArgument("Shape must be at least rank 1");
+  }
+
+  return Status::OK();
 }
 
 }  // namespace internal

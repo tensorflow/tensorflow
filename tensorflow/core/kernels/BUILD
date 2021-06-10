@@ -24,6 +24,7 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_fingerprint_deps",
+    "tf_kernel_tests_linkstatic",
 )
 
 # buildifier: disable=same-origin-load
@@ -49,12 +50,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# For platform specific build config
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -3461,6 +3456,7 @@ tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
     deps = MATH_DEPS + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
         "//tensorflow/core/util:cuda_solvers",
     ]),
 )
