@@ -235,6 +235,8 @@ class HloDataflowAnalysis {
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
+  bool UpdateAllReduceStartValueSet(HloInstruction* all_reduce_start);
+  bool UpdateAllReduceDoneValueSet(HloInstruction* all_reduce_done);
   bool UpdateCollectivePermuteStartValueSet(
       HloInstruction* collective_permute_start);
   bool UpdateCollectivePermuteDoneValueSet(

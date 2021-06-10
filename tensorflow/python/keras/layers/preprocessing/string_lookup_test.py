@@ -21,6 +21,8 @@ import numpy as np
 from tensorflow.python import keras
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -365,6 +367,16 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     output_data = model.predict(input_array)
     self.assertAllEqual(expected_output, output_data)
 
+  def test_tensor_vocab(self):
+    vocab_data = ["[UNK]", "wind", "and", "fire"]
+    vocab_tensor = constant_op.constant(vocab_data)
+    layer = string_lookup.StringLookup(vocabulary=vocab_tensor)
+    returned_vocab = layer.get_vocabulary()
+    self.assertAllEqual(vocab_data, returned_vocab)
+    self.assertAllEqual(layer.vocabulary_size(), 4)
+    fn = def_function.function(lambda: layer.set_vocabulary(vocab_tensor))
+    with self.assertRaisesRegex(RuntimeError, "Cannot set a tensor vocabulary"):
+      fn()
 
 if __name__ == "__main__":
   test.main()

@@ -107,6 +107,8 @@ enum HostEventType {
   kMapAndBatchConsume,
   kParseExampleProduce,
   kParseExampleConsume,
+  kParallelBatchProduce,
+  kParallelBatchConsume,
   // Batching related.
   kBatchingSessionRun,
   kProcessBatch,

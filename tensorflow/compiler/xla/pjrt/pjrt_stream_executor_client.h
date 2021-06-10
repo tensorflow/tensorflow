@@ -207,6 +207,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
 
+  void MakeCrossHostReceiveBuffersForGather(
+      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override;
+
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback) override;
@@ -253,13 +257,20 @@ class PjRtStreamExecutorClient : public PjRtClient {
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier&& notifier) const {
+      PjRtCrossHostRecvNotifier&& notifier,
+      absl::optional<std::vector<GatherDetails>> gather_details) const {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
 
   virtual Status CopyToRemoteDevice(
       PjRtBuffer* buffer, absl::string_view serialized_descriptor) const {
     return Unimplemented("Cross host sends not implemented.");
+  }
+
+  virtual Status CopyToRemoteDeviceScattered(
+      PjRtBuffer* buffer, absl::Span<const std::string> serialized_descriptors,
+      const PjRtBuffer::ScatterDetails& scatter_details) const {
+    return Unimplemented("Scattered cross host sends not implemented.");
   }
 
   virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
@@ -549,6 +560,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       PjRtDevice* dst_device) override;
 
   Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override;
+
+  Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) override;
 
   Status BlockHostUntilReady() override;
 

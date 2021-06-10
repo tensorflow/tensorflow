@@ -765,8 +765,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
-  @test_util.disable_mlir_bridge(
-      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatRemainder(self):
     for dtype in self.float_types:
       self._testRemainder(dtype)

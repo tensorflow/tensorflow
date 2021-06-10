@@ -3,7 +3,6 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_chromiumos",
     "tf_cc_test",
 )
 
@@ -305,10 +304,11 @@ cc_library(
         ":string_ops_op_lib",
         ":training_ops_op_lib",
         ":word2vec_ops",
-    ] + if_chromiumos(
-        [],
+    ] + select({
         # Non-tpu platforms don't need tpu dependency.
-        [
+        "//tensorflow:chromiumos": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
             ":tpu_configuration_ops_op_lib",
             ":tpu_cross_replica_ops_op_lib",
             ":tpu_embedding_ops_op_lib",
@@ -321,7 +321,7 @@ cc_library(
             ":tpu_ordinal_selector_ops_op_lib",
             ":tpu_replication_ops_op_lib",
         ],
-    ) + if_mkl([
+    }) + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
     ]),

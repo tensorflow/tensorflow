@@ -67,6 +67,14 @@ def _eager_identity(tensor, ctx):
   return result
 
 
+def _eager_const(tensor, ctx):
+  """Copy a constant to the current device."""
+  attrs = ("T", tensor.dtype.as_datatype_enum)
+  result, = execute.execute(
+      b"_EagerConst", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
+  return result
+
+
 def convert_to_eager_tensor(value, ctx, dtype=None):
   """Converts the given `value` to an `EagerTensor`.
 
@@ -226,9 +234,8 @@ def constant(value, dtype=None, shape=None, name="Const"):
   ...
   TypeError: ...
 
-  `tf.constant` will _always_ create CPU (host) tensors. In order to create
-  tensors on other devices, use `tf.identity`. (If the `value` is an eager
-  Tensor, however, the tensor will be returned unmodified as mentioned above.)
+  `tf.constant` will create tensors on the current device. Inputs which are
+  already tensors maintain their placements unchanged.
 
   Related Ops:
 
@@ -297,7 +304,42 @@ def _constant_impl(
 
 
 def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
-  """Implementation of eager constant."""
+  """Creates a constant on the current device."""
+  host_constant = _eager_constant_on_host(ctx, value, dtype, shape,
+                                          verify_shape)
+  if host_constant is value:
+    # Gradients were previously documented to work executing eagerly through
+    # tf.constant(eager_tensor). Preserve that behavior here since `eager_const`
+    # would block them below.
+    return value
+  # Copy the constant to the current device. Identity is sometimes overloaded to
+  # allow copies like this, but using a different op allows devices to support
+  # constant creation without allowing copies via identity ops.
+  #
+  # Note that running this _EagerConst op limits mirroring of cached Python
+  # literals somewhat. Mirroring of constants themselves works:
+  #
+  # with tf.device("GPU:0"):
+  #   tf.constant(1.)  # Cached on CPU:0, mirrored to GPU:0
+  # with tf.device("GPU:1"):
+  #   tf.constant(1.)  # Cache hit for the CPU version, new mirror to GPU:1.
+  # with tf.device("GPU:1"):
+  #   tf.constant(1.)  # Cache hit for the CPU version, cached mirror
+  #
+  # But mirrors for the output of `tf.constant` are not shared just because
+  # there was a cache hit for the input literal, because of _EagerConst:
+  #
+  # x = tf.constant(2.)  # Cached on CPU:0
+  # with tf.device("GPU:1"):
+  #   tf.identity(x)  # `x` now mirrored to GPU:1
+  # y = tf.constant(2.)  # Cache hit for CPU version
+  # with tf.device("GPU:1"):
+  #   tf.identity(y)  # `y` now mirrored on GPU:1 (new copy!)
+  return _eager_const(host_constant, ctx)
+
+
+def _eager_constant_on_host(ctx, value, dtype, shape, verify_shape):
+  """Creates a constant on the host."""
   t = convert_to_eager_tensor(value, ctx, dtype)
   if shape is None:
     return t

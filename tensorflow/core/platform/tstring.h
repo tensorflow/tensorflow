@@ -515,7 +515,10 @@ inline tstring& tstring::append(const char* str) {
 }
 
 inline tstring& tstring::append(size_t n, char c) {
-  resize(size() + n, c);
+  // For append use cases, we want to ensure amortized growth.
+  const size_t new_size = size() + n;
+  TF_TString_ReserveAmortized(&tstr_, new_size);
+  resize(new_size, c);
 
   return *this;
 }

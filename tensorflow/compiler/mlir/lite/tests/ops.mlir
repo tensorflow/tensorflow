@@ -538,7 +538,7 @@ func @testTileF32(%arg0: tensor<4 x 1 x f32>, %arg1: tensor<4 x i32>) -> tensor<
 // -----
 
 func @testEluI32(%arg0: tensor<? x i32>) -> tensor<? x i32> {
-  // expected-error @+1 {{op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{operand #0 must be tensor of 32-bit float or 8-bit signless integer values}}
   %0 = "tfl.elu"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }

@@ -160,6 +160,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   model = tf.keras.Model(inputs=inputs, outputs=outputs)
   ```
 
+  Note: Only dicts, lists, and tuples of input tensors are supported. Nested
+  inputs are not supported (e.g. lists of list or dicts of dict).
+
   2 - By subclassing the `Model` class: in that case, you should define your
   layers in `__init__` and you should implement the model's forward pass
   in `call`.
@@ -466,7 +469,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     i.e. `model(inputs)`, which relies on the underlying `call` method.
 
     Args:
-        inputs: A tensor or list of tensors.
+        inputs: Input tensor, or dict/list/tuple of input tensors.
         training: Boolean or boolean scalar tensor, indicating whether to run
           the `Network` in training mode or inference mode.
         mask: A mask or list of masks. A mask can be
@@ -619,6 +622,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.train_function = None
     self.test_function = None
     self.predict_function = None
+    # Used to cache the `tf.function`'ed `train_function` to be logged in
+    # TensorBoard, since the original `train_function` is not necessarily
+    # a `tf.function` (e.g., with ParameterServerStrategy, the `train_function`
+    # is a scheduling of the actual training function to a remote worker).
+    self.train_tf_function = None
 
     # Used to cache `trainable` attr of `Layer`s for `fit`.
     self._compiled_trainable_state = self._get_trainable_state()
@@ -871,6 +879,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if not self.run_eagerly:
       train_function = def_function.function(
           train_function, experimental_relax_shapes=True)
+      self.train_tf_function = train_function
 
     self.train_function = train_function
 
@@ -2738,14 +2747,17 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     train_function = self.train_function
     test_function = self.test_function
     predict_function = self.predict_function
+    train_tf_function = self.train_tf_function
     self.train_function = None
     self.test_function = None
     self.predict_function = None
+    self.train_tf_function = None
     functions = super(
         Model, self)._list_functions_for_serialization(serialization_cache)
     self.train_function = train_function
     self.test_function = test_function
     self.predict_function = predict_function
+    self.train_tf_function = train_tf_function
     return functions
 
   def _should_eval(self, epoch, validation_freq):

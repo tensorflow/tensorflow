@@ -71,6 +71,29 @@ filegroup(
 )
 
 cc_library(
+    name = "async_all_reduce_creator",
+    srcs = ["async_all_reduce_creator.cc"],
+    hdrs = ["async_all_reduce_creator.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "async_all_reduce_creator_test",
+    srcs = ["async_all_reduce_creator_test.cc"],
+    deps = [
+        ":async_all_reduce_creator",
+        ":hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "bfloat16_support",
     srcs = ["bfloat16_support.cc"],
     hdrs = ["bfloat16_support.h"],

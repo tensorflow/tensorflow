@@ -7,6 +7,7 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -36,7 +37,6 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_chromiumos",
     "if_google",
     "if_not_android",
     "if_windows",
@@ -1731,15 +1731,15 @@ filegroup(
         "tracing.h",
         "tstring.h",
         "types.h",
-    ] + if_chromiumos(
-        tf_google_mobile_srcs_no_runtime(),
-        otherwise = [
+    ] + selects.with_or({
+        ("//tensorflow:chromiumos", "//tensorflow:fuchsia"): tf_google_mobile_srcs_no_runtime(),
+        "//conditions:default": [
             "//tensorflow/core/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "threadpool.cc",
             "tracing.cc",
         ],
-    ) + tf_platform_alias("additional_mobile_srcs_no_runtime"),
+    }) + tf_platform_alias("additional_mobile_srcs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

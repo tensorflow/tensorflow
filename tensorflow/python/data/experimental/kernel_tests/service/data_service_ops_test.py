@@ -433,7 +433,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     def interleave_fn(_):
       dataset = dataset_ops.Dataset.range(2)
-      self.make_distributed_dataset(dataset, cluster)
+      dataset = self.make_distributed_dataset(dataset, cluster)
       return dataset
 
     ds = ds.interleave(interleave_fn, cycle_length=2)

@@ -28,7 +28,6 @@ tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
 tensorflow/lite/java/src/main/native/BUILD
-tensorflow/lite/java/src/main/native/nativeinterpreterwrapper_jni.cc
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
 tensorflow/opensource_only/BUILD
@@ -246,7 +245,6 @@ tensorflow/third_party/toolchains/embedded/arm-linux/armhf-linux-toolchain.BUILD
 tensorflow/third_party/toolchains/embedded/arm-linux/cc_config.bzl.tpl
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
-tensorflow/third_party/toolchains/preconfig/generate/containers.bzl
 tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_config.bzl

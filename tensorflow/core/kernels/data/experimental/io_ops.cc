@@ -291,12 +291,14 @@ class LoadDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return errors::Unimplemented("Checkpointing is currently not supported.");
+      mutex_lock l(mu_);
+      return this->SaveInput(ctx, writer, input_impl_);
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return errors::Unimplemented("Checkpointing is currently not supported.");
+      mutex_lock l(mu_);
+      return this->RestoreInput(ctx, reader, input_impl_);
     }
 
    private:

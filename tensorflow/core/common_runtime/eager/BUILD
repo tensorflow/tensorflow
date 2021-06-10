@@ -187,6 +187,8 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/coordination:coordination_service",
+            "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",

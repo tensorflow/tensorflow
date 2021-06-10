@@ -2877,9 +2877,9 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
     }
   }
   NodeDef ndef;
-  ndef.set_name(
-      graph->NewName(absl::StrCat(replicate_node.name(), "/_variable_copy")));
-  ndef.set_op("IdentityN");
+  ndef.set_name(graph->NewName(
+      absl::StrCat(replicate_node.name(), "/", kTpuExecuteStagingNodeName)));
+  ndef.set_op(kTpuExecuteStagingOp);
   ndef.set_device(host_cpu_device);
   AddNodeAttr("T", dtypes, &ndef);
   // TF meta-optimizer should skip this node for constant folding.

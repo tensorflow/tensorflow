@@ -686,6 +686,7 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
+        ":fuchsia",
         ":emscripten",
         ":ios",
     ],

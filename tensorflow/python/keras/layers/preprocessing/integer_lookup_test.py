@@ -26,6 +26,8 @@ from tensorflow.python import keras
 from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -524,6 +526,17 @@ class IntegerLookupVocabularyTest(
         errors_impl.FailedPreconditionError,
         ".*HashTable has different value for same key.*42.*"):
       _ = integer_lookup.IntegerLookup(vocabulary=vocab_path)
+
+  def test_tensor_vocab(self):
+    vocab_data = [-1, 42, 1138, 725, 1729]
+    vocab_tensor = constant_op.constant(vocab_data, dtypes.int64)
+    layer = integer_lookup.IntegerLookup(vocabulary=vocab_tensor)
+    returned_vocab = layer.get_vocabulary()
+    self.assertAllEqual(vocab_data, returned_vocab)
+    self.assertAllEqual(layer.vocabulary_size(), 5)
+    fn = def_function.function(lambda: layer.set_vocabulary(vocab_tensor))
+    with self.assertRaisesRegex(RuntimeError, "Cannot set a tensor vocabulary"):
+      fn()
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)

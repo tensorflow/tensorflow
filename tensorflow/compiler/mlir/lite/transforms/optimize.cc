@@ -1216,7 +1216,7 @@ struct RemoveReshapeAfterFullyConnected
         fully_connected_op.weights_format() != "DEFAULT" ||
         fully_connected_op.keep_num_dims())
       return failure();
-    if (!reshape_op.input().getUseList()->hasOneUse()) return failure();
+    if (!reshape_op.input().hasOneUse()) return failure();
 
     auto input_shape = fully_connected_op.input().getType().cast<ShapedType>();
     auto output_shape = fully_connected_op.getType(0).cast<ShapedType>();

@@ -22,6 +22,8 @@ import os.path
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.util import event_pb2
+# pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import _pywrap_events_writer
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util

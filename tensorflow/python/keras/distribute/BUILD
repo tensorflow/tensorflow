@@ -871,6 +871,7 @@ distribute_py_test(
     deps = [
         ":multi_worker_testing_utils",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",

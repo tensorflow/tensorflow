@@ -591,6 +591,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "SparseSegmentSum",
           "SparseSegmentSumGrad",
           "SparseSegmentSumWithNumSegments",
+          "SparseSlice",
           "SparseSoftmaxCrossEntropyWithLogits",
           "SparseToDense",
           "SparseToSparseSetOperation",

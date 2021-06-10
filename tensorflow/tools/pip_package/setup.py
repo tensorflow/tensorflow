@@ -104,7 +104,7 @@ REQUIRED_PACKAGES = [
     'tensorflow_estimator ~= 2.5.0',
     # TODO(scottzhu): OSS keras hasn't been formally released yet.
     # Use keras-nightly at the moment.
-    'keras-nightly ~= 2.5.0.dev',
+    'keras-nightly ~= 2.6.0.dev2021052700',
 ]
 
 

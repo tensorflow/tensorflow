@@ -216,3 +216,41 @@ There are two ways to run TensorFlow unit tests.
     See
     [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build)
     for details.
+
+#### Running doctest for testable docstring
+
+There are two ways to test the code in the docstring locally:
+
+1.  If you are only changing the docstring of a class/function/method, then you
+    can test it by passing that file's path to
+    [tf_doctest.py](https://www.tensorflow.org/code/tensorflow/tools/docs/tf_doctest.py).
+    For example:
+
+    ```bash
+    python tf_doctest.py --file=<file_path>
+    ```
+
+    This will run it using your installed version of TensorFlow. To be sure
+    you're running the same code that you're testing:
+
+    *   Use an up to date [tf-nightly](https://pypi.org/project/tf-nightly/)
+        `pip install -U tf-nightly`
+    *   Rebase your pull request onto a recent pull from
+        [TensorFlow's](https://github.com/tensorflow/tensorflow) master branch.
+
+2.  If you are changing the code and the docstring of a class/function/method,
+    then you will need to
+    [build TensorFlow from source](https://www.tensorflow.org/install/source).
+    Once you are setup to build from source, you can run the tests:
+
+    ```bash
+    bazel run //tensorflow/tools/docs:tf_doctest
+    ```
+
+    or
+
+    ```bash
+    bazel run //tensorflow/tools/docs:tf_doctest -- --module=ops.array_ops
+    ```
+
+    The `--module` is relative to `tensorflow.python`.

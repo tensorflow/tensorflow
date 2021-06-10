@@ -26,12 +26,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -371,22 +373,30 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("IndexLookup does not support streaming adapts.")
     super(IndexLookup, self).adapt(data, reset_state)
 
-  def get_vocabulary(self):
+  def get_vocabulary(self, include_special_tokens=True):
+    """Returns the current vocabulary of the layer.
+
+    Args:
+      include_special_tokens: If True, the returned vocabulary will include mask
+        and OOV tokens, and a term's index in the vocabulary will equal the
+        term's index when calling the layer. If False, the returned vocabulary
+        will not include any mask or OOV tokens.
+    """
     if self.vocabulary_size() is None:
       return []
 
     # The MutableHashTable data will not be sorted, so we will create a inverted
     # lookup here, and use that to lookup a range of indices [0, vocab_size).
-    keys, values = self._table_handler.data()
-    if self.invert:
-      index_to_token = zip(keys, values)
-    else:
-      index_to_token = zip(values, keys)
-    lookup = collections.defaultdict(lambda: self.oov_token, index_to_token)
+    keys, values = self._table.export()
+    vocab, indices = (values, keys) if self.invert else (keys, values)
+    lookup = collections.defaultdict(
+        lambda: self.oov_token,
+        zip(indices.numpy(), self._tensor_vocab_to_numpy(vocab)))
     vocab = [lookup[x] for x in range(self.vocabulary_size())]
     if self.mask_token is not None and self.output_mode == INT:
       vocab[0] = self.mask_token
-
+    if not include_special_tokens:
+      vocab = vocab[self._token_start_index():]
     return vocab
 
   def vocabulary_size(self):
@@ -441,9 +451,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     it.
 
     Args:
-      vocabulary: An array of hashable tokens.
-      idf_weights: An array of inverse document frequency weights with equal
-        length to vocab. Only necessary if the layer output_mode is TF_IDF.
+      vocabulary: An array, numpy array, or tensor of hashable tokens.
+      idf_weights: An array, numpy array, or tensor of inverse document
+        frequency weights with equal length to vocab. Only necessary if the
+        layer output_mode is TF_IDF.
 
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or
@@ -452,6 +463,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         called. This happens when `"multi_hot"`, `"count"`, and `"tfidf"` modes,
         if `pad_to_max_tokens` is False and the layer itself has already been
         called.
+      RuntimeError: If a tensor vocabulary is passed outside of eager execution.
     """
     if self._has_static_table:
       raise RuntimeError("Layer {} was created with a static file-based table "
@@ -469,6 +481,21 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise RuntimeError("When using {} mode and `pad_to_max_tokens` is "
                          "False, the vocabulary cannot be changed after the "
                          "layer is called.".format(self.output_mode))
+
+    if not context.executing_eagerly() and (tensor_util.is_tensor(vocabulary) or
+                                            tensor_util.is_tensor(idf_weights)):
+      raise RuntimeError(
+          "Cannot set a tensor vocabulary on {} layer {} when not executing "
+          "eagerly. Create this layer or call `set_vocabulary` outside of "
+          "any `tf.function`s and with eager execution enabled.".format(
+              self.__class__.__name__, self.name))
+
+    # TODO(mattdangerw): for better performance we should rewrite this entire
+    # function to operate on tensors and convert vocabulary to a tensor here.
+    if tensor_util.is_tensor(vocabulary):
+      vocabulary = self._tensor_vocab_to_numpy(vocabulary)
+    if tensor_util.is_tensor(idf_weights):
+      idf_weights = idf_weights.numpy()
 
     oov_start = self._oov_start_index()
     token_start = self._token_start_index()
@@ -614,12 +641,21 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     lookup_checks = []
 
     if self.num_oov_indices == 0 and not self.invert:
-      oov_indices = array_ops.where_v2(math_ops.equal(lookup_result, -1))
-      oov_inputs = array_ops.gather_nd(inputs, oov_indices)
+      if tf_utils.is_sparse(inputs):
+        lookup_values = lookup_result.values
+        input_values = inputs.values
+      elif tf_utils.is_ragged(inputs):
+        lookup_values = lookup_result.flat_values
+        input_values = inputs.flat_values
+      else:
+        lookup_values = lookup_result
+        input_values = inputs
+      oov_indices = array_ops.where_v2(math_ops.equal(lookup_values, -1))
+      oov_inputs = array_ops.gather_nd(input_values, oov_indices)
       msg = string_ops.string_format(
           "When `num_oov_indices=0` all inputs should be in vocabulary, "
-          "found OOV values {} at indices {}, consider setting "
-          "`num_oov_indices=1`.", (oov_inputs, oov_indices))
+          "found OOV values {}, consider setting `num_oov_indices=1`.",
+          (oov_inputs,))
       assertion = control_flow_ops.Assert(
           math_ops.equal(array_ops.size(oov_indices), 0), [msg])
       lookup_checks.append(assertion)
@@ -657,6 +693,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   @property
   def _trackable_saved_model_saver(self):
     return layer_serialization.IndexLookupLayerSavedModelSaver(self)
+
+  # Override points for IntegerLookup and StringLookup.
+  def _tensor_vocab_to_numpy(self, vocabulary):
+    """Converts a tensor vocabulary to a numpy vocabulary."""
+    return vocabulary.numpy()
 
 
 class _IndexLookupAccumulator(

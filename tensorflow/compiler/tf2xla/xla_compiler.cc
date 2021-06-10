@@ -295,7 +295,8 @@ Status BuildComputation(
           arg.tensor_array_gradients.count(grad.first) == 0;
     }
 
-    if (return_updated_values_for_all_resources || modified) {
+    if (return_updated_values_for_all_resources || modified ||
+        arg.requires_broadcast) {
       resource_updates->emplace_back();
       XlaCompiler::ResourceUpdate& update = resource_updates->back();
       update.input_index = resource->arg_num();
@@ -986,7 +987,8 @@ Status XlaCompiler::BuildArguments(
                 absl::get<TensorShape>(arg.shape), xla::XlaOp(),
                 /*max_array_size=*/arg.max_array_size,
                 /*tensor_array_gradients=*/arg.tensor_array_gradients,
-                /*tensor_array_multiple_writes_aggregate=*/true));
+                /*tensor_array_multiple_writes_aggregate=*/true,
+                arg.definition_stack_trace));
         arg_expression =
             arg.kind == XlaCompiler::Argument::kResource
                 ? XlaExpression::Resource(resource)
