@@ -2723,6 +2723,26 @@ name=None))
 
     return _TakeWhileDataset(self, predicate)
 
+  def unique(self):
+    """A transformation that discards duplicate elements of a `Dataset`.
+
+    Use this transformation to produce a dataset that contains one instance of
+    each unique element in the input. For example:
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 37, 2, 37, 2, 1])
+    >>> dataset = dataset.unique()
+    >>> sorted(list(dataset.as_numpy_iterator()))
+    [1, 2, 37]
+
+    Note: This transformation only supports datasets which fit into memory
+    and have elements of either `tf.int32`, `tf.int64` or `tf.string` type.
+
+    Returns:
+      A `Dataset`.
+    """
+
+    return _UniqueDataset(self)
+
 
 @tf_export(v1=["data.Dataset"])
 class DatasetV1(DatasetV2):
@@ -5260,6 +5280,24 @@ class _TakeWhileDataset(UnaryUnchangedStructureDataset):
 
   def _transformation_name(self):
     return "Dataset.take_while()"
+
+
+class _UniqueDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` contains the unique elements from its input."""
+
+  def __init__(self, input_dataset):
+    """See `unique()` for details."""
+    self._input_dataset = input_dataset
+    if get_legacy_output_types(input_dataset) not in (dtypes.int32,
+                                                      dtypes.int64,
+                                                      dtypes.string):
+      raise TypeError(
+          "`tf.data.Dataset.unique()` only supports inputs with a single "
+          "`tf.int32`, `tf.int64`, or `tf.string` component.")
+    variant_tensor = ged_ops.unique_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        **self._flat_structure)
+    super(_UniqueDataset, self).__init__(input_dataset, variant_tensor)
 
 
 def _collect_resource_inputs(op):

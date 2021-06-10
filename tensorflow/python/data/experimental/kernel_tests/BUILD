@@ -647,22 +647,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "unique_test",
-    size = "small",
-    srcs = ["unique_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:unique",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "variant_test",
     size = "small",
     srcs = ["variant_test.py"],
