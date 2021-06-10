@@ -223,8 +223,6 @@ TFTPU_CAPI_EXPORT void HardwareLayout_HostShapeToDeviceShape(
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompact(XLA_Shape* shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompactRaw(XLA_Shape* shape);
-TFTPU_CAPI_EXPORT void HardwareLayout_UpdateLayout(
-    const XLA_Shape& device_shape);
 
 typedef struct TpuExecute_RuntimeInputToPaddedData_Params {
   int32_t struct_size;
@@ -502,7 +500,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompact);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompactRaw);
-  TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_UpdateLayout);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuExecute_RuntimeInputToPaddedData);
 
   TFTPU_ADD_FN_IN_STRUCT(ConfigureDistributedTpuOp_DoWork);
