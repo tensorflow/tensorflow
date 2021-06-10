@@ -737,6 +737,29 @@ GENERATE_DEFAULT_TESTS(RealDiv,
                        /*test_name=*/Double, double, double, baseline_div,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.ReluGrad`.
+
+template <typename T>
+T baseline_relu_grad(T lhs, T rhs) {
+  return rhs > T(0) ? lhs : 0;
+}
+
+// We cannot compare with strictly equal here, because the Eigen based kernel
+// returns -0.0 in some cases where it should return 0.0 (it copies the sign
+// from gradients when returning 0, but not for 'remainder' elements).
+GENERATE_DEFAULT_NO_BROADCASTING_TESTS_2(
+    ReluGrad, /*test_name=*/Half, /*T=*/Eigen::half,
+    /*BaselineT=*/float, /*OutT=*/Eigen::half,
+    /*BaselineOutT=*/float, test::DefaultInput<Eigen::half>(),
+    test::DefaultInput<Eigen::half>(), baseline_relu_grad,
+    test::OpsTestConfig())
+GENERATE_DEFAULT_NO_BROADCASTING_TESTS(ReluGrad,
+                                       /*test_name=*/Float, float, float,
+                                       baseline_relu_grad);
+GENERATE_DEFAULT_NO_BROADCASTING_TESTS(ReluGrad,
+                                       /*test_name=*/Double, double, double,
+                                       baseline_relu_grad);
+
 /// Test `tf.RightShift`.
 
 template <typename T>
