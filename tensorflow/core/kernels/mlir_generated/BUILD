@@ -133,6 +133,7 @@ tf_kernel_library(
         "gpu_op_tanh.cc",
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_rint.cc",
+        "gpu_op_round.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -179,6 +180,7 @@ tf_kernel_library(
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":gpu_rint_kernels",
+        ":gpu_round_kernels",
     ]),
 )
 
@@ -1445,6 +1447,20 @@ gpu_kernel_library(
     types = [
         "f32",
         "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_round_kernels",
+    op = "round",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
     ],
     unroll_factors = "4",
 )
