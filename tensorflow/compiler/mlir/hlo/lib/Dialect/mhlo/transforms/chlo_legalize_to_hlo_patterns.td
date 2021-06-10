@@ -255,36 +255,6 @@ def : Pat<(HLOClient_AtanhOp NonComplexElementType:$input),
 def : Pat<(HLOClient_ConjOp $v),
           (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
 
-// Express `cosh` as
-//   cosh(x) = (e^x + e^-x) / 2
-//           = e^(x + log(1/2)) + e^(-x + log(1/2))
-//
-// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not.
-//
-// This incorrectly overflows to inf for two f32 input values, namely
-// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
-// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
-// we deem this acceptable.
-def : Pat<(HLOClient_CoshOp NonComplexElementType:$input),
-  (HLO_AddOp
-    (HLO_ExpOp
-      (HLO_AddOp
-        $input,
-        (HLO_LogOp
-          (HLO_ConstantLike<"0.5"> $input)
-        )
-      )
-    ),
-    (HLO_ExpOp
-      (HLO_AddOp
-        (HLO_NegOp $input),
-        (HLO_LogOp
-          (HLO_ConstantLike<"0.5"> $input)
-        )
-      )
-    )
-  )>;
-
 // Express `is_inf` as
 //   is_inf(x) = is_pos_inf(|x|)
 def : Pat<(HLOClient_IsInfOp NonComplexElementType:$input),

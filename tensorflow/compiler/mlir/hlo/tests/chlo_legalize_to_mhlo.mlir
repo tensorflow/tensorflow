@@ -2187,3 +2187,32 @@ func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
   %1 = chlo.sinh %x : tensor<2xcomplex<f32>> -> tensor<2xcomplex<f32>>
   return %1 : tensor<2xcomplex<f32>>
 }
+
+// ----
+
+// CHECK-LABEL: @cosh_f32
+// CHECK-SAME: (%[[X:.*]]: tensor<f32>)
+func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
+  // CHECK: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
+  // CHECK: %[[LOG_HALF:.*]] = "mhlo.log"(%[[HALF]]) : (tensor<f32>) -> tensor<f32>
+  // CHECK: %[[X_PLUS_LOG_HALF:.*]] = mhlo.add %[[X]], %[[LOG_HALF]] : tensor<f32>
+  // CHECK: %[[EXP_1:.*]] = "mhlo.exponential"(%[[X_PLUS_LOG_HALF]]) : (tensor<f32>) -> tensor<f32>
+  // CHECK: %[[LOG_HALF_MINUS_X:.*]] = mhlo.subtract %[[LOG_HALF]], %[[X]] : tensor<f32>
+  // CHECK: %[[EXP_2:.*]] = "mhlo.exponential"(%[[LOG_HALF_MINUS_X]]) : (tensor<f32>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.add %[[EXP_1]], %[[EXP_2]] : tensor<f32>
+  // CHECK: return %[[RESULT]] : tensor<f32>
+  %1 = chlo.cosh %x : tensor<f32> -> tensor<f32>
+  return %1 : tensor<f32>
+}
+
+// ----
+
+// CHECK-LABEL: @cosh_f16
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>)
+func @cosh_f16(%x : tensor<f16>) -> tensor<f16> {
+  // CHECK: "mhlo.convert"(%[[ARG0]]) : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RES:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: return %[[RES]]
+  %1 = chlo.cosh %x : tensor<f16> -> tensor<f16>
+  return %1 : tensor<f16>
+}
