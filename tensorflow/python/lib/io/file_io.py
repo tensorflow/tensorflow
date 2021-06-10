@@ -785,12 +785,13 @@ def join(path, *paths):
 
   TensorFlow specific filesystems will be joined
   like a url (using "/" as the path seperator) on all platforms:
-
+  
+  On Windows or Linux/Unix-like:
   >>> tf.io.gfile.join("gcs://folder", "file.py")
-  'gcs://folder/file.py'  # on Windows or Linux/Unix
+  'gcs://folder/file.py'
 
   >>> tf.io.gfile.join("ram://folder", "file.py")
-  'ram://folder/file.py'  # on Windows or Linux/Unix
+  'ram://folder/file.py'
 
   But the native filesystem is handled just like os.path.join:
 
@@ -798,7 +799,7 @@ def join(path, *paths):
   ... if os.name == "nt":
   ...   print(path == "folder\\file.py")  # Windows
   ... else:
-  ...   print(path == "folder/file.py")  # Unix/Linux
+  ...   print(path == "folder/file.py")  # Linux/Unix-like
   True
 
   Args:
