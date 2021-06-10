@@ -231,6 +231,8 @@ def softplus(x, alpha):
   Returns:
       The softclip activation: `np.dot((1/alpha), np.log((1+np.exp(alpha*x))/(1+np.exp(alpha*(x-1)))))`.
   """
+  if alpha == 0.0:
+        alpha = alpha + 0.1
   output = np.dot((1/alpha), np.log((1+np.exp(alpha*x))/(1+np.exp(alpha*(x-1)))))
   return output
 
