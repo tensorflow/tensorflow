@@ -54,12 +54,6 @@ class ThreadingOptions(options.OptionsBase):
       "The value 0 can be used to indicate that the threadpool size should be "
       "determined at runtime based on the number of available CPU cores.")
 
-  def _has_non_default_values(self):
-    for attr in filter(lambda opt: not opt.startswith("_"), dir(self)):
-      if getattr(self, attr) is not None:
-        return True
-    return False
-
   def _to_proto(self):
     pb = dataset_options_pb2.ThreadingOptions()
     if self.max_intra_op_parallelism is not None:

@@ -3617,15 +3617,13 @@ class Options(options_lib.OptionsBase):
     # (kvignesh1420): We try to keep the values of `threading` and
     # `experimental_threading` the same, to prevent unexpected behaviours
     # and ensure backward-compatibility.
-    override_attrs = []
     for attr in filter(lambda opt: not opt.startswith("_"), dir(self.threading)):
-      if (getattr(self.threading, attr) !=
-          getattr(self.experimental_threading, attr)):
-        override_attrs.append(attr)
-    if override_attrs:
-      logging.warning("overriding attr(s) '{}' of experimental_threading "
-            "with respective values in threading.".format(
-              ",".join(override_attrs)))
+      t_val = getattr(self.threading, attr)
+      et_val = getattr(self.experimental_threading, attr)
+      if (t_val != et_val):
+        logging.warning(
+          "overriding `experimental_threading.{} = {}` "
+          "with `threading.{} = {}".format(attr, et_val, attr, t_val))
     self.experimental_threading = self.threading
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
