@@ -129,7 +129,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'height\', \'width\', \'interpolation\'], varargs=None, keywords=kwargs, defaults=[\'bilinear\'], "
+    argspec: "args=[\'self\', \'height\', \'width\', \'interpolation\', \'crop_to_aspect_ratio\'], varargs=None, keywords=kwargs, defaults=[\'bilinear\', \'False\'], "
   }
   member_method {
     name: "add_loss"

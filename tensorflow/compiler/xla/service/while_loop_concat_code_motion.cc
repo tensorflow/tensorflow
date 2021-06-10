@@ -279,7 +279,7 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
     const HloInstruction* hlo, int64 operand_index, int64 hlo_concat_dim,
     bool hlo_inserted_concat_dim,
     const ConcatGroup* combined_operand_group = nullptr) {
-  if (hlo->IsElementwise()) {
+  if (hlo->IsElementwise() || hlo->opcode() == HloOpcode::kAllReduce) {
     return std::pair<int64, bool>(hlo_concat_dim, hlo_inserted_concat_dim);
   }
   int64 operand_concat_dim = -1;
@@ -333,8 +333,11 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
     operand_inserted_concat_dim = false;
     // Only support adding/removing trivial dims.
     while (i < operand_shape.rank() || j <= hlo_concat_dim) {
-      if (operand_shape.dimensions(i) == hlo->shape().dimensions(j)) {
+      if (i < operand_shape.rank() && j < hlo->shape().rank() &&
+          operand_shape.dimensions(i) == hlo->shape().dimensions(j)) {
         if (j == hlo_concat_dim) {
+          operand_inserted_concat_dim =
+              hlo_inserted_concat_dim && operand_shape.dimensions(i) != 1;
           operand_concat_dim = i;
           break;
         }
@@ -342,7 +345,7 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
         j++;
         continue;
       }
-      if (operand_shape.dimensions(i) == 1) {
+      if (i < operand_shape.rank() && operand_shape.dimensions(i) == 1) {
         if (j == hlo_concat_dim && hlo_inserted_concat_dim) {
           operand_concat_dim = i;
           break;
@@ -350,12 +353,12 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
         i++;
         continue;
       }
-      if (hlo->shape().dimensions(j) == 1) {
-        if (j == hlo_concat_dim) {
-          operand_concat_dim = i;
-          operand_inserted_concat_dim = true;
-          break;
-        }
+      if (j == hlo_concat_dim) {
+        operand_concat_dim = i;
+        operand_inserted_concat_dim = true;
+        break;
+      }
+      if (j < hlo->shape().rank() && hlo->shape().dimensions(j) == 1) {
         j++;
         continue;
       }
@@ -476,7 +479,8 @@ bool GroupHlosForConcat(
   // processed, we also enqueue the corresponding loop outputs to keep them
   // match in shape.
   while (!pq.empty()) {
-    auto& group = pq.begin()->second;
+    auto group = std::move(pq.begin()->second);
+    pq.erase(pq.begin());
     const auto& hlos = group.elements;
     VLOG(2) << "GroupHlosForConcat dequeued " << hlos[0]->ToString();
     bool group_is_param_gtes = false;
@@ -485,13 +489,12 @@ bool GroupHlosForConcat(
         })) {
       // Shared operand.
       if (groups->GetGroupIndex(hlos[0]).has_value()) {
-        VLOG(2) << "We do not support the case if a shared operand also part "
+        VLOG(1) << "We do not support the case if a shared operand also part "
                    "of a group: "
                 << hlos[0]->ToString();
         return fail_and_cleanup();
       }
       groups->DisallowGroupingOn(hlos[0]);
-      pq.erase(pq.begin());
       continue;
     }
     if (absl::c_all_of(hlos, [&](const HloInstruction* element) {
@@ -499,7 +502,9 @@ bool GroupHlosForConcat(
                  element->operand(0) == body->parameter_instruction(0);
         })) {
       group_is_param_gtes = true;
-    } else if ((hlos[0]->IsElementwise() && !hlos[0]->HasSideEffect()) ||
+    } else if (((hlos[0]->IsElementwise() ||
+                 hlos[0]->opcode() == HloOpcode::kAllReduce) &&
+                !hlos[0]->HasSideEffect()) ||
                hlos[0]->opcode() == HloOpcode::kBroadcast ||
                hlos[0]->opcode() == HloOpcode::kReduce ||
                hlos[0]->opcode() == HloOpcode::kReshape ||
@@ -612,7 +617,6 @@ bool GroupHlosForConcat(
       VLOG(2) << "Failed to create group.";
       return fail_and_cleanup();
     }
-    pq.erase(pq.begin());
     const auto& registered_group = groups->GetGroup(guse.group_id);
     if (!guse.already_used_by_subcomp && group_is_param_gtes) {
       // When we processed a group of parameter GTEs, we should also enqueue the
@@ -700,6 +704,8 @@ Status RemoveCopiesFromRoot(HloComputation* body) {
 Status RewriteLoopWithConcatGroups(HloInstruction* loop,
                                    absl::Span<HloInstruction* const> param_gtes,
                                    ConcatGroups& groups) {
+  VLOG(1) << "RewriteLoopWithConcatGroups with " << groups.Groups().size()
+          << " groups.";
   // For simplicity, for each group, we rewrite the first element into full
   // shape, and leave the other elements unchagned. Non-grouped users will be
   // have slices of the expanded first element as the new input. Later

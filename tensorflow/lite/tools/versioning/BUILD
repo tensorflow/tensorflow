@@ -21,7 +21,9 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":op_signature",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
@@ -41,9 +43,28 @@ tf_cc_test(
     ],
     deps = [
         ":versioning",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "op_signature",
+    srcs = [
+        "op_signature.cc",
+    ],
+    hdrs = [
+        "op_signature.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
     ],
 )

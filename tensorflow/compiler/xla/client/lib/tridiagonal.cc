@@ -128,7 +128,9 @@ XlaOp UpdateEq(XlaOp updated, XlaOp i, XlaOp update) {
   return DynamicUpdateSliceInMinorDims(updated, update, /*starts=*/{i});
 }
 
-}  // namespace
+template <SolverAlgorithm algo>
+StatusOr<XlaOp> TridiagonalSolverImpl(XlaOp lower_diagonal, XlaOp main_diagonal,
+                                      XlaOp upper_diagonal, XlaOp rhs);
 
 // Applies Thomas algorithm to solve a linear system where the linear operand
 // is a tri-diagonal matrix.
@@ -142,139 +144,100 @@ XlaOp UpdateEq(XlaOp updated, XlaOp i, XlaOp update) {
 // (`upper_diagonal[..., :, num_equations - 1]`) will be ignored. The shape of
 // the right-hand-side `rhs` should be [..., num_rhs, num_equations]. The
 // solution will have the shape [..., num_rhs, num_equations].
-StatusOr<XlaOp> ThomasSolver(XlaOp lower_diagonal, XlaOp main_diagonal,
-                             XlaOp upper_diagonal, XlaOp rhs) {
+template <>
+StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
+                                               XlaOp main_diagonal,
+                                               XlaOp upper_diagonal,
+                                               XlaOp rhs) {
   XlaBuilder* builder = lower_diagonal.builder();
-
   TF_ASSIGN_OR_RETURN(int64 num_eqs,
                       CheckSystemAndReturnNumEquations(
                           lower_diagonal, main_diagonal, upper_diagonal, rhs));
 
-  XlaOp main_diag_after_elimination = ZerosLike(main_diagonal);
-  XlaOp rhs_after_elimination = ZerosLike(rhs);
-  XlaOp upper_diagonal_coeffs = ZerosLike(upper_diagonal);
-  XlaOp x_coeffs = ZerosLike(rhs);
+  auto x =
+      UpdateEq(rhs, 0, Coefficient(rhs, 0) / Coefficient(main_diagonal, 0));
+  main_diagonal =
+      UpdateEq(main_diagonal, 0,
+               Coefficient(upper_diagonal, 0) / Coefficient(main_diagonal, 0));
 
-  // main_diag_after_elimination[:, 0] = main_diagonal[:, 0];
-  main_diag_after_elimination =
-      UpdateEq(main_diag_after_elimination, 0, Coefficient(main_diagonal, 0));
-
-  // rhs_after_elimination[:, 0] = rhs[:, 0];
-  rhs_after_elimination =
-      UpdateEq(rhs_after_elimination, 0, Coefficient(rhs, 0));
-
-  auto preparation_body_fn =
-      [](XlaOp i, absl::Span<const XlaOp> values,
-         XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
-    auto upper_diagonal_coeffs = values[0];
-    auto upper_diagonal = values[1];
-    // upper_diagonal_coeffs[:, i] = upper_diagonal[:, i];
-    upper_diagonal_coeffs =
-        UpdateEq(upper_diagonal_coeffs, i, Coefficient(upper_diagonal, i));
-    return std::vector<XlaOp>{upper_diagonal_coeffs, upper_diagonal};
-  };
-  TF_ASSIGN_OR_RETURN(auto values_after_preparation,
-                      ForEachIndex(num_eqs - 1, S32, preparation_body_fn,
-                                   {upper_diagonal_coeffs, upper_diagonal},
-                                   "preparation", builder));
-  upper_diagonal_coeffs = values_after_preparation[0];
-
-  // Forward transformation.
   auto forward_transformation_fn =
       [](XlaOp i_minus_one, absl::Span<const XlaOp> values,
          XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
     auto lower_diagonal = values[0];
     auto main_diagonal = values[1];
-    auto rhs = values[2];
-    auto main_diag_after_elimination = values[3];
-    auto upper_diagonal_coeffs = values[4];
-    auto rhs_after_elimination = values[5];
+    auto upper_diagonal = values[2];
+    auto x = values[3];
 
     auto one = ScalarLike(i_minus_one, 1);
     auto i = i_minus_one + one;
-    auto lower_diagonal_i = Coefficient(lower_diagonal, i);
-    auto main_diagonal_i = Coefficient(main_diagonal, i);
-    auto rhs_i = Coefficient(rhs, i);
+    // denom = main_diagonal[:, i] -
+    //          lower_diagonal[:, i] * main_diagonal[:, i - 1]
+    auto denom = Coefficient(main_diagonal, i) -
+                 Coefficient(lower_diagonal, i) *
+                     Coefficient(main_diagonal, i_minus_one);
 
-    auto w_i =
-        lower_diagonal_i / Coefficient(main_diag_after_elimination, i - one);
+    // x[:, i] = (x[:, i] - lower_diagonal[:, i] * x[:, i - 1]) / denom;
+    x = UpdateEq(x, i,
+                 (Coefficient(x, i) - Coefficient(lower_diagonal, i) *
+                                          Coefficient(x, i_minus_one)) /
+                     denom);
 
-    // main_diag_after_elimination[:, i] =
-    //     main_diagonal_i - w_i * upper_diagonal_coeffs[:, i - 1];
-    main_diag_after_elimination = UpdateEq(
-        main_diag_after_elimination, i,
-        main_diagonal_i - w_i * Coefficient(upper_diagonal_coeffs, i - one));
-    // rhs_after_elimination[:, i] =
-    //     rhs_i - w_i * rhs_after_elimination[:, i - 1];
-    rhs_after_elimination =
-        UpdateEq(rhs_after_elimination, i,
-                 rhs_i - w_i * Coefficient(rhs_after_elimination, i - one));
+    // main_diagonal[:, i] = upper_diagonal[:, i] / denom;
+    main_diagonal =
+        UpdateEq(main_diagonal, i, Coefficient(upper_diagonal, i) / denom);
 
-    return std::vector<XlaOp>{lower_diagonal,
-                              main_diagonal,
-                              rhs,
-                              main_diag_after_elimination,
-                              upper_diagonal_coeffs,
-                              rhs_after_elimination};
+    return std::vector<XlaOp>{lower_diagonal, main_diagonal, upper_diagonal, x};
   };
   TF_ASSIGN_OR_RETURN(
       auto values_after_fwd_transformation,
-      ForEachIndex(
-          num_eqs - 1, S32, forward_transformation_fn,
-          {lower_diagonal, main_diagonal, rhs, main_diag_after_elimination,
-           upper_diagonal_coeffs, rhs_after_elimination},
-          "forward_transformation", builder));
-  lower_diagonal = values_after_fwd_transformation[0];
+      ForEachIndex(num_eqs - 1, S32, forward_transformation_fn,
+                   {lower_diagonal, main_diagonal, upper_diagonal, x},
+                   "forward_transformation", builder));
+
   main_diagonal = values_after_fwd_transformation[1];
-  rhs = values_after_fwd_transformation[2];
-  main_diag_after_elimination = values_after_fwd_transformation[3];
-  upper_diagonal_coeffs = values_after_fwd_transformation[4];
-  rhs_after_elimination = values_after_fwd_transformation[5];
+  x = values_after_fwd_transformation[3];
 
   // Backward reduction.
-  // x_coeffs[:, num_eqs - 1] = rhs_after_elimination[:, num_eqs - 1] /
-  //                              main_diag_after_elimination[:, num_eqs - 1];
-  x_coeffs =
-      UpdateEq(x_coeffs, num_eqs - 1,
-               Coefficient(rhs_after_elimination, num_eqs - 1) /
-                   Coefficient(main_diag_after_elimination, num_eqs - 1));
   auto bwd_reduction_fn =
       [num_eqs](XlaOp j, absl::Span<const XlaOp> values,
                 XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
-    auto x_coeffs = values[0];
-    auto rhs_after_elimination = values[1];
-    auto upper_diagonal_coeffs = values[2];
-    auto main_diag_after_elimination = values[3];
+    auto x = values[0];
+    auto main_diagonal = values[1];
     auto n = ScalarLike(j, num_eqs - 2);
     auto one = ScalarLike(j, 1);
     auto i = n - j;
     // for (int i = num_eqs - 2; i >= 0; i--)
-    //   x_coeffs[:, i] = (rhs_after_elimination[:, i] -
-    //     upper_diagonal_coeffs[:, i] * x_coeffs[:, i + 1]) /
-    //       main_diag_after_elimination[:, i];
-    x_coeffs = UpdateEq(x_coeffs, i,
-                        (Coefficient(rhs_after_elimination, i) -
-                         Coefficient(upper_diagonal_coeffs, i) *
-                             Coefficient(x_coeffs, i + one)) /
-                            Coefficient(main_diag_after_elimination, i));
-    return std::vector<XlaOp>{x_coeffs, rhs_after_elimination,
-                              upper_diagonal_coeffs,
-                              main_diag_after_elimination};
+    //   x[:, i] -=  main_diagonal[:, i] * x[:, i + 1])
+    x = UpdateEq(x, i,
+                 (Coefficient(x, i) -
+                  Coefficient(main_diagonal, i) * Coefficient(x, i + one)));
+    return std::vector<XlaOp>{x, main_diagonal};
   };
 
   TF_ASSIGN_OR_RETURN(
       auto values_after_bwd_reduction,
-      ForEachIndex(num_eqs - 1, S32, bwd_reduction_fn,
-                   {x_coeffs, rhs_after_elimination, upper_diagonal_coeffs,
-                    main_diag_after_elimination},
+      ForEachIndex(num_eqs - 1, S32, bwd_reduction_fn, {x, main_diagonal},
                    "backward_reduction", builder));
-  x_coeffs = values_after_bwd_reduction[0];
-
-  return x_coeffs;
+  return values_after_bwd_reduction[0];
 }
 
-// Applies Thomas algorithm to solve a linear system where the linear operand
-// is a tri-diagonal matrix.
+}  // namespace
+
+StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
+                                  XlaOp main_diagonal, XlaOp upper_diagonal,
+                                  XlaOp rhs) {
+  switch (algo) {
+    case kThomas:
+      return TridiagonalSolverImpl<kThomas>(lower_diagonal, main_diagonal,
+                                            upper_diagonal, rhs);
+    default:
+      return Unimplemented(
+          "Only algorithm kThomas (%d) is implemented, got: %d",
+          static_cast<int>(kThomas), algo);
+  }
+}
+
+// Solves a linear system where the linear operand is a tri-diagonal matrix.
 // It is expected that the tree diagonals are stacked into a tensors of shape
 // [..., 3, num_equations] where num_equations is the number of spatial
 // dimensions considered in the system.
@@ -286,7 +249,8 @@ StatusOr<XlaOp> ThomasSolver(XlaOp lower_diagonal, XlaOp main_diagonal,
 // The right-hand-side d is expected to have dimension
 // [..., num_rhs, num_equations].
 // The solution will have size [..., num_rhs, num_equations].
-StatusOr<XlaOp> ThomasSolver(XlaOp diagonals, XlaOp rhs) {
+StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
+                                  XlaOp rhs) {
   XlaBuilder* builder = diagonals.builder();
   TF_ASSIGN_OR_RETURN(Shape diagonals_shape, builder->GetShape(diagonals));
   const int64 rank = diagonals_shape.rank();
@@ -309,9 +273,18 @@ StatusOr<XlaOp> ThomasSolver(XlaOp diagonals, XlaOp rhs) {
   // Swap the last two dimensions.
   rhs = Transpose(rhs, transpose_order);
 
-  TF_ASSIGN_OR_RETURN(XlaOp x, ThomasSolver(lower_diagonal, main_diagonal,
-                                            upper_diagonal, rhs));
-  return Transpose(x, transpose_order);
+  switch (algo) {
+    case kThomas: {
+      TF_ASSIGN_OR_RETURN(
+          XlaOp x, TridiagonalSolverImpl<kThomas>(lower_diagonal, main_diagonal,
+                                                  upper_diagonal, rhs));
+      return Transpose(x, transpose_order);
+    }
+    default:
+      return Unimplemented(
+          "Only algorithm kThomas (%d) is implemented, got: %d",
+          static_cast<int>(kThomas), algo);
+  }
 }
 
 }  // namespace tridiagonal

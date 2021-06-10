@@ -1,7 +1,9 @@
 # Explicitly add kernel sources specific to the Xtensa optimized
 # implementations.
 MICROLITE_CC_KERNEL_SRCS += \
-  tensorflow/lite/micro/kernels/xtensa/softmax_int8_int16.cc
+  tensorflow/lite/micro/kernels/xtensa/softmax_int8_int16.cc \
+  tensorflow/lite/micro/kernels/xtensa/conv_hifi.cc \
+  tensorflow/lite/micro/kernels/xtensa/conv_hifimini.cc
 
 ifeq ($(TARGET_ARCH), $(findstring $(TARGET_ARCH), "hifi5"))
 

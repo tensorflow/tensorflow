@@ -819,6 +819,18 @@ func @HardSwishPatternThree(%arg0: tensor<1x128x128x3xf32>) -> tensor<1x128x128x
   // CHECK: %0 = "tfl.hard_swish"(%arg0) : (tensor<1x128x128x3xf32>) -> tensor<1x128x128x3xf32>
 }
 
+// CHECK-LABEL: @HardSwishPatternFour
+func @HardSwishPatternFour(%arg0: tensor<?x1x1x1024xf32>) -> tensor<?x1x1x1024xf32> {
+  %three = constant dense<3.000000e+00> : tensor<f32>
+  %six = constant dense<0.1666666666666> : tensor<f32>
+  %0 = "tfl.add"(%arg0, %three) {fused_activation_function = "NONE"} : (tensor<?x1x1x1024xf32>, tensor<f32>) -> tensor<?x1x1x1024xf32>
+  %1 = "tfl.relu6"(%0) : (tensor<?x1x1x1024xf32>) -> tensor<?x1x1x1024xf32>
+  %2 = "tfl.mul"(%1, %six) {fused_activation_function = "NONE"} : (tensor<?x1x1x1024xf32>, tensor<f32>) -> tensor<?x1x1x1024xf32>
+  %3 = tfl.mul %2, %arg0 {fused_activation_function = "NONE"} : tensor<?x1x1x1024xf32>
+  return %3 : tensor<?x1x1x1024xf32>
+  // CHECK: %0 = "tfl.hard_swish"(%arg0) : (tensor<?x1x1x1024xf32>) -> tensor<?x1x1x1024xf32>
+}
+
 // CHECK-LABEL: @HardSwishPatternFail
 func @HardSwishPatternFail(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   %three = constant dense<4.> : tensor<f32>
@@ -1534,6 +1546,18 @@ func @FoldReduceProdKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x1xf32> {
 // CHECK-LABEL: FoldReduceProdKeepDim
 // CHECK: %[[RESULT:.*]] = "tfl.reduce_prod"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<2xi32>) -> tensor<1x1xf32>
 // CHECK: return %[[RESULT]] : tensor<1x1xf32>
+}
+
+func @FoldMeanKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x128xf32> {
+  %cst = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[1, 128]> : tensor<2xi32>
+  %0 = "tfl.mean"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<128xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<128xf32>, tensor<2xi32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+// CHECK-LABEL: FoldMeanKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.mean"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+// CHECK: return %[[RESULT]] : tensor<1x128xf32>
 }
 
 func @SoftMaxWithNormalization(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {

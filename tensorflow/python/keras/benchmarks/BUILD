@@ -157,6 +157,7 @@ py_test(
     name = "metrics_memory_benchmark_test",
     srcs = ["metrics_memory_benchmark_test.py"],
     python_version = "PY3",
+    tags = COMMON_TAGS,
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",

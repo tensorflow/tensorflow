@@ -435,11 +435,12 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
   const int64 batch_size =
       activations->shape().dimensions(activations_batch_dim);
 
-  CHECK_LE(std::abs(halo_size - low_padding), spatial_split_size);
   VLOG(1) << "In HaloDuplicateWithSlice with activations "
           << activations->ToString() << " batch_size " << batch_size
           << " spatial_split_size " << spatial_split_size << " low_padding "
           << low_padding << " halo size " << halo_size;
+
+  CHECK_LE(std::abs(halo_size - low_padding), spatial_split_size);
 
   HloInstruction* first_slice = nullptr;
 
@@ -1467,12 +1468,10 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     if (consumer->opcode() == HloOpcode::kSelectAndScatter) {
       const int64 new_space_dim = DimLookUp(permute_dims, old_space_dim);
       // Make sure that the stride lines up.
-      if (window.dimensions(old_space_dim).size() != 1) {
-        if (new_operand->shape().dimensions(new_space_dim) %
-                window.dimensions(old_space_dim).stride() !=
-            0) {
-          return false;
-        }
+      if (new_operand->shape().dimensions(new_space_dim) %
+              window.dimensions(old_space_dim).stride() !=
+          0) {
+        return false;
       }
 
       // Only support floating point datatypes.
@@ -2264,13 +2263,18 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
 
   VLOG(1) << "spatial size " << c.spatial_size << " halo size " << c.halo_size
           << " spatial_split_size " << spatial_split_size;
+
   // Keep increasing the split size so that overall size isn't smaller than the
   // original spatial dimension. Unlike for the first space-to-batch'ed
   // convolution, while propagating, we can use the last halo_size as available
   // spatial size.
-  while (spatial_split_size * num_splits + c.halo_size - c.spatial_size < 0) {
+  // If the spatial size is less than the halo size required, we need to
+  // increase the spatial size.
+  while (spatial_split_size * num_splits + c.halo_size - c.spatial_size < 0 ||
+         spatial_split_size < c.halo_size) {
     spatial_split_size += c.stride;
   }
+
   VLOG(1) << "Modified spatial_split_size " << spatial_split_size;
   const int64 new_space_size =
       activations_new->shape().dimensions(c.spatial_dimension_to_split);
@@ -2314,7 +2318,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   }
 
   // For space-to-batch supported base-dilated convolutions, the low padding is
-  // is passed on to the new convolutions. Halo does not have to account for it.
+  // passed on to the new convolutions. Halo does not have to account for it.
   TF_ASSIGN_OR_RETURN(activations_new,
                       HaloDuplicateWithSlice(
                           activations_new, c.spatial_dimension_to_split,
@@ -3073,7 +3077,7 @@ ConvolutionVisitor::ConvDetails ConvolutionVisitor::GetConvolutionDetails(
       inherent_high_padding;
 
   const int64 halo_size =
-      std::max(kernel_spatial_dim_size - stride - (base_dilation_factor - 1),
+      std::max(kernel_spatial_dim_size - 1 - (base_dilation_factor - 1),
                static_cast<int64>(0));
   const int64 high_padding_for_conv = base_dilation_factor == 1 ? 0
                                       : inherent_low_padding == 0

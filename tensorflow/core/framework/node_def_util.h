@@ -57,6 +57,10 @@ extern const char* const kColocationAttrName;
 // String prefix applied to the operation name for colocation constraints.
 extern const char* const kColocationGroupPrefix;
 
+// Constants for host CPU staging op for TPUExecute.
+extern const char* const kTpuExecuteStagingOp;
+extern const char* const kTpuExecuteStagingNodeName;
+
 // Produce a human-readable version of a Node or NodeDef that is more concise
 // than a text-format proto.
 //

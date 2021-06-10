@@ -231,6 +231,7 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
         break;
     }
     arg.is_same_data_across_replicas = proto_arg.is_same_data_across_replicas();
+    arg.requires_broadcast = proto_arg.requires_xla_broadcast();
     if (arg.kind == XlaCompiler::Argument::kInvalid) {
       return errors::InvalidArgument("Invalid argument kind");
     }

@@ -780,9 +780,9 @@ func @NoFoldFullyConnectedNonFloat() -> tensor<1024xf32> {
   %0 = "tfl.fully_connected" (%cst_input, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<512xf32>, tensor<1024x512xi8>, tensor<1024xf32>) -> tensor<1024xf32>
 
   return %0 : tensor<1024xf32>
-  // CHECK: %[[CST:.*]] = constant dense<1.000000e+00> : tensor<512xf32>
-  // CHECK: %[[CST_0:.*]] = constant dense<2> : tensor<1024x512xi8>
-  // CHECK: %[[CST_1:.*]] = constant dense<4.000000e+00> : tensor<1024xf32>
+  // CHECK-DAG: %[[CST:.*]] = constant dense<1.000000e+00> : tensor<512xf32>
+  // CHECK-DAG: %[[CST_0:.*]] = constant dense<2> : tensor<1024x512xi8>
+  // CHECK-DAG: %[[CST_1:.*]] = constant dense<4.000000e+00> : tensor<1024xf32>
   // CHECK: %[[VAL:.*]] = "tfl.fully_connected"(%[[CST]], %[[CST_0]], %[[CST_1]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<512xf32>, tensor<1024x512xi8>, tensor<1024xf32>) -> tensor<1024xf32>
   // CHECK: return %[[VAL]] : tensor<1024xf32>
 }
@@ -796,9 +796,9 @@ func @NoFoldFullyConnectedHighRank() -> tensor<2x1024xf32> {
   %0 = "tfl.fully_connected" (%cst_input, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
 
   return %0 : tensor<2x1024xf32>
-  // CHECK: %[[CST:.*]] = constant dense<1.000000e+00> : tensor<2x512xf32>
-  // CHECK: %[[CST_0:.*]] = constant dense<2.000000e+00> : tensor<1024x512xf32>
-  // CHECK: %[[CST_1:.*]] = constant dense<4.000000e+00> : tensor<1024xf32>
+  // CHECK-DAG: %[[CST:.*]] = constant dense<1.000000e+00> : tensor<2x512xf32>
+  // CHECK-DAG: %[[CST_0:.*]] = constant dense<2.000000e+00> : tensor<1024x512xf32>
+  // CHECK-DAG: %[[CST_1:.*]] = constant dense<4.000000e+00> : tensor<1024xf32>
   // CHECK: %[[VAL:.*]] = "tfl.fully_connected"(%[[CST]], %[[CST_0]], %[[CST_1]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
   // CHECK: return %[[VAL]] : tensor<2x1024xf32>
 }

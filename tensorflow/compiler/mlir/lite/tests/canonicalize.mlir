@@ -58,8 +58,8 @@ func @reshape_keepAdjacentWithMultipleUse(tensor<4x4x4xf32>) -> (tensor<16x4xf32
   return %0, %1 : tensor<16x4xf32>, tensor<64xf32>
 
 // CHECK-LABEL: func @reshape_keepAdjacentWithMultipleUse
-// CHECK:  %[[CST:.*]]  = constant dense<[16, 4]> : tensor<2xi32>
-// CHECK:  %[[CST_0:.*]]  = constant dense<64> : tensor<1xi32>
+// CHECK-DAG:  %[[CST:.*]]  = constant dense<[16, 4]> : tensor<2xi32>
+// CHECK-DAG:  %[[CST_0:.*]]  = constant dense<64> : tensor<1xi32>
 // CHECK:  %[[RESHAPE_1:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
 // CHECK:  %[[RESHAPE_2:.*]] = "tfl.reshape"(%arg0, %[[CST_0]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
 // CHECK:  return  %[[RESHAPE_1]],  %[[RESHAPE_2]]

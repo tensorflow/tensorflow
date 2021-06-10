@@ -37,7 +37,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
-# pywrap_tensorflow must be imported first to avoid profobuf issues.
+# pywrap_tensorflow must be imported first to avoid protobuf issues.
 # (b/143110113)
 # pylint: disable=invalid-import-order,g-bad-import-order,unused-import
 from tensorflow.python import pywrap_tensorflow
@@ -1542,7 +1542,7 @@ def convert_to_tensor(value,
   # https://docs.python.org/3.8/reference/datamodel.html#special-lookup
   overload = getattr(type(value), "__tf_tensor__", None)
   if overload is not None:
-    return overload(value, dtype, name)
+    return overload(value, dtype, name)  #  pylint: disable=not-callable
 
   for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to

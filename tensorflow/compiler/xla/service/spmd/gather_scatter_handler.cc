@@ -521,6 +521,9 @@ StatusOr<HloInstruction*> PartitionGather(const HloGatherInstruction* gather,
 }  // namespace
 
 Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   auto scatter = Cast<HloScatterInstruction>(hlo);
   auto dnums = scatter->scatter_dimension_numbers();
   auto operand = GetPartitionedHlo(scatter->operand(0));
@@ -685,6 +688,9 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   auto gather = Cast<HloGatherInstruction>(hlo);
   const auto& dnums = gather->gather_dimension_numbers();
   auto operand = GetPartitionedHlo(gather->operand(0));

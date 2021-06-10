@@ -75,7 +75,14 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(execution_inputs.status());
 
   VLOG(2) << "Executing computation: " << name();
+  StatusOr<absl::optional<xla::DeviceAssignment>> device_assignment =
+      ResolveDeviceAssignment(ctx, result->collective_reduce_info);
+  TF_RETURN_IF_ERROR(device_assignment.status());
+
   xla::ExecutableRunOptions run_options;
+  if (*device_assignment) {
+    run_options.set_device_assignment(&**device_assignment);
+  }
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());

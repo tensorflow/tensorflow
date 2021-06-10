@@ -951,8 +951,8 @@ absl::Status Decode(const data::CLNode* fb_node, CLNode* node) {
 }
 
 flatbuffers::Offset<data::InferenceContext> Encode(
-    const InferenceContext& inference,
-    flatbuffers::FlatBufferBuilder* builder) {
+    const InferenceContext& inference, const std::vector<int64_t>& in_refs,
+    std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder) {
   std::vector<int32_t> in_ids(inference.input_ids_.size());
   for (int i = 0; i < in_ids.size(); ++i) {
     in_ids[i] = inference.input_ids_[i];
@@ -964,8 +964,8 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   auto in_ids_fb = builder->CreateVector(in_ids);
   auto out_ids_fb = builder->CreateVector(out_ids);
 
-  auto in_refs_fb = builder->CreateVector(inference.in_refs_);
-  auto out_refs_fb = builder->CreateVector(inference.out_refs_);
+  auto in_refs_fb = builder->CreateVector(in_refs);
+  auto out_refs_fb = builder->CreateVector(out_refs);
 
   std::vector<flatbuffers::Offset<data::CLNode>> nodes_fb;
   for (int i = 0; i < inference.nodes_.size(); ++i) {
@@ -1057,12 +1057,25 @@ absl::Status Decode(const data::InferenceContext* fb_inference,
     inference->variable_ids_and_refs_[variable_id->first()] =
         variable_id->second();
   }
+  return absl::OkStatus();
+}
 
+absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
+                          std::vector<int64_t>* in_refs,
+                          std::vector<int64_t>* out_refs) {
+  flatbuffers::Verifier verifier(serialized_model.data(),
+                                 serialized_model.size());
+  if (!data::VerifyInferenceContextBuffer(verifier)) {
+    return absl::DataLossError("Deserialization failed.");
+  }
+  auto fb_inference = data::GetInferenceContext(serialized_model.data());
+  in_refs->clear();
+  out_refs->clear();
   for (auto in_fb : *fb_inference->input_refs()) {
-    inference->in_refs_.push_back(in_fb);
+    in_refs->push_back(in_fb);
   }
   for (auto out_fb : *fb_inference->output_refs()) {
-    inference->out_refs_.push_back(out_fb);
+    out_refs->push_back(out_fb);
   }
   return absl::OkStatus();
 }

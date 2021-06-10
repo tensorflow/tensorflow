@@ -378,9 +378,10 @@ class TFETensorTest(test_util.TensorFlowTestCase):
           constant_op.constant(t.min, dtype=t).numpy(), t.min)
 
   def test_numpyIsView(self):
-    t = constant_op.constant([0.0])
-    t._numpy()[0] = 42.0
-    self.assertAllClose(t, constant_op.constant([42.0]))
+    with ops.device("CPU"):
+      t = constant_op.constant([0.0])
+      t._numpy()[0] = 42.0
+      self.assertAllClose(t, constant_op.constant([42.0]))
 
   def test_numpyFailsForResource(self):
     v = variables.Variable(42)
@@ -488,9 +489,9 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(constant_op.constant(u"asdf").numpy(), b"asdf")
 
   def testFloatTensor(self):
-    self.assertEqual(dtypes.float64, _create_tensor(np.float64()).dtype)
-    self.assertEqual(dtypes.float32, _create_tensor(np.float32()).dtype)
-    self.assertEqual(dtypes.float16, _create_tensor(np.float16()).dtype)
+    self.assertEqual(dtypes.float64, _create_tensor(np.float64()).dtype)  # pylint: disable=no-value-for-parameter
+    self.assertEqual(dtypes.float32, _create_tensor(np.float32()).dtype)  # pylint: disable=no-value-for-parameter
+    self.assertEqual(dtypes.float16, _create_tensor(np.float16()).dtype)  # pylint: disable=no-value-for-parameter
     self.assertEqual(dtypes.float32, _create_tensor(0.0).dtype)
 
   def testSliceDimOutOfRange(self):

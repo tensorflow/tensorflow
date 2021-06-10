@@ -26,6 +26,7 @@ package_group(
         "//platforms/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
+        "//third_party/py/mlir/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
@@ -527,16 +528,13 @@ cc_library(
 cc_library(
     name = "lhlo",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc",
         "lib/Dialect/mhlo/IR/lhlo_ops.cc",
         "lib/Dialect/mhlo/IR/lhlo_ops_structs.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
+        "include/mlir-hlo/utils/lhlo_utils.h",
     ],
     includes = ["include"],
     deps = [
@@ -581,6 +579,7 @@ cc_library(
         ":hlo_ops_base_structs",
         ":hlo_ops_common",
         ":infer_fusibility_op_interface",
+        ":lhlo",
         ":lhlo_gpu_ops_enums",
         ":lhlo_gpu_ops_inc_gen",
         ":lhlo_gpu_ops_structs",
@@ -768,8 +767,8 @@ cc_library(
 )
 
 cc_library(
-    name = "move_up_dynamic_broadcasts_for_fusion",
-    srcs = ["lib/Dialect/mhlo/transforms/move_up_dynamic_broadcasts_for_fusion.cc"],
+    name = "broadcast_propagation",
+    srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
@@ -799,6 +798,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -866,6 +866,7 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_hlo_to_lhlo_op",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
@@ -1091,6 +1092,24 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_tensor_load_op",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_tensor_load_op.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":lhlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "chlo_legalize_to_hlo",
     srcs = ["lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
@@ -1180,10 +1199,12 @@ cc_library(
     deps = [
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
+        ":broadcast_propagation",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
         ":legalize_gather_to_torch_index_select",
+        ":legalize_tensor_load_op",
         ":legalize_to_linalg",
         ":legalize_to_standard",
         ":legalize_trigonometric_to_approximation",
@@ -1195,7 +1216,6 @@ cc_library(
         ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
-        ":move_up_dynamic_broadcasts_for_fusion",
         ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",
@@ -1220,5 +1240,45 @@ cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+# Python library.
+
+td_library(
+    name = "MhloOpsPyTdFiles",
+    srcs = [
+        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+    ],
+    includes = ["include"],
+    deps = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "MhloOpsPyGen",
+    tbl_outs = [
+        (
+            [
+                "-gen-python-op-bindings",
+                "-bind-dialect=mhlo",
+            ],
+            "python/_mhlo_ops_gen.py",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "python/MhloOps.td",
+    deps = [
+        ":MhloOpsPyTdFiles",
+    ],
+)
+
+filegroup(
+    name = "MhloOpsPyFiles",
+    srcs = [
+        "python/mhlo.py",
+        ":MhloOpsPyGen",
     ],
 )

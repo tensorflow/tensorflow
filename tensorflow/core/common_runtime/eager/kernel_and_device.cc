@@ -118,7 +118,7 @@ Status KernelAndDeviceOp::Init(const bool log_device_placement,
   for (size_t i = 0; i < input_alloc_attrs_.size(); ++i) {
     bool host = kernel_->input_memory_types()[i] == tensorflow::HOST_MEMORY;
     input_alloc_attrs_[i].set_on_host(host);
-    if (host) {
+    if (host && input_devices_[i]->device_type() != DEVICE_CPU) {
       input_devices_[i] = host_cpu_device_;
     }
   }

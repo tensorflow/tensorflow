@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -2057,6 +2058,52 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     operand_shape_values.push_back(*operand_shape);
   }
   return ShapeUtil::MakeTupleShape(operand_shape_values);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferAllReduceScatterShape(
+    absl::Span<const Shape* const> operand_shapes, int64 scatter_dimension,
+    int64 shard_count) {
+  TF_RET_CHECK(scatter_dimension >= 0);
+  TF_RET_CHECK(shard_count > 0);
+
+  std::vector<Shape> output_shapes;
+  output_shapes.reserve(operand_shapes.size());
+  for (const Shape* operand_shape : operand_shapes) {
+    TF_RET_CHECK(scatter_dimension < operand_shape->rank());
+    TF_RETURN_IF_ERROR(
+        ExpectArray(*operand_shape, "operand of all-reduce-scatter"));
+
+    int64 scatter_dim_input_size = operand_shape->dimensions(scatter_dimension);
+    if (scatter_dim_input_size % shard_count != 0) {
+      return InvalidArgument(
+          "AllReduceScatter operand scatter dimension size %d must be "
+          "dividable by shard_count "
+          "%d.",
+          scatter_dim_input_size, shard_count);
+    }
+
+    Shape output_shape = *operand_shape;
+    output_shape.set_dimensions(scatter_dimension,
+                                scatter_dim_input_size / shard_count);
+    output_shapes.push_back(output_shape);
+  }
+
+  if (output_shapes.size() == 1) {
+    return output_shapes[0];
+  }
+  return ShapeUtil::MakeTupleShape(output_shapes);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferAllReduceStartShape(
+    absl::Span<const Shape* const> operand_shapes) {
+  TF_ASSIGN_OR_RETURN(Shape shape, InferAllReduceShape(operand_shapes));
+
+  return ShapeUtil::MakeTupleShape({shape, shape});
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferAllReduceDoneShape(
+    const Shape& operand_shape) {
+  return ShapeUtil::GetTupleElementShape(operand_shape, 0);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllToAllShape(

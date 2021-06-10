@@ -545,9 +545,14 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         RemoveFreeChunkIterFromBin(&b->free_chunks, citer);
 
         // If we can break the size of the chunk into two reasonably large
-        // pieces, do so.  In any case don't waste more than
-        // kMaxInternalFragmentation bytes on padding this alloc.
-        const int64 kMaxInternalFragmentation = 128 << 20;  // 128mb
+        // pieces, do so.  In any case don't waste more than a threshold of
+        // kMaxInternalFragmentation bytes on padding this alloc. If this
+        // threshold is not set by the user, then use 128MB as the default
+        // threshold.
+        const int64 kMaxInternalFragmentation =
+            (internal_fragmentation_fraction_ > 0.0)
+                ? internal_fragmentation_fraction_ * memory_limit_
+                : 128 << 20;
         if (chunk->size >= rounded_bytes * 2 ||
             static_cast<int64>(chunk->size) - rounded_bytes >=
                 kMaxInternalFragmentation) {

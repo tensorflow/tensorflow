@@ -758,8 +758,7 @@ PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x) {
   const uint16 exp = static_cast<uint16>(15);
   const uint16 val = (exp << 10) | man;
 
-  Eigen::half result;
-  result.x = val;
+  Eigen::half result = Eigen::numext::bit_cast<Eigen::half>(val);
   return result - Eigen::half(1.0);
 }
 

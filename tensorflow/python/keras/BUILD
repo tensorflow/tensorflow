@@ -32,9 +32,7 @@ py_library(
     deps = [
         ":backend",
         ":engine",
-        # TODO(scottzhu): Stop exporting the test_utils after removing all
-        # callers that using it.
-        ":testing_utils",
+        ":testing_utils",  # TODO(scottzhu): Stop exporting the test_utils after removing all the callers.
         "//tensorflow/python:training",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
@@ -86,7 +84,6 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
@@ -102,6 +99,7 @@ py_library(
         "//tensorflow/python/keras/utils:object_identity",
         "//tensorflow/python/keras/utils:tf_contextlib",
         "//tensorflow/python/keras/utils:tf_inspect",
+        "//tensorflow/python/summary",
     ],
 )
 

@@ -105,7 +105,7 @@ def load_data(path='imdb.npz',
       origin=origin_folder + 'imdb.npz',
       file_hash=
       '69664113be75683a8fe16e3ed0ab59fda8886cb3cd7ada244f7d9544e4676b9f')
-  with np.load(path, allow_pickle=True) as f:
+  with np.load(path, allow_pickle=True) as f:  # pylint: disable=unexpected-keyword-arg
     x_train, labels_train = f['x_train'], f['y_train']
     x_test, labels_test = f['x_test'], f['y_test']
 
@@ -152,10 +152,8 @@ def load_data(path='imdb.npz',
     xs = [[w for w in x if skip_top <= w < num_words] for x in xs]
 
   idx = len(x_train)
-  x_train = np.array(xs[:idx], dtype='object')
-  y_train = np.array(labels[:idx], dtype='object')
-  x_test = np.array(xs[idx:], dtype='object')
-  y_test = np.array(labels[idx:], dtype='object')
+  x_train, y_train = np.array(xs[:idx]), np.array(labels[:idx])
+  x_test, y_test = np.array(xs[idx:]), np.array(labels[idx:])
 
   return (x_train, y_train), (x_test, y_test)
 

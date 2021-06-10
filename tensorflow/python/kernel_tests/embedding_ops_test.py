@@ -718,10 +718,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
 
         self.assertEqual(embedding_sum.get_shape().as_list(),
                          expected_lookup_result_shape)
-        if dtype in (dtypes.float16, dtypes.bfloat16):
-          self.assertEqual(embedding_sum.dtype, dtypes.float32)
-        else:
-          self.assertEqual(embedding_sum.dtype, dtype)
+        self.assertEqual(embedding_sum.dtype, dtype)
 
         tf_embedding_sum = embedding_sum.eval(feed_dict=feed_dict)
 

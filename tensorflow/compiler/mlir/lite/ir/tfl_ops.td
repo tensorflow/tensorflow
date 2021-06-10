@@ -1487,8 +1487,7 @@ def TFL_DivOp : TFL_Op<"div", [
 def TFL_EluOp: TFL_Op<"elu", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType,
-    NoQuantizableResult]> {
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Exponential Linear Unit operator";
   let description = [{
     Computes the exponential linear
@@ -1496,9 +1495,9 @@ def TFL_EluOp: TFL_Op<"elu", [
     element-wise.
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, I8]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, I8]>:$y);
 
   let hasOptions = 0;
 }
@@ -4733,6 +4732,23 @@ the dimension is padded with zeros.
   let results = (outs
     TFL_Complex64Tensor:$output
   );
+}
+
+def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
+  let summary = "Returns a handle to a variable resource from its name.";
+
+  let description = [{
+    Returns a handle for a variable resource from its name.
+    container: the container this variable is placed in.
+    shared_name: the name by which this variable is referred to.
+  }];
+
+  let arguments = (ins
+    DefaultValuedAttr<StrAttr, "">:$container,
+    DefaultValuedAttr<StrAttr, "">:$shared_name
+  );
+
+  let results = (outs TFL_ResourceTensor:$resource_handle);
 }
 
 def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {

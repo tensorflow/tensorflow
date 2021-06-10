@@ -15,6 +15,8 @@
 """Keras string lookup preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
@@ -59,8 +61,8 @@ class StringLookup(index_lookup.IndexLookup):
       includes the OOV and mask tokens. Default to None.
     num_oov_indices: The number of out-of-vocabulary tokens to use. If this
       value is more than 1, OOV inputs are hashed to determine their OOV value.
-      If this value is 0, OOV inputs will map to -1 when `output_mode` is
-      `"int"` and are dropped otherwise. Defaults to 1.
+      If this value is 0, OOV inputs will cause an error when calling the layer.
+      Defaults to 1.
     mask_token: A token that represents masked inputs. When `output_mode` is
       `"int"`, the token is included in vocabulary and mapped to index 0. In
       other output modes, the token will not appear in the vocabulary and
@@ -298,10 +300,6 @@ class StringLookup(index_lookup.IndexLookup):
     base_config = super(StringLookup, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  def get_vocabulary(self):
-    vocab = super(StringLookup, self).get_vocabulary()
-    return [compat.as_text(x, self.encoding) for x in vocab]
-
   def set_vocabulary(self, vocabulary, idf_weights=None):
     if isinstance(vocabulary, str):
       if self.output_mode == index_lookup.TF_IDF:
@@ -315,3 +313,8 @@ class StringLookup(index_lookup.IndexLookup):
       vocabulary = table_utils.get_vocabulary_from_file(vocabulary,
                                                         self.encoding)
     super().set_vocabulary(vocabulary, idf_weights=idf_weights)
+
+  # Overriden methods from IndexLookup.
+  def _tensor_vocab_to_numpy(self, vocabulary):
+    vocabulary = vocabulary.numpy()
+    return np.array([compat.as_text(x, self.encoding) for x in vocabulary])
