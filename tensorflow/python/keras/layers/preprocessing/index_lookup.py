@@ -373,7 +373,15 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("IndexLookup does not support streaming adapts.")
     super(IndexLookup, self).adapt(data, reset_state)
 
-  def get_vocabulary(self):
+  def get_vocabulary(self, include_special_tokens=True):
+    """Returns the current vocabulary of the layer.
+
+    Args:
+      include_special_tokens: If True, the returned vocabulary will include mask
+        and OOV tokens, and a term's index in the vocabulary will equal the
+        term's index when calling the layer. If False, the returned vocabulary
+        will not include any mask or OOV tokens.
+    """
     if self.vocabulary_size() is None:
       return []
 
@@ -387,6 +395,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     vocab = [lookup[x] for x in range(self.vocabulary_size())]
     if self.mask_token is not None and self.output_mode == INT:
       vocab[0] = self.mask_token
+    if not include_special_tokens:
+      vocab = vocab[self._token_start_index():]
     return vocab
 
   def vocabulary_size(self):
