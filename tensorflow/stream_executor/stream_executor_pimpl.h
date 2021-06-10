@@ -386,7 +386,20 @@ class StreamExecutor {
       const dnn::BatchDescriptor &output_descriptor,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>
-          *out_exec_plans);
+          *out_exec_plans) {
+    dnn::DnnSupport *dnn_support = AsDnn();
+    if (dnn_support) {
+#if GOOGLE_CUDA
+      gpu::CudnnSupport *cudnn_dnn =
+          dynamic_cast<gpu::CudnnSupport *>(dnn_support);
+      return cudnn_dnn->GetFusedConvolveExecutionPlans(
+          kind, element_type, conv_input_scale, side_input_scale, stream,
+          input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
+          convolution_descriptor, out_exec_plans);
+#endif // GOOGLE_CUDA
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
   // Returns the list of supported algorithms for the forward convolution
   // operation.
