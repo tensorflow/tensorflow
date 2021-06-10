@@ -292,6 +292,18 @@ def linear(x):
 
 @keras_export('keras.activations.serialize')
 def serialize(activation):
+    """ Returns the string with name of activation function
+  Args:
+      identifier: Function or string
+  Returns:
+      Function corresponding to the input string or input function.
+  Raises:
+      ValueError: The input function is not a valid.
+      
+  Example:
+      >>> tf.keras.activations.serialize(tf.keras.activations.sigmoid)
+      'sigmoid'
+    """
   if (hasattr(activation, '__name__') and
       activation.__name__ in _TF_ACTIVATIONS_V2):
     return _TF_ACTIVATIONS_V2[activation.__name__]
@@ -300,6 +312,21 @@ def serialize(activation):
 
 @keras_export('keras.activations.deserialize')
 def deserialize(name, custom_objects=None):
+    """ Returns activation function by name
+    Args:
+        name : name of activation function as a string
+
+    Returns:
+        Corresponding activation function.
+
+    Raises:
+        ValueError: `Unknown activation function` when no function with give name found 
+
+    Example:
+        >>>tf.keras.activations.deserialize('relu')
+        <function tensorflow.python.keras.activations.relu(x, alpha=0.0, max_value=None, threshold=0)>
+
+    """
   return deserialize_keras_object(
       name,
       module_objects=globals(),
@@ -309,6 +336,21 @@ def deserialize(name, custom_objects=None):
 
 @keras_export('keras.activations.get')
 def get(identifier):
+    """Provides requested activation function
+    Args: 
+        identifier: Name of function required 
+
+    Returns:
+        Corresponding activation function.
+    
+    Example:
+    >>>tf.keras.activations.get('softmax')
+    <function tensorflow.python.keras.activations.softmax(x, axis=-1)>
+    
+    Raises:
+    ValueError: `Unknown activation function` when no function with give name found
+
+"""
   if identifier is None:
     return linear
   if isinstance(identifier, six.string_types):
