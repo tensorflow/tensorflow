@@ -226,7 +226,7 @@ def softplus(x, alpha):
 
   Args:
       x: Input tensor.
-      alpha: A scalar
+      alpha: A scalar is supposed to greater than 0.0 
 
   Returns:
       The softclip activation: `np.dot((1/alpha), np.log((1+np.exp(alpha*x))/(1+np.exp(alpha*(x-1)))))`.
