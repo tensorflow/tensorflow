@@ -162,12 +162,6 @@ def model_to_dot(model,
     dot.set('concentrate', True)
     dot.set('dpi', dpi)
     dot.set_node_defaults(shape='record')
-
-  if layer_range is None:
-    layer_range = [
-      model.get_layer(index=0).name,
-      model.get_layer(index=len(model.layers)-1).name
-    ]
   
   if layer_range is not None:
     if len(layer_range) != 2:
