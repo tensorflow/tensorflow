@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for Keras Vis utils."""
 
+from absl.testing import parameterized
+
 from tensorflow.python import keras
 from tensorflow.python.keras.applications import efficientnet
 from tensorflow.python.keras.utils import vis_utils
@@ -22,7 +24,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class ModelToDotFormatTest(test.TestCase):
+class ModelToDotFormatTest(test.TestCase, parameterized.TestCase):
 
   def test_plot_model_cnn(self):
     model = keras.Sequential()
@@ -104,11 +106,15 @@ class ModelToDotFormatTest(test.TestCase):
     except ImportError:
       pass
 
-  def test_dot_layer_range(self):
+  @parameterized.named_parameters(
+    (['block1a_project_conv', 'block1a_activation']),
+    (['block1a_activation', 'block1a_project_conv']),
+    (['block*', 'block2a_se_excite']),
+    (['block*', 'block*']),
+    (['block\da_activation', 'block\da_project_bn'])
+  )
+  def test_dot_layer_range(self, layer_range):
     model = efficientnet.EfficientNetB0()
-
-    # Case 1: when layer names in normal (increasing) order
-    layer_range = ['block1a_project_conv', 'block1a_activation']
     layer_ids_from_model = get_layer_ids_from_model(
       model, layer_range
     )
@@ -123,99 +129,64 @@ class ModelToDotFormatTest(test.TestCase):
     except ImportError:
       pass
 
-    # Case 2: when layer names in abnormal (decreasing) order
-    layer_range = ['block1a_activation', 'block1a_project_conv']
-    layer_ids_from_model = get_layer_ids_from_model(
-      model, layer_range
-    )
-    try:
-      dot = vis_utils.model_to_dot(model, layer_range=layer_range)
-      dot_edges = dot.get_edges()
-      layer_ids_from_dot = get_layer_ids_from_dot(
-        dot_edges
-      )
-      self.assertAllEqual(sorted(layer_ids_from_model),
-        sorted(layer_ids_from_dot))
-    except ImportError:
-      pass
-
-  def test_plot_layer_range(self):
+  @parameterized.named_parameters(
+    (['block1a_project_conv', 'block1a_activation']),
+    (['block1a_activation', 'block1a_project_conv']),
+    (['block*', 'block2a_se_excite']),
+    (['block*', 'block*']),
+    (['block\da_activation', 'block\da_project_bn'])
+  )
+  def test_plot_layer_range(self, layer_range):
     model = efficientnet.EfficientNetB0()
-
-    # Case 1: when layer names in normal (increasing) order
-    layer_range = ['block1a_project_conv', 'block1a_activation']
-    effnet_subplot = 'model_effnet_1.png'
+    effnet_subplot = 'model_effnet.png'
     try:
       vis_utils.plot_model(model,
         to_file=effnet_subplot,
         layer_range=layer_range)
       self.assertTrue(file_io.file_exists_v2(effnet_subplot))
-      file_io.delete_file_v2(effnet_subplot)
     except ImportError:
       pass
-
-    # Case 2: when layer names in abnormal (decreasing) order
-    layer_range = ['block1a_activation', 'block1a_project_conv']
-    effnet_subplot = 'model_effnet_2.png'
-    try:
-      vis_utils.plot_model(model,
-        to_file=effnet_subplot,
-        layer_range=layer_range)
-      self.assertTrue(file_io.file_exists_v2(effnet_subplot))
+    finally:
       file_io.delete_file_v2(effnet_subplot)
-    except ImportError:
-      pass
 
-  def test_layer_range_fails(self):
+  @parameterized.named_parameters(
+    (['block1a_se_squeeze', 'block2a_project_conv']),
+    (['block\da_se_reshape', 'block*'])
+  )
+  def test_layer_range_assertion_fail(self, layer_range):
     model = efficientnet.EfficientNetB0()
-
     try:
-
-      # Case 1: When layer_range don't have complete subgraph.
       with self.assertRaises(AssertionError):
-        vis_utils.model_to_dot(model, layer_range=[
-          'block1a_se_squeeze', 'block2a_project_conv'])
+        vis_utils.model_to_dot(model, layer_range=layer_range)
       with self.assertRaises(AssertionError):
-        vis_utils.plot_model(model, layer_range=[
-          'block1a_se_squeeze', 'block2a_project_conv'])
+        vis_utils.plot_model(model, layer_range=layer_range)
+    except ImportError:
+      pass
 
-      # Case 2: When shape(layer_range) != 2
+  @parameterized.named_parameters(
+    (['input_1']),
+    ([]),
+    (['input_1', 'block1a_activation', 'block1a_project_conv']),
+    ([9, 'block1a_activation']),
+    ([9, 29]),
+    (['block8a_se_reshape', 'block*'])
+  )
+  def test_layer_range_value_fail(self, layer_range):
+    model = efficientnet.EfficientNetB0()
+    try:
       with self.assertRaises(ValueError):
-        vis_utils.model_to_dot(model, layer_range=['input_1'])
+        vis_utils.model_to_dot(model, layer_range=layer_range)
       with self.assertRaises(ValueError):
-        vis_utils.model_to_dot(model, layer_range=[])
-      with self.assertRaises(ValueError):
-        vis_utils.model_to_dot(model, layer_range=[
-          'input_1', 'block1a_activation', 'block1a_project_conv'])
-      with self.assertRaises(ValueError):
-        vis_utils.plot_model(model, layer_range=['input_1'])
-      with self.assertRaises(ValueError):
-        vis_utils.plot_model(model, layer_range=[])
-      with self.assertRaises(ValueError):
-        vis_utils.plot_model(model, layer_range=[
-          'input_1', 'block1a_activation', 'block1a_project_conv'])
-
-      # Case 3: When layer_range elements are mixed type
-      with self.assertRaises(ValueError):
-        vis_utils.model_to_dot(model, layer_range=[9, 'block1a_activation'])
-      with self.assertRaises(ValueError):
-        vis_utils.plot_model(model, layer_range=[9, 'block1a_activation'])
-
-      # Case 4: When one of the range has non-string elements
-      with self.assertRaises(ValueError):
-        vis_utils.model_to_dot(model, layer_range=[9, 29])
-      with self.assertRaises(ValueError):
-        vis_utils.plot_model(model, layer_range=[9, 29])
+        vis_utils.plot_model(model, layer_range=layer_range)
     except ImportError:
       pass
 
 def get_layer_ids_from_model(model, layer_range):
-  if all(isinstance(item, str) for item in layer_range):
-    layer_range = vis_utils.get_layer_index_bound_by_layer_name(model,
-      layer_range)
+  layer_range = vis_utils.get_layer_index_bound_by_layer_name(model,
+    layer_range)
   layer_ids_from_model = []
   for i, layer in enumerate(model.layers):
-    if i >= layer_range[0] and i < layer_range[1]:
+    if i >= layer_range[0] and i <= layer_range[1]:
       layer_ids_from_model.append(str(id(layer)))
   return layer_ids_from_model
 

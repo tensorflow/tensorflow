@@ -18,6 +18,7 @@
 
 import os
 import sys
+import re
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -63,6 +64,11 @@ def add_edge(dot, src, dst):
     dot.add_edge(pydot.Edge(src, dst))
 
 
+def is_regex_match(pat, text):
+  check = re.match(pat, text)
+  return False if check is None else True
+
+
 def get_layer_index_bound_by_layer_name(model, layer_names):
   '''Return specific range of layers to plot, mainly for sub-graph plot models.
   Args:
@@ -72,11 +78,18 @@ def get_layer_index_bound_by_layer_name(model, layer_names):
   Returns:
     retun the index value of layer based on its unique name (layer_names)
   '''
-  index = [] 
+  lower_index = []
+  upper_index = []
   for idx, layer in enumerate(model.layers):
-    if layer.name in layer_names:
-      index.append(idx)
-  return [min(index), max(index)] if len(index) > 1 else index
+    if is_regex_match(layer_names[0], layer.name):
+      lower_index.append(idx)
+    if is_regex_match(layer_names[1], layer.name):
+      upper_index.append(idx)
+  if len(lower_index) == 0 or len(upper_index) == 0:
+    raise ValueError("Passed layer_range does not match to model layers")
+  if min(lower_index) > max(upper_index):
+    return [max(upper_index), min(lower_index)]
+  return [min(lower_index), max(upper_index)]
 
 
 @keras_export('keras.utils.model_to_dot')
@@ -103,11 +116,15 @@ def model_to_dot(model,
     expand_nested: whether to expand nested models into clusters.
     dpi: Dots per inch.
     subgraph: whether to return a `pydot.Cluster` instance.
-    layer_range: range of layer names passed as `list` of `str` of shape (2,)
-        indicating the range of layers for which the `pyDot.Dot` will be
-        generated. By default `None` and considers all layers of model.
-        Note that you must pass range such that the resultant subgraph must
-        be complete.
+    layer_range: input of `list` containing two `str` items, which is the
+        starting layer name and ending layer name (both inclusive) indicating
+        the range of layers for which the `pydot.Dot` will be generated. It
+        also accepts regex patterns instead of exact name. In such case, start
+        predicate will be the first element it matches to `layer_range[0]`
+        and the end predicate will be the last element it matches to
+        `layer_range[1]`. By default `None` which considers all layers of
+        model. Note that you must pass range such that the resultant subgraph
+        must be complete.
 
   Returns:
     A `pydot.Dot` instance representing the Keras model or
@@ -152,20 +169,17 @@ def model_to_dot(model,
       model.get_layer(index=len(model.layers)-1).name
     ]
   
-  # check point for layer range whether its string or integer 
-  # layer range must be same dtype (mixed dtype is not allowed)
-  if len(set([type(x) for x in layer_range])) > 1:
-    raise ValueError("layer_range should not contain mixed data type,",
-                     "got layer_range:", layer_range)
-  elif len(layer_range) != 2:
-    raise ValueError("layer_range must be of shape (2,)")
-  elif not isinstance(layer_range[0], str):
-    raise ValueError("layer_range must only contain str type elements")
-  else:
+  if layer_range is not None:
+    if len(layer_range) != 2:
+      raise ValueError("layer_range must be of shape (2,)")
+    if not isinstance(layer_range[0], str) or\
+      not isinstance(layer_range[1], str):
+      raise ValueError("layer_range should not contain mixed data type,",
+                      "got layer_range:", layer_range)
     layer_range = get_layer_index_bound_by_layer_name(model, layer_range)
     if layer_range[0] < 0 or layer_range[1] > len(model.layers):
       raise ValueError("Both values in layer_range should be in",
-                       "range (%d, %d)"%(0, len(model.layers)))
+                      "range (%d, %d)"%(0, len(model.layers)))
 
   sub_n_first_node = {}
   sub_n_last_node = {}
@@ -184,7 +198,8 @@ def model_to_dot(model,
 
   # Create graph nodes.
   for i, layer in enumerate(layers):
-    if i < layer_range[0] or i >= layer_range[1]:
+    if (layer_range is not None) and\
+      (i < layer_range[0] or i > layer_range[1]):
       continue
 
     layer_id = str(id(layer))
@@ -274,7 +289,8 @@ def model_to_dot(model,
 
   # Connect nodes with edges.
   for i, layer in enumerate(layers):
-    if i <= layer_range[0] or i >= layer_range[1]:
+    if (layer_range is not None) and\
+      (i <= layer_range[0] or i > layer_range[1]):
       continue
     layer_id = str(id(layer))
     for i, node in enumerate(layer._inbound_nodes):
@@ -363,11 +379,15 @@ def plot_model(model,
         'LR' creates a horizontal plot.
     expand_nested: Whether to expand nested models into clusters.
     dpi: Dots per inch.
-    layer_range: range of layer names passed as `list` of `str` of shape (2,)
-        indicating the range of layers for which the plot will be generated.
-        By default `None` and considers all layers of model.
-        Note that you must pass range such that the resultant subgraph must
-        be complete.
+    layer_range: input of `list` containing two `str` items, which is the
+        starting layer name and ending layer name (both inclusive) indicating
+        the range of layers for which the plot will be generated. It also
+        accepts regex patterns instead of exact name. In such case, start
+        predicate will be the first element it matches to `layer_range[0]`
+        and the end predicate will be the last element it matches to
+        `layer_range[1]`. By default `None` which considers all layers of
+        model. Note that you must pass range such that the resultant subgraph
+        must be complete.
 
   Returns:
     A Jupyter notebook Image object if Jupyter is installed.
