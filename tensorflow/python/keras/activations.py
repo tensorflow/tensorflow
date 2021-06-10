@@ -22,6 +22,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
+import numpy as np
 
 # b/123041942
 # In TF 2.x, if the `tf.nn.softmax` is used as an activation function in Keras
@@ -218,6 +219,20 @@ def softplus(x):
   """
   return math_ops.softplus(x)
 
+@keras_export('keras.activations.softclip')
+@dispatch.add_dispatch_support
+def softplus(x, alpha):
+  """Softclip activation function, `softclip(x) = np.dot((1/alpha), np.log((1+np.exp(alpha*x))/(1+np.exp(alpha*(x-1))))) `.
+
+  Args:
+      x: Input tensor.
+      alpha: A scalar
+
+  Returns:
+      The softclip activation: `np.dot((1/alpha), np.log((1+np.exp(alpha*x))/(1+np.exp(alpha*(x-1)))))`.
+  """
+  output = np.dot((1/alpha), np.log((1+np.exp(alpha*x))/(1+np.exp(alpha*(x-1)))))
+  return output
 
 @keras_export('keras.activations.softsign')
 @dispatch.add_dispatch_support
