@@ -312,6 +312,7 @@ tf_py_test(
 tf_py_test(
     name = "io_test",
     srcs = ["io_test.py"],
+    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
