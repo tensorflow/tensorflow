@@ -122,6 +122,7 @@ struct XlaArgument {
   // When true, xla_compiler should input/output alias this arg to prevent
   // unnecessary HBM usage.
   bool requires_broadcast = false;
+  absl::optional<ManagedStackTrace> definition_stack_trace;
 };
 
 // Returns true if any of `args` is an uninitialized resource variable.
