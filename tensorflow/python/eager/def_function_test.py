@@ -240,8 +240,9 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
   
-  def testMethodVariable(self):
-
+  @parameterized.parameters(True,False)
+  def testMethodAllowDynamicVariable(self, allow_dynamic):
+    
     class Foo:
 
       def __init__(self):
@@ -260,14 +261,14 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
             self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
           else:
             self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
+    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = allow_dynamic
     foo = Foo()
     self.assertAllEqual(foo(True), 1.0)
     self.assertEqual(foo.trace_count, 2)
     self.assertAllEqual(foo(True), 1.0)
     self.assertEqual(foo.trace_count, 2)
-    if def_function.PR_49310:
-      self.assertAllEqual(foo(False), 2.0)
-      self.assertEqual(foo.trace_count, 3)
+    self.assertAllEqual(foo(False), 2.0)
+    self.assertEqual(foo.trace_count, 3)
 
   def test_functools_partial(self):
     self.assertAllClose(
