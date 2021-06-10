@@ -140,8 +140,8 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'gast == 0.3.3'
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
-  "${PIP_CMD}" install --user --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
-  "${PIP_CMD}" install --user --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
+  "${PIP_CMD}" install --user --upgrade 'tb-nightly ~= 2.4.0.a'
+  "${PIP_CMD}" install --user --upgrade 'tensorflow_estimator ~= 2.3.0'
   # Test dependencies
   "${PIP_CMD}" install --user 'grpcio ~= 1.32.0'
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
@@ -196,8 +196,8 @@ function install_macos_pip_deps {
   ${PIP_CMD} install --user 'gast == 0.3.3'
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
-  ${PIP_CMD} install --user --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
-  ${PIP_CMD} install --user --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
+  ${PIP_CMD} install --user --upgrade 'tb-nightly ~= 2.4.0.a'
+  ${PIP_CMD} install --user --upgrade 'tensorflow_estimator ~= 2.3.0'
   # Test dependencies
   ${PIP_CMD} install --user 'grpcio ~= 1.32.0'
   ${PIP_CMD} install --user 'portpicker ~= 1.3.1'
