@@ -57,7 +57,6 @@ class EagerOpRewriteRegistry {
   };
 
   // Add a rewrite pass to the registry.
-  // Only one rewrite pass is allowed per phase.
   void Register(Phase phase, int32 ordinal,
                 std::unique_ptr<EagerOpRewrite> pass);
 
