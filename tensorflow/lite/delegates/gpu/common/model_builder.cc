@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/lstm_parser.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder_internal.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/object_reader.h"
 #include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
@@ -2819,8 +2820,37 @@ class UnsupportedOperationParser : public TFLiteOperationParser {
   }
 };
 
+absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
+                         const TfLiteRegistration* registration,
+                         bool allow_quant_ops = false) {
+  return NewOperationParser(registration, allow_quant_ops)
+      ->IsSupported(context, node, registration);
+}
+
+bool IsAllAllowedTensors(TfLiteContext* context,
+                         const TfLiteIntArray* tensor_indices,
+                         const std::vector<TfLiteType>& allowed_types) {
+  for (int i = 0; i < tensor_indices->size; ++i) {
+    int tensor_idx = tensor_indices->data[i];
+    if (tensor_idx == kTfLiteOptionalTensor) continue;
+    const TfLiteTensor* t = &context->tensors[tensor_idx];
+    bool type_supported = false;
+    for (auto allowed_type : allowed_types) {
+      if (t->type == allowed_type) {
+        type_supported = true;
+        break;
+      }
+    }
+    if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
 std::unique_ptr<TFLiteOperationParser> NewOperationParser(
-    const TfLiteRegistration* registration, bool allow_quant_ops = false) {
+    const TfLiteRegistration* registration, bool allow_quant_ops) {
   const auto builtin_code = registration->builtin_code;
   switch (builtin_code) {
     case kTfLiteBuiltinAbs:
@@ -2998,35 +3028,6 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
   }
   return std::make_unique<UnsupportedOperationParser>();
 }
-
-absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
-                         const TfLiteRegistration* registration,
-                         bool allow_quant_ops = false) {
-  return NewOperationParser(registration, allow_quant_ops)
-      ->IsSupported(context, node, registration);
-}
-
-bool IsAllAllowedTensors(TfLiteContext* context,
-                         const TfLiteIntArray* tensor_indices,
-                         const std::vector<TfLiteType>& allowed_types) {
-  for (int i = 0; i < tensor_indices->size; ++i) {
-    int tensor_idx = tensor_indices->data[i];
-    if (tensor_idx == kTfLiteOptionalTensor) continue;
-    const TfLiteTensor* t = &context->tensors[tensor_idx];
-    bool type_supported = false;
-    for (auto allowed_type : allowed_types) {
-      if (t->type == allowed_type) {
-        type_supported = true;
-        break;
-      }
-    }
-    if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
-      return false;
-    }
-  }
-  return true;
-}
-}  // namespace
 
 // TODO(impjdi): Check number of input/output tensors and their dimensions.
 // TODO(impjdi): Check ops' parameters.

@@ -142,7 +142,10 @@ cc_library(
 cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
-    hdrs = ["model_builder.h"],
+    hdrs = [
+        "model_builder.h",
+        "model_builder_internal.h",
+    ],
     deps = [
         ":data_type",
         ":lstm_parser",
@@ -178,6 +181,7 @@ cc_test(
     deps = [
         ":data_type",
         ":model_builder",
+        ":operation_parser",
         ":shape",
         ":tensor",
         "//tensorflow/lite:framework",
