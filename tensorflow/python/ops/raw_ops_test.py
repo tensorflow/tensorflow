@@ -27,7 +27,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.platform import test
 
 
@@ -62,23 +61,7 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         gen_math_ops.Any(input=x, axis=0),
         gen_math_ops.Any(input=x, axis=0, keep_dims=False))
-
-  @parameterized.parameters([[0, 8]], [[-1, 6]])
-  def testStringNGramsBadDataSplits(self, splits):
-    data = ["aa", "bb", "cc", "dd", "ee", "ff"]
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Invalid split value"):
-      self.evaluate(
-          gen_string_ops.string_n_grams(
-              data=data,
-              data_splits=splits,
-              separator="",
-              ngram_widths=[2],
-              left_pad="",
-              right_pad="",
-              pad_width=0,
-              preserve_short_sequences=False))
-
+  
   def testGetSessionHandle(self):
     if context.executing_eagerly():
       with self.assertRaisesRegex(
