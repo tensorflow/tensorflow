@@ -186,6 +186,14 @@ static LogicalResult rngInferReturnTypeComponents(
   return success();
 }
 
+// Returns a new scalar integer value having type `type`. Here `type` must be
+// an integer or index type.
+Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
+  if (type == value.getType()) return value;
+  assert(type.isIndex() || value.getType().isIndex());
+  return b.create<IndexCastOp>(loc, value, type);
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -478,6 +486,14 @@ void DynamicIotaOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicIotaIsStatic>(context);
   results.insert<DynamicIotaBroadcast>(context);
+}
+
+LogicalResult DynamicIotaOp::reifyReturnTypeShapes(
+    OpBuilder&, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  DynamicIotaOp::Adaptor adaptor(operands);
+  reifiedReturnShapes.push_back(adaptor.output_shape());
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2370,6 +2386,65 @@ static LogicalResult Verify(DynamicPadOp op) {
     return op.emitOpError() << "operand rank(" << input_rank
                             << ") must match result(" << output_rank << ").";
   }
+
+  return success();
+}
+
+LogicalResult DynamicPadOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  DynamicPadOp::Adaptor adaptor(operands);
+  Value operand = adaptor.operand();
+  Value edge_padding_low = adaptor.edge_padding_low();
+  Value edge_padding_high = adaptor.edge_padding_high();
+  Value interior_padding = adaptor.interior_padding();
+
+  auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+  // Not support unranked pad a.t.m.
+  if (!operand_type) return failure();
+
+  auto loc = this->getLoc();
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(operand_type.getRank());
+  Type shape_scalar_type =
+      edge_padding_low.getType().cast<ShapedType>().getElementType();
+
+  auto to_shape_scalar_type = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+  };
+
+  Value zero = to_shape_scalar_type(builder.create<ConstantIndexOp>(loc, 0));
+  Value one = to_shape_scalar_type(builder.create<ConstantIndexOp>(loc, 1));
+
+  for (int idx : llvm::seq<int>(0, operand_type.getShape().size())) {
+    Value value_dim =
+        to_shape_scalar_type(builder.create<memref::DimOp>(loc, operand, idx));
+    Value offset = builder.create<ConstantIndexOp>(loc, idx);
+    Value value_low =
+        builder.create<tensor::ExtractOp>(loc, edge_padding_low, offset);
+    Value value_high =
+        builder.create<tensor::ExtractOp>(loc, edge_padding_high, offset);
+    Value value_interior =
+        builder.create<tensor::ExtractOp>(loc, interior_padding, offset);
+    // output_size = input_size + padding_low + padding_high + interior *
+    // max(input_size - 1, 0)
+    Value value_dim_less_than_one =
+        builder.create<CmpIOp>(loc, CmpIPredicate::slt, value_dim, one);
+    Value interior_size = builder.create<MulIOp>(
+        loc, value_interior,
+        builder.create<mlir::SelectOp>(
+            loc, value_dim_less_than_one, zero,
+            builder.create<SubIOp>(loc, value_dim, one)));
+    shape_values.push_back(builder.create<AddIOp>(
+        loc,
+        builder.create<AddIOp>(
+            loc, builder.create<AddIOp>(loc, interior_size, value_dim),
+            value_low),
+        value_high));
+  }
+
+  reifiedReturnShapes.push_back(builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values));
 
   return success();
 }

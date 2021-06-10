@@ -94,7 +94,7 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def HLO_DynamicIotaOp: HLO_Op<"dynamic_iota", [NoSideEffect]> {
+def HLO_DynamicIotaOp: HLO_ShapedInterfaceOp<"dynamic_iota", [NoSideEffect]> {
   let summary = "Create linear increasing values from 0 to length -1.";
   let description = [{
     Produces an HLO Tensor of the specified shape, with an incremental set of
@@ -2220,7 +2220,7 @@ def HLO_RealDynamicSliceOp: HLO_Op<
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
+def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
       [NoSideEffect, AllElementTypesMatch<["operand", "padding_value", "result"]>,
       AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
   let summary = "Dynamic Pad operator";
