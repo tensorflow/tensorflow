@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import functools
+import multiprocessing
 import sys
 import threading
 import warnings
@@ -2674,6 +2675,110 @@ name=None))
       Dataset: A `Dataset`.
     """
     return RandomDataset(seed=seed)
+
+  def snapshot(self,
+               path,
+               compression="AUTO",
+               reader_func=None,
+               shard_func=None):
+    """API to persist the output of the input dataset.
+
+    The snapshot API allows users to transparently persist the output of their
+    preprocessing pipeline to disk, and materialize the pre-processed data on a
+    different training run.
+
+    This API enables repeated preprocessing steps to be consolidated, and allows
+    re-use of already processed data, trading off disk storage and network
+    bandwidth for freeing up more valuable CPU resources and accelerator compute
+    time.
+
+    https://github.com/tensorflow/community/blob/master/rfcs/20200107-tf-data-snapshot.md
+    has detailed design documentation of this feature.
+
+    Users can specify various options to control the behavior of snapshot,
+    including how snapshots are read from and written to by passing in
+    user-defined functions to the `reader_func` and `shard_func` parameters.
+
+    `shard_func` is a user specified function that maps input elements to
+    snapshot shards.
+
+    Users may want to specify this function to control how snapshot files should
+    be written to disk. Below is an example of how a potential `shard_func`
+    could be written.
+
+    ```python
+    dataset = ...
+    dataset = dataset.enumerate()
+    dataset = dataset.snapshot("/path/to/snapshot/dir",
+        shard_func=lambda x, y: x % NUM_SHARDS, ...)
+    dataset = dataset.map(lambda x, y: y)
+    ```
+
+    `reader_func` is a user specified function that accepts a single argument:
+    (1) a Dataset of Datasets, each representing a "split" of elements of the
+    original dataset. The cardinality of the input dataset matches the
+    number of the shards specified in the `shard_func` (see above). The function
+    should return a Dataset of elements of the original dataset.
+
+    Users may want specify this function to control how snapshot files should be
+    read from disk, including the amount of shuffling and parallelism.
+
+    Here is an example of a standard reader function a user can define. This
+    function enables both dataset shuffling and parallel reading of datasets:
+
+    ```python
+    def user_reader_func(datasets):
+      # shuffle the datasets splits
+      datasets = datasets.shuffle(NUM_CORES)
+      # read datasets in parallel and interleave their elements
+      return datasets.interleave(lambda x: x, num_parallel_calls=AUTOTUNE)
+
+    dataset = dataset.snapshot("/path/to/snapshot/dir",
+        reader_func=user_reader_func)
+    ```
+
+    By default, snapshot parallelizes reads by the number of cores available on
+    the system, but will not attempt to shuffle the data.
+
+    Args:
+      path: Required. A directory to use for storing / loading the snapshot to /
+        from.
+      compression: Optional. The type of compression to apply to the snapshot
+        written to disk. Supported options are `GZIP`, `SNAPPY`, `AUTO` or None.
+        Defaults to `AUTO`, which attempts to pick an appropriate compression
+        algorithm for the dataset.
+      reader_func: Optional. A function to control how to read data from
+        snapshot shards.
+      shard_func: Optional. A function to control how to shard data when writing
+        a snapshot.
+
+    Returns:
+      A `Dataset`.
+    """
+
+    project_func = None
+    input_dataset = self
+    if shard_func is None:
+      input_dataset = input_dataset.enumerate()
+      # This sets the amount of parallelism based on the number of CPU cores on
+      # the machine where this Python code is executed, which may differ from
+      # the number of CPU cores where the input pipeline graph is actually
+      # executed (e.g. remote Cloud TPU workers).
+      local_shard_func = lambda index, _: index % multiprocessing.cpu_count()
+      project_func = lambda _, elem: elem
+    else:
+      local_shard_func = shard_func
+    dataset = _SnapshotDataset(
+        input_dataset=input_dataset,
+        path=path,
+        compression=compression,
+        reader_func=reader_func,
+        # This will not do the right thing where the graph is built on a
+        # different machine than the executor (e.g. Cloud TPUs).
+        shard_func=local_shard_func)
+    if project_func is not None:
+      dataset = dataset.map(project_func)
+    return dataset
 
   def scan(self, initial_state, scan_func):
     """A transformation that scans a function across an input dataset.
@@ -5340,6 +5445,65 @@ def _collect_resource_inputs(op):
     all_writes.extend(writes)
 
   return all_reads, all_writes
+
+
+class _SnapshotDataset(UnaryUnchangedStructureDataset):
+  """A dataset that allows saving and re-use of already processed data."""
+
+  def __init__(self,
+               input_dataset,
+               path,
+               shard_func,
+               compression=None,
+               reader_func=None,
+               pending_snapshot_expiry_seconds=None,
+               use_legacy_function=False):
+
+    if reader_func is None:
+      reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
+          lambda x: x,
+          cycle_length=multiprocessing.cpu_count(),
+          num_parallel_calls=AUTOTUNE)
+
+    self._input_dataset = input_dataset
+    self._path = path
+    self._compression = compression
+
+    self._reader_func = StructuredFunctionWrapper(
+        reader_func,
+        self._transformation_name() + ".reader_func",
+        # Dataset of datasets of input elements
+        input_structure=DatasetSpec(DatasetSpec(input_dataset.element_spec)),
+        use_legacy_function=use_legacy_function)
+    self._shard_func = StructuredFunctionWrapper(
+        shard_func,
+        self._transformation_name() + ".shard_func",
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
+
+    if ((not self._shard_func.output_structure.is_compatible_with(
+        tensor_spec.TensorSpec([], dtypes.int32))) and
+        (not self._shard_func.output_structure.is_compatible_with(
+            tensor_spec.TensorSpec([], dtypes.int64)))):
+      raise TypeError(
+          "shard_func must return a 0-dimension tensor containing an int.")
+
+    variant_tensor = ged_ops.snapshot_dataset_v2(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        path,
+        self._reader_func.function.captured_inputs,
+        self._shard_func.function.captured_inputs,
+        compression=compression,
+        reader_func=self._reader_func.function,
+        shard_func=self._shard_func.function,
+        **self._flat_structure)
+    super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._reader_func, self._shard_func]
+
+  def _transformation_name(self):
+    return "Dataset.snapshot()"
 
 
 class _ScanDataset(UnaryDataset):
