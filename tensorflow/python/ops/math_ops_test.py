@@ -238,7 +238,7 @@ class RoundTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class MatMulTest(test_util.TensorFlowTestCase):
+class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   """Test for matmul."""
 
   SUPPORTED_DTYPES = [
@@ -276,11 +276,13 @@ class MatMulTest(test_util.TensorFlowTestCase):
                                 "list of allowed values:"):
       math_ops.matmul(a, b)
 
-  def testInt8Matmul(self):
-    a = constant_op.constant(
-        np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.int8)
-    b = constant_op.constant(
-        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+  @parameterized.parameters((dtypes.int8, dtypes.int8),
+                            (dtypes.int8, dtypes.uint8),
+                            (dtypes.uint8, dtypes.int8))
+  # TODO(shivaniagrawal): matmul (dtypes.uint8, dtypes.uint8) fails in xla_gpu.
+  def testInt8Matmul(self, a_dtype, b_dtype):
+    a = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=a_dtype)
+    b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=b_dtype)
     c_np = constant_op.constant(
         [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
         shape=[2, 2, 2],
@@ -288,11 +290,11 @@ class MatMulTest(test_util.TensorFlowTestCase):
     c = math_ops.matmul(a, b, output_type=dtypes.int32)
     self.assertAllEqual(c, c_np)
 
-  def testMixPrecMatmul(self):
+  @parameterized.parameters((dtypes.int8), (dtypes.uint8))
+  def testMixPrecMatmul(self, b_dtype):
     a = constant_op.constant(
         np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.bfloat16)
-    b = constant_op.constant(
-        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+    b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=b_dtype)
     c_np = constant_op.constant(
         [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
         shape=[2, 2, 2],
