@@ -122,6 +122,14 @@ class IntegerLookupLayerTest(keras_parameterized.TestCase,
           adapt_data=vocab_data)
     self.assertAllClose(expected_output, output_data)
 
+  def test_layer_with_list_input(self):
+    vocab = [12, 36, 1138, 42]
+    data = [[12, 1138, 42], [42, 1000, 36]]  # Note OOV tokens
+    layer = integer_lookup.IntegerLookup(vocabulary=vocab)
+    output = layer(data)
+    expected_output = np.array([[1, 3, 4], [4, 0, 2]])
+    self.assertEqual(output.numpy().tolist(), expected_output.tolist())
+
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class CategoricalEncodingInputTest(
