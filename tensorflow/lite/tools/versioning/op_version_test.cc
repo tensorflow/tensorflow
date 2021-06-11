@@ -18,97 +18,36 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
-namespace {
-
-// Creates vector of OpSignatureTensorSpec with the given TensorType vector.
-std::vector<OpSignatureTensorSpec> CreateOpSignatureTensorSpecs(
-    const std::vector<TensorType>& types) {
-  std::vector<OpSignatureTensorSpec> tensor_specs;
-  for (auto type : types) {
-    OpSignatureTensorSpec tensor_spec = {};
-    tensor_spec.type = type;
-    tensor_specs.push_back(tensor_spec);
-  }
-  return tensor_specs;
-}
-
-// Creates vector of OpSignatureTensorSpec of single tensor spec of TensorType.
-std::vector<OpSignatureTensorSpec> CreateOpSignatureTensorSpecs(
-    const TensorType type) {
-  std::vector<OpSignatureTensorSpec> tensor_specs;
-  OpSignatureTensorSpec tensor_spec = {};
-  tensor_spec.type = type;
-  tensor_specs.push_back(tensor_spec);
-  return tensor_specs;
-}
-
-// Creates vector of OpSignatureTensorSpec of single tensor spec of TensorType
-// with shapes.
-std::vector<OpSignatureTensorSpec> CreateOpSignatureTensorSpecs(
-    const TensorType type, const int dim) {
-  std::vector<OpSignatureTensorSpec> tensor_specs;
-  OpSignatureTensorSpec tensor_spec = {};
-  tensor_spec.type = type;
-  for (int i = 0; i < dim; i++) {
-    tensor_spec.dims.push_back(4);
-  }
-  tensor_specs.push_back(tensor_spec);
-  return tensor_specs;
-}
-
-// Creates vector of OpSignatureTensorSpec of two tensor specs of TensorType
-// with shapes.
-std::vector<OpSignatureTensorSpec> CreateOpSignatureTensorSpecs(
-    const TensorType type, const int dim1, const int dim2) {
-  std::vector<OpSignatureTensorSpec> tensor_specs;
-  OpSignatureTensorSpec tensor_spec1 = {};
-  tensor_spec1.type = type;
-  for (int i = 0; i < dim1; i++) {
-    tensor_spec1.dims.push_back(4);
-  }
-  tensor_specs.push_back(tensor_spec1);
-
-  OpSignatureTensorSpec tensor_spec2 = {};
-  tensor_spec2.type = type;
-  for (int i = 0; i < dim2; i++) {
-    tensor_spec2.dims.push_back(4);
-  }
-  tensor_specs.push_back(tensor_spec2);
-  return tensor_specs;
-}
-
-}  // namespace
 
 TEST(OpVersionTest, VersioningSpareToDense) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_SPARSE_TO_DENSE,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_INT8, TensorType_INT8, TensorType_INT8}),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8,
+                                             TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_SPARSE_TO_DENSE,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_UINT8, TensorType_UINT8, TensorType_UINT8}),
+      .input_types = std::vector<TensorType>{TensorType_UINT8, TensorType_UINT8,
+                                             TensorType_UINT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_SPARSE_TO_DENSE,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_INT64, TensorType_INT64, TensorType_INT64}),
+      .input_types = std::vector<TensorType>{TensorType_INT64, TensorType_INT64,
+                                             TensorType_INT64},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_SPARSE_TO_DENSE,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_INT32, TensorType_INT32, TensorType_INT32}),
+      .input_types = std::vector<TensorType>{TensorType_INT32, TensorType_INT32,
+                                             TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
@@ -118,13 +57,13 @@ TEST(OpVersionTest, VersioningSpareToDense) {
 void SimpleVersioningTest(BuiltinOperator op) {
   OpSignature fake_op_sig = {
       .op = op,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = op,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8),
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
@@ -134,7 +73,7 @@ void SimpleVersioningTest(BuiltinOperator op) {
 void SimpleVersioningTestExtended(BuiltinOperator op) {
   OpSignature fake_op_sig = {
       .op = op,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
+      .input_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
@@ -145,15 +84,15 @@ void SimpleVersioningTestExtended(BuiltinOperator op) {
 void SimpleOutputVersioningTest(BuiltinOperator op) {
   OpSignature fake_op_sig = {
       .op = op,
-      .inputs = std::vector<OpSignatureTensorSpec>{},
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = op,
-      .inputs = std::vector<OpSignatureTensorSpec>{},
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_UINT8),
+      .input_types = std::vector<TensorType>{},
+      .output_types = std::vector<TensorType>{TensorType_UINT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
@@ -162,7 +101,7 @@ TEST(OpVersionTest, VersioningEqualTest) {
   SimpleVersioningTest(BuiltinOperator_EQUAL);
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_EQUAL,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_STRING),
+      .input_types = std::vector<TensorType>{TensorType_STRING},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
@@ -171,7 +110,7 @@ TEST(OpVersionTest, VersioningNotEqualTest) {
   SimpleVersioningTest(BuiltinOperator_NOT_EQUAL);
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_NOT_EQUAL,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_STRING),
+      .input_types = std::vector<TensorType>{TensorType_STRING},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
@@ -207,19 +146,19 @@ TEST(OpVersionTest, VersioningPackTest) {
 TEST(OpVersionTest, VersioningUnpackTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_UNPACK,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_UNPACK,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8),
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_UNPACK,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT32),
+      .input_types = std::vector<TensorType>{TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
@@ -227,25 +166,25 @@ TEST(OpVersionTest, VersioningUnpackTest) {
 TEST(OpVersionTest, VersioningReluTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_RELU,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
+      .input_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_RELU,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_RELU,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8),
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_RELU,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT32),
+      .input_types = std::vector<TensorType>{TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
@@ -253,18 +192,20 @@ TEST(OpVersionTest, VersioningReluTest) {
 TEST(OpVersionTest, VersioningBatchToSpaceNDTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_BATCH_TO_SPACE_ND,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 3);
+  fake_op_sig.options.single_input_op.num_dims = 3;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 4);
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_BATCH_TO_SPACE_ND,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 3);
+  fake_op_sig.options.single_input_op.num_dims = 3;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 4);
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
@@ -273,25 +214,22 @@ TEST(OpVersionTest, VersioningTanhTest) {
 }
 
 TEST(OpVersionTest, VersioningStridedSliceTest) {
-  TfLiteStridedSliceParams strided_slice_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_STRIDED_SLICE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .builtin_data = reinterpret_cast<void*>(&strided_slice_params),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
-  strided_slice_params.ellipsis_mask = 0;
-  strided_slice_params.new_axis_mask = 2;
-  fake_op_sig.ext_options.strided_slice.num_dims = 5;
+  fake_op_sig.options.strided_slice.ellipsis_mask = 0;
+  fake_op_sig.options.strided_slice.new_axis_mask = 2;
+  fake_op_sig.options.strided_slice.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
 
-  strided_slice_params.new_axis_mask = 0;
+  fake_op_sig.options.strided_slice.new_axis_mask = 0;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 
-  fake_op_sig.ext_options.strided_slice.num_dims = 4;
+  fake_op_sig.options.strided_slice.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8);
+  fake_op_sig.input_types = std::vector<TensorType>{TensorType_UINT8};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
@@ -302,34 +240,37 @@ TEST(OpVersionTest, VersioningSpaceToDepthTest) {
 TEST(OpVersionTest, VersioningSliceTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_SLICE,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT16, 5);
+  fake_op_sig.options.single_input_op.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 
   fake_op_sig = {
       .op = BuiltinOperator_SLICE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
+      .input_types = std::vector<TensorType>{TensorType_INT16},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT16, 4);
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 
   fake_op_sig = {
       .op = BuiltinOperator_SLICE,
+      .input_types = std::vector<TensorType>{TensorType_STRING},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_STRING, 4);
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_SLICE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 4);
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_SLICE,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 4);
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
@@ -344,42 +285,50 @@ TEST(OpVersionTest, VersioningL2NormTest) {
 TEST(OpVersionTest, VersioningMaxTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_MAXIMUM,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
 
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 4, 5);
+  fake_op_sig.options.broadcast.need_broadcast = true;
+  fake_op_sig.options.broadcast.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 5, 5);
+  fake_op_sig.options.broadcast.need_broadcast = false;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 4, 4);
+  fake_op_sig.options.broadcast.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_MAXIMUM,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 4, 5);
+  fake_op_sig.options.broadcast.need_broadcast = true;
+  fake_op_sig.options.broadcast.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 4, 4);
+  fake_op_sig.options.broadcast.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
 TEST(OpVersionTest, VersioningMinTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_MINIMUM,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
 
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 4, 5);
+  fake_op_sig.options.broadcast.need_broadcast = true;
+  fake_op_sig.options.broadcast.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 5, 5);
+  fake_op_sig.options.broadcast.need_broadcast = false;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 4, 4);
+  fake_op_sig.options.broadcast.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_MINIMUM,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 4, 5);
+  fake_op_sig.options.broadcast.need_broadcast = true;
+  fake_op_sig.options.broadcast.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 4, 4);
+  fake_op_sig.options.broadcast.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
@@ -400,33 +349,31 @@ TEST(OpVersionTest, VersioningReduceMaxTest) {
 }
 
 TEST(OpVersionTest, VersioningAddTest) {
-  TfLiteAddParams add_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_ADD,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .builtin_data = reinterpret_cast<void*>(&add_params)};
-  add_params.pot_scale_int16 = false;
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16}};
+  fake_op_sig.options.addsub.pot_scale_int16 = false;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   SimpleVersioningTest(BuiltinOperator_ADD);
 }
 
 TEST(OpVersionTest, VersioningSubTest) {
-  TfLiteSubParams sub_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_SUB,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .builtin_data = reinterpret_cast<void*>(&sub_params)};
-  sub_params.pot_scale_int16 = false;
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16}};
+  fake_op_sig.options.addsub.pot_scale_int16 = false;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT64);
+  fake_op_sig.input_types = std::vector<TensorType>{TensorType_INT64};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_INT8, 4, 5);
-  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(TensorType_INT8);
+  fake_op_sig.input_types = std::vector<TensorType>{TensorType_INT8};
+  fake_op_sig.output_types = std::vector<TensorType>{TensorType_INT8};
+  fake_op_sig.options.addsub.need_broadcast = true;
+  fake_op_sig.options.addsub.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   SimpleVersioningTest(BuiltinOperator_SUB);
@@ -435,7 +382,7 @@ TEST(OpVersionTest, VersioningSubTest) {
 TEST(OpVersionTest, VersioningSub4Test) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_SUB,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT64),
+      .input_types = std::vector<TensorType>{TensorType_INT64},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
@@ -444,11 +391,10 @@ void SimpleMulVersioningTest(TensorType data_type, float multiplier,
                              int version) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_MUL,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{data_type, data_type}),
-      .outputs = CreateOpSignatureTensorSpecs(data_type),
+      .input_types = std::vector<TensorType>{data_type, data_type},
+      .output_types = std::vector<TensorType>{data_type},
   };
-  fake_op_sig.ext_options.mul = {1.0f, 1.0f, 1.0f / multiplier};
+  fake_op_sig.options.mul = {1.0f, 1.0f, 1.0f / multiplier};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), version);
 }
 
@@ -479,76 +425,70 @@ TEST(OpVersionTest, VersioningRelu6Test) {
 }
 
 TEST(OpVersionTest, VersioningFullyConnectedTest) {
-  TfLiteFullyConnectedParams fully_connected_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_FULLY_CONNECTED,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_UINT8, TensorType_UINT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_UINT8),
-      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_UINT8, TensorType_UINT8},
+      .output_types = std::vector<TensorType>{TensorType_UINT8},
   };
-  fully_connected_params.weights_format =
-      kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8;
+  fake_op_sig.options.fully_connected = {
+      false, FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
 
   fake_op_sig = {
       .op = BuiltinOperator_FULLY_CONNECTED,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT8, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
-  fully_connected_params.weights_format =
-      kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8;
+  fake_op_sig.options.fully_connected = {
+      false, FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
 
   fake_op_sig = {
       .op = BuiltinOperator_FULLY_CONNECTED,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT8, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
-  fully_connected_params.weights_format =
-      kTfLiteFullyConnectedWeightsFormatDefault;
-  fake_op_sig.ext_options.fully_connected.sparse_weight = true;
+  fake_op_sig.options.fully_connected = {
+      false, FullyConnectedOptionsWeightsFormat_DEFAULT, true};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 
   fake_op_sig = {
       .op = BuiltinOperator_FULLY_CONNECTED,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_FLOAT32, TensorType_INT8, TensorType_FLOAT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8,
+                                  TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
-  fully_connected_params.asymmetric_quantize_inputs = false;
+  fake_op_sig.options.fully_connected = {
+      false, FullyConnectedOptionsWeightsFormat_DEFAULT, false, false};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fully_connected_params.asymmetric_quantize_inputs = true;
+  fake_op_sig.options.fully_connected.asymmetric_quantize_inputs = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 9);
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_DEQUANTIZE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
+      .input_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_DEQUANTIZE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT16),
+      .input_types = std::vector<TensorType>{TensorType_FLOAT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_DEQUANTIZE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_DEQUANTIZE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
@@ -556,48 +496,47 @@ TEST(OpVersionTest, VersioningDequantizeTest) {
 TEST(OpVersionTest, VersioningConv2DTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_CONV_2D,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_UINT8, TensorType_UINT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_UINT8),
+      .input_types =
+          std::vector<TensorType>{TensorType_UINT8, TensorType_UINT8},
+      .output_types = std::vector<TensorType>{TensorType_UINT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   fake_op_sig = {
       .op = BuiltinOperator_CONV_2D,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT8, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_CONV_2D,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_CONV_2D,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
-  fake_op_sig.ext_options.conv_2d.is_per_channel_quantized = true;
+  fake_op_sig.options.conv_2d.is_per_channel_quantized = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 
 TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_FLOOR_DIV,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT32),
+      .input_types = std::vector<TensorType>{TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   fake_op_sig = {
       .op = BuiltinOperator_FLOOR_DIV,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
@@ -605,296 +544,279 @@ TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
 TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE_CONV,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_UINT8}),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_UINT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE_CONV,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_INT32, TensorType_INT8, TensorType_INT8}),
+      .input_types = std::vector<TensorType>{TensorType_INT32, TensorType_INT8,
+                                             TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE_CONV,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT32, TensorType_INT8,
-                                  TensorType_INT8, TensorType_INT32}),
+      .input_types = std::vector<TensorType>{TensorType_INT32, TensorType_INT8,
+                                             TensorType_INT8, TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   const auto none_type = static_cast<::tflite::TensorType>(-1);
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE_CONV,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_INT32, TensorType_INT8, TensorType_INT8, none_type}),
+      .input_types = std::vector<TensorType>{TensorType_INT32, TensorType_INT8,
+                                             TensorType_INT8, none_type},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 
 TEST(OpVersionTest, VersioningSVDFOperatorTest) {
-  TfLiteSVDFParams svdf_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_SVDF,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_FLOAT32, TensorType_FLOAT32, TensorType_FLOAT32,
-          TensorType_FLOAT32, TensorType_FLOAT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&svdf_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   fake_op_sig = {
       .op = BuiltinOperator_SVDF,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_FLOAT32, TensorType_INT8, TensorType_FLOAT32,
-          TensorType_FLOAT32, TensorType_FLOAT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&svdf_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8,
+                                  TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-  svdf_params.asymmetric_quantize_inputs = true;
+  fake_op_sig.options.input_quantization.asymmetric_quantize_inputs = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 
-  svdf_params = {};
   fake_op_sig = {
       .op = BuiltinOperator_SVDF,
-      .inputs = CreateOpSignatureTensorSpecs(std::vector<TensorType>{
-          TensorType_INT8, TensorType_INT8, TensorType_INT16, TensorType_INT32,
-          TensorType_INT16}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .builtin_data = reinterpret_cast<void*>(&svdf_params),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8,
+                                             TensorType_INT16, TensorType_INT32,
+                                             TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningDepthwiseConv2DTest) {
-  TfLiteDepthwiseConvParams depthwise_conv_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_DEPTHWISE_CONV_2D,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&depthwise_conv_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
-  fake_op_sig.ext_options.depthwise_conv_2d.is_per_channel_quantized = true;
+  fake_op_sig.options.depthwise_conv_2d.is_per_channel_quantized = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
 
-  depthwise_conv_params = {};
   fake_op_sig = {
       .op = BuiltinOperator_DEPTHWISE_CONV_2D,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT8, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .builtin_data = reinterpret_cast<void*>(&depthwise_conv_params),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_DEPTHWISE_CONV_2D,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&depthwise_conv_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
-  depthwise_conv_params.dilation_width_factor = 2;
-  depthwise_conv_params.dilation_height_factor = 2;
+  fake_op_sig.options.depthwise_conv_2d.dilation_w_factor = 2;
+  fake_op_sig.options.depthwise_conv_2d.dilation_h_factor = 2;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_DEPTHWISE_CONV_2D,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&depthwise_conv_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
-  depthwise_conv_params.dilation_width_factor = 1;
-  depthwise_conv_params.dilation_height_factor = 1;
+  fake_op_sig.options.depthwise_conv_2d.dilation_w_factor = 1;
+  fake_op_sig.options.depthwise_conv_2d.dilation_h_factor = 1;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 TEST(OpVersionTest, VersioningTileOperatorTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_TILE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT32),
+      .input_types = std::vector<TensorType>{TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   fake_op_sig = {
       .op = BuiltinOperator_TILE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_STRING),
+      .input_types = std::vector<TensorType>{TensorType_STRING},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 TEST(OpVersionTest, VersioningTransposeTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
+      .input_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
+      .input_types = std::vector<TensorType>{TensorType_BOOL},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_BOOL, 5);
+  fake_op_sig.options.single_input_op.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_BOOL, 4);
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8),
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 TEST(OpVersionTest, VersioningGatherNdOperatorTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_GATHER_ND,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT32, TensorType_INT32}),
+      .input_types =
+          std::vector<TensorType>{TensorType_INT32, TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   fake_op_sig = {
       .op = BuiltinOperator_GATHER_ND,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_STRING, TensorType_INT32}),
+      .input_types =
+          std::vector<TensorType>{TensorType_STRING, TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_GATHER_ND,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT16, TensorType_INT32}),
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 TEST(OpVersionTest, VersioningDivTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_DIV,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 5, 4);
+
+  fake_op_sig.options.broadcast.need_broadcast = true;
+  fake_op_sig.options.broadcast.num_dims = 5;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 5, 5);
+  fake_op_sig.options.broadcast.need_broadcast = false;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(TensorType_UINT8, 4, 4);
+  fake_op_sig.options.broadcast.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 TEST(OpVersionTEst, VersioningFillTest) {
-  OpSignature fake_op_sig = {BuiltinOperator_FILL};
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
-      std::vector<TensorType>{TensorType_INT32, TensorType_INT8});
+  OpSignature fake_op_sig = {.op = BuiltinOperator_FILL,
+                             .input_types = std::vector<TensorType>{
+                                 TensorType_INT32, TensorType_INT8}};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
-      std::vector<TensorType>{TensorType_INT64, TensorType_INT16});
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT64,
+                                                        TensorType_INT16}};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
-      std::vector<TensorType>{TensorType_INT32, TensorType_BOOL});
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT32,
+                                                        TensorType_BOOL}};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
-      std::vector<TensorType>{TensorType_INT32, TensorType_STRING});
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT32,
+                                                        TensorType_STRING}};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
-      std::vector<TensorType>{TensorType_INT32, TensorType_INT32});
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT32,
+                                                        TensorType_INT32}};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 TEST(OpVersionTest, VersioningResizeBilinearTest) {
   // Default.
-  TfLiteResizeBilinearParams resize_bilinear_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_RESIZE_BILINEAR,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&resize_bilinear_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   // align_corners=true is still version 1.
-  resize_bilinear_params.align_corners = true;
+  fake_op_sig.options.resize.align_corners = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   // half_pixel_centers=true must be version 3.
-  resize_bilinear_params.align_corners = false;
-  resize_bilinear_params.half_pixel_centers = true;
+  fake_op_sig.options.resize.align_corners = false;
+  fake_op_sig.options.resize.half_pixel_centers = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   // int8 input is version 2.
-  resize_bilinear_params = {};
   fake_op_sig = {
       .op = BuiltinOperator_RESIZE_BILINEAR,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT8, TensorType_INT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .builtin_data = reinterpret_cast<void*>(&resize_bilinear_params),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
-  resize_bilinear_params.half_pixel_centers = true;
+  fake_op_sig.options.resize.half_pixel_centers = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   // int16 input is version 4.
-  resize_bilinear_params = {};
   fake_op_sig = {
       .op = BuiltinOperator_RESIZE_BILINEAR,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT16, TensorType_INT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .builtin_data = reinterpret_cast<void*>(&resize_bilinear_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 TEST(OpVersionTest, VersioningResizeNearestNeighborTest) {
   // Default.
-  TfLiteResizeNearestNeighborParams resize_nearest_neighbor_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&resize_nearest_neighbor_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   // align_corners=true is version 3.
-  resize_nearest_neighbor_params.align_corners = true;
+  fake_op_sig.options.resize.align_corners = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   // half_pixel_centers=true must be version 3.
-  resize_nearest_neighbor_params.align_corners = false;
-  resize_nearest_neighbor_params.half_pixel_centers = true;
+  fake_op_sig.options.resize.align_corners = false;
+  fake_op_sig.options.resize.half_pixel_centers = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   // int8 input is version 2.
-  resize_nearest_neighbor_params = {};
   fake_op_sig = {
       .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT8, TensorType_INT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .builtin_data = reinterpret_cast<void*>(&resize_nearest_neighbor_params),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
-  resize_nearest_neighbor_params.align_corners = true;
+  fake_op_sig.options.resize.align_corners = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   // int16 input is version 4.
-  resize_nearest_neighbor_params = {};
   fake_op_sig = {
       .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT16, TensorType_INT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .builtin_data = reinterpret_cast<void*>(&resize_nearest_neighbor_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
@@ -902,105 +824,95 @@ TEST(OpVersionTest, VersioningAbsTest) {
   // Default.
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_ABS,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   // int8 input is version 2.
   fake_op_sig = {
       .op = BuiltinOperator_ABS,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   // int16 quantized input is version 3.
   fake_op_sig = {
       .op = BuiltinOperator_ABS,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
   };
-  fake_op_sig.ext_options.abs.input_quantized = true;
+  fake_op_sig.options.abs.input_quantized = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
   // int16 non-quantized input is version 4.
   fake_op_sig = {
       .op = BuiltinOperator_ABS,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 TEST(OpVersionTest, VersioningBatchMatMulTest) {
   // Default.
-  TfLiteBatchMatMulParams batch_mat_mul_params = {};
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_BATCH_MATMUL,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   // int8 input is version 2.
-  batch_mat_mul_params = {};
   fake_op_sig = {
       .op = BuiltinOperator_BATCH_MATMUL,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT8, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   // int16 input is version 3.
   fake_op_sig = {
       .op = BuiltinOperator_BATCH_MATMUL,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT16, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+      .input_types = std::vector<TensorType>{TensorType_INT16, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   // Symmetric hybrid quantized input is version 1.
   fake_op_sig = {
       .op = BuiltinOperator_BATCH_MATMUL,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   // Asymmetric hybrid quantized input is version 4.
   fake_op_sig = {
       .op = BuiltinOperator_BATCH_MATMUL,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
-  batch_mat_mul_params.asymmetric_quantize_inputs = true;
+  fake_op_sig.options.input_quantization.asymmetric_quantize_inputs = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 TEST(OpVersionTest, VersioningSquaredDifferenceTest) {
   // Default.
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_SQUARED_DIFFERENCE,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   // int8 input is version 2.
   fake_op_sig = {
       .op = BuiltinOperator_SQUARED_DIFFERENCE,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TensorType>{TensorType_INT8, TensorType_INT8}),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
@@ -1008,39 +920,39 @@ TEST(OpVersionTest, VersioningRsqrtTest) {
   // Default.
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_RSQRT,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
   // int8 input is version 2.
   fake_op_sig = {
       .op = BuiltinOperator_RSQRT,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 TEST(OpVersionTest, VersioningBroadcastToTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_BROADCAST_TO,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_FLOAT32),
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   // Quantized broadcast_to op is version 3.
   fake_op_sig = {
       .op = BuiltinOperator_BROADCAST_TO,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT8),
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_BROADCAST_TO,
-      .inputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
-      .outputs = CreateOpSignatureTensorSpecs(TensorType_INT16),
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }

@@ -872,7 +872,7 @@ def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-
 }
 
 def TensorDeviceCopyConversionPass : FunctionPass<"tf-tensor-device-copy"> {
-  let summary = "Fold the tf.Identity op if the op has the same device as its operand";
+  let summary = "Fold the tf.Identity op and the tf.IdentityN op if the op has the same device as its operand";
 
   let constructor = "TF::CreateTensorDeviceCopyConversionPass()";
 }

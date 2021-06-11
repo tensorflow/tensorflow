@@ -422,8 +422,7 @@ class PjRtClient {
 
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
-  virtual Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                            absl::Span<PjRtExecutable* const> executables) = 0;
+  virtual Status Defragment() = 0;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer

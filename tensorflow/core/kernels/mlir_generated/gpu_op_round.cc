@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,8 +18,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Cosh, DT_HALF);
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Cosh, DT_FLOAT);
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Cosh, DT_DOUBLE);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Round, DT_HALF);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Round, DT_FLOAT);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Round, DT_DOUBLE);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Round, DT_INT32);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Round, DT_INT64);
 
 }  // namespace tensorflow

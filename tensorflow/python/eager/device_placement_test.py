@@ -187,6 +187,7 @@ class HardDevicePlacementTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(1., array_ops.ones([]))
       self.assertAllClose(0., array_ops.zeros([]))
       self.assertAllClose([1.], array_ops.fill([1], 1.))
+      self.assertAllClose(2., constant_op.constant(1.) * 2.)
 
   @parameterized.named_parameters(
       ('float_cpu0', 'CPU:0', 1.0, None),

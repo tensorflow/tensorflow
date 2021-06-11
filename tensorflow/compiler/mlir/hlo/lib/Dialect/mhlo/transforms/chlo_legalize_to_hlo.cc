@@ -648,6 +648,51 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
       lgamma);
 }
 
+// Express `cosh` as
+//   cosh(x) = (e^x + e^-x) / 2
+//           = e^(x + log(1/2)) + e^(-x + log(1/2))
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not.
+//
+// This incorrectly overflows to inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+Value MaterializeCoshApproximation(ConversionPatternRewriter &rewriter,
+                                   Location loc, ValueRange operands) {
+  CoshOp::Adaptor transformed(operands);
+  Value x = transformed.operand();
+
+  Value log_one_half =
+      rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
+  Value exp_add = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
+  Value exp_sub = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::SubOp>(loc, log_one_half, x));
+  return rewriter.create<mhlo::AddOp>(loc, exp_add, exp_sub);
+}
+
+struct ConvertCoshOp : public OpConversionPattern<CoshOp> {
+  using OpConversionPattern<CoshOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      CoshOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    CoshOp::Adaptor transformed(operands);
+    Value x = transformed.operand();
+    if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
+      // TODO(hinsu): Support operands with complex element types by always
+      // using the formula for large x. The compare op is not legal for complex
+      // numbers.
+      return failure();
+    }
+    rewriter.replaceOp(op,
+                       MaterializeWithUpcast(rewriter, op.getLoc(), operands,
+                                             rewriter.getF32Type(),
+                                             &MaterializeCoshApproximation));
+    return success();
+  }
+};
+
 // Compute the Digamma function using Lanczos' approximation from "A Precision
 // Approximation of the Gamma Function". SIAM Journal on Numerical Analysis
 // series B. Vol. 1:
@@ -1318,7 +1363,8 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
 
   // Other patterns.
   // clang-format off
-  patterns->insert<ConvertDigammaOp,
+  patterns->insert<ConvertCoshOp,
+                   ConvertDigammaOp,
                    ConvertErfOp,
                    ConvertErfcOp,
                    ConvertLgammaOp,

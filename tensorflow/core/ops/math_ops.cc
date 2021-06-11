@@ -142,10 +142,10 @@ REGISTER_OP("BatchMatMulV3")
     .Input("y: Tb")
     .Output("output: Tout")
     .Attr(
-        "Ta: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "Ta: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
         "complex64, complex128}")
     .Attr(
-        "Tb: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "Tb: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
         "complex64, complex128}")
     .Attr(
         "Tout: {bfloat16, half, float, double, int16, int32, int64, complex64, "

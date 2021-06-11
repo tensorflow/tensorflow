@@ -281,8 +281,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testStringTensorOnGPU(self):
     with ops.device("/device:GPU:0"):
       t = _create_tensor("test string")
-      self.assertIn("CPU", t.device)
-      self.assertIn("CPU", t.backing_device)
+      self.assertIn("GPU", t.device)
 
   def testInvalidUTF8ProducesReasonableError(self):
     if sys.version_info[0] < 3:

@@ -510,6 +510,9 @@ pytype_strict_library(
 py_test(
     name = "metrics_nonportable_test",
     srcs = ["metrics_nonportable_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
+    ],
     python_version = "PY3",
     tags = ["no_oss"],
     visibility = ["//visibility:public"],

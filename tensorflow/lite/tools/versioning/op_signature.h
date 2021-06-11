@@ -23,26 +23,25 @@ const auto kTensorTypeNone = static_cast<::tflite::TensorType>(-1);
 
 // OpSignature contains operator parameters for version functions.
 typedef struct {
-  TensorType type;
-  std::vector<int32_t> dims;
-} OpSignatureTensorSpec;
-
-typedef struct {
   BuiltinOperator op;
-  std::vector<OpSignatureTensorSpec> inputs;
-  std::vector<OpSignatureTensorSpec> outputs;
-  void* builtin_data;
+  std::vector<TensorType> input_types;
+  std::vector<TensorType> output_types;
   union {
     struct {
-      bool is_per_channel_quantized;
-    } conv_2d;
-    struct {
+      int32_t dilation_w_factor;
+      int32_t dilation_h_factor;
       bool is_per_channel_quantized;
     } depthwise_conv_2d;
     struct {
+      bool narrow_range;
+    } fakequant;
+    struct {
+      bool keep_num_dims;
+      FullyConnectedOptionsWeightsFormat weights_format;
       // TODO(b/156530611): Make this global when more ops support sparse
       // computation.
       bool sparse_weight;
+      bool asymmetric_quantize_inputs;
     } fully_connected;
     struct {
       float input1_scale;
@@ -50,12 +49,43 @@ typedef struct {
       float output_scale;
     } mul;
     struct {
+      LSTMKernelType kernel_type;
+      bool asymmetric_quantize_inputs;
+    } lstm;
+    struct {
+      bool half_pixel_centers;
+      bool align_corners;
+    } resize;
+    struct {
       int32_t num_dims;
+    } single_input_op;
+    struct {
+      int32_t num_dims;
+      bool need_broadcast;
+    } broadcast;
+    struct {
+      bool pot_scale_int16;
+      int32_t num_dims;
+      bool need_broadcast;
+    } addsub;
+    struct {
+      bool is_per_channel_quantized;
+    } conv_2d;
+    struct {
+      bool asymmetric_quantize_inputs;
+    } input_quantization;
+    struct {
+      int32_t batch_dims;
+    } gather;
+    struct {
+      int32_t num_dims;
+      int32_t ellipsis_mask;
+      int32_t new_axis_mask;
     } strided_slice;
     struct {
       bool input_quantized;
     } abs;
-  } ext_options;
+  } options;
 } OpSignature;
 
 // Generate OpSignature with the given OperatorCode, Operator and Tensors (from
@@ -63,9 +93,6 @@ typedef struct {
 // mostly input and output tensor types are enough to figure out op version.
 // But some ops (DEPTHWISE_CONV_2D,  FULLY_CONNECTED, ...) require to pass their
 // options to decide op version.
-//
-// WARNING: The caller is responsible to free the allocated
-// OpSignature.builtin_data memory.
 OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
                            const SubGraph* subgraph);
 

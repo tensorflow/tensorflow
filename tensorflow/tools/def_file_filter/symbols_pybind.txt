@@ -216,6 +216,7 @@ tensorflow::ImportFunction
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
+tensorflow::AttrValue  # tf_text
 
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
@@ -405,6 +406,3 @@ tensorflow::CopyPythonAPITensorLists
 
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
-
-[//tensorflow/core:protos_all_cc] # tf_text
-tensorflow::AttrValue
