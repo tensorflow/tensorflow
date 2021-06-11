@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import unittest
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -137,19 +136,16 @@ class ResourceApplyFtrlTest(xla_test.XLATestCase):
         lr=1, l1=1, l2=-1.25, lr_power=1)
     self.assertAllClose(0.25 * np.ones((1, 3, 2)), var)
 
-  @unittest.skip("Needs cl/378772774")
   def testL2Shrinkage(self):
-    """Test that 2 * l2_shrinkage * var is added to the gradient."""
-    # TODO(kramm): XLA adds grad^2 to accum, not grad_to_use^2
+    """Test that 2 * l2_shrinkage * var is *not* added to the gradient."""
     _, accum, _ = self._eval(
         var=np.ones((1, 3, 2)),
         accum=np.zeros((1, 3, 2)),
         linear=np.zeros((1, 3, 2)),
         grad=np.zeros((1, 3, 2)),
         lr=7, l1=3, l2=7, lr_power=2, l2_shrinkage=0.5)
-    self.assertAllClose(np.ones((1, 3, 2)), accum)
+    self.assertAllClose(np.zeros((1, 3, 2)), accum)
 
-  @unittest.skip("Needs cl/378772774")
   def testL2ShrinkageOnLinear(self):
     """Test that 2 * l2_shrinkage * var is added to linear."""
     _, _, linear = self._eval(
