@@ -26,6 +26,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -863,8 +864,8 @@ class ApplicationModelTest(keras_parameterized.TestCase):
       ('resnet50', resnet.ResNet50),
   )
   def test_application_model(self, app):
-    self.skipTest('b/190747991: OOMs when a GPU is used')
-    with policy.policy_scope('mixed_float16'):
+    # Run on CPU since model weights may exhaust GPU memory
+    with policy.policy_scope('mixed_float16'), ops.device('/CPU:0'):
       app(weights=None)
 
 
