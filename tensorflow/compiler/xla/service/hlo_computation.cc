@@ -210,9 +210,9 @@ HloInstruction* HloComputation::ReplaceParameter(
   instruction->set_parent(this);
   HloInstruction* new_instruction = AddInstructionInternal(std::move(instruction));
   HloInstruction* old_instruction = param_instructions_[param_no];
-  CHECK(old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction).ok()) << "Check failed";
+  CHECK(old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction).ok());
   param_instructions_[param_no] = new_instruction;
-  CHECK(RemoveInstruction(old_instruction).ok()) << "Check failed";
+  CHECK(RemoveInstruction(old_instruction).ok());
   return new_instruction;
 }
 

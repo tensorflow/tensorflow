@@ -25,25 +25,25 @@ namespace gpu {
 bool AreInstructionSupported(HloComputation* comp) {
   for (HloInstruction* instr: comp->instructions()) {
     bool supported =
-      (HloInstruction::IsOpElementwise(instr->opcode()) ||
-       instr->opcode() == HloOpcode::kConstant ||
-       // We only support reduction when they are at the root or when
-       // in a MOF, at the end. This should always be true for now,
-       // but if we implement reduction epilog fusion in the future,
-       // this optimization need to be updated. So disable it just for
-       // future safety.
-       (instr->opcode() == HloOpcode::kReduce &&
-        (comp->root_instruction() == instr ||
-         (instr->users().size() == 1 &&
-          instr->users()[0]->opcode() == HloOpcode::kTuple)))||
-       instr->opcode() == HloOpcode::kTuple ||
-       instr->opcode() == HloOpcode::kParameter ||
-       (instr->opcode() == HloOpcode::kBitcast &&
-        instr->shape().rank() < instr->operand(0)->shape().rank()) ||
-       (instr->opcode() == HloOpcode::kBroadcast &&
-        (instr->dimensions().size() == 0 ||   // scalar broadcasting
-         (instr->dimensions().size() == 1 &&  // row broadcasting
-          instr->dimensions()[0] == (instr->shape().rank() - 1)))));
+        HloInstruction::IsOpElementwise(instr->opcode()) ||
+        instr->opcode() == HloOpcode::kConstant ||
+        // We only support reduction when they are at the root or when
+        // in a MOF, at the end. This should always be true for now,
+        // but if we implement reduction epilog fusion in the future,
+        // this optimization need to be updated. So disable it just for
+        // future safety.
+        (instr->opcode() == HloOpcode::kReduce &&
+         (comp->root_instruction() == instr ||
+          (instr->users().size() == 1 &&
+           instr->users()[0]->opcode() == HloOpcode::kTuple)))||
+        instr->opcode() == HloOpcode::kTuple ||
+        instr->opcode() == HloOpcode::kParameter ||
+        (instr->opcode() == HloOpcode::kBitcast &&
+         instr->shape().rank() < instr->operand(0)->shape().rank()) ||
+        (instr->opcode() == HloOpcode::kBroadcast &&
+         (instr->dimensions().size() == 0 ||   // scalar broadcasting
+          (instr->dimensions().size() == 1 &&  // row broadcasting
+           instr->dimensions()[0] == (instr->shape().rank() - 1))));
     if (!supported) {
       VLOG(2) << "NOT SUPPORTED " << instr->ToString();
       return false;
@@ -55,7 +55,7 @@ bool AreInstructionSupported(HloComputation* comp) {
 StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
   XLA_VLOG_LINES(2, "FusionBitcastLift::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp : module->MakeNonfusionComputations()) {
     // Copy the instruction list as we modify the HloComputation.
     std::vector<HloInstruction*> comp_instruction(comp->instructions().begin(),
                                                   comp->instructions().end());
