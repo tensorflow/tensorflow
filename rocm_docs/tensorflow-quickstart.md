@@ -209,13 +209,15 @@ Pull instructions: `$ docker pull rocm/tensorflow-autobuilds:dev-latest`
 To finetune GPT-2 with Huggingface Transformers and Tensorflow 2.x with AMD GPUs
 Enter a standard rocm docker image
 
-####Docker commands
+#### Docker commands
+```
     alias drun='sudo docker run -it --rm --network=host --device=/dev/kfd --device=/dev/dri --ipc=host --shm-size 16G --group-add video --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v $HOME/dockerx:/dockerx -w /dockerx'
     drun rocm/tensorflow-autobuilds:rocm4.2.0-latest
-
+```
 Clone the OpenAI GPT-2 Dataset handling repository and run the download python script. This downloads the training sets for various model sizes and stores them into a directory named "data". This directory will be in the location where the command was run. 
 
-####Clone Data Repo and Download Data
+#### Clone Data Repo and Download Data
+```
     mkdir -p /data/tf-gpt-2 && cd /data/tf-gpt-2
     git clone https://github.com/openai/gpt-2-output-dataset.git
     if [ -d "/data/tf-gpt-2/data" ]
@@ -226,11 +228,13 @@ Clone the OpenAI GPT-2 Dataset handling repository and run the download python s
         pip3 install tqdm
         python3 gpt-2-output-dataset/download_dataset.py
     fi
-
-####Install the Huggingface transformers pip package and the jsonlines package. 
+```
+#### Install the Huggingface transformers pip package and the jsonlines package. 
+```
     pip3 install transformers jsonlines
-
-####Clone GPT-2 Finetuning repo and run finetuning script
+```
+#### Clone GPT-2 Finetuning repo and run finetuning script
+```
     cd ~ && git clone https://github.com/ROCmSoftwarePlatform/transformers
     # Script to train the small 117M model
     python3 transformers/scripts/gpt2-tf2/gpt2_train.py "Small" "/data/tf-gpt-2/data/" 1 1
@@ -240,8 +244,5 @@ Clone the OpenAI GPT-2 Dataset handling repository and run the download python s
     python3 transformers/scripts/gpt2-tf2/gpt2_train.py "Large" "/data/tf-gpt-2/data/" 1 1
     # Script to train the XL 1542M model
     python3 transformers/scripts/gpt2-tf2/gpt2_train.py "XL" "/data/tf-gpt-2/data/" 1 1
-
+```
 The arguments illustrate using either the "Small" (117M), "Medium" (345M), "Large" (762M), "XL" (1542M) GPT-2 models, and the location of the training data as whole. Using "Small" in the first argument not only loads the pretrained small model but also selects the appropriate datafile in the data folder. The third argument is to tell the trainer how many epochs to train for, and the final argument is for dataset truncation, if it is 1, then the dataset is truncated to 1000 data values, if 0, then the dataset is full (~250000 values). This script also evaluates the model with the appropriate dataset (Small, Medium, Large, XL) after finetuning. 
-
-
-
