@@ -1220,6 +1220,7 @@ cc_library(
         ":cycle_detector",
         ":fusion_utils",
         ":lhlo",
+        ":pass_details",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -1276,6 +1277,7 @@ cc_library(
     deps = [
         ":DiscRalPassIncGen",
         ":MhloPassIncGen",
+        ":LmhloPassIncGen",
         "@llvm-project//mlir:Pass",
     ],
 )

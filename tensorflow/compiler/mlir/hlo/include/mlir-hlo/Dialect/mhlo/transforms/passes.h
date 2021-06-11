@@ -118,7 +118,8 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
 
 // fuse lmhlo ops to kLoop/kInput fusion patterns
-std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass();
+std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
+    int max_num_arguments_per_kernel = 64);
 
 }  // namespace lmhlo
 

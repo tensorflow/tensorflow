@@ -37,11 +37,15 @@ namespace lmhlo {
 //
 // kInput fusion template satisfies:
 //   - any op in the fusion pattern is either element-wise or a reduction.
-//   - if a op is a reduction, its output cannot be consumered by other
+//   - if a op is a reduction, its output cannot be consumed by other
 //     ops in the same fusion pattern.
 //   - all the effective shapes of outputs of fusion pattern are same.
 //     - For element-wise op, its effective shape is its output shape.
 //     - For reduction op, its effective shape is its operand shape.
+//   - currently our downstreaming codegen engine only support 2d -> 1d tensor
+//   reduction. TODO: lift this limitation.
+//     - 2D row reduction: out[i] = sum({in[i][j] for all j})
+//     - 2D column reduction: out[j] = sum({in[i][j] for all i})
 enum FusionType {
   // Not a fusion pattern
   kNone,
@@ -73,7 +77,8 @@ bool isRank2RowReduction(Operation* op);
 // Returns true if this op is a rank-2 column reduction.
 bool isRank2ColReduction(Operation* op);
 
-// Returns true if the op may be fused with other ops.
+// Returns true if the op is supported by the downstreaming fusion codegen
+// engine.
 bool isFusible(Operation* op);
 
 // Returns the number of operands that are supposed to be written.
@@ -127,15 +132,15 @@ class FusionPattern {
             getFusionType() == FusionType::kColReduction);
   }
 
-  // Returns true if two fusion pattern can be merged into one bigger fusion
+  // Returns true if two fusion patterns can be merged into one bigger fusion
   // pattern.
   bool isMergeable(FusionPattern& other);
 
-  // Merges two fusion pattern and returns the merged pattern. The original
+  // Merges two fusion patterns and returns the merged pattern. The original
   // pattern remains unmodified.
   FusionPattern merge(FusionPattern& other);
 
-  // Merges two fusion pattern and returns the merged pattern. Replaces The
+  // Merges two fusion patterns and returns the merged pattern. Replaces the
   // original pattern with new merged pattern.
   FusionPattern& mergeInplace(FusionPattern& other);
 
@@ -199,11 +204,11 @@ class ValueWrapper {
 
 bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs);
 
-// This is an simple shape constraint analysis, which is used to
+// This is a simple shape constraint analysis, which is used to
 // guide fusion decision (e.g. we only fuse shape-compatible ops).
 //
 // Currently, We only consider shape equality and same-number-elements equality
-// propagation based on the shape constrain traits of elementwise ops (assuming
+// propagation based on the shape constraint traits of elementwise ops (assuming
 // that implicit shape broadcast is forbidden).
 class ShapeConstraintAnalysis {
  public:

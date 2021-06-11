@@ -30,24 +30,44 @@ namespace lmhlo {
 // Returns true if the op is an elementwise unary lmhlo op.
 // TODO: use fusibility interface
 bool isElementWiseUnary(Operation* op) {
-  return (dyn_cast<lmhlo::AbsOp>(op) || dyn_cast<lmhlo::CeilOp>(op) ||
-          dyn_cast<lmhlo::FloorOp>(op) || dyn_cast<lmhlo::ConvertOp>(op) ||
-          dyn_cast<lmhlo::CosOp>(op) || dyn_cast<lmhlo::ExpOp>(op) ||
-          dyn_cast<lmhlo::LogOp>(op) || dyn_cast<lmhlo::NegOp>(op) ||
-          dyn_cast<lmhlo::RsqrtOp>(op) || dyn_cast<lmhlo::SqrtOp>(op) ||
-          dyn_cast<lmhlo::SignOp>(op) || dyn_cast<lmhlo::TanhOp>(op) ||
-          dyn_cast<lmhlo::NotOp>(op) || dyn_cast<lmhlo::CopyOp>(op) ||
-          dyn_cast<lmhlo::IsFiniteOp>(op));
+  // clang-format off
+  return isa<
+    lmhlo::AbsOp,
+    lmhlo::CeilOp,
+    lmhlo::ConvertOp,
+    lmhlo::CopyOp,
+    lmhlo::CosOp,
+    lmhlo::ExpOp,
+    lmhlo::FloorOp,
+    lmhlo::IsFiniteOp,
+    lmhlo::LogOp,
+    lmhlo::NegOp,
+    lmhlo::NotOp,
+    lmhlo::RsqrtOp,
+    lmhlo::SignOp,
+    lmhlo::SqrtOp,
+    lmhlo::TanhOp
+  >(op);
+  // clang-format on
 }
 
 // Returns true if the op is an elementwise binary lmhlo op.
 // TODO: use fusibility interface
 bool isElementWiseBinary(Operation* op) {
-  return (dyn_cast<lmhlo::AddOp>(op) || dyn_cast<lmhlo::MulOp>(op) ||
-          dyn_cast<lmhlo::DivOp>(op) || dyn_cast<lmhlo::SubOp>(op) ||
-          dyn_cast<lmhlo::CompareOp>(op) || dyn_cast<lmhlo::AndOp>(op) ||
-          dyn_cast<lmhlo::OrOp>(op) || dyn_cast<lmhlo::PowOp>(op) ||
-          dyn_cast<lmhlo::MaxOp>(op) || dyn_cast<lmhlo::MinOp>(op));
+  // clang-format off
+  return isa<
+    lmhlo::AddOp,
+    lmhlo::AndOp,
+    lmhlo::CompareOp,
+    lmhlo::DivOp,
+    lmhlo::MaxOp,
+    lmhlo::MinOp,
+    lmhlo::MulOp,
+    lmhlo::OrOp,
+    lmhlo::PowOp,
+    lmhlo::SubOp
+  >(op);
+  // clang-format on
 }
 
 // Returns true if the op is an elementwise lmhlo op.
@@ -61,7 +81,7 @@ bool isRank2RowReduction(Operation* op) {
   auto reduce_op = dyn_cast<lmhlo::ReduceOp>(op);
   if (!reduce_op || reduce_op.dimensions().getNumElements() != 1) return false;
 
-  auto rank = op->getOperand(0).getType().cast<MemRefType>().getRank();
+  int rank = op->getOperand(0).getType().cast<MemRefType>().getRank();
   auto dimensions = reduce_op.dimensions().getValues<int64_t>();
   return ((*dimensions.begin() == 1) && (rank == 2));
 }
@@ -71,29 +91,44 @@ bool isRank2ColReduction(Operation* op) {
   auto reduce_op = dyn_cast<lmhlo::ReduceOp>(op);
   if (!reduce_op || reduce_op.dimensions().getNumElements() != 1) return false;
 
-  auto rank = op->getOperand(0).getType().cast<MemRefType>().getRank();
+  int rank = op->getOperand(0).getType().cast<MemRefType>().getRank();
   auto dimensions = reduce_op.dimensions().getValues<int64_t>();
   return ((*dimensions.begin() == 0) && (rank == 2));
 }
 
-// Returns true if the op may be fused with other ops.
+// Returns true if the op is supported by the downstreaming fusion codegen
+// engine.
 bool isFusible(Operation* op) {
+  // Only scalar const are supported by the fusion codegen engine a.t.m.
   if (dyn_cast<lmhlo::ConstOp>(op)) {
-    auto type = op->getOperand(0).getType().cast<MemRefType>();
+    MemRefType type = op->getOperand(0).getType().cast<MemRefType>();
     return (type.getRank() == 0);
   }
-  return (isElementWise(op) || isRank2RowReduction(op) ||
-          isRank2ColReduction(op) || dyn_cast<lmhlo::RealDynamicSliceOp>(op) ||
-          dyn_cast<lmhlo::SliceOp>(op) || dyn_cast<lmhlo::DynamicPadOp>(op) ||
-          dyn_cast<lmhlo::DynamicReshapeOp>(op) ||
-          dyn_cast<lmhlo::ReshapeOp>(op) ||
-          dyn_cast<lmhlo::ConcatenateOp>(op) ||
-          dyn_cast<lmhlo::DynamicIotaOp>(op) || dyn_cast<lmhlo::GatherOp>(op) ||
-          dyn_cast<lmhlo::DynamicGatherOp>(op) ||
-          dyn_cast<lmhlo::BroadcastOp>(op) ||
-          dyn_cast<lmhlo::DynamicBroadcastInDimOp>(op) ||
-          dyn_cast<lmhlo::BroadcastInDimOp>(op) ||
-          dyn_cast<lmhlo::TransposeOp>(op) || dyn_cast<lmhlo::SelectOp>(op));
+
+  // All element ops are supported by the fusion codegen engine.
+  if (isElementWise(op)) return true;
+
+  // Only rank-2 tensor -> rank-1 tensor reduction are supported now.
+  if (isRank2RowReduction(op) || isRank2ColReduction(op)) return true;
+
+  // clang-format off
+  return isa<
+    lmhlo::BroadcastInDimOp,
+    lmhlo::BroadcastOp,
+    lmhlo::ConcatenateOp,
+    lmhlo::DynamicBroadcastInDimOp,
+    lmhlo::DynamicGatherOp,
+    lmhlo::DynamicIotaOp,
+    lmhlo::DynamicPadOp,
+    lmhlo::DynamicReshapeOp,
+    lmhlo::GatherOp,
+    lmhlo::RealDynamicSliceOp,
+    lmhlo::ReshapeOp,
+    lmhlo::SelectOp,
+    lmhlo::SliceOp,
+    lmhlo::TransposeOp
+  >(op);
+  // clang-format on
 }
 
 // Returns the number of operands that are supposed to be written.
@@ -104,36 +139,41 @@ int getNumResultOperands(Operation* op) {
     return 0;
   }
 
-  if (isa<lmhlo::TerminatorOp>(op)) {
-    return 0;
-  }
+  auto isWritable = [&](Value operand) -> bool {
+    llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
+    MemoryEffectOpInterface interface = dyn_cast<MemoryEffectOpInterface>(op);
+    // Suppose that operands of op without `MemoryEffectOpInterface` are
+    // readonly.
+    if (!interface) return false;
 
-  // For most lhlo ops, the last operand is the output memref.
-  // TODO: re-visit this assumption especially when we consider control flow.
-  return 1;
+    interface.getEffectsOnValue(operand, effects);
+    return llvm::any_of(
+        effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
+          return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
+        });
+  };
+
+  return llvm::count_if(op->getOperands(),
+                        [&](Value v) { return isWritable(v); });
 }
 
 // Returns data users of the value and its aliases (e.g. memref.cast).
-// Here not-data users means DimOp, DeallocOp and ShapeOfOp.
+// Here non-data users means DimOp, DeallocOp and ShapeOfOp.
 SmallVector<Operation*, 4> getValueUsers(Value v) {
   SmallVector<Operation*, 4> users;
   SmallVector<Value, 4> worklist;
-  DenseSet<Value> visited;
   worklist.push_back(v);
-  visited.insert(v);
   while (!worklist.empty()) {
     Value curr = worklist.back();
     worklist.pop_back();
-    for (auto user : curr.getUsers()) {
+    for (Operation* user : curr.getUsers()) {
       // Skip non-data users
-      if (isa<memref::DimOp>(user) || isa<memref::DeallocOp>(user) ||
-          isa<shape::ShapeOfOp>(user)) {
+      if (isa<memref::DimOp, memref::DeallocOp, shape::ShapeOfOp>(user)) {
         continue;
       }
       // alias value
       if (isa<memref::CastOp>(user)) {
         worklist.push_back(user->getResult(0));
-        visited.insert(user->getResult(0));
       } else {
         users.push_back(user);
       }
@@ -160,23 +200,39 @@ FusionPattern::FusionPattern(Operation* op) {
 
 // Create a new fusion pattern from the ops inside the lmhlo fusion op.
 FusionPattern::FusionPattern(lmhlo::FusionOp op) {
-  for (auto& op : op.region().getBlocks().front()) {
+  for (Operation& op : op.region().getBlocks().front()) {
     op_list_.push_back(&op);
-    if (isRank2RowReduction(&op)) {
+  }
+
+  // Figure out fusion type and dominant op for the fusion pattern.
+  for (Operation* op : op_list_) {
+    if (isRank2RowReduction(op)) {
       fusion_type_ = FusionType::kRowReduction;
-      dominant_op_ = &op;
-    } else if (isRank2ColReduction(&op)) {
+      dominant_op_ = op;
+    } else if (isRank2ColReduction(op)) {
       if (fusion_type_ != FusionType::kRowReduction) {
         fusion_type_ = FusionType::kColReduction;
-        dominant_op_ = &op;
+        dominant_op_ = op;
       }
-    } else if (fusion_type_ == FusionType::kNone) {
-      assert(mlir::lmhlo::isFusible(&op));
-      fusion_type_ = FusionType::kLoop;
-      dominant_op_ = &op;
+    } else if (lmhlo::isFusible(op)) {
+      // Ignore if already a kRowReduction or kColReduction, otherwise update
+      // the fusion type to kLoop and dominant op to current op. This supposes
+      // that the last op inside the block is a valid candidate dominant op if
+      // the fusion pattern is a kLoop.
+      if (fusion_type_ == FusionType::kNone ||
+          fusion_type_ == FusionType::kLoop) {
+        fusion_type_ = FusionType::kLoop;
+        dominant_op_ = op;
+      }
+    } else {
+      // Not a supported fusionOp, early stop.
+      fusion_type_ = FusionType::kNone;
+      dominant_op_ = nullptr;
+      break;
     }
   }
-  calculateOperandsAndResults();
+
+  if (isFusible()) calculateOperandsAndResults();
 }
 
 // Create a new fusion pattern from a valid fusion op list.
@@ -185,21 +241,21 @@ FusionPattern::FusionPattern(SmallVectorImpl<Operation*>& op_list)
   calculateOperandsAndResults();
 }
 
-// Returns true if two fusion pattern can be merged into one bigger fusion
+// Returns true if two fusion patterns can be merged into one bigger fusion
 // pattern.
 bool FusionPattern::isMergeable(FusionPattern& other) {
   if (!this->isFusible() || !other.isFusible()) return false;
   return true;
 }
 
-// Merges two fusion pattern and returns the merged pattern. The original
+// Merges two fusion patterns and returns the merged pattern. The original
 // pattern remains unmodified.
 FusionPattern FusionPattern::merge(FusionPattern& other) {
   assert(isMergeable(other));
   FusionOpList new_op_list = op_list_;
   new_op_list.insert(new_op_list.end(), other.getOpList().begin(),
                      other.getOpList().end());
-  auto new_fusion_pattern = FusionPattern(new_op_list);
+  FusionPattern new_fusion_pattern{new_op_list};
 
   FusionType newType = FusionType::kLoop;
   Operation* newDominant = getDominantOp();
@@ -224,10 +280,11 @@ FusionPattern FusionPattern::merge(FusionPattern& other) {
   return new_fusion_pattern;
 }
 
-// Merges two fusion pattern and returns the merged pattern. Replaces The
+// Merges two fusion patterns and returns the merged pattern. Replaces the
 // original pattern with new merged pattern.
 FusionPattern& FusionPattern::mergeInplace(FusionPattern& other) {
   *this = merge(other);
+  return *this;
 }
 
 // Returns the effective size (e.g. not counting const ops) of the ops this
@@ -253,17 +310,16 @@ void FusionPattern::calculateOperandsAndResults() {
   DenseSet<Operation*> op_set(op_list_.begin(), op_list_.end());
 
   DenseMap<Value, Operation*> last_writer;
-  for (auto& op : op_list_) {
-    int num_operand = op->getNumOperands();
-    for (int i = num_operand - getNumResultOperands(op); i < num_operand; ++i) {
-      Value v = op->getOperand(i);
+  for (Operation* op : op_list_) {
+    int num_input_operand = op->getNumOperands() - getNumResultOperands(op);
+    for (Value v : op->getOperands().drop_front(num_input_operand)) {
       bool inserted = last_writer.try_emplace(v, op).second;
       (void)inserted;
       assert(inserted);
 
       bool has_external_user = false;
-      for (auto user : getValueUsers(v)) {
-        if (op_set.find(user) == op_set.end()) {
+      for (Operation* user : getValueUsers(v)) {
+        if (!op_set.contains(user)) {
           has_external_user = true;
           break;
         }
@@ -277,10 +333,9 @@ void FusionPattern::calculateOperandsAndResults() {
     }
   }
 
-  for (auto& op : op_list_) {
-    int num_operand = op->getNumOperands();
-    for (int i = 0; i < num_operand - getNumResultOperands(op); ++i) {
-      Value value = op->getOperand(i);
+  for (Operation* op : op_list_) {
+    int num_input_operand = op->getNumOperands() - getNumResultOperands(op);
+    for (Value value : op->getOperands().take_front(num_input_operand)) {
       if (last_writer.find(value) != last_writer.end()) {
         // skip if defining op is in the pattern
         continue;
@@ -318,15 +373,14 @@ void ShapeConstraintAnalysis::PropagateEquality(
       // Propagates same num_elements equality, and shape equality
       if (isElementWise(op)) {
         Value lhs = op->getOperand(0);
-        for (int i = 1; i < num_operand; ++i) {
-          Value rhs = op->getOperand(i);
+        for (Value rhs : op->getOperands().drop_front()) {
           update(lhs, rhs, same_num_elements_impl_);
           update(lhs, rhs, same_shape_impl_);
         }
       }
       // Propagates same num_elements equality, not shape equality
-      if (isa<lmhlo::DynamicReshapeOp>(op) || isa<lmhlo::ReshapeOp>(op) ||
-          isa<lmhlo::TransposeOp>(op)) {
+      if (isa<lmhlo::DynamicReshapeOp, lmhlo::ReshapeOp, lmhlo::TransposeOp>(
+              op)) {
         Value input = op->getOperand(0);
         // The last operand is the output memref by design
         Value output = op->getOperand(num_operand - 1);

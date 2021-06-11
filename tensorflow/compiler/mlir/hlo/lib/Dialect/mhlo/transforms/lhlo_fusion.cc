@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/fusion_utils.h"
 #include "mlir-hlo/utils/cycle_detector.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"      // TF:llvm-project
@@ -49,7 +50,7 @@ limitations under the License.
 // pattern have the same shape. However, we don't know the actual value
 // of the shape at the compile time in the dynamic shape world.
 // Fortunately, we could still infer the relationship among different ops
-// according to their shape constrain traits. Currently, We only consider
+// according to their shape constraint traits. Currently, We only consider
 // shape equality propagation for elementwise ops (assuming that implicit
 // shape broadcast is forbidden). The above process could be built on the
 // shape dialect once it is ready.
@@ -61,6 +62,12 @@ limitations under the License.
 namespace mlir {
 namespace lmhlo {
 namespace {
+
+struct FusionOptions {
+  // Maximum allowed number of arguments per fused kernel. Here arguments
+  // include both ready-only buffers and writable buffers.
+  int max_num_arguments_per_kernel;
+};
 
 // A fusion planner that can propose a fusion plan for a block of ops.
 // The fusion plan is consisted of a group of fusion patterns.
@@ -75,14 +82,19 @@ namespace {
 //
 // kInput fusion template satisfies:
 //   - any op in the fusion pattern is either element-wise or a reduction.
-//   - if a op is a reduction, its output cannot be consumered by other
+//   - if a op is a reduction, its output cannot be consumed by other
 //     ops in the same fusion pattern.
 //   - all the effective shapes of outputs of fusion pattern are same.
 //     - For element-wise op, its effective shape is its output shape.
 //     - For reduction op, its effective shape is its operand shape.
+//   - currently our downstreaming codegen engine only support 2d -> 1d tensor
+//   reduction. TODO: lift this limitation.
+//     - 2D row reduction: out[i] = sum({in[i][j] for all j})
+//     - 2D column reduction: out[j] = sum({in[i][j] for all i}
 class FusionPlanner {
  public:
-  explicit FusionPlanner(Block* block) : block_(block) {
+  explicit FusionPlanner(const FusionOptions& options, Block* block)
+      : options_(options), block_(block) {
     // Move up metadata-only ops (e.g. dim, shape_of) as far as possible.
     MoveUpMetadataOnlyOpsForFusion();
 
@@ -108,7 +120,7 @@ class FusionPlanner {
     for (Operation* op : op_list_) {
       Cluster* cluster = GetClusterForNode(op);
       if (!seen_clusters.insert(cluster).second) continue;
-      auto& fusion_pattern = cluster->fused_pattern();
+      FusionPattern& fusion_pattern = cluster->fused_pattern();
       // Make sure the ops in a fusion pattern are in topological ordering.
       fusion_pattern.sortFusionOpListBy(op_to_node_id_);
       if (!fusion_pattern.isFusible() || fusion_pattern.effectiveSize() <= 1) {
@@ -180,18 +192,18 @@ class FusionPlanner {
       return op && op->getBlock() == block;
     };
 
-    for (auto op : ops) {
-      auto block = op->getBlock();
+    for (Operation* op : ops) {
+      Block* block = op->getBlock();
       if (isa<shape::ShapeOfOp>(op)) {
-        auto definingOp = op->getOperand(0).getDefiningOp();
+        Operation* definingOp = op->getOperand(0).getDefiningOp();
         if (!inBlock(definingOp, block)) {
           op->moveBefore(block, block->begin());
         } else {
           op->moveAfter(definingOp);
         }
       } else if (isa<memref::DimOp>(op)) {
-        auto firstOperandOp = op->getOperand(0).getDefiningOp();
-        auto secondOperandOp = op->getOperand(1).getDefiningOp();
+        Operation* firstOperandOp = op->getOperand(0).getDefiningOp();
+        Operation* secondOperandOp = op->getOperand(1).getDefiningOp();
         if (!inBlock(firstOperandOp, block) &&
             !inBlock(secondOperandOp, block)) {
           op->moveBefore(block, block->begin());
@@ -208,6 +220,17 @@ class FusionPlanner {
     }
   }
 
+  // Returns all the values touched by this op or its nested ops.
+  SmallVector<Value, 4> GetAllPossibleUsedValues(Operation* op) {
+    SmallVector<Value, 4> values;
+    op->walk([&](Operation* nest_op) {
+      for (Value v : nest_op->getOperands()) {
+        values.push_back(v);
+      }
+    });
+    return values;
+  }
+
   // Builds the initial dependency graph.
   void BuildNodeMap() {
     int num_nodes = op_list_.size();
@@ -216,7 +239,7 @@ class FusionPlanner {
       MakeCluster(node_id);
       op_to_node_id_[op] = node_id;
       leader_for_node_.insert(node_id);
-      for (Value operand : op->getOperands()) {
+      for (Value operand : GetAllPossibleUsedValues(op)) {
         Operation* operand_op = FindLastWriter(operand);
         // Only consider the operand_op inside the target block.
         auto iter = op_to_node_id_.find(operand_op);
@@ -229,10 +252,10 @@ class FusionPlanner {
 
       // For some ops (e.g. lmhlo ops), some operands are the output memrefs
       // Thus these operands are supposed to be updated.
-      int num_operand = op->getNumOperands();
-      for (int i = num_operand - getNumResultOperands(op); i < num_operand;
-           ++i) {
-        Value v = op->getOperand(i);
+      // Suppose that a op (or its nested ops) can only write the buffers
+      // explicit passed in as operands of this op.
+      int num_input_operand = op->getNumOperands() - getNumResultOperands(op);
+      for (Value v : op->getOperands().drop_front(num_input_operand)) {
         auto it = last_writer_.try_emplace(v, op);
         (void)it;
         // Currently, a buffer is only supposed to be written once (as the
@@ -275,7 +298,7 @@ class FusionPlanner {
     return true;
   }
 
-  template <typename FnTy>
+  using FnTy = llvm::function_ref<bool(Cluster*, Cluster*)>;
   bool ForEachEdgeInPostOrder(FnTy fn, bool enable_cross_fusion = false) {
     bool changed = false;
     for (int32_t node : cycle_detector_->AllNodesInPostOrder()) {
@@ -323,12 +346,14 @@ class FusionPlanner {
   bool TryToContractEdge(Cluster* from, Cluster* to) {
     // Try merge and check if valid.
     if (!from->fused_pattern().isMergeable(to->fused_pattern())) return false;
-    auto fused_pattern = from->fused_pattern().merge(to->fused_pattern());
+    FusionPattern fused_pattern =
+        from->fused_pattern().merge(to->fused_pattern());
     auto& op_list = fused_pattern.getOpList();
     auto& operands = fused_pattern.getOperands();
     auto& results = fused_pattern.getResults();
 
-    if (results.size() + operands.size() > 64) {
+    if (results.size() + operands.size() >
+        options_.max_num_arguments_per_kernel) {
       // some backend devices (e.g. GPU) do not support a kernel with
       // too many arguments.
       return false;
@@ -337,8 +362,8 @@ class FusionPlanner {
     // We currently do not support a constant op as final output of a fusion
     // pattern.
     // TODO: copy small const in case necessary.
-    for (auto&& result : results) {
-      auto result_op = FindLastWriter(result);
+    for (Value result : results) {
+      Operation* result_op = FindLastWriter(result);
       assert(result_op);
       if (isa<lmhlo::ConstOp>(result_op)) {
         return false;
@@ -346,13 +371,11 @@ class FusionPlanner {
     }
 
     // ReduceOp can not have consumer within the fusion pattern.
-    for (auto op : op_list) {
+    for (Operation* op : op_list) {
       if (!isa<lmhlo::ReduceOp>(op)) continue;
-      int num_operand = op->getNumOperands();
-      for (int i = num_operand - getNumResultOperands(op); i < num_operand;
-           ++i) {
-        Value v = op->getOperand(i);
-        for (auto user : getValueUsers(v)) {
+      int num_input_operand = op->getNumOperands() - getNumResultOperands(op);
+      for (Value v : op->getOperands().drop_front(num_input_operand)) {
+        for (Operation* user : getValueUsers(v)) {
           if (user == op) continue;
           if (std::find(op_list.begin(), op_list.end(), user) !=
               op_list.end()) {
@@ -384,7 +407,7 @@ class FusionPlanner {
     Value ref_shape = get_effective_shape(results[0]);
     if (!llvm::all_of(results, [&](Value result) {
           Value shape = get_effective_shape(result);
-          auto result_op = FindLastWriter(result);
+          Operation* result_op = FindLastWriter(result);
           return check_same_shape
                      ? shape_analysis_->HasSameShape(ref_shape, shape)
                      : shape_analysis_->HasSameNumElements(ref_shape, shape);
@@ -424,8 +447,8 @@ class FusionPlanner {
   // consumers after fusion.
   void ReorderOperationsInsideBlock() {
     auto reorder_func = [&](Cluster* from, Cluster* to) {
-      auto from_pattern = from->fused_pattern();
-      auto to_pattern = to->fused_pattern();
+      FusionPattern& from_pattern = from->fused_pattern();
+      FusionPattern& to_pattern = to->fused_pattern();
 
       Operation* last_op_in_from = from_pattern.getOpList().back();
       for (Operation* op : llvm::reverse(to_pattern.getOpList())) {
@@ -437,6 +460,9 @@ class FusionPlanner {
 
     ForEachEdgeInPostOrder(reorder_func);
   }
+
+  // hyper-parameters that controls the behaviour of the fusion planner.
+  FusionOptions options_;
 
   // The block that fusion planner works on.
   Block* block_;
@@ -465,7 +491,13 @@ class FusionPlanner {
   DenseMap<Value, Operation*> last_writer_;
 };
 
-struct LhloFusionPass : public mlir::PassWrapper<LhloFusionPass, FunctionPass> {
+struct LhloFusionPass : public LhloFusionPassBase<LhloFusionPass> {
+  using LhloFusionPassBase<LhloFusionPass>::LhloFusionPassBase;
+  explicit LhloFusionPass(int max_num_arguments_per_kernel)
+      : LhloFusionPassBase<LhloFusionPass>::LhloFusionPassBase() {
+    this->max_num_arguments_per_kernel_ = max_num_arguments_per_kernel;
+  }
+
   void runOnFunction() override {
     FuncOp func = getFunction();
 
@@ -474,11 +506,14 @@ struct LhloFusionPass : public mlir::PassWrapper<LhloFusionPass, FunctionPass> {
     CollectBlocksInsideFunction(func, blocks);
 
     // process each block and do fusion within a block.
+    FusionOptions options;
+    options.max_num_arguments_per_kernel = max_num_arguments_per_kernel_;
     for (Block* block : blocks) {
-      FusionPlanner planner(block);
+      FusionPlanner planner(options, block);
       llvm::Optional<FusionPlan> plan = planner.Run();
       if (!plan) {
-        emitError(func.getLoc(), "can't find a fusion plan");
+        emitError(func.getLoc(),
+                  "an error occurs while trying to find fusion candidates");
         signalPassFailure();
         return;
       }
@@ -517,16 +552,18 @@ struct LhloFusionPass : public mlir::PassWrapper<LhloFusionPass, FunctionPass> {
 
   void CollectBlocksInsideFunction(FuncOp op, SmallVectorImpl<Block*>& blocks) {
     op.walk([&](Block* block) {
-      // It does not make sense to fuse the region attached to the reduce op.
-      if (!isa<lmhlo::ReduceOp>(block->getParentOp())) blocks.push_back(block);
+      // It does not make sense to fuse the region attached to these ops.
+      if (!isa<lmhlo::ReduceOp, lmhlo::FusionOp>(block->getParentOp()))
+        blocks.push_back(block);
     });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass() {
-  return std::make_unique<LhloFusionPass>();
+std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
+    int max_num_arguments_per_kernel) {
+  return std::make_unique<LhloFusionPass>(max_num_arguments_per_kernel);
 }
 
 }  // namespace lmhlo
