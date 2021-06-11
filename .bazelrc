@@ -107,6 +107,9 @@ build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
 build --spawn_strategy=standalone
+build:android --spawn_strategy=sandboxed
+build:linux --spawn_strategy=sandboxed
+
 build -c opt
 
 # Make Bazel print out all options from rc files.
