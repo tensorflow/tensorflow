@@ -239,9 +239,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
-  
-  @parameterized.parameters(True,False)
-  def testMethodAllowDynamicVariable(self, allow_dynamic):
+
+  def testMethodAllowDynamicVariable(self):
     
     class Foo:
 
@@ -261,7 +260,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
             self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
           else:
             self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
-    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = allow_dynamic
+    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = True
     foo = Foo()
     self.assertAllEqual(foo(True), 1.0)
     self.assertEqual(foo.trace_count, 2)
@@ -269,6 +268,37 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(foo.trace_count, 2)
     self.assertAllEqual(foo(False), 2.0)
     self.assertEqual(foo.trace_count, 3)
+
+  def testMethodNotAllowDynamicVariable(self):
+
+    class Foo:
+
+      def __init__(self):
+        self._flag_keyed_vars = {}
+        self.trace_count = 0
+
+      def __call__(self, var_creation_flag):
+        self.compute(var_creation_flag)
+        return self._flag_keyed_vars[var_creation_flag]
+
+      @def_function.function
+      def compute(self, var_creation_flag):
+        self.trace_count += 1
+        if var_creation_flag not in self._flag_keyed_vars:
+          if var_creation_flag:
+            self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
+          else:
+            self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
+    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = False
+    foo = Foo()
+    self.assertAllEqual(foo(True), 1.0)
+    self.assertEqual(foo.trace_count, 2)
+    self.assertAllEqual(foo(True), 1.0)
+    self.assertEqual(foo.trace_count, 2)
+    msg = 'tf.function-decorated function tried to create variables on non-first call.'
+    with self.assertRaisesRegex(ValueError, msg):
+      self.assertAllEqual(foo(False), 2.0)
+      self.assertEqual(foo.trace_count, 3)
 
   def test_functools_partial(self):
     self.assertAllClose(
