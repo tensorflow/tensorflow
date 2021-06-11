@@ -642,7 +642,8 @@ static void CreateWhile32(Location loc, int num_iterations,
   auto tuple_type = init_tuple.getType();
 
   // Create the while op.
-  auto while_op = builder->create<mhlo::WhileOp>(loc, init_tuple);
+  auto while_op = builder->create<mhlo::WhileOp>(
+      loc, tuple_type, SmallVector<Value>{init_tuple});
 
   {
     OpBuilder::InsertionGuard guard(*builder);
@@ -700,10 +701,11 @@ static void CreateWhile32(Location loc, int num_iterations,
     builder->create<mhlo::ReturnOp>(loc, updated_tuple);
   }
 
+  // TODO(jpienaar): Support multi-operand while op.
   final_values->reserve(init_values.size());
   for (int i = 0, e = init_values.size(); i < e; ++i)
     final_values->push_back(
-        builder->create<GetTupleElementOp>(loc, while_op, i + 1));
+        builder->create<GetTupleElementOp>(loc, while_op.getResult(0), i + 1));
 }
 
 //===----------------------------------------------------------------------===//
