@@ -52,10 +52,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "map_vectorization"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "noop_elimination"
     mtype: "<type \'property\'>"
   }

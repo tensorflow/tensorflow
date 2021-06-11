@@ -83,7 +83,6 @@ Status GetIteratorName(StringPiece key, string* name) {
 
 // Use "Opt" suffix so that they are not confused with the enums in Options
 // proto.
-constexpr char kMapVectorizationOpt[] = "map_vectorization";
 constexpr char kMapAndBatchFusionOpt[] = "map_and_batch_fusion";
 constexpr char kNoopEliminationOpt[] = "noop_elimination";
 constexpr char kMapParallelizationOpt[] = "map_parallelization";
@@ -107,27 +106,10 @@ constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 
-void MapVectorizationGraphRewrites(
-    const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
-    absl::flat_hash_set<tstring>* optimization_disabled) {
-  if (options.optimization_options()
-          .map_vectorization()
-          .optional_enabled_case() != MapVectorization::kEnabled) {
-    return;
-  }
-  if (options.optimization_options().map_vectorization().enabled()) {
-    optimization_enabled->insert(kMapVectorizationOpt);
-  } else {
-    optimization_disabled->insert(kMapVectorizationOpt);
-  }
-}
-
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
     absl::flat_hash_set<tstring>* optimization_disabled,
     absl::flat_hash_set<tstring>* optimization_default) {
-  MapVectorizationGraphRewrites(options, optimization_enabled,
-                                optimization_disabled);
   const auto& optimization_options = options.optimization_options();
   if (optimization_options.optional_apply_default_optimizations_case() !=
           OptimizationOptions::kApplyDefaultOptimizations ||
@@ -1092,19 +1074,6 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& optimization_options = options.optimization_options();
-  const auto& map_vectorization = optimization_options.map_vectorization();
-  if (map_vectorization.optional_enabled_case() == MapVectorization::kEnabled &&
-      map_vectorization.enabled() &&
-      map_vectorization.optional_use_choose_fastest_case() ==
-          MapVectorization::kUseChooseFastest) {
-    if (map_vectorization.use_choose_fastest()) {
-      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
-                                  kUseChooseFastestOpt, ":true"));
-    } else {
-      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
-                                  kUseChooseFastestOpt, ":false"));
-    }
-  }
   std::vector<tstring> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
