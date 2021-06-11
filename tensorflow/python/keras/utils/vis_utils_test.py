@@ -167,7 +167,7 @@ class ModelToDotFormatTest(test.TestCase, parameterized.TestCase):
     ([]),
     (['input_1', 'block1a_activation', 'block1a_project_conv']),
     ([9, 'block1a_activation']),
-    ([9, 29]),
+    ([29, 9]),
     (['block8a_se_reshape', 'block*'])
   )
   def test_layer_range_value_fail(self, layer_range):
