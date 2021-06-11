@@ -226,8 +226,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
-  Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                    absl::Span<PjRtExecutable* const> executables) override {
+  Status Defragment() override {
     return Unimplemented("Defragment not implemented");
   }
 

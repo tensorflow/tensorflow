@@ -179,8 +179,7 @@ class TfrtCpuClient final : public PjRtClient {
     return Unimplemented("CreateHostToDeviceChannelHandle not implemented.");
   }
 
-  Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                    absl::Span<PjRtExecutable* const> executables) override {
+  Status Defragment() override {
     return Unimplemented("Defragment not implemented.");
   }
 
