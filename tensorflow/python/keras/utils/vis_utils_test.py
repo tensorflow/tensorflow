@@ -163,7 +163,7 @@ class ModelToDotFormatTest(test.TestCase, parameterized.TestCase):
       pass
 
   @parameterized.named_parameters(
-    (['input_1']),
+    (['block1a_activation']),
     ([]),
     (['input_1', 'block1a_activation', 'block1a_project_conv']),
     ([9, 'block1a_activation']),
