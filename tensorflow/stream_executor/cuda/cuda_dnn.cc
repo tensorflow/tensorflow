@@ -5014,7 +5014,7 @@ port::Status CudnnSupport::DoFusedConvolve(
         filter_descriptor, filter_data, convolution_descriptor, side_input_data,
         side_input_scale, bias_descriptor, biases, activation_mode,
         output_descriptor, output_data,
-        GetConvAccumulatorType(dnn::DataType::kDouble), scratch_allocator,
+        GetConvAccumulatorType(input_type), scratch_allocator,
         algorithm_config, output_profile_result);
   } else {
     float conv_input_scale_float = static_cast<float>(conv_input_scale);
@@ -5025,7 +5025,7 @@ port::Status CudnnSupport::DoFusedConvolve(
         filter_descriptor, filter_data, convolution_descriptor, side_input_data,
         side_input_scale_float, bias_descriptor, biases, activation_mode,
         output_descriptor, output_data,
-        GetConvAccumulatorType(dnn::DataType::kFloat), scratch_allocator,
+        GetConvAccumulatorType(input_type), scratch_allocator,
         algorithm_config, output_profile_result);
   }
 }
