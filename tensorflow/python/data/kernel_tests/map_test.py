@@ -940,29 +940,6 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = apply_map(dataset, lambda x: [x, "hello", 10])
     self.assertDatasetProduces(dataset, [(i, b"hello", 10) for i in range(10)])
 
-  @combinations.generate(_test_combinations())
-  def testWarnOnLookupTable(self, apply_map):
-
-    def collecting_function(x):
-      _ = lookup_ops.HashTable(
-          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
-      return x
-
-    warnings.simplefilter("always")
-    with warnings.catch_warnings(record=True) as w:
-      dataset = dataset_ops.Dataset.range(10)
-      _ = apply_map(dataset, collecting_function)
-    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
-    # testing, so we search for the expected warning.
-    self.assertGreaterEqual(len(w), 1)
-    found_warning = False
-    for warning in w:
-      if ("Creating resources inside a function passed to Dataset.map() is "
-          "not supported." in str(warning)):
-        found_warning = True
-        break
-    self.assertTrue(found_warning)
-
   @combinations.generate(test_base.default_test_combinations())
   def testWarnOnSeedFromOuterGraph(self):
     with ops.Graph().as_default() as g:

@@ -4058,22 +4058,6 @@ class StructuredFunctionWrapper(object):
 
     ag_ctx = autograph_ctx.control_status_ctx()
 
-    def warn_if_collections(transformation_name):
-      """Prints a warning if the given graph uses common graph collections.
-
-      NOTE(mrry): Currently a warning is only generated for resources. Any
-      variables created will be automatically hoisted out to the outermost scope
-      using `init_scope()`. Some collections (such as for control-flow contexts)
-      are benign and should not generate a warning.
-
-      Args:
-        transformation_name: A human-readable name for the transformation.
-      """
-      warnings.warn("Creating resources inside a function passed to %s "
-                    "is not supported. Create each resource outside the "
-                    "function, and capture it inside the function to use it." %
-                    transformation_name, stacklevel=5)
-
     def wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
       nested_args = structure.from_compatible_tensor_list(
@@ -4173,19 +4157,14 @@ class StructuredFunctionWrapper(object):
               "`tf.data.experimental.enable_debug_mode()`.")
         fn_factory = trace_tf_function(defun_kwargs)
 
-    resource_tracker = tracking.ResourceTracker()
-    with tracking.resource_tracker_scope(resource_tracker):
-      self._function = fn_factory()
-      # There is no graph to add in eager mode.
-      add_to_graph &= not context.executing_eagerly()
-      # There are some lifetime issues when a legacy function is not added to a
-      # out-living graph. It's already deprecated so de-prioritizing the fix.
-      add_to_graph |= use_legacy_function
-      if add_to_graph:
-        self._function.add_to_graph(ops.get_default_graph())
-
-    if resource_tracker.resources:
-      warn_if_collections(transformation_name)
+    self._function = fn_factory()
+    # There is no graph to add in eager mode.
+    add_to_graph &= not context.executing_eagerly()
+    # There are some lifetime issues when a legacy function is not added to a
+    # out-living graph. It's already deprecated so de-prioritizing the fix.
+    add_to_graph |= use_legacy_function
+    if add_to_graph:
+      self._function.add_to_graph(ops.get_default_graph())
 
     if not use_legacy_function:
       outer_graph_seed = ops.get_default_graph().seed
