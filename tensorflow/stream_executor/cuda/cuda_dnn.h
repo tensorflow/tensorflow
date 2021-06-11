@@ -332,7 +332,8 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::ProfileResult* output_profile_result) override;
 
   port::Status DoFusedConvolveWithExecutionPlan(
-      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+      Stream* stream, dnn::DataType element_type,
+      const dnn::BatchDescriptor& conv_input_descriptor,
       DeviceMemoryBase conv_input_data, double conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
       DeviceMemoryBase filter_data,

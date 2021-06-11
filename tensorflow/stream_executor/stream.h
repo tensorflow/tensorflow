@@ -430,11 +430,11 @@ class Stream {
     if (dnn) {
       gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
       return cudnn_dnn->DoFusedConvolveWithExecutionPlan(
-          this, conv_input_descriptor, conv_input_data, conv_input_scale,
-          filter_descriptor, filter_data, convolution_descriptor,
-          side_input_data, side_input_scale, bias_descriptor, biases,
-          activation_mode, output_descriptor, *output, scratch_allocator,
-          algorithm_config, output_profile_result);
+          this, dnn::ToDataType<InputT>::value, conv_input_descriptor,
+          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
+          convolution_descriptor, side_input_data, side_input_scale,
+          bias_descriptor, biases, activation_mode, output_descriptor,
+          *output, scratch_allocator, algorithm_config, output_profile_result);
     }
 #endif  // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");

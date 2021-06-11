@@ -3648,33 +3648,45 @@ GetCudnnFusedOperationGraph(
                        .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
+  // TODO(kaixih@nvidia): Remove the redundant float/double alpha/beta when the
+  // cudnn frontend can deduce the compute type from the operation.
+  bool use_float_scale = true;
+  if (element_type == dnn::DataType::kDouble) {
+    use_float_scale = false;
+  }
   // Beta is the scaling factor for output.
   double beta = 0.0;
+  float beta_float = 0.0f;
+
+  float alpha_float = static_cast<float>(alpha);
+  float alpha2_float = static_cast<float>(alpha2);
 
   // CUDNN Operation
-  auto conv_op = cudnn_frontend::OperationBuilder(conv_mode)
-                     .setxDesc(tensor_x)
-                     .setyDesc(tensor_conv)
-                     .setwDesc(tensor_w)
-                     .setcDesc(conv_desc)
-                     .setAlpha(alpha)
-                     .setBeta(beta)
-                     .build();
+  auto conv_op_builder = cudnn_frontend::OperationBuilder(conv_mode);
+  conv_op_builder.setxDesc(tensor_x).setyDesc(tensor_conv).setwDesc(tensor_w)
+      .setcDesc(conv_desc);
+  if (use_float_scale) {
+    conv_op_builder.setAlpha(alpha_float).setBeta(beta_float);
+  } else {
+    conv_op_builder.setAlpha(alpha).setBeta(beta);
+  }
+  auto conv_op = conv_op_builder.build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_op);
 
   auto add_desc = cudnn_frontend::PointWiseDescBuilder()
                       .setMode(CUDNN_POINTWISE_ADD)
                       .setMathPrecision(cudnn_type)
                       .build();
-  auto add_op = cudnn_frontend::OperationBuilder(
-                    CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
-                    .setxDesc(conv_op.getOutputTensor())
-                    .setbDesc(tensor_z)
-                    .setyDesc(tensor_add)
-                    .setpwDesc(add_desc)
-                    .setAlpha(alpha)
-                    .setAlpha2(alpha2)
-                    .build();
+  auto add_op_builder = cudnn_frontend::OperationBuilder(
+                            CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR);
+  add_op_builder.setxDesc(conv_op.getOutputTensor()).setbDesc(tensor_z)
+      .setyDesc(tensor_add).setpwDesc(add_desc);
+  if (use_float_scale) {
+    add_op_builder.setAlpha(alpha_float).setAlpha2(alpha2_float);
+  } else {
+    add_op_builder.setAlpha(alpha).setAlpha2(alpha2);
+  }
+  auto add_op = add_op_builder.build();
   RETURN_MSG_IF_CUDNN_ERROR(add_op);
 
   auto bias_add_desc = cudnn_frontend::PointWiseDescBuilder()
@@ -5014,7 +5026,8 @@ port::Status CudnnSupport::DoFusedConvolve(
 }
 
 port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+    Stream* stream, dnn::DataType element_type,
+    const dnn::BatchDescriptor& conv_input_descriptor,
     DeviceMemoryBase conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemoryBase filter_data,
@@ -5031,7 +5044,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
       filter_descriptor, filter_data, convolution_descriptor, side_input_data,
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data,
-      GetConvAccumulatorType(dnn::DataType::kDouble), scratch_allocator,
+      GetConvAccumulatorType(element_type), scratch_allocator,
       algorithm_config, output_profile_result);
 }
 
