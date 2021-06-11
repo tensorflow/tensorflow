@@ -1869,6 +1869,15 @@ name=None))
   def flat_map(self, map_func):
     """Maps `map_func` across this dataset and flattens the result.
 
+    The type signature is:
+
+    ```
+    def flat_map(
+      self: Dataset[T],
+      map_func: Callable[[T], Dataset[S]]
+    ) -> Dataset[S]
+    ```
+
     Use `flat_map` if you want to make sure that the order of your dataset
     stays the same. For example, to flatten a dataset of batches into a
     dataset of their elements:
@@ -1899,6 +1908,15 @@ name=None))
                  num_parallel_calls=None,
                  deterministic=None):
     """Maps `map_func` across this dataset, and interleaves the results.
+
+    The type signature is:
+
+    ```
+    def interleave(
+      self: Dataset[T],
+      map_func: Callable[[T], Dataset[S]]
+    ) -> Dataset[S]
+    ```
 
     For example, you can use `Dataset.interleave()` to process many input files
     concurrently:
@@ -2062,69 +2080,135 @@ name=None))
     return dataset
 
   def window(self, size, shift=None, stride=1, drop_remainder=False):
-    """Combines (nests of) input elements into a dataset of (nests of) windows.
+    """Returns a dataset of window datasets.
 
-    A "window" is a finite dataset of flat elements of size `size` (or possibly
-    fewer if there are not enough input elements to fill the window and
-    `drop_remainder` evaluates to `False`).
+    Each window dataset iterates over a range of the input dataset. These are
+    finite datasets of size `size` (or possibly fewer if there are not enough
+    input elements to fill the window and `drop_remainder` evaluates to
+    `False`).
 
-    The `shift` argument determines the number of input elements by which the
-    window moves on each iteration.  If windows and elements are both numbered
+    For example:
+
+    >>> dataset = tf.data.Dataset.range(7).window(3)
+    >>> for window in dataset:
+    ...   print(window)
+    <_VariantDataset shapes: (), types: tf.int64>
+    <_VariantDataset shapes: (), types: tf.int64>
+    <_VariantDataset shapes: (), types: tf.int64>
+
+    To use the contents of the window datasets you need to unpack them. You can
+    unpack them in python:
+
+    >>> for window in dataset:
+    ...   print([item.numpy() for item in window])
+    [0, 1, 2]
+    [3, 4, 5]
+    [6]
+
+    Methods like `Dataset.flat_map` and `Dataset.intrerleave` can also
+    merge the window datasets back into a single dataset.
+
+    The argument to `flat_map` is a function that takes an item from the dataset
+    and returns a `Dataset`. `flat_map` chains together the resulting datasets.
+
+    So returning the window dataset unmodified joins the windows back into a
+    single dataset:
+
+    >>> flat = dataset.flat_map(lambda x: x)
+    >>> print(list(flat.as_numpy_iterator()))
+    [0, 1, 2, 3, 4, 5, 6]
+
+    To turn each window dataset into a single tensor batch apply `.batch(size)`
+    to the window dataset:
+
+    >>> batched = dataset.flat_map(lambda x: x.batch(3))
+    >>> for batch in batched:
+    ...   print(batch.numpy())
+    [0 1 2]
+    [3 4 5]
+    [6]
+
+    #### Shift and stride
+
+    The `shift` argument determines the number of input elements to step
+    between the start of each window. If windows and elements are both numbered
     starting at 0, the first element in window `k` will be element `k * shift`
     of the input dataset. In particular, the first element of the first window
     will always be the first element of the input dataset.
 
-    The `stride` argument determines the stride of the input elements, and the
-    `shift` argument determines the shift of the window.
-
-    For example:
-
-    >>> dataset = tf.data.Dataset.range(7).window(2)
-    >>> for window in dataset:
-    ...   print(list(window.as_numpy_iterator()))
-    [0, 1]
-    [2, 3]
-    [4, 5]
-    [6]
-    >>> dataset = tf.data.Dataset.range(7).window(3, 2, 1, True)
+    >>> dataset = tf.data.Dataset.range(7).window(3, shift=1,
+    ...                                           drop_remainder=True)
     >>> for window in dataset:
     ...   print(list(window.as_numpy_iterator()))
     [0, 1, 2]
+    [1, 2, 3]
     [2, 3, 4]
+    [3, 4, 5]
     [4, 5, 6]
-    >>> dataset = tf.data.Dataset.range(7).window(3, 1, 2, True)
+
+    The `stride` argument determines the stride between input elements within a
+    window.
+
+    >>> dataset = tf.data.Dataset.range(7).window(3, shift=1, stride=2,
+    ...                                           drop_remainder=True)
     >>> for window in dataset:
     ...   print(list(window.as_numpy_iterator()))
     [0, 2, 4]
     [1, 3, 5]
     [2, 4, 6]
 
+    #### Nested elements
+
     Note that when the `window` transformation is applied to a dataset of
-    nested elements, it produces a dataset of nested windows.
+    nested elements, it produces a dataset of nested window datasets. The window
+    datasets do not contain nested elements.
 
-    >>> nested = ([1, 2, 3, 4], [5, 6, 7, 8])
-    >>> dataset = tf.data.Dataset.from_tensor_slices(nested).window(2)
-    >>> for window in dataset:
-    ...   def to_numpy(ds):
-    ...     return list(ds.as_numpy_iterator())
-    ...   print(tuple(to_numpy(component) for component in window))
-    ([1, 2], [5, 6])
-    ([3, 4], [7, 8])
+    The type signature is:
 
-    >>> dataset = tf.data.Dataset.from_tensor_slices({'a': [1, 2, 3, 4]})
+    ```
+    def window(
+        self: Dataset[Nest[T]], ...
+    ) -> Dataset[Nest[Dataset[T]]]
+    ```
+
+    Appling `window` to a `Dataset` of tuples gives a tuple of `Datasets`:
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices(([1, 2, 3, 4, 5],
+    ...                                               [6, 7, 8, 9, 10]))
     >>> dataset = dataset.window(2)
-    >>> for window in dataset:
-    ...   def to_numpy(ds):
-    ...     return list(ds.as_numpy_iterator())
-    ...   print({'a': to_numpy(window['a'])})
-    {'a': [1, 2]}
-    {'a': [3, 4]}
+    >>> windows = next(iter(dataset))
+    >>> windows
+    (<_VariantDataset shapes: (), types: tf.int32>,
+     <_VariantDataset shapes: (), types: tf.int32>)
+
+    >>> def to_numpy(ds):
+    ...   return list(ds.as_numpy_iterator())
+    >>>
+    >>> for windows in dataset:
+    ...   print(to_numpy(windows[0]), to_numpy(windows[1]))
+    [1, 2] [6, 7]
+    [3, 4] [8, 9]
+    [5] [10]
+
+    Appling `window` to a `Dataset` of dictionaries gives a dictionary of
+    `Datasets`:
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices({'a': [1, 2, 3],
+    ...                                               'b': [4, 5, 6],
+    ...                                               'c': [7, 8, 9]})
+    >>> dataset = dataset.window(2)
+    >>> def to_numpy(ds):
+    ...   return list(ds.as_numpy_iterator())
+    >>> for windows in dataset:
+    ...   print(tf.nest.map_structure(to_numpy, windows))
+    {'a': [1, 2], 'b': [4, 5], 'c': [7, 8]}
+    {'a': [3], 'b': [6], 'c': [9]}
 
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
         of the input dataset to combine into a window. Must be positive.
       shift: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        number of input elements by which the window moves in each iteration.
+        number of input elements by which the start index moves between windows.
         Defaults to `size`. Must be positive.
       stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         stride of the input elements in the sliding window. Must be positive.
@@ -2134,9 +2218,8 @@ name=None))
         `size`.
 
     Returns:
-      Dataset: A `Dataset` of (nests of) windows -- a finite datasets of flat
-        elements created from the (nests of) input elements.
-
+      Dataset: A `Dataset` of (nests of) windows. Each window is a finite
+        datasets of flat elements.
     """
     if shift is None:
       shift = size
@@ -2297,7 +2380,7 @@ name=None))
     expressed as `tf.data.Dataset` operations, and you want to use those
     transformations while serving your model.
 
-    # Keras
+    #### Keras
 
     ```python
 
@@ -2322,7 +2405,7 @@ name=None))
                   )
     ```
 
-    # Estimator
+    #### Estimator
 
     In the case of estimators, you need to generally define a `serving_input_fn`
     which would require the features to be processed by the model while
