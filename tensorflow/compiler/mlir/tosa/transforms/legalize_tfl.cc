@@ -2499,9 +2499,9 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
         op->getLoc(), output_type, tfl_hardswish_op.input(),
         op3_relu_op2_6.getResult(), 0);
 
+    auto const_6 = getTosaConstTensorSingleF32(rewriter, op, 6.0);
     auto op5_reciprocal_6 = rewriter.create<tosa::ReciprocalOp>(
-        op->getLoc(), output_type,
-        getTosaConstTensorSingleF32(rewriter, op, 6.0));
+        op->getLoc(), const_6.getType(), const_6);
 
     auto op6_mul_op4_op5 = rewriter.create<tosa::MulOp>(
         op->getLoc(), output_type, op4_mul_x_op3.getResult(),
