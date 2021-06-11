@@ -967,7 +967,7 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
   let results = (outs HLO_Tensor);
 }
 
-def HLO_ReduceOp: HLO_Op<"reduce", [
+def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
       RecursiveSideEffects,
       SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"ReturnOp">,
@@ -2199,7 +2199,7 @@ def HLO_ReducePrecisionOp :
   let results = (outs HLO_FpTensor:$output);
 }
 
-def HLO_RealDynamicSliceOp: HLO_Op<
+def HLO_RealDynamicSliceOp: HLO_ShapedInterfaceOp<
       "real_dynamic_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
        AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {

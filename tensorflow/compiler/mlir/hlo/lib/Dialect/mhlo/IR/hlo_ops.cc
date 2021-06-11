@@ -1626,6 +1626,52 @@ static LogicalResult Verify(RealDynamicSliceOp op) {
   return success();
 }
 
+LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  RealDynamicSliceOp::Adaptor adaptor(operands);
+  Value operand = adaptor.operand();
+  Value start_indices = adaptor.start_indices();
+  Value limit_indices = adaptor.limit_indices();
+  Value strides = adaptor.strides();
+
+  auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+  // Not support unranked type a.t.m.
+  if (!operand_type) return failure();
+
+  Location loc = this->getLoc();
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(operand_type.getRank());
+  Type shape_scalar_type =
+      start_indices.getType().cast<ShapedType>().getElementType();
+  Value one = builder.create<ConstantIndexOp>(loc, 1);
+  one = MaybeCastTo(builder, loc, one, shape_scalar_type);
+  for (const auto& element : llvm::enumerate(operand_type.getShape())) {
+    Value offset = builder.create<ConstantIndexOp>(loc, element.index());
+    Value value_start =
+        builder.create<tensor::ExtractOp>(loc, start_indices, offset);
+    Value value_limit =
+        builder.create<tensor::ExtractOp>(loc, limit_indices, offset);
+    Value value_stride =
+        builder.create<tensor::ExtractOp>(loc, strides, offset);
+    // size = (limit - start + stride - 1) / stride
+    shape_values.push_back(builder.create<SignedDivIOp>(
+        loc,
+        builder.create<SubIOp>(
+            loc,
+            builder.create<AddIOp>(
+                loc, value_stride,
+                builder.create<SubIOp>(loc, value_limit, value_start)),
+            one),
+        value_stride));
+  }
+
+  reifiedReturnShapes.push_back(builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values));
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // InfeedOp
 //===----------------------------------------------------------------------===//
@@ -2072,6 +2118,46 @@ void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                            MLIRContext* context) {
   results.insert<LowerBoolSplatConstantsIntoRegion>(context);
 }
+
+LogicalResult ReduceOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  ReduceOp::Adaptor adaptor(operands);
+  auto inputs = adaptor.inputs();
+
+  auto operand_type = inputs[0].getType().dyn_cast<RankedTensorType>();
+  // Not support unranked type a.t.m.
+  if (!operand_type) return failure();
+
+  Location loc = this->getLoc();
+  SmallVector<Value, 4> shape_values;
+  SmallVector<int64_t, 4> dimensions(this->dimensions().getValues<int64_t>());
+  shape_values.reserve(operand_type.getRank());
+  Type shape_scalar_type = builder.getIndexType();
+  auto to_shape_scalar_type = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+  };
+
+  for (const auto& element : llvm::enumerate(operand_type.getShape())) {
+    int64_t idx = element.index();
+    auto it = std::find(dimensions.begin(), dimensions.end(), idx);
+    if (it != dimensions.end()) {
+      continue;
+    }
+    Value value_dim = to_shape_scalar_type(
+        builder.create<memref::DimOp>(loc, inputs[0], element.index()));
+    shape_values.push_back(value_dim);
+  }
+
+  Value output_shape = builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values);
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    reifiedReturnShapes.push_back(output_shape);
+  }
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // RngNormalOp
 //===----------------------------------------------------------------------===//

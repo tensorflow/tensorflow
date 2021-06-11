@@ -434,11 +434,8 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
              << "tensor to buffer conversion expects a single block "
                 "in the region containing the operation";
     }
-    const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
-    for (auto result : original_results) {
-      buffer_args.push_back(InsertAlloc(loc, result, &rewriter));
-    }
+    if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
     auto new_op = rewriter.create<lmhlo::ReduceOp>(loc, llvm::None, buffer_args,
                                                    op->getAttrs());
 
@@ -671,7 +668,8 @@ void populateDynamicHLOToLHLOOnlyConversionPattern(
   patterns->insert<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
                    HloToLhloOpConverter<mhlo::DynamicIotaOp>,
                    HloToLhloOpConverter<mhlo::DynamicPadOp>,
-                   HloToLhloOpConverter<mhlo::DynamicReshapeOp>
+                   HloToLhloOpConverter<mhlo::DynamicReshapeOp>,
+                   HloToLhloOpConverter<mhlo::RealDynamicSliceOp>
   >(*converter, context);
   // clang-format on
 }
