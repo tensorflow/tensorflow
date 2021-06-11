@@ -64,11 +64,6 @@ def add_edge(dot, src, dst):
     dot.add_edge(pydot.Edge(src, dst))
 
 
-def is_regex_match(pat, text):
-  check = re.match(pat, text)
-  return False if check is None else True
-
-
 def get_layer_index_bound_by_layer_name(model, layer_names):
   '''Return specific range of layers to plot, mainly for sub-graph plot models.
   Args:
@@ -81,14 +76,14 @@ def get_layer_index_bound_by_layer_name(model, layer_names):
   lower_index = []
   upper_index = []
   for idx, layer in enumerate(model.layers):
-    if is_regex_match(layer_names[0], layer.name):
+    if re.match(layer_names[0], layer.name):
       lower_index.append(idx)
-    if is_regex_match(layer_names[1], layer.name):
+    if re.match(layer_names[1], layer.name):
       upper_index.append(idx)
   if len(lower_index) == 0 or len(upper_index) == 0:
     raise ValueError("Passed layer_range does not match to model layers")
   if min(lower_index) > max(upper_index):
-    return [max(upper_index), min(lower_index)]
+    return [min(upper_index), max(lower_index)]
   return [min(lower_index), max(upper_index)]
 
 
@@ -163,13 +158,12 @@ def model_to_dot(model,
     dot.set('dpi', dpi)
     dot.set_node_defaults(shape='record')
 
-  if layer_range is not None:
+  if layer_range:
     if len(layer_range) != 2:
       raise ValueError("layer_range must be of shape (2,)")
-    if not isinstance(layer_range[0], str) or\
-      not isinstance(layer_range[1], str):
-      raise ValueError("layer_range should not contain mixed data type,",
-                      "got layer_range:", layer_range)
+    if (not isinstance(layer_range[0], str) or
+      not isinstance(layer_range[1], str)):
+      raise ValueError("layer_range should contain string type only")
     layer_range = get_layer_index_bound_by_layer_name(model, layer_range)
     if layer_range[0] < 0 or layer_range[1] > len(model.layers):
       raise ValueError("Both values in layer_range should be in",
@@ -192,8 +186,7 @@ def model_to_dot(model,
 
   # Create graph nodes.
   for i, layer in enumerate(layers):
-    if (layer_range is not None) and\
-      (i < layer_range[0] or i > layer_range[1]):
+    if (layer_range) and (i < layer_range[0] or i > layer_range[1]):
       continue
 
     layer_id = str(id(layer))
@@ -283,8 +276,7 @@ def model_to_dot(model,
 
   # Connect nodes with edges.
   for i, layer in enumerate(layers):
-    if (layer_range is not None) and\
-      (i <= layer_range[0] or i > layer_range[1]):
+    if (layer_range) and (i <= layer_range[0] or i > layer_range[1]):
       continue
     layer_id = str(id(layer))
     for i, node in enumerate(layer._inbound_nodes):
