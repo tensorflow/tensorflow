@@ -133,7 +133,6 @@ class ModelToDotFormatTest(test.TestCase, parameterized.TestCase):
     (['block1a_project_conv', 'block1a_activation']),
     (['block1a_activation', 'block1a_project_conv']),
     (['block*', 'block2a_se_excite']),
-    (['block*', 'block*']),
     (['block\da_activation', 'block\da_project_bn'])
   )
   def test_plot_layer_range(self, layer_range):
