@@ -46,7 +46,7 @@ def RAL_RecvInputOp: RAL_Op<"recv_input", []> {
     Fetch the specified input.
 
     In DISC, inputs are not passed as parameter directly. Instead, users need to
-    explicitly fectch the individual input using this op.
+    explicitly fetch the individual input using this op.
   }];
   let arguments = (ins
     RAL_RalExecutionContextType:$ctx,

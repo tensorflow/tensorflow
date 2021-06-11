@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt -disc-ral-inject-execution-context=entry-func-name=test \
-// RUN:  -canonicalize -lhlo-legalize-tensor-load-op %s -o - | FileCheck %s
+// RUN:  -canonicalize %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @test
 // CHECK-SAME: (%[[CTX:.*]]: !disc_ral.context) {

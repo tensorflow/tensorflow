@@ -22,7 +22,6 @@ limitations under the License.
 void mlir::mhlo::registerAllMhloDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<mlir::chlo::HloClientDialect,
-                  mlir::disc_ral::RalDialect,
                   mlir::mhlo::MhloDialect,
                   mlir::lmhlo::LmhloDialect,
                   mlir::lmhlo_gpu::LmhloGpuDialect>();

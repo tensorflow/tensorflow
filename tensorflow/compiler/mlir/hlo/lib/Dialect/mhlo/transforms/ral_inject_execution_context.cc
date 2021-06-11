@@ -44,9 +44,8 @@ limitations under the License.
 //    - function signature rewrite
 //    - return-like ops rewrite.
 // 2. Currently we suppose that functions except the entry function are inlined
-// to the entry function.
-//    Thus, we don't rewrite all call ops and other functions a.t.m. Re-visit
-//    this assumption if necessary.
+// to the entry function. Thus, we don't rewrite all call ops and other
+// functions a.t.m. Re-visit this assumption if necessary.
 
 #include "mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
