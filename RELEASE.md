@@ -94,6 +94,8 @@
     *   Added a new session config setting `internal_fragmentation_fraction`,
         which controls when the BFC Allocator needs to split an oversized chunk
         to satisfy an allocation request.
+    *   Added `tf.get_current_name_scope()` which returns the current full name
+        scope string that will be prepended to op names.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
