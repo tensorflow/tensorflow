@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for image preprocessing layers."""
 
+import functools
 from absl.testing import parameterized
 import numpy as np
 
@@ -377,7 +378,10 @@ class RandomFlipTest(keras_parameterized.TestCase):
       if mode == 'vertical' or mode == 'horizontal_and_vertical':
         expected_output = np.flip(expected_output, axis=1)
     with test.mock.patch.object(
-        random_ops, 'random_uniform', return_value=mock_random):
+        stateless_random_ops,
+        'stateless_random_uniform',
+        return_value=mock_random,
+    ):
       with testing_utils.use_gpu():
         layer = image_preprocessing.RandomFlip(mode)
         actual_output = layer(inp, training=1)
@@ -427,7 +431,10 @@ class RandomFlipTest(keras_parameterized.TestCase):
       mock_random = [1, 1]
       mock_random = np.reshape(mock_random, [2, 1, 1, 1])
       with test.mock.patch.object(
-          random_ops, 'random_uniform', return_value=mock_random):
+          stateless_random_ops,
+          'stateless_random_uniform',
+          return_value=mock_random,
+      ):
         with self.cached_session():
           layer = image_preprocessing.RandomFlip()
           actual_output = layer(input_images, training=1)
@@ -460,7 +467,10 @@ class RandomContrastTest(keras_parameterized.TestCase):
       inp_mean = np.mean(inp_mean, axis=2, keepdims=True)
       expected_output = (inp - inp_mean) * mock_random + inp_mean
     with test.mock.patch.object(
-        random_ops, 'random_uniform', return_value=mock_random):
+        stateless_random_ops,
+        'stateless_random_uniform',
+        return_value=mock_random,
+    ):
       with testing_utils.use_gpu():
         layer = image_preprocessing.RandomContrast((lower, upper))
         actual_output = layer(inp, training=True)
@@ -1447,6 +1457,36 @@ class LearningPhaseTest(keras_parameterized.TestCase):
 
     out = seq(img, training=False)
     self.assertEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class DeterminismTest(keras_parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('random_flip', image_preprocessing.RandomFlip),
+      ('random_contrast',
+       functools.partial(image_preprocessing.RandomContrast, factor=1.)),
+      ('random_crop',
+       functools.partial(image_preprocessing.RandomCrop, height=2, width=2)),
+      ('random_translation',
+       functools.partial(image_preprocessing.RandomTranslation, 0.3, 0.2)),
+      ('random_rotation',
+       functools.partial(image_preprocessing.RandomRotation, 0.5)),
+      ('random_zoom', functools.partial(image_preprocessing.RandomZoom, 0.2)),
+      ('random_height', functools.partial(image_preprocessing.RandomHeight,
+                                          0.4)),
+      ('random_width', functools.partial(image_preprocessing.RandomWidth, 0.3)),
+  )
+  def test_seed_constructor_arg(self, layer_cls):
+    input_image = np.random.random((2, 5, 8, 3)).astype(np.float32)
+
+    layer1 = layer_cls(seed=0.)
+    layer2 = layer_cls(seed=0.)
+    layer1_output = layer1(input_image)
+    layer2_output = layer2(input_image)
+
+    self.assertAllClose(layer1_output.numpy().tolist(),
+                        layer2_output.numpy().tolist())
 
 
 if __name__ == '__main__':
