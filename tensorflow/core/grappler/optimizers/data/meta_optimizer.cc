@@ -208,12 +208,6 @@ Status TFDataMetaOptimizer::Init(
   return Status::OK();
 }
 
-void TFDataMetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                   const GraphDef& optimize_output,
-                                   double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(TFDataMetaOptimizer, "tf_data_meta_optimizer");
 
 }  // namespace grappler
