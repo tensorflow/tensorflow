@@ -58,7 +58,8 @@
         enable this feature. The documentation in [Advanced autodiff]
         (https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
         has been updated.
-
+    *   Object metadata has now been deprecated and no longer saved to the
+        SavedModel.
 *   TF Core:
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
         peak memory returned by `tf.config.experimental.get_memory_info`.
