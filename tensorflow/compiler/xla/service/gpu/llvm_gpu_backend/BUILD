@@ -30,7 +30,6 @@ cc_library(
         "utils.h",
     ],
     deps = [
-        "@llvm-project//llvm:AMDGPUCodeGen",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
