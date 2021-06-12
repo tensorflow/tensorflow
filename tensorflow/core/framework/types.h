@@ -93,7 +93,6 @@ struct DeviceName<Eigen::GpuDevice> {
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
 
@@ -563,6 +562,7 @@ struct TypeHasher {
 
 // Maps a legacy DType proto enum to an equivalent FullType Tensor.
 void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t);
+void map_tensor_to_dtype(const FullTypeDef& t, DataType* dtype);
 
 }  // namespace tensorflow
 
