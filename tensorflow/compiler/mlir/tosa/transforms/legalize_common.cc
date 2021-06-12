@@ -2200,6 +2200,14 @@ llvm::Optional<Value> convertFloorDivOp(PatternRewriter& rewriter,
   // Not a ranked tensor output
   if (!output_type) return llvm::None;
 
+  Type element_type = output_type.getElementType();
+
+  if (element_type.isa<IntegerType>()) {
+    return rewriter
+        .create<tosa::DivOp>(op->getLoc(), output_type, lhs_value, rhs_value)
+        .getResult();
+  }
+
   auto a1_reciprocal_rhs_op = rewriter.create<tosa::ReciprocalOp>(
       op->getLoc(), rhs_value.getType(), rhs_value);
   auto a2_mul_lhs_a1_op =

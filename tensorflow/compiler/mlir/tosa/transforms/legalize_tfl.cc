@@ -805,15 +805,26 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
 
   auto fused_activation_fn = tfl_div_op.fused_activation_functionAttr();
 
-  auto reciprocal_op = rewriter.create<tosa::ReciprocalOp>(
-      op->getLoc(), tfl_div_op.rhs().getType(), tfl_div_op.rhs());
-  auto mul_op =
-      rewriter.create<tosa::MulOp>(op->getLoc(), output_type, tfl_div_op.lhs(),
-                                   reciprocal_op.getResult(), 0);
+  Type element_type = output_type.getElementType();
+  Value div_op;
+  if (element_type.isa<IntegerType>()) {
+    div_op = rewriter
+                 .create<tosa::DivOp>(op->getLoc(), output_type,
+                                      tfl_div_op.lhs(), tfl_div_op.rhs())
+                 .getResult();
+  } else {
+    auto reciprocal_op = rewriter.create<tosa::ReciprocalOp>(
+        op->getLoc(), tfl_div_op.rhs().getType(), tfl_div_op.rhs());
+    div_op =
+        rewriter
+            .create<tosa::MulOp>(op->getLoc(), output_type, tfl_div_op.lhs(),
+                                 reciprocal_op.getResult(), 0)
+            .getResult();
+  }
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
-        rewriter, op, mul_op.getResult(), fused_activation_fn);
+    llvm::Optional<Value> fused_activation_val =
+        convertFusedActivation(rewriter, op, div_op, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
 
@@ -821,7 +832,7 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
     return success();
   }
 
-  rewriter.replaceOp(op, {mul_op.getResult()});
+  rewriter.replaceOp(op, {div_op});
 
   return success();
 }
