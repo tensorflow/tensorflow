@@ -806,7 +806,7 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
   auto fused_activation_fn = tfl_div_op.fused_activation_functionAttr();
 
   auto reciprocal_op = rewriter.create<tosa::ReciprocalOp>(
-      op->getLoc(), output_type, tfl_div_op.rhs());
+      op->getLoc(), tfl_div_op.rhs().getType(), tfl_div_op.rhs());
   auto mul_op =
       rewriter.create<tosa::MulOp>(op->getLoc(), output_type, tfl_div_op.lhs(),
                                    reciprocal_op.getResult(), 0);

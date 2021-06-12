@@ -1662,7 +1662,8 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
         op->getLoc(), rsum_type, op1_exp_in.getResult(),
         rewriter.getI64IntegerAttr(input_rank - 1));
     auto op3_reciprocal_op2 = rewriter.create<tosa::ReciprocalOp>(
-        op->getLoc(), rsum_type, op2_reducesum_op1.getResult());
+        op->getLoc(), op2_reducesum_op1.getType(),
+        op2_reducesum_op1.getResult());
 
     return rewriter
         .create<tosa::MulOp>(op->getLoc(), output_type, op1_exp_in.getResult(),
@@ -1723,7 +1724,7 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
       op->getLoc(), rsum_type, op1_exp_in.getResult(),
       rewriter.getI64IntegerAttr(input_rank - 1));
   auto op3_reciprocal_op2 = rewriter.create<tosa::ReciprocalOp>(
-      op->getLoc(), rsum_type, op2_reducesum_op1.getResult());
+      op->getLoc(), op2_reducesum_op1.getType(), op2_reducesum_op1.getResult());
 
   auto op4_mul_op1_op3 = rewriter.create<tosa::MulOp>(
       op->getLoc(), output_type, op1_exp_in.getResult(),
@@ -2199,8 +2200,8 @@ llvm::Optional<Value> convertFloorDivOp(PatternRewriter& rewriter,
   // Not a ranked tensor output
   if (!output_type) return llvm::None;
 
-  auto a1_reciprocal_rhs_op =
-      rewriter.create<tosa::ReciprocalOp>(op->getLoc(), output_type, rhs_value);
+  auto a1_reciprocal_rhs_op = rewriter.create<tosa::ReciprocalOp>(
+      op->getLoc(), rhs_value.getType(), rhs_value);
   auto a2_mul_lhs_a1_op =
       rewriter.create<tosa::MulOp>(op->getLoc(), output_type, lhs_value,
                                    a1_reciprocal_rhs_op.getResult(), 0);
@@ -2227,8 +2228,8 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
   // Not a ranked tensor output
   if (!output_type) return llvm::None;
 
-  auto a1_reciprocal_rhs_op =
-      rewriter.create<tosa::ReciprocalOp>(op->getLoc(), output_type, rhs_value);
+  auto a1_reciprocal_rhs_op = rewriter.create<tosa::ReciprocalOp>(
+      op->getLoc(), rhs_value.getType(), rhs_value);
   auto a2_mul_lhs_a1_op =
       rewriter.create<tosa::MulOp>(op->getLoc(), output_type, lhs_value,
                                    a1_reciprocal_rhs_op.getResult(), 0);
