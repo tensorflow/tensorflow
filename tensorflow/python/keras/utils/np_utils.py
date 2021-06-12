@@ -25,11 +25,11 @@ def to_categorical(y, num_classes=None, dtype='float32'):
   E.g. for use with categorical_crossentropy.
 
   Args:
-      y: class vector to be converted into a matrix
-          (integers from 0 to num_classes).
+      y: array-like with class values to be converted into a matrix
+          (integers from 0 to num_classes-1).
       num_classes: total number of classes. If `None`, this would be inferred
         as the (largest number in `y`) + 1.
-      dtype: The data type expected by the input. Default: `'float32'`.
+      dtype: The data type of the output. Default: `'float32'`.
 
   Returns:
       A binary matrix representation of the input. The classes axis is placed
