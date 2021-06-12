@@ -107,6 +107,7 @@ TfLiteRegistration* Register_REDUCE_MAX_REF();
 TfLiteRegistration* Register_REDUCE_MIN_REF();
 TfLiteRegistration* Register_REDUCE_ANY_REF();
 TfLiteRegistration* Register_REDUCE_ALL_REF();
+TfLiteRegistration* Register_ROUND();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE_REF();
 TfLiteRegistration* Register_SIN();
@@ -404,6 +405,9 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY_REF());
   AddBuiltin(BuiltinOperator_REDUCE_ALL, Register_REDUCE_ALL_REF());
+  AddBuiltin(BuiltinOperator_ROUND, Register_ROUND(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE(),
              /* min_version = */ 1,
