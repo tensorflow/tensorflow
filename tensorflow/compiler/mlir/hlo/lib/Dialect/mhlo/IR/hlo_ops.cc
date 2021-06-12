@@ -1410,8 +1410,6 @@ LogicalResult ConcatenateOp::reifyReturnTypeShapes(
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   ConcatenateOp::Adaptor adaptor(operands);
   auto inputs = adaptor.val();
-  size_t axis = static_cast<size_t>(
-      this->getOperation()->getAttrOfType<IntegerAttr>("dimension").getInt());
 
   auto operand_type = inputs[0].getType().dyn_cast<RankedTensorType>();
   // Not support unranked type a.t.m.
@@ -1438,6 +1436,7 @@ LogicalResult ConcatenateOp::reifyReturnTypeShapes(
     all_shape_values.emplace_back(std::move(shape_vals));
   }
 
+  int axis = this->dimension();
   auto& shape_values = all_shape_values[0];
   for (size_t vec_id = 1; vec_id < all_shape_values.size(); ++vec_id) {
     auto& other_shape_values = all_shape_values[vec_id];
