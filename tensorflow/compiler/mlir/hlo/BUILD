@@ -1276,8 +1276,8 @@ cc_library(
     ],
     deps = [
         ":DiscRalPassIncGen",
-        ":MhloPassIncGen",
         ":LmhloPassIncGen",
+        ":MhloPassIncGen",
         "@llvm-project//mlir:Pass",
     ],
 )
