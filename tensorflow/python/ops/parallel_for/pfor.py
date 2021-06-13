@@ -2144,6 +2144,7 @@ def _convert_softmax(pfor_input, op_type, op_func):
 @RegisterPForWithArgs("StopGradient", array_ops.stop_gradient)
 @RegisterPForWithArgs("MatrixDiag", array_ops.matrix_diag)
 @RegisterPForWithArgs("MatrixDiagPart", array_ops.matrix_diag_part)
+@RegisterPForWithArgs("_EagerConst", array_ops.identity)
 def _convert_identity(pfor_input, op_type, op_func):
   del op_type
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)

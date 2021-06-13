@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | mlir-hlo-opt | FileCheck %s
+// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | FileCheck %s
 
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
@@ -48,6 +48,42 @@ func @alltoall_invalid_split_dim_size(%data: tensor<4x16xf32>) -> tensor<16x4xf3
     replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
   } : (tensor<4x16xf32>) -> tensor<16x4xf32>
   return %0 : tensor<16x4xf32>
+}
+
+// -----
+
+func @allgather_incompatible_types(%arg0: tensor<128x32xf32>) -> tensor<128x100xf32> {
+  // expected-error@+1 {{result gather dimension has size 100, expected to be a multiple of operand gather dimension size 32}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x100xf32>
+  return %0 : tensor<128x100xf32>
+}
+
+// -----
+
+func @allgather_gather_along_zero_dimension(%arg0: tensor<128x0x32xf32>) -> tensor<128x100xf32> {
+  // expected-error@+1 {{operand gather dimension cannot be zero}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x0x32xf32>) -> tensor<128x100xf32>
+  return %0 : tensor<128x100xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @allgather_dynamic_gather_dim
+func @allgather_dynamic_gather_dim(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = {handle = 1 : i64, type = 0 : i64},
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x?xf32>
+  return %0 : tensor<128x?xf32>
 }
 
 // -----
@@ -682,7 +718,7 @@ func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> 
 func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token> {
   // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
   %0 = "mhlo.recv"(%token) {
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
@@ -696,7 +732,7 @@ func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi3
 func @recv_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
   // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
   %0 = "mhlo.recv"(%token) {
-    channel_id = {
+    channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
@@ -1465,4 +1501,26 @@ func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> ten
          {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   return %0 : tensor<1x8x8x16xf32>
+}
+
+// -----
+
+// CHECK: func @lt_loop
+func @lt_loop(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<4xf32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>, %arg8: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
+  %cst = constant dense<-1> : tensor<i32>
+  %cst_0 = constant dense<1> : tensor<i32>
+  %cst_1 = constant dense<0> : tensor<i32>
+  %cst_2 = constant dense<1000> : tensor<i32>
+  %0 = "mhlo.tuple"(%cst_1, %cst, %cst_2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>, tensor<i32>>
+  %1:3 = "mhlo.while"(%cst_1, %cst, %cst_2) ( {
+  ^bb0(%arg9: tensor<i32>, %arg10: tensor<i32>, %arg11: tensor<i32>):  // no predecessors
+    %4 = "mhlo.compare"(%arg9, %arg11) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%4) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg9: tensor<i32>, %arg10: tensor<i32>, %arg11: tensor<i32>):  // no predecessors
+    %3 = mhlo.add %arg9, %cst_0 : tensor<i32>
+    %6 = "mhlo.tuple"(%3, %arg10, %arg11) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>, tensor<i32>>
+    "mhlo.return"(%3, %arg10, %arg11) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
+  }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
+  return %1#0, %1#2, %1#2: tensor<i32>, tensor<i32>, tensor<i32>
 }

@@ -74,6 +74,13 @@ using kernel_forward::wrap_kernel_call;
 namespace functor {
 
 namespace {
+template <typename To>
+struct CastFunctor {
+  template <typename From>
+  __host__ __device__ To operator()(const From& value) const {
+    return static_cast<To>(value);
+  }
+};
 
 // Computes elements_per_row[0..dense_rows] and sets *rows_are_not_ordered to
 // true if the indices are not ordered by row.
@@ -301,14 +308,15 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
         index_type, TensorShape({dense_rows}), &num_empty_rows_through_t));
     auto num_empty_rows_through = num_empty_rows_through_t.flat<Tindex>();
 
-    static_assert(sizeof(bool) == sizeof(uint8), "");
+    gpuprim::TransformInputIterator<Tindex, CastFunctor<Tindex>, bool*>
+        empty_row_indicator_cast(empty_row_indicator, {});
 
     // The inclusive sum in CUB does not work do the right thing if
     // `empty_row_indicator` is passed in as a `bool *`.
-    TF_RETURN_IF_ERROR(GpuInclusivePrefixSum(
-        context, /*size=*/dense_rows,
-        /*input=*/reinterpret_cast<uint8*>(empty_row_indicator),
-        /*output=*/num_empty_rows_through.data()));
+    TF_RETURN_IF_ERROR(
+        GpuInclusivePrefixSum(context, /*size=*/dense_rows,
+                              /*input=*/empty_row_indicator_cast,
+                              /*output=*/num_empty_rows_through.data()));
 
     ScratchSpace<Tindex> num_empty_rows_host(context, 1, /*on_host=*/true);
     if (!stream

@@ -116,6 +116,8 @@ where applicable. For details about each parameter, please refer to
 #### Common parameters
 * `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
+* `delegate_serialize_dir`: `str` (default="")
+* `delegate_serialize_token`: `str` (default="")
 
 #### GPU delegate
 * `use_gpu`: `bool` (default=false)
@@ -139,6 +141,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
+*   `nnapi_allow_dynamic_dimensions`:`bool` (default=false)
 *   `nnapi_use_burst_mode`:`bool` (default=false)
 
 #### Hexagon delegate

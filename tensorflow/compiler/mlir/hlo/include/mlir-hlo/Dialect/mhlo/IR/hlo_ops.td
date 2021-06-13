@@ -35,6 +35,11 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
   let verifier = [{ return Verify(*this); }];
 }
 
+class HLO_ShapedInterfaceOp<string mnemonic, list<OpTrait> traits> :
+    HLO_Op<mnemonic, traits # [DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["reifyReturnTypeShapes"]>]> {
+}
+
 def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
 def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
 def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
@@ -89,7 +94,7 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def HLO_DynamicIotaOp: HLO_Op<"dynamic_iota", [NoSideEffect]> {
+def HLO_DynamicIotaOp: HLO_ShapedInterfaceOp<"dynamic_iota", [NoSideEffect]> {
   let summary = "Create linear increasing values from 0 to length -1.";
   let description = [{
     Produces an HLO Tensor of the specified shape, with an incremental set of
@@ -744,7 +749,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
   let arguments = (ins
     HLO_TensorOrTuple:$operand,
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle:$channel_handle,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -769,7 +774,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
   let arguments = (ins
     HLO_Token:$token,
-    ChannelHandle:$channel_id,
+    ChannelHandle:$channel_handle,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -899,13 +904,33 @@ def HLO_WhileOp: HLO_Op<"while", [
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
-  let arguments = (ins HLO_TensorOrTuple:$val);
+  let arguments = (ins Variadic<HLO_TensorOrTuple>:$arg);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs Variadic<HLO_TensorOrTuple>);
 
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
+
+  string summary = "AllGather operator";
+
+  string description = [{
+    Performs concatenation across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allgather
+  }];
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64Attr:$all_gather_dim,
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<ChannelHandle>:$channel_handle
+  );
+  let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
 }
 
@@ -921,7 +946,7 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_id
+    OptionalAttr<ChannelHandle>:$channel_handle
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
@@ -942,7 +967,7 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
   let results = (outs HLO_Tensor);
 }
 
-def HLO_ReduceOp: HLO_Op<"reduce", [
+def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
       RecursiveSideEffects,
       SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"ReturnOp">,
@@ -1257,9 +1282,8 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim", [
-    NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
+    "dynamic_broadcast_in_dim", [NoSideEffect]> {
   let summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
   let description = [{
     This is a generalization of the BroadcastInDimOp which accepts its output
@@ -1651,7 +1675,7 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicReshapeOp: HLO_Op<"dynamic_reshape", [NoSideEffect]> {
+def HLO_DynamicReshapeOp: HLO_ShapedInterfaceOp<"dynamic_reshape", [NoSideEffect]> {
   let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
   let description = [{
     Reshapes `operand` to `output_shape`.
@@ -2175,15 +2199,15 @@ def HLO_ReducePrecisionOp :
   let results = (outs HLO_FpTensor:$output);
 }
 
-def HLO_RealDynamicSliceOp: HLO_Op<
+def HLO_RealDynamicSliceOp: HLO_ShapedInterfaceOp<
       "real_dynamic_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
        AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let summary = "Real Dynamic Slice operator";
   let description = [{
-    The dynamic shape version of SliceOp. Extracts a sub-array from the input 
-    array according to start_indices, limit_indices and strides. Expect 
-    start_indices/limit_indices/strides to be statically shaped and matching 
+    The dynamic shape version of SliceOp. Extracts a sub-array from the input
+    array according to start_indices, limit_indices and strides. Expect
+    start_indices/limit_indices/strides to be statically shaped and matching
     the rank of the input.
   }];
   let arguments = (ins
@@ -2196,16 +2220,16 @@ def HLO_RealDynamicSliceOp: HLO_Op<
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
+def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
       [NoSideEffect, AllElementTypesMatch<["operand", "padding_value", "result"]>,
       AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
   let summary = "Dynamic Pad operator";
   let description = [{
-    The dynamic shape version of PadOp. Pads the edges of `operand` with the 
-    `padding_value` and according to the passed configuration. Expect 
-    edge_padding_low/edge_padding_high/interior_padding to be statically shaped 
-    and matching the rank of the input. 
-    See 
+    The dynamic shape version of PadOp. Pads the edges of `operand` with the
+    `padding_value` and according to the passed configuration. Expect
+    edge_padding_low/edge_padding_high/interior_padding to be statically shaped
+    and matching the rank of the input.
+    See
     https://www.tensorflow.org/xla/operation_semantics#pad
   }];
   let arguments = (ins
@@ -2227,10 +2251,10 @@ def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
 def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather", [NoSideEffect]> {
   string summary = "Dynamic Gather operator";
   string description = [{
-    The dynamic shape version of GatherOp. Stitches together several slices of an input 
+    The dynamic shape version of GatherOp. Stitches together several slices of an input
     array. slice_sizes is a compile-time variable.
   }];
-  
+
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_IntTensor:$start_indices,
@@ -2239,7 +2263,7 @@ def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather", [NoSideEffect]> {
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted
   );
   let results = (outs HLO_Tensor);
-  
+
   let hasCustomHLOConverter = 1;
 }
 

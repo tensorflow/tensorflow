@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -48,10 +49,11 @@ class XlaResource {
       int64 max_array_size);
 
   XlaResource(Kind kind, int arg_num, string name, DataType type,
-              TensorShape shape, const xla::XlaOp& initial_value,
-              int64 max_array_size,
+              TensorShape shape, xla::XlaOp initial_value, int64 max_array_size,
               const std::set<string>& tensor_array_gradients,
-              bool tensor_array_multiple_writes_aggregate);
+              bool tensor_array_multiple_writes_aggregate,
+              const absl::optional<ManagedStackTrace>& definition_stack_trace =
+                  absl::nullopt);
 
   XlaResource(const XlaResource&) = delete;
   XlaResource(XlaResource&&) = delete;
@@ -182,6 +184,8 @@ class XlaResource {
 
   std::map<string, std::unique_ptr<XlaResource>> tensor_array_gradients_;
   bool is_overwritten_ = false;
+
+  absl::optional<ManagedStackTrace> definition_stack_trace_;
 };
 
 }  // namespace tensorflow

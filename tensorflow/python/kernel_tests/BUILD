@@ -2909,17 +2909,18 @@ cuda_py_test(
 
 cuda_py_test(
     name = "xent_op_deterministic_test",
-    size = "small",
+    size = "medium",
     srcs = ["xent_op_deterministic_test.py"],
     xla_enable_strict_auto_jit = False,
     deps = [
+        ":xent_op_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
     ],
@@ -2930,13 +2931,32 @@ cuda_py_test(
     size = "small",
     srcs = ["xent_op_test.py"],
     deps = [
+        ":xent_op_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "xent_op_test_base",
+    srcs = ["xent_op_test_base.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
     ],
 )

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "pybind11/detail/common.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/core/framework/experimental/type_inference.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -154,4 +156,15 @@ PYBIND11_MODULE(_dtypes, m) {
 
 Non-numeric, unordered, and quantized types are not considered unsigned, and
 this function returns `False`.)doc");
+
+  m.def("experimental_promote_types",
+        [](tensorflow::DataType a, tensorflow::DataType b) -> py::object {
+          tensorflow::FullTypeDef at, bt;
+          tensorflow::map_dtype_to_tensor(a, &at);
+          tensorflow::map_dtype_to_tensor(b, &bt);
+          tensorflow::DataType ret;
+          tensorflow::map_tensor_to_dtype(
+              tensorflow::full_type::ReturnType(at, bt), &ret);
+          return ret == tensorflow::DT_INVALID ? py::none() : py::cast(ret);
+        });
 }

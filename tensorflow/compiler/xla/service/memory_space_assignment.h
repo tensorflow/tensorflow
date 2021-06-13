@@ -126,14 +126,15 @@ class MemorySpaceAssignmentCostAnalysis {
       const HloInstruction& instruction) const;
 
   // Returns the elapsed time in seconds due to memory only. If
-  // operand_in_alternate_mem is provided or if output_in_alternate_mem is true,
-  // it will assume that operand or output will be in the alternate memory
-  // space. This is useful for calculating the benefit of placing the buffer in
-  // alternate memory.
+  // operands_in_alternate_mem or outputs_in_alternate_mem is provided, it will
+  // assume that the corresponding operands or output will be in the alternate
+  // memory space. This is useful for calculating the benefit of placing the
+  // buffer in alternate memory.
   float GetInstructionElapsedDueToMemory(
       const HloInstruction& instruction,
-      absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
-      bool output_in_alternate_mem = false) const;
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
 
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
@@ -142,12 +143,13 @@ class MemorySpaceAssignmentCostAnalysis {
 
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
-  // memory, except for the operand number that is in the alternate memory, if
-  // provided, or output if output_in_alternate_mem is true.
+  // memory, except for the operands and outputs specified to be in the
+  // alternate memory.
   virtual float GetInstructionElapsedInAlternateMemory(
       const HloInstruction& instruction,
-      absl::optional<int64> operand_in_alternate_mem,
-      bool output_in_alternate_mem) const;
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem,
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem) const;
 
   // Returns the elapsed time it would take to asynchronously copy the shape
   // from default to alternate memory space (or vice versa).
@@ -446,6 +448,9 @@ class MemorySpaceAssignment {
 
     // This object determines how early and how late prefetches can occur.
     PrefetchIntervalPicker* prefetch_interval_picker = nullptr;
+
+    // This object is used to determine the benefit of a particular allocation.
+    MemorySpaceAssignmentCostAnalysis* cost_analysis = nullptr;
 
     // Size function for buffer values.
     BufferValue::SizeFunction size_fn;
@@ -930,6 +935,12 @@ class MemorySpaceAssignment {
   // Remove the positions and chunks associated with the instruction from
   // alternate_memory_assignments_.
   void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+
+  // Returns the estimated elapsed duration of the hlo module in seconds. It
+  // uses the 'allocations' argument to determine the location (default memory
+  // or alternate memory) of each operand and output of an instruction.
+  float ComputeEstimatedElapsedTime(const HloLiveRange& hlo_live_range,
+                                    const AllocationSequence& allocations);
 
   HloModule* module_;
   Options options_;

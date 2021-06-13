@@ -1948,6 +1948,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual("/job:localhost", options.experimental_io_device)
 
   def test_load_custom_saveable_object(self, cycles):
+    if context.is_tfrt_enabled():
+      self.skipTest("Disable due to b/190539415.")
     root = tracking.AutoTrackable()
     root.table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
     root.table.insert("foo", 15)

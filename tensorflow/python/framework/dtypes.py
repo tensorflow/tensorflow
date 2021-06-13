@@ -720,3 +720,5 @@ def as_dtype(type_value):
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." %
                   (type_value,))
+
+experimental_promote_types = _dtypes.experimental_promote_types

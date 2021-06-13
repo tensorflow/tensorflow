@@ -165,6 +165,15 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
       self.assertEqual(hlo_text, hlo_text_roundtrip)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
+    def testStableComputationSerialization(self):
+      # Ideally we would test identical computations produced in different
+      # processes. For now we have this limited smoke test.
+      computation = self.ExampleComputation()
+      ref = computation.as_serialized_hlo_module_proto()
+      for _ in range(10):
+        self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
@@ -2358,6 +2367,20 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
       self._ExecuteAndCompareClose(c, [arg], [dtype(6)])
 
   tests.append(DynamicReshapeTest)
+
+  class DeviceAssignmentTest(ComputationTest):
+
+    def testSerialize(self):
+      shape = (3, 4)
+      device_assignment = xla_client.DeviceAssignment.create(
+          np.arange(np.prod(shape)).reshape(*shape))
+      self.assertEqual(device_assignment.replica_count(), shape[0])
+      self.assertEqual(device_assignment.computation_count(), shape[1])
+      serialized = device_assignment.serialize()
+      self.assertIsInstance(serialized, bytes)
+      self.assertNotEmpty(serialized)
+
+  tests.append(DeviceAssignmentTest)
 
   return tests
 

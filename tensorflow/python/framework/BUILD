@@ -490,6 +490,7 @@ py_library(
     deps = [
         ":_op_def_registry",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -764,7 +765,6 @@ cc_library(
 # Note: this target is only used by python_api_dispatcher_test.
 tf_python_pybind_extension(
     name = "_pywrap_python_api_dispatcher",
-    # testonly = True,
     srcs = ["python_api_dispatcher_wrapper.cc"],
     hdrs = ["python_api_dispatcher.h"],
     module_name = "_pywrap_python_api_dispatcher",
@@ -1386,7 +1386,10 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":constant_op",
-    ],
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:client_testlib",
+    ] + tf_additional_xla_deps_py(),
 )
 
 tf_py_test(

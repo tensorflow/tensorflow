@@ -15,9 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control_util.h"
 
 #include <math.h>
-
-#include "tensorflow/lite/experimental/microfrontend/lib/fprintf_shim.h"
-#include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
+#include <stdio.h>
 
 #define kint16max 0x00007FFF
 
@@ -54,10 +52,9 @@ int PcanGainControlPopulateState(const struct PcanGainControlConfig* config,
   }
   state->noise_estimate = noise_estimate;
   state->num_channels = num_channels;
-  state->gain_lut =
-      microfrontend_alloc(kWideDynamicFunctionLUTSize * sizeof(int16_t));
+  state->gain_lut = malloc(kWideDynamicFunctionLUTSize * sizeof(int16_t));
   if (state->gain_lut == NULL) {
-    MICROFRONTEND_FPRINTF(stderr, "Failed to allocate gain LUT\n");
+    fprintf(stderr, "Failed to allocate gain LUT\n");
     return 0;
   }
   state->snr_shift = config->gain_bits - input_correction_bits - kPcanSnrBits;
@@ -91,5 +88,5 @@ int PcanGainControlPopulateState(const struct PcanGainControlConfig* config,
 }
 
 void PcanGainControlFreeStateContents(struct PcanGainControlState* state) {
-  microfrontend_free(state->gain_lut);
+  free(state->gain_lut);
 }

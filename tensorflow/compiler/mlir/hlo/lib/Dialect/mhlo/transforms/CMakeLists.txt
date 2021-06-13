@@ -48,6 +48,7 @@ add_mlir_library(ChloPasses
 )
 
 add_mlir_library(MhloPasses
+  broadcast_propagation.cc
   legalize_gather_to_torch_index_select.cc
   legalize_trigonometric_to_approximation.cc
   lower_complex.cc
@@ -56,7 +57,6 @@ add_mlir_library(MhloPasses
   materialize_broadcasts.cc
   materialize_broadcasts_pass.cc
   mhlo_fusion.cc
-  move_up_dynamic_broadcasts_for_fusion.cc
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc

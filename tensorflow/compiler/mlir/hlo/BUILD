@@ -26,6 +26,7 @@ package_group(
         "//platforms/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
+        "//third_party/py/mlir/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
@@ -527,16 +528,12 @@ cc_library(
 cc_library(
     name = "lhlo",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc",
         "lib/Dialect/mhlo/IR/lhlo_ops.cc",
         "lib/Dialect/mhlo/IR/lhlo_ops_structs.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
     ],
     includes = ["include"],
     deps = [
@@ -768,8 +765,8 @@ cc_library(
 )
 
 cc_library(
-    name = "move_up_dynamic_broadcasts_for_fusion",
-    srcs = ["lib/Dialect/mhlo/transforms/move_up_dynamic_broadcasts_for_fusion.cc"],
+    name = "broadcast_propagation",
+    srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
@@ -867,6 +864,7 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_hlo_to_lhlo_op",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
@@ -1199,6 +1197,7 @@ cc_library(
     deps = [
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
+        ":broadcast_propagation",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
@@ -1215,7 +1214,6 @@ cc_library(
         ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
-        ":move_up_dynamic_broadcasts_for_fusion",
         ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",
@@ -1240,5 +1238,45 @@ cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+# Python library.
+
+td_library(
+    name = "MhloOpsPyTdFiles",
+    srcs = [
+        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+    ],
+    includes = ["include"],
+    deps = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "MhloOpsPyGen",
+    tbl_outs = [
+        (
+            [
+                "-gen-python-op-bindings",
+                "-bind-dialect=mhlo",
+            ],
+            "python/_mhlo_ops_gen.py",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "python/MhloOps.td",
+    deps = [
+        ":MhloOpsPyTdFiles",
+    ],
+)
+
+filegroup(
+    name = "MhloOpsPyFiles",
+    srcs = [
+        "python/mhlo.py",
+        ":MhloOpsPyGen",
     ],
 )

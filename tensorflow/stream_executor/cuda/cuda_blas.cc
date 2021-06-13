@@ -1758,8 +1758,11 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
         cc_major >= 8) {
       // TODO(reedwm): Remove or make this VLOG(1) once TensorFloat-32 is more
       // well tested.
-      LOG_FIRST_N(INFO, 1) << "TensorFloat-32 will be used for the matrix "
-                              "multiplication. This will only be logged once.";
+      if (tensorflow::tensor_float_32_execution_enabled()) {
+        LOG_FIRST_N(INFO, 1) << "TensorFloat-32 will be used for the matrix "
+                                "multiplication. This will only be logged "
+                                "once.";
+      }
     }
   }
 #endif

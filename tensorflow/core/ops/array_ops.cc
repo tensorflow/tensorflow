@@ -726,6 +726,16 @@ REGISTER_OP("HostConst")
     .Attr("dtype: type")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// Used executing op-by-op to copy constants to the current device without
+// serializing tensors as TensorProtos, after a host tensor has been
+// created. Same behavior as Identity, but no gradient and potentially relaxed
+// copy semantics.
+REGISTER_OP("_EagerConst")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 // --------------------------------------------------------------------------
 // TODO(mgubin): Update the doc when the freeze_graph script supports converting
 // into memmapped format.

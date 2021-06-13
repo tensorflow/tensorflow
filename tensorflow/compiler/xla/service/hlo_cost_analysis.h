@@ -78,6 +78,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleCholesky(const HloInstruction* hlo) override;
   Status HandleAllGather(const HloInstruction* hlo) override;
   Status HandleAllReduce(const HloInstruction* crs) override;
+  Status HandleAllReduceScatter(const HloInstruction* hlo) override;
   Status HandleAllReduceStart(const HloInstruction* hlo) override;
   Status HandleAllReduceDone(const HloInstruction* hlo) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;

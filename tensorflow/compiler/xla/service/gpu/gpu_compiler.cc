@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
+#include "tensorflow/compiler/xla/service/async_all_reduce_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -378,6 +379,12 @@ Status GpuCompiler::OptimizeHloModule(
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
+  if (hlo_module->config().debug_options().xla_gpu_enable_async_all_reduce()) {
+    HloPassPipeline pipeline("async_all_reduce_creator");
+    pipeline.AddPass<AsyncAllReduceCreator>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   {
     HloPassPipeline pipeline("collectives_schedule_linearizer");
     pipeline.AddPass<CollectivesScheduleLinearizer>();
@@ -627,7 +634,9 @@ static Status CompileModuleToLlvmIrImpl(
   VLOG(1) << "Buffer Assignment Stats "
           << results->buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
-                         "after_optimizations");
+                         absl::StrCat("sm_", cuda_compute_capability->cc_major,
+                                      ".", cuda_compute_capability->cc_minor,
+                                      "_gpu_after_optimizations"));
 
   mlir::MLIRContext mlir_context;
   mlir_context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
@@ -1149,21 +1158,10 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
 
   TF_ASSIGN_OR_RETURN(auto ir_emitter, IrEmitterUnnested::Create(
                                            module_config, ir_emitter_context));
-  ThunkSequence thunk_sequence;
-  for (mlir::Operation& op :
-       entry_function.getBody().front().without_terminator()) {
-    MlirEmitterInput input;
-    input.op = &op;
-    TF_RETURN_IF_ERROR(ir_emitter->EmitOp(input));
-    std::unique_ptr<ThunkSequence> thunks = ir_emitter->ConsumeThunkSequence();
-    TF_RET_CHECK(thunks->size() <= 1);
-    if (!thunks->empty()) {
-      auto thunk = std::move(thunks->front());
-      thunk_sequence.push_back(std::move(thunk));
-    }
-  }
-  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      std::make_unique<ThunkSequence>(std::move(thunk_sequence)));
+  TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+
+  auto thunk_schedule =
+      absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
 
   using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,

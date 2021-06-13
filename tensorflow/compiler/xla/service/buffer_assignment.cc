@@ -193,6 +193,7 @@ Status GatherComputationsByAllocationType(
                                               false));  // Not thread local.
             break;
           case HloOpcode::kAllReduce:
+          case HloOpcode::kAllReduceScatter:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:
           case HloOpcode::kReduceWindow:

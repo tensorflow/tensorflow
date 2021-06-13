@@ -161,9 +161,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.map_and_filter_fusion = True
     options.experimental_optimization.map_fusion = True
     options.experimental_optimization.map_parallelization = True
-    options.experimental_optimization.map_vectorization.enabled = True
-    options.experimental_optimization.map_vectorization.use_choose_fastest = (
-        True)
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.parallel_batch = True
     options.experimental_optimization.reorder_data_discarding_ops = True
@@ -195,8 +192,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_options_pb2.DistributeOptions())
     expected_pb.optimization_options.CopyFrom(
         dataset_options_pb2.OptimizationOptions())
-    expected_pb.optimization_options.map_vectorization.CopyFrom(
-        dataset_options_pb2.MapVectorization())
     expected_pb.threading_options.CopyFrom(
         dataset_options_pb2.ThreadingOptions())
     self.assertProtoEquals(expected_pb, result)

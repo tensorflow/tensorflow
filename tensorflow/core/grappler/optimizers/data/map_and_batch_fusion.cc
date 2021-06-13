@@ -144,12 +144,6 @@ Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void MapAndBatchFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                 const GraphDef& optimize_output,
-                                 double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(MapAndBatchFusion, "map_and_batch_fusion");
 
 }  // namespace grappler

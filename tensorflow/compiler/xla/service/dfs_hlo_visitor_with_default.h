@@ -104,6 +104,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
+  Status HandleAllReduceScatter(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   Status HandleAllReduceStart(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }

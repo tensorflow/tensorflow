@@ -65,12 +65,6 @@ Status EnableGradientDescent::OptimizeAndCollectStats(
   return Status::OK();
 }
 
-void EnableGradientDescent::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                     const GraphDef& optimize_output,
-                                     double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(EnableGradientDescent, "enable_gradient_descent");
 
 }  // namespace grappler

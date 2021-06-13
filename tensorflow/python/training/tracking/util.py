@@ -70,16 +70,16 @@ _SESSION_PROVIDER = None
 
 _checkpoint_write_durations = monitoring.Sampler(
     "/tensorflow/core/checkpoint/write/write_durations",
-    # Scale of 10, power of 1.8 with bucket count 33 (~25 minutes).
-    monitoring.ExponentialBuckets(10, 1.8, 33),
+    # Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
+    monitoring.ExponentialBuckets(1000, 1.5, 41),
     "Distribution of the wall time duration in microseconds of the "
     "`tf.train.Checkpoint.write` operation",
     "version")
 
 _checkpoint_read_durations = monitoring.Sampler(
     "/tensorflow/core/checkpoint/read/read_durations",
-    # Scale of 10, power of 1.8 with bucket count 33 (~25 minutes).
-    monitoring.ExponentialBuckets(10, 1.8, 33),
+    # Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
+    monitoring.ExponentialBuckets(1000, 1.5, 41),
     "Distribution of the wall time duration in microseconds of the "
     "`tf.train.Checkpoint.restore` operation",
     "version")

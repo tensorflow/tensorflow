@@ -99,6 +99,7 @@ public final class InterpreterTest {
   @Test
   public void testRunWithFileModel() throws Exception {
     if (!TestUtils.supportsFilePaths()) {
+      System.err.println("Not testing with file model, since file paths aren't supported.");
       return;
     }
     Interpreter interpreter = new Interpreter(new File(MODEL_PATH));
@@ -407,10 +408,11 @@ public final class InterpreterTest {
   // setAllowFp16PrecisionForFp32 is deprecated, suppress the warning to allow testing.
   @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
-    Interpreter interpreter =
-        new Interpreter(
-            MODEL_BUFFER,
-            new Interpreter.Options().setUseNNAPI(true).setAllowFp16PrecisionForFp32(true));
+    Interpreter.Options options = new Interpreter.Options().setUseNNAPI(true);
+    if (SupportedFeatures.supportsAllowFp16PrecisionForFp32()) {
+      options.setAllowFp16PrecisionForFp32(true);
+    }
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER, options);
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -425,6 +427,10 @@ public final class InterpreterTest {
 
   @Test
   public void testUseXNNPACK() throws Exception {
+    if (!SupportedFeatures.supportsXnnpack()) {
+      System.err.println("Not testing XNNPACK, since it isn't supported.");
+      return;
+    }
     Interpreter interpreter =
         new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true));
     float[] oneD = {1.23f, 6.54f, 7.81f};
@@ -441,6 +447,10 @@ public final class InterpreterTest {
 
   @Test
   public void testResizeWithEnhancedCpuKernels() throws Exception {
+    if (!SupportedFeatures.supportsXnnpack()) {
+      System.err.println("Not testing XNNPACK, since it isn't supported.");
+      return;
+    }
     Interpreter interpreter =
         new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true));
     float[] input = {1.f};
@@ -623,6 +633,10 @@ public final class InterpreterTest {
 
   @Test
   public void testCancelInference() throws Exception {
+    if (!SupportedFeatures.supportsCancellation()) {
+      System.err.println("Not testing cancellation, since it isn't supported.");
+      return;
+    }
     float[][][][] inputs = new float[2][8][8][3];
     float[][][][] parsedOutputs = new float[2][8][8][3];
     Interpreter interpreter =
@@ -728,6 +742,10 @@ public final class InterpreterTest {
 
   @Test
   public void testModelWithSignatureDef() {
+    if (!SupportedFeatures.supportsSignatures()) {
+      System.err.println("Not testing signature defs, since they aren't supported.");
+      return;
+    }
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
       String[] signatureNames = interpreter.getSignatureDefNames();
       String[] expectedSignatureNames = {"mul_add"};
@@ -793,6 +811,10 @@ public final class InterpreterTest {
 
   @Test
   public void testModelWithSignatureDefNullMethodName() {
+    if (!SupportedFeatures.supportsSignatures()) {
+      System.err.println("Not testing signature defs, since they aren't supported.");
+      return;
+    }
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
       String[] signatureNames = interpreter.getSignatureDefNames();
       String[] expectedSignatureNames = {"mul_add"};
@@ -827,6 +849,10 @@ public final class InterpreterTest {
 
   @Test
   public void testModelWithSignatureDefNoSignatures() {
+    if (!SupportedFeatures.supportsSignatures()) {
+      System.err.println("Not testing signature defs, since they aren't supported.");
+      return;
+    }
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
       String[] signatureNames = interpreter.getSignatureDefNames();
       String[] expectedSignatureNames = {};

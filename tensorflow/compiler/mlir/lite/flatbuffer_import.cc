@@ -960,8 +960,6 @@ void SetSignature(
   static const char kExportedNameAttr[] = "tf_saved_model.exported_names";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
-  llvm::SmallVector<mlir::DictionaryAttr, 4> arg_attrs, res_attrs;
-
   auto dict_attr =
       func->getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
   if (!dict_attr) return;
@@ -973,21 +971,28 @@ void SetSignature(
       GetStringsFromAttrWithSeparator(dict_attr, /*attr_key=*/"outputs");
 
   for (auto input_pair : llvm::enumerate(signature->inputs)) {
+    const int arg_index = GetTensorIndex(
+        tensors[input_pair.value()->tensor_index]->name, input_names);
+    if (arg_index == -1) {
+      func->emitWarning("Invalid signature tensors specified.");
+      return;
+    }
     func.setArgAttr(
-        GetTensorIndex(tensors[input_pair.value()->tensor_index]->name,
-                       input_names),
-        kSignatureDefIndexPath,
+        arg_index, kSignatureDefIndexPath,
         mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
                                           context, input_pair.value()->name)}));
   }
   for (auto output_pair : llvm::enumerate(signature->outputs)) {
-    func.setResultAttr(
-        GetTensorIndex(tensors[output_pair.value()->tensor_index]->name,
-                       output_names),
-        kSignatureDefIndexPath,
-        mlir::ArrayAttr::get(
-            context,
-            {mlir::StringAttr::get(context, output_pair.value()->name)}));
+    const int arg_index = GetTensorIndex(
+        tensors[output_pair.value()->tensor_index]->name, output_names);
+    if (arg_index == -1) {
+      func->emitWarning("Invalid signature tensors specified.");
+      return;
+    }
+    func.setResultAttr(arg_index, kSignatureDefIndexPath,
+                       mlir::ArrayAttr::get(
+                           context, {mlir::StringAttr::get(
+                                        context, output_pair.value()->name)}));
   }
   func->setAttr(
       kExportedNameAttr,

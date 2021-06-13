@@ -45,8 +45,10 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    # TODO(b/187847053): Enable test in pip.
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",  # TODO(b/190842754): Enable test in OSS.
+        "no_pip",  # TODO(b/187847053): Enable test in pip.
+    ],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
@@ -364,6 +366,7 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/lite/python/metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
@@ -500,7 +503,7 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_interface",
-        "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
+        "//tensorflow/lite/python/metrics_wrapper",
         "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python/eager:monitoring",
     ],
@@ -509,6 +512,9 @@ pytype_strict_library(
 py_test(
     name = "metrics_nonportable_test",
     srcs = ["metrics_nonportable_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
+    ],
     python_version = "PY3",
     tags = ["no_oss"],
     visibility = ["//visibility:public"],

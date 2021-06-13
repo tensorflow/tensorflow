@@ -366,6 +366,9 @@ tf_cc_test(
         "//tensorflow/c/experimental/saved_model/internal/testdata:saved_models",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
+    tags = [
+        "no_windows",  # b/190030638
+    ],
     deps = [
         ":saved_model_api_type",
         "//tensorflow/c:tf_datatype",

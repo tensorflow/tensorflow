@@ -109,6 +109,11 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
 template <typename InputIteratorT, typename OutputIteratorT>
 Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
                              InputIteratorT input, OutputIteratorT output) {
+  static_assert(
+      !std::is_same<typename std::remove_reference<decltype(*input)>::type,
+                    bool>::value,
+      "GpuInclusivePrefixSum does not work correct with booleans, please use "
+      "TransformInputIterator to explicitly cast to an integer.");
   if (size == 0) return Status::OK();
   const auto& cu_stream = GetGpuStream(context);
   size_t temp_storage_bytes;
@@ -131,6 +136,44 @@ Status GpuInclusivePrefixSum(OpKernelContext* context, int size,
     return errors::Internal(
         "Failed to launch gpuprim::DeviceScan::InclusiveSum, "
         "temp_storage_bytes: ",
+        temp_storage_bytes, ", status: ", cudaGetErrorString(err));
+  }
+  return Status::OK();
+}
+
+// Note that this behaves deterministically for repeat calls on the same device.
+template <typename InputIteratorT, typename OutputIteratorT,
+          typename OffsetIteratorT, typename ReduceOp, typename T>
+Status GpuSegmentedReduce(
+    OpKernelContext* context, int num_segments, ReduceOp reduce_op,
+    const T& initial_value,
+    InputIteratorT input,             // [any]
+    OffsetIteratorT segment_offsets,  // [num_segments + 1]
+    OutputIteratorT output) {         // [num_segments]
+  if (num_segments == 0) return Status::OK();
+  const auto& cu_stream = GetGpuStream(context);
+  size_t temp_storage_bytes;
+  auto err = gpuprim::DeviceSegmentedReduce::Reduce(
+      nullptr, temp_storage_bytes, input, output, num_segments, segment_offsets,
+      segment_offsets + 1, reduce_op, initial_value, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceSegmentedReduce::Reduce to calculate "
+        "temp_storage_bytes, status: ",
+        cudaGetErrorString(err));
+  }
+  Tensor temp_storage;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      &temp_storage));
+  err = gpuprim::DeviceSegmentedReduce::Reduce(
+      temp_storage.flat<int8>().data(), temp_storage_bytes, input, output,
+      num_segments, segment_offsets, segment_offsets + 1, reduce_op,
+      initial_value, cu_stream);
+  if (err != 0) {
+    return errors::Internal(
+        "Failed to launch gpuprim::DeviceSegmentedReduce::Reduce"
+        ", temp_storage_bytes: ",
         temp_storage_bytes, ", status: ", cudaGetErrorString(err));
   }
   return Status::OK();

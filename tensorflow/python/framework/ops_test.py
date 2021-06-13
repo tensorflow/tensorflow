@@ -2594,6 +2594,16 @@ class OpScopeTest(test_util.TensorFlowTestCase):
       with ops.name_scope(scope_name, values=graph_elements + [a]):
         pass
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGetCurrentNameScope(self):
+    self.assertEqual(ops.get_current_name_scope(), "")
+    with ops.name_scope_v2("aaa"):
+      self.assertEqual(ops.get_current_name_scope(), "aaa")
+      with ops.name_scope_v2("bbb"):
+        self.assertEqual(ops.get_current_name_scope(), "aaa/bbb")
+      self.assertEqual(ops.get_current_name_scope(), "aaa")
+    self.assertEqual(ops.get_current_name_scope(), "")
+
   @test_util.run_deprecated_v1
   def testTensor(self):
     g0 = ops.Graph()

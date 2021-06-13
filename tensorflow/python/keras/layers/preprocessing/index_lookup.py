@@ -33,6 +33,7 @@ from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -372,7 +373,15 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("IndexLookup does not support streaming adapts.")
     super(IndexLookup, self).adapt(data, reset_state)
 
-  def get_vocabulary(self):
+  def get_vocabulary(self, include_special_tokens=True):
+    """Returns the current vocabulary of the layer.
+
+    Args:
+      include_special_tokens: If True, the returned vocabulary will include mask
+        and OOV tokens, and a term's index in the vocabulary will equal the
+        term's index when calling the layer. If False, the returned vocabulary
+        will not include any mask or OOV tokens.
+    """
     if self.vocabulary_size() is None:
       return []
 
@@ -386,6 +395,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     vocab = [lookup[x] for x in range(self.vocabulary_size())]
     if self.mask_token is not None and self.output_mode == INT:
       vocab[0] = self.mask_token
+    if not include_special_tokens:
+      vocab = vocab[self._token_start_index():]
     return vocab
 
   def vocabulary_size(self):
@@ -618,6 +629,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         updates[_VOCAB_NAME], idf_weights=updates[_IDF_WEIGHTS_NAME])
 
   def call(self, inputs):
+    if isinstance(inputs, (list, tuple, np.ndarray)):
+      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
+
     if not self.max_tokens and self._vocab_size is None:
       raise ValueError("You must set the layer's vocabulary before calling it. "
                        "Either pass a `vocabulary` argument to the layer, or "
@@ -630,12 +644,21 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     lookup_checks = []
 
     if self.num_oov_indices == 0 and not self.invert:
-      oov_indices = array_ops.where_v2(math_ops.equal(lookup_result, -1))
-      oov_inputs = array_ops.gather_nd(inputs, oov_indices)
+      if tf_utils.is_sparse(inputs):
+        lookup_values = lookup_result.values
+        input_values = inputs.values
+      elif tf_utils.is_ragged(inputs):
+        lookup_values = lookup_result.flat_values
+        input_values = inputs.flat_values
+      else:
+        lookup_values = lookup_result
+        input_values = inputs
+      oov_indices = array_ops.where_v2(math_ops.equal(lookup_values, -1))
+      oov_inputs = array_ops.gather_nd(input_values, oov_indices)
       msg = string_ops.string_format(
           "When `num_oov_indices=0` all inputs should be in vocabulary, "
-          "found OOV values {} at indices {}, consider setting "
-          "`num_oov_indices=1`.", (oov_inputs, oov_indices))
+          "found OOV values {}, consider setting `num_oov_indices=1`.",
+          (oov_inputs,))
       assertion = control_flow_ops.Assert(
           math_ops.equal(array_ops.size(oov_indices), 0), [msg])
       lookup_checks.append(assertion)

@@ -216,7 +216,7 @@ tf_cuda_library(
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/lib:device_profiler_session",
     ],
 )
 

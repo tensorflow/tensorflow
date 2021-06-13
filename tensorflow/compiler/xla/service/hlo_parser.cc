@@ -162,6 +162,7 @@ bool CanInferShape(HloOpcode code) {
     // but we made it so that we always write the shapes explicitly.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
@@ -1245,6 +1246,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllReduceStart: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
@@ -1252,6 +1254,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64> channel_id;
       optional<bool> constrain_layout;
       optional<bool> use_global_device_ids;
+      optional<std::vector<int64>> dimensions;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
@@ -1261,6 +1264,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
+      if (opcode == HloOpcode::kAllReduceScatter) {
+        attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                               &dimensions};
+      }
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1273,6 +1280,13 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
             shape, operands, *to_apply, replica_groups,
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
+      } else if (opcode == HloOpcode::kAllReduceScatter) {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAllReduceScatter(
+                shape, operands, *to_apply, replica_groups,
+                constrain_layout ? *constrain_layout : false, channel_id,
+                use_global_device_ids ? *use_global_device_ids : false,
+                dimensions->at(0)));
       } else {
         instruction =
             builder->AddInstruction(HloInstruction::CreateAllReduceStart(

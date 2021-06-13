@@ -74,7 +74,6 @@ from tensorflow.python.saved_model import loader_impl as sm_loader
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
@@ -340,15 +339,14 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       return
 
     if all(
-        isinstance(v, (base_layer.Layer,
-                       data_structures.TrackableDataStructure)) or
+        isinstance(v, (base_layer.Layer, variables.Variable)) or
         base_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._base_model_initialized
       except AttributeError:
         raise RuntimeError(
             'It looks like you are subclassing `Model` and you '
-            'forgot to call `super(YourClass, self).__init__()`.'
+            'forgot to call `super().__init__()`.'
             ' Always start with this line.')
 
     super(Model, self).__setattr__(name, value)
@@ -622,6 +620,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.train_function = None
     self.test_function = None
     self.predict_function = None
+    # Used to cache the `tf.function`'ed `train_function` to be logged in
+    # TensorBoard, since the original `train_function` is not necessarily
+    # a `tf.function` (e.g., with ParameterServerStrategy, the `train_function`
+    # is a scheduling of the actual training function to a remote worker).
+    self.train_tf_function = None
 
     # Used to cache `trainable` attr of `Layer`s for `fit`.
     self._compiled_trainable_state = self._get_trainable_state()
@@ -874,6 +877,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if not self.run_eagerly:
       train_function = def_function.function(
           train_function, experimental_relax_shapes=True)
+      self.train_tf_function = train_function
 
     self.train_function = train_function
 
@@ -2741,14 +2745,17 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     train_function = self.train_function
     test_function = self.test_function
     predict_function = self.predict_function
+    train_tf_function = self.train_tf_function
     self.train_function = None
     self.test_function = None
     self.predict_function = None
+    self.train_tf_function = None
     functions = super(
         Model, self)._list_functions_for_serialization(serialization_cache)
     self.train_function = train_function
     self.test_function = test_function
     self.predict_function = predict_function
+    self.train_tf_function = train_tf_function
     return functions
 
   def _should_eval(self, epoch, validation_freq):

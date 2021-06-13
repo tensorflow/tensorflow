@@ -184,6 +184,18 @@ class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testCacheZipped(self):
+    def make_dataset(i):
+      cache_path = self.cache_prefix + "_" + str(i)
+      return dataset_ops.Dataset.range(100).shuffle(100).cache(cache_path)
+
+    datasets = [make_dataset(i) for i in range(3)]
+    dataset = dataset_ops.Dataset.zip(tuple(datasets))
+    first_order = self.getDatasetOutput(dataset)
+    second_order = self.getDatasetOutput(dataset)
+    self.assertEqual(first_order, second_order)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testCleaningUpCacheFiles(self):
 
     def do_test(i):

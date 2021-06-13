@@ -543,7 +543,7 @@ func @reshape_0D_1D(%arg0: tensor<i32>) -> tensor<1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>
   return %0 : tensor<1xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [] : tensor<i32> into tensor<1xi32>
+// CHECK: linalg.tensor_expand_shape %{{.*}} [] : tensor<i32> into tensor<1xi32>
 
 // -----
 
@@ -554,7 +554,7 @@ func @reshape_0D_1D_unsigned(%arg0: tensor<ui32>) -> tensor<1xui32> {
 // CHECK-LABEL: func @reshape_0D_1D_unsigned
 // CHECK-SAME:    %[[ARG_UNSIGNED:[a-zA-Z0-9_]*]]
 // CHECK:         %[[ARG_SIGNLESS:.*]] = unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<ui32> to tensor<i32>
-// CHECK:         %[[RET_SIGNLESS:.*]] = linalg.tensor_reshape %[[ARG_SIGNLESS]] [] : tensor<i32> into tensor<1xi32>
+// CHECK:         %[[RET_SIGNLESS:.*]] = linalg.tensor_expand_shape %[[ARG_SIGNLESS]] [] : tensor<i32> into tensor<1xi32>
 // CHECK:         %[[RET_UNSIGNED:.*]] = unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<1xi32> to tensor<1xui32>
 // CHECK:         return %[[RET_UNSIGNED]] : tensor<1xui32>
 
@@ -565,7 +565,7 @@ func @reshape_1D_0D(%arg0: tensor<1xi32>) -> tensor<i32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1xi32>) -> tensor<i32>
   return %0 : tensor<i32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} [] : tensor<1xi32> into tensor<i32>
+// CHECK: linalg.tensor_collapse_shape %{{.*}} [] : tensor<1xi32> into tensor<i32>
 
 // -----
 
@@ -576,7 +576,7 @@ func @reshape_1D_0D_unsigned(%arg0: tensor<1xui32>) -> tensor<ui32> {
 // CHECK-LABEL: func @reshape_1D_0D_unsigned
 // CHECK-SAME:    %[[ARG_UNSIGNED:[a-zA-Z0-9_]*]]
 // CHECK:         %[[ARG_SIGNLESS:.*]] = unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<1xui32> to tensor<1xi32>
-// CHECK:         %[[RET_SIGNLESS:.*]] = linalg.tensor_reshape %[[ARG_SIGNLESS]] [] : tensor<1xi32> into tensor<i32>
+// CHECK:         %[[RET_SIGNLESS:.*]] = linalg.tensor_collapse_shape %[[ARG_SIGNLESS]] [] : tensor<1xi32> into tensor<i32>
 // CHECK:         %[[RET_UNSIGNED:.*]] = unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<i32> to tensor<ui32>
 // CHECK:         return %[[RET_UNSIGNED]] : tensor<ui32>
 
@@ -587,7 +587,7 @@ func @reshape_3D_2D(%arg0: tensor<12x1x42xi32>) -> tensor<12x42xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x1x42xi32>) -> tensor<12x42xi32>
   return %0 : tensor<12x42xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1], [2]]
+// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1], [2]]
 
 // -----
 
@@ -596,7 +596,7 @@ func @reshape_4D_2D(%arg0: tensor<12x42x1x1xi32>) -> tensor<12x42xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x42x1x1xi32>) -> tensor<12x42xi32>
   return %0 : tensor<12x42xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2, 3]]
+// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0], [1, 2, 3]]
 
 // -----
 
@@ -605,7 +605,7 @@ func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<12x42xi32>) -> tensor<12x1x42x1xi32>
   return %0 : tensor<12x1x42x1xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1], [2, 3]]
+// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0, 1], [2, 3]]
 
 // -----
 
@@ -614,8 +614,8 @@ func @reshape_3D_4D(%arg0: tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32>
   return %0 : tensor<1x784x1x1xf32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2]]
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]]
+// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1, 2]]
+// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
 
 // -----
 
@@ -624,8 +624,8 @@ func @reshape_4D_3D(%arg0: tensor<1x8x10x3xf32>) -> tensor<1x240x1xf32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x8x10x3xf32>) -> tensor<1x240x1xf32>
   return %0 : tensor<1x240x1xf32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2]
+// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]
+// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0, 1, 2]
 
 // -----
 
@@ -634,8 +634,8 @@ func @reshape1_4D_4D(%arg0: tensor<4x512x1x1xi32>) -> tensor<1x4x1x512xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<4x512x1x1xi32>) -> tensor<1x4x1x512xi32>
   return %0 : tensor<1x4x1x512xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
+// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]
+// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]
 
 // -----
 
@@ -644,8 +644,8 @@ func @reshape2_4D_4D(%arg0: tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<4x1x1x1024xi32>) -> tensor<4x1024x1x1xi32>
   return %0 : tensor<4x1024x1x1xi32>
 }
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
-// CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2, 3]
+// CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]
+// CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]
 
 // -----
 
@@ -718,7 +718,7 @@ func @reshape_collapse_single_dim
   return %0 : tensor<1x784xf32>
 }
 // CHECK-LABEL: func @reshape_collapse_single_dim
-//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2, 3]]
+//       CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0], [1, 2, 3]]
 
 // -----
 
@@ -727,7 +727,7 @@ func @reshape_collapse(%arg0: tensor<2x2x2x3xf32>) -> tensor<2x4x3xf32> {
     return %0 : tensor<2x4x3xf32>
 }
 // CHECK-LABEL: func @reshape_collapse
-//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2], [3]]
+//       CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0], [1, 2], [3]]
 
 // -----
 
@@ -736,7 +736,7 @@ func @reshape_expand(%arg0: tensor<2x8xf32>) -> tensor<2x4x2xf32> {
     return %0 : tensor<2x4x2xf32>
 }
 // CHECK-LABEL: func @reshape_expand
-//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2]]
+//       CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0], [1, 2]]
 
 // -----
 
@@ -745,7 +745,7 @@ func @reshape_single_expand(%arg0 : tensor<8xf32>) -> tensor<1x4x2xf32> {
     return %0 : tensor<1x4x2xf32>
 }
 // CHECK-LABEL: func @reshape_single_expand
-//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0, 1, 2]]
+//       CHECK: linalg.tensor_expand_shape %{{.*}} {{\[}}[0, 1, 2]]
 
 // -----
 
@@ -755,7 +755,7 @@ func @reshape_multiple_collapse
     return %0 : tensor<1x4x5x6xf32>
 }
 // CHECK-LABEL: func @reshape_multiple_collapse
-//       CHECK: linalg.tensor_reshape %{{.*}} {{\[}}[0], [1, 2], [3], [4, 5]]
+//       CHECK: linalg.tensor_collapse_shape %{{.*}} {{\[}}[0], [1, 2], [3], [4, 5]]
 
 // -----
 
@@ -906,8 +906,8 @@ func @reverse(%input: tensor<2x3xf32>) -> tensor<2x3xf32> {
 // -----
 
 // CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-LABEL: func @iota
-func @iota() -> tensor<7x10xf32> {
+// CHECK-LABEL: func @iota_f32
+func @iota_f32() -> tensor<7x10xf32> {
   %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xf32>)
   return %result : tensor<7x10xf32>
 }
@@ -922,10 +922,43 @@ func @iota() -> tensor<7x10xf32> {
 
 // -----
 
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @iota_i32
+func @iota_i32() -> tensor<7x10xi32> {
+  %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xi32>)
+  return %result : tensor<7x10xi32>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%{{.*}}: i32):
+// CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
+// CHECK-NEXT:   linalg.yield %[[INT_CAST]] : i32
+
+// -----
+
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @iota_ui32
+func @iota_ui32() -> tensor<7x10xui32> {
+  %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xui32>)
+  return %result : tensor<7x10xui32>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%{{.*}}: i32):
+// CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
+// CHECK-NEXT:   linalg.yield %[[INT_CAST]] : i32
+// CHECK: unrealized_conversion_cast %{{.*}} : tensor<7x10xi32> to tensor<7x10xui32>
+
+// -----
+
 // CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
-// CHECK-LABEL: func @iota
+// CHECK-LABEL: func @dynamic_iota_f32
 // CHECK-SAME: %[[SHAPE:.*]]: tensor<?xi32>
-func @iota(%shape: tensor<?xi32>) -> tensor<?x?x8xf32> {
+func @dynamic_iota_f32(%shape: tensor<?xi32>) -> tensor<?x?x8xf32> {
   %result = "mhlo.dynamic_iota"(%shape) {iota_dimension = 1 : i64} : (tensor<?xi32>) -> (tensor<?x?x8xf32>)
   return %result : tensor<?x?x8xf32>
 }
@@ -941,6 +974,28 @@ func @iota(%shape: tensor<?xi32>) -> tensor<?x?x8xf32> {
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
+
+// -----
+
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-LABEL: func @dyanmic_iota_ui32
+// CHECK-SAME: %[[SHAPE:.*]]: tensor<?xi32>
+func @dyanmic_iota_ui32(%shape: tensor<?xi32>) -> tensor<?x?x8xui32> {
+  %result = "mhlo.dynamic_iota"(%shape) {iota_dimension = 1 : i64} : (tensor<?xi32>) -> (tensor<?x?x8xui32>)
+  return %result : tensor<?x?x8xui32>
+}
+// CHECK: %[[E1:.*]] = tensor.extract %[[SHAPE]][%c0] : tensor<?xi32>
+// CHECK: %[[I1:.*]] = index_cast %[[E1]] : i32 to index
+// CHECK: %[[E2:.*]] = tensor.extract %[[SHAPE]][%c1] : tensor<?xi32>
+// CHECK: %[[I2:.*]] = index_cast %[[E2]] : i32 to index
+// CHECK: linalg.init_tensor [%[[I1]], %[[I2]], 8] : tensor<?x?x8xi32>
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%{{.*}}: i32):
+// CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
+// CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : i32
+// CHECK: unrealized_conversion_cast %{{.*}} : tensor<?x?x8xi32> to tensor<?x?x8xui32>
 
 // -----
 
@@ -2059,10 +2114,10 @@ func @depthwise_conv(%arg0: tensor<2x4x5x2xf32>,
 // CHECK:        %[[CST:.+]] = constant 0.000000e+00 : f32
 // CHECK:        %[[FILL:.+]] = linalg.fill(%[[INIT]], %[[CST]]) : tensor<2x3x4x2x3xf32>, f32 -> tensor<2x3x4x2x3xf32>
 // CHECK:        %[[OUT:.+]] = linalg.depthwise_conv_2d_input_nhwc_filter_hwcf
-// CHECK-SAME:     {strides = dense<1> : tensor<2xi64>}
+// CHECK-SAME:     {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
 // CHECK-SAME:      ins(%[[IN]], %[[FILTER]] : tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>)
 // CHECK-SAME:     outs(%[[FILL]] : tensor<2x3x4x2x3xf32>) -> tensor<2x3x4x2x3xf32>
-// CHECK:        %{{.+}} = linalg.tensor_reshape %[[OUT]]
+// CHECK:        %{{.+}} = linalg.tensor_collapse_shape %[[OUT]]
 // CHECK-SAME:     [0], [1], [2], [3, 4]
 // CHECK-SAME:     : tensor<2x3x4x2x3xf32> into tensor<2x3x4x6xf32>
 
@@ -2095,11 +2150,11 @@ func @depthwise_conv_multiplier_1(%arg0: tensor<1x113x113x96xf32>,
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 56, 56, 96] : tensor<1x56x56x96xf32>
 // CHECK:         %[[CST:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT]], %[[CST]]) : tensor<1x56x56x96xf32>, f32 -> tensor<1x56x56x96xf32>
-// CHECK:         %[[RESHAPED_FILTER:.+]] = linalg.tensor_reshape %[[FILTER]]
+// CHECK:         %[[RESHAPED_FILTER:.+]] = linalg.tensor_collapse_shape %[[FILTER]]
 // CHECK-SAME:     [0], [1], [2, 3]
 // CHECK-SAME:     : tensor<3x3x1x96xf32> into tensor<3x3x96xf32>
 // CHECK:         %{{.+}} = linalg.depthwise_conv_2d_input_nhwc_filter_hwc
-// CHECK-SAME:      {strides = dense<2> : tensor<2xi64>}
+// CHECK-SAME:      {dilations = dense<1> : tensor<2xi64>, strides = dense<2> : tensor<2xi64>}
 // CHECK-SAME:       ins(%[[IN]], %[[RESHAPED_FILTER]] : tensor<1x113x113x96xf32>, tensor<3x3x96xf32>)
 // CHECK-SAME:      outs(%[[FILL]] : tensor<1x56x56x96xf32>) -> tensor<1x56x56x96xf32>
 
@@ -2643,3 +2698,26 @@ func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
 // CHECK:           linalg.yield %[[SELECT]] : i32
 // CHECK:         } -> tensor<6x3xi32>
 // CHECK:         return %[[RES]] : tensor<6x3xi32>
+
+// -----
+
+func @const() -> tensor<3xi32> {
+  // CHECK: = constant dense<[1, 2, 3]> : tensor<3xi32>
+  %cst = mhlo.constant dense<[1, 2, 3]> : tensor<3xi32>
+  return %cst : tensor<3xi32>
+}
+// -----
+
+func @const_unsigned() -> tensor<3xui32> {
+  // CHECK: = constant dense<[1, 2, 3]> : tensor<3xi32>
+  %cst = mhlo.constant dense<[1, 2, 3]> : tensor<3xui32>
+  return %cst : tensor<3xui32>
+}
+
+// -----
+
+func @const_splat() -> tensor<3xi16> {
+  // CHECK: = constant dense<1> : tensor<3xi16>
+  %cst = mhlo.constant dense<1> : tensor<3xi16>
+  return %cst : tensor<3xi16>
+}

@@ -36,7 +36,7 @@ namespace stream_executor {
 port::StatusOr<std::vector<uint8>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
   const bool linking_supported = [] {
-    if (CUDA_VERSION < 11300) {
+    if (CUDA_VERSION < 11030) {
       return true;
     }
     auto version_or_status = gpu::Diagnostician::FindKernelDriverVersion();

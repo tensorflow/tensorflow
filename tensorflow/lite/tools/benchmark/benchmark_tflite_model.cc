@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/kernels/variable_ops.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
@@ -823,6 +824,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   } else {
     resolver = new tflite::ops::builtin::BuiltinOpResolver();
   }
+  tflite::ops::custom::AddVariableOps(resolver);
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }
