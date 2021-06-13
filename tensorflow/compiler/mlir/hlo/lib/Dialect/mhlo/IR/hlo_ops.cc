@@ -1662,7 +1662,7 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
         limit_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
     auto stride_attr =
         stride_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
-    if (!start_attr || !limit_attr || !stride_attr) failure();
+    if (!start_attr || !limit_attr || !stride_attr) return failure();
 
     SmallVector<int64_t, 4> temp_start_indices;
     SmallVector<int64_t, 4> temp_limit_indices;
