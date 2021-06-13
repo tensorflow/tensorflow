@@ -22,7 +22,7 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
-DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y,
+DenseIntElementsAttr getBroadcastDimensionsAttr(Builder* b, Value x, Value y,
                                                 bool allow_empty) {
   TensorType xType = x.getType().dyn_cast<RankedTensorType>();
   TensorType yType = y.getType().dyn_cast<RankedTensorType>();
@@ -78,7 +78,7 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
 
 static APFloat GetScalarLimitOfFloatType(FloatType float_ty,
                                          ScalarLimit limit) {
-  auto &semantics = float_ty.getFloatSemantics();
+  auto& semantics = float_ty.getFloatSemantics();
   switch (limit) {
     case kLowest:
       return APFloat::getLargest(semantics, /*negative=*/true);
@@ -134,7 +134,7 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
 }
 
 std::string LmhloToMhloOpName(llvm::StringRef op_name,
-                              mlir::MLIRContext *context) {
+                              mlir::MLIRContext* context) {
   assert(op_name.startswith("lmhlo.") && "Expected an LMHLO op");
 
   if (op_name == "lmhlo.dot") {
@@ -154,6 +154,42 @@ bool IsSequenceStartingWith0(DenseIntElementsAttr attr) {
   for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
     if (attr.getValue<IntegerAttr>(i).getInt() != i) return false;
   return true;
+}
+
+int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
+  for (int64_t i = 0; i < op.getNumArguments(); ++i) {
+    auto operand = op.getArgument(i);
+    if (operand == value) {
+      return i;
+    }
+  }
+  assert(false && "Exception in getArgumentIndex, value is not an operand");
+  return -1;
+}
+
+DeviceType getInputPlacement(Value arg) {
+  auto parent = arg.getParentRegion()->getParentOp();
+  assert(isa<mlir::FuncOp>(parent) && "invalid use of getInputPlacement");
+  auto main_func = cast<mlir::FuncOp>(parent);
+  assert(main_func.getName() == "main" && "invalid use of getInputPlacement");
+  auto dict_attr = parent->getAttrOfType<DictionaryAttr>("tf.entry_function");
+  assert(dict_attr && "main_func must has tf.entry_function attr");
+  auto input_placements_attr = dict_attr.get(kInputPlacementAttr);
+  if (!input_placements_attr) return DeviceType::kGPU;
+
+  SmallVector<StringRef, 4> input_placements;
+  input_placements_attr.cast<mlir::StringAttr>().getValue().split(
+      input_placements, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+  assert(input_placements.size() == main_func.getNumArguments() &&
+         "input_placements.size() is not equal to num of inputs");
+  auto arg_index = hlo::getArgumentIndex(main_func, arg);
+  if (input_placements[arg_index] == hlo::kTypeCPU) {
+    return DeviceType::kCPU;
+  } else {
+    assert((input_placements[arg_index] == hlo::kTypeGPU) &&
+           "invalid input_placements string");
+    return DeviceType::kGPU;
+  }
 }
 
 }  // namespace hlo

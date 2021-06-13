@@ -2259,4 +2259,24 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp 
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_H2DOp: HLO_Op<"h2d", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "H2D operator";
+  let description = [{
+    Copy `operand` from host to device.
+  }];
+  let arguments = (ins HLO_Tensor);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_D2HOp: HLO_Op<"d2h", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "D2H operator";
+  let description = [{
+    Copy `operand` from device to host.
+  }];
+  let arguments = (ins HLO_Tensor);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 #endif // HLO_OPS

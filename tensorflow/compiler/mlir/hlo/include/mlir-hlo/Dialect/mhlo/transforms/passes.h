@@ -44,6 +44,9 @@ std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
+// Place shape calculating subgraph on host
+std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnCPUPass();
+
 /// Lowers from the CHLO dialect to the HLO dialect.
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
     bool legalize_broadcasts = true, bool expand_compositions = true);

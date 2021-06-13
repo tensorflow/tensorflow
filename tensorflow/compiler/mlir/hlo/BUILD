@@ -651,6 +651,22 @@ cc_library(
 )
 
 cc_library(
+    name = "mhlo_shape_calc_placement",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_shape_calc_placement.cc"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "map_lmhlo_to_scalar_op",
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"],
     deps = [
@@ -1202,6 +1218,7 @@ cc_library(
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
+        ":mhlo_shape_calc_placement",
         ":legalize_gather_to_torch_index_select",
         ":legalize_tensor_load_op",
         ":legalize_to_linalg",

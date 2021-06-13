@@ -64,6 +64,11 @@ def LegalizeToStandardPass : Pass<"mhlo-legalize-to-std", "FuncOp"> {
   let constructor = "createLegalizeToStdPass()";
 }
 
+def PlaceShapeCalcOnCPU : Pass<"mhlo-place-shape-calc", "FuncOp"> {
+  let summary = "Place shape calculating subgraph on host.";
+  let constructor = "createPlaceShapeCalcOnCPUPass()";
+}
+
 def LowerComplexPass : Pass<"mhlo-test-lower-complex", "FuncOp"> {
   let summary = "Lower complex operations into non-complex operations.";
   let constructor = "createLowerComplexPass()";
