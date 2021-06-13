@@ -205,10 +205,14 @@ Exit:
 The MHLO dialect has no direct export format, it is only meant as an
 intermediate optimization dialect/format. It is also where we can experiment
 cheaply with new ops. This format will be where the representation would differ
-from existing end points.
+from existing endpoints.
 
 Status: Exists but need to be cleaned up and evolved, in particular with respect
 to supporting dynamic shapes.
+
+MHLO differs from XLA HLO op set in multiple ways, including:
+1. MHLO While accepts multiple operands and may produce multiple results
+   instead;
 
 ### LMHLO
 

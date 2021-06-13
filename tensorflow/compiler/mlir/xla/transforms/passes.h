@@ -70,9 +70,6 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
 void PopulateLegalizeTfPatterns(MLIRContext* context,
                                 OwningRewritePatternList* patterns);
 
-/// Ops that should be legalized using MLIR given the prefer_tf2xla option.
-const llvm::DenseSet<mlir::TypeID>& MlirLegalizedUnderPreferTf2XlaSet();
-
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
 bool IsOpAllowedTf2XlaFallback(Operation* op);
 

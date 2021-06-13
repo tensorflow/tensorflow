@@ -24,6 +24,7 @@ limitations under the License.
 
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
+#include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
@@ -66,24 +67,32 @@ namespace tflite {
 
 ::tflite::OpSignature GetVersioningOpSig(
     const ::tflite::BuiltinOperator op, const OperatorSignature& op_signature) {
-  std::vector<::tflite::TensorType> input_types, output_types;
+  std::vector<::tflite::OpSignatureTensorSpec> inputs, outputs;
   for (const auto& input_name : op_signature.op->inputs) {
-    ::tflite::TensorType input_type = static_cast<::tflite::TensorType>(-1);
+    ::tflite::OpSignatureTensorSpec tensor = {
+        static_cast<::tflite::TensorType>(-1)};
     if (op_signature.model->HasArray(input_name)) {
       const Array& input_array = op_signature.model->GetArray(input_name);
-      input_type = GetTensorType(input_array.data_type);
+      tensor.type = GetTensorType(input_array.data_type);
+      if (input_array.has_shape()) {
+        tensor.dims = input_array.shape().dims();
+      }
     }
-    input_types.push_back(input_type);
+    inputs.push_back(tensor);
   }
   for (const auto& output_name : op_signature.op->outputs) {
-    ::tflite::TensorType output_type = static_cast<::tflite::TensorType>(-1);
+    ::tflite::OpSignatureTensorSpec tensor = {
+        static_cast<::tflite::TensorType>(-1)};
     if (op_signature.model->HasArray(output_name)) {
       const Array& output_array = op_signature.model->GetArray(output_name);
-      output_type = GetTensorType(output_array.data_type);
+      tensor.type = GetTensorType(output_array.data_type);
+      if (output_array.has_shape()) {
+        tensor.dims = output_array.shape().dims();
+      }
     }
-    output_types.push_back(output_type);
+    outputs.push_back(tensor);
   }
-  return ::tflite::OpSignature{op, input_types, output_types};
+  return ::tflite::OpSignature{op, inputs, outputs};
 }
 
 class AveragePool
@@ -181,10 +190,11 @@ class DepthwiseConvolution
         static_cast<const DepthwiseConvOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.depthwise_conv_2d.dilation_w_factor =
-        conv_op.dilation_width_factor;
-    op_sig.options.depthwise_conv_2d.dilation_h_factor =
+    TfLiteDepthwiseConvParams depthwise_conv_params = {};
+    depthwise_conv_params.dilation_width_factor = conv_op.dilation_width_factor;
+    depthwise_conv_params.dilation_height_factor =
         conv_op.dilation_height_factor;
+    op_sig.builtin_data = reinterpret_cast<void*>(&depthwise_conv_params);
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -241,12 +251,8 @@ class SpaceToBatchND
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const std::string& input_name = op_signature.op->inputs[0];
-    const Array& input_array = op_signature.model->GetArray(input_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.single_input_op.num_dims =
-        input_array.shape().dimensions_count();
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -271,19 +277,8 @@ class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const std::string& input1_name = op_signature.op->inputs[0];
-    const std::string& input2_name = op_signature.op->inputs[1];
-    const Array& input1_array = op_signature.model->GetArray(input1_name);
-    const Array& input2_array = op_signature.model->GetArray(input2_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    if (input1_array.has_shape() && input2_array.has_shape()) {
-      op_sig.options.addsub.num_dims =
-          std::max(input1_array.shape().dimensions_count(),
-                   input2_array.shape().dimensions_count());
-      op_sig.options.addsub.need_broadcast =
-          (input1_array.shape() != input2_array.shape());
-    }
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -308,19 +303,8 @@ class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const std::string& input1_name = op_signature.op->inputs[0];
-    const std::string& input2_name = op_signature.op->inputs[1];
-    const Array& input1_array = op_signature.model->GetArray(input1_name);
-    const Array& input2_array = op_signature.model->GetArray(input2_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    if (input1_array.has_shape() && input2_array.has_shape()) {
-      op_sig.options.broadcast.num_dims =
-          std::max(input1_array.shape().dimensions_count(),
-                   input2_array.shape().dimensions_count());
-      op_sig.options.broadcast.need_broadcast =
-          (input1_array.shape() != input2_array.shape());
-    }
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -342,12 +326,8 @@ class BatchToSpaceND
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const std::string& input_name = op_signature.op->inputs[0];
-    const Array& input_array = op_signature.model->GetArray(input_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.single_input_op.num_dims =
-        input_array.shape().dimensions_count();
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -431,7 +411,9 @@ class FakeQuant
     const auto& fq_op = static_cast<const FakeQuantOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.fakequant.narrow_range = fq_op.narrow_range;
+    TfLiteFakeQuantParams fake_quant_params = {};
+    fake_quant_params.narrow_range = fq_op.narrow_range;
+    op_sig.builtin_data = reinterpret_cast<void*>(&fake_quant_params);
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -487,10 +469,12 @@ class FullyConnected
         static_cast<const FullyConnectedOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.fully_connected.keep_num_dims = fc_op.keep_num_dims;
-    op_sig.options.fully_connected.weights_format =
-        GetWeightFormat(fc_op.weights_format);
-    op_sig.options.fully_connected.sparse_weight = false;
+    TfLiteFullyConnectedParams fully_connected_params = {};
+    fully_connected_params.keep_num_dims = fc_op.keep_num_dims;
+    fully_connected_params.weights_format =
+        static_cast<TfLiteFullyConnectedWeightsFormat>(
+            GetWeightFormat(fc_op.weights_format));
+    op_sig.builtin_data = reinterpret_cast<void*>(&fully_connected_params);
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -679,9 +663,9 @@ class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
     const float output_scale = output_quant ? output_quant->scale : 0.0f;
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.mul.input1_scale = input1_scale;
-    op_sig.options.mul.input2_scale = input2_scale;
-    op_sig.options.mul.output_scale = output_scale;
+    op_sig.ext_options.mul.input1_scale = input1_scale;
+    op_sig.ext_options.mul.input2_scale = input2_scale;
+    op_sig.ext_options.mul.output_scale = output_scale;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -855,7 +839,10 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
         static_cast<const LstmCellOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.lstm.kernel_type = GetKernelType(lstm_op.kernel_type);
+    TfLiteLSTMParams lstm_params = {};
+    lstm_params.kernel_type =
+        static_cast<TfLiteLSTMKernelType>(GetKernelType(lstm_op.kernel_type));
+    op_sig.builtin_data = reinterpret_cast<void*>(&lstm_params);
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 
@@ -1120,9 +1107,11 @@ class ResizeBilinear
         static_cast<const ResizeBilinearOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.resize.half_pixel_centers =
+    TfLiteResizeBilinearParams resize_bilinear_params = {};
+    resize_bilinear_params.half_pixel_centers =
         resize_bilinear_op.half_pixel_centers;
-    op_sig.options.resize.align_corners = resize_bilinear_op.align_corners;
+    resize_bilinear_params.align_corners = resize_bilinear_op.align_corners;
+    op_sig.builtin_data = reinterpret_cast<void*>(&resize_bilinear_params);
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -1151,8 +1140,12 @@ class ResizeNearestNeighbor
         static_cast<const ResizeNearestNeighborOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.resize.half_pixel_centers = resize_nn_op.half_pixel_centers;
-    op_sig.options.resize.align_corners = resize_nn_op.align_corners;
+    TfLiteResizeNearestNeighborParams resize_nearest_neighbor_params = {};
+    resize_nearest_neighbor_params.half_pixel_centers =
+        resize_nn_op.half_pixel_centers;
+    resize_nearest_neighbor_params.align_corners = resize_nn_op.align_corners;
+    op_sig.builtin_data =
+        reinterpret_cast<void*>(&resize_nearest_neighbor_params);
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -1242,9 +1235,11 @@ class StridedSlice
         static_cast<const StridedSliceOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.strided_slice.num_dims = ss_op.start_indices.size();
-    op_sig.options.strided_slice.ellipsis_mask = ss_op.ellipsis_mask;
-    op_sig.options.strided_slice.new_axis_mask = ss_op.new_axis_mask;
+    op_sig.ext_options.strided_slice.num_dims = ss_op.start_indices.size();
+    TfLiteStridedSliceParams strided_slice_params = {};
+    strided_slice_params.ellipsis_mask = ss_op.ellipsis_mask;
+    strided_slice_params.new_axis_mask = ss_op.new_axis_mask;
+    op_sig.builtin_data = reinterpret_cast<void*>(&strided_slice_params);
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };

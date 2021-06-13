@@ -51,19 +51,26 @@ class KernelTestDelegateProviders {
 
   // Create a list of TfLite delegates based on the provided parameters
   // `params`.
-  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates(
-      const tools::ToolParams& params) const;
+  std::vector<tools::ProvidedDelegateList::ProvidedDelegate> CreateAllDelegates(
+      const tools::ToolParams& params) const {
+    tools::ProvidedDelegateList util;
+    return util.CreateAllRankedDelegates(params);
+  }
 
   // Similar to the above, but creating a list of TfLite delegates based on what
   // have been initialized (i.e. 'params_').
-  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates() const {
-    return CreateAllDelegates(params_);
+  std::vector<tools::ProvidedDelegateList::ProvidedDelegate>
+  CreateAllDelegates() const {
+    return delegate_list_util_.CreateAllRankedDelegates();
   }
 
  private:
   // Contain delegate-related parameters that are initialized from command-line
   // flags.
   tools::ToolParams params_;
+
+  // A helper to create TfLite delegates.
+  tools::ProvidedDelegateList delegate_list_util_;
 };
 
 }  // namespace tflite

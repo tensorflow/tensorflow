@@ -177,14 +177,17 @@ class CategoryEncoding(base_layer.Layer):
             math_ops.cast(out_depth, max_value.dtype), max_value),
         math_ops.greater_equal(
             min_value, math_ops.cast(0, min_value.dtype)))
-    control_flow_ops.Assert(condition, [
+    assertion = control_flow_ops.Assert(condition, [
         "Input values must be in the range 0 <= values < num_tokens"
         " with num_tokens={}".format(out_depth)
     ])
-    if self.sparse:
-      return sparse_bincount(inputs, out_depth, multi_hot_output, count_weights)
-    else:
-      return dense_bincount(inputs, out_depth, multi_hot_output, count_weights)
+    with ops.control_dependencies([assertion]):
+      if self.sparse:
+        return sparse_bincount(inputs, out_depth, multi_hot_output,
+                               count_weights)
+      else:
+        return dense_bincount(inputs, out_depth, multi_hot_output,
+                              count_weights)
 
 
 def sparse_bincount(inputs, out_depth, multi_hot_output, count_weights=None):

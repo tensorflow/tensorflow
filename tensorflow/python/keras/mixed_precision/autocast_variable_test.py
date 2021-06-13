@@ -164,10 +164,10 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
     # underlying variable.
     with self.test_session(), distribution.scope():
       for read_dtype in (dtypes.float32, dtypes.float16):
-        if ds_context.has_strategy():
+        if ds_context.has_strategy() and not context.executing_eagerly():
           # MirroredVariable.assign will (incorrectly) return a Mirrored value
-          # instead of a MirroredVariable. So we cannot properly wrap it in an
-          # AutoCastVariable.
+          # instead of a MirroredVariable in graph mode.
+          # So we cannot properly wrap it in an AutoCastVariable.
           evaluate = self.evaluate
         else:
 

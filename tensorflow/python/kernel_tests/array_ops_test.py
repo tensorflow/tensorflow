@@ -733,7 +733,10 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       f = func.get_concrete_function(
           tensor_spec.TensorSpec([2, 2], dtypes.int16))
 
-      ones = constant_op.constant([[1, 1], [1, 1]], dtypes.int16)
+      # TODO(b/190416665): Allow the constant to be eagerly copied/created on
+      # the GPU.
+      with ops.device("CPU"):
+        ones = constant_op.constant([[1, 1], [1, 1]], dtypes.int16)
       self.assertAllEqual([[1, 1]], self.evaluate(f(ones)))
 
   def testTensorIndexing(self):

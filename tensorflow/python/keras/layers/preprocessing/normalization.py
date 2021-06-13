@@ -170,8 +170,8 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
       variance = self.input_variance * np.ones(mean_and_var_shape)
       mean = array_ops.reshape(mean, self._broadcast_shape)
       variance = array_ops.reshape(variance, self._broadcast_shape)
-      self.mean = math_ops.cast(mean, self.dtype)
-      self.variance = math_ops.cast(variance, self.dtype)
+      self.mean = math_ops.cast(mean, self.compute_dtype)
+      self.variance = math_ops.cast(variance, self.compute_dtype)
 
   def update_state(self, data):
     if self.input_mean is not None:
@@ -184,6 +184,7 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
       raise RuntimeError('`build` must be called before `update_state`.')
 
     data = self._standardize_inputs(data)
+    data = math_ops.cast(data, self.adapt_mean.dtype)
     batch_mean, batch_variance = nn_impl.moments_v2(
         data, axes=self._reduce_axis)
     batch_shape = array_ops.shape(data, out_type=self.count.dtype)
@@ -255,13 +256,18 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
       return
 
     # In the adapt case, we make constant tensors for mean and variance with
-    # proper broadcast shape each time `finalize_state` is called.
+    # proper broadcast shape and dtype each time `finalize_state` is called.
     self.mean = array_ops.reshape(self.adapt_mean, self._broadcast_shape)
+    self.mean = math_ops.cast(self.mean, self.compute_dtype)
     self.variance = array_ops.reshape(self.adapt_variance,
                                       self._broadcast_shape)
+    self.variance = math_ops.cast(self.variance, self.compute_dtype)
 
   def call(self, inputs):
     inputs = self._standardize_inputs(inputs)
+    # The base layer automatically casts floating-point inputs, but we
+    # explicitly cast here to also allow integer inputs to be passed
+    inputs = math_ops.cast(inputs, self.compute_dtype)
     return ((inputs - self.mean) /
             math_ops.maximum(math_ops.sqrt(self.variance), backend.epsilon()))
 
@@ -286,9 +292,6 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
       inputs = array_ops.reshape(inputs, [1, 1])
     elif inputs.shape.rank == 1:
       inputs = array_ops.expand_dims(inputs, 1)
-
-    if inputs.dtype != self.dtype:
-      inputs = math_ops.cast(inputs, self.dtype)
     return inputs
 
   def _make_json_serializable(self, inputs):

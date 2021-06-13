@@ -42,8 +42,8 @@ func @placeholderattr() -> ()
 // -----
 
 // CHECK-LABEL: func @testIdentity
-func @testIdentity(%arg0: tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string> {
-  %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string>
+func @testIdentity(%arg0: tensor<4x?x!tf.stringref>) -> tensor<4x2x!tf.string> {
+  %0 = "tf.Identity"(%arg0) : (tensor<4x?x!tf.stringref>) -> tensor<4x2x!tf.string>
   return %0 : tensor<4x2x!tf.string>
 }
 

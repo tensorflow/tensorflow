@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
+struct NnApiSLDriverImplFL5;
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
 namespace tflite {
@@ -160,6 +161,33 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   // the 'const char *' members of Options immediately after calling this.
   StatefulNnApiDelegate(const NnApi* nnapi, Options options);
 
+  // Constructor that accepts an NnApiSLDriverImplFL5 instance and options.
+  // The ownership of the NnApiSLDriverImplFL5 instance is left to the caller of
+  // the StatefulNnApiDelegate constructor; the caller must ensure that the
+  // lifetime of the NnApiSLDriverImplFL5 instance encompasses all calls to
+  // methods on the StatefulNnApiDelegate instance, other than the destructor.
+  // This constructor makes a copy of any data that it needs from Options, so
+  // the caller can safely deallocate any storage pointed to by
+  // the 'const char *' members of Options immediately after calling this.
+  //
+  // The NN API Support Library Driver must support at least NNAPI Feature Level
+  // 5 (introduced in SDK level 31), but this might point to a compatible struct
+  // that also supports a higher NNAPI Feature Level. These cases can be
+  // distinguished by examining the base.implFeatureLevel field, which should be
+  // set to the supported feature level (which must be >=
+  // ANEURALNETWORKS_FEATURE_LEVEL_5).
+  //
+  // Please note that since NNAPI Support Library doesn't implement some of the
+  // functions (see CreateNnApiFromSupportLibrary implementation and NNAPI SL
+  // documentation for details), the underlying NnApi structure will have
+  // nullptr stored in some of the function pointers. Calling such functions
+  // will result in a crash.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  StatefulNnApiDelegate(
+      const NnApiSLDriverImplFL5* nnapi_support_library_driver,
+      Options options);
+
   ~StatefulNnApiDelegate() = default;
 
   // Returns the delegate options.
@@ -264,7 +292,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Whether to use NNAPI Burst mode.
     bool use_burst_computation = false;
 
+    // Smart pointer for automatically cleaning up NnApi structure in case the
+    // delegate was constructed from an NNAPI support library
+    std::unique_ptr<const NnApi> owned_nnapi = nullptr;
+
     explicit Data(const NnApi* nnapi);
+    explicit Data(std::unique_ptr<const NnApi> nnapi);
     ~Data();
 
     // Caches an initialised NNAPIDelegateKernel.
@@ -331,6 +364,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
       int max_partitions,
       std::vector<TfLiteDelegateParams> partition_params_array,
       std::vector<int>* nodes_to_delegate);
+
+  void StatefulNnApiDelegateConstructorImpl(const Options& options);
 
   // Delegate data presented through TfLiteDelegate::data_.
   Data delegate_data_;

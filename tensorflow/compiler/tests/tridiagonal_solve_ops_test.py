@@ -23,8 +23,6 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import math_ops
@@ -207,42 +205,6 @@ class TridiagonalSolveOpsTest(xla_test.XLATestCase):
 
   def test1x1WithMultipleRhs(self):
     self._test(diags=[[0], [3], [0]], rhs=[[6, 9, 12]], expected=[[2, 3, 4]])
-
-  # test1x1NotInvertible is skipped as runtime error not raised for now.
-
-  # test2x2NotInvertible is skipped as runtime error not raised for now.
-
-  @test_util.disable_mlir_bridge("Error messages differ")
-  def testPartialPivotingRaises(self):
-    np.random.seed(0)
-    batch_size = 8
-    num_dims = 11
-    num_rhs = 5
-
-    diagonals_np = np.random.normal(size=(batch_size, 3,
-                                          num_dims)).astype(np.float32)
-    rhs_np = np.random.normal(size=(batch_size, num_dims,
-                                    num_rhs)).astype(np.float32)
-
-    with self.session() as sess, self.test_scope():
-      with self.assertRaisesRegex(
-          errors_impl.UnimplementedError,
-          "Current implementation does not yet support pivoting."):
-        diags = array_ops.placeholder(
-            shape=(batch_size, 3, num_dims), dtype=dtypes.float32)
-        rhs = array_ops.placeholder(
-            shape=(batch_size, num_dims, num_rhs), dtype=dtypes.float32)
-        sess.run(
-            linalg_impl.tridiagonal_solve(diags, rhs, partial_pivoting=True),
-            feed_dict={
-                diags: diagonals_np,
-                rhs: rhs_np
-            })
-
-  # testCaseRequiringPivotingLastRows is skipped as pivoting is not supported
-  # for now.
-
-  # testNotInvertible is skipped as runtime error not raised for now.
 
   def testDiagonal(self):
     self._test(
@@ -506,6 +468,42 @@ class TridiagonalSolveOpsTest(xla_test.XLATestCase):
 
   # Tests involving placeholder with an unknown dimension are all skipped.
   # Dimensions have to be all known statically.
+
+
+class TridiagonalSolveSpeedTest(xla_test.XLATestCase):
+  """Test for benchmarking tridiagonal_solve."""
+
+  def _run_test(self, batch_size, num_dims, num_rhs, partial_pivoting):
+    diagonals_np = np.random.normal(size=(batch_size, 3,
+                                          num_dims)).astype(np.float32)
+    rhs_np = np.random.normal(size=(batch_size, num_dims,
+                                    num_rhs)).astype(np.float32)
+
+    with self.session() as sess, self.test_scope():
+      diags = array_ops.placeholder(
+          shape=(batch_size, 3, num_dims), dtype=dtypes.float32)
+      rhs = array_ops.placeholder(
+          shape=(batch_size, num_dims, num_rhs), dtype=dtypes.float32)
+      x_np = sess.run(
+          linalg_impl.tridiagonal_solve(
+              diags, rhs, partial_pivoting=partial_pivoting),
+          feed_dict={
+              diags: diagonals_np,
+              rhs: rhs_np
+          })
+      self.assertEqual(x_np.shape, (batch_size, num_dims, num_rhs))
+
+  def testBatch1024NumDims1024NumRhs1NoPivot(self):
+    batch_size = 1024
+    num_dims = 1024
+    num_rhs = 1
+    self._run_test(batch_size, num_dims, num_rhs, False)
+
+  def testBatch1024NumDims1024NumRhs1PartialPivotting(self):
+    batch_size = 1024
+    num_dims = 1024
+    num_rhs = 1
+    self._run_test(batch_size, num_dims, num_rhs, True)
 
 
 if __name__ == "__main__":

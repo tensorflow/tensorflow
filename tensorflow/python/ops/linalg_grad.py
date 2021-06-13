@@ -51,8 +51,10 @@ from tensorflow.python.ops.linalg import linalg_impl as _linalg
 def _MatrixInverseGrad(op, grad):
   """Gradient for MatrixInverse."""
   ainv = op.outputs[0]
-  return -math_ops.matmul(
-      ainv, math_ops.matmul(grad, ainv, adjoint_b=True), adjoint_a=True)
+  return -math_ops.matmul(  # pylint: disable=invalid-unary-operand-type
+      ainv,
+      math_ops.matmul(grad, ainv, adjoint_b=True),
+      adjoint_a=True)
 
 
 @ops.RegisterGradient("Einsum")
@@ -556,9 +558,9 @@ def _MatrixSolveGrad(op, grad):
   c = op.outputs[0]
   grad_b = linalg_ops.matrix_solve(a, grad, adjoint=not adjoint_a)
   if adjoint_a:
-    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)
+    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)  # pylint: disable=invalid-unary-operand-type
   else:
-    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)
+    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)  # pylint: disable=invalid-unary-operand-type
   return (grad_a, grad_b)
 
 
@@ -593,7 +595,7 @@ def _MatrixSolveLsGrad(op, grad):
     z = linalg_ops.cholesky_solve(chol, grad)
     xzt = math_ops.matmul(x, z, adjoint_b=True)
     zx_sym = xzt + array_ops.matrix_transpose(xzt)
-    grad_a = -math_ops.matmul(a, zx_sym) + math_ops.matmul(b, z, adjoint_b=True)
+    grad_a = -math_ops.matmul(a, zx_sym) + math_ops.matmul(b, z, adjoint_b=True)  # pylint: disable=invalid-unary-operand-type
     grad_b = math_ops.matmul(a, z)
     return (grad_a, grad_b, None)
 
@@ -617,7 +619,7 @@ def _MatrixSolveLsGrad(op, grad):
     # Temporary tmp = (A * A^T + lambda * I)^{-1} * B.
     tmp = linalg_ops.cholesky_solve(chol, b)
     a1 = math_ops.matmul(tmp, a, adjoint_a=True)
-    a1 = -math_ops.matmul(grad_b, a1)
+    a1 = -math_ops.matmul(grad_b, a1)  # pylint: disable=invalid-unary-operand-type
     a2 = grad - math_ops.matmul(a, grad_b, adjoint_a=True)
     a2 = math_ops.matmul(tmp, a2, adjoint_b=True)
     grad_a = a1 + a2
@@ -653,9 +655,9 @@ def _BandedTriangularSolveGrad(op, grad):
   grad_b = linalg_ops.banded_triangular_solve(
       a, grad, lower=lower_a, adjoint=not adjoint_a)
   if adjoint_a:
-    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)
+    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)  # pylint: disable=invalid-unary-operand-type
   else:
-    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)
+    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)  # pylint: disable=invalid-unary-operand-type
   if lower_a:
     grad_a = array_ops.matrix_diag_part(
         grad_a, k=(-(num_bands - 1), 0), align="LEFT_RIGHT")
@@ -685,9 +687,9 @@ def _MatrixTriangularSolveGrad(op, grad):
   grad_b = linalg_ops.matrix_triangular_solve(
       a, grad, lower=lower_a, adjoint=not adjoint_a)
   if adjoint_a:
-    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)
+    grad_a = -math_ops.matmul(c, grad_b, adjoint_b=True)  # pylint: disable=invalid-unary-operand-type
   else:
-    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)
+    grad_a = -math_ops.matmul(grad_b, c, adjoint_b=True)  # pylint: disable=invalid-unary-operand-type
   if lower_a:
     grad_a = array_ops.matrix_band_part(grad_a, -1, 0)
   else:
@@ -990,7 +992,7 @@ def _TridiagonalSolveGrad(op, grad):
 
   grad_rhs = linalg_ops.tridiagonal_solve(diags_transposed, grad,
                                           partial_pivoting=partial_pivoting)
-  grad_diags = -_MatmulExtractingThreeDiagonals(grad_rhs, x)
+  grad_diags = -_MatmulExtractingThreeDiagonals(grad_rhs, x)  # pylint: disable=invalid-unary-operand-type
   return grad_diags, grad_rhs
 
 

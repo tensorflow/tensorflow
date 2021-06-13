@@ -136,7 +136,8 @@ class GrpcServer : public ServerInterface {
   // GrpcServer. Each service will have its HandleRPCsLoop called in a separate
   // thread. An example usage would be to add a RDMA based partial worker
   // service to offload tensor and data buffer transfers.
-  virtual std::map<std::string, AsyncServiceInterface*> ExtraServices() {
+  virtual std::map<std::string, AsyncServiceInterface*> ExtraServices(
+      ::grpc::ServerBuilder*) {
     return {};
   }
 

@@ -13,35 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This pass hoists a `tf_device.launch` body and assigns a `device` attribute
-// to each TensorFlow dialect op in the body based on the `device` attribute on
-// the `tf_device.launch`. If a TensorFlow dialect op already has a device
-// attribute, that attribute will be overwritten with the `tf_device.launch`
-// device.
-//
-// For example:
-//   %island:5 = tf_executor.island {
-//     %a = "tf.opA"() : () -> tensor<i1>
-//     %launch:2 = "tf_device.launch"() ( {
-//       %b = "tf.opB"() : () -> tensor<i32>
-//       %c = "tf.opC"() : () -> tensor<f32>
-//       tf_device.return %c, %b : tensor<f32>, tensor<i32>
-//     }) {device = "CPU:0"} : () -> (tensor<f32>, tensor<i32>)
-//     %d = "tf.opD"() : () -> tensor<i1>
-//     tf_executor.yield %a, %launch#0, %launch#1, %d :
-//                       tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>
-//   }
-//
-// Will be transformed into:
-//   %island:5 = tf_executor.island {
-//     %a = "tf.opA"() : () -> tensor<i1>
-//     %b = "tf.opB"() {device = "CPU:0"} : () -> tensor<i32>
-//     %c = "tf.opC"() {device = "CPU:0"} : () -> tensor<f32>
-//     %d = "tf.opD"() : () -> tensor<i1>
-//     tf_executor.yield %a, %c, %b, %d :
-//                       tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>
-//   }
-
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -51,6 +22,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -58,7 +30,7 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct LaunchToDeviceAttributePass
-    : public PassWrapper<LaunchToDeviceAttributePass, FunctionPass> {
+    : public LaunchToDeviceAttributePassBase<LaunchToDeviceAttributePass> {
   void runOnFunction() override;
 };
 
@@ -140,11 +112,6 @@ void LaunchToDeviceAttributePass::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass() {
   return std::make_unique<LaunchToDeviceAttributePass>();
 }
-
-static PassRegistration<LaunchToDeviceAttributePass> pass(
-    "tf-launch-to-device-attribute",
-    "Hoists and annotates device launch inner ops with associated device "
-    "attribute");
 
 }  // namespace TFDevice
 }  // namespace mlir

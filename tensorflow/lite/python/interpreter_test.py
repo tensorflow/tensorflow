@@ -402,7 +402,7 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
       _ = self.interpreter.allocate_tensors()
     # Make sure we get an exception if we try to run an unsafe operation
     with self.assertRaisesRegex(RuntimeError, 'There is at least 1 reference'):
-      _ = self.interpreter.invoke()
+      _ = self.interpreter.invoke()  # pylint: disable=assignment-from-no-return
     # Now test that we can run
     del in0  # this is our only buffer reference, so now it is safe to change
     in0safe = self.interpreter.tensor(self.input0)

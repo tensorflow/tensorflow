@@ -401,8 +401,16 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     self._index_lookup_layer.adapt(preprocessed_inputs)
 
-  def get_vocabulary(self):
-    return self._index_lookup_layer.get_vocabulary()
+  def get_vocabulary(self, include_special_tokens=True):
+    """Returns the current vocabulary of the layer.
+
+    Args:
+      include_special_tokens: If True, the returned vocabulary will include
+        the padding and OOV tokens, and a term's index in the vocabulary will
+        equal the term's index when calling the layer. If False, the returned
+        vocabulary will not include any padding or OOV tokens.
+    """
+    return self._index_lookup_layer.get_vocabulary(include_special_tokens)
 
   def vocabulary_size(self):
     """Gets the current size of the layer's vocabulary.

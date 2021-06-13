@@ -152,8 +152,14 @@ inline std::vector<StackFrame> ManagedStackTraceToStackFrames(
     int id, const StackTraceMap& mapper, const StackTraceFilter& filtered,
     bool reverse_traversal, int limit) {
   PyGILState_STATE gstate = PyGILState_Ensure();
-  std::vector<StackFrame> result = stack_trace_manager->Get(id)->ToStackFrames(
-      mapper, filtered, reverse_traversal, limit);
+  StackTrace* stack_trace = stack_trace_manager->Get(id);
+  if (!stack_trace) {
+    // Must have evicted the stack trace by now. Do best effort.
+    return {};
+  }
+
+  std::vector<StackFrame> result =
+      stack_trace->ToStackFrames(mapper, filtered, reverse_traversal, limit);
   PyGILState_Release(gstate);
   return result;
 }

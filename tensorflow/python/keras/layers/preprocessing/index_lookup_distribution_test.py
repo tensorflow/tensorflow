@@ -25,6 +25,7 @@ from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.layers.preprocessing import index_lookup
@@ -51,6 +52,10 @@ class IndexLookupDistributionTest(
     return vocab_path
 
   def test_strategy(self, strategy):
+    # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
+    if backend.is_tpu_strategy(strategy):
+      self.skipTest("This test needs MLIR bridge on TPU.")
+
     vocab_data = [[
         "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
         "and", "fire"
@@ -81,7 +86,7 @@ class IndexLookupDistributionTest(
 
   def test_strategy_with_file(self, strategy):
     # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
-    if "TPU" in type(strategy).__name__:
+    if backend.is_tpu_strategy(strategy):
       self.skipTest("This test needs MLIR bridge on TPU.")
 
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -112,7 +117,7 @@ class IndexLookupDistributionTest(
 
   def test_tpu_with_multiple_oov(self, strategy):
     # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
-    if "TPU" in type(strategy).__name__:
+    if backend.is_tpu_strategy(strategy):
       self.skipTest("This test needs MLIR bridge on TPU.")
 
     vocab_data = [[

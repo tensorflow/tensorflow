@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
@@ -61,6 +62,7 @@ using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
+using StringSet = absl::flat_hash_set<std::string>;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
@@ -99,6 +101,14 @@ QuantizedType DownCastScale(QuantizedType type, double min, double max,
                             Location loc);
 
 bool IsOpNotQuantizable(Operation* op);
+
+// Specialized version of location to string for flatbuffer exported locations.
+inline std::string GetTensorNameFromLoc(Location loc) {
+  if (auto name_loc = loc.dyn_cast<NameLoc>()) {
+    return name_loc.getName().str();
+  }
+  return "";
+}
 
 template <typename Q, typename DQ>
 struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
@@ -214,14 +224,18 @@ struct QuantizationPattern : public RewritePattern {
   using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER, RootOp>;
 
   explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
-                               float error_tolerance, bool single_layer_verify,
-                               bool log_if_failed = false)
+                               float error_tolerance, bool whole_model_verify,
+                               bool log_if_failed = false,
+                               const StringSet& ops_blocklist = {},
+                               const StringSet& nodes_blocklist = {})
       // Set the score to a large number so it is always preferred.
       : RewritePattern(RootOp::getOperationName(), 300, context),
         enable_verify(enable_verify),
         error_tolerance(error_tolerance),
-        single_layer_verify(single_layer_verify),
-        log_if_failed(log_if_failed) {}
+        whole_model_verify(whole_model_verify),
+        log_if_failed(log_if_failed),
+        ops_blocklist(ops_blocklist),
+        nodes_blocklist(nodes_blocklist) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
@@ -264,6 +278,22 @@ struct QuantizationPattern : public RewritePattern {
       // ops dialect, we shouldn't rewrite.
       if (IsOpNotQuantizable(quantized_op)) {
         return failure();
+      }
+
+      if (!ops_blocklist.empty() &&
+          (ops_blocklist.find(quantized_op->getName().getStringRef().str()) !=
+           ops_blocklist.end())) {
+        return failure();
+      }
+
+      if (!nodes_blocklist.empty()) {
+        if (auto name_loc = quantized_op->getLoc().dyn_cast<NameLoc>()) {
+          std::string sloc = name_loc.getName().str();
+          if (!sloc.empty() &&
+              (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
+            return failure();
+          }
+        }
       }
 
       // An op with float inputs and outputs are expected when it's used by a
@@ -398,7 +428,7 @@ struct QuantizationPattern : public RewritePattern {
               quantized_op->getLoc(), new_op->getResult(i).getType(),
               new_op->getResult(i), quantized_op->getResult(i), tolerance, log);
 
-          if (single_layer_verify) continue;
+          if (!whole_model_verify) continue;
 
           // Find the Dequantize/Dequantize users of the new op results, and
           // replace the usage. Then all the floating-point ops are connected.
@@ -421,8 +451,10 @@ struct QuantizationPattern : public RewritePattern {
 
   bool enable_verify;
   float error_tolerance;
-  bool single_layer_verify;
+  bool whole_model_verify;
   bool log_if_failed;
+  const StringSet ops_blocklist;
+  const StringSet nodes_blocklist;
 };
 
 // Converts quantized tensor type with signed integer type to quantized tensor

@@ -1450,6 +1450,36 @@ class TextVectorizationModelBuildingTest(
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class TextVectorizationVocbularyTest(
+    keras_parameterized.TestCase,
+    preprocessing_test_utils.PreprocessingLayerTest,
+):
+
+  def test_get_vocabulary(self):
+    vocab = ["earth", "wind", "and", "fire"]
+
+    layer = text_vectorization.TextVectorization(vocabulary=vocab)
+    self.assertAllEqual(layer.get_vocabulary(),
+                        ["", "[UNK]", "earth", "wind", "and", "fire"])
+
+  def test_get_vocabulary_adapt(self):
+    vocab = np.array([["earth earth earth earth wind wind wind and and fire"]])
+
+    layer = text_vectorization.TextVectorization()
+    layer.adapt(vocab)
+    self.assertAllEqual(layer.get_vocabulary(),
+                        ["", "[UNK]", "earth", "wind", "and", "fire"])
+
+  def test_get_vocabulary_no_special_tokens(self):
+    vocab = ["earth", "wind", "and", "fire"]
+
+    layer = text_vectorization.TextVectorization(vocabulary=vocab)
+    self.assertAllEqual(
+        layer.get_vocabulary(include_special_tokens=False),
+        ["earth", "wind", "and", "fire"])
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TextVectorizationErrorTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):

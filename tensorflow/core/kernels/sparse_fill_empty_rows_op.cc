@@ -266,7 +266,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_KERNELS
 
-#if 0 && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // The GPU implementation is async because it requires waiting for a
 // host->device memcpy before the output is allocated (similar to
@@ -414,7 +414,7 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if 0 && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {

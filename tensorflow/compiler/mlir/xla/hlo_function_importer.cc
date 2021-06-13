@@ -539,6 +539,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               builder_->getI64IntegerAttr(instruction->concatenate_dimension()))
           .getOperation();
     }
+    case HloOpcode::kAllGather: {
+      auto all_gather = Cast<HloAllGatherInstruction>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "all_gather_dim",
+          builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
+      attributes.push_back(
+          ConvertReplicaGroups(all_gather->replica_groups(), builder_));
+      attributes.push_back(ConvertChannelHandle(all_gather->channel_id()));
+      MakeAndReturn(AllGatherOp);
+    }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
       attributes.push_back(

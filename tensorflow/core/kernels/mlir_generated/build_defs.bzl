@@ -150,6 +150,7 @@ def _gen_kernel_bin_impl(ctx):
         executable = ctx.executable._tool,
         arguments = cmd_args + [
             "--tile_sizes=%s" % tile_sizes,
+            "--max-supported-rank=%s" % ctx.attr.max_supported_rank,
             "--arch=%s" % arch_flag,
             "--input=%s" % ctx.file.mlir_op.path,
             "--output=%s" % gpu_bin.path,
@@ -178,6 +179,7 @@ _gen_kernel_bin_rule = rule(
         "data_type": attr.string(mandatory = True),
         "tile_size": attr.string(mandatory = True),
         "unroll_factors": attr.string(),
+        "max_supported_rank": attr.int(),
         "gpu_archs": attr.string_list(),
         "cpu_codegen": attr.bool(mandatory = False),
         "extra_args": attr.string_list(),
@@ -207,6 +209,7 @@ def _gen_kernel_library(
         types,
         platform,
         tile_size,
+        max_supported_rank = 5,
         output_types = None,
         gpu_archs = [],
         tags = [],
@@ -219,6 +222,7 @@ def _gen_kernel_library(
       op: The name of the tensorflow op.
       types: The types ("f16", "f32", "f64") for which a kernel should be generated.
       tile_size: The tiling specification, e.g. "16x16".
+      max_supported_rank: Maximum supported rank for rank specialization.
       output_types: The output types for which a kernel should be generated. If
                     specified, the i-th entry in types corresponds to the i-th
                     entry in output_types. By default, output_types = types is
@@ -265,6 +269,7 @@ def _gen_kernel_library(
                 gpu_archs = gpu_archs,
                 cpu_codegen = enable_cpu,
                 tile_size = tile_size,
+                max_supported_rank = max_supported_rank,
                 unroll_factors = filtered_unroll_factors,
                 extra_args = extra_args,
                 compatible_with = get_compatible_with_cloud(),

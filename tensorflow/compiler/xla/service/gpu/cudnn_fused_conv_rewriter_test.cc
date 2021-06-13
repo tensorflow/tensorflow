@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -33,14 +34,26 @@ using ::testing::Not;
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
  protected:
   string GetOptimizedHlo(absl::string_view hlo_string) {
+    // cudnn_vectorize_convolutions transforms convolutions, making it hard to
+    // match them here in this test.  What's worse, the transforms it does
+    // depends on the GPU that's available!  So just disable them for this
+    // function that gets the optimized HLO.  When we actually run the module
+    // we'll still have this pass enabled.
+    HloModuleConfig config = GetModuleConfigForTest();
+    DebugOptions debug_opts = config.debug_options();
+    debug_opts.add_xla_disable_hlo_passes("cudnn_vectorize_convolutions");
+    config.set_debug_options(debug_opts);
+
+    HloPrintOptions print_opts;
+    print_opts.set_print_operand_shape(false);
     return backend()
         .compiler()
-        ->RunHloPasses(
-            ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest())
-                .ConsumeValueOrDie(),
-            backend().default_stream_executor(), backend().memory_allocator())
+        ->RunHloPasses(ParseAndReturnVerifiedModule(hlo_string, config)
+                           .ConsumeValueOrDie(),
+                       backend().default_stream_executor(),
+                       backend().memory_allocator())
         .ConsumeValueOrDie()
-        ->ToString();
+        ->ToString(print_opts);
   }
 
   void TestMatchWithAllTypes(absl::string_view hlo_string) {
@@ -67,7 +80,11 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
     EXPECT_THAT(optimized_hlo_string, HasSubstr("__cudnn$conv"));
     EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.01}))
         << pre_hlo_string;
-    MatchOptimizedHlo(pre_hlo_string, post_hlo_string);
+
+    StatusOr<bool> filecheck_result =
+        RunFileCheck(optimized_hlo_string, post_hlo_string);
+    ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
+    EXPECT_TRUE(*filecheck_result);
   }
 
   void TestNotMatchWithAllTypes(absl::string_view hlo_string) {

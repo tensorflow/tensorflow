@@ -175,44 +175,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "map_vectorization_test",
-    size = "medium",
-    srcs = ["map_vectorization_test.py"],
-    shard_count = 16,
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
-    ],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:bitwise_ops",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:clip_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:optimization_options",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "noop_elimination_test",
     size = "small",
     srcs = ["noop_elimination_test.py"],

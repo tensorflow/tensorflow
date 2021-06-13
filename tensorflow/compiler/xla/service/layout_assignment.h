@@ -50,8 +50,8 @@ namespace xla {
 // gathered together in LayoutConstraints object.
 class LayoutConstraint {
  public:
-  LayoutConstraint(bool mandatory, bool dfs)
-      : mandatory_(mandatory), dfs_(dfs) {}
+  LayoutConstraint(bool mandatory, bool dfs, int64 priority = kDefaultPriority)
+      : mandatory_(mandatory), dfs_(dfs), priority_(priority) {}
   virtual ~LayoutConstraint() = default;
 
   virtual string ToString() const = 0;
@@ -62,9 +62,17 @@ class LayoutConstraint {
   // When true, propagate in DFS. When false, constraint will propagate in BFS.
   bool dfs() const { return dfs_; }
 
+  // Return the priority of the current constraint. When conflicting constraints
+  // are encountered, the higher priority one should win.
+  int64 priority() const { return priority_; }
+
+  // The default priority of all constraints when not set explicitly.
+  static constexpr int64 kDefaultPriority = 1;
+
  private:
   bool mandatory_;
   bool dfs_;
+  int64 priority_;
 };
 
 std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
@@ -74,7 +82,8 @@ std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
 class BufferLayoutConstraint : public LayoutConstraint {
  public:
   BufferLayoutConstraint(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory, bool dfs);
+                         bool mandatory, bool dfs,
+                         int64 priority = LayoutConstraint::kDefaultPriority);
 
   const LogicalBuffer& buffer() const { return *buffer_; }
   const Layout& layout() const { return layout_; }
@@ -95,7 +104,8 @@ class OperandLayoutConstraint : public LayoutConstraint {
  public:
   OperandLayoutConstraint(const ShapeLayout& shape_layout,
                           const HloInstruction* instruction, int64 operand_no,
-                          bool mandatory, bool dfs);
+                          bool mandatory, bool dfs,
+                          int64 priority = LayoutConstraint::kDefaultPriority);
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   const HloInstruction* instruction() const { return instruction_; }
@@ -115,8 +125,9 @@ class OperandLayoutConstraint : public LayoutConstraint {
 // Constraint on the layout of the result of the entry computation.
 class ResultLayoutConstraint : public LayoutConstraint {
  public:
-  explicit ResultLayoutConstraint(const ShapeLayout& shape_layout,
-                                  bool dfs = false)
+  explicit ResultLayoutConstraint(
+      const ShapeLayout& shape_layout, bool dfs = false,
+      int64 priority = LayoutConstraint::kDefaultPriority)
       : LayoutConstraint(/*mandatory=*/true, dfs),
         shape_layout_(shape_layout) {}
 

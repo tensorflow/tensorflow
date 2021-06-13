@@ -120,10 +120,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "schedule_aware_all_gather_cse_test",
-    srcs = ["schedule_aware_all_gather_cse_test.cc"],
+    name = "schedule_aware_collective_ops_cse_test",
+    srcs = ["schedule_aware_collective_ops_cse_test.cc"],
     deps = [
-        ":schedule_aware_all_gather_cse",
+        ":schedule_aware_collective_ops_cse",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -137,9 +137,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "schedule_aware_all_gather_cse",
-    srcs = ["schedule_aware_all_gather_cse.cc"],
-    hdrs = ["schedule_aware_all_gather_cse.h"],
+    name = "schedule_aware_collective_ops_cse",
+    srcs = ["schedule_aware_collective_ops_cse.cc"],
+    hdrs = ["schedule_aware_collective_ops_cse.h"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",

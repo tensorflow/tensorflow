@@ -529,7 +529,7 @@ XLA_TEST_F(ConvertTest, ConvertBF16F32) {
 
   std::vector<bfloat16> all_bfloats(1 << 16);
   for (int i = 0; i < all_bfloats.size(); ++i) {
-    all_bfloats[i].value = i;
+    all_bfloats[i] = Eigen::numext::bit_cast<bfloat16>(static_cast<uint16>(i));
   }
 
   std::vector<uint32> expected(all_bfloats.size());

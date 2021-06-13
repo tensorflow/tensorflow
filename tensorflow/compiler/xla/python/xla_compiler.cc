@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 
 namespace xla {
 namespace {
@@ -74,7 +76,8 @@ static std::string UniquifyName(const std::string& name) {
 StatusOr<py::bytes> GetComputationSerializedProto(
     const XlaComputation& computation) {
   std::string result;
-  if (!computation.proto().SerializeToString(&result)) {
+  if (!tensorflow::SerializeToStringDeterministic(computation.proto(),
+                                                  &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
   return py::bytes(result);
@@ -83,7 +86,7 @@ StatusOr<py::bytes> GetComputationSerializedProto(
 // Converts a hlo module to a serialized HloModuleProto.
 StatusOr<py::bytes> GetHloModuleSerializedProto(const HloModule& module) {
   std::string result;
-  if (!module.ToProto().SerializeToString(&result)) {
+  if (!tensorflow::SerializeToStringDeterministic(module.ToProto(), &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
   return py::bytes(result);
@@ -495,7 +498,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                   })
       .def("replica_count", &DeviceAssignment::replica_count)
       .def("computation_count", &DeviceAssignment::computation_count)
-      .def("__repr__", &DeviceAssignment::ToString);
+      .def("__repr__", &DeviceAssignment::ToString)
+      .def("serialize", [](const DeviceAssignment& da) -> StatusOr<py::bytes> {
+        DeviceAssignmentProto proto;
+        TF_RETURN_IF_ERROR(da.Serialize(&proto));
+        std::string result;
+        if (!tensorflow::SerializeToStringDeterministic(proto, &result)) {
+          return Unknown("Failed to serialize the DeviceAssignmentProto.");
+        }
+        return py::bytes(result);
+      });
 
   py::class_<CompileOptions> compile_options(m, "CompileOptions");
   compile_options
