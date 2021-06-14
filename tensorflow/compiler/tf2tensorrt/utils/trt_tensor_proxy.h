@@ -38,9 +38,9 @@ namespace {
     }
   }
 }
-// A fake ITensor implementation used to check whether the TF-TRT converter can
-// handle specific node. We only need shape and type information, and the
-// converter won't (and shouldn't) use this to build the TRT network.
+// SimpleITensor implements part of the ITensor interfaces to support the TF-TRT
+// validator, as well as some TF-TRT tests. The former use case only utilizes
+// the interfaces related to shape and type information.
 class SimpleITensor {
  public:
   SimpleITensor(nvinfer1::DataType trt_dtype, const nvinfer1::Dims& trt_dims)
