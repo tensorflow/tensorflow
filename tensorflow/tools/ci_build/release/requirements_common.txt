@@ -1,18 +1,14 @@
 # To have reproducible builds, these dependencies should be pinned always.
-# Prefer pinning to the same version as in setup.py
+# Prefer pinning to the same version as in setup.py for now.
+# This will change in the future.
 
-# NOTE: As numpy has releases that break semver guarantees and several other
-# deps depend on numpy without an upper bound, we must install numpy before
-# everything else.
-numpy ~= 1.19.5
-# Now, install the deps, as listed in setup.py
 absl-py ~= 0.12.0
 astunparse ~= 1.6.3
 flatbuffers ~= 2.0
 google_pasta ~= 0.2
-h5py ~= 3.2.1
+h5py ~= 3.1.0  # NOTE: not the latest version due to py3.6
 keras_preprocessing ~= 1.1.2
-keras-nightly ~= 2.6.0.dev2021052700
+numpy ~= 1.19.5  # NOTE: not the latest version due to py3.6
 opt_einsum ~= 3.3.0
 protobuf >= 3.17.1
 six ~= 1.16.0
@@ -20,12 +16,16 @@ termcolor ~= 1.1.0 # latest version came out in 2011. others are more-termcolor,
 typing_extensions ~= 3.10.0.0
 wheel ~= 0.36.2
 wrapt ~= 1.12.1
+
 # We need to pin the gast dependency exactly
 gast == 0.4.0
-# Finally, install tensorboard and estimator
+
+# Finally, install tensorboard and estimator and keras
 # Note that here we want the latest version that matches
+keras-nightly ~= 2.6.0.dev2021052700
 tb-nightly ~= 2.5.0.a # matches being 2.5 for the 2.5 release? bc there is a 2.6 out
 tensorflow_estimator ~= 2.5.0
+
 # Test dependencies
 grpcio ~= 1.38.0
 portpicker ~= 1.4.0
