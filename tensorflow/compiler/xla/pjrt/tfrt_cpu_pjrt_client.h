@@ -567,6 +567,8 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 
   void Delete() override;
 
+  bool IsDeleted() override;
+
   StatusOr<absl::optional<std::string>> Fingerprint() const;
 
  private:

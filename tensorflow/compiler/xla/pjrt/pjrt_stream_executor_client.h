@@ -707,6 +707,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
   void Delete() override { executables_.clear(); }
 
+  bool IsDeleted() override { return executables_.empty(); }
+
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
