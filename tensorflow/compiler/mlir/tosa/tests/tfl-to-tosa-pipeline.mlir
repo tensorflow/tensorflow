@@ -992,3 +992,15 @@ func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
     %1 = "tfl.gather_nd"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<6x7x1xi32>) -> tensor<6x7x21x3xf32>
   return %1 : tensor<6x7x21x3xf32>
 }
+
+// -----
+
+// CHECK-LABEL: @test_arg_max
+func @test_arg_max(%arg0: tensor<13x21x3xf32>) -> tensor<13x3xf32> {
+  // CHECK: %[[ARGMAX:.+]] = "tosa.argmax"(%arg0) {axis = 1 : i64}
+  // CHECK: return %[[ARGMAX]] : tensor<13x3xf32>
+  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<13x3xf32>
+  return %1 : tensor<13x3xf32>
+}
+

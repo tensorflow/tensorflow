@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -142,6 +143,7 @@ DECL_CONVERT_OP(QConst);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherNd);
 DECL_CONVERT_OP(OneHot);
+DECL_CONVERT_OP(ArgMax);
 #undef DECL_CONVERT_OP
 
 // Input from tfl.conv2d takes 64 bits a bias, while tosa.conv2d expects 48
@@ -3032,6 +3034,21 @@ LogicalResult ConvertTFLOneHotOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto arg_max_op = cast<TFL::ArgMaxOp>(op);
+
+  ElementsAttr dim_elems;
+  if (!matchPattern(arg_max_op.dim(), m_Constant(&dim_elems))) return failure();
+
+  int32_t dim = dim_elems.getValue<IntegerAttr>({}).getInt();
+  rewriter.replaceOpWithNewOp<tosa::ArgMaxOp>(
+      op, arg_max_op.getType(), arg_max_op.input(),
+      rewriter.getIntegerAttr(rewriter.getI64Type(), dim));
+
+  return success();
+}
+
 void LegalizeTFL::runOnFunction() {
   OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
@@ -3116,6 +3133,7 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(Constant);
   DEF_PATTERN_INSERT(TFLGather);
   DEF_PATTERN_INSERT(TFLGatherNd);
+  DEF_PATTERN_INSERT(TFLArgMax);
   DEF_PATTERN_INSERT(TFLOneHot);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
