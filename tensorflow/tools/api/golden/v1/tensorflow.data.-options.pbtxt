@@ -27,10 +27,6 @@ tf_class {
     name: "experimental_threading"
     mtype: "<type \'property\'>"
   }
-  member {
-    name: "threading"
-    mtype: "<type \'property\'>"
-  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"

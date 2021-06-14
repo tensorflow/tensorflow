@@ -20,22 +20,20 @@ from __future__ import print_function
 
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.python.data.util import options
-from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@deprecation.deprecated_endpoints("data.experimental.ThreadingOptions")
-@tf_export("data.experimental.ThreadingOptions", "data.ThreadingOptions")
+@tf_export("data.experimental.ThreadingOptions")
 class ThreadingOptions(options.OptionsBase):
   """Represents options for dataset threading.
 
   You can set the threading options of a dataset through the
   `experimental_threading` property of `tf.data.Options`; the property is
-  an instance of `tf.data.ThreadingOptions`.
+  an instance of `tf.data.experimental.ThreadingOptions`.
 
   ```python
   options = tf.data.Options()
-  options.threading.private_threadpool_size = 10
+  options.experimental_threading.private_threadpool_size = 10
   dataset = dataset.with_options(options)
   ```
   """
