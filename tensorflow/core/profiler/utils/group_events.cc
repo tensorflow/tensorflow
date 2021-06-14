@@ -477,8 +477,6 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
       auto cur_node = absl::make_unique<EventNode>(visitor, &line, &event);
       // Update `context_groups` for `ConnectInterThread`.
       SetContextGroup(cur_node.get(), context_groups);
-      // Update `root_events_` for `CreateEventGroup`.
-      if (cur_node->RootLevel() != 0) root_events_.push_back(cur_node.get());
       // Async events are ignored when processing the nesting relationship.
       if (cur_node->IsAsync()) continue;
       while (!parent_nodes.empty()) {
@@ -585,9 +583,23 @@ void EventForest::CreateEventGroups() {
     return;
   }
 
-  SortRootEventList(&root_events_);
+  // Iterate over all events and collect all root events.
+  EventList root_events;
+  for (const auto& typed_events : event_node_map_) {
+    for (const auto& event : typed_events.second) {
+      if (!event->RootLevel()) continue;
+      absl::optional<XStatVisitor> step_id_stat =
+          event->GetEventVisitor().GetStat(StatType::kStepId);
+      // If this is a root event that associated with tf.data, skip.
+      if (step_id_stat && tf_data_step_ids_.contains(step_id_stat->IntValue()))
+        continue;
+      root_events.push_back(event.get());
+    }
+  }
 
-  for (EventNode* root_event : root_events_) {
+  SortRootEventList(&root_events);
+
+  for (EventNode* root_event : root_events) {
     if (RootNeedsGrouping(root_event) &&
         // Ignores legacy TF root events for JAX profiles.
         (!HasJaxEvent(event_node_map_) ||
@@ -615,15 +627,7 @@ void EventForest::MarkEagerlyExecutedCpuTfOps() {
   }
 }
 
-void EventForest::ProcessTensorFlowLoop() {
-  struct TensorFlowLoopIteration {
-    EventNode* first_event = nullptr;
-    std::vector<EventNode*> events;
-  };
-  using TensorFlowLoop = std::map<int64 /*iter_num*/, TensorFlowLoopIteration>;
-  absl::flat_hash_map<int64 /*step_id*/, TensorFlowLoop> tf_loops;
-
-  absl::flat_hash_set<int64> tf_data_step_ids;
+void EventForest::ProcessTfDataSteps() {
   const int64 tf_data_event_types[] = {
       HostEventType::kTfDataCapturedFunctionRun,
       HostEventType::kTfDataCapturedFunctionRunAsync,
@@ -636,9 +640,18 @@ void EventForest::ProcessTensorFlowLoop() {
       absl::optional<XStatVisitor> step_id_stat =
           tf_data_event->GetEventVisitor().GetStat(StatType::kStepId);
       if (!step_id_stat) continue;
-      tf_data_step_ids.insert(step_id_stat->IntValue());
+      tf_data_step_ids_.insert(step_id_stat->IntValue());
     }
   }
+}
+
+void EventForest::ProcessTensorFlowLoop() {
+  struct TensorFlowLoopIteration {
+    EventNode* first_event = nullptr;
+    std::vector<EventNode*> events;
+  };
+  using TensorFlowLoop = std::map<int64 /*iter_num*/, TensorFlowLoopIteration>;
+  absl::flat_hash_map<int64 /*step_id*/, TensorFlowLoop> tf_loops;
 
   // Sort the TF executor events by TF function/session (step_id) and iter_num.
   auto executor_event_list =
@@ -652,7 +665,7 @@ void EventForest::ProcessTensorFlowLoop() {
     if (!step_id_stat || !iter_num_stat) continue;
     int64 step_id = step_id_stat->IntValue();
     // Skip tf.data events.
-    if (tf_data_step_ids.count(step_id)) continue;
+    if (tf_data_step_ids_.contains(step_id)) continue;
     TensorFlowLoop& tf_loop = tf_loops[step_id];
     TensorFlowLoopIteration& iteration = tf_loop[iter_num_stat->IntValue()];
     if (!iteration.first_event ||
@@ -702,7 +715,6 @@ void EventForest::ProcessWorker() {
       // A function op becomes a new root.
       root_event = eager_kernel_execute_event.get();
       root_event->SetRootLevel(1);
-      root_events_.push_back(root_event);
     } else if (root_event) {
       // Add non-function eager ops as child.
       root_event->AddChild(eager_kernel_execute_event.get());
@@ -835,6 +847,7 @@ void EventForest::ConnectTfDataEvents() {
 }
 
 void EventForest::GroupEvents() {
+  ProcessTfDataSteps();
   ProcessTensorFlowLoop();
   ProcessWorker();
   CreateEventGroups();

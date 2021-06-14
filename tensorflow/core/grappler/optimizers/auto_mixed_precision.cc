@@ -2046,11 +2046,5 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   return status;
 }
 
-void AutoMixedPrecision::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                  const GraphDef& optimize_output,
-                                  double result) {
-  // Nothing to do for AutoMixedPrecision.
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow

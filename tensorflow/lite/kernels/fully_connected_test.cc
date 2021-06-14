@@ -325,7 +325,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
         ops::builtin::Register_FULLY_CONNECTED_PIE());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
                      num_threads, /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false);
+                     /*apply_delegate=*/true);
   }
   void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
   void SetWeights(const std::vector<float>& data) {

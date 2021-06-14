@@ -57,10 +57,19 @@ se::Platform::Id XlaPlatformInfoFromDevice(DeviceBase* device_base) {
 
 }  // anonymous namespace
 
-VariableInfo::VariableInfo(int index, absl::string_view name, Var* var)
-    : index_(index), name_(name), var_(var) {}
+VariableInfo::VariableInfo(
+    int index, absl::string_view name, Var* var,
+    const absl::optional<ManagedStackTrace>& definition_stack_trace)
+    : index_(index),
+      name_(name),
+      var_(var),
+      definition_stack_trace_(definition_stack_trace) {}
+
 VariableInfo::VariableInfo(VariableInfo&& other)
-    : index_(other.index_), var_(other.var_), lock_held_(other.lock_held_) {
+    : index_(other.index_),
+      var_(other.var_),
+      definition_stack_trace_(other.definition_stack_trace_),
+      lock_held_(other.lock_held_) {
   other.index_ = -1;
   other.var_ = nullptr;
 }
@@ -69,6 +78,7 @@ VariableInfo& VariableInfo::operator=(VariableInfo&& other) {
   index_ = other.index_;
   var_ = other.var_;
   lock_held_ = other.lock_held_;
+  definition_stack_trace_ = other.definition_stack_trace_;
 
   other.index_ = -1;
   other.var_ = nullptr;
@@ -100,21 +110,8 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     Var* variable = nullptr;
     ResourceHandle handle = inputs[var_idx]->flat<ResourceHandle>()(0);
     if (handle.device() != dev->attributes().name()) {
-      std::string definition_location = [&]() -> std::string {
-        if (handle.definition_stack_trace()) {
-          std::vector<StackFrame> stack_frames =
-              handle.definition_stack_trace()->ToStackFrames(
-                  {}, IsInternalFrameForFilename,
-                  /*reverse_traversal=*/true,
-                  /*limit=*/1);
-          if (!stack_frames.empty()) {
-            const StackFrame& last_frame = stack_frames[0];
-            return absl::StrCat(" (defined @ ", last_frame.file_name, ":",
-                                last_frame.line_number, ")");
-          }
-        }
-        return "";
-      }();
+      std::string definition_location =
+          DefinitionLocationMsg(handle.definition_stack_trace());
       return errors::InvalidArgument("Trying to access resource ",
                                      handle.name(), definition_location,
                                      " located in device ", handle.device(),
@@ -126,7 +123,8 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
           *ptr = new Var(DT_INVALID);
           return Status::OK();
         }));
-    result->emplace_back(var_idx, handle.name(), variable);
+    result->emplace_back(var_idx, handle.name(), variable,
+                         handle.definition_stack_trace());
   }
   return Status::OK();
 }
@@ -445,7 +443,8 @@ StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
     const ResourceHandle handle = HandleFromInput(ctx, actual_input_index);
     TF_ASSIGN_OR_RETURN(Var * variable,
                         GetOrCreateResourceVar(ctx, handle, write));
-    out.emplace_back(actual_input_index, handle.name(), variable);
+    out.emplace_back(actual_input_index, handle.name(), variable,
+                     handle.definition_stack_trace());
   }
   return std::move(out);
 }
@@ -647,6 +646,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
       arg.name = std::string(variable.name());
       arg.kind = XlaCompiler::Argument::kResource;
       arg.resource_kind = XlaResource::kVariable;
+      arg.definition_stack_trace = variable.definition_stack_trace();
       if (variable.var() && variable.var()->is_initialized) {
         const Tensor* value = variable.var()->tensor();
         arg.type = value->dtype();

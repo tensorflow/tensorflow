@@ -81,9 +81,6 @@ class TridiagonalSolveOpTest(test.TestCase):
       pivoting = True
       if hasattr(self, "pivoting"):
         pivoting = self.pivoting
-      if test_util.is_xla_enabled() and pivoting:
-        # Pivoting is not supported by xla backends.
-        return
       result = linalg_impl.tridiagonal_solve(
           diags,
           rhs,
@@ -113,9 +110,6 @@ class TridiagonalSolveOpTest(test.TestCase):
     pivoting = True
     if hasattr(self, "pivoting"):
       pivoting = self.pivoting
-    if test_util.is_xla_enabled() and pivoting:
-      # Pivoting is not supported by xla backends.
-      return
     with self.assertRaises(ValueError):
       linalg_impl.tridiagonal_solve(
           diags, rhs, diags_format, partial_pivoting=pivoting)
@@ -399,9 +393,6 @@ class TridiagonalSolveOpTest(test.TestCase):
       with backprop.GradientTape() as tape_rhs:
         tape_diags.watch(diags)
         tape_rhs.watch(rhs)
-        if test_util.is_xla_enabled():
-          # Pivoting is not supported by xla backends.
-          return
         x = linalg_impl.tridiagonal_solve(
             diags,
             rhs,
@@ -555,9 +546,6 @@ class TridiagonalSolveOpTest(test.TestCase):
       return
     diags = array_ops.placeholder(dtypes.float64, shape=diags_shape)
     rhs = array_ops.placeholder(dtypes.float64, shape=rhs_shape)
-    if test_util.is_xla_enabled() and self.pivoting:
-      # Pivoting is not supported by xla backends.
-      return
     x = linalg_impl.tridiagonal_solve(
         diags, rhs, diags_format, partial_pivoting=self.pivoting)
     with self.cached_session() as sess:
@@ -633,9 +621,6 @@ class TridiagonalSolveOpTest(test.TestCase):
   def testSequenceFormatWithUnknownDims(self):
     if context.executing_eagerly():
       return
-    if test_util.is_xla_enabled() and self.pivoting:
-      # Pivoting is not supported by xla backends.
-      return
     superdiag = array_ops.placeholder(dtypes.float64, shape=[None])
     diag = array_ops.placeholder(dtypes.float64, shape=[None])
     subdiag = array_ops.placeholder(dtypes.float64, shape=[None])
@@ -700,9 +685,6 @@ class TridiagonalSolveOpTest(test.TestCase):
             session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device(device_id):
           diags, rhs = generate_data_fn(matrix_size, batch_size, num_rhs)
-          # Pivoting is not supported by XLA backends.
-          if test.is_xla_enabled() and pivoting:
-            return
           x = linalg_impl.tridiagonal_solve(
               diags, rhs, partial_pivoting=pivoting)
           self.evaluate(variables.global_variables_initializer())

@@ -33,6 +33,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
 
 
@@ -94,6 +95,10 @@ class ReduceTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.var(x_np), 0.25)
     self.assertEqual(self.evaluate(math_ops.reduce_variance(x_np)), 0.25)
 
+    x = ragged_factory_ops.constant([[5., 1., 4., 1.], [], [5., 9., 2.], [5.],
+                                     []])
+    self.assertAllClose(math_ops.reduce_variance(x, axis=0), [0., 16., 1., 0.])
+
   def testReduceVarComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
     complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
@@ -120,6 +125,10 @@ class ReduceTest(test_util.TensorFlowTestCase):
     x_np = np.array(x)
     self.assertEqual(np.std(x_np), 0.5)
     self.assertEqual(self.evaluate(math_ops.reduce_std(x_np)), 0.5)
+
+    x = ragged_factory_ops.constant([[5., 1., 4., 1.], [], [5., 9., 2.], [5.],
+                                     []])
+    self.assertAllClose(math_ops.reduce_std(x, axis=0), [0., 4., 1., 0.])
 
   def testReduceStdComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
@@ -229,7 +238,7 @@ class RoundTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class MatMulTest(test_util.TensorFlowTestCase):
+class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   """Test for matmul."""
 
   SUPPORTED_DTYPES = [
@@ -267,11 +276,13 @@ class MatMulTest(test_util.TensorFlowTestCase):
                                 "list of allowed values:"):
       math_ops.matmul(a, b)
 
-  def testInt8Matmul(self):
-    a = constant_op.constant(
-        np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.int8)
-    b = constant_op.constant(
-        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+  @parameterized.parameters((dtypes.int8, dtypes.int8),
+                            (dtypes.int8, dtypes.uint8),
+                            (dtypes.uint8, dtypes.int8))
+  # TODO(shivaniagrawal): matmul (dtypes.uint8, dtypes.uint8) fails in xla_gpu.
+  def testInt8Matmul(self, a_dtype, b_dtype):
+    a = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=a_dtype)
+    b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=b_dtype)
     c_np = constant_op.constant(
         [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
         shape=[2, 2, 2],
@@ -279,11 +290,11 @@ class MatMulTest(test_util.TensorFlowTestCase):
     c = math_ops.matmul(a, b, output_type=dtypes.int32)
     self.assertAllEqual(c, c_np)
 
-  def testMixPrecMatmul(self):
+  @parameterized.parameters((dtypes.int8), (dtypes.uint8))
+  def testMixPrecMatmul(self, b_dtype):
     a = constant_op.constant(
         np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.bfloat16)
-    b = constant_op.constant(
-        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+    b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=b_dtype)
     c_np = constant_op.constant(
         [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
         shape=[2, 2, 2],
@@ -297,9 +308,14 @@ class MatMulTest(test_util.TensorFlowTestCase):
       b = constant_op.constant(
           np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
       if context.executing_eagerly():
-        with self.assertRaisesRegex(errors.NotFoundError,
-                                    "Could not find device for node:"):
-          math_ops.matmul(a, b, output_type=dtypes.float32)
+        if context.is_tfrt_enabled():
+          with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                      "NodeDef expected inputs"):
+            math_ops.matmul(a, b, output_type=dtypes.float32)
+        else:
+          with self.assertRaisesRegex(errors.NotFoundError,
+                                      "Could not find device for node:"):
+            math_ops.matmul(a, b, output_type=dtypes.float32)
       else:
         with self.assertRaisesRegex(errors.InvalidArgumentError,
                                     "No OpKernel was registered to support Op"):

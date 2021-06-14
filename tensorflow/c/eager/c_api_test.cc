@@ -70,7 +70,7 @@ BENCHMARK(BM_InitOp);
 
 void BM_Execute(::testing::benchmark::State& state) {
   const int async = state.range(0);
-  tensorflow::testing::SetLabel(async ? "ExecuteAsync" : "Execute");
+  state.SetLabel(async ? "ExecuteAsync" : "Execute");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
@@ -109,8 +109,7 @@ BENCHMARK(BM_Execute)->Arg(0)->Arg(1);
 
 void BM_Execute_Identity(::testing::benchmark::State& state) {
   const int async = state.range(0);
-  tensorflow::testing::SetLabel(async ? "ExecuteIdentityAsync"
-                                      : "ExecuteIdentity");
+  state.SetLabel(async ? "ExecuteIdentityAsync" : "ExecuteIdentity");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
@@ -1170,8 +1169,7 @@ TEST(CAPI, RunAddFunctionWithGrappler_TFRT) {
 
 void BM_ExecuteFunction(::testing::benchmark::State& state) {
   const int async = state.range(0);
-  tensorflow::testing::SetLabel(async ? "ExecuteFunctionAsync"
-                                      : "ExecuteFunction");
+  state.SetLabel(async ? "ExecuteFunctionAsync" : "ExecuteFunction");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));

@@ -528,16 +528,12 @@ cc_library(
 cc_library(
     name = "lhlo",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc",
         "lib/Dialect/mhlo/IR/lhlo_ops.cc",
         "lib/Dialect/mhlo/IR/lhlo_ops_structs.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
     ],
     includes = ["include"],
     deps = [
@@ -769,8 +765,8 @@ cc_library(
 )
 
 cc_library(
-    name = "move_up_dynamic_broadcasts_for_fusion",
-    srcs = ["lib/Dialect/mhlo/transforms/move_up_dynamic_broadcasts_for_fusion.cc"],
+    name = "broadcast_propagation",
+    srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
@@ -1201,6 +1197,7 @@ cc_library(
     deps = [
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
+        ":broadcast_propagation",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
@@ -1217,7 +1214,6 @@ cc_library(
         ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
-        ":move_up_dynamic_broadcasts_for_fusion",
         ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",

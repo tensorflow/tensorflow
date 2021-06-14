@@ -53,6 +53,7 @@ PACKAGES=(
   "astor"
   "gast"
   "termcolor"
+  "keras-nightly"
   "keras_preprocessing"
   "h5py"
   "tf-estimator-nightly"

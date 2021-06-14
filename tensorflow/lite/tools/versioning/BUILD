@@ -23,7 +23,9 @@ cc_library(
     deps = [
         ":op_signature",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/schema:schema_utils",
@@ -41,6 +43,7 @@ tf_cc_test(
     ],
     deps = [
         ":versioning",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
@@ -58,8 +61,11 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",

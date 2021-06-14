@@ -32,6 +32,11 @@ bool IsSupportedTFLiteResourceOp(Operation* op) {
                    TF::LookupTableFindV2Op, TF::LookupTableImportV2Op,
                    TF::LookupTableSizeV2Op>(op);
 }
+
+// Returns true if 'op' is a TFLite control flow operation.
+bool IsTFLiteControlFlowOp(Operation* op) {
+  return llvm::isa<TFL::WhileOp, TFL::IfOp, TFL::CallOnceOp>(op);
+}
 }  // namespace
 
 // Pass which analyzes the variables in the graph and add an attribute whether
@@ -52,10 +57,19 @@ class AnalyzeVariablesPass
     module.walk([&](Operation* op) {
       // Skip ops that are supported natively by TFLite.
       if (IsSupportedTFLiteResourceOp(op)) return WalkResult::advance();
-      // Check for ops that are not legalized to TFLite.
-      if (op->getDialect()->getNamespace() != "tf") {
+
+      // Check for ops that are legalized to TFLite.
+      if (op->getDialect()->getNamespace() == "tfl") {
+        // TODO(b/189370197): Enable control flow ops after updating
+        // checks to handle them.
+        if (IsTFLiteControlFlowOp(op)) {
+          legalize_to_tfl = false;
+          return WalkResult::interrupt();
+        }
         return WalkResult::advance();
       }
+      // Check for ops that are not legalized to TFLite.
+
       // If any of the operands is a resource type, then we break
       // and mark the module as not valid for TFLite legalization.
       // Note: this might disable native variables in more than needed cases.

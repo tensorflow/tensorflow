@@ -100,7 +100,7 @@ Higher-level frameworks and tools that use SavedModel may provide these.
 SavedModel manages and builds upon existing TensorFlow primitives such as
 `TensorFlow Saver` and `MetaGraphDef`. Specifically, SavedModel wraps a [TensorFlow Saver](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py).
 The Saver is primarily used to generate the variable checkpoints. SavedModel
-will replace the existing [TensorFlow Inference Model Format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/session_bundle/README.md)
+will replace the existing [TensorFlow Inference Model Format](https://github.com/tensorflow/tensorflow/tree/r1.15/tensorflow/contrib/session_bundle#tensorflow-inference-model-format)
 as the canonical way to export TensorFlow graphs for serving.
 
 

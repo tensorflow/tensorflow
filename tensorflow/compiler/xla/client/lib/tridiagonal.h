@@ -22,7 +22,7 @@ limitations under the License.
 namespace xla {
 namespace tridiagonal {
 
-enum SolverAlgorithm { kThomas };
+enum SolverAlgorithm { kThomas, kPartialPivoting };
 
 StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
                                   XlaOp main_diagonal, XlaOp upper_diagonal,

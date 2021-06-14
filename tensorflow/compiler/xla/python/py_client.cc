@@ -69,19 +69,7 @@ std::vector<py::object> PyClient::LiveBuffers() {
 
 Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
-  absl::flat_hash_set<PjRtBuffer*> buffer_set;
-  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
-    if (!buffer->is_deleted()) {
-      buffer_set.insert(buffer->buffer());
-    }
-  }
-  std::vector<PjRtBuffer*> buffers(buffer_set.begin(), buffer_set.end());
-
-  std::vector<PjRtExecutable*> execs;
-  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
-    execs.push_back(exec->mutable_pjrt_executable());
-  }
-  return pjrt_client_->Defragment(buffers, execs);
+  return pjrt_client_->Defragment();
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>

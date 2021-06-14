@@ -47,9 +47,6 @@ class HoistRandomUniform : public TFDataOptimizerBase {
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output,
                                  OptimizationStats* stats) override;
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
 };
 
 }  // namespace grappler

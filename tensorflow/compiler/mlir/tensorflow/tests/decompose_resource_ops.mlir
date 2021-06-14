@@ -218,6 +218,27 @@ func @decompose_resource_apply_momentum_nesterov(%arg0: tensor<f32>, %arg1: tens
   return
 }
 
+// -----
+
+// Tests that composite tf.ResourceApplyFtrl{,V2} is decomposed.
+
+// CHECK-LABEL: testResourceApplyFtrl
+func @testResourceApplyFtrl(%var: tensor<*x!tf.resource>, %accum: tensor<*x!tf.resource>, %linear: tensor<*x!tf.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
+  "tf.ResourceApplyFtrl"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrl
+  // CHECK: return
+  return
+}
+
+// CHECK-LABEL: testResourceApplyFtrlV2
+func @testResourceApplyFtrlV2(%var: tensor<*x!tf.resource>, %accum: tensor<*x!tf.resource>, %linear: tensor<*x!tf.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
+  %0 = "tf.ZerosLike"(%lr_power) : (tensor<*xf32>) -> tensor<*xf32>
+  "tf.ResourceApplyFtrlV2"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %0, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrlV2
+  // CHECK: return
+  return
+}
+
 
 // Tests that composite tf.ResourceApplyKerasMomentum (non-Nesterov) operation
 // is decomposed.
@@ -446,6 +467,21 @@ func @decompose_resource_apply_adam_nesterov(%arg0: tensor<f32>, %arg1: tensor<f
   return
 }
 
+// Tests that composite tf.ResourceApplyAdam operation with complex types is
+// decomposed.
+
+// CHECK-LABEL: @decompose_adam_with_complex_inputs
+func @decompose_adam_with_complex_inputs(%arg0: tensor<!tf.resource<tensor<2xcomplex<f32>>>>, %arg1: tensor<!tf.resource<tensor<2xcomplex<f32>>>>, %arg2: tensor<!tf.resource<tensor<2xcomplex<f32>>>>, %arg3: tensor<complex<f32>>, %arg4: tensor<complex<f32>>, %arg5: tensor<complex<f32>>, %arg6: tensor<complex<f32>>, %arg7: tensor<complex<f32>>, %arg8: tensor<complex<f32>>, %arg9: tensor<2xcomplex<f32>>) attributes {tf.entry_function = {control_outputs = "Adam/update_Variable_1/ResourceApplyAdam", inputs = "_arg0,_arg1,_arg2,_arg3,_arg4,_arg5,_arg6,_arg7,_arg8,_arg9", outputs = ""}} {
+  "tf_device.cluster"() ({
+
+    // CHECK: "tf.Const"() {value = dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>} : () -> tensor<complex<f32>>
+    // CHECK-NOT: tf.ResourceApplyAdam
+    "tf.ResourceApplyAdam"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9) {_XlaHasReferenceVars = false, _xla_inferred_shapes = [], device = "/job:localhost/replica:0/task:0/device:TPU:0", use_locking = false, use_nesterov = false} : (tensor<!tf.resource<tensor<2xcomplex<f32>>>>, tensor<!tf.resource<tensor<2xcomplex<f32>>>>, tensor<!tf.resource<tensor<2xcomplex<f32>>>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<2xcomplex<f32>>) -> ()
+
+    tf_device.return
+  }) : () -> ()
+  return
+}
 
 // Tests that composite tf.ResourceGather operation is decomposed.
 

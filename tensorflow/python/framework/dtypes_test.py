@@ -338,6 +338,16 @@ class TypesTest(test_util.TensorFlowTestCase):
     dt = dtypes.DType(types_pb2.DT_VARIANT)
     self.assertIs(dtypes.as_dtype(dt), dtypes.variant)
 
+  def testPromoteTypesExperimental(self):
+    self.assertEqual(
+        dtypes.experimental_promote_types(dtypes.float32, dtypes.int32),
+        dtypes.float32)
+    self.assertEqual(
+        dtypes.experimental_promote_types(dtypes.complex64, dtypes.float64),
+        dtypes.complex128)
+    self.assertIsNone(
+        dtypes.experimental_promote_types(dtypes.variant, dtypes.float64))
+
 
 if __name__ == "__main__":
   googletest.main()

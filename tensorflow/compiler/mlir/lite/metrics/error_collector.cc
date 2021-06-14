@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -30,16 +31,33 @@ inline std::string extract_pass_name(const std::string &signature) {
   const std::vector<std::string> &v = absl::StrSplit(signature, "::");
   return v.back();
 }
+
+// Errors raised by emitOpError start with "'<dialect>.<op>' op". Returns an
+// empty string if the pattern is not found or the operator is not in tf or tfl
+// dialect.
+inline std::string extract_op_name_from_error_message(
+    const std::string &error_message) {
+  int end_pos = error_message.find("' op");
+  if ((absl::StartsWith(error_message, "'tf.") ||
+       absl::StartsWith(error_message, "'tfl.")) &&
+      end_pos != std::string::npos) {
+    return error_message.substr(1, end_pos - 1);
+  }
+  return "";
+}
 }  // namespace
 
 ErrorCollectorInstrumentation::ErrorCollectorInstrumentation(
-    MLIRContext *context) {
+    MLIRContext *context)
+    : error_collector_(GetErrorCollector()) {
   handler_.reset(new ScopedDiagnosticHandler(context, [this](Diagnostic &diag) {
     if (diag.getSeverity() == DiagnosticSeverity::Error) {
       Location loc = diag.getLocation();
       std::string op_name, error_code;
       if (loc_to_name_.count(loc)) {
         op_name = loc_to_name_[loc];
+      } else {
+        op_name = extract_op_name_from_error_message(diag.str());
       }
 
       for (auto &note : diag.getNotes()) {
@@ -52,7 +70,8 @@ ErrorCollectorInstrumentation::ErrorCollectorInstrumentation(
       bool has_valid_error_code =
           ConverterErrorData::ErrorCode_Parse(error_code, &error_code_enum);
       if (!op_name.empty() || has_valid_error_code) {
-        AppendNewError(/*pass_name=*/"", diag.str(), error_code_enum, op_name);
+        error_collector_->ReportError(NewConverterErrorData(
+            pass_name_, diag.str(), error_code_enum, op_name));
       } else {
         common_error_message_ += diag.str();
         common_error_message_ += "\n";
@@ -75,35 +94,31 @@ void ErrorCollectorInstrumentation::runBeforePass(Pass *pass,
   for (auto &region : module->getRegions()) {
     region.walk(collectOps);
   }
+
+  pass_name_ = extract_pass_name(pass->getName().str());
+  error_collector_->Clear();
 }
 
 void ErrorCollectorInstrumentation::runAfterPass(Pass *pass,
                                                  Operation *module) {
   loc_to_name_.clear();
-  errors_.clear();
+  pass_name_.clear();
   common_error_message_.clear();
+  error_collector_->Clear();
 }
 
 void ErrorCollectorInstrumentation::runAfterPassFailed(Pass *pass,
                                                        Operation *module) {
-  std::string pass_name = extract_pass_name(pass->getName().str());
-  for (auto &error : errors_) {
-    error.set_subcomponent(pass_name);
-  }
-
   // Create a new error if no errors collected yet.
-  if (errors_.empty() && !common_error_message_.empty()) {
-    AppendNewError(pass_name, common_error_message_,
-                   ConverterErrorData::UNKNOWN, /*op_name=*/"");
+  if (error_collector_->CollectedErrors().empty() &&
+      !common_error_message_.empty()) {
+    error_collector_->ReportError(
+        NewConverterErrorData(pass_name_, common_error_message_,
+                              ConverterErrorData::UNKNOWN, /*op_name=*/""));
   }
 
-  // Report to ErrorCollector.
-  ErrorCollector *collector = GetErrorCollector();
-  for (auto &error : errors_) {
-    collector->ReportError(error);
-  }
   loc_to_name_.clear();
-  errors_.clear();
+  pass_name_.clear();
   common_error_message_.clear();
 }
 

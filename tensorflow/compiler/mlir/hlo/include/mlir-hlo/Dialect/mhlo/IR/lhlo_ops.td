@@ -1514,7 +1514,7 @@ def LHLO_DynamicIotaOp : LHLO_Op<"dynamic_iota", []> {
     See
     https://www.tensorflow.org/xla/operation_semantics#iota
   }];
-  let arguments = (ins Arg<LHLO_IntBuffer, "", [MemRead]>:$shape,
+  let arguments = (ins Arg<LHLO_DimensionBuffer, "", [MemRead]>:$shape,
                    I64Attr:$iota_dimension,
                    Arg<LHLO_Buffer, "", [MemWrite]>:$output);
 }

@@ -162,11 +162,17 @@ gentbl_cc_library(
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
         (
-            ["-gen-typedef-decls"],
+            [
+                "-gen-typedef-decls",
+                "--typedefs-dialect=test",
+            ],
             "lib/Dialect/Test/TestTypeDefs.h.inc",
         ),
         (
-            ["-gen-typedef-defs"],
+            [
+                "-gen-typedef-defs",
+                "--typedefs-dialect=test",
+            ],
             "lib/Dialect/Test/TestTypeDefs.cpp.inc",
         ),
     ],
@@ -175,6 +181,7 @@ gentbl_cc_library(
     test = True,
     deps = [
         ":TestOpTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],
 )
 
@@ -334,6 +341,7 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:DLTIDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

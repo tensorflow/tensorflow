@@ -195,23 +195,25 @@ namespace {
 absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
                                         const HloInstruction* operand,
                                         const ShapeIndex& user_index) {
-  // Share the bias buffer with the parent instruction.
-  if (IsCublasGemm(*user)) {
-    if (user->operand_count() == 3 && user->operand(2) == operand) {
-      return true;
-    }
+  switch (user->opcode()) {
+    case HloOpcode::kAllReduce:
+      // NCCL all-reduce can be performed in-place.
+      return user->operand_count() == 1 ||
+             (user_index.size() == 1 &&
+              user->operand(user_index[0]) == operand);
+    case HloOpcode::kCustomCall:
+      // Share the bias buffer with the parent instruction.
+      if (user->custom_call_target() == kGemmCallTarget) {
+        return user->operand_count() == 3 && user->operand(2) == operand;
+      }
+      // The operand of cholesky can be shared with the first output.
+      if (user->custom_call_target() == kCusolverCholeskyCallTarget) {
+        return user_index.size() == 1 && user_index[0] == 0;
+      }
+      return false;
+    default:
+      return absl::nullopt;
   }
-  // The operand of cholesky can be shared with the first output.
-  if (user->opcode() == HloOpcode::kCustomCall &&
-      user->custom_call_target() == kCusolverCholeskyCallTarget) {
-    return user_index.size() == 1 && user_index[0] == 0;
-  }
-  // NCCL all-reduce can be performed in-place.
-  if (user->opcode() == HloOpcode::kAllReduce && user_index.size() == 1 &&
-      user->operand(user_index[0]) == operand) {
-    return true;
-  }
-  return absl::nullopt;
 }
 
 // Try to load ptx from files defined in the FLAGS. If successful, return true.

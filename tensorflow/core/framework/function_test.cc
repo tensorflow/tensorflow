@@ -912,7 +912,7 @@ TEST(FunctionCallFrame, Void_Void) {
   TF_EXPECT_OK(frame.SetArgs({}));
   auto a = test::AsTensor<float>({100});
   HasError(frame.SetArgs({a}), "Invalid argument");
-  const Tensor* v;
+  const Tensor* v = nullptr;
   HasError(frame.GetArg(0, &v), "Invalid argument");
   if (v != nullptr) {
     // v is null in certain environments.

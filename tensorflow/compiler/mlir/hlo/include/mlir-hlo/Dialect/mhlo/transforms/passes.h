@@ -68,7 +68,10 @@ std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 std::unique_ptr<OperationPass<FuncOp>>
 createLegalizeTrigonometricToApproximationPass();
 
-std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass();
+// Move dynamic broadcasts up over element-wise operations and broadcast the
+// operands rather than the result. This will eventually allow for larger
+// fusions.
+std::unique_ptr<FunctionPass> createBroadcastPropagationPass();
 
 /// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank

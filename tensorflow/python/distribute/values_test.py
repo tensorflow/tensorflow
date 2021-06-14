@@ -294,9 +294,9 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
       return constant_op.constant(1.0)
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
+    default_device = array_ops.identity(constant_op.constant(1.0)).device
     for i in range(len(distribution.extended.worker_devices)):
-      self.assertAllEqual(distributed_values._values[i].device,
-                          "/job:localhost/replica:0/task:0/device:CPU:0")
+      self.assertAllEqual(distributed_values._values[i].device, default_device)
 
   @combinations.generate(
       combinations.combine(
@@ -308,8 +308,10 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.tpu_strategy_packed_var,
               strategy_combinations.central_storage_strategy_with_two_gpus,
           ] + strategy_combinations.multiworker_strategies,
-          mode=["eager"]))
-  def testMakeDistributedValueExplicitDevicePlacement(self, distribution):
+          mode=["eager"],
+          op_type=[constant_op.constant, array_ops.identity]))
+  def testMakeDistributedValueExplicitDevicePlacement(self, distribution,
+                                                      op_type):
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
     worker_devices = distribution.extended.worker_devices
@@ -318,7 +320,8 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
       # worker.
       worker_device_id = ctx.replica_id_in_sync_group % len(worker_devices)
       with ops.device(worker_devices[worker_device_id]):
-        return array_ops.identity(1.0)
+        return op_type(1.0)
+
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
     for i in range(len(distribution.extended.worker_devices)):

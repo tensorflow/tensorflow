@@ -258,6 +258,28 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
 #undef RETURN_ERROR
 }
 
+Safe_TFE_TensorHandlePtr EagerConst(TFE_Context* ctx, TFE_TensorHandle* handle,
+                                    const char* device_name,
+                                    TF_Status* out_status) {
+  const char* op_name = "_EagerConst";
+  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op(
+      TFE_NewOp(ctx, op_name, out_status), TFE_DeleteOp);
+  if (!out_status->status.ok()) return nullptr;
+  TFE_OpSetDevice(op.get(), device_name, out_status);
+  if (!out_status->status.ok()) return nullptr;
+  TFE_OpAddInput(op.get(), handle, out_status);
+  if (!out_status->status.ok()) return nullptr;
+  TFE_OpSetAttrType(op.get(), "T", TFE_TensorHandleDataType(handle));
+  TFE_TensorHandle* output = nullptr;
+  int num_outputs = 1;
+  TFE_Execute(op.get(), &output, &num_outputs, out_status);
+  Safe_TFE_TensorHandlePtr result(output);
+  if (!out_status->status.ok() || num_outputs != 1) {
+    return nullptr;
+  }
+  return result;
+}
+
 TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
                                                PyObject* value,
                                                tensorflow::DataType dtype,
@@ -306,19 +328,53 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     }
   }
 
-  // We always generate CPU:0 tensors, but we may need to change the device
-  // slightly, as for example from /job:localhost/... to /job:worker/...
-  //
-  // Note that this is a shallow copy and will share the underlying buffer,
-  // because we are copying to the same device.
-  if (device_name != nullptr &&
-      strstr(device_name, "/device:CPU:0") != nullptr) {
-    handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
-                                                    device_name, status.get()));
-    const TF_Code code = TF_GetCode(status.get());
-    if (code != TF_OK) {
-      RaiseExceptionTypeFromTFStatus(status.get());
-      return nullptr;
+  // We always initially generate CPU:0 tensors. Copy to the current device.
+  if (device_name != nullptr) {
+    if (strstr(device_name, "/device:CPU:0") != nullptr) {
+      // We always generate CPU:0 tensors, but we may need to change the device
+      // slightly, as for example from /job:localhost/... to /job:worker/...
+      //
+      // Note that this is a shallow copy and will share the underlying buffer,
+      // because we are copying to the same device.
+      handle = make_safe(TFE_TensorHandleCopyToDevice(
+          handle.get(), ctx, device_name, status.get()));
+      const TF_Code code = TF_GetCode(status.get());
+      if (code != TF_OK) {
+        RaiseExceptionTypeFromTFStatus(status.get());
+        return nullptr;
+      }
+    } else {
+      /*Copy the constant to the current device. Identity is sometimes
+        overloaded to allow copies like this, but using a different op allows
+        devices to support constant creation without allowing copies via
+        identity ops.
+
+        Note that running this _EagerConst op limits mirroring of cached Python
+        literals somewhat. Mirroring of constants themselves works:
+
+        with tf.device("GPU:0"):
+          tf.constant(1.)  # Cached on CPU:0, mirrored to GPU:0
+        with tf.device("GPU:1"):
+          tf.constant(1.)  # Cache hit for the CPU version, new mirror to GPU:1.
+        with tf.device("GPU:1"):
+          tf.constant(1.)  # Cache hit for the CPU version, cached mirror
+
+        But mirrors for the output of `tf.constant` are not shared just because
+        there was a cache hit for the input literal, because of _EagerConst:
+
+        x = tf.constant(2.)  # Cached on CPU:0
+        with tf.device("GPU:1"):
+          tf.identity(x)  # `x` now mirrored to GPU:1
+        y = tf.constant(2.)  # Cache hit for CPU version
+        with tf.device("GPU:1"):
+          tf.identity(y)  # `y` now mirrored on GPU:1 (new copy!)*/
+      handle =
+          tensorflow::EagerConst(ctx, handle.get(), device_name, status.get());
+      const TF_Code code = TF_GetCode(status.get());
+      if (code != TF_OK) {
+        RaiseExceptionTypeFromTFStatus(status.get());
+        return nullptr;
+      }
     }
   }
 
