@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
+    name: "array_to_img"
+    argspec: "args=[\'x\', \'data_format\', \'scale\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "deserialize_keras_object"
     argspec: "args=[\'identifier\', \'module_objects\', \'custom_objects\', \'printable_module_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'object\'], "
   }
@@ -53,6 +57,14 @@ tf_module {
     argspec: "args=[\'tensor\', \'layer\', \'node_index\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "img_to_array"
+    argspec: "args=[\'img\', \'data_format\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "load_img"
+    argspec: "args=[\'path\', \'grayscale\', \'color_mode\', \'target_size\', \'interpolation\'], varargs=None, keywords=None, defaults=[\'False\', \'rgb\', \'None\', \'nearest\'], "
+  }
+  member_method {
     name: "model_to_dot"
     argspec: "args=[\'model\', \'show_shapes\', \'show_dtype\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\', \'subgraph\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'True\', \'TB\', \'False\', \'96\', \'False\'], "
   }
@@ -67,6 +79,10 @@ tf_module {
   member_method {
     name: "register_keras_serializable"
     argspec: "args=[\'package\', \'name\'], varargs=None, keywords=None, defaults=[\'Custom\', \'None\'], "
+  }
+  member_method {
+    name: "save_img"
+    argspec: "args=[\'path\', \'x\', \'data_format\', \'file_format\', \'scale\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "serialize_keras_object"

@@ -676,6 +676,22 @@ class WorkerPreemptionHandler(object):
           on_failure_fn()
         return
 
+      # Ignoring derived CancelledErrors to tolerate transient failures in
+      # PS-worker communication, which initially exposed as an UnavailableError
+      # and then lead to sub-function cancellation, subsequently getting
+      # reported from worker to chief as CancelledError.
+      # We do not mark either worker or PS as failed due to only CancelledError.
+      # If there are real (non-transient) failures, they must also be reported
+      # as other errors (UnavailableError most likely) in closure executions.
+      if isinstance(e, errors.CancelledError):
+        logging.error(
+            "Remote function on worker %s failed with %r:%s\n"
+            "This derived error is ignored and not reported to users.",
+            worker_device_name, e, e)
+        if on_failure_fn:
+          on_failure_fn()
+        return
+
       self._validate_preemption_failure(e)
       logging.error("Worker %s failed with %r:%s", worker_device_name, e, e)
       if on_failure_fn:

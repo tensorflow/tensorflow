@@ -76,8 +76,6 @@ Literal CreateGarbageLiteral(const Shape& reference_shape) {
   return literal.Broadcast(reference_shape, {}).ValueOrDie();
 }
 
-
-
 // HloProtoEvaluator evaluates an hlo proto and returns a literal. The user has
 // to provide operand as literals through the get_operand function.
 struct HloProtoEvaluator {
@@ -297,7 +295,7 @@ using HandleToComputation = std::function<const HloComputationProto*(int64)>;
 
 struct PostorderDFSVisitor {
   PostorderDFSVisitor(HandleToInstruction handle_to_instruction,
-                        HandleToComputation handle_to_computation)
+                      HandleToComputation handle_to_computation)
       : handle_to_instruction(handle_to_instruction),
         handle_to_computation(handle_to_computation) {}
 
@@ -364,6 +362,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
       // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCall:
@@ -550,40 +549,38 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
                          PostorderDFSNodeType::kConstantUpperBound, context)
           .AddDependency(root->operand_ids(1),
                          PostorderDFSNodeType::kConstantLowerBound, context)
-          .AddVisit(
-              [root, opcode, this](Literal upper_bound,
-                                   Literal lower_bound) -> StatusOr<Literal> {
-                if (opcode == HloOpcode::kDivide &&
-                    this->IsValueEffectiveInteger(root->operand_ids(1))) {
-                  // Because in many cases the lower bound of a value is
-                  // integer 0, instead of throwing an divide-by-zero error
-                  // at compile time, we set the bound defer the check to
-                  // runtime. In those cases we use the upper-bound of
-                  // first operand as a placeholder.
-                  HloEvaluator evaluator;
-                  auto zero =
-                      LiteralUtil::Zero(lower_bound.shape().element_type());
-                  zero = zero.Broadcast(lower_bound.shape(), {}).ValueOrDie();
-                  TF_ASSIGN_OR_RETURN(
-                      auto lower_bound_is_zero,
-                      evaluator.EvaluateElementwiseCompareOp(
-                          ComparisonDirection::kEq, lower_bound, zero));
+          .AddVisit([root, opcode, this](
+                        Literal upper_bound,
+                        Literal lower_bound) -> StatusOr<Literal> {
+            if (opcode == HloOpcode::kDivide &&
+                this->IsValueEffectiveInteger(root->operand_ids(1))) {
+              // Because in many cases the lower bound of a value is
+              // integer 0, instead of throwing an divide-by-zero error
+              // at compile time, we set the bound defer the check to
+              // runtime. In those cases we use the upper-bound of
+              // first operand as a placeholder.
+              HloEvaluator evaluator;
+              auto zero = LiteralUtil::Zero(lower_bound.shape().element_type());
+              zero = zero.Broadcast(lower_bound.shape(), {}).ValueOrDie();
+              TF_ASSIGN_OR_RETURN(
+                  auto lower_bound_is_zero,
+                  evaluator.EvaluateElementwiseCompareOp(
+                      ComparisonDirection::kEq, lower_bound, zero));
 
-                  auto one =
-                      LiteralUtil::One(lower_bound.shape().element_type());
-                  one = one.Broadcast(lower_bound.shape(), {}).ValueOrDie();
-                  TF_ASSIGN_OR_RETURN(
-                      lower_bound, evaluator.EvaluateElementwiseTernaryOp(
-                                       HloOpcode::kSelect, lower_bound_is_zero,
-                                       one, lower_bound));
-                }
-                std::vector<Literal> new_operands;
-                new_operands.emplace_back(std::move(upper_bound));
-                new_operands.emplace_back(std::move(lower_bound));
-                return HloProtoEvaluator(*root)
-                    .WithOperands(absl::MakeSpan(new_operands))
-                    .Evaluate();
-              });
+              auto one = LiteralUtil::One(lower_bound.shape().element_type());
+              one = one.Broadcast(lower_bound.shape(), {}).ValueOrDie();
+              TF_ASSIGN_OR_RETURN(
+                  lower_bound, evaluator.EvaluateElementwiseTernaryOp(
+                                   HloOpcode::kSelect, lower_bound_is_zero, one,
+                                   lower_bound));
+            }
+            std::vector<Literal> new_operands;
+            new_operands.emplace_back(std::move(upper_bound));
+            new_operands.emplace_back(std::move(lower_bound));
+            return HloProtoEvaluator(*root)
+                .WithOperands(absl::MakeSpan(new_operands))
+                .Evaluate();
+          });
     }
     default:
       return AnalyzeConstantValueFallback(
@@ -724,16 +721,16 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       int64 operand_handle = root->operand_ids(0);
       const HloInstructionProto* operand_proto =
           handle_to_instruction(operand_handle);
-      return PostorderDFSNode().AddVisit([operand_proto, dimension,
-                                          type]() -> StatusOr<Literal> {
-        if (type == PostorderDFSNodeType::kBoundIsDynamic) {
-          // The bound of dynamic dimension is not dynamic.
-          return LiteralUtil::CreateR0<bool>(false);
-        }
-        // The value of dynamic dimension is dynamic.
-        return LiteralUtil::CreateR0<bool>(
-            operand_proto->shape().is_dynamic_dimension(dimension));
-      });
+      return PostorderDFSNode().AddVisit(
+          [operand_proto, dimension, type]() -> StatusOr<Literal> {
+            if (type == PostorderDFSNodeType::kBoundIsDynamic) {
+              // The bound of dynamic dimension is not dynamic.
+              return LiteralUtil::CreateR0<bool>(false);
+            }
+            // The value of dynamic dimension is dynamic.
+            return LiteralUtil::CreateR0<bool>(
+                operand_proto->shape().is_dynamic_dimension(dimension));
+          });
     }
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:

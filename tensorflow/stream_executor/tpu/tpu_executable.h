@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,35 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EXECUTABLE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EXECUTABLE_H_
 
-#include <functional>
-#include <memory>
-
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
-#include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
+#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
 namespace xla {
 
-// An executable capable of being fed to a TPU device via TpuExecutor.
-class TpuExecutable : public TpuExecutableInterface {
+class TpuExecutable : public xla::TpuExecutableInterface {
  public:
-  using HostCommandHandler = std::function<void(uint32, int64)>;
+  TpuExecutable(SE_Executable* se_executable,
+                std::shared_ptr<HloModule> hlo_module)
+      : TpuExecutableInterface(std::move(hlo_module)),
+        se_executable_(se_executable) {}
 
-  // Constructs an executable that holds a non-owning reference to an
-  // XLA_TpuProgram.
-  explicit TpuExecutable(const XLA_TpuProgram* core_program,
-                         std::unique_ptr<HloModule> hlo_module,
-                         HostCommandHandler host_command_handler = nullptr);
-  ~TpuExecutable() override = default;
+  ~TpuExecutable() override;
 
-  const XLA_TpuProgram* core_program() const { return core_program_; }
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments,
+      HloExecutionProfile* hlo_execution_profile) override;
 
   absl::string_view fingerprint() const override;
 
@@ -54,17 +43,19 @@ class TpuExecutable : public TpuExecutableInterface {
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,
       absl::optional<stream_executor::DeviceMemoryBase>
-          cross_program_prefetch_addr) override;
+          cross_program_prefetch_addr) override {
+    LOG(FATAL) << "LoadProgramAndEnqueueToStream unimplemented";
+  }
 
-  Shape HostShapeToDeviceShape(const Shape& host_shape) override;
+  Shape HostShapeToDeviceShape(const Shape& host_shape) override {
+    LOG(FATAL) << "HostShapeToDeviceShape unimplemented";
+  }
 
-  int64 ShapeSize(const Shape& shape) override;
+  int64 ShapeSize(const Shape& shape) override {
+    LOG(FATAL) << "ShapeSize unimplemented";
+  }
 
-  const XLA_TpuProgram* const core_program_;
-
-  const HostCommandHandler host_command_handler_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuExecutable);
+  SE_Executable* se_executable_;
 };
 
 }  // namespace xla

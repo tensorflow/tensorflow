@@ -67,6 +67,14 @@ def _eager_identity(tensor, ctx):
   return result
 
 
+def _eager_const(tensor, ctx):
+  """Copy a constant to the current device."""
+  attrs = ("T", tensor.dtype.as_datatype_enum)
+  result, = execute.execute(
+      b"_EagerConst", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
+  return result
+
+
 def convert_to_eager_tensor(value, ctx, dtype=None):
   """Converts the given `value` to an `EagerTensor`.
 
@@ -226,9 +234,8 @@ def constant(value, dtype=None, shape=None, name="Const"):
   ...
   TypeError: ...
 
-  `tf.constant` will _always_ create CPU (host) tensors. In order to create
-  tensors on other devices, use `tf.identity`. (If the `value` is an eager
-  Tensor, however, the tensor will be returned unmodified as mentioned above.)
+  `tf.constant` will create tensors on the current device. Inputs which are
+  already tensors maintain their placements unchanged.
 
   Related Ops:
 
@@ -297,7 +304,7 @@ def _constant_impl(
 
 
 def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
-  """Implementation of eager constant."""
+  """Creates a constant on the current device."""
   t = convert_to_eager_tensor(value, ctx, dtype)
   if shape is None:
     return t

@@ -96,6 +96,13 @@ bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
 
 bool MergeShardingIfCompatible(const HloSharding& to_merge, int64 minimum_tiles,
                                HloSharding* dst) {
+  if (to_merge.IsTileMaximal()) {
+    return false;
+  }
+  if (dst->IsTileMaximal()) {
+    *dst = to_merge;
+    return true;
+  }
   // Combine the tile dimension sizes from dst and to_merge.
   int64 num_devices = to_merge.tile_assignment().num_elements();
   std::vector<int64> merged_tile_dims;

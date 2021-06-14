@@ -60,6 +60,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -482,7 +483,8 @@ class Translator {
       bool emit_custom_ops,
       const std::unordered_set<std::string>& select_user_tf_ops,
       const std::unordered_set<std::string>& tags,
-      OpOrArgNameMapper* op_or_arg_name_mapper);
+      OpOrArgNameMapper* op_or_arg_name_mapper,
+      const std::map<std::string, std::string>& metadata);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
@@ -490,12 +492,14 @@ class Translator {
                       bool emit_select_tf_ops, bool emit_custom_ops,
                       const std::unordered_set<std::string>& select_user_tf_ops,
                       const std::unordered_set<std::string>& saved_model_tags,
-                      OpOrArgNameMapper* op_or_arg_name_mapper)
+                      OpOrArgNameMapper* op_or_arg_name_mapper,
+                      const std::map<std::string, std::string>& metadata)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
         saved_model_tags_(saved_model_tags),
-        select_user_tf_ops_(select_user_tf_ops) {
+        select_user_tf_ops_(select_user_tf_ops),
+        metadata_(metadata) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -560,6 +564,12 @@ class Translator {
   template <typename T>
   BufferOffset<tflite::Operator> BuildVariableOperator(
       T op, const std::string& op_name, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
+  // Builds VarHandle op.
+  BufferOffset<tflite::Operator> BuildVarHandleOp(
+      mlir::TFL::VarHandleOp op, const std::string& op_name,
+      const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   BufferOffset<tflite::Operator> BuildCustomOperator(
@@ -674,6 +684,8 @@ class Translator {
   const std::unordered_set<std::string> saved_model_tags_;
   // User's defined ops allowed with Flex.
   const std::unordered_set<std::string> select_user_tf_ops_;
+  // Map of key value pairs of metadata to export.
+  const std::map<std::string, std::string> metadata_;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -974,6 +986,25 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
       tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
+BufferOffset<tflite::Operator> Translator::BuildVarHandleOp(
+    mlir::TFL::VarHandleOp op, const std::string& op_name,
+    const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex(op_name, tflite::BuiltinOperator_CUSTOM);
+  auto fbb = absl::make_unique<flexbuffers::Builder>();
+  fbb->Map([&]() {
+    fbb->String("shared_name", op.shared_name().str());
+    fbb->String("container", op.container().str());
+  });
+  fbb->Finish();
+  auto f = std::unique_ptr<flexbuffers::Builder>(fbb.release());
+  auto custom_option = f->GetBuffer();
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_option),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
+}
+
 // Builds Assign/Read Variable ops.
 template <typename T>
 BufferOffset<tflite::Operator> Translator::BuildVariableOperator(
@@ -1128,7 +1159,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
   // TODO(b/149099381): Remove this once the kernels are promoted as
   // builtin TFLite kernels.
-  // We export the Assign/Read variable ops as custom ops.
+  // We export the VarHandle, Assign, and Read variable ops as custom ops.
   if (auto read_op = llvm::dyn_cast<mlir::TFL::ReadVariableOp>(inst)) {
     return BuildVariableOperator<mlir::TFL::ReadVariableOp>(
         read_op, "ReadVariable", operands, results);
@@ -1136,6 +1167,9 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
                  llvm::dyn_cast<mlir::TFL::AssignVariableOp>(inst)) {
     return BuildVariableOperator<mlir::TFL::AssignVariableOp>(
         assign_op, "AssignVariable", operands, results);
+  } else if (auto var_handle_op =
+                 llvm::dyn_cast<mlir::TFL::VarHandleOp>(inst)) {
+    return BuildVarHandleOp(var_handle_op, "VarHandle", operands, results);
   }
 
   // If TFLite built in op, create operator as a builtin op.
@@ -1265,11 +1299,16 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       // Insert failed op to `flex_ops` or `custom_ops`.
       if (is_allowed_flex_op) {
         failed_flex_ops_[op_name].insert(op_desc);
+        tfl::AttachErrorCode(
+            inst->emitOpError("is neither a custom op nor a flex op"),
+            tflite::metrics::ConverterErrorData::ERROR_NEEDS_FLEX_OPS);
       } else {
         failed_custom_ops_[op_name].insert(op_desc);
+        tfl::AttachErrorCode(
+            inst->emitOpError("is neither a custom op nor a flex op"),
+            tflite::metrics::ConverterErrorData::ERROR_NEEDS_CUSTOM_OPS);
       }
-      return inst->emitOpError("is neither a custom op nor a flex op"),
-             llvm::None;
+      return llvm::None;
     }
 
     uint32_t opcode_index =
@@ -1561,8 +1600,17 @@ Translator::CreateMetadataVector() {
   // versions. Here we put a 16-byte dummy string as a placeholder. We choose
   // 16-byte because it's the alignment of buffers in flatbuffer, so it won't
   // cause any waste of space if the actual string is shorter than 16 bytes.
+  constexpr std::size_t kByteStringSize = 16;
   metadata.push_back(
-      BuildMetadata("min_runtime_version", std::string(16, '\0')));
+      BuildMetadata("min_runtime_version", std::string(kByteStringSize, '\0')));
+  for (const auto& kv : metadata_) {
+    const std::string& val = kv.second;
+    // Only take the first kByteStringSize values.
+    const int count = std::min(kByteStringSize, val.length());
+    std::string value = std::string(kByteStringSize, '\0')
+                            .assign(val.begin(), val.begin() + count);
+    metadata.push_back(BuildMetadata(kv.first, value));
+  }
   return builder_.CreateVector(metadata);
 }
 
@@ -1746,7 +1794,8 @@ Optional<std::string> Translator::Translate(
     bool emit_custom_ops,
     const std::unordered_set<std::string>& select_user_tf_ops,
     const std::unordered_set<std::string>& tags,
-    OpOrArgNameMapper* op_or_arg_name_mapper) {
+    OpOrArgNameMapper* op_or_arg_name_mapper,
+    const std::map<std::string, std::string>& metadata) {
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
   if (!op_or_arg_name_mapper)
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
@@ -1754,7 +1803,7 @@ Optional<std::string> Translator::Translate(
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
                         emit_custom_ops, select_user_tf_ops, tags,
-                        op_or_arg_name_mapper);
+                        op_or_arg_name_mapper, metadata);
   return translator.TranslateInternal();
 }
 
@@ -2055,7 +2104,8 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
   auto maybe_translated = Translator::Translate(
       module, options.emit_builtin_tflite_ops, options.emit_select_tf_ops,
       options.emit_custom_ops, options.select_user_tf_ops,
-      options.saved_model_tags, options.op_or_arg_name_mapper);
+      options.saved_model_tags, options.op_or_arg_name_mapper,
+      options.metadata);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return true;

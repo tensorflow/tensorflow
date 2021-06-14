@@ -1,6 +1,8 @@
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize | FileCheck %s
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-numeric-verify -tfl-log-if-failed | FileCheck --check-prefix=DEBUG %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-numeric-verify -tfl-whole-model-verify -tfl-log-if-failed | FileCheck --check-prefix=MODEL-DEBUG %s
 // RUN: tf-opt %s -tfl-quantize -tfl-legacy-quantize | FileCheck --check-prefix=LEGACY %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-ops-blocklist="tfl.fully_connected,tfl.softmax" -tfl-locs-blocklist="Block,NullBlock" | FileCheck --check-prefix=BLOCK %s
 
 // CHECK-LABEL: QuantizeFloatConst
 func @QuantizeFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {
@@ -115,6 +117,14 @@ func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e
 // CHECK: %[[cst_1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x12xi8>}
 // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %[[cst_1]], %[[cst_0]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}
 // CHECK: return %[[fc]]
+
+// BLOCK: %[[cst:.*]] = constant dense<-1.23697901>
+// BLOCK: %[[dq1:.*]] = "tfl.dequantize"(%arg0)
+// BLOCK: %[[cst2:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x12xi8>}
+// BLOCK: %[[dq2:.*]] = "tfl.dequantize"(%[[cst2]])
+// BLOCK: %[[fc:.*]] = "tfl.fully_connected"(%[[dq1]], %[[dq2]], %[[cst]])
+// BLOCK: %[[q:.*]] = "tfl.quantize"(%[[fc]])
+// BLOCK: return %[[q]]
 }
 
 // CHECK-LABEL: QuantizeNoBiasFullyConnected
@@ -183,12 +193,18 @@ func @QuantizeAdd(tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:1
 ^bb0(%arg0: tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>, %arg1: tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>):
   %0 = "tfl.dequantize"(%arg0) : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>) -> tensor<1x56x56x24xf32>
   %1 = "tfl.dequantize"(%arg1) : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>) -> tensor<1x56x56x24xf32>
-  %2 = tfl.add %0, %1 {fused_activation_function = "NONE"} : tensor<1x56x56x24xf32>
+  %2 = tfl.add %0, %1 {fused_activation_function = "NONE"} : tensor<1x56x56x24xf32> loc("Block")
   %3 = "tfl.quantize"(%2) {qtype = tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>} : (tensor<1x56x56x24xf32>) -> tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
   return %3 : tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
 
 // CHECK: %[[add:.*]] = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>, tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>)
 // CHECK: return %[[add]] : tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
+
+// BLOCK: %[[dq0:.*]] = "tfl.dequantize"(%arg0) : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:119>>)
+// BLOCK: %[[dq1:.*]] = "tfl.dequantize"(%arg1) : (tensor<1x56x56x24x!quant.uniform<u8:f32, 0.40149296779258581:136>>)
+// BLOCK: %[[add:.*]] = tfl.add %[[dq0]], %[[dq1]] {fused_activation_function = "NONE"} : tensor<1x56x56x24xf32>
+// BLOCK: %[[q:.*]] = "tfl.quantize"(%[[add]]) {qtype = tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>}
+// BLOCK: return %[[q]] : tensor<1x56x56x24x!quant.uniform<u8:f32, 0.4321689530914905:133>>
 }
 
 // CHECK-LABEL: QuantizeConcat
@@ -396,4 +412,25 @@ func @CheckNumericVerifyMultipleUsers(%arg0: tensor<1x5x5x3xf32>) -> tensor<1x5x
 // DEBUG: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // DEBUG: "tfl.average_pool_2d"(%[[dq]])
 // DEBUG: "tfl.average_pool_2d"(%[[q]])
+}
+
+// MODEL-DEBUG-LABEL: CheckNumericVerifyWholeModel
+func @CheckNumericVerifyWholeModel(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x1x1x3xf32> {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x4x4x3x!quant.uniform<i8:f32, 0.1>>, volatile} : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3x!quant.uniform<i8:f32, 0.1>>
+  %1 = "tfl.dequantize"(%0) : (tensor<1x4x4x3x!quant.uniform<i8:f32, 0.1>>) -> tensor<1x4x4x3xf32>
+  %2 = "tfl.average_pool_2d"(%1) {filter_height = 2 : i32, filter_width = 2 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x4x4x3xf32>) -> tensor<1x2x2x3xf32>
+  %3 = "tfl.quantize"(%2) {qtype = tensor<1x2x2x3x!quant.uniform<i8:f32, 0.1>>, volatile} : (tensor<1x2x2x3xf32>) -> tensor<1x2x2x3x!quant.uniform<i8:f32, 0.1>>
+  %4 = "tfl.dequantize"(%3) : (tensor<1x2x2x3x!quant.uniform<i8:f32, 0.1>>) -> tensor<1x2x2x3xf32>
+  %5 = "tfl.max_pool_2d"(%4) {filter_height = 2 : i32, filter_width = 2 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x2x2x3xf32>) -> tensor<1x1x1x3xf32>
+  %6 = "tfl.quantize"(%5) {qtype = tensor<1x1x1x3x!quant.uniform<i8:f32, 0.1>>, volatile} : (tensor<1x1x1x3xf32>) -> tensor<1x1x1x3x!quant.uniform<i8:f32, 0.1>>
+  %7 = "tfl.dequantize"(%6) : (tensor<1x1x1x3x!quant.uniform<i8:f32, 0.1>>) -> tensor<1x1x1x3xf32>
+  return %7 : tensor<1x1x1x3xf32>
+// MODEL-DEBUG: %[[q1:.*]] = "tfl.quantize"(%arg0)
+// MODEL-DEBUG: %[[dq1:.*]] = "tfl.dequantize"(%[[q1]])
+// MODEL-DEBUG: %[[f_out1:.*]] = "tfl.average_pool_2d"(%[[dq1]])
+// MODEL-DEBUG: %[[q_out1:.*]] = "tfl.average_pool_2d"(%[[q1]])
+// MODEL-DEBUG: "tfl.NumericVerify"(%[[q_out1]], %[[f_out1]])
+// MODEL-DEBUG: %[[f_out2:.*]] = "tfl.max_pool_2d"(%[[f_out1]])
+// MODEL-DEBUG: %[[q_out2:.*]] = "tfl.max_pool_2d"(%[[q_out1]])
+// MODEL-DEBUG: "tfl.NumericVerify"(%[[q_out2]], %[[f_out2]])
 }

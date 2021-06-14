@@ -1,6 +1,7 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -26,10 +27,6 @@ load(
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
-)
-load(
-    "//tensorflow/compiler/xla/service/gpu:thunk_config.bzl",
-    "if_using_bef_thunks",
 )
 
 # buildifier: disable=same-origin-load
@@ -131,6 +128,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:test",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
@@ -541,6 +539,16 @@ alias(
     actual = if_cuda_or_rocm(":nccl_utils", ":empty"),
 )
 
+bool_flag(
+    name = "enable_bef_thunk",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "is_bef_thunk_enabled",
+    flag_values = {":enable_bef_thunk": "True"},
+)
+
 cc_library(
     name = "gpu_executable",
     srcs = [
@@ -592,9 +600,10 @@ cc_library(
     ]),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
-    ]) + if_using_bef_thunks([
-        "BEF_THUNKS=1",
-    ]),
+    ]) + select({
+        ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -667,25 +676,28 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-    ]) + if_using_bef_thunks([
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:GPUTransforms",
-        "@llvm-project//mlir:Pass",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
-        "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
-        "//tensorflow/stream_executor/cuda:cuda_driver",
-        "//tensorflow/stream_executor/gpu:gpu_executor_header",
-        "@tf_runtime//:basic_kernels_alwayslink",
-        "@tf_runtime//:befexecutor",
-        "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:mlirtobef_translate",
-        "@tf_runtime//:support",
-        "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-        "@tf_runtime//backends/gpu:gpu_types",
-    ]),
+    ]) + select({
+        ":is_bef_thunk_enabled": [
+            "@llvm-project//llvm:Support",
+            "@llvm-project//mlir:GPUTransforms",
+            "@llvm-project//mlir:Pass",
+            "//tensorflow/compiler/mlir/hlo:lhlo",
+            # copybara:uncomment_begin(target not open-sourced yet)
+            # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            # copybara:uncomment_end
+            "//tensorflow/stream_executor/cuda:cublas_plugin",
+            "//tensorflow/stream_executor/cuda:cuda_driver",
+            "//tensorflow/stream_executor/gpu:gpu_executor_header",
+            "@tf_runtime//:befexecutor",
+            "@tf_runtime//:hostcontext",
+            "@tf_runtime//:mlirtobef_translate",
+            "@tf_runtime//:support",
+            # copybara:uncomment_begin(breaks bazel query)
+            # "@tf_runtime//backends/gpu:gpu_types",
+            # copybara:uncomment_end
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -1188,6 +1200,7 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/functional:bind_front",
     ],
 )
 
@@ -1199,18 +1212,53 @@ tf_cc_test(
         ":cudnn_pad_for_convolutions",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//tensorflow/core:test",
     ],
 )
 
 cc_library(
-    name = "cublas_pad_for_gemms",
-    srcs = ["cublas_pad_for_gemms.cc"],
-    hdrs = ["cublas_pad_for_gemms.h"],
+    name = "cudnn_vectorize_convolutions",
+    srcs = ["cudnn_vectorize_convolutions.cc"],
+    hdrs = ["cudnn_vectorize_convolutions.h"],
+    deps = [
+        ":ir_emission_utils",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_vectorize_convolutions_test",
+    srcs = ["cudnn_vectorize_convolutions_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":cudnn_vectorize_convolutions",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "cublas_gemm_pad_for_tensor_cores",
+    srcs = ["cublas_gemm_pad_for_tensor_cores.cc"],
+    hdrs = ["cublas_gemm_pad_for_tensor_cores.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
@@ -1224,11 +1272,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cublas_pad_for_gemms_test",
-    srcs = ["cublas_pad_for_gemms_test.cc"],
+    name = "cublas_gemm_pad_for_tensor_cores_test",
+    srcs = ["cublas_gemm_pad_for_tensor_cores_test.cc"],
     tags = ["no_pip"],
     deps = [
-        ":cublas_pad_for_gemms",
+        ":cublas_gemm_pad_for_tensor_cores",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1337,6 +1385,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
+        "//tensorflow/compiler/xla/service:async_all_reduce_creator",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
@@ -1427,9 +1476,10 @@ cc_library(
         "nvptx_compiler.h",
     ]),
     deps = if_cuda_is_configured([
-        ":cublas_pad_for_gemms",
+        ":cublas_gemm_pad_for_tensor_cores",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
+        ":cudnn_vectorize_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
         ":gpu_compiler",
@@ -1799,9 +1849,11 @@ tf_cc_test(
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
     tags = [
         "gpu",
+        "manual",  # TODO(b/190854862)
         "no_oss",
         "noasan",
         "nomsan",
+        "notap",  # TODO(b/190854862)
         "requires-gpu-sm70",
     ],
     deps = [
@@ -1810,6 +1862,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -38,7 +38,11 @@ from tensorflow.python.util import tf_inspect
 #
 # arg: Argument tuple to function callable
 # out: Expected output.
-# failure: List of `RunMode` enums that are expected to fail.
+# failure:
+#   List of `RunMode` enums that are expected to fail, or
+#   Dict of {'<`RunMode` enum>': 'error mesaage', ...} where keys are `RunMode`
+#     enums that are excpected to fail and values are the corresponding
+#     'error message' of the failure.
 # bugs: List of bugs that are related to this test case.
 Example = collections.namedtuple('Example', ['arg', 'out', 'failure', 'bugs'])
 
@@ -74,6 +78,10 @@ class ConsistencyTestBase(tf.test.TestCase):
       getattr(base, 'recordProperty')(property_name, property_value)
 
   def _deep_equal(self, left, right):
+    if isinstance(left, tf.TensorArray):
+      return self._deep_equal(left.stack(), right)
+    if isinstance(right, tf.TensorArray):
+      return self._deep_equal(left, right.stack())
     if isinstance(left, tf.Tensor):
       return self._deep_equal(left.numpy(), right)
     if isinstance(right, tf.Tensor):
@@ -86,45 +94,92 @@ class ConsistencyTestBase(tf.test.TestCase):
       return np.array_equal(left, right)
     if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
       return all(self._deep_equal(l, r) for l, r in zip(left, right))
+
     return left == right
 
   def _run_and_check(self, f, mode, examples):
     for arg, out, failure, bugs in examples:
       del bugs
+      err_msg = '.*'
+      # `failure` can be a list of `RunMode` enums or a dict of `RunMode` enum
+      # and corresponding error message as key-value pairs:
+      # `{'<`RunMode` enum>': 'error message', ...}`. If `failure` is a dict,
+      # retrieve the error message corresponding to the `RunMode`.
+      if isinstance(failure, dict):
+        if mode in failure.keys():
+          err_msg = failure[mode]
+
+        # Get a list of `RunMode` enums from `failure` (dict) by getting the
+        # keys to make it consistent with when `failure` is a list.
+        failure = failure.keys()
+
       if mode in failure:
-        with self.assertRaisesWithPredicateMatch(BaseException, '.*'):
+        with self.assertRaisesWithPredicateMatch(BaseException, err_msg):
           self._deep_equal(f(*arg), out)
       else:
-        self._deep_equal(f(*arg), out)
+        # Make sure `_deep_equal` returns True. Otherwise, mismatching results
+        # (between `f(*arg)` and `out`) will not be caught.
+        self.assertTrue(self._deep_equal(f(*arg), out))
 
-  def _generic_test(self, f_raw, examples):
+  def _generic_test(self,
+                    f_raw,
+                    examples,
+                    input_signature=None,
+                    skip_modes=None):
     """Test a function `f_raw` against all tests `examples`.
 
     Args:
       f_raw: a callable.
       examples: A list of `Example` named tuples.
+      input_signature: Input signature to tf.function.
+      skip_modes: A list of `RunMode` enums to entirely skip testing in the
+        specified `RunMode`s. This is necessary when things fail in a certain
+        `RunMode` even before executing the function (e.g. during saving or
+        loading in `RunMode.SAVED` mode).
     """
-    self.recordProperty('f', tf_inspect.getsource(f_raw))
+    f_tf = None
+    if not skip_modes:
+      skip_modes = []
+
+    if tf_inspect.isfunction(f_raw):
+      self.recordProperty('f', tf_inspect.getsource(f_raw))
+    else:
+      self.recordProperty('f', tf_inspect.getdoc(f_raw))
+
     for arg, out, failure, bugs in examples:
       del out
-      self.recordProperty('Input "%r"' % arg, {'not-working': failure,
-                                               'bugs': bugs})
+      self.recordProperty('Input "{}"'.format(arg), {
+          'not-working': failure,
+          'bugs': bugs
+      })
 
     # Run the function without tf.function
-    self._run_and_check(f_raw, RunMode.RAW, examples)
+    if RunMode.RAW not in skip_modes:
+      self._run_and_check(f_raw, RunMode.RAW, examples)
+
     # TF Function
-    f_tf = tf.function(f_raw)
-    self._run_and_check(f_tf, RunMode.FUNCTION, examples)
+    if RunMode.FUNCTION not in skip_modes:
+      f_tf = tf.function(f_raw, input_signature=input_signature)
+      self._run_and_check(f_tf, RunMode.FUNCTION, examples)
+
     # XLA Function
-    f_xla = tf.function(f_raw, experimental_compile=True)
-    self._run_and_check(f_xla, RunMode.XLA, examples)
+    if RunMode.XLA not in skip_modes:
+      f_xla = tf.function(
+          f_raw, input_signature=input_signature, experimental_compile=True)
+      self._run_and_check(f_xla, RunMode.XLA, examples)
+
     # Write a saved model and try to run it
-    module = tf.Module()
-    module.f = f_tf
-    saved_model_dir = tempfile.gettempdir()
-    tf.saved_model.save(module, saved_model_dir)
-    module_loaded = tf.saved_model.load(saved_model_dir)
-    self._run_and_check(module_loaded.f, RunMode.SAVED, examples)
+    if RunMode.SAVED not in skip_modes:
+      module = tf.Module()
+      if f_tf:
+        module.f = f_tf
+      else:
+        module.f = tf.function(f_raw, input_signature=input_signature)
+
+      saved_model_dir = tempfile.gettempdir()
+      tf.saved_model.save(module, saved_model_dir)
+      module_loaded = tf.saved_model.load(saved_model_dir)
+      self._run_and_check(module_loaded.f, RunMode.SAVED, examples)
 
 
 if __name__ == '__main__':

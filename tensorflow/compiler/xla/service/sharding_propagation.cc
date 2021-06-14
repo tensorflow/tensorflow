@@ -185,6 +185,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kCos:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
@@ -236,6 +237,8 @@ const HloInstruction* PickRepresentativeOperand(
     // There is no suitable operand for the rest of the opcodes.
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -329,6 +332,7 @@ bool SupportSpatialPartitioning(const HloInstruction* instruction,
     case HloOpcode::kRngBitGenerator:
       return true;
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
       // Only if channel_id is not specified.
       return instruction->channel_id() == absl::nullopt;
     case HloOpcode::kParameter:
@@ -1601,7 +1605,8 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
       } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
                  // Cross-replica AllReduces don't have a channel_id, and we
                  // don't enforce any invariant about their device assignment.
-                 (opcode == HloOpcode::kAllReduce &&
+                 ((opcode == HloOpcode::kAllReduce ||
+                   opcode == HloOpcode::kAllReduceScatter) &&
                   instruction->channel_id())) {
         channel_instruction = instruction;
         unique_device = device;

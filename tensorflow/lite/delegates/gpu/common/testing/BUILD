@@ -20,19 +20,3 @@ cc_library(
         "@com_google_absl//absl/memory",
     ],
 )
-
-cc_library(
-    name = "tflite_model_reader",
-    srcs = ["tflite_model_reader.cc"],
-    hdrs = ["tflite_model_reader.h"],
-    deps = [
-        "//tensorflow/lite:framework_lib",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:model_builder",
-        "//tensorflow/lite/delegates/gpu/common:model_transformer",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
-    ],
-)

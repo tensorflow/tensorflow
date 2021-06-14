@@ -211,6 +211,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:optional",
+        "@llvm-project//mlir:IR",
     ],
 )
 

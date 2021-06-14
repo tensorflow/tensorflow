@@ -29,6 +29,19 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   ];
 }
 
+def TensorFlowEnsureStaticShapesPass : FunctionPass<"tf-ensure-static-shapes"> {
+  let summary = "Performs checks that the whole module does not contain dynamic shapes.";
+
+  let description = [{
+    This pass performs check that none of the ops in the MLIR module
+    have dynamic shapes.
+    Note, the pass is created temporary to stage the rollout of the second
+    phase of the MLIR bridge and will be deleted after the rollout stage is completed.
+  }];
+
+  let constructor = "TF::CreateTFEnsureStaticShapesPass()";
+}
+
 def ExecutorGraphPruningPass : FunctionPass<"tf-executor-graph-pruning"> {
   let summary = "Prunes unreachable ops in a tf_executor.graph";
 
@@ -858,77 +871,8 @@ def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-
   let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
 }
 
-def DeviceAttributeToLaunchPass : FunctionPass<"tf-device-attribute-to-launch"> {
-  let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
-
-  let description = [{
-    This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
-    the same device attribute.
-
-    For example, the following:
-
-    ```mlir
-    func @single_op_launch() {
-      %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
-      return %a
-    }
-    ```
-
-    will be transformed into:
-
-    ```mlir
-    func @single_op_launch() {
-      %1 = tf_device.launch() ( {
-        %a = "tf.opA"() : () -> tensor<i1>
-        tf_device.return %a
-      }) {device = "CPU:0"} : () -> tensor<i1>
-      return %1
-    }
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
-}
-
-def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
-  let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
-
-  let description = [{
-    This pass takes ops wrapped in a tf_device.launch op with host device
-    assignment extracts them from launch and adds an `_xla_outside_compilation`
-    attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
-
-    A simple example:
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf_device.launch"() {
-          "tf.B"()
-          tf_device.return
-        } {device = "TPU_REPLICATED_HOST"} : () -> ()
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-
-    Would become the following ops (unimportant attribute, type are omitted):
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf.B"() {_xla_outside_compilation = "cluster1"}
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
-}
-
 def TensorDeviceCopyConversionPass : FunctionPass<"tf-tensor-device-copy"> {
-  let summary = "Fold the tf.Identity op if the op has the same device as its operand";
+  let summary = "Fold the tf.Identity op and the tf.IdentityN op if the op has the same device as its operand";
 
   let constructor = "TF::CreateTensorDeviceCopyConversionPass()";
 }
@@ -1107,4 +1051,140 @@ def LowerQuantizedPass : FunctionPass<"tf-lower-quantized"> {
   }];
 
   let constructor = "TF::CreateLowerQuantizedPass()";
+}
+
+def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch", "ModuleOp"> {
+  let summary = "Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.";
+
+  let description = [{
+    This pass wraps ops with the same `_xla_outside_compilation`
+    attribute value in a tf_device.launch op with host device assignment.
+
+    A simple example:
+
+    ```mlir
+      "tf_device.cluster"() ( {
+        "tf.A"()
+        "tf.B"() {_xla_outside_compilation = "cluster1"}
+        "tf.C"()
+        tf_device.return
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+    ```
+
+    Would become the following ops (unimportant attribute, type are omitted):
+
+    ```mlir
+      "tf_device.cluster"() ( {
+        "tf.A"()
+        "tf_device.launch"() {
+          "tf.B"() {_xla_outside_compilation = "cluster1"}
+          tf_device.return
+        } {device = "TPU_REPLICATED_HOST"} : () -> ()
+        "tf.C"()
+        tf_device.return
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+    ```
+  }];
+
+  let constructor = "TFTPU::CreateOutsideCompiledToHostLaunchPass()";
+}
+
+def TPUHostComputationExpansionPass : FunctionPass<"tf-tpu-host-computation-expansion"> {
+  let summary = "Expands host computation before and after TPU computation.";
+
+  let description = [{
+    This pass expands outside compilation attributes to Identity/Cast ops
+    at the head of TPU computation if it's only used by outside compiled ops.
+  }];
+
+  let constructor = "TFTPU::CreateTPUHostComputationExpansionPass()";
+}
+
+def TPUUpdateEmbeddingEnqueueOpInputsPass : FunctionPass<"tf-tpu-update-embedding-enqueue-op-inputs"> {
+  let summary = "Updates inputs to TPU embedding enqueue ops depending on whether graph is in training mode or in evaluation mode.";
+
+  let description = [{
+    Updates inputs to TPU embedding enqueue ops depending on whether graph
+    is in training mode or in evaluation mode.
+  }];
+
+  let constructor = "TFTPU::CreateTPUUpdateEmbeddingEnqueueOpInputsPass()";
+}
+
+def DropWhileShapeInvariantPass : FunctionPass<"tf-drop-while-shape-invariant"> {
+  let summary = "Drop `shape_invariant` attrbute from While/WhileRegion ops.";
+
+  let description = [{
+    Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op. This
+    would allow shape inference pass to further refine operand/result shapes of
+    these ops. This is only safe to do when compiling to XLA.
+  }];
+
+  let constructor = "TF::CreateDropWhileShapeInvariantPass()";
+}
+
+def DropWhileShapeInvariantInDeviceClusterPass : FunctionPass<"tf-drop-while-shape-invariant-in-device-cluster"> {
+  let summary = "Drop `shape_invariant` attrbute from While/WhileRegion ops inside device cluster.";
+
+  let description = [{
+    Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
+    inside device cluster. This would allow shape inference pass to further
+    refine operand/result shapes of these ops. This is only safe to do when
+    compiling to XLA.
+  }];
+
+  let constructor = "TF::CreateDropWhileShapeInvariantInDeviceClusterPass()";
+}
+
+def TPUCleanupClusterAttributesPass : Pass<"tf-tpu-cleanup-cluster-attributes", "ModuleOp"> {
+  let summary = "Eliminate _tpu_replicate and other attributes from ops in a cluster";
+
+  let description = [{
+    This pass eliminate `_tpu_replicate` and `device` attribute on operations
+    that are contained in a tf_device.cluster op.
+  }];
+
+  let constructor = "TFTPU::CreateTPUClusterCleanupAttributesPass()";
+}
+
+def TPUExtractHeadTailOutsideCompilationPass : Pass<"tf-tpu-extract-head-tail-outside-compilation", "ModuleOp"> {
+  let summary = "Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.";
+
+  let description = [{
+    This pass extracts a CPU computation cluster with `_xla_outside_compilation`
+    annotation from the head or tail of a TPU cluster.
+
+    For example:
+
+    ```mlir
+      %cluster = "tf_device.cluster"() ( {
+        %a = "tf.A"(%arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+        %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
+        %c = "tf.C"(%b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+        tf_device.return %c : tensor<i32>
+      }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
+      return %cluster : tensor<i32>
+    ```
+
+    becomes:
+
+    ```mlir
+    %0 = "tf_device.launch"() ( {
+      %3 = "tf.A"(%arg0) : (tensor<i32>) -> tensor<i32>
+      tf_device.return %3 : tensor<i32>
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+    %1 = "tf_device.cluster"() ( {
+      %3 = "tf.B"(%0) : (tensor<i32>) -> tensor<i32>
+      tf_device.return %3 : tensor<i32>
+    }) {device_assignment = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = ""} : () -> tensor<i32>
+    %2 = "tf_device.launch"() ( {
+      %3 = "tf.C"(%1) : (tensor<i32>) -> tensor<i32>
+      tf_device.return %3 : tensor<i32>
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+    return %2 : tensor<i32>
+
+    ```
+  }];
+
+  let constructor = "TFTPU::CreateTPUExtractHeadTailOutsideCompilationPass()";
 }

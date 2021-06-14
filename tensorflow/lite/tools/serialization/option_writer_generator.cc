@@ -87,6 +87,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteHashtableFindParams",
                                       "TfLiteHashtableImportParams",
                                       "TfLiteHashtableSizeParams",
+                                      "TfLiteConv3DTransposeParams",
                                       nullptr};
 }  // namespace
 
@@ -171,6 +172,7 @@ class OpOptionData {
     op_to_option_["UNIDIRECTIONAL_SEQUENCE_RNN"] = "SequenceRNNOptions";
     op_to_option_["MAXIMUM"] = "MaximumMinimumOptions";
     op_to_option_["MINIMUM"] = "MaximumMinimumOptions";
+    op_to_option_["CONV_3D_TRANSPOSE"] = "Conv3DOptions";
 
     // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.

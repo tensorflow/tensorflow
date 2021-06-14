@@ -67,9 +67,9 @@ class GraphOptimizer {
   // Method invoked by the framework so that it can provide feedback
   // on how well the "optimized_graph" (produced as *optimized_graph from a
   // call to Optimize) performed.  Lower "result" scores are better.
+  // Note: This is deprecated and will be removed shortly.
   virtual void Feedback(Cluster* cluster, const GrapplerItem& item,
-                        const GraphDef& optimized_graph, double result) = 0;
-
+                        const GraphDef& optimized_graph, double result) {}
   // Set deadline in microseconds since epoch. A value of zero means no
   // deadline.
   void set_deadline_usec(uint64 deadline_usec) {

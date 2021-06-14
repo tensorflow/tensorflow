@@ -627,6 +627,23 @@ class EighTridiagonalTest(test.TestCase):
         self.assertAllClose(
             eigvals_all[first:(last + 1)], eigvals_value, atol=atol)
 
+  def test_extreme_eigenvalues_test(self):
+    for dtype in [
+        np.float32,
+        np.float64,
+        np.complex64,
+        np.complex128,
+    ]:
+      huge = 0.33 * np.finfo(dtype).max
+      tiny = 3 * np.finfo(dtype).tiny
+      for (a, b) in [(tiny, tiny), (huge, np.sqrt(huge))]:
+        alpha = np.array([-a, -np.sqrt(a), np.sqrt(a), a]).astype(dtype)
+
+        beta = b * np.ones([3], dtype=dtype)
+        if np.issubdtype(alpha.dtype, np.complexfloating):
+          beta += 1j * beta
+        self.run_test(alpha, beta)
+
   def test_float32(self):
     dtype = np.float32
     self.run_small_tests(dtype)

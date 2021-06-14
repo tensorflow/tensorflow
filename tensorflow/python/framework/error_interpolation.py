@@ -47,9 +47,13 @@ _FRAMEWORK_COMMON_PREFIX = os.path.dirname(
 
 # Sub-directories under the common prefix that are considered part of the
 # framework.
+# Note that keras code lives outside of tensorflow directory, we need to walk
+# up the directory tree and find it.
 _FRAMEWORK_PATH_PREFIXES = [
     os.path.join(_FRAMEWORK_COMMON_PREFIX, "python") + os.sep,
     os.path.join(_FRAMEWORK_COMMON_PREFIX, "contrib") + os.sep,
+    os.path.join(os.path.dirname(_FRAMEWORK_COMMON_PREFIX),
+                 "py", "keras") + os.sep,
 ]
 
 # Patterns of filename patterns that should be considered internal to

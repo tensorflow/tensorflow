@@ -258,7 +258,9 @@ BENCHMARK_ALL_SRCS := \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS) \
 	$(CMD_LINE_TOOLS_SRCS) \
-	$(EVALUATION_UTILS_SRCS)
+	$(EVALUATION_UTILS_SRCS) \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/default_execution_provider.cc
 
 BENCHMARK_MAIN_SRC := $(BENCHMARK_SRCS_DIR)/benchmark_main.cc
 BENCHMARK_PERF_OPTIONS_SRC := \
@@ -268,8 +270,7 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(BENCHMARK_MAIN_SRC) \
 	$(BENCHMARK_PERF_OPTIONS_SRC) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc \
-	$(DELEGATE_PROVIDER_SRCS_DIR)/default_execution_provider.cc \
-	$(DELEGATE_PROVIDER_SRCS_DIR)/external_delegate_provider.cc \
+  $(DELEGATE_PROVIDER_SRCS_DIR)/external_delegate_provider.cc \
 	$(DELEGATE_PROVIDER_SRCS_DIR)/gpu_delegate_provider.cc \
 	$(DELEGATE_PROVIDER_SRCS_DIR)/hexagon_delegate_provider.cc \
 	$(DELEGATE_PROVIDER_SRCS_DIR)/nnapi_delegate_provider.cc \

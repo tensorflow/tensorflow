@@ -92,7 +92,8 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   return Status::OK();
 }
 
-REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, CompositeOpExpansion);
+REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, 20000,
+                 CompositeOpExpansion);
 
 }  // namespace tfr
 }  // namespace tensorflow

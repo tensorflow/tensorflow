@@ -35,8 +35,6 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::testing::UnorderedElementsAre;
-
 TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
   constexpr int64 kStepNum = 123;
   constexpr int64 kStepId = 0;
@@ -160,9 +158,12 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   EXPECT_EQ(device_plane_visitor.GetStatType(
                 device_plane->lines(0).events(0).stats(1).metadata_id()),
             StatType::kGroupId);
-  EXPECT_EQ(device_plane->lines(0).events(0).stats(1).int64_value(), 10);
+  // group_id is assigned using a list of consecutive number starting from 0.
+  EXPECT_EQ(device_plane->lines(0).events(0).stats(1).int64_value(), 0);
   EXPECT_EQ(group_metadata_map.size(), 1);
-  EXPECT_EQ(group_metadata_map.at(10).name, "10");
+  // group name of ExecutorState::Process event is assigned using iter_num.
+  ASSERT_TRUE(group_metadata_map.contains(0));
+  EXPECT_EQ(group_metadata_map.at(0).name, "10");
 }
 
 // When there are multiple TF loops, group_id is assigned in the order of TF
@@ -205,10 +206,19 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   const GroupMetadataMap& group_metadata_map =
       event_forest.GetGroupMetadataMap();
   EXPECT_EQ(group_metadata_map.size(), 4);
-  EXPECT_TRUE(group_metadata_map.count(10));
-  EXPECT_TRUE(group_metadata_map.count(11));
-  EXPECT_TRUE(group_metadata_map.count(12));
-  EXPECT_TRUE(group_metadata_map.count(13));
+  // group_id is assigned using a list of consecutive number starting from 0,
+  // event with an earlier start time will get a smaller group_id.
+  // group name of ExecutorState::Process event is assigned using iter_num.
+  ASSERT_TRUE(group_metadata_map.contains(0));
+  // iter_num 10 starts at timestamp 20, so it has the smallest group_id.
+  EXPECT_EQ(group_metadata_map.at(0).name, "10");
+  ASSERT_TRUE(group_metadata_map.contains(1));
+  EXPECT_EQ(group_metadata_map.at(1).name, "11");
+  ASSERT_TRUE(group_metadata_map.contains(2));
+  EXPECT_EQ(group_metadata_map.at(2).name, "0");
+  ASSERT_TRUE(group_metadata_map.contains(3));
+  // iter_num 1 starts at timestamp 320, so it has the largest group_id.
+  EXPECT_EQ(group_metadata_map.at(3).name, "1");
 }
 
 TEST(GroupEventsTest, GroupFunctionalOp) {

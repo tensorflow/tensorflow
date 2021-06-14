@@ -7496,6 +7496,25 @@ ENTRY %module {
   EXPECT_THAT(root, reshape);
 }
 
+TEST_F(SpmdPartitioningTest, GatherRegressionTest1) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[1,4] parameter(0), sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  %iota.10 = s32[4]{0} iota(), iota_dimension=0, sharding={devices=[8]0,1,2,3,4,5,6,7}
+  ROOT %gather.44 = s32[1,4]{1,0} gather(%parameter.0, %iota.10),
+    offset_dims={0}, collapsed_slice_dims={1}, start_index_map={1}, index_vector_dim=1,
+    slice_sizes={1,1}, sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Shape("s32[1,1]"), op::Parameter());
+  EXPECT_THAT(root, op::Gather(param0, _));
+}
+
 TEST_F(SpmdPartitioningTest, WindowedEinsumPreferMemoryFootprint) {
   absl::string_view hlo_string = R"(
 HloModule module

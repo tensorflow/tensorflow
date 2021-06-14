@@ -344,13 +344,14 @@ class FakeMemorySpaceAssignmentCostAnalysis
 
   float GetInstructionElapsedInAlternateMemory(
       const HloInstruction& instruction,
-      absl::optional<int64> operand_in_alternate_mem,
-      bool output_in_alternate_mem) const override {
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem,
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem) const override {
     if (get_instruction_elapsed_in_alternate_memory_override_) {
       return get_instruction_elapsed_in_alternate_memory_override_(
-          instruction, operand_in_alternate_mem, output_in_alternate_mem);
+          instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
     }
-    if (operand_in_alternate_mem) {
+    if (!operands_in_alternate_mem.empty()) {
       return 0.5;
     } else {
       return 1.0;
@@ -371,7 +372,9 @@ class FakeMemorySpaceAssignmentCostAnalysis
     get_instruction_elapsed_override_ = function;
   }
   void SetOverrideForGetInstructionElapsedInAlternateMemory(
-      std::function<float(const HloInstruction&, absl::optional<int64>, bool)>
+      std::function<float(const HloInstruction&,
+                          absl::Span<const std::pair<int64_t, ShapeIndex>>,
+                          absl::Span<const ShapeIndex>)>
           function) {
     get_instruction_elapsed_in_alternate_memory_override_ = function;
   }
@@ -396,7 +399,9 @@ class FakeMemorySpaceAssignmentCostAnalysis
  private:
   std::function<float(const HloInstruction&)>
       get_instruction_elapsed_override_ = nullptr;
-  std::function<float(const HloInstruction&, absl::optional<int64>, bool)>
+  std::function<float(const HloInstruction&,
+                      absl::Span<const std::pair<int64_t, ShapeIndex>>,
+                      absl::Span<const ShapeIndex>)>
       get_instruction_elapsed_in_alternate_memory_override_ = nullptr;
   std::function<float(const Shape&)> get_async_copy_elapsed_override_ = nullptr;
 };

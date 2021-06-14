@@ -168,6 +168,7 @@ void HloModule::ReplaceComputations(
     for (auto* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kAllReduce:
+        case HloOpcode::kAllReduceScatter:
         case HloOpcode::kCall:
         case HloOpcode::kMap:
         case HloOpcode::kReduce:

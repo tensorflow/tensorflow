@@ -93,6 +93,12 @@ struct TFE_MonitoringStringGauge1 : TFE_MonitoringGauge<tensorflow::string, 1> {
 struct TFE_MonitoringStringGauge2 : TFE_MonitoringGauge<tensorflow::string, 2> {
   using TFE_MonitoringGauge::TFE_MonitoringGauge;
 };
+struct TFE_MonitoringStringGauge3 : TFE_MonitoringGauge<tensorflow::string, 3> {
+  using TFE_MonitoringGauge::TFE_MonitoringGauge;
+};
+struct TFE_MonitoringStringGauge4 : TFE_MonitoringGauge<tensorflow::string, 4> {
+  using TFE_MonitoringGauge::TFE_MonitoringGauge;
+};
 
 struct TFE_MonitoringBoolGauge0 : TFE_MonitoringGauge<bool, 0> {
   using TFE_MonitoringGauge::TFE_MonitoringGauge;

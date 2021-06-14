@@ -33,13 +33,11 @@ class TridiagonalSolveOp : public XlaOpKernel {
     bool partial_pivoting = false;
     OP_REQUIRES_OK(ctx,
                    GetNodeAttr(def(), "partial_pivoting", &partial_pivoting));
-    if (partial_pivoting) {
-      ctx->SetStatus(errors::Unimplemented(
-          "Current implementation does not yet support pivoting."));
-      return;
-    }
+    xla::tridiagonal::SolverAlgorithm algo =
+        partial_pivoting ? xla::tridiagonal::kPartialPivoting
+                         : xla::tridiagonal::kThomas;
 
-    auto result = xla::tridiagonal::ThomasSolver(diagonals, rhs);
+    auto result = xla::tridiagonal::TridiagonalSolver(algo, diagonals, rhs);
     if (!result.ok()) {
       ctx->SetStatus(result.status());
       return;

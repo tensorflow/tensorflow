@@ -227,7 +227,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
   def _determinant(self):
     # For householder transformations, the determinant is -1.
-    return -array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)
+    return -array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)  # pylint: disable=invalid-unary-operand-type
 
   def _log_abs_determinant(self):
     # Orthogonal matrix -> log|Q| = 0.
@@ -261,7 +261,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     neg_shape = array_ops.concat([result_shape[:-1], [1]], axis=-1)
     eigvals = array_ops.ones(shape=ones_shape, dtype=self.dtype)
     eigvals = array_ops.concat(
-        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)
+        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)  # pylint: disable=invalid-unary-operand-type
     return eigvals
 
   def _cond(self):

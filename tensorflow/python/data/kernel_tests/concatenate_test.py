@@ -148,6 +148,13 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(TypeError, "have different types"):
       input_dataset.concatenate(dataset_to_concatenate)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testConcatenateWindows(self):
+    a = dataset_ops.Dataset.range(5).window(1)
+    b = dataset_ops.Dataset.range(5, 10).window(1)
+    c = a.concatenate(b).flat_map(lambda x: x)
+    self.assertDatasetProduces(c, list(range(10)))
+
 
 class ConcatenateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
