@@ -25,6 +25,7 @@ import threading
 import warnings
 import weakref
 
+from absl import logging
 import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
@@ -3660,9 +3661,16 @@ class Options(options_lib.OptionsBase):
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=threading_options.ThreadingOptions,
-      docstring=
-      "The threading options associated with the dataset. See "
-      "`tf.data.experimental.ThreadingOptions` for more details.",
+      docstring="The threading options associated with the dataset. See "
+      "`tf.data.experimental.ThreadingOptions` for more details."
+      "This option is deprecated. Please use `threading` instead.",
+      default_factory=threading_options.ThreadingOptions)
+
+  threading = options_lib.create_option(
+      name="threading",
+      ty=threading_options.ThreadingOptions,
+      docstring="The threading options associated with the dataset. See "
+      "`tf.data.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
 
   experimental_external_state_policy = options_lib.create_option(
@@ -3687,7 +3695,19 @@ class Options(options_lib.OptionsBase):
     pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
-    pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
+    # (kvignesh1420): We try to keep the values of `threading` and
+    # `experimental_threading` the same, to prevent unexpected behaviours
+    # and ensure backward-compatibility.
+    for attr in filter(lambda opt: not opt.startswith("_"),
+                       dir(self.threading)):
+      t_val = getattr(self.threading, attr)
+      et_val = getattr(self.experimental_threading, attr)
+      if t_val != et_val:
+        logging.warning(
+            "overriding `experimental_threading.%s = %s` "
+            "with `threading.%s = %s", attr, et_val, attr, t_val)
+    self.experimental_threading = self.threading
+    pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
   def _from_proto(self, pb):
@@ -3702,6 +3722,7 @@ class Options(options_lib.OptionsBase):
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
     self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
+    self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -3710,6 +3731,7 @@ class Options(options_lib.OptionsBase):
     self.experimental_distribute._set_mutable(mutable)
     self.experimental_optimization._set_mutable(mutable)
     self.experimental_threading._set_mutable(mutable)
+    self.threading._set_mutable(mutable)
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
