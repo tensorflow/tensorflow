@@ -717,3 +717,22 @@ ENTRY main {
                                       custom_call_target="foo",
                                       backend_config=""
 }
+
+// -----
+
+// CHECK: func @main
+// CHECK: "lmhlo.all_reduce_scatter"
+// CHECK{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+// CHECK-SAME: scatter_dimension = 0 : i64
+HloModule AllReduceScatter
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  input = f32[8]{0} parameter(0)
+  ROOT ars = f32[4]{0} all-reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+}
