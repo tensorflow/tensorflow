@@ -212,7 +212,6 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                   num_bytes, pool_, cuda_stream_)) {
     size_t free, total;
     cuMemGetInfo(&free, &total);
-    mutex_lock lock(lock_);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes
                << ": " << GetCudaErrorMessage(result)
                << "\n Free memory/Total memory: " << free << "/" << total;
