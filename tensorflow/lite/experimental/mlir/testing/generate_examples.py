@@ -36,6 +36,7 @@ from tensorflow.lite.experimental.mlir.testing.op_tests.complex_abs import make_
 from tensorflow.lite.experimental.mlir.testing.op_tests.cond import make_cond_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.control_dep import make_control_dep_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.conv3d import make_conv3d_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.conv3d_transpose import make_conv3d_transpose_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.conv_bias_activation import make_conv_bias_relu6_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.cumsum import make_cumsum_tests
 # Placeholder for make_dense_image_warp_tests import
