@@ -37,8 +37,10 @@ def GetTestConfigs():
   """
   test_configs = [("NDHWC", False), ("NDHWC", True)]
   if test.is_gpu_available(cuda_only=True):
-    # "NCHW" format is currently supported exclusively on CUDA GPUs.
-    test_configs += [("NCDHW", True)]
+    # "NCDHW" format is currently supported exclusively on CUDA GPUs.
+    # "NCDHW" format is currently not supported by MKL pooling ops. 
+    if not test_util.IsMklEnabled():
+       test_configs += [("NCDHW", True)]
   return test_configs
 
 
