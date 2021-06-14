@@ -121,13 +121,6 @@ Status ReorderDataDiscardingOps::OptimizeAndCollectStats(
   return Status::OK();
 }
 
-void ReorderDataDiscardingOps::Feedback(Cluster* cluster,
-                                        const GrapplerItem& item,
-                                        const GraphDef& optimize_output,
-                                        double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(ReorderDataDiscardingOps,
                             "reorder_data_discarding_ops");
 

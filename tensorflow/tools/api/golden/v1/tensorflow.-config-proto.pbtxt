@@ -241,6 +241,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_STRING
       }
+      field {
+        name: "fetch_remote_devices_in_multi_client"
+        number: 20
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       enum_type {
         name: "MlirBridgeRollout"
         value {

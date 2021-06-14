@@ -118,11 +118,11 @@ def TransformUnrankedHloPass : Pass<"mhlo-transform-unranked-hlo", "FuncOp"> {
   let constructor = "createTransformUnrankedHloPass()";
 }
 
-def MoveUpDynamicBroadcastsForFusionPass :
-    Pass<"mhlo-move-up-dynamic-broadcasts-for-fusion", "FuncOp"> {
-  let summary = "Move up dynamic broadcasts and shape computations to allow "
-      "for fusion across broadcasts.";
-  let constructor = "createMoveUpDynamicBroadcastsForFusionPass()";
+def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "FuncOp"> {
+  let summary = "Move dynamic broadcasts up over element-wise operations and "
+    "broadcast the operands rather than the result. This will eventually allow "
+    "for larger fusions.";
+  let constructor = "createBroadcastPropagationPass()";
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {

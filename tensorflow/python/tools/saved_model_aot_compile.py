@@ -266,7 +266,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       xla_flags = '--xla_cpu_multi_thread_eigen={}'.format(
           'true' if multithreading else 'false')
     else:
-      xla_flags += ',--xla_cpu_multi_thread_eigen={}'.format(
+      xla_flags += ' --xla_cpu_multi_thread_eigen={}'.format(
           'true' if multithreading else 'false')
     os.environ['XLA_FLAGS'] = xla_flags
 

@@ -3751,40 +3751,30 @@ GetFirstWorkingExecutionPlan(
                         .build();
   RETURN_MSG_IF_CUDNN_ERROR(heuristics);
 
-  bool use_fallback = kind != dnn::ConvolutionKind::INVALID;
-  std::unique_ptr<cudnn_frontend::EngineFallbackList> fallback_ptr;
-  if (use_fallback) {
-    cudnnBackendDescriptorType_t conv_mode = GetCudnnConvolutionType(kind);
-    auto fallback = cudnn_frontend::EngineFallbackListBuilder()
-                        .setOperationGraph(*op_graph)
-                        .setOperation(conv_mode)
-                        .build();
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-    fallback_ptr = std::unique_ptr<cudnn_frontend::EngineFallbackList>(
-        new cudnn_frontend::EngineFallbackList(std::move(fallback)));
-  }
+  cudnnBackendDescriptorType_t conv_mode = GetCudnnConvolutionType(kind);
+  auto fallback = cudnn_frontend::EngineFallbackListBuilder()
+                      .setOperationGraph(*op_graph)
+                      .setOperation(conv_mode)
+                      .build();
+  RETURN_MSG_IF_CUDNN_ERROR(fallback);
 
   auto engine_count = heuristics.getEngineConfigCount();
   auto& engine_config = heuristics.getEngineConfig(engine_count);
+  auto& fallback_list = fallback.getFallbackList();
 
   cudnn_frontend::EngineConfigList filtered_configs;
   if (RequireCudnnDeterminism()) {
     cudnn_frontend::filter(engine_config, filtered_configs,
                            IsNonDeterministicOrIsDownConverting);
-    if (use_fallback) {
-      auto& fallback_list = fallback_ptr->getFallbackList();
-      cudnn_frontend::filter(fallback_list, filtered_configs,
-                             IsNonDeterministicOrIsDownConverting);
-    }
+    cudnn_frontend::filter(fallback_list, filtered_configs,
+                           IsNonDeterministicOrIsDownConverting);
   } else {
     cudnn_frontend::filter(engine_config, filtered_configs,
                            IsDownConvertingInputs);
-    if (use_fallback) {
-      auto& fallback_list = fallback_ptr->getFallbackList();
-      cudnn_frontend::filter(fallback_list, filtered_configs,
-                             IsDownConvertingInputs);
-    }
+    cudnn_frontend::filter(fallback_list, filtered_configs,
+                           IsDownConvertingInputs);
   }
+
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
                     .setHandle(cudnn.handle())
@@ -4275,7 +4265,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
 
     SE_ASSIGN_OR_RETURN(
         current_plan,
-        GetFirstWorkingExecutionPlan(op_graph, dnn::ConvolutionKind::INVALID,
+        GetFirstWorkingExecutionPlan(op_graph, dnn::ConvolutionKind::FORWARD,
                                      cudnn, scratch_allocator));
   }
 
@@ -4462,16 +4452,29 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
                   .build();
   RETURN_MSG_IF_CUDNN_ERROR(heur);
 
-  auto& heur_configs = heur.getEngineConfig(heur.getEngineConfigCount());
+  auto fallback =
+      cudnn_frontend::EngineFallbackListBuilder()
+          .setOperationGraph(*op_graph)
+          .setOperation(GetCudnnConvolutionType(dnn::ConvolutionKind::FORWARD))
+          .build();
+  RETURN_MSG_IF_CUDNN_ERROR(fallback);
 
-  VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size();
+  auto& heur_configs = heur.getEngineConfig(heur.getEngineConfigCount());
+  auto& fallback_configs = fallback.getFallbackList();
+
+  VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size()
+          << "\nFallback engine configs size: " << fallback_configs.size();
 
   cudnn_frontend::EngineConfigList filtered_configs;
   if (RequireCudnnDeterminism()) {
     cudnn_frontend::filter(heur_configs, filtered_configs,
                            IsNonDeterministicOrIsDownConverting);
+    cudnn_frontend::filter(fallback_configs, filtered_configs,
+                           IsNonDeterministicOrIsDownConverting);
   } else {
     cudnn_frontend::filter(heur_configs, filtered_configs,
+                           IsDownConvertingInputs);
+    cudnn_frontend::filter(fallback_configs, filtered_configs,
                            IsDownConvertingInputs);
   }
 

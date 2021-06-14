@@ -281,7 +281,10 @@ def _default_inner_shape_for_pylist(pylist, ragged_rank):
     """Returns the inner shape for a python list `item`."""
     if not isinstance(item, (list, tuple)) and np.ndim(item) == 0:
       return ()
-    elif item:
+    # Note that we need this check here in case `item` is not a Python list but
+    # fakes as being one (pylist). For a scenario of this, see test added in
+    # https://github.com/tensorflow/tensorflow/pull/48945
+    elif len(item) > 0:  # pylint: disable=g-explicit-length-test
       return (len(item),) + get_inner_shape(item[0])
     return (0,)
 

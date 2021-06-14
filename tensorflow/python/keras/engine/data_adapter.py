@@ -1309,8 +1309,12 @@ class DataHandler(object):
 
     size = cardinality.cardinality(dataset)
     if size == cardinality.INFINITE and steps is None:
-      raise ValueError("When passing an infinitely repeating dataset, you "
-                       "must specify how many steps to draw.")
+      raise ValueError(
+          "When passing an infinitely repeating dataset, please specify a "
+          "`steps_per_epoch` value so that epoch level "
+          "callbacks continue to work. The value can be arbitrary, or a number "
+          "that you think correctly defines the size of an epoch. "
+          "Epoch-level callbacks will then be called at this interval.")
     if size >= 0:
       return size.numpy().item()
     return None

@@ -922,6 +922,8 @@ class IotaConverter : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     ShapedType result_shaped_type = GetHloOpResultType<isLHLO>(iota_op);
     if (!result_shaped_type) return failure();
+    result_shaped_type = this->typeConverter->convertType(result_shaped_type)
+                             .template dyn_cast<ShapedType>();
 
     auto result_element_type = result_shaped_type.getElementType();
     if (!result_element_type.isSignlessIntOrFloat()) return failure();
@@ -1075,36 +1077,42 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
   }
 };
 
-template <typename OpTy>
-class ConstConverter : public OpConversionPattern<OpTy> {
+class ConstConverterBuffer : public OpConversionPattern<lmhlo::ConstOp> {
  public:
-  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      OpTy const_op, ArrayRef<Value> /*args*/,
+      lmhlo::ConstOp const_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
     Location loc = const_op.getLoc();
-    auto value_attr = const_op.value().template cast<DenseElementsAttr>();
+    auto value_attr = const_op.value().cast<DenseElementsAttr>();
     if (value_attr.getType().getRank() != 0) return failure();
-    ReplaceConstOp(loc, const_op, value_attr, rewriter);
-    return success();
-  }
-
- private:
-  void ReplaceConstOp(Location loc, mhlo::ConstOp op,
-                      DenseElementsAttr value_attr,
-                      ConversionPatternRewriter& rewriter) const {
-    Value std_tensor_const = rewriter.create<mlir::ConstantOp>(loc, value_attr);
-    rewriter.replaceOp(op, {std_tensor_const});
-  }
-  void ReplaceConstOp(Location loc, lmhlo::ConstOp op,
-                      DenseElementsAttr value_attr,
-                      ConversionPatternRewriter& rewriter) const {
     Value std_scalar_const =
         rewriter.create<mlir::ConstantOp>(loc, value_attr.getValue({}));
-    rewriter.create<mlir::AffineStoreOp>(loc, std_scalar_const, op.getOperand(),
-                                         llvm::None);
-    rewriter.eraseOp(op);
+    rewriter.create<mlir::AffineStoreOp>(loc, std_scalar_const,
+                                         const_op.getOperand(), llvm::None);
+    rewriter.eraseOp(const_op);
+    return success();
+  }
+};
+
+class ConstConverterTensor : public OpConversionPattern<mhlo::ConstOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConstOp const_op, ArrayRef<Value> /*args*/,
+      ConversionPatternRewriter& rewriter) const final {
+    auto value_attr = const_op.value().cast<DenseElementsAttr>();
+    auto type =
+        typeConverter->convertType(const_op.getType()).cast<ShapedType>();
+    if (type != const_op.getType()) {
+      // Signedness conversion.
+      value_attr = value_attr.mapValues(type.getElementType(),
+                                        [](const APInt& i) { return i; });
+    }
+    rewriter.replaceOpWithNewOp<ConstantOp>(const_op, type, value_attr);
+    return success();
   }
 };
 
@@ -2289,7 +2297,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<BroadcastConverter<lmhlo::BroadcastOp>,
-                   ConstConverter<lmhlo::ConstOp>,
+                   ConstConverterBuffer,
                    ConvToLinalgConverter,
                    IotaConverter<lmhlo::IotaOp>,
                    LhloBroadcastInDimConverter,
@@ -2488,7 +2496,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
   // clang-format off
   patterns->insert<
       BroadcastConverter<mhlo::BroadcastOp, false>, ConcatenateConverter,
-      ConstConverter<mhlo::ConstOp>, HloDynamicBroadcastInDimConverter,
+      ConstConverterTensor, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
       IotaConverter<mhlo::DynamicIotaOp, false>,
       PointwiseToLinalgConverter<mhlo::AbsOp, false>,

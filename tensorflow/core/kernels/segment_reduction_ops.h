@@ -32,8 +32,10 @@ namespace tensorflow {
 
 class OpKernelContext;
 
-bool RequireDeterminism();
 bool DisableSegmentReductionOpDeterminismExceptions();
+
+// Type of SparseSegmentReduction operation to perform gradient of.
+enum class SparseSegmentReductionOperation { kSum, kMean, kSqrtN };
 
 namespace functor {
 
@@ -169,6 +171,25 @@ struct Highest {
   EIGEN_STRONG_INLINE T operator()() const {
     return Eigen::NumTraits<T>::highest();
   }
+};
+
+template <typename T, typename Index, typename SegmentId>
+struct SparseSegmentReductionFunctor {
+  Status operator()(OpKernelContext* context, bool is_mean, bool is_sqrtn,
+                    T default_value, typename TTypes<T, 2>::ConstTensor input,
+                    typename TTypes<Index>::ConstVec indices,
+                    typename TTypes<SegmentId>::ConstVec segment_ids,
+                    typename TTypes<T, 2>::Tensor output);
+};
+
+template <class Device, typename T, typename Index, typename SegmentId>
+struct SparseSegmentGradFunctor {
+  void operator()(OpKernelContext* context,
+                  SparseSegmentReductionOperation operation,
+                  typename TTypes<T>::ConstMatrix input_flat,
+                  typename TTypes<Index>::ConstVec indices_vec,
+                  typename TTypes<SegmentId>::ConstVec segment_vec,
+                  typename TTypes<T>::Matrix output_flat);
 };
 
 }  // namespace functor

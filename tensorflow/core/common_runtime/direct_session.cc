@@ -651,6 +651,7 @@ Status DirectSession::RunInternal(
   args.sync_on_finish = sync_on_finish_;
   args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
   args.run_all_kernels_inline = pool == nullptr;
+  args.start_time_usecs = start_time_usecs;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 

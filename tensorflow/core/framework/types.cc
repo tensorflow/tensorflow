@@ -14,15 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/types.h"
+
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-struct DataTypeHasher {
-  std::size_t operator()(const DataType& k) const {
+template <class T>
+struct IntCastHasher {
+  std::size_t operator()(const T& k) const {
     return std::hash<int>()(static_cast<int>(k));
   }
 };
@@ -30,23 +33,43 @@ struct DataTypeHasher {
 // Mapping from some of the DType fields, for backward compatibility. All other
 // dtypes are mapped to TFT_ANY, but can be added here if a counterpart is
 // defined.
-auto* DT_TO_FT = new std::unordered_map<DataType, FullTypeId, DataTypeHasher>({
-    {DT_FLOAT, TFT_FLOAT},
-    {DT_DOUBLE, TFT_DOUBLE},
-    {DT_INT32, TFT_INT32},
-    {DT_UINT8, TFT_UINT8},
-    {DT_INT16, TFT_INT16},
-    {DT_INT8, TFT_INT8},
-    {DT_STRING, TFT_STRING},
-    {DT_COMPLEX64, TFT_COMPLEX64},
-    {DT_INT64, TFT_INT64},
-    {DT_BOOL, TFT_BOOL},
-    {DT_UINT16, TFT_UINT16},
-    {DT_COMPLEX128, TFT_COMPLEX128},
-    {DT_HALF, TFT_HALF},
-    {DT_UINT32, TFT_UINT32},
-    {DT_UINT64, TFT_UINT64},
-});
+auto* DT_TO_FT =
+    new std::unordered_map<DataType, FullTypeId, IntCastHasher<DataType>>({
+        {DT_FLOAT, TFT_FLOAT},
+        {DT_DOUBLE, TFT_DOUBLE},
+        {DT_INT32, TFT_INT32},
+        {DT_UINT8, TFT_UINT8},
+        {DT_INT16, TFT_INT16},
+        {DT_INT8, TFT_INT8},
+        {DT_STRING, TFT_STRING},
+        {DT_COMPLEX64, TFT_COMPLEX64},
+        {DT_INT64, TFT_INT64},
+        {DT_BOOL, TFT_BOOL},
+        {DT_UINT16, TFT_UINT16},
+        {DT_COMPLEX128, TFT_COMPLEX128},
+        {DT_HALF, TFT_HALF},
+        {DT_UINT32, TFT_UINT32},
+        {DT_UINT64, TFT_UINT64},
+    });
+
+auto* FT_TO_DT =
+    new std::unordered_map<FullTypeId, DataType, IntCastHasher<FullTypeId>>({
+        {TFT_FLOAT, DT_FLOAT},
+        {TFT_DOUBLE, DT_DOUBLE},
+        {TFT_INT32, DT_INT32},
+        {TFT_UINT8, DT_UINT8},
+        {TFT_INT16, DT_INT16},
+        {TFT_INT8, DT_INT8},
+        {TFT_STRING, DT_STRING},
+        {TFT_COMPLEX64, DT_COMPLEX64},
+        {TFT_INT64, DT_INT64},
+        {TFT_BOOL, DT_BOOL},
+        {TFT_UINT16, DT_UINT16},
+        {TFT_COMPLEX128, DT_COMPLEX128},
+        {TFT_HALF, DT_HALF},
+        {TFT_UINT32, DT_UINT32},
+        {TFT_UINT64, DT_UINT64},
+    });
 
 void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t) {
   t->set_type_id(TFT_TENSOR);
@@ -58,6 +81,18 @@ void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t) {
     arg->set_type_id(mapped->second);
   } else {
     arg->set_type_id(TFT_ANY);
+  }
+}
+
+void map_tensor_to_dtype(const FullTypeDef& t, DataType* dtype) {
+  if (t.type_id() != TFT_TENSOR) {
+    // TODO(b/190226974): Handle variants and resources.
+    *dtype = DT_INVALID;
+  } else if (t.args().empty()) {
+    *dtype = DT_INVALID;
+  } else {
+    auto it = FT_TO_DT->find(t.args()[0].type_id());
+    *dtype = it == FT_TO_DT->end() ? DT_INVALID : it->second;
   }
 }
 

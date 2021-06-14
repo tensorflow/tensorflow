@@ -1407,6 +1407,19 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_get_vocabulary_no_special_tokens(self):
+    vocab_data = ["", "[OOV]", "wind", "and", "fire"]
+    layer = index_lookup.IndexLookup(
+        max_tokens=5,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        dtype=dtypes.string)
+    layer.set_vocabulary(vocab_data)
+    returned_vocab = layer.get_vocabulary(include_special_tokens=False)
+    self.assertAllEqual(returned_vocab, ["wind", "and", "fire"])
+    self.assertAllEqual(layer.vocabulary_size(), 5)
+
   def test_vocab_with_max_cap(self):
     vocab_data = ["", "[OOV]", "wind", "and", "fire"]
     layer = index_lookup.IndexLookup(

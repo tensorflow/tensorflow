@@ -266,6 +266,30 @@ TEST_F(BinaryOpsTest, DivComplex128SpecialCases) {
 }
 #endif
 
+/// Test `tf.DivNoNan`.
+
+template <typename T>
+T baseline_div_no_nan(T lhs, T rhs) {
+  return rhs == T(0) ? T(0) : lhs / rhs;
+}
+
+GENERATE_DEFAULT_TESTS(DivNoNan,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_div_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(DivNoNan,
+                       /*test_name=*/Float, float, float, baseline_div_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(DivNoNan,
+                       /*test_name=*/Double, double, double,
+                       baseline_div_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    DivNoNan,
+    /*test_name=*/ZeroDenominator, float, float, test::DefaultInput<float>(),
+    test::InputAsVector<float>({0}), baseline_div_no_nan,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.Equal`.
 
 template <typename T>
@@ -713,6 +737,29 @@ GENERATE_DEFAULT_TESTS(RealDiv,
                        /*test_name=*/Double, double, double, baseline_div,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.ReluGrad`.
+
+template <typename T>
+T baseline_relu_grad(T lhs, T rhs) {
+  return rhs > T(0) ? lhs : 0;
+}
+
+// We cannot compare with strictly equal here, because the Eigen based kernel
+// returns -0.0 in some cases where it should return 0.0 (it copies the sign
+// from gradients when returning 0, but not for 'remainder' elements).
+GENERATE_DEFAULT_NO_BROADCASTING_TESTS_2(
+    ReluGrad, /*test_name=*/Half, /*T=*/Eigen::half,
+    /*BaselineT=*/float, /*OutT=*/Eigen::half,
+    /*BaselineOutT=*/float, test::DefaultInput<Eigen::half>(),
+    test::DefaultInput<Eigen::half>(), baseline_relu_grad,
+    test::OpsTestConfig())
+GENERATE_DEFAULT_NO_BROADCASTING_TESTS(ReluGrad,
+                                       /*test_name=*/Float, float, float,
+                                       baseline_relu_grad);
+GENERATE_DEFAULT_NO_BROADCASTING_TESTS(ReluGrad,
+                                       /*test_name=*/Double, double, double,
+                                       baseline_relu_grad);
+
 /// Test `tf.RightShift`.
 
 template <typename T>
@@ -827,7 +874,7 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
 
 template <typename T>
 T baseline_xdivy(T x, T y) {
-  return x == 0 ? x : x / y;
+  return x == T(0) ? x : x / y;
 }
 
 GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Half, Eigen::half, float,
@@ -839,6 +886,18 @@ GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Float, float, float, baseline_xdivy,
 GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Double, double, double,
                        baseline_xdivy,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+
+// The following tests don't work with Eigen kernels if the Eigen kernels are
+// compiled with nvcc.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_xdivy,
+                       test::OpsTestConfig().ATol(1e-11).RTol(1e-2))
+GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_xdivy,
+                       test::OpsTestConfig().ATol(1e-11).RTol(1e-2))
+#endif
 
 /// Test `tf.Zeta`.
 

@@ -906,8 +906,8 @@ func @reverse(%input: tensor<2x3xf32>) -> tensor<2x3xf32> {
 // -----
 
 // CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-LABEL: func @iota
-func @iota() -> tensor<7x10xf32> {
+// CHECK-LABEL: func @iota_f32
+func @iota_f32() -> tensor<7x10xf32> {
   %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xf32>)
   return %result : tensor<7x10xf32>
 }
@@ -922,10 +922,43 @@ func @iota() -> tensor<7x10xf32> {
 
 // -----
 
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @iota_i32
+func @iota_i32() -> tensor<7x10xi32> {
+  %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xi32>)
+  return %result : tensor<7x10xi32>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%{{.*}}: i32):
+// CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
+// CHECK-NEXT:   linalg.yield %[[INT_CAST]] : i32
+
+// -----
+
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @iota_ui32
+func @iota_ui32() -> tensor<7x10xui32> {
+  %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xui32>)
+  return %result : tensor<7x10xui32>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%{{.*}}: i32):
+// CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
+// CHECK-NEXT:   linalg.yield %[[INT_CAST]] : i32
+// CHECK: unrealized_conversion_cast %{{.*}} : tensor<7x10xi32> to tensor<7x10xui32>
+
+// -----
+
 // CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
-// CHECK-LABEL: func @iota
+// CHECK-LABEL: func @dynamic_iota_f32
 // CHECK-SAME: %[[SHAPE:.*]]: tensor<?xi32>
-func @iota(%shape: tensor<?xi32>) -> tensor<?x?x8xf32> {
+func @dynamic_iota_f32(%shape: tensor<?xi32>) -> tensor<?x?x8xf32> {
   %result = "mhlo.dynamic_iota"(%shape) {iota_dimension = 1 : i64} : (tensor<?xi32>) -> (tensor<?x?x8xf32>)
   return %result : tensor<?x?x8xf32>
 }
@@ -941,6 +974,28 @@ func @iota(%shape: tensor<?xi32>) -> tensor<?x?x8xf32> {
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
+
+// -----
+
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-LABEL: func @dyanmic_iota_ui32
+// CHECK-SAME: %[[SHAPE:.*]]: tensor<?xi32>
+func @dyanmic_iota_ui32(%shape: tensor<?xi32>) -> tensor<?x?x8xui32> {
+  %result = "mhlo.dynamic_iota"(%shape) {iota_dimension = 1 : i64} : (tensor<?xi32>) -> (tensor<?x?x8xui32>)
+  return %result : tensor<?x?x8xui32>
+}
+// CHECK: %[[E1:.*]] = tensor.extract %[[SHAPE]][%c0] : tensor<?xi32>
+// CHECK: %[[I1:.*]] = index_cast %[[E1]] : i32 to index
+// CHECK: %[[E2:.*]] = tensor.extract %[[SHAPE]][%c1] : tensor<?xi32>
+// CHECK: %[[I2:.*]] = index_cast %[[E2]] : i32 to index
+// CHECK: linalg.init_tensor [%[[I1]], %[[I2]], 8] : tensor<?x?x8xi32>
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%{{.*}}: i32):
+// CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[INDEX]] : index to i32
+// CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : i32
+// CHECK: unrealized_conversion_cast %{{.*}} : tensor<?x?x8xi32> to tensor<?x?x8xui32>
 
 // -----
 
@@ -2643,3 +2698,26 @@ func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
 // CHECK:           linalg.yield %[[SELECT]] : i32
 // CHECK:         } -> tensor<6x3xi32>
 // CHECK:         return %[[RES]] : tensor<6x3xi32>
+
+// -----
+
+func @const() -> tensor<3xi32> {
+  // CHECK: = constant dense<[1, 2, 3]> : tensor<3xi32>
+  %cst = mhlo.constant dense<[1, 2, 3]> : tensor<3xi32>
+  return %cst : tensor<3xi32>
+}
+// -----
+
+func @const_unsigned() -> tensor<3xui32> {
+  // CHECK: = constant dense<[1, 2, 3]> : tensor<3xi32>
+  %cst = mhlo.constant dense<[1, 2, 3]> : tensor<3xui32>
+  return %cst : tensor<3xui32>
+}
+
+// -----
+
+func @const_splat() -> tensor<3xi16> {
+  // CHECK: = constant dense<1> : tensor<3xi16>
+  %cst = mhlo.constant dense<1> : tensor<3xi16>
+  return %cst : tensor<3xi16>
+}

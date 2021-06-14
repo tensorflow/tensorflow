@@ -26,6 +26,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -33,6 +34,15 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.applications import densenet
+from tensorflow.python.keras.applications import efficientnet
+from tensorflow.python.keras.applications import inception_resnet_v2
+from tensorflow.python.keras.applications import inception_v3
+from tensorflow.python.keras.applications import mobilenet
+from tensorflow.python.keras.applications import nasnet
+from tensorflow.python.keras.applications import resnet
+from tensorflow.python.keras.applications import vgg16
+from tensorflow.python.keras.applications import xception
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import sequential
@@ -833,6 +843,30 @@ class KerasModelTest(keras_parameterized.TestCase):
     self.assertEqual(model.optimizer.dynamic_growth_steps, 2.)
     self.assertEqual(type(model.optimizer),
                      loss_scale_optimizer.LossScaleOptimizer)
+
+
+class ApplicationModelTest(keras_parameterized.TestCase):
+  """Tests that application models can be built with mixed precision.
+
+  This does not test that such models can be trained in mixed precision, as
+  doing so takes too much time for a unit test.
+  """
+
+  @parameterized.named_parameters(
+      ('densenet', densenet.DenseNet121),
+      ('efficientnet', efficientnet.EfficientNetB0),
+      ('inception_resnet_v2', inception_resnet_v2.InceptionResNetV2),
+      ('inception_v3', inception_v3.InceptionV3),
+      ('mobilenet', mobilenet.MobileNet),
+      ('nasnet', nasnet.NASNetMobile),
+      ('vgg16', vgg16.VGG16),
+      ('xception', xception.Xception),
+      ('resnet50', resnet.ResNet50),
+  )
+  def test_application_model(self, app):
+    # Run on CPU since model weights may exhaust GPU memory
+    with policy.policy_scope('mixed_float16'), ops.device('/CPU:0'):
+      app(weights=None)
 
 
 if __name__ == '__main__':

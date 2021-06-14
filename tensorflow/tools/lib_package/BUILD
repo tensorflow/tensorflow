@@ -139,7 +139,6 @@ genrule(
     srcs = [
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
-        "//third_party/hadoop:LICENSE.txt",
         "//third_party/icu/data:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
@@ -210,7 +209,6 @@ genrule(
     srcs = [
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
-        "//third_party/hadoop:LICENSE.txt",
         "//third_party/icu/data:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_protobuf//:LICENSE",

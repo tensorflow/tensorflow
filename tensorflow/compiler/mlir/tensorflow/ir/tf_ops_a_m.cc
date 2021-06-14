@@ -2136,7 +2136,7 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
 }
 
 //===----------------------------------------------------------------------===//
-// EqualOp
+// EqualOp/NotEqualOp
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(EqualOp op) {
@@ -2159,7 +2159,8 @@ namespace {
 
 // Flips the incompatible_shape_error attribute to true if the shapes are
 // identical and static.
-static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
+template <typename Ty>
+static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter &rewriter) {
   if (op.incompatible_shape_error()) {
     return rewriter.notifyMatchFailure(op, "the attribute is already true");
   }
@@ -2169,19 +2170,24 @@ static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
                                        "require the shapes to be identical");
   }
 
-  auto src_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  auto src_ty = op.x().getType().template dyn_cast<RankedTensorType>();
   if (!src_ty || !src_ty.hasStaticShape()) {
     return rewriter.notifyMatchFailure(op, "require the shapes to be static");
   }
-  rewriter.replaceOpWithNewOp<EqualOp>(op, op.x(), op.y(),
-                                       rewriter.getBoolAttr(true));
+  rewriter.template replaceOpWithNewOp<Ty>(op, op.x(), op.y(),
+                                           rewriter.getBoolAttr(true));
   return success();
 }
 }  // namespace
 
 void EqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.insert(convertEqualOp);
+  results.insert(flipComatibleShapeError<EqualOp>);
+}
+
+void NotEqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert(flipComatibleShapeError<NotEqualOp>);
 }
 
 //===----------------------------------------------------------------------===//

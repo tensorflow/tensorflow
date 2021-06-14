@@ -70,7 +70,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     context.ensure_initialized()
 
     def copy_tensor(dtype=dtypes.int32):
-      cpu_tensor = constant_op.constant(1, dtype=dtype)
+      with ops.device('CPU:0'):
+        cpu_tensor = constant_op.constant(1, dtype=dtype)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
 
@@ -399,7 +400,10 @@ class DeviceTest(test.TestCase):
     with ops.device('/device:CPU:2'):
       c = constant_op.constant(1.0)
       self.evaluate(c)
-    self.assertIn('CPU:0', c.device)
+    if test_util.is_gpu_available():
+      self.assertIn('GPU:0', c.device)
+    else:
+      self.assertIn('CPU:0', c.device)
 
     # Ensure we can place ops on each of the device names
     for vcpu in vcpus:

@@ -99,7 +99,7 @@ from tensorflow.python.util.tf_export import tf_export
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
 FREQUENT_TRACING_WARNING_MAX_WARNING_PER_DETECTOR = 2
-
+ALLOW_DYNAMIC_VARIABLE_CREATION = False
 
 _tf_function_counter = monitoring.Counter(
     "/tensorflow/core/tf_function_counter",
@@ -904,7 +904,11 @@ class Function(core.GenericFunction):
   def _call(self, *args, **kwds):
     """Calls the graph function."""
     self._lock.acquire()
-    if self._created_variables:
+    if ALLOW_DYNAMIC_VARIABLE_CREATION:
+      condition = self._created_variables and self._stateful_fn is None
+    else:
+      condition = self._created_variables
+    if condition:
       # Release the lock early so that multiple threads can perform the call
       # in parallel.
       self._lock.release()
@@ -918,7 +922,7 @@ class Function(core.GenericFunction):
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
       results = self._stateful_fn(*args, **kwds)
-      if self._created_variables:
+      if self._created_variables and not ALLOW_DYNAMIC_VARIABLE_CREATION:
         raise ValueError("Creating variables on a non-first call to a function"
                          " decorated with tf.function.")
       return results

@@ -937,6 +937,85 @@ class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
   }
 };
 
+// A helper function for ConvertMaxPoolOp and ConvertAvgMaxPoolOp. Returns true
+// if the given ReduceWindowOp is a spatial pooling without dilation. If returns
+// true, also outputs the window strides and the TF padding mode ("VALID" or
+// "SAME").
+bool IsSpatialPoolingWithoutDilation(
+    mhlo::ReduceWindowOp rw, llvm::SmallVectorImpl<int64_t> *window_strides,
+    std::string *padding_mode) {
+  // tf.max_pool or tf.avg_pool need at least 3 dimensions (batch, spatial,
+  // channel).
+  const uint64_t rank = rw.window_dimensions().size();
+  if (rank <= 2) return false;
+
+  if (rw.window_strides().hasValue()) {
+    window_strides->insert(window_strides->end(),
+                           rw.window_strides()->getValues<int64_t>().begin(),
+                           rw.window_strides()->getValues<int64_t>().end());
+  } else {
+    window_strides->resize(rank, 1);
+  }
+
+  llvm::SmallVector<int64_t, 10> padding;
+  if (rw.padding().hasValue()) {
+    padding.insert(padding.begin(), rw.padding()->getValues<int64_t>().begin(),
+                   rw.padding()->getValues<int64_t>().end());
+  } else {
+    padding.resize(2 * rank, 0);
+  }
+
+  // Check that we don't do any reduction along the batch (first) and channel
+  // (last) dimensions.
+  const uint64_t batch_dim = 0;
+  const uint64_t channel_dim = rank - 1;
+  if (rw.window_dimensions().getValue<int64_t>({batch_dim}) != 1 ||
+      rw.window_dimensions().getValue<int64_t>({channel_dim}) != 1 ||
+      (*window_strides)[batch_dim] != 1 ||
+      (*window_strides)[channel_dim] != 1 || padding[2 * batch_dim] != 0 ||
+      padding[2 * batch_dim + 1] != 0 || padding[2 * channel_dim] != 0 ||
+      padding[2 * channel_dim + 1] != 0)
+    return false;
+
+  if (rw.window_dilations().hasValue() &&
+      !(rw.window_dilations()->isSplat() &&
+        rw.window_dilations()->getSplatValue<APInt>() == 1))
+    return false;
+
+  if (rw.base_dilations().hasValue() &&
+      !(rw.base_dilations()->isSplat() &&
+        rw.base_dilations()->getSplatValue<APInt>() == 1))
+    return false;
+
+  if (llvm::all_of(padding, [](int64_t i) { return i == 0; })) {
+    *padding_mode = "VALID";
+    return true;
+  }
+
+  // Check that the individual padding values are corresponding to SAME
+  // padding from TensorFlow.
+  RankedTensorType input_type =
+      rw.inputs()[0].getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      rw.getResult(0).getType().dyn_cast<RankedTensorType>();
+  if (!input_type || !output_type) return false;
+
+  for (uint64_t i = 1; i < rank - 1; ++i) {
+    int64_t padding_size =
+        (output_type.getShape()[i] - 1) * (*window_strides)[i] +
+        rw.window_dimensions().getValue<int64_t>({i}) -
+        input_type.getShape()[i];
+    if (padding[2 * i] != tensorflow::MathUtil::FloorOfRatio(
+                              padding_size, static_cast<int64_t>(2)) ||
+        padding[2 * i + 1] != tensorflow::MathUtil::CeilOfRatio(
+                                  padding_size, static_cast<int64_t>(2)))
+      return false;
+  }
+
+  *padding_mode = "SAME";
+  return true;
+}
+
 // Maps the following representations of AvgPool in MHLO into a tf.AvgPool{3D}
 // operation when they cleanly map to 2D or 3D average pool with VALID or SAME
 // padding:
@@ -968,51 +1047,15 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     // window.
     if (div_op.getType() != rw_type) return failure();
 
-    // tf.avg_pool need at least 3 dimensions (batch, spatial, channel)
-    const uint64_t rank = rw.window_dimensions().size();
-    if (rank <= 2) return failure();
-
     // If the init value isn't zero then it can't be an average pool.
     if (!isFloatZero(rw.init_values()[0])) return failure();
 
     llvm::SmallVector<int64_t, 5> window_strides;
-    if (rw.window_strides().hasValue()) {
-      window_strides.insert(window_strides.end(),
-                            rw.window_strides()->getValues<int64_t>().begin(),
-                            rw.window_strides()->getValues<int64_t>().end());
-    } else {
-      window_strides.resize(rank, 1);
+    std::string padding_mode;
+    if (!IsSpatialPoolingWithoutDilation(rw, &window_strides, &padding_mode)) {
+      return rewriter.notifyMatchFailure(
+          div_op, "not the root of spatial pooling without dilation");
     }
-
-    llvm::SmallVector<int64_t, 10> padding;
-    if (rw.padding().hasValue()) {
-      padding.insert(padding.begin(),
-                     rw.padding()->getValues<int64_t>().begin(),
-                     rw.padding()->getValues<int64_t>().end());
-    } else {
-      padding.resize(2 * rank, 0);
-    }
-
-    // Check that we don't do any reduction along the batch (first) and channel
-    // (last) dimensions.
-    const uint64_t batch_dim = 0;
-    const uint64_t channel_dim = rank - 1;
-    if (rw.window_dimensions().getValue<int64_t>({batch_dim}) != 1 ||
-        rw.window_dimensions().getValue<int64_t>({channel_dim}) != 1 ||
-        window_strides[batch_dim] != 1 || window_strides[channel_dim] != 1 ||
-        padding[2 * batch_dim] != 0 || padding[2 * batch_dim + 1] != 0 ||
-        padding[2 * channel_dim] != 0 || padding[2 * channel_dim + 1] != 0)
-      return failure();
-
-    if (rw.window_dilations().hasValue() &&
-        !(rw.window_dilations()->isSplat() &&
-          rw.window_dilations()->getSplatValue<APInt>() == 1))
-      return failure();
-
-    if (rw.base_dilations().hasValue() &&
-        !(rw.base_dilations()->isSplat() &&
-          rw.base_dilations()->getSplatValue<APInt>() == 1))
-      return failure();
 
     DenseFPElementsAttr divisor;
     if (matchPattern(div_op.rhs(), m_Constant(&divisor))) {
@@ -1026,9 +1069,9 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       if (!divisor.getSplatValue<APFloat>().isExactlyValue(window_size))
         return failure();
 
-      // Check that we have no padding.
-      if (!llvm::all_of(padding, [](int64_t i) { return i == 0; }))
+      if (padding_mode != "VALID") {
         return failure();
+      }
 
       return replaceWithAvgPool(
           div_op, rw.inputs()[0],
@@ -1060,36 +1103,12 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
           rw.padding() != rw_rhs.padding())
         return failure();
 
-      if (llvm::all_of(padding, [](int64_t i) { return i == 0; }))
-        return replaceWithAvgPool(
-            div_op, rw.inputs()[0],
-            llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
-            window_strides, "VALID", rewriter);
-
-      RankedTensorType input_type =
-          rw.inputs()[0].getType().dyn_cast<RankedTensorType>();
-      RankedTensorType output_type =
-          rw.getResult(0).getType().dyn_cast<RankedTensorType>();
-      if (!input_type || !output_type) return failure();
-
-      // Check that the individual padding values are corresponding to SAME
-      // padding from TensorFlow.
-      for (uint64_t i = 1; i < rank - 1; ++i) {
-        int64_t padding_size =
-            (output_type.getShape()[i] - 1) * window_strides[i] +
-            rw.window_dimensions().getValue<int64_t>({i}) -
-            input_type.getShape()[i];
-        if (padding[2 * i] !=
-                tensorflow::MathUtil::FloorOfRatio(padding_size, int64_t(2)) ||
-            padding[2 * i + 1] !=
-                tensorflow::MathUtil::CeilOfRatio(padding_size, int64_t(2)))
-          return failure();
-      }
       return replaceWithAvgPool(
           div_op, rw.inputs()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
-          window_strides, "SAME", rewriter);
+          window_strides, padding_mode, rewriter);
     }
+
     return failure();
   }
 
@@ -1115,6 +1134,86 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     } else if (ksizes.size() == 5) {
       rewriter.replaceOpWithNewOp<AvgPool3DOp>(
           op, op.getType(), input, rewriter.getI64ArrayAttr(ksizes),
+          rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
+          rewriter.getStringAttr("NDHWC"));
+      return success();
+    }
+    return failure();
+  }
+};
+
+class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceWindowOp rw, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    // Check that the reduce-window is a max-reduce-window.
+    if (failed(MatchBinaryReduceFunction<mhlo::MaxOp>(rw.body())))
+      return failure();
+
+    // Check that this is a floating point reduce window with a rank of 4 or 5.
+    const RankedTensorType rw_type =
+        rw.getResult(0).getType().dyn_cast<RankedTensorType>();
+    if (!rw_type || !rw_type.getElementType().isa<FloatType>() ||
+        rw_type.getRank() <= 3 || rw_type.getRank() > 5)
+      return failure();
+
+    if (!isFloatMinusInfinity(rw.init_values()[0])) {
+      return failure();
+    }
+
+    llvm::SmallVector<int64_t, 5> window_strides;
+    std::string padding_mode;
+    if (!IsSpatialPoolingWithoutDilation(rw, &window_strides, &padding_mode)) {
+      return rewriter.notifyMatchFailure(
+          rw, "not the root of spatial pooling without dilation");
+    }
+
+    return replaceWithMaxPool(
+        rw, rw.inputs()[0],
+        llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
+        window_strides, padding_mode, rewriter);
+  }
+
+ private:
+  bool isFloatMinusInfinity(Value value) const {
+    DenseFPElementsAttr float_value;
+    if (!matchPattern(value, m_Constant(&float_value))) {
+      return false;
+    }
+
+    if (float_value.getNumElements() != 1) {
+      return false;
+    }
+
+    APFloat element = float_value.getValue<APFloat>({});
+    if (!element.isInfinity()) {
+      return false;
+    }
+    if (!element.isNegative()) {
+      return false;
+    }
+
+    return true;
+  }
+
+  LogicalResult replaceWithMaxPool(mhlo::ReduceWindowOp op, Value input,
+                                   llvm::ArrayRef<int64_t> ksizes,
+                                   llvm::ArrayRef<int64_t> kstrides,
+                                   llvm::StringRef padding,
+                                   ConversionPatternRewriter &rewriter) const {
+    if (ksizes.size() == 4) {
+      rewriter.replaceOpWithNewOp<MaxPoolOp>(
+          op, op.getType(0), input, rewriter.getI64ArrayAttr(ksizes),
+          rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
+          /*explicit_paddings=*/rewriter.getI64ArrayAttr({}),
+          rewriter.getStringAttr("NHWC"));
+      return success();
+    } else if (ksizes.size() == 5) {
+      rewriter.replaceOpWithNewOp<MaxPool3DOp>(
+          op, op.getType(0), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
           rewriter.getStringAttr("NDHWC"));
       return success();
@@ -1479,9 +1578,9 @@ static PassRegistration<LegalizeHloToTf> pass(
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
   patterns->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertDynamicSliceOp,
-                   ConvertGatherOp, ConvertScatterAddOp, ConvertScatterMaxOp,
-                   ConvertScatterMinOp, ConvertScatterSubOp,
-                   ConvertScatterUpdateOp, ConvertSliceOp,
+                   ConvertGatherOp, ConvertMaxPoolOp, ConvertScatterAddOp,
+                   ConvertScatterMaxOp, ConvertScatterMinOp,
+                   ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
                    ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
                    ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
                    ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
