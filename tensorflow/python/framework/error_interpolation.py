@@ -26,6 +26,7 @@ import collections
 import itertools
 import os
 import re
+import site
 
 import six
 
@@ -54,6 +55,12 @@ _FRAMEWORK_PATH_PREFIXES = [
     os.path.join(_FRAMEWORK_COMMON_PREFIX, "contrib") + os.sep,
     os.path.join(os.path.dirname(_FRAMEWORK_COMMON_PREFIX),
                  "py", "keras") + os.sep,
+] + [
+    # This is for OSS keras, since the package is load from local python env,
+    # but we don't know exactly where it is installed. Matching to keyword
+    # "keras".
+    os.path.join(package_path, "keras") + os.sep
+    for package_path in site.getsitepackages() + [site.getusersitepackages()]
 ]
 
 # Patterns of filename patterns that should be considered internal to
