@@ -214,7 +214,9 @@ def _gen_kernel_library(
         gpu_archs = [],
         tags = [],
         unroll_factors = None,
-        extra_args = []):
+        extra_args = [],
+        test_tags = [],
+        test_size = "medium"):
     """ Generate a library with GPU or CPU kernels for a specific tensorflow op.
 
     Args:
@@ -233,6 +235,8 @@ def _gen_kernel_library(
       tags: The tags which should be added to the library.
       unroll_factors: The unrolling specification, e.g. "4,4"
       extra_args: Extra arguments to pass to the generator tool.
+      test_tags: The tags to pass to the generated test.
+      test_size: The "size" argument to pass to the test.
     """
 
     enable_cpu = bool(platform == "cpu")
@@ -285,7 +289,7 @@ def _gen_kernel_library(
                     output_type = output_type,
                 ),
                 srcs = ["build_test.sh"],
-                tags = ["no_rocm"],
+                tags = ["no_rocm"] + test_tags,
                 args = [
                     "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
                     "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
@@ -296,7 +300,7 @@ def _gen_kernel_library(
                     ),
                     "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
                 ],
-                size = "medium",
+                size = test_size,
                 data = [
                     ":{op}_{platform}_{type}_{output_type}.mlir".format(
                         op = op,

@@ -734,6 +734,9 @@ gpu_kernel_library(
 gpu_kernel_library(
     name = "gpu_polygamma_kernels",
     op = "polygamma",
+    test_tags = [
+        "no_tsan",  # Frequently times-out.
+    ],
     tile_size = "256",
     types = [
         "f32",
