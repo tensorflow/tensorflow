@@ -49,6 +49,7 @@ def mlir_only_generated_test_models():
         "reduce_all",
         "rfft",
         "rfft2d",
+        "roll",
         "segment_sum",
         "shape_to_strided_slice",
         "softplus",
