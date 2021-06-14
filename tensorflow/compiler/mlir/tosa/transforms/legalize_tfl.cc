@@ -2920,7 +2920,11 @@ LogicalResult ConvertTFLDequantizeOp::matchAndRewrite(
 
   UniformQuantizedType element_type =
       qtype.getElementType().dyn_cast<UniformQuantizedType>();
-  if (!element_type) return failure();
+  if (!element_type) {
+    rewriter.replaceOpWithNewOp<tosa::CastOp>(op, output_type,
+                                              tfl_dequantize_op.input());
+    return success();
+  }
 
   double scale = element_type.getScale();
   int64_t zp = element_type.getZeroPoint();
