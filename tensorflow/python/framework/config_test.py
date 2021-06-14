@@ -610,10 +610,10 @@ class DeviceTest(test.TestCase):
 
   @reset_eager
   def testGetMemoryInfoCPU(self):
-    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
-      config.get_memory_info('CPU:0')
-    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
-      config.get_memory_usage('CPU:0')
+    info = config.get_memory_info('CPU:0')
+    self.assertEqual(info['current'], 0)
+    usage = config.get_memory_usage('CPU:0')
+    self.assertEqual(usage, info['current'])
 
   @reset_eager
   def testGetMemoryInfoUnknownDevice(self):
