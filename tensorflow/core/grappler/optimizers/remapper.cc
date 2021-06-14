@@ -114,8 +114,6 @@ struct FusedBatchNormEx {
 
 // FusedBatchNormGrad with fused side output and/or activation.
 struct FusedBatchNormGradEx {
-  FusedBatchNormGradEx() = default;
-
   int fused_batch_norm_grad = kMissingIndex;
   int activation_grad = kMissingIndex;
   int side_input_grad = kMissingIndex;
@@ -969,12 +967,12 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
                               FusedBatchNormGradEx* matched) {
   // Root of the pattern must be a FusedBatchNormGrad.
-  const auto* node_view = ctx.graph_view.GetNode(node_index);
+  const utils::MutableNodeView* node_view = ctx.graph_view.GetNode(node_index);
 
 	// Returns true iff the node is a compatible FusedBatchNormGrad node.
   const auto valid_batch_norm_grad =
       [&](const utils::MutableNodeView& fused_batch_norm_grad) -> bool {
-    const auto* node_def = fused_batch_norm_grad.node();
+    const NodeDef* node_def = fused_batch_norm_grad.node();
     if (!IsFusedBatchNormGrad(*node_def) ||
         HasControlFaninOrFanout(fused_batch_norm_grad)) return false;
 
@@ -1020,9 +1018,11 @@ bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
 
   if (node_view->NumRegularFanins() < 1) return false;
 
-  const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
-  const auto* relugrad_node_view = regular_fanin_0.node_view();
-  const auto* relugrad_node_def = relugrad_node_view->node();
+  const utils::MutableFanoutView& regular_fanin_0 =
+      node_view->GetRegularFanin(0);
+  const utils::MutableNodeView* relugrad_node_view =
+      regular_fanin_0.node_view();
+  const NodeDef* relugrad_node_def = relugrad_node_view->node();
   bool is_relugrad = IsReluGrad(*relugrad_node_def);
 
   if (!is_relugrad || HasControlFaninOrFanout(*relugrad_node_view) ||
@@ -1031,9 +1031,10 @@ bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
   if (relugrad_node_view->NumRegularFanins() < 1) return false;
   // Find its corresponding forward node. We need the node to determine if the
   // type is bn+add+act or bn+act. Also, we need to access its "offset" input.
-  const auto& fanin_1 = relugrad_node_view->GetRegularFanin(1);
-  const auto* fwd_node_view = fanin_1.node_view();
-  const auto* fwd_node_def = fwd_node_view->node();
+  const utils::MutableFanoutView& fanin_1 =
+      relugrad_node_view->GetRegularFanin(1);
+  const utils::MutableNodeView* fwd_node_view = fanin_1.node_view();
+  const NodeDef* fwd_node_def = fwd_node_view->node();
   FusedBatchNormEx fwd_matched;
   FindFusedBatchNormEx(ctx, fwd_node_view->node_index(), &fwd_matched);
   bool fwd_bn_act_used = fwd_matched.activation != kMissingIndex &&
@@ -1057,19 +1058,21 @@ bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
     // need to make sure only the one backward BatchNorm that correponds to the
     // to-be-fused forward BatchNorm should be fused. We use the edge for the
     // reserve space to get the directly corresponded forward BatchNorm node.
-    const auto& fwd_batch_norm_node = node_view->GetRegularFanin(5);
+    const utils::MutableFanoutView& fwd_batch_norm_node =
+        node_view->GetRegularFanin(5);
     if (fwd_matched.fused_batch_norm != fwd_batch_norm_node.node_index()) {
       return false;
     }
 
-    const auto& fanouts_at_port_0 = relugrad_node_view->GetRegularFanouts()[0];
-    const auto* fanout_0_node_view = ctx.graph_view.GetNode(
+    const std::vector<utils::MutableFaninView>& fanouts_at_port_0 =
+        relugrad_node_view->GetRegularFanouts()[0];
+    const utils::MutableNodeView* fanout_0_node_view = ctx.graph_view.GetNode(
         fanouts_at_port_0[0].node_view()->GetName());
-    const auto* fanout_1_node_view = ctx.graph_view.GetNode(
+    const utils::MutableNodeView* fanout_1_node_view = ctx.graph_view.GetNode(
         fanouts_at_port_0[1].node_view()->GetName());
-    const auto* fanout_0_node_def = fanout_0_node_view->node();
-    const auto* fanout_1_node_def = fanout_1_node_view->node();
-    const auto* node_def = node_view->node();
+    const NodeDef* fanout_0_node_def = fanout_0_node_view->node();
+    const NodeDef* fanout_1_node_def = fanout_1_node_view->node();
+    const NodeDef* node_def = node_view->node();
 
     matched->activation_grad = regular_fanin_0.node_index();
     matched->fused_batch_norm_grad = node_index;

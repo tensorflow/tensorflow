@@ -4943,7 +4943,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 #if CUDNN_VERSION >= 7402
   if (reserve_space_data != nullptr && workspace_allocator != nullptr) {
     called = true;
-    const auto get_bn_ops = [&]() -> cudnnBatchNormOps_t {
+    const cudnnBatchNormOps_t bn_ops = [&]() {
       if (side_input_backprop->is_null()) {
         return activation_mode == dnn::ActivationMode::kNone
                    ? CUDNN_BATCHNORM_OPS_BN
@@ -4951,8 +4951,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
       } else {
         return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
       }
-    };
-    const cudnnBatchNormOps_t bn_ops = get_bn_ops();
+    }();
 
     // We use Nan propagation to be consistent with
     // CudnnSupport::DoActivate(...).
@@ -5000,8 +4999,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
   auto check_no_side_input_or_activation = [&]() -> port::Status {
     if (activation_mode != dnn::ActivationMode::kNone ||
         !side_input_backprop->is_null()) {
-      return port::Status(
-          port::error::INTERNAL,
+      return port::InternalError(
           absl::StrCat(
               "Side input and activation are not supported by cuDNN version: ",
               CUDNN_VERSION));
@@ -5010,8 +5008,7 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
     }
   };
 
-  if (!called) {
-    SE_RETURN_IF_ERROR(check_no_side_input_or_activation());
+  if (!called && check_no_side_input_or_activation().ok()) {
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackward(
         cudnn.handle(), mode, &one, &zero, &one, &zero, x_descriptor.handle(),
         x.opaque(), x_descriptor.handle(), y_backprop.opaque(),
