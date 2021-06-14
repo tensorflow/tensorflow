@@ -629,6 +629,31 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(AllReduceScatterOp op, OpLoweringContext ctx) {
+  auto& valueMap = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
+  TensorType operandType = op.operand().getType().cast<TensorType>();
+  TensorType resultType = op.getType();
+  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+    return failure();
+  auto scatterDim = op.scatter_dimension();
+  int64_t shardCount =
+      operandType.getDimSize(scatterDim) / resultType.getDimSize(scatterDim);
+
+  xla::XlaComputation computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
+                                                     &computation))) {
+    return failure();
+  }
+
+  valueMap[op] =
+      xla::AllReduceScatter(operand, computation, scatterDim, shardCount,
+                            Convert_replica_groups(op.replica_groups()),
+                            Convert_channel_handle(op.channel_handle()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;

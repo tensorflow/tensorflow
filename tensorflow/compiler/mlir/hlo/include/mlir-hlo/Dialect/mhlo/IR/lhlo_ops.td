@@ -1105,6 +1105,19 @@ def LHLO_AllReduceOp : LHLO_CollectiveCommunicationOp<"all_reduce", [SameOperand
   let regions = (region SizedRegion<1>:$computation);
 }
 
+def LHLO_AllReduceScatterOp : LHLO_CollectiveCommunicationOp<"all_reduce_scatter", [SameOperandsElementType]> {
+  let summary = "AllReduceScatter operator";
+  let description = [{
+     Performs all_reduce followed by a scatter.
+
+     See https://www.tensorflow.org/xla/operation_semantics#allreducescatter
+  }];
+  let arguments = !con(
+    arguments_base,
+    (ins I64Attr:$scatter_dimension));
+  let regions = (region SizedRegion<1>:$computation);
+}
+
 def LHLO_AllToAllOp : LHLO_CollectiveCommunicationOp<"all_to_all", [SameOperandsElementType]> {
   let arguments = !con(
     arguments_base,

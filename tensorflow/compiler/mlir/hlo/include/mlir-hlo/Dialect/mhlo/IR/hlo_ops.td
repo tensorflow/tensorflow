@@ -954,6 +954,26 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_AllReduceScatterOp : HLO_Op<"all_reduce_scatter",
+    [SameOperandsAndResultElementType]> {
+  let summary = "AllReduceScatter operator";
+  let description = [{
+     Performs all_reduce followed by a scatter.
+
+     See https://www.tensorflow.org/xla/operation_semantics#allreducescatter
+  }];
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64Attr:$scatter_dimension,
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<ChannelHandle>:$channel_handle
+  );
+  let regions = (region SizedRegion<1>:$computation);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_AllToAllOp : HLO_Op<"all_to_all",
     [NoSideEffect, SameOperandsElementType, SameOperandsShape]> {
 
