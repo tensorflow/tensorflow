@@ -62,7 +62,10 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
