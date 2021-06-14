@@ -40,6 +40,13 @@
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 * `tf.keras`:
+    *   Keras has been split into a separate PIP package (`keras`),
+        and its code has been moved to the GitHub repository
+        [keras-team/keras](http://github.com/keras-team/keras).
+        The API endpoints for `tf.keras` stay unchanged,
+        but are now backed by the `keras` PIP package. All Keras-related
+        PRs and issues should now be directed to the GitHub repository
+        [keras-team/keras](http://github.com/keras-team/keras).
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
@@ -824,7 +831,7 @@ Fukasawa, Zachary Deane-Mayer, Zeno Gantner, Zhoulong Jiang, zhuyie, zilinzhu,
   and
   [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
 * Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
-* Newer ROCm versions are supported on the 2.1 branch. 
+* Newer ROCm versions are supported on the 2.1 branch.
 
 # Release 2.0.4
 

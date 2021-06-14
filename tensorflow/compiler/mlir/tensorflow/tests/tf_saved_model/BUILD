@@ -37,6 +37,7 @@ all_test_basenames = [py[:-3] for py in glob(
     exclude = [
         "common.py",
         "common_v1.py",
+        "keras.py",  # TODO(b/190855110)
     ],
 )]
 
@@ -46,3 +47,12 @@ all_test_basenames = [py[:-3] for py in glob(
     data = [":test_utilities"],
     tags = ["no_pip"],
 ) for name in all_test_basenames]
+
+tf_saved_model_test(
+    name = "keras",
+    data = [":test_utilities"],
+    tags = [
+        "no_oss",  # TODO(b/190855110)
+        "no_pip",
+    ],
+)
