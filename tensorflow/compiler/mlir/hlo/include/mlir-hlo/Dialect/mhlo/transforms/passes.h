@@ -119,6 +119,13 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
 
 }  // namespace lmhlo
 
+namespace disc_ral {
+
+std::unique_ptr<OperationPass<ModuleOp>> createRalInjectExecutionContextPass(
+    const std::string& entry_func_name = "main");
+
+}  // namespace disc_ral
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_
