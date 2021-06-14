@@ -1382,7 +1382,7 @@ def HLO_ClampOp : HLO_Op<"clamp",
   let results = (outs HLO_Tensor);
 }
 
-def HLO_ConcatenateOp : HLO_Op<"concatenate",
+def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
     [NoSideEffect, SameOperandsAndResultElementType,
      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "XLA's concatenate op";
@@ -1901,7 +1901,7 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_TransposeOp: HLO_Op<"transpose",
+def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
       [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Transpose operator";
   let description = [{
