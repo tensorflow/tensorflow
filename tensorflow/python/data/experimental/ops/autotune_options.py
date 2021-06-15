@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""API for controlling performance auto-tuning in `tf.data` pipelines."""
+"""API for controlling performance autotuning in `tf.data` pipelines."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -24,10 +24,10 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("data.AutotuneOptions")
 class AutotuneOptions(options.OptionsBase):
-  """Represents options for performance auto-tuning in
+  """Represents options for performance autotuning in
   dataset operations.
 
-  You can set the auto-tune options of a dataset through the
+  You can set the autotune options of a dataset through the
   `autotune` property of `tf.data.Options`; the property is
   an instance of `tf.data.AutotuneOptions`.
 
