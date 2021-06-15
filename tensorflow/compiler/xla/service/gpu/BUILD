@@ -938,13 +938,9 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-    srcs = if_cuda_is_configured(["cusolver_context.cc"]),
+    srcs = if_cuda_or_rocm(["cusolver_context.cc"]),
     hdrs = ["cusolver_context.h"],
     deps = [
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cublas_headers",
-        "@local_config_cuda//cuda:cusolver_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -952,8 +948,16 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
     ] + if_cuda_is_configured([
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        "@local_config_cuda//cuda:cusolver_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+        "@local_config_rocm//rocm:rocblas",
     ]),
 )
 

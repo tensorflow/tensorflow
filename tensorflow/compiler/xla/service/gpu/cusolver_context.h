@@ -20,6 +20,9 @@ limitations under the License.
 
 #if !TENSORFLOW_USE_ROCM
 #include "third_party/gpus/cuda/include/cusolverDn.h"
+#else
+#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
+typedef rocsolver_handle cusolverDnHandle_t;
 #endif
 
 #include "tensorflow/compiler/xla/statusor.h"
@@ -31,8 +34,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-#if !TENSORFLOW_USE_ROCM
 
 class CusolverContext {
  public:
@@ -83,36 +84,6 @@ class CusolverContext {
 CALL_LAPACK_TYPES(POTRF_INSTANCE);
 #undef POTRF_INSTANCE
 #undef CALL_LAPACK_TYPES
-
-#else
-
-typedef void* cusolverDnHandle_t;
-
-// TODO(cheshire): Remove this hack once we have ROCM implementation.
-class CusolverContext {
- public:
-  static StatusOr<CusolverContext> Create(se::Stream* stream) {
-    LOG(FATAL) << "Unimplemented";
-  }
-
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, float>::value ||
-                            std::is_same<T, double>::value ||
-                            std::is_same<T, std::complex<float>>::value ||
-                            std::is_same<T, std::complex<double>>::value>>
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<T> dev_A,
-               int lda, se::DeviceMemory<int> dev_lapack_info,
-               se::DeviceMemory<T> workspace) {
-    LOG(FATAL) << "Unimplemented";
-  }
-
-  StatusOr<int64> PotrfBufferSize(PrimitiveType type, se::blas::UpperLower uplo,
-                                  int n, int lda) {
-    LOG(FATAL) << "Unimplemented";
-  }
-};
-
-#endif
 
 }  // namespace gpu
 }  // namespace xla
