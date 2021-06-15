@@ -2237,6 +2237,7 @@ def HLO_RealDynamicSliceOp: HLO_ShapedInterfaceOp<
     HLO_DimensionTensor:$strides
   );
   let results = (outs HLO_Tensor:$result);
+  let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
 }
 
