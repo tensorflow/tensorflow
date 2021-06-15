@@ -963,9 +963,9 @@ cc_library(
 
 cc_library(
     name = "cusolver_rewriter",
-    srcs = if_cuda_is_configured(["cusolver_rewriter.cc"]),
-    hdrs = if_cuda_is_configured(["cusolver_rewriter.h"]),
-    deps = if_cuda_is_configured([
+    srcs = if_cuda_or_rocm(["cusolver_rewriter.cc"]),
+    hdrs = if_cuda_or_rocm(["cusolver_rewriter.h"]),
+    deps = if_cuda_or_rocm([
         ":cusolver_context",
         ":ir_emission_utils",
         "@com_google_absl//absl/types:optional",
