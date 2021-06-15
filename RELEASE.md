@@ -86,6 +86,9 @@
     *   Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
+    *   Add an option `perturb_singular` to `tf.linalg.tridiagonal_solve` that
+        allows solving linear systems with a numerically singular tridiagonal 
+        matrix, e.g. for use in inverse iteration.
     *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
         Hermitian tridiagonal matrix.
     *   `tf.constant` now places its output on the current default device.

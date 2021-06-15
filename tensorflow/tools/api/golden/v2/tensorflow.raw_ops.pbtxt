@@ -5182,7 +5182,7 @@ tf_module {
   }
   member_method {
     name: "TridiagonalSolve"
-    argspec: "args=[\'diagonals\', \'rhs\', \'partial_pivoting\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'diagonals\', \'rhs\', \'partial_pivoting\', \'perturb_singular\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "TruncateDiv"
