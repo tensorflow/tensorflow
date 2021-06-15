@@ -212,8 +212,6 @@ This release contains contributions from many people at Google, as well as:
         `tf.data.Dataset.shapshot` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.take_while` API to
         `tf.data.Dataset.take_while` and deprecating the experimental endpoint.
-    *   Promoting `tf.data.experimental.ThreadingOptions` API to
-        `tf.data.ThreadingOptions` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.unique` API to
         `tf.data.Dataset.unique` and deprecating the experimental endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
@@ -233,7 +231,12 @@ This release contains contributions from many people at Google, as well as:
         *   `tf.data.experimental.MapVectorizationOptions.*`
         *   `tf.data.experimental.OptimizationOptions.filter_with_random_uniform_fusion`
         *   `tf.data.experimental.OptimizationOptions.hoist_random_uniform`
-        *   `tf.data.experimental.OptimizationOptions.map_vectorization`                 *   `tf.data.experimental.OptimizationOptions.reorder_data_discarding_ops`
+        *   `tf.data.experimental.OptimizationOptions.map_vectorization`                 
+        *   `tf.data.experimental.OptimizationOptions.reorder_data_discarding_ops`
+    *   Promoting `tf.data.experimental.OptimizationOptions` API to
+        `tf.data.OptimizationOptions` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.ThreadingOptions` API to
+        `tf.data.ThreadingOptions` and deprecating the experimental endpoint.
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.

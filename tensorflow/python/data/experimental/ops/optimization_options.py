@@ -21,6 +21,7 @@ import enum
 
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.python.data.util import options
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -29,19 +30,19 @@ class _AutotuneAlgorithm(enum.Enum):
   HILL_CLIMB = 0
   GRADIENT_DESCENT = 1
 
-
-@tf_export("data.experimental.OptimizationOptions")
+@deprecation.deprecated_endpoints("data.experimental.OptimizationOptions")
+@tf_export("data.experimental.OptimizationOptions", "data.OptimizationOptions")
 class OptimizationOptions(options.OptionsBase):
   """Represents options for dataset optimizations.
 
   You can set the optimization options of a dataset through the
-  `experimental_optimization` property of `tf.data.Options`; the property is
-  an instance of `tf.data.experimental.OptimizationOptions`.
+  `optimization` property of `tf.data.Options`; the property is
+  an instance of `tf.data.OptimizationOptions`.
 
   ```python
   options = tf.data.Options()
-  options.experimental_optimization.noop_elimination = True
-  options.experimental_optimization.apply_default_optimizations = False
+  options.optimization.noop_elimination = True
+  options.optimization.apply_default_optimizations = False
   dataset = dataset.with_options(options)
   ```
   """
