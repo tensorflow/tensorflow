@@ -6020,7 +6020,6 @@ td_library(
     deps = [
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
-        ":VectorInterfacesTdFiles",
     ],
 )
 
