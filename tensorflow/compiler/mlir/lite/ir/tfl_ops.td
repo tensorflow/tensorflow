@@ -285,6 +285,18 @@ class TFL_NumElementsEqualsDimTrait<int x, int y, int j> :
     " of operand " # y,
     TFL_NumElementsEqualsDim<x, y, j>>;
 
+// Return true if number of elements of x-th operand equals to n.
+class TFL_NumElements<int x, int n> :
+  Or<[TFL_OperandIsUnrankedPred<x>,
+      CPred<"!$_op.getOperand(" # x #
+        ").getType().cast<ShapedType>().hasStaticShape()">,
+      CPred<"$_op.getOperand(" # x #
+        ").getType().cast<ShapedType>().getNumElements() == " # n>]>;
+
+class TFL_NumElementsTrait<int x, int n> :
+  PredOpTrait<"operand " # x # " has num of elements equals to  " # n,
+    TFL_NumElements<x, n>>;
+
 // tf.uint8 and tf.quint8 are mapped to the same tflite types, so they are equal
 // when used as element types.
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
@@ -4816,6 +4828,59 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
   let arguments = (ins
     TFL_TensorOf<[F32]>:$input,
     TFL_TensorOf<[F32]>:$filter,
+    TFL_TensorOfOrNone<[F32]>:$bias,
+    I32Attr:$dilation_d_factor,
+    I32Attr:$dilation_h_factor,
+    I32Attr:$dilation_w_factor,
+    TFL_AFAttr:$fused_activation_function,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_d,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
+  let results = (outs TFL_TensorOf<[F32]>:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "Conv3DOptions";
+}
+
+def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
+    NoSideEffect,
+    NoQuantizableResult,
+    AccumulatorUniformScale<2, 0, 1>,
+    TFL_OperandHasRank<0, 1>,
+    TFL_OperandHasRank<1, 5>,
+    TFL_OperandHasRank<2, 5>,
+    TFL_NumElementsTrait<0, 5>,
+    // Channel dimension in input and filter should match.
+    TFL_OperandsHaveSameDimsTrait<2, 1, 4, 4>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 2>>,
+    PredOpTrait<"bias and output must have same element type",
+      Or<[
+        TFL_OperandIsNoneType<3>,
+        TFL_TCresVTEtIsSameAsOp<0, 3>]>>,
+    PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
+      Or<[
+        TFL_OperandIsNoneType<3>,
+        TFL_NumElementsEqualsDim<3, 1, 4>]>>]> {
+  let summary = "Transposed Convolution 3D operator";
+
+  let description = [{
+    Performs transposed convolution operation on 3D inputs.
+    Inputs:
+      `inputs[0]`: required: the shape of output tensor
+      `inputs[1]`: required: the filter weight tensor
+      `inputs[2]`: required: the input activation tensor
+      `inputs[3]`: optional: the bias tensor
+  }];
+
+  let arguments = (ins
+    TFL_I32Tensor:$output_shape,
+    TFL_TensorOf<[F32]>:$filter,
+    TFL_TensorOf<[F32]>:$input,
     TFL_TensorOfOrNone<[F32]>:$bias,
     I32Attr:$dilation_d_factor,
     I32Attr:$dilation_h_factor,

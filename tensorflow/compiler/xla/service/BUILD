@@ -37,7 +37,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
-    packages = ["//learning/brain/experimental/tf_runtime/..."],
 )
 
 tf_proto_library(
@@ -87,6 +86,46 @@ tf_cc_test(
     deps = [
         ":async_all_reduce_creator",
         ":hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_key",
+    srcs = ["all_reduce_key.cc"],
+    hdrs = ["all_reduce_key.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_domain_map",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_reassociate",
+    srcs = ["all_reduce_reassociate.cc"],
+    hdrs = ["all_reduce_reassociate.h"],
+    deps = [
+        ":all_reduce_key",
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_domain_map",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_reassociate_test",
+    srcs = ["all_reduce_reassociate_test.cc"],
+    deps = [
+        ":all_reduce_reassociate",
+        ":hlo",
+        ":hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
@@ -2428,6 +2467,7 @@ cc_library(
     srcs = ["all_reduce_combiner.cc"],
     hdrs = ["all_reduce_combiner.h"],
     deps = [
+        ":all_reduce_key",
         ":collective_combiner_utils",
         ":hlo",
         ":hlo_casting_utils",

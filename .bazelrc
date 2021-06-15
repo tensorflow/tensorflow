@@ -239,6 +239,14 @@ build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
 
 # Debug config
 build:dbg -c dbg
+# Only include debug info for files under tensorflow/, excluding kernels, to
+# reduce the size of the debug info in the binary. This is because if the debug
+# sections in the ELF binary are too large, errors can occur. See
+# https://github.com/tensorflow/tensorflow/issues/48919.
+# Users can still include debug info for a specific kernel, e.g. with:
+#     --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g
+build:dbg --per_file_copt=+.*,-tensorflow.*@-g0
+build:dbg --per_file_copt=+tensorflow/core/kernels.*@-g0
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498

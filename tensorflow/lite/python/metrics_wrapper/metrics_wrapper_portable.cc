@@ -55,7 +55,7 @@ PyObject* MetricsWrapper::ExportMetrics() {
   Py_RETURN_NONE;
 }
 
-std::vector<std::string> GetCollectedErrors() {
+std::vector<std::string> RetrieveCollectedErrors() {
   return std::vector<std::string>();
 }
 

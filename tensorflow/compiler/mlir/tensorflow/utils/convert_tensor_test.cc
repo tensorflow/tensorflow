@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -33,6 +34,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+using ::testing::Eq;
+using ::testing::IsFalse;
+using ::testing::IsTrue;
 
 static void RegisterDialects(mlir::MLIRContext &context) {
   context.loadDialect<mlir::TF::TensorFlowDialect>();
@@ -167,6 +172,47 @@ TEST_F(ConvertTensorTest, Simple) {
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<double>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX128,
       mlir::ComplexType::get(mlir::FloatType::getF64(&context))));
+}
+
+bool IsSplat(mlir::ElementsAttr attr) {
+  return attr.cast<mlir::DenseElementsAttr>().isSplat();
+}
+
+TEST(ConvertTensorProtoTest, SplatTensor) {
+  // We construct a sparse TensorProto representing 2^35 float elements, all of
+  // them 42. Our conversion routine should not materialize these elements when
+  // creating the Attribute. If it tries to, we'll crash OOM here.
+  TensorProto tensor;
+  tensor.set_dtype(DT_FLOAT);
+  tensor.mutable_tensor_shape()->add_dim()->set_size(1ULL << 35);
+  tensor.add_float_val(42.0);
+
+  mlir::MLIRContext context;
+  mlir::Builder builder(&context);
+  TF_ASSERT_OK_AND_ASSIGN(mlir::ElementsAttr attribute,
+                          ConvertTensorProto(tensor, &builder));
+  EXPECT_THAT(
+      attribute,
+      AllOf(Eq(mlir::DenseElementsAttr::get(
+                mlir::RankedTensorType::get({1ULL << 35}, builder.getF32Type()),
+                42.0f)),
+            ResultOf(IsSplat, IsTrue())));
+}
+
+TEST(ConvertTensorProtoTest, NonSplatTensor) {
+  TensorProto proto = tensor::CreateTensorProto<float>(
+      /*values=*/{1.0f, 2.0f, 3.0f, 4.0f}, /*shape=*/{2, 2});
+  mlir::MLIRContext context;
+  mlir::Builder builder(&context);
+
+  TF_ASSERT_OK_AND_ASSIGN(mlir::ElementsAttr attribute,
+                          ConvertTensorProto(proto, &builder));
+  EXPECT_THAT(
+      attribute,
+      AllOf(Eq(mlir::DenseElementsAttr::get(
+                mlir::RankedTensorType::get({2, 2}, builder.getF32Type()),
+                {1.0f, 2.0f, 3.0f, 4.0f})),
+            ResultOf(IsSplat, IsFalse())));
 }
 
 }  // namespace

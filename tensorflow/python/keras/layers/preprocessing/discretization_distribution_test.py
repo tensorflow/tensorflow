@@ -40,7 +40,7 @@ class DiscretizationDistributionTest(
   def test_distribution(self, strategy):
     input_array = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
 
-    expected_output = [[0, 1, 3, 1], [0, 3, 2, 0]]
+    expected_output = [[0, 2, 3, 1], [1, 3, 2, 1]]
     expected_output_shape = [None, 4]
 
     config.set_soft_device_placement(True)

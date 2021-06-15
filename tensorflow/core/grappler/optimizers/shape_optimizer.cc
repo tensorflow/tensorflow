@@ -192,12 +192,5 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
-void ShapeOptimizer::Feedback(Cluster* /*cluster*/,
-                              const GrapplerItem& /*item*/,
-                              const GraphDef& /*optimized_graph*/,
-                              double /*result*/) {
-  // Nothing to do for LoopOptimizer.
-}
-
 }  // end namespace grappler
 }  // namespace tensorflow

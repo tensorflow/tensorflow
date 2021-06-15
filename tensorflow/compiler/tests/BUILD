@@ -762,6 +762,26 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "ftrl_ops_test",
+    size = "medium",
+    srcs = ["ftrl_ops_test.py"],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
@@ -783,10 +803,12 @@ tf_xla_py_test(
     size = "small",
     timeout = "long",
     srcs = ["image_ops_test.py"],
+    disabled_backends = [
+        "gpu",  # Fails on CUDA 11 b/190787813
+    ],
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_gpu",  # TODO(b/177961887): Fails after NCCL update
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],

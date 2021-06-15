@@ -292,12 +292,6 @@ Status HoistRandomUniform::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void HoistRandomUniform::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                  const GraphDef& optimize_output,
-                                  double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(HoistRandomUniform, "hoist_random_uniform");
 
 }  // namespace grappler

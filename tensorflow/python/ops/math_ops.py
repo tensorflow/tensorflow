@@ -3406,7 +3406,7 @@ def matmul(a,
       for some support for `tf.sparse.SparseTensor` multiplication.
     output_type: The output datatype if needed. Defaults to None in which case
       the output_type is the same as input type. Currently only works when input
-      tensors are type int8 and output_type can be int32.
+      tensors are type (u)int8 and output_type can be int32.
     name: Name for the operation (optional).
 
   Returns:
@@ -3424,7 +3424,7 @@ def matmul(a,
     ValueError: If `transpose_a` and `adjoint_a`, or `transpose_b` and
       `adjoint_b` are both set to `True`.
     TypeError: If output_type is specified but the types of `a`, `b` and
-      `output_type` is not int8, int8 and int32.
+      `output_type` is not (u)int8, (u)int8 and int32.
   """
 
   with ops.name_scope(name, "MatMul", [a, b]) as name:
@@ -3489,9 +3489,10 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if (((a.dtype == dtypes.bfloat16 and b.dtype != dtypes.int8) or
-         (b.dtype == dtypes.bfloat16 and a.dtype != dtypes.int8)) and
-        a.dtype != b.dtype):
+    if (((a.dtype == dtypes.bfloat16 and
+          b.dtype not in (dtypes.int8, dtypes.uint8)) or
+         (b.dtype == dtypes.bfloat16 and
+          a.dtype not in (dtypes.int8, dtypes.uint8))) and a.dtype != b.dtype):
       # matmul currently doesn't handle mixed-precision inputs other than
       # fp16 * int8 which is supported in BatchMatMulV3.
       use_sparse_matmul = True

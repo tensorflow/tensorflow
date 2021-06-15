@@ -105,12 +105,6 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void UsePrivateThreadPool::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                    const GraphDef& optimize_output,
-                                    double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(UsePrivateThreadPool, "use_private_thread_pool");
 
 }  // namespace grappler

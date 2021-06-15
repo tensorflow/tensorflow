@@ -186,7 +186,27 @@ static LogicalResult rngInferReturnTypeComponents(
   return success();
 }
 
+// Returns a new scalar integer value having type `type`. Here `type` must be
+// an integer or index type.
+Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
+  if (type == value.getType()) return value;
+  assert(type.isIndex() || value.getType().isIndex());
+  return b.create<IndexCastOp>(loc, value, type);
+}
+
 }  // namespace
+
+//===----------------------------------------------------------------------===//
+// AllReduceScatterOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllReduceScatterOp op) {
+  return mlir::hlo::VerifyAllReduceScatter(
+      op,
+      /*operand_types=*/{op.operand().getType()},
+      /*result_types=*/{op.getType()},
+      /*scatter_dimension=*/op.scatter_dimension());
+}
 
 //===----------------------------------------------------------------------===//
 // ConstOp
@@ -478,6 +498,14 @@ void DynamicIotaOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicIotaIsStatic>(context);
   results.insert<DynamicIotaBroadcast>(context);
+}
+
+LogicalResult DynamicIotaOp::reifyReturnTypeShapes(
+    OpBuilder&, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  DynamicIotaOp::Adaptor adaptor(operands);
+  reifiedReturnShapes.push_back(adaptor.output_shape());
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1389,6 +1417,57 @@ static LogicalResult Verify(ConcatenateOp op) {
   return success();
 }
 
+LogicalResult ConcatenateOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  ConcatenateOp::Adaptor adaptor(operands);
+  auto inputs = adaptor.val();
+
+  auto operand_type = inputs[0].getType().dyn_cast<RankedTensorType>();
+  // Not support unranked type a.t.m.
+  if (!operand_type) return failure();
+
+  Location loc = this->getLoc();
+  Type shape_scalar_type = builder.getIndexType();
+  auto to_shape_scalar_type = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+  };
+
+  SmallVector<SmallVector<Value, 4>, 4> all_shape_values;
+  for (size_t input_id = 0; input_id < inputs.size(); ++input_id) {
+    Value operand = inputs[input_id];
+    auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+    if (!operand_type) return failure();
+
+    SmallVector<Value, 4> shape_vals;
+    for (const auto& element : llvm::enumerate(operand_type.getShape())) {
+      Value value_dim = to_shape_scalar_type(
+          builder.create<memref::DimOp>(loc, operand, element.index()));
+      shape_vals.push_back(value_dim);
+    }
+    all_shape_values.emplace_back(std::move(shape_vals));
+  }
+
+  int axis = this->dimension();
+  auto& shape_values = all_shape_values[0];
+  for (size_t vec_id = 1; vec_id < all_shape_values.size(); ++vec_id) {
+    auto& other_shape_values = all_shape_values[vec_id];
+    if (other_shape_values.size() != shape_values.size()) {
+      this->emitOpError()
+          << "Concatenate expects all operands must be of the same rank";
+      return failure();
+    }
+    shape_values[axis] = builder.create<AddIOp>(loc, shape_values[axis],
+                                                other_shape_values[axis]);
+  }
+
+  Value output_shape = builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values);
+  reifiedReturnShapes.push_back(output_shape);
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicReshapeOp
 //===----------------------------------------------------------------------===//
@@ -1606,6 +1685,52 @@ static LogicalResult Verify(RealDynamicSliceOp op) {
            << "has mismatched number of operand rank (" << input_rank
            << ") and strides size (" << strides_type.getNumElements() << ")";
   }
+
+  return success();
+}
+
+LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  RealDynamicSliceOp::Adaptor adaptor(operands);
+  Value operand = adaptor.operand();
+  Value start_indices = adaptor.start_indices();
+  Value limit_indices = adaptor.limit_indices();
+  Value strides = adaptor.strides();
+
+  auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+  // Not support unranked type a.t.m.
+  if (!operand_type) return failure();
+
+  Location loc = this->getLoc();
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(operand_type.getRank());
+  Type shape_scalar_type =
+      start_indices.getType().cast<ShapedType>().getElementType();
+  Value one = builder.create<ConstantIndexOp>(loc, 1);
+  one = MaybeCastTo(builder, loc, one, shape_scalar_type);
+  for (const auto& element : llvm::enumerate(operand_type.getShape())) {
+    Value offset = builder.create<ConstantIndexOp>(loc, element.index());
+    Value value_start =
+        builder.create<tensor::ExtractOp>(loc, start_indices, offset);
+    Value value_limit =
+        builder.create<tensor::ExtractOp>(loc, limit_indices, offset);
+    Value value_stride =
+        builder.create<tensor::ExtractOp>(loc, strides, offset);
+    // size = (limit - start + stride - 1) / stride
+    shape_values.push_back(builder.create<SignedDivIOp>(
+        loc,
+        builder.create<SubIOp>(
+            loc,
+            builder.create<AddIOp>(
+                loc, value_stride,
+                builder.create<SubIOp>(loc, value_limit, value_start)),
+            one),
+        value_stride));
+  }
+
+  reifiedReturnShapes.push_back(builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values));
 
   return success();
 }
@@ -2056,6 +2181,46 @@ void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                            MLIRContext* context) {
   results.insert<LowerBoolSplatConstantsIntoRegion>(context);
 }
+
+LogicalResult ReduceOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  ReduceOp::Adaptor adaptor(operands);
+  auto inputs = adaptor.inputs();
+
+  auto operand_type = inputs[0].getType().dyn_cast<RankedTensorType>();
+  // Not support unranked type a.t.m.
+  if (!operand_type) return failure();
+
+  Location loc = this->getLoc();
+  SmallVector<Value, 4> shape_values;
+  SmallVector<int64_t, 4> dimensions(this->dimensions().getValues<int64_t>());
+  shape_values.reserve(operand_type.getRank());
+  Type shape_scalar_type = builder.getIndexType();
+  auto to_shape_scalar_type = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+  };
+
+  for (const auto& element : llvm::enumerate(operand_type.getShape())) {
+    int64_t idx = element.index();
+    auto it = std::find(dimensions.begin(), dimensions.end(), idx);
+    if (it != dimensions.end()) {
+      continue;
+    }
+    Value value_dim = to_shape_scalar_type(
+        builder.create<memref::DimOp>(loc, inputs[0], element.index()));
+    shape_values.push_back(value_dim);
+  }
+
+  Value output_shape = builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values);
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    reifiedReturnShapes.push_back(output_shape);
+  }
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // RngNormalOp
 //===----------------------------------------------------------------------===//
@@ -2370,6 +2535,65 @@ static LogicalResult Verify(DynamicPadOp op) {
     return op.emitOpError() << "operand rank(" << input_rank
                             << ") must match result(" << output_rank << ").";
   }
+
+  return success();
+}
+
+LogicalResult DynamicPadOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  DynamicPadOp::Adaptor adaptor(operands);
+  Value operand = adaptor.operand();
+  Value edge_padding_low = adaptor.edge_padding_low();
+  Value edge_padding_high = adaptor.edge_padding_high();
+  Value interior_padding = adaptor.interior_padding();
+
+  auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+  // Not support unranked pad a.t.m.
+  if (!operand_type) return failure();
+
+  auto loc = this->getLoc();
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(operand_type.getRank());
+  Type shape_scalar_type =
+      edge_padding_low.getType().cast<ShapedType>().getElementType();
+
+  auto to_shape_scalar_type = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+  };
+
+  Value zero = to_shape_scalar_type(builder.create<ConstantIndexOp>(loc, 0));
+  Value one = to_shape_scalar_type(builder.create<ConstantIndexOp>(loc, 1));
+
+  for (int idx : llvm::seq<int>(0, operand_type.getShape().size())) {
+    Value value_dim =
+        to_shape_scalar_type(builder.create<memref::DimOp>(loc, operand, idx));
+    Value offset = builder.create<ConstantIndexOp>(loc, idx);
+    Value value_low =
+        builder.create<tensor::ExtractOp>(loc, edge_padding_low, offset);
+    Value value_high =
+        builder.create<tensor::ExtractOp>(loc, edge_padding_high, offset);
+    Value value_interior =
+        builder.create<tensor::ExtractOp>(loc, interior_padding, offset);
+    // output_size = input_size + padding_low + padding_high + interior *
+    // max(input_size - 1, 0)
+    Value value_dim_less_than_one =
+        builder.create<CmpIOp>(loc, CmpIPredicate::slt, value_dim, one);
+    Value interior_size = builder.create<MulIOp>(
+        loc, value_interior,
+        builder.create<mlir::SelectOp>(
+            loc, value_dim_less_than_one, zero,
+            builder.create<SubIOp>(loc, value_dim, one)));
+    shape_values.push_back(builder.create<AddIOp>(
+        loc,
+        builder.create<AddIOp>(
+            loc, builder.create<AddIOp>(loc, interior_size, value_dim),
+            value_low),
+        value_high));
+  }
+
+  reifiedReturnShapes.push_back(builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values));
 
   return success();
 }
@@ -3186,6 +3410,40 @@ static LogicalResult Verify(TransposeOp op) {
         "result type {0} is incompatible with the expected type {1}",
         resultType, expectedType));
   }
+
+  return success();
+}
+
+LogicalResult TransposeOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  TransposeOp::Adaptor adaptor(operands);
+  Value operand = adaptor.operand();
+
+  auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+  // Not support unranked type a.t.m.
+  if (!operand_type) return failure();
+
+  Location loc = this->getLoc();
+  SmallVector<int64_t, 4> permutation(this->permutation().getValues<int64_t>());
+  SmallVector<Value, 4> shape_values(permutation.size());
+
+  Type shape_scalar_type = builder.getIndexType();
+  auto to_shape_scalar_type = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+  };
+
+  for (const auto& element : llvm::enumerate(operand_type.getShape())) {
+    int64_t idx = element.index();
+    auto it = std::find(permutation.begin(), permutation.end(), idx);
+    Value value_dim = to_shape_scalar_type(
+        builder.create<memref::DimOp>(loc, operand, element.index()));
+    shape_values[std::distance(permutation.begin(), it)] = value_dim;
+  }
+
+  Value output_shape = builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values);
+  reifiedReturnShapes.push_back(output_shape);
 
   return success();
 }

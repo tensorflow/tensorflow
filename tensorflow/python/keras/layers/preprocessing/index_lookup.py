@@ -629,6 +629,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         updates[_VOCAB_NAME], idf_weights=updates[_IDF_WEIGHTS_NAME])
 
   def call(self, inputs):
+    if isinstance(inputs, (list, tuple, np.ndarray)):
+      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
+
     if not self.max_tokens and self._vocab_size is None:
       raise ValueError("You must set the layer's vocabulary before calling it. "
                        "Either pass a `vocabulary` argument to the layer, or "

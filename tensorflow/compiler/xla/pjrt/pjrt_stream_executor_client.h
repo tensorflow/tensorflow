@@ -226,8 +226,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
-  Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                    absl::Span<PjRtExecutable* const> executables) override {
+  Status Defragment() override {
     return Unimplemented("Defragment not implemented");
   }
 
@@ -707,6 +706,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
       const ExecuteOptions& options) override;
 
   void Delete() override { executables_.clear(); }
+
+  bool IsDeleted() override { return executables_.empty(); }
 
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;

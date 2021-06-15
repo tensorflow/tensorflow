@@ -165,6 +165,55 @@ def custom_gradient(f=None):
   Additional arguments to the inner `@tf.custom_gradient`-decorated function
   control the expected return values of the innermost function.
 
+  The examples above illustrate how to specify custom gradients for functions
+  which do not read from variables. The following example uses variables, which
+  require special handling because they are effectively inputs of the forward
+  function.
+
+  >>> weights = tf.Variable(tf.ones([2]))  # Trainable variable weights
+  >>> @tf.custom_gradient
+  ... def linear_poly(x):
+  ...   # Creating polynomial
+  ...   poly = weights[1] * x + weights[0]
+  ...
+  ...   def grad_fn(dpoly, variables):
+  ...     # dy/dx = weights[1] and we need to left multiply dpoly
+  ...     grad_xs = dpoly * weights[1]  # Scalar gradient
+  ...
+  ...     grad_vars = []  # To store gradients of passed variables
+  ...     assert variables is not None
+  ...     assert len(variables) == 1
+  ...     assert variables[0] is weights
+  ...     # Manually computing dy/dweights
+  ...     dy_dw = dpoly * tf.stack([x ** 1, x ** 0])
+  ...     grad_vars.append(
+  ...         tf.reduce_sum(tf.reshape(dy_dw, [2, -1]), axis=1)
+  ...     )
+  ...     return grad_xs, grad_vars
+  ...   return poly, grad_fn
+  >>> x = tf.constant([1., 2., 3.])
+  >>> with tf.GradientTape(persistent=True) as tape:
+  ...   tape.watch(x)
+  ...   poly = linear_poly(x)
+  >>> poly # poly = x + 1
+  <tf.Tensor: shape=(3,),
+    dtype=float32,
+    numpy=array([2., 3., 4.], dtype=float32)>
+  >>> tape.gradient(poly, x)  # conventional scalar gradient dy/dx
+  <tf.Tensor: shape=(3,),
+    dtype=float32,
+    numpy=array([1., 1., 1.], dtype=float32)>
+  >>> tape.gradient(poly, weights)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 3.], dtype=float32)>
+
+  Above example illustrates usage of trainable variable `weights`.
+  In the example, the inner `grad_fn` accepts an extra `variables` input
+  parameter and also returns an extra `grad_vars` output. That extra argument
+  is passed if the forward function reads any variables. You need to
+  compute the gradient w.r.t. each of those `variables` and output it as a list
+  of `grad_vars`. Note here that default value of `variables` is set to `None`
+  when no variables are used in the forward function.
+
   See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
   for fine grained control over the gradient computation of a sequence of

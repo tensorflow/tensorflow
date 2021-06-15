@@ -281,8 +281,8 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
     config = super().get_config()
     config.update({
         'axis': self.axis,
-        'mean': self._make_json_serializable(self.input_mean),
-        'variance': self._make_json_serializable(self.input_variance),
+        'mean': self._convert_to_list(self.input_mean),
+        'variance': self._convert_to_list(self.input_variance),
     })
     return config
 
@@ -294,7 +294,7 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
       inputs = array_ops.expand_dims(inputs, 1)
     return inputs
 
-  def _make_json_serializable(self, inputs):
+  def _convert_to_list(self, inputs):
     if tensor_util.is_tensor(inputs):
       inputs = inputs.numpy()
     if isinstance(inputs, (np.ndarray)):

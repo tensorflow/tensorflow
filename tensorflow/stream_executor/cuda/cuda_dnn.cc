@@ -3425,20 +3425,25 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
                        .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
+  // TODO(kaixih@nvidia): Remove the redundant float/double alpha/beta when the
+  // cudnn frontend can deduce the compute type from the operation.
   // Alpha is the scaling factor for input.
-  float alpha = 1.0;
+  float falpha = 1.0;
+  double dalpha = 1.0;
   // Beta is the scaling factor for output.
-  float beta = 0.0;
+  float fbeta = 0.0;
+  double dbeta = 0.0;
 
   // CUDNN Operation
-  auto op = cudnn_frontend::OperationBuilder(conv_mode)
-                .setxDesc(tensor_x)
-                .setyDesc(tensor_y)
-                .setwDesc(tensor_w)
-                .setcDesc(conv_desc)
-                .setAlpha(alpha)
-                .setBeta(beta)
-                .build();
+  auto op_builder = cudnn_frontend::OperationBuilder(conv_mode);
+  op_builder.setxDesc(tensor_x).setyDesc(tensor_y).setwDesc(tensor_w).setcDesc(
+      conv_desc);
+  if (cudnn_type == CUDNN_DATA_DOUBLE) {
+    op_builder.setAlpha(dalpha).setBeta(dbeta);
+  } else {
+    op_builder.setAlpha(falpha).setBeta(fbeta);
+  }
+  auto op = op_builder.build();
   RETURN_MSG_IF_CUDNN_ERROR(op);
 
   // CUDNN OperationGraph

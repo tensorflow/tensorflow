@@ -45,9 +45,9 @@ from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 # Bring in subpackages.
 from tensorflow.python import data
 from tensorflow.python import distribute
-from tensorflow.python import keras
+# from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
-from tensorflow.python.layers import layers
+# from tensorflow.python.layers import layers
 from tensorflow.python.module import module
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise

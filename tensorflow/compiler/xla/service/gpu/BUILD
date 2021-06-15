@@ -1256,9 +1256,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "cublas_gemm_pad_for_tensor_cores",
-    srcs = ["cublas_gemm_pad_for_tensor_cores.cc"],
-    hdrs = ["cublas_gemm_pad_for_tensor_cores.h"],
+    name = "cublas_pad_for_gemms",
+    srcs = ["cublas_pad_for_gemms.cc"],
+    hdrs = ["cublas_pad_for_gemms.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
@@ -1272,11 +1272,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cublas_gemm_pad_for_tensor_cores_test",
-    srcs = ["cublas_gemm_pad_for_tensor_cores_test.cc"],
+    name = "cublas_pad_for_gemms_test",
+    srcs = ["cublas_pad_for_gemms_test.cc"],
     tags = ["no_pip"],
     deps = [
-        ":cublas_gemm_pad_for_tensor_cores",
+        ":cublas_pad_for_gemms",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1476,7 +1476,7 @@ cc_library(
         "nvptx_compiler.h",
     ]),
     deps = if_cuda_is_configured([
-        ":cublas_gemm_pad_for_tensor_cores",
+        ":cublas_pad_for_gemms",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
         ":cudnn_vectorize_convolutions",
@@ -1849,9 +1849,11 @@ tf_cc_test(
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
     tags = [
         "gpu",
+        "manual",  # TODO(b/190854862)
         "no_oss",
         "noasan",
         "nomsan",
+        "notap",  # TODO(b/190854862)
         "requires-gpu-sm70",
     ],
     deps = [

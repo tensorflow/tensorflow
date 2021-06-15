@@ -49,6 +49,9 @@ def IsI32 : NativeCodeCall<
 def CreateTFCastOpF32 : NativeCodeCall<
     "CreateTFCastOpF32(&$_builder, $0.getLoc(), $1, $2)">;
 
+def CreateTensorScatterNdOp : NativeCodeCall<
+    "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
+
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
 //===----------------------------------------------------------------------===//
@@ -291,34 +294,42 @@ def LowerRoundOpOnIntTensor : Pat<
 def LowerRoundOpOnFloatTensor : Pat<
   (TF_RoundOp:$res TF_FloatTensor:$input),
   (TF_SelectV2Op
-    (TF_LogicalOrOp
-      (TF_GreaterOp
-        (TF_SubOp:$fraction $input, (TF_FloorOp:$round_val $input)),
-        (TF_ConstOp:$half (GetScalarOfFloatType<"0.5"> $input))
-      ),
-      (TF_LogicalAndOp
-        // If the input is equal to 0.5 ...
-        (TF_EqualOp
-          $fraction,
-          $half,
-          /*incompatible_shape_error*/ConstBoolAttrTrue
-        ),
-        // ... check if the value is odd, so we can round up in that case.
-        (TF_EqualOp
-          (TF_SubOp
-            $round_val,
-            (TF_MulOp
-              (TF_ConstOp (GetScalarOfType<2> $input)),
-              (TF_FloorOp (TF_MulOp $half, $input))
-            )
+    (TF_EqualOp
+      (TF_ConstOp:$zero (GetScalarOfFloatType<"0.0"> $input)),
+      (TF_SelectV2Op:$rounded
+        (TF_LogicalOrOp
+          (TF_GreaterOp
+            (TF_SubOp:$fraction $input, (TF_FloorOp:$round_val $input)),
+            (TF_ConstOp:$half (GetScalarOfFloatType<"0.5"> $input))
           ),
-          (TF_ConstOp:$one (GetScalarOfType<1> $input)),
-          /*incompatible_shape_error*/ConstBoolAttrTrue
-        )
-      )
+          (TF_LogicalAndOp
+            // If the input is equal to 0.5 ...
+            (TF_EqualOp
+              $fraction,
+              $half,
+              /*incompatible_shape_error*/ConstBoolAttrTrue
+            ),
+            // ... check if the value is odd, so we can round up in that case.
+            (TF_EqualOp
+              (TF_SubOp
+                $round_val,
+                (TF_MulOp
+                  (TF_ConstOp (GetScalarOfType<2> $input)),
+                  (TF_FloorOp (TF_MulOp $half, $input))
+                )
+              ),
+              (TF_ConstOp:$one (GetScalarOfType<1> $input)),
+              /*incompatible_shape_error*/ConstBoolAttrTrue
+            )
+          )
+        ),
+        (TF_AddV2Op $round_val, $one),
+        $round_val
+      ),
+      /*incompatible_shape_error*/ConstBoolAttrTrue
     ),
-    (TF_AddV2Op $round_val, $one),
-    $round_val
+    $zero,
+    $rounded
   )>;
 
 //===----------------------------------------------------------------------===//
@@ -457,3 +468,18 @@ def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
                           (TF_SubOp $x, $x),
                           (TF_ConstOp (GetScalarOfType<0> $x)),
                           /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
+// TensorScatterUpdate op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_AddOp
+             (TF_MulOp
+                (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
+                   (CreateTensorScatterNdOp $input, $indices,
+                      (TF_OnesLikeOp $updates),
+                   (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+             $input),
+           (CreateTensorScatterNdOp $input, $indices, $updates,
+              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue)))>;

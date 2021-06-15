@@ -122,17 +122,19 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
     ],
 )
@@ -710,9 +712,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "random_dataset_test",
+    name = "random_test",
     size = "small",
-    srcs = ["random_dataset_test.py"],
+    srcs = ["random_test.py"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",
@@ -850,6 +852,30 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "snapshot_test",
+    size = "small",
+    srcs = ["snapshot_test.py"],
+    shard_count = 16,
+    tags = [
+        "no_windows",  # TODO(b/182379890)
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/experimental/ops:snapshot",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/kernel_tests:tf_record_test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:nest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -998,6 +1024,21 @@ tf_py_test(
         "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "unique_test",
+    size = "small",
+    srcs = ["unique_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 

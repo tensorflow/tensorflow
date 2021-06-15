@@ -1,28 +1,33 @@
 # To have reproducible builds, these dependencies should be pinned always.
-# Prefer pinning to the same version as in setup.py
+# Prefer pinning to the same version as in setup.py for now.
+# This will change in the future.
 
-numpy >= 1.19.2, <1.21
 absl-py ~= 0.10
 astunparse ~= 1.6.3
-flatbuffers ~= 1.12.0
+flatbuffers ~= 2.0
 google_pasta ~= 0.2
-h5py ~= 3.1.0
+h5py ~= 3.1.0  # NOTE: not the latest version due to py3.6
 keras_preprocessing ~= 1.1.2
-keras-nightly ~= 2.6.0.dev2021052700
+numpy ~= 1.19.5  # NOTE: not the latest version due to py3.6
 opt_einsum ~= 3.3.0
-protobuf >= 3.9.2
-six ~= 1.15.0
-termcolor ~= 1.1.0
-typing_extensions ~= 3.7.4
-wheel ~= 0.35
+protobuf >= 3.17.1
+six ~= 1.16.0
+termcolor ~= 1.1.0 # latest version came out in 2011. others are more-termcolor, termcolor2, etc.
+typing_extensions ~= 3.10.0.0
+wheel ~= 0.36.2
 wrapt ~= 1.12.1
+
 # We need to pin the gast dependency exactly
 gast == 0.4.0
+
+# Finally, install tensorboard and estimator and keras
 # Note that here we want the latest version that matches
-tb-nightly ~= 2.4.0.a
+keras-nightly ~= 2.6.0.dev2021052700
+tb-nightly ~= 2.5.0.a # matches being 2.5 for the 2.5 release? bc there is a 2.6 out
 tensorflow_estimator ~= 2.5.0
+
 # Test dependencies
-grpcio >= 1.37.0, < 2.0
-portpicker ~= 1.3.1
-scipy ~= 1.5.2
+grpcio ~= 1.38.0
+portpicker ~= 1.4.0
+scipy ~= 1.6.3
 

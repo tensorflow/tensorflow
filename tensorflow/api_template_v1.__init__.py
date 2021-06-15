@@ -75,21 +75,12 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-if _os.environ.get("_PREFER_OSS_KERAS", False):
-  _keras_module = "keras.api._v1.keras"
-  keras = _LazyLoader("keras", globals(), _keras_module)
-  _module_dir = _module_util.get_parent_dir_for_name(_keras_module)
-  if _module_dir:
-    _current_module.__path__ = [_module_dir] + _current_module.__path__
-  setattr(_current_module, "keras", keras)
-else:
-  try:
-    from .python.keras.api._v1 import keras
-    _current_module.__path__ = (
-        [_module_util.get_parent_dir(keras)] + _current_module.__path__)
-    setattr(_current_module, "keras", keras)
-  except ImportError:
-    pass
+_keras_module = "keras.api._v1.keras"
+keras = _LazyLoader("keras", globals(), _keras_module)
+_module_dir = _module_util.get_parent_dir_for_name(_keras_module)
+if _module_dir:
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
+setattr(_current_module, "keras", keras)
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
@@ -126,14 +117,16 @@ _major_api_version = 1
 
 # Add module aliases from Keras to TF.
 # Some tf endpoints actually lives under Keras.
-if (hasattr(_current_module, "keras") and
-    _os.environ.get("_PREFER_OSS_KERAS", False)):
+if hasattr(_current_module, "keras"):
   # It is possible that keras is a lazily loaded module, which might break when
   # actually trying to import it. Have a Try-Catch to make sure it doesn't break
   # when it doing some very initial loading, like tf.compat.v2, etc.
   try:
     _layer_package = "keras.api._v1.keras.__internal__.legacy.layers"
     layers = _LazyLoader("layers", globals(), _layer_package)
+    _module_dir = _module_util.get_parent_dir(layers)
+    if _module_dir:
+      _current_module.__path__ = [_module_dir] + _current_module.__path__
     setattr(_current_module, "layers", layers)
 
     _legacy_rnn_package = "keras.api._v1.keras.__internal__.legacy.rnn_cell"

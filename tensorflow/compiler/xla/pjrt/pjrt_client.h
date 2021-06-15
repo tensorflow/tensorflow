@@ -422,8 +422,7 @@ class PjRtClient {
 
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
-  virtual Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                            absl::Span<PjRtExecutable* const> executables) = 0;
+  virtual Status Defragment() = 0;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer
@@ -680,6 +679,9 @@ class PjRtExecutable {
 
   // Asynchronously free resources after the last execution completes.
   virtual void Delete() = 0;
+
+  // True if on-device resources associated with the executable are freed.
+  virtual bool IsDeleted() = 0;
 };
 
 }  // namespace xla

@@ -295,9 +295,7 @@ absl::Status RunModelSampleWithInternalAPISerializedKernels(
   RETURN_IF_ERROR(inf_env->BuildSerializedModel(options, std::move(graph_cl),
                                                 &serialized_model));
   std::unique_ptr<InferenceBuilder> builder;
-  RETURN_IF_ERROR(inf_env->NewInferenceBuilder(serialized_model, &builder,
-                                               /*in_refs*/ nullptr,
-                                               /*out_refs*/ nullptr));
+  RETURN_IF_ERROR(inf_env->NewInferenceBuilder(serialized_model, &builder));
 
   // Sets input/output object def for builder_.
   ObjectDef obj_def;
@@ -371,9 +369,9 @@ absl::Status RunModelSampleWithInternalAPISerialized(
 
   std::vector<int64_t> in_refs;
   std::vector<int64_t> out_refs;
+  RETURN_IF_ERROR(GetInOutRefs(serialized_model, &in_refs, &out_refs));
   std::unique_ptr<InferenceBuilder> builder;
-  RETURN_IF_ERROR(inf_env->NewInferenceBuilder(serialized_model, &builder,
-                                               &in_refs, &out_refs));
+  RETURN_IF_ERROR(inf_env->NewInferenceBuilder(serialized_model, &builder));
 
   // Sets input/output object def for builder_.
   ObjectDef obj_def;

@@ -42,13 +42,12 @@ class ErrorCollector {
     collected_errors_.insert(error);
   }
 
+  // Clear the set of collected errors.
+  void Clear() { collected_errors_.clear(); }
+
  private:
   ErrorCollector() {}
   friend ErrorCollector *GetErrorCollector();
-  friend class ErrorCollectorInstrumentation;
-
-  // Clear the set of collected errors.
-  void Clear() { collected_errors_.clear(); }
 
   ConverterErrorDataSet collected_errors_;
 };

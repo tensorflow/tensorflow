@@ -388,17 +388,18 @@ class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(
               reshuffle_each_iteration=[True, False],
               buffer_size=[1, 3, 5, 8, 10])))
-  def testShuffleCore(self, reshuffle_each_iteration, buffer_size):
+  def test(self, verify_fn, reshuffle_each_iteration, buffer_size):
     seed = 55
     range_limit = 5
     num_repeats = 2
     num_outputs = range_limit * num_repeats
     # pylint: disable=g-long-lambda
-    self.run_core_tests(
-        lambda: self._build_shuffle_dataset(
+    verify_fn(
+        self, lambda: self._build_shuffle_dataset(
             range_limit=range_limit,
             num_repeats=num_repeats,
             buffer_size=buffer_size,

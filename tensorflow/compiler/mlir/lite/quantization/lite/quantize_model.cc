@@ -77,6 +77,7 @@ TfLiteStatus QuantizeModel(
   quant_specs.post_training_quantization = true;
   quant_specs.disable_per_channel = disable_per_channel;
   quant_specs.verify_numeric = verify_numeric;
+  quant_specs.whole_model_verify = false;
   quant_specs.legacy_float_scale = legacy_float_scale;
 
   llvm::dbgs() << "fully_quantize: " << fully_quantize
@@ -95,7 +96,8 @@ TfLiteStatus QuantizeModel(
   }
 
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
-  pm.addPass(TFL::CreateQuantizePass(verify_numeric, legacy_float_scale));
+  pm.addPass(TFL::CreateQuantizePass(
+      verify_numeric, /*whole_model_verify=*/false, legacy_float_scale));
   pm.addPass(TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
   pm.addPass(TFL::CreateOptimizeOpOrderPass());
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));

@@ -2626,7 +2626,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     extra.push_back("custom_call_has_side_effect=true");
   }
   if (literal_.has_value()) {
-    extra.push_back(StrCat("literal=(", literal_->ToStringOneline(), ")"));
+    extra.push_back(StrCat("literal=", literal_->ToStringWithLayoutOneline()));
   }
   if (!output_to_operand_aliasing_.empty()) {
     std::vector<string> pair_strings;

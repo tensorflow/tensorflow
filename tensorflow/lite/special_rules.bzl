@@ -42,6 +42,12 @@ def nnapi_plugin_impl_visibility_allowlist():
     This is a no-op outside of Google."""
     return []
 
+def nnapi_sl_headers_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/nnapi/sl:nnapi_support_library_headers.
+
+    This is a no-op outside of Google."""
+    return []
+
 def tflite_extra_gles_deps():
     """This is a no-op outside of Google."""
     return []

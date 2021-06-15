@@ -1597,6 +1597,7 @@ tf_cc_test(
         ":convert_tensor",
         ":tensorflow",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

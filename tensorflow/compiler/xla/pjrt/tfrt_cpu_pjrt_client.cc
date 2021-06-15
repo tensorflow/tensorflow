@@ -1209,6 +1209,8 @@ TfrtCpuExecutable::TfrtCpuExecutable(
 
 void TfrtCpuExecutable::Delete() {}
 
+bool TfrtCpuExecutable::IsDeleted() { return false; }
+
 StatusOr<absl::optional<std::string>> TfrtCpuExecutable::Fingerprint() const {
   return absl::optional<std::string>();
 }

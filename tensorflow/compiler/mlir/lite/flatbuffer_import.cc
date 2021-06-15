@@ -589,6 +589,12 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
 llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
     tflite::BuiltinOptionsUnion options,
     const std::vector<std::string>& func_names, Builder builder) {
+  if (auto* opts = options.AsCallOnceOptions()) {
+    uint32_t init_idx = opts->init_subgraph_index;
+    auto init_attr = builder.getStringAttr(func_names.at(init_idx));
+
+    return {builder.getNamedAttr("session_init_function", init_attr)};
+  }
   if (auto* opts = options.AsIfOptions()) {
     uint32_t then_idx = opts->then_subgraph_index;
     auto then_attr = builder.getSymbolRefAttr(func_names.at(then_idx));
@@ -652,11 +658,6 @@ StatusOr<Operation*> ConvertOp(
     OpBuilder builder) {
   llvm::SmallVector<Value, 4> operands;
   llvm::SmallVector<mlir::Type, 2> outputTypes;
-
-  if (op.outputs.empty()) {
-    auto err = errors::InvalidArgument("operator with no outputs");
-    return emitError(loc, err.ToString()), err;
-  }
 
   const tflite::OperatorCodeT& op_code = *op_codes.at(op.opcode_index);
 
