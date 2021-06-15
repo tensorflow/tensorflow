@@ -406,6 +406,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     if (!VerifyHloOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
     auto result_type = GetHloOpResultType<isLHLO>(op);
+    result_type = this->typeConverter->convertType(result_type)
+                      .template cast<ShapedType>();
 
     SmallVector<AffineMap, 2> indexing_maps =
         Derived::getIndexingMaps(op, &rewriter);
