@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -1003,6 +1004,42 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
     LiteralTestUtil::ExpectR1Near<float>({0.0, 1.0, 0.0, 1.0}, rs[1],
                                          ErrorSpec{1e-5, 1e-5});
   }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceScatter)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  add {
+    lhs = u32[] parameter(0)
+    rhs = u32[] parameter(1)
+    ROOT add = u32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    c0 = u32[8] constant({1, 2, 3, 4, 5, 6, 7, 8})
+    c1 = u32[8] constant({10, 11, 12, 13, 14, 15, 16, 17})
+    zero = u32[] constant(0)
+    id = u32[] replica-id()
+    p = pred[] compare(id, zero), direction=EQ
+    pb = pred[8] broadcast(p), dimensions={}
+    // data = c0 for replica 0 and c1 for replica 1
+    data = u32[8] select(pb, c0, c1)
+    ROOT ars = u32[4] all-reduce-scatter(data), replica_groups={},
+                      dimensions={0}, to_apply=add
+  }
+  )";
+
+  const int64 kNumReplicas = 2;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  LiteralTestUtil::ExpectR1Equal<uint32>({11, 13, 15, 17}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32>({19, 21, 23, 25}, results[1]);
 }
 
 }  // namespace
