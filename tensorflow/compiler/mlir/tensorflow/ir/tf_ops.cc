@@ -115,18 +115,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // a TF operation.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    // Check that the TF call operation is one that is legal to inline. Allow
-    // inlining all except:
-    // 1. StatefulPartitionedCalls with device set. The inlining doesn't
-    // propagate the device attribute by default, so disable until either we
-    // could set it in inlining interface or use the lower level inline
-    // methods.
-    // Note: this could be further restricted in future.
-    if (auto pcall = dyn_cast<StatefulPartitionedCallOp>(call)) {
-      if (auto device = pcall->getAttrOfType<StringAttr>("device"))
-        return device.getValue().empty();
-    }
-    // 2. TPUPartitionedCalls.
+    // Check that the TF call operation is one that is legal to inline.
     return !isa<TPUPartitionedCallOp>(call);
   }
 
@@ -282,6 +271,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 TensorFlowDialect::~TensorFlowDialect() {
   delete fallback_effect_op_interface_;
 }
+
 
 // Parses a type registered to this dialect.
 Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
