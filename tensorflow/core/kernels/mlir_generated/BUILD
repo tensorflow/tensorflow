@@ -1072,7 +1072,6 @@ gpu_kernel_library(
     )
     for op in [
         "ceil",
-        "exp",
         "expm1",
         "floor",
         "log",
@@ -1084,6 +1083,20 @@ gpu_kernel_library(
         "tanh",
     ]
 ]
+
+gpu_kernel_library(
+    name = "gpu_exp_kernels",
+    op = "exp",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
 
 # Kernels that support all floating-point types but have i1 output.
 [
