@@ -4,6 +4,16 @@ package(
 )
 
 py_library(
+    name = "autotune_options",
+    srcs = ["autotune_options.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:options",
+    ],
+)
+
+py_library(
     name = "batching",
     srcs = ["batching.py"],
     srcs_version = "PY3",

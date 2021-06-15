@@ -22,6 +22,7 @@ removing existing functionality.
 
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
+@@AutotuneOptions
 @@AutoShardPolicy
 @@CheckpointInputPipelineHook
 @@Counter
@@ -95,6 +96,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.python.data.experimental import service
+from tensorflow.python.data.experimental.ops.autotune_options import AutotuneOptions
 from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
