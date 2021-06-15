@@ -26,7 +26,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import test
 
 
-class RandomDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
+class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
