@@ -59,14 +59,14 @@ Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
   params.autotune = ShouldUseAutotuning(options);
   if (params.autotune) {
     params.autotune_algorithm = model::AutotuneAlgorithm::HILL_CLIMB;
-    if (options.optimization_options().autotune_buffers()) {
+    if (options.autotune_options().autotune_buffers()) {
       params.autotune_algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
     }
     params.autotune_cpu_budget =
-        value_or_default(options.optimization_options().autotune_cpu_budget(),
+        value_or_default(options.autotune_options().cpu_budget(),
                          0, port::NumSchedulableCPUs());
     params.autotune_ram_budget =
-        value_or_default(options.optimization_options().autotune_ram_budget(),
+        value_or_default(options.autotune_options().ram_budget(),
                          0, kRamBudgetShare * port::AvailableRam());
   }
   *output = new RootDataset(input, params);
