@@ -67,6 +67,7 @@ add_mlir_library(MhloPasses
   unfuse_batch_norm_pass.cc
 
   DEPENDS
+  MLIRDiscRalPassIncGen
   MLIRhlo_opsIncGen
   MLIRMhloLowerComplexIncGen
   MLIRMhloPassIncGen
