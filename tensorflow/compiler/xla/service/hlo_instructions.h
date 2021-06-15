@@ -370,7 +370,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
   explicit HloCollectiveInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id);
 
   HloInstructionProto ToProto() const override;
@@ -390,9 +390,9 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllGatherInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64 all_gather_dimension,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+      int64 all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
+      bool constrain_layout, const absl::optional<int64>& channel_id,
+      bool use_global_device_ids);
   // Same as HloAllReduceInstruction::use_global_device_ids.
   bool use_global_device_ids() const { return use_global_device_ids_; }
 
@@ -426,7 +426,7 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
   // Returns true if the ids in the ReplicaGroup config represent a global id of
@@ -475,7 +475,7 @@ class HloAllReduceScatterInstruction : public HloAllReduceInstructionBase {
   explicit HloAllReduceScatterInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids,
       int64 scatter_dimension);
 
@@ -503,11 +503,12 @@ class HloAllReduceScatterInstruction : public HloAllReduceInstructionBase {
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
-  explicit HloAllToAllInstruction(
-      const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id,
-      const absl::optional<int64>& split_dimension);
+  explicit HloAllToAllInstruction(const Shape& shape,
+                                  absl::Span<HloInstruction* const> operands,
+                                  absl::Span<const ReplicaGroup> replica_groups,
+                                  bool constrain_layout,
+                                  const absl::optional<int64>& channel_id,
+                                  const absl::optional<int64>& split_dimension);
 
   // AllToAll can optionally take a split dimension, which means that this
   // AllToAll takes a single (flattened) array operand and produces an array
