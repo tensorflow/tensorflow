@@ -65,6 +65,7 @@ BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
   // We create bins to fit all possible ranges that cover the
   // memory_limit_ starting from allocations up to 256 bytes to
   // allocations up to (and including) the memory limit.
+  VLOG(1) << "Creating new BFCAllocator named: " << name;
   for (BinNum b = 0; b < kNumBins; b++) {
     size_t bin_size = BinNumToSize(b);
     VLOG(1) << "Creating bin of max chunk size "
@@ -152,7 +153,8 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   }
 
   VLOG(1) << "Extending allocation by "
-          << strings::HumanReadableNumBytes(bytes_received) << " bytes.";
+          << strings::HumanReadableNumBytes(bytes_received) << " bytes for "
+          << Name() << ".";
 
   total_region_allocated_bytes_ += bytes_received;
   VLOG(1) << "Total allocated bytes: "
@@ -253,7 +255,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
 
 void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
-  VLOG(1) << "AllocateRaw " << Name() << "  " << num_bytes;
+  VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes;
   if (!allocation_attr.retry_on_failure) {
     // Return immediately upon the first failure if this is for allocating an
     // optional scratch space.
@@ -565,6 +567,9 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // Update stats.
         ++stats_.num_allocs;
         stats_.bytes_in_use += chunk->size;
+        if (stats_.bytes_in_use > stats_.peak_bytes_in_use) {
+          VLOG(2) << "New Peak memory usage of " << stats_.bytes_in_use << " bytes for " << Name();
+        }
         stats_.peak_bytes_in_use =
             std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
         stats_.largest_alloc_size =
@@ -637,7 +642,7 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 }
 
 void BFCAllocator::DeallocateRaw(void* ptr) {
-  VLOG(1) << "DeallocateRaw " << Name() << " "
+  VLOG(3) << "DeallocateRaw " << Name() << " "
           << (ptr ? RequestedSize(ptr) : 0);
   DeallocateRawInternal(ptr);
   retry_helper_.NotifyDealloc();
