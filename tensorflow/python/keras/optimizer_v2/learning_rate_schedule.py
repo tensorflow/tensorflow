@@ -630,7 +630,7 @@ class CosineDecay(LearningRateSchedule):
       global_step_recomp = math_ops.minimum(global_step_recomp, decay_steps)
       completed_fraction = global_step_recomp / decay_steps
       cosine_decayed = 0.5 * (1.0 + math_ops.cos(
-          constant_op.constant(math.pi) * completed_fraction))
+          constant_op.constant(math.pi, dtype=dtype) * completed_fraction))
 
       decayed = (1 - self.alpha) * cosine_decayed + self.alpha
       return math_ops.multiply(initial_learning_rate, decayed)
