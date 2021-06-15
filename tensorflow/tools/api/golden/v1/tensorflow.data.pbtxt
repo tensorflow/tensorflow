@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OptimizationOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Options"
     mtype: "<type \'type\'>"
   }

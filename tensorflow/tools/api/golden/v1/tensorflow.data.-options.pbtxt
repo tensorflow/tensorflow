@@ -16,11 +16,11 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_optimization"
+    name: "experimental_slack"
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_slack"
+    name: "optimization"
     mtype: "<type \'property\'>"
   }
   member {
