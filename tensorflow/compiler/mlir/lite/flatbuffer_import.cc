@@ -653,11 +653,6 @@ StatusOr<Operation*> ConvertOp(
   llvm::SmallVector<Value, 4> operands;
   llvm::SmallVector<mlir::Type, 2> outputTypes;
 
-  if (op.outputs.empty()) {
-    auto err = errors::InvalidArgument("operator with no outputs");
-    return emitError(loc, err.ToString()), err;
-  }
-
   const tflite::OperatorCodeT& op_code = *op_codes.at(op.opcode_index);
 
   TF_ASSIGN_OR_RETURN(const std::string op_name, GetMlirOpName(op, op_code));
