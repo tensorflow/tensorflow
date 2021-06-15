@@ -214,10 +214,20 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     cuMemGetInfo(&free, &total);
     mutex_lock lock(lock_);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes
-               << ": " << GetCudaErrorMessage(result)
-               << "\n Free memory/Total memory: " << free << "/" << total;
+               << " bytes: " << GetCudaErrorMessage(result)
+               << "\n Reported by CUDA: Free memory/Total memory: " << free << "/" << total;
     if (auto stats = GetStats())
       LOG(ERROR) << "Stats: " << stats->DebugString();
+
+    VLOG(ERROR) << "Histogram of current allocation: allocation_size_in_bytes, nb_allocation;";
+    std::map<size_t, int> size_map_historgram;
+    for (auto p: size_map_) {
+      size_map_historgram[p.second]++;
+    }
+    for (auto p: size_map_historgram) {
+      VLOG(ERROR) << p.first << ", " << p.second;
+    }
+
     return nullptr;
   }
 
@@ -226,6 +236,9 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     mutex_lock lock(lock_);
     ++(stats_->num_allocs);
     stats_->bytes_in_use += num_bytes;
+    if (stats_->bytes_in_use > stats_->peak_bytes_in_use) {
+      VLOG(9) << "New Peak memory usage of " << stats_->bytes_in_use << " bytes.";
+    }
     stats_->peak_bytes_in_use =
         std::max(stats_->peak_bytes_in_use, stats_->bytes_in_use);
     stats_->largest_alloc_size =
