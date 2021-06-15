@@ -58,7 +58,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceSame(self):
     options = dataset_ops.Options()
-    options.experimental_optimization.autotune = True
+    options.optimization.autotune = True
     ds = dataset_ops.Dataset.range(0).with_options(options).with_options(
         options)
     self.assertEqual(options, self._get_options(ds))
@@ -66,14 +66,14 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceDifferentOptions(self):
     options1 = dataset_ops.Options()
-    options1.experimental_optimization.autotune = True
+    options1.optimization.autotune = True
     options2 = dataset_ops.Options()
     options2.experimental_deterministic = False
     ds = dataset_ops.Dataset.range(0)
     ds = ds.with_options(options1)
     ds = ds.with_options(options2)
     options = self._get_options(ds)
-    self.assertTrue(options.experimental_optimization.autotune)
+    self.assertTrue(options.optimization.autotune)
     # Explicitly check that flag is False since assertFalse allows None
     self.assertIs(options.experimental_deterministic, False)
 
@@ -83,35 +83,35 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
       # TODO(b/165013260): Fix this
       self.skipTest("Test is currently broken on Windows with Python 3.8")
     options1 = dataset_ops.Options()
-    options1.experimental_optimization.autotune = False
+    options1.optimization.autotune = False
     options2 = dataset_ops.Options()
-    options2.experimental_optimization.autotune = True
+    options2.optimization.autotune = True
     ds = dataset_ops.Dataset.range(0)
     ds = ds.with_options(options1)
     ds = ds.with_options(options2)
-    self.assertTrue(self._get_options(ds).experimental_optimization.autotune)
+    self.assertTrue(self._get_options(ds).optimization.autotune)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsMergeOptionsFromMultipleInputs(self):
     options1 = dataset_ops.Options()
-    options1.experimental_optimization.autotune = True
+    options1.optimization.autotune = True
     options2 = dataset_ops.Options()
     options2.experimental_deterministic = True
     ds1 = dataset_ops.Dataset.range(0).with_options(options1)
     ds2 = dataset_ops.Dataset.range(0).with_options(options2)
     ds = dataset_ops.Dataset.zip((ds1, ds2))
     options = self._get_options(ds)
-    self.assertTrue(options.experimental_optimization.autotune)
+    self.assertTrue(options.optimization.autotune)
     self.assertTrue(options.experimental_deterministic)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsHaveDefaults(self):
     options1 = dataset_ops.Options()
     options2 = dataset_ops.Options()
-    self.assertIsNot(options1.experimental_optimization,
-                     options2.experimental_optimization)
+    self.assertIsNot(options1.optimization,
+                     options2.optimization)
     self.assertIsNot(options1.threading, options2.threading)
-    self.assertEqual(options1.experimental_optimization,
+    self.assertEqual(options1.optimization,
                      optimization_options.OptimizationOptions())
     self.assertEqual(options1.threading, threading_options.ThreadingOptions())
 
@@ -121,7 +121,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options1 = dataset_ops.Options()
     options1.experimental_slack = True
     options2 = dataset_ops.Options()
-    options2.experimental_optimization.autotune = True
+    options2.optimization.autotune = True
     ds = ds.with_options(options1)
     ds = ds.map(lambda x: 2 * x)
     ds = ds.with_options(options2)
@@ -147,19 +147,19 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_distribute.auto_shard_policy = (
         distribute_options.AutoShardPolicy.DATA)
     options.experimental_distribute.num_devices = 1000
-    options.experimental_optimization.apply_default_optimizations = True
-    options.experimental_optimization.autotune = True
-    options.experimental_optimization.autotune_buffers = True
-    options.experimental_optimization.autotune_cpu_budget = 10
-    options.experimental_optimization.autotune_ram_budget = 20
-    options.experimental_optimization.filter_fusion = True
-    options.experimental_optimization.map_and_batch_fusion = True
-    options.experimental_optimization.map_and_filter_fusion = True
-    options.experimental_optimization.map_fusion = True
-    options.experimental_optimization.map_parallelization = True
-    options.experimental_optimization.noop_elimination = True
-    options.experimental_optimization.parallel_batch = True
-    options.experimental_optimization.shuffle_and_repeat_fusion = True
+    options.optimization.apply_default_optimizations = True
+    options.optimization.autotune = True
+    options.optimization.autotune_buffers = True
+    options.optimization.autotune_cpu_budget = 10
+    options.optimization.autotune_ram_budget = 20
+    options.optimization.filter_fusion = True
+    options.optimization.map_and_batch_fusion = True
+    options.optimization.map_and_filter_fusion = True
+    options.optimization.map_fusion = True
+    options.optimization.map_parallelization = True
+    options.optimization.noop_elimination = True
+    options.optimization.parallel_batch = True
+    options.optimization.shuffle_and_repeat_fusion = True
     options.experimental_slack = True
     options.threading.max_intra_op_parallelism = 30
     options.threading.private_threadpool_size = 40
@@ -212,6 +212,26 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
                      result.threading.max_intra_op_parallelism)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testOptimizationOptionsBackwardCompatibility(self):
+    opts = dataset_ops.Options()
+    opts.optimization.autotune = True
+    self.assertEqual(opts.experimental_optimization.autotune, True)
+    opts.experimental_optimization.noop_elimination = False
+    self.assertEqual(opts.optimization.noop_elimination, False)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExperimentalOptimizationOptionsOverride(self):
+    options = dataset_ops.Options()
+    self.assertEqual(options.optimization, options.experimental_optimization)
+    options.optimization.autotune_ram_budget = 15
+    options.experimental_optimization.autotune_ram_budget = 30
+    pb = options._to_proto()
+    result = dataset_ops.Options()
+    result._from_proto(pb)
+    self.assertEqual(result.experimental_optimization.autotune_ram_budget,
+                     result.optimization.autotune_ram_budget)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testPersistenceOptionsSetOutsideFunction(self):
 
     @def_function.function
@@ -250,14 +270,14 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(5)
     options = dataset_ops.Options()
     options.experimental_slack = True
-    options.experimental_optimization.apply_default_optimizations = False
+    options.optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     dataset = self.graphRoundTrip(dataset)
     result = self._get_options(dataset)
     self.assertTrue(result.experimental_slack)
     # Explicitly check that flag is False since assertFalse allows None
     self.assertIs(
-        result.experimental_optimization.apply_default_optimizations, False)
+        result.optimization.apply_default_optimizations, False)
 
   @combinations.generate(combinations.times(
       test_base.default_test_combinations(),
@@ -265,7 +285,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptionsGraphRoundTripOptimization(self, map_parallelization):
     dataset = dataset_ops.Dataset.range(6)
     options = dataset_ops.Options()
-    options.experimental_optimization.map_parallelization = (
+    options.optimization.map_parallelization = (
         map_parallelization)
     dataset = dataset.with_options(options)
     dataset = self.graphRoundTrip(dataset)
