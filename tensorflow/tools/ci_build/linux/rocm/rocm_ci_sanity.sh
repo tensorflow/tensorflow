@@ -416,8 +416,8 @@ _run_configure() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint" "do_bazel_nobuild" "do_bazel_deps_query" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test")
-SANITY_STEPS_DESC=("Python 3 pylint" "bazel nobuild" "bazel query" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases")
+SANITY_STEPS=("do_bazel_nobuild" "do_bazel_deps_query" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test")
+SANITY_STEPS_DESC=("bazel nobuild" "bazel query" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases")
 
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS=""
