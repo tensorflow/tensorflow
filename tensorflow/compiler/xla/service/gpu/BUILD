@@ -1568,6 +1568,7 @@ cc_library(
         "amdgpu_compiler.h",
     ],
     deps = [
+        ":cusolver_rewriter",
         ":gemm_rewriter",
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",
