@@ -25,6 +25,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:autotune_options",
         "//tensorflow/python/data/experimental/ops:distribute_options",
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/experimental/ops:threading_options",

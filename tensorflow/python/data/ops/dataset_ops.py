@@ -33,6 +33,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.data.experimental.ops import autotune_options
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import threading_options
@@ -3718,6 +3719,13 @@ class Options(options_lib.OptionsBase):
       "`tf.data.OptimizationOptions` for more details.",
       default_factory=optimization_options.OptimizationOptions)
 
+  autotune = options_lib.create_option(
+      name="autotune",
+      ty=autotune_options.AutotuneOptions,
+      docstring="The autotune options associated with the dataset. See "
+      "`tf.data.AutotuneOptions` for more details.",
+      default_factory=autotune_options.AutotuneOptions)
+
   def __getattr__(self, name):
     if name == "experimental_threading":
       logging.warning("options.experimental_threading is deprecated. "
@@ -3755,6 +3763,7 @@ class Options(options_lib.OptionsBase):
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
+    pb.autotune_options.CopyFrom(self.autotune._to_proto())  # pylint: disable=protected-access
     return pb
 
   def _from_proto(self, pb):
@@ -3769,6 +3778,7 @@ class Options(options_lib.OptionsBase):
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
+    self.autotune._from_proto(pb.autotune_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -3777,6 +3787,7 @@ class Options(options_lib.OptionsBase):
     self.experimental_distribute._set_mutable(mutable)
     self.optimization._set_mutable(mutable)
     self.threading._set_mutable(mutable)
+    self.autotune._set_mutable(mutable)
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
