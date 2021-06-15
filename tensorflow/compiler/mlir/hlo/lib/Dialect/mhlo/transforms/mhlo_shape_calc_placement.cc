@@ -153,6 +153,8 @@ DeviceType getTensorPlacement(Operation* dst, size_t operand_idx) {
   return DeviceType::kGPU;
 }
 
+// TODO: Currently, we put H2DOp and D2HOp in mhlo dialect. They should be put
+// into a separate dedicated dialect.
 void insertMemcpy(Operation* dst, size_t operand_index, bool is_h2d) {
   OpBuilder b(dst);
   Location loc = dst->getLoc();
