@@ -40,7 +40,7 @@ def GetTestConfigs():
     # "NCDHW" format is currently supported exclusively on CUDA GPUs.
     # "NCDHW" format is currently not supported by MKL pooling ops. 
     if not test_util.IsMklEnabled():
-       test_configs += [("NCDHW", True)]
+      test_configs += [("NCDHW", True)]
   return test_configs
 
 
