@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -754,6 +755,16 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     for (const auto& attr : opdef.attr()) {
       (*ndef->mutable_attr())[attr.name()].set_placeholder(attr.name());
     }
+
+    if (IsMklEnabled() &&
+        absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
+      // All MKL eager ops have _kerenl private attribute that needs to be set
+      // to a fixed label.
+      AttrValue attr_kernel;
+      attr_kernel.set_s(mkl_op_registry::kMklNameChangeOpLabel);
+      (*ndef->mutable_attr()).insert({"_kernel", attr_kernel});
+    }
+
     // Set `ret` map.
     TF_RETURN_IF_ERROR(
         PopulateRetMap(&fdef, op_attrs, op, opdef, signature, ndef->name()));
