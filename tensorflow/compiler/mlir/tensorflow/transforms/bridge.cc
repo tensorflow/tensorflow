@@ -157,7 +157,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  pm.addPass(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
