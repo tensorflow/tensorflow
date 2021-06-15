@@ -3334,6 +3334,15 @@ TEST_F(HloParserTest, ParseShapeStringWithLayout) {
       << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithInvalidLayout) {
+  string shape_string = "f32[123,456]invalid{}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShape(F32, {123, 456});
+  ASSERT_TRUE(ShapeUtil::Compatible(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
 TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   // One tile.
   string shape_string = "f32[123,456]{0,1:T(2,128)}";
