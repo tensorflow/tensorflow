@@ -50806,6 +50806,14 @@ func TridiagonalSolvePartialPivoting(value bool) TridiagonalSolveAttr {
 	}
 }
 
+// TridiagonalSolvePerturbSingular sets the optional perturb_singular attribute to value.
+// If not specified, defaults to false
+func TridiagonalSolvePerturbSingular(value bool) TridiagonalSolveAttr {
+	return func(m optionalAttr) {
+		m["perturb_singular"] = value
+	}
+}
+
 // Solves tridiagonal systems of equations.
 //
 //   Solves tridiagonal systems of equations.
