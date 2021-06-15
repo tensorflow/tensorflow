@@ -682,6 +682,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         # copybara:uncomment_begin
+        # "//tensorflow/core/tfrt/eager:c_api_tfrt",
         # "@tf_runtime//backends/cpu:tf_ops_alwayslink",
         # copybara:uncomment_end
     ],
