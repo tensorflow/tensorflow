@@ -721,22 +721,14 @@ class IteratorBase {
   // `SaveInternal` on their input iterators.
   Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
-    int64 start_us = EnvTime::NowMicros();
-    TF_RETURN_IF_ERROR(input->Save(ctx, writer));
-    VLOG(2) << "Saved " << input->prefix() << " in "
-            << (EnvTime::NowMicros() - start_us) << "us";
-    return Status::OK();
+    return input->Save(ctx, writer);
   }
 
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their input iterators.
   Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
                       const std::unique_ptr<IteratorBase>& input) {
-    int64 start_us = EnvTime::NowMicros();
-    TF_RETURN_IF_ERROR(input->Restore(ctx, reader));
-    VLOG(2) << "Restored " << input->prefix() << " in "
-            << (EnvTime::NowMicros() - start_us) << "us";
-    return Status::OK();
+    return input->Restore(ctx, reader);
   }
 
   Status RestoreInput(IteratorContext&& ctx, IteratorStateReader* reader,

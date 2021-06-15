@@ -2943,7 +2943,7 @@ XlaOp XlaBuilder::AllReduceScatter(
 
 XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                            int64 concat_dimension, int64 split_count,
-                           const std::vector<ReplicaGroup>& replica_groups,
+                           absl::Span<const ReplicaGroup> replica_groups,
                            const absl::optional<Layout>& layout) {
   // Array all_to_all may need to violate layout constraint to be legal so use
   // the tuple version.
@@ -2955,9 +2955,9 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                        replica_groups);
 }
 
-XlaOp XlaBuilder::AllToAllArray(
-    XlaOp operand, int64 split_dimension, int64 concat_dimension,
-    int64 split_count, const std::vector<ReplicaGroup>& replica_groups) {
+XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64 split_dimension,
+                                int64 concat_dimension, int64 split_count,
+                                absl::Span<const ReplicaGroup> replica_groups) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(
@@ -3009,7 +3009,7 @@ XlaOp XlaBuilder::AllToAllArray(
 
 XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64 split_dimension,
                                 int64 concat_dimension, int64 split_count,
-                                const std::vector<ReplicaGroup>& replica_groups,
+                                absl::Span<const ReplicaGroup> replica_groups,
                                 const absl::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -4525,7 +4525,7 @@ XlaOp AllReduceScatter(const XlaOp operand, const XlaComputation& computation,
 
 XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                int64 concat_dimension, int64 split_count,
-               const std::vector<ReplicaGroup>& replica_groups,
+               absl::Span<const ReplicaGroup> replica_groups,
                const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
                                      split_count, replica_groups, layout);
@@ -4533,7 +4533,7 @@ XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
 
 XlaOp AllToAllTuple(const XlaOp operand, int64 split_dimension,
                     int64 concat_dimension, int64 split_count,
-                    const std::vector<ReplicaGroup>& replica_groups,
+                    absl::Span<const ReplicaGroup> replica_groups,
                     const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAllTuple(operand, split_dimension,
                                           concat_dimension, split_count,

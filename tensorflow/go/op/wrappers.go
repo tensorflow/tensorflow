@@ -44936,8 +44936,8 @@ func ResourceApplyFtrlV2MultiplyLinearByLr(value bool) ResourceApplyFtrlV2Attr {
 
 // Update '*var' according to the Ftrl-proximal scheme.
 //
+// accum_new = accum + grad * grad
 // grad_with_shrinkage = grad + 2 * l2_shrinkage * var
-// accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
 // linear += grad_with_shrinkage +
 //     (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
 // quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
@@ -50803,6 +50803,14 @@ type TridiagonalSolveAttr func(optionalAttr)
 func TridiagonalSolvePartialPivoting(value bool) TridiagonalSolveAttr {
 	return func(m optionalAttr) {
 		m["partial_pivoting"] = value
+	}
+}
+
+// TridiagonalSolvePerturbSingular sets the optional perturb_singular attribute to value.
+// If not specified, defaults to false
+func TridiagonalSolvePerturbSingular(value bool) TridiagonalSolveAttr {
+	return func(m optionalAttr) {
+		m["perturb_singular"] = value
 	}
 }
 

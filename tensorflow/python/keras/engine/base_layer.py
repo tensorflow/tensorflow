@@ -3048,6 +3048,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def _tracking_metadata(self):
+    """Info about this layer to be saved into the SavedModel."""
     return self._trackable_saved_model_saver.tracking_metadata
 
   def _list_extra_dependencies_for_serialization(self, serialization_cache):

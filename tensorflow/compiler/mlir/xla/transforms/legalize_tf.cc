@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -642,7 +643,8 @@ static void CreateWhile32(Location loc, int num_iterations,
   auto tuple_type = init_tuple.getType();
 
   // Create the while op.
-  auto while_op = builder->create<mhlo::WhileOp>(loc, init_tuple);
+  auto while_op = builder->create<mhlo::WhileOp>(
+      loc, tuple_type, SmallVector<Value>{init_tuple});
 
   {
     OpBuilder::InsertionGuard guard(*builder);
@@ -700,10 +702,11 @@ static void CreateWhile32(Location loc, int num_iterations,
     builder->create<mhlo::ReturnOp>(loc, updated_tuple);
   }
 
+  // TODO(jpienaar): Support multi-operand while op.
   final_values->reserve(init_values.size());
   for (int i = 0, e = init_values.size(); i < e; ++i)
     final_values->push_back(
-        builder->create<GetTupleElementOp>(loc, while_op, i + 1));
+        builder->create<GetTupleElementOp>(loc, while_op.getResult(0), i + 1));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1153,6 +1156,312 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
     return success();
   }
 };
+
+// Convert TF::GatherV2Op to mhlo::DynamicGatherOp
+class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
+  using OpRewritePattern<TF::GatherV2Op>::OpRewritePattern;
+  // TODO(disc): To recover static special case's performance with folding and
+  // canonicalization.
+  LogicalResult matchAndRewrite(TF::GatherV2Op op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value params = op.params();
+    // params and indices of GatherNdOp must be ranked
+    auto params_ty = params.getType().dyn_cast<RankedTensorType>();
+    Value indices = op.indices();
+    auto indices_ty = indices.getType().dyn_cast<RankedTensorType>();
+    if (!params_ty || !indices_ty) return failure();
+
+    // TODO(disc): Remove this constraint once fold and canonicalization
+    // implemented.
+    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape())
+      return failure();
+
+    int64_t params_rank = params_ty.getRank();
+    int64_t indices_rank = indices_ty.getRank();
+
+    // axis
+    DenseIntElementsAttr axis_attr;
+    // axis must be const for GatherOp
+    if (!matchPattern(op.axis(), m_Constant(&axis_attr))) return failure();
+
+    int64_t axis = (*axis_attr.begin()).getSExtValue();
+    if (axis < 0) axis += params_rank;
+
+    // slice_sizes
+    SmallVector<int64_t, 4> slice_sizes;
+    slice_sizes.reserve(params_rank);
+    for (int64_t dim_idx = 0; dim_idx < params_rank; ++dim_idx) {
+      if (dim_idx == axis) {
+        slice_sizes.push_back(1);
+      } else {
+        // potentially dynamic
+        int64_t dim_size = params_ty.getDimSize(dim_idx);
+        slice_sizes.push_back(dim_size);
+      }
+    }
+    SmallVector<Value, 4> slice_sizes_vals;
+    for (int64_t dim_idx = 0; dim_idx < params_rank; ++dim_idx) {
+      if (dim_idx == axis) {
+        slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
+            loc, rewriter.getIntegerAttr(indices_ty.getElementType(), 1)));
+      } else {
+        int64_t dim_size = params_ty.getDimSize(dim_idx);
+        if (dim_size != ShapedType::kDynamicSize) {
+          slice_sizes_vals.push_back(rewriter.create<ConstantOp>(
+              loc,
+              rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
+        } else {
+          slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
+              loc, rewriter.create<memref::DimOp>(loc, params, dim_idx),
+              indices_ty.getElementType()));
+        }
+      }
+    }
+    Value slice_sizes_value = rewriter.create<tensor::FromElementsOp>(
+        loc, rewriter.getI32Type(), slice_sizes_vals);
+    // offset_dims
+    SmallVector<int64_t, 4> offset_dims;
+    for (int64_t dim_idx = 0; dim_idx < params_rank; dim_idx++) {
+      if (dim_idx < axis) {
+        offset_dims.push_back(dim_idx);
+      } else if (dim_idx >= axis + 1) {
+        offset_dims.push_back(dim_idx + indices_rank - 1);
+      }
+    }
+    // collapsed_slice_dims
+    SmallVector<int64_t, 4> collapsed_slice_dims(1, axis);
+    // start_index_map
+    SmallVector<int64_t, 4> start_index_map(1, axis);
+    // index_vector_dim
+    int64_t index_vector_dim = indices_rank;
+    auto dims_attr = GatherDimensionNumbers::get(
+        /*offset_dims=*/GetI64ElementsAttr(offset_dims, &rewriter),
+        /*collapsed_slice_dims=*/
+        GetI64ElementsAttr(collapsed_slice_dims, &rewriter),
+        /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
+        /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
+        rewriter.getContext());
+
+    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
+        op, op.getType(), op.params(), op.indices(), slice_sizes_value,
+        dims_attr);
+    return success();
+  }
+};
+
+// Conterts tf.Conv2D to mhlo.dynamic_conv.
+// TODO(disc): To recover static special case's performance with adding folding,
+// canonicalization func and removing ConvertConvOp.
+template <typename OpT, int num_spatial_dims, bool depthwise_conv = false>
+class ConvertConvDynamic : public OpRewritePattern<OpT> {
+ public:
+  using OpRewritePattern<OpT>::OpRewritePattern;
+
+  bool GetPaddingValues(OpT &op, PatternRewriter &rewriter, Value input_size,
+                        Value filter_size, int64_t dilation_rate,
+                        int64_t stride, tensorflow::Padding padding_type,
+                        Type shape_scalar_type, Value *padding_low,
+                        Value *padding_high) const {
+    // Stride must be > 0
+    if (stride <= 0) return false;
+    // Dilation rate must be >= 1
+    if (dilation_rate < 1) return false;
+
+    Location loc = op.getLoc();
+    switch (padding_type) {
+      case tensorflow::Padding::VALID: {
+        auto zero = rewriter.create<ConstantIntOp>(loc, 0, shape_scalar_type);
+        *padding_low = *padding_high = zero;
+        break;
+      }
+      case tensorflow::Padding::EXPLICIT:
+        break;
+      case tensorflow::Padding::SAME: {
+        auto zero = rewriter.create<ConstantIntOp>(loc, 0, shape_scalar_type);
+        auto one = rewriter.create<ConstantIntOp>(loc, 1, shape_scalar_type);
+        auto two = rewriter.create<ConstantIntOp>(loc, 2, shape_scalar_type);
+        // See also the parallel implementation in
+        // GetWindowedOutputSizeFromDimsV2. effective_filter_size = (filter_size
+        // - 1) * dilation_rate + 1
+        Value stride_value =
+            rewriter.create<ConstantIntOp>(loc, stride, shape_scalar_type);
+        Value dilation_rate_value = rewriter.create<ConstantIntOp>(
+            loc, dilation_rate, shape_scalar_type);
+        Value effective_filter_size_op = rewriter.create<AddIOp>(
+            loc, one,
+            rewriter.create<MulIOp>(
+                loc, dilation_rate_value,
+                rewriter.create<SubIOp>(loc, filter_size, one)));
+        // output_size = (input_size + stride - 1) / stride;
+        Value output_size = rewriter.create<UnsignedDivIOp>(
+            loc,
+            rewriter.create<AddIOp>(
+                loc, input_size,
+                rewriter.create<SubIOp>(loc, stride_value, one)),
+            stride_value);
+        // std::max(int64{0}, (output_size - 1) * stride +
+        //     effective_filter_size - input_size);
+        Value padding_needed = rewriter.create<SubIOp>(
+            loc,
+            rewriter.create<AddIOp>(
+                loc, effective_filter_size_op,
+                rewriter.create<MulIOp>(
+                    loc, stride_value,
+                    rewriter.create<SubIOp>(loc, output_size, one))),
+            input_size);
+        Value cond = rewriter.create<mlir::CmpIOp>(loc, CmpIPredicate::sge,
+                                                   padding_needed, zero);
+        padding_needed = rewriter.create<mlir::SelectOp>(
+            loc, padding_needed.getType(), cond, padding_needed, zero);
+        *padding_low =
+            rewriter.create<UnsignedDivIOp>(loc, padding_needed, two);
+        *padding_high =
+            rewriter.create<SubIOp>(loc, padding_needed, *padding_low);
+        break;
+      }
+    }
+    return true;
+  }
+
+  LogicalResult matchAndRewriteDynamicConv(OpT op,
+                                           PatternRewriter &rewriter) const {
+    tensorflow::TensorFormat data_format;
+    if (!FormatFromString(op.data_format().str(), &data_format))
+      return failure();
+
+    tensorflow::Padding padding;
+    if (!GetPaddingFromString(op.padding().str(), &padding).ok())
+      return failure();
+
+    auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
+    auto filter_ty =
+        op.filter().getType().template dyn_cast<RankedTensorType>();
+    auto result_ty = op.getType().template dyn_cast<RankedTensorType>();
+    if (!input_ty || !filter_ty || !result_ty) return failure();
+    // TODO(disc): Remove this constraint once fold and canonicalization
+    // implemented.
+    if (input_ty.hasStaticShape() && filter_ty.hasStaticShape())
+      return failure();
+
+    ArrayRef<Attribute> dilations = op.dilations().getValue();
+    ArrayRef<Attribute> strides = op.strides().getValue();
+    ArrayRef<Attribute> explicit_paddings;
+    if (padding == tensorflow::Padding::EXPLICIT) {
+      // EXPLICIT padding mode and the associated attribute is attached to
+      // Conv2D.
+      explicit_paddings =
+          op->template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+    }
+
+    SmallVector<int64_t, num_spatial_dims> spatial_dim_indices;
+    SmallVector<int64_t, num_spatial_dims> rhs_dilations;
+    SmallVector<int64_t, num_spatial_dims> window_strides;
+    SmallVector<Value, num_spatial_dims * 2> paddings;
+
+    auto get_int = [](Attribute attr) {
+      return attr.template cast<IntegerAttr>().getInt();
+    };
+
+    constexpr int num_dims = num_spatial_dims + 2;
+
+    Location loc = op.getLoc();
+    auto shape_scalar_type = rewriter.getIntegerType(32);
+
+    auto get_const = [&](int64_t val) {
+      return rewriter.create<mlir::ConstantIntOp>(loc, val, shape_scalar_type);
+    };
+    auto get_dim_value = [&](Value val, int64_t dim) {
+      Value dim_value = rewriter.create<memref::DimOp>(loc, val, dim);
+      return rewriter.create<IndexCastOp>(loc, dim_value, shape_scalar_type);
+    };
+
+    for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
+      const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+      spatial_dim_indices.push_back(dim);
+
+      const int64_t dilation = get_int(dilations[dim]);
+      rhs_dilations.push_back(dilation);
+      const int64_t stride = get_int(strides[dim]);
+      window_strides.push_back(stride);
+
+      Value pad_low, pad_high;
+      if (padding == tensorflow::Padding::EXPLICIT) {
+        pad_low = get_const(get_int(explicit_paddings[2 * dim]));
+        pad_high = get_const(get_int(explicit_paddings[2 * dim + 1]));
+      } else {
+        auto input_size = get_dim_value(op.input(), dim);
+        auto filter_size = get_dim_value(op.filter(), i);
+        if (!GetPaddingValues(op, rewriter, input_size, filter_size, dilation,
+                              stride, padding, shape_scalar_type, &pad_low,
+                              &pad_high)) {
+          return failure();
+        }
+      }
+      paddings.push_back(pad_low);
+      paddings.push_back(pad_high);
+    }
+    auto rhs_dilations_attr = rewriter.getNamedAttr(
+        "rhs_dilation", GetI64ElementsAttr(rhs_dilations, &rewriter));
+
+    auto window_strides_attr = rewriter.getNamedAttr(
+        "window_strides", GetI64ElementsAttr(window_strides, &rewriter));
+
+    auto dimension_numbers_attr = GetConvDimensionNumbersAttr(
+        spatial_dim_indices, data_format, &rewriter);
+
+    const int64_t input_channels =
+        GetDimSize(input_ty, GetTensorFeatureDimIndex(num_dims, data_format));
+    // Filters data_format is always HWIO so input channels dimension is after
+    // all spatial dimensions.
+    const int64_t filter_channels = GetDimSize(filter_ty, num_spatial_dims);
+    // TensorFlow convolution op verifies that the number of input channels is
+    // divisible by the number of filter channels.
+    // For depthwise convolution the feature_group_count argument would be set
+    // to the input feature dimension.
+    const int64_t feature_group_count =
+        depthwise_conv ? input_channels : input_channels / filter_channels;
+    auto feature_group_count_attr = rewriter.getNamedAttr(
+        "feature_group_count", rewriter.getI64IntegerAttr(feature_group_count));
+
+    auto batch_group_count_attr = rewriter.getNamedAttr(
+        "batch_group_count", rewriter.getI64IntegerAttr(1));
+
+    Value paddings_op = rewriter.create<tensor::FromElementsOp>(
+        op.getLoc(), rewriter.getI32Type(), paddings);
+
+    SmallVector<Value, 3> operands(op.getOperands());
+    operands.push_back(paddings_op);
+    // Reshape the filter to {spatial_dims...., 1,in_channels *
+    // channel_multiplier}
+    if (depthwise_conv) {
+      ArrayRef<int64_t> filter_shape = filter_ty.getShape();
+      llvm::SmallVector<int64_t, num_dims> new_shape(
+          filter_shape.begin(), filter_shape.begin() + num_spatial_dims);
+      new_shape.push_back(1);
+      new_shape.push_back(filter_shape[num_spatial_dims] *
+                          filter_shape[num_spatial_dims + 1]);
+      operands[1] = rewriter.create<mhlo::ReshapeOp>(
+          op.getLoc(),
+          RankedTensorType::get(new_shape, filter_ty.getElementType()),
+          operands[1]);
+    }
+    NamedAttribute attrs[] = {rhs_dilations_attr, window_strides_attr,
+                              dimension_numbers_attr, feature_group_count_attr,
+                              batch_group_count_attr};
+    rewriter.replaceOpWithNewOp<mhlo::DynamicConvOp>(op, op.getType(), operands,
+                                                     llvm::makeArrayRef(attrs));
+    return success();
+  }
+
+  LogicalResult matchAndRewrite(OpT op,
+                                PatternRewriter &rewriter) const override {
+    return matchAndRewriteDynamicConv(op, rewriter);
+  }
+};
+
+using ConvertConv2DDynamic =
+    ConvertConvDynamic<TF::Conv2DOp, /*num_spatial_dims=*/2>;
 
 // Converts the TensorFlow conv op in template to the generic HLO conv op by
 // converting TensorFlow op attributes to HLO op attributes.
@@ -5263,6 +5572,171 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
   }
 };
 
+// Converts tf.Unpack to a series of XLA HLO Slice ops.
+// TODO(disc): To recover static special case's performance with folding and
+// canonicalization.
+class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::UnpackOp op,
+                                PatternRewriter &rewriter) const override {
+    auto value_type = op.value().getType().dyn_cast<RankedTensorType>();
+    if (!value_type) return failure();
+    // TODO(disc): Remove this constraint once fold and canonicalization
+    // implemented.
+    if (value_type.hasStaticShape()) return failure();
+
+    int64_t value_rank = value_type.getRank();
+    int64_t axis = op.axis();
+    if (axis < 0) axis += value_rank;
+    Location loc = op.getLoc();
+
+    auto shape_scalar_type = rewriter.getIntegerType(32);
+    // Parameters for constructing each slice.
+    SmallVector<Value, 4> begin_indices, end_indices, strides;
+    begin_indices.reserve(value_rank);
+    end_indices.reserve(value_rank);
+    strides.reserve(value_rank);
+    // final output shape
+    SmallVector<Value, 4> shape_values;
+    shape_values.reserve(value_rank - 1);
+    // slice shape before reshape, should be like{?, 1, ?, ?} if axis = 1
+    SmallVector<int64_t, 4> slice_shape(value_rank, ShapedType::kDynamicSize);
+    for (int64_t dim_idx = 0; dim_idx < value_rank; ++dim_idx) {
+      int64_t dim_size = value_type.getDimSize(dim_idx);
+      if (dim_size == ShapedType::kDynamicSize) {
+        Value dim_i = rewriter.create<IndexCastOp>(
+            loc, rewriter.create<memref::DimOp>(loc, op.getOperand(), dim_idx),
+            shape_scalar_type);
+        end_indices.push_back(dim_i);
+        if (dim_idx != axis) {
+          shape_values.push_back(dim_i);
+        }
+      } else {
+        Value dim_i = rewriter.create<ConstantOp>(
+            loc, shape_scalar_type,
+            rewriter.getIntegerAttr(shape_scalar_type, dim_size));
+        end_indices.push_back(dim_i);
+        if (dim_idx != axis) {
+          shape_values.push_back(dim_i);
+          slice_shape[dim_idx] = dim_size;
+        } else {
+          slice_shape[dim_idx] = 1;
+        }
+      }
+      begin_indices.push_back(rewriter.create<ConstantIntOp>(loc, 0, 32));
+      strides.push_back(rewriter.create<ConstantIntOp>(loc, 1, 32));
+    }
+
+    SmallVector<Value, 4> results;
+    results.reserve(op.getNumResults());
+    for (int64_t i = 0; i < op.getNumResults(); ++i) {
+      begin_indices[axis] = rewriter.create<ConstantIntOp>(loc, i, 32);
+      end_indices[axis] = rewriter.create<ConstantIntOp>(loc, i + 1, 32);
+      Value slice_op = rewriter.create<RealDynamicSliceOp>(
+          loc, RankedTensorType::get(slice_shape, value_type.getElementType()),
+          op.value(),
+          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
+                                                  begin_indices),
+          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
+                                                  end_indices),
+          rewriter.create<tensor::FromElementsOp>(loc, rewriter.getI32Type(),
+                                                  strides));
+      // Reshape to drop the axis dimension.
+      Value new_shape = rewriter.create<tensor::FromElementsOp>(
+          loc, rewriter.getI32Type(), shape_values);
+      Value reshape_op = rewriter.create<DynamicReshapeOp>(loc, op.getType(i),
+                                                           slice_op, new_shape);
+      results.push_back(reshape_op);
+    }
+
+    rewriter.replaceOp(op, results);
+    return success();
+  }
+};
+
+// Converts the tf.Sign op into mhlo.sign
+// TODO(disc): To recover static special case's performance with folding and
+// canonicalization.
+class ConvertSignOpDynamic : public OpRewritePattern<TF::SignOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::SignOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value x = op.x();
+    auto x_type = x.getType().dyn_cast<RankedTensorType>();
+    if (!x_type) return failure();
+    // TODO(disc): Remove this constraint once fold and canonicalization
+    // implemented.
+    if (x_type.hasStaticShape()) return failure();
+
+    Value hlo_sign = rewriter.create<mhlo::SignOp>(loc, x);
+    const StringAttr kNe = rewriter.getStringAttr(
+        mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
+    Value hlo_cmp = rewriter.create<mhlo::CompareOp>(loc, x, x, kNe);
+
+    auto zero =
+        GetScalarConstOfType(x_type.getElementType(), loc, 0, &rewriter);
+    Value shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), x);
+
+    auto broadcast_dims_attr =
+        GetI64ElementsAttr(ArrayRef<int64_t>({}), &rewriter);
+    Value broadcasted_zero = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+        loc, x_type, zero, shape_op, broadcast_dims_attr);
+
+    auto hlo_select = rewriter.create<mhlo::SelectOp>(
+        loc, hlo_cmp, broadcasted_zero, hlo_sign);
+
+    rewriter.replaceOp(op, hlo_select.getResult());
+    return success();
+  }
+};
+
+// Converts the tf.SigmoidGradOp
+// TODO(disc): To recover static special case's performance with folding and
+// canonicalization.
+class ConvertSigmoidGradOpDynamic : public OpRewritePattern<TF::SigmoidGradOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SigmoidGradOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value y = op.y();
+    Value dy = op.dy();
+    auto tp_y = y.getType().dyn_cast<RankedTensorType>();
+    auto tp_dy = dy.getType().dyn_cast<RankedTensorType>();
+    if (!tp_y || !tp_dy) return failure();
+
+    // TODO(disc): Remove this constraint once fold and canonicalization
+    // implemented.
+    if (tp_y.hasStaticShape() || tp_dy.hasStaticShape()) return failure();
+
+    Attribute attr;
+    Type elem_tp = tp_y.getElementType();
+    if (elem_tp.isSignlessInteger()) {
+      attr = rewriter.getIntegerAttr(elem_tp, 1);
+    } else {
+      assert(elem_tp.isa<FloatType>());
+      attr = rewriter.getFloatAttr(elem_tp, 1);
+    }
+    Value one = rewriter.create<mhlo::ConstOp>(
+        loc, DenseElementsAttr::get(RankedTensorType::get({}, elem_tp), attr));
+
+    auto v0 = rewriter.create<chlo::BroadcastMulOp>(
+        loc, dy, y, hlo::getBroadcastDimensionsAttr(&rewriter, dy, y));
+    auto v1 = rewriter.create<chlo::BroadcastSubOp>(
+        loc, one, y, hlo::getBroadcastDimensionsAttr(&rewriter, one, y));
+    auto result = rewriter.create<chlo::BroadcastMulOp>(
+        loc, v0, v1, hlo::getBroadcastDimensionsAttr(&rewriter, v0, v1));
+
+    rewriter.replaceOp(op, result.getOperation()->getResults());
+    return success();
+  }
+};
+
 // Converts TF unsorted segment reduction ops to XLA HLO scatter op.
 //
 // TF unsorted segment reduction op peforms the following calculation:
@@ -6866,6 +7340,11 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,
+    ConvertUnpackOpDynamic,
+    ConvertSignOpDynamic,
+    ConvertSigmoidGradOpDynamic,
+    ConvertGatherV2OpDynamic,
+    ConvertConv2DDynamic,
     ConvertPadOpDynamic,
     ConvertGatherNdOpDynamic>(context);
   // clang-format on

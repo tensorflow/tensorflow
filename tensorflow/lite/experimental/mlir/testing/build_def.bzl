@@ -29,6 +29,7 @@ def mlir_only_generated_test_models():
         "control_dep",
         "conv_bias_relu6",
         "conv3d",
+        "conv3d_transpose",
         "cumsum",
         # TODO(b/186563810): Enable after resolving tensorflow_addons dep issue
         # that causes test failures in the exported codebase.
@@ -49,6 +50,7 @@ def mlir_only_generated_test_models():
         "reduce_all",
         "rfft",
         "rfft2d",
+        "roll",
         "segment_sum",
         "shape_to_strided_slice",
         "softplus",
@@ -61,6 +63,7 @@ def mlir_only_generated_test_models():
         "tensor_list_resize",
         "tensor_list_set_item",
         "tensor_list_dynamic_shape",
+        "tensor_scatter_update",
         "where_v2",
         "while",
     ]

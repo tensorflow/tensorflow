@@ -218,6 +218,27 @@ func @decompose_resource_apply_momentum_nesterov(%arg0: tensor<f32>, %arg1: tens
   return
 }
 
+// -----
+
+// Tests that composite tf.ResourceApplyFtrl{,V2} is decomposed.
+
+// CHECK-LABEL: testResourceApplyFtrl
+func @testResourceApplyFtrl(%var: tensor<*x!tf.resource>, %accum: tensor<*x!tf.resource>, %linear: tensor<*x!tf.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
+  "tf.ResourceApplyFtrl"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrl
+  // CHECK: return
+  return
+}
+
+// CHECK-LABEL: testResourceApplyFtrlV2
+func @testResourceApplyFtrlV2(%var: tensor<*x!tf.resource>, %accum: tensor<*x!tf.resource>, %linear: tensor<*x!tf.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
+  %0 = "tf.ZerosLike"(%lr_power) : (tensor<*xf32>) -> tensor<*xf32>
+  "tf.ResourceApplyFtrlV2"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %0, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrlV2
+  // CHECK: return
+  return
+}
+
 
 // Tests that composite tf.ResourceApplyKerasMomentum (non-Nesterov) operation
 // is decomposed.

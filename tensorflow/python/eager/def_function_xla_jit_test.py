@@ -652,6 +652,17 @@ class DefFunctionTest(xla_test.XLATestCase):
 
   def testUpdateVariable(self):
     with ops.device('device:{}:0'.format(self.device)):
+      v = variables.Variable([0.0, 0.0])
+
+      @def_function.function(jit_compile=True)
+      def f():
+        v.assign([3.1, 2.3])
+
+      f()
+      self.assertAllClose(v, [3.1, 2.3])
+
+  def testUpdateVariableMemoryUsage(self):
+    with ops.device('device:{}:0'.format(self.device)):
 
       on_gpu = 'gpu' in self.device.lower()
       v = variables.Variable([3.1, 3.2])

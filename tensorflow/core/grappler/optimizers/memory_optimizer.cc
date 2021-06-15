@@ -1442,10 +1442,5 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
-void MemoryOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
-                               const GraphDef& optimized_graph, double result) {
-  // Nothing to do for MemoryOptimizer.
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow

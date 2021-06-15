@@ -40,6 +40,13 @@
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 * `tf.keras`:
+    *   Keras has been split into a separate PIP package (`keras`),
+        and its code has been moved to the GitHub repository
+        [keras-team/keras](http://github.com/keras-team/keras).
+        The API endpoints for `tf.keras` stay unchanged,
+        but are now backed by the `keras` PIP package. All Keras-related
+        PRs and issues should now be directed to the GitHub repository
+        [keras-team/keras](http://github.com/keras-team/keras).
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
@@ -58,7 +65,8 @@
         enable this feature. The documentation in [Advanced autodiff]
         (https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
         has been updated.
-
+    *   Object metadata has now been deprecated and no longer saved to the
+        SavedModel.
 *   TF Core:
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
         peak memory returned by `tf.config.experimental.get_memory_info`.
@@ -78,6 +86,9 @@
     *   Added support for specifying number of subdivisions in all reduce host
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
+    *   Add an option `perturb_singular` to `tf.linalg.tridiagonal_solve` that
+        allows solving linear systems with a numerically singular tridiagonal 
+        matrix, e.g. for use in inverse iteration.
     *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
         Hermitian tridiagonal matrix.
     *   `tf.constant` now places its output on the current default device.
@@ -94,6 +105,8 @@
     *   Added a new session config setting `internal_fragmentation_fraction`,
         which controls when the BFC Allocator needs to split an oversized chunk
         to satisfy an allocation request.
+    *   Added `tf.get_current_name_scope()` which returns the current full name
+        scope string that will be prepended to op names.
 *   `tf.data`:
     *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
         `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
@@ -108,8 +121,14 @@
         `tf.data.Dataset.random` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan`
         and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.snapshot` API to
+        `tf.data.Dataset.shapshot` and deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.take_while` API to
         `tf.data.Dataset.take_while` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.ThreadingOptions` API to
+        `tf.data.ThreadingOptions` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.unique` API to
+        `tf.data.Dataset.unique` and deprecating the experimental endpoint.
     *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
         `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
         sampling if it encounters an empty dataset. This preserves the sampling
@@ -123,6 +142,9 @@
         *   `tf.data.experimental.StatsOptions.*`
         *   `tf.data.experimental.bytes_produced_stats`
         *   `tf.data.experimental.latency_stats`
+    *   Removed experimental tf.data API for map vectorization:
+        *   `tf.data.experimental.OptimizationOptions.map_vectorization`
+        *   `tf.data.experimental.MapVectorizationOptions.*`
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
@@ -814,7 +836,7 @@ Fukasawa, Zachary Deane-Mayer, Zeno Gantner, Zhoulong Jiang, zhuyie, zilinzhu,
   and
   [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
 * Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
-* Newer ROCm versions are supported on the 2.1 branch. 
+* Newer ROCm versions are supported on the 2.1 branch.
 
 # Release 2.0.4
 

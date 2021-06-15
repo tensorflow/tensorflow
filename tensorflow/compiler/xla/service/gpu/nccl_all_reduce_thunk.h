@@ -32,39 +32,58 @@ struct NcclAllReduceConfig {
   ReductionKind reduction_kind;
 };
 
-// Thunk that performs a NCCL-based All-Reduce among CUDA GPU-based replicas.
-class NcclAllReduceThunk : public NcclCollectiveThunk {
+// Thunk that performs a NCCL-based All-Reduce or All-Reduce-Scatter among CUDA
+// GPU-based replicas.
+class NcclAllReduceThunkBase : public NcclCollectiveThunk {
+ public:
+  NcclAllReduceThunkBase(Kind kind, ThunkInfo thunk_info,
+                         NcclAllReduceConfig config,
+                         std::vector<Buffer> buffers);
+
+ protected:
+  const NcclCollectiveConfig& config() const override { return config_.config; }
+
+  const NcclAllReduceConfig config_;
+  const std::vector<Buffer> buffers_;
+};
+
+class NcclAllReduceThunk : public NcclAllReduceThunkBase {
  public:
   NcclAllReduceThunk(ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op,
                      std::vector<Buffer> buffers);
 
+  static const char* GetName() { return "AllReduce"; }
+
   // Returns whether the given instruction can be lowered to a nccl all-reduce
   // call.
   static bool CanImplement(mlir::lmhlo::AllReduceOp op);
-
-  static const char* GetName() { return "AllReduce"; }
-
   static bool IsDegenerate(mlir::lmhlo::AllReduceOp op, int64 replica_count,
-                           int64 partition_count) {
-    return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
-        .IsDegenerate(replica_count, partition_count);
-  }
-
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceOp op) {
-    return GetNcclAllReduceConfig(op).config.group_mode;
-  }
+                           int64 partition_count);
+  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceOp op);
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
+};
 
-  const NcclCollectiveConfig& config() const override { return config_.config; }
+class NcclAllReduceScatterThunk : public NcclAllReduceThunkBase {
+ public:
+  NcclAllReduceScatterThunk(ThunkInfo thunk_info,
+                            mlir::lmhlo::AllReduceScatterOp op,
+                            std::vector<Buffer> buffers);
 
- private:
-  static NcclAllReduceConfig GetNcclAllReduceConfig(
-      mlir::lmhlo::AllReduceOp op);
-  const NcclAllReduceConfig config_;
-  const std::vector<Buffer> buffers_;
+  static const char* GetName() { return "AllReduceScatter"; }
+
+  // Returns whether the given instruction can be lowered to a nccl
+  // reduce-scatter call.
+  static bool CanImplement(mlir::lmhlo::AllReduceScatterOp op);
+  static bool IsDegenerate(mlir::lmhlo::AllReduceScatterOp op,
+                           int64 replica_count, int64 partition_count);
+  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceScatterOp op);
+
+ protected:
+  Status RunNcclCollective(const ExecuteParams& params,
+                           ncclComm_t comm) override;
 };
 
 }  // namespace gpu

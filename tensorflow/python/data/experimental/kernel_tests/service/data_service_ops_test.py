@@ -144,13 +144,15 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, [v1, v2, default_value], requires_initialization=True)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testDifferentShuffleOrders(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(shuffle_seed=[None, 10])))
+  def testShuffleOrder(self, shuffle_seed):
     random_seed.set_random_seed(None)
     num_elements = 100
     cluster = data_service_test_base.TestCluster(num_workers=2)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.shuffle(num_elements)
+    ds = ds.shuffle(num_elements, seed=shuffle_seed)
     ds = self.make_distributed_dataset(ds, cluster)
     output = self.getDatasetOutput(ds)
 
@@ -164,7 +166,10 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         second_order[element] = len(second_order)
       else:
         first_order[element] = len(first_order)
-    self.assertNotEqual(first_order, second_order)
+    if shuffle_seed is None:
+      self.assertNotEqual(first_order, second_order)
+    else:
+      self.assertEqual(first_order, second_order)
 
   @combinations.generate(test_base.default_test_combinations())
   def testMultipleEpochs(self):

@@ -133,6 +133,7 @@ tf_kernel_library(
         "gpu_op_tanh.cc",
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_rint.cc",
+        "gpu_op_round.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -179,6 +180,7 @@ tf_kernel_library(
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":gpu_rint_kernels",
+        ":gpu_round_kernels",
     ]),
 )
 
@@ -732,6 +734,9 @@ gpu_kernel_library(
 gpu_kernel_library(
     name = "gpu_polygamma_kernels",
     op = "polygamma",
+    test_tags = [
+        "no_tsan",  # Frequently times-out.
+    ],
     tile_size = "256",
     types = [
         "f32",
@@ -1067,7 +1072,6 @@ gpu_kernel_library(
     )
     for op in [
         "ceil",
-        "exp",
         "expm1",
         "floor",
         "log",
@@ -1079,6 +1083,20 @@ gpu_kernel_library(
         "tanh",
     ]
 ]
+
+gpu_kernel_library(
+    name = "gpu_exp_kernels",
+    op = "exp",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
 
 # Kernels that support all floating-point types but have i1 output.
 [
@@ -1445,6 +1463,20 @@ gpu_kernel_library(
     types = [
         "f32",
         "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_round_kernels",
+    op = "round",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
     ],
     unroll_factors = "4",
 )

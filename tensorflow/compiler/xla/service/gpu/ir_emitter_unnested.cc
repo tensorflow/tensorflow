@@ -5629,6 +5629,11 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     return EmitNcclThunk<NcclAllReduceThunk, mlir::lmhlo::AllReduceOp>(op);
   }
 
+  if (mlir::isa<mlir::lmhlo::AllReduceScatterOp>(op)) {
+    return EmitNcclThunk<NcclAllReduceScatterThunk,
+                         mlir::lmhlo::AllReduceScatterOp>(op);
+  }
+
   if (mlir::isa<mlir::lmhlo::AllToAllOp>(op)) {
     return EmitNcclThunk<NcclAllToAllThunk, mlir::lmhlo::AllToAllOp>(op);
   }

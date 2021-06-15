@@ -2701,3 +2701,35 @@ func @all(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
   %0 = "tfl.reduce_all"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
+
+// -----
+
+func @conv3d_transpose(%arg0: tensor<5xi32>, %arg1: tensor<?x?x?x?x2xf32>, %arg2: tensor<?x?x?x?x2xf32>, %arg3: none) -> tensor<?x?x?x?x?xf32> {
+  // CHECK: "tfl.conv_3d_transpose"(%arg0, %arg1, %arg2, %arg3)
+  %0 = "tfl.conv_3d_transpose"(%arg0, %arg1, %arg2, %arg3) {data_format = "NDHWC", dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "VALID", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"} : (tensor<5xi32>, tensor<?x?x?x?x2xf32>, tensor<?x?x?x?x2xf32>, none) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+func @conv3d_transpose_with_bias(%arg0: tensor<5xi32>, %arg1: tensor<?x?x?x?x2xf32>, %arg2: tensor<?x?x?x?x2xf32>, %arg3: tensor<2xf32>) -> tensor<?x?x?x?x?xf32> {
+  // CHECK: "tfl.conv_3d_transpose"(%arg0, %arg1, %arg2, %arg3)
+  %0 = "tfl.conv_3d_transpose"(%arg0, %arg1, %arg2, %arg3) {data_format = "NDHWC", dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "VALID", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"} : (tensor<5xi32>, tensor<?x?x?x?x2xf32>, tensor<?x?x?x?x2xf32>, tensor<2xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+func @conv3d_transpose_channel_dim_not_match(%arg0: tensor<5xi32>, %arg1: tensor<1x2x2x3x2xf32>, %arg2: tensor<2x5x6x8x3xf32>, %arg3: tensor<2xf32>) -> tensor<?x?x?x?x?xf32> {
+  // expected-error @+1 {{op failed to verify that dim 4 of operand 2 equals to dim 4 of operand 1}}
+  %0 = "tfl.conv_3d_transpose"(%arg0, %arg1, %arg2, %arg3) {data_format = "NDHWC", dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "VALID", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"} : (tensor<5xi32>, tensor<1x2x2x3x2xf32>, tensor<2x5x6x8x3xf32>, tensor<2xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+func @conv3d_transpose_bias_size_not_match(%arg0: tensor<5xi32>, %arg1: tensor<1x2x2x3x2xf32>, %arg2: tensor<2x5x6x8x2xf32>, %arg3: tensor<3xf32>) -> tensor<?x?x?x?x?xf32> {
+  // expected-error @+1 {{bias must has num of elements equals to 4th dim of filter}}
+  %0 = "tfl.conv_3d_transpose"(%arg0, %arg1, %arg2, %arg3) {data_format = "NDHWC", dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "VALID", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"} : (tensor<5xi32>, tensor<1x2x2x3x2xf32>, tensor<2x5x6x8x2xf32>, tensor<3xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}

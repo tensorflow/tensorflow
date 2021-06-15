@@ -137,6 +137,11 @@ struct QuantizationSpecs {
   // Whether add the NumericVerify ops to verify numbers before and after
   // quantization.
   bool verify_numeric = false;
+  // Whether to add verification for layer by layer, or on whole model. When
+  // disabled (per-layer) float and quantized ops will be run from same input
+  // (output of previous quantized layer). When enabled, float and quantized ops
+  // will run with respective float and quantized output of previous ops.
+  bool whole_model_verify = false;
 };
 
 // Parses the command line flag strings to the quantization specification for

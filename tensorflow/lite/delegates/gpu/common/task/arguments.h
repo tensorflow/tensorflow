@@ -65,7 +65,14 @@ class Arguments {
                  GPUObjectDescriptorPtr&& descriptor_ptr);
 
   void RenameArgs(const std::string& postfix, std::string* code) const;
-  absl::Status Merge(Arguments&& args, const std::string& postfix);
+  absl::Status Merge(Arguments&& args, const std::string& postfix,
+                     const std::vector<std::string>& exception_names = {});
+
+  absl::Status GetDescriptor(const std::string& name,
+                             GPUObjectDescriptor** descriptor) const;
+
+  int GetReadTexturesCount(const GpuInfo& gpu_info) const;
+  int GetWriteTexturesCount(const GpuInfo& gpu_info) const;
 
   void ReleaseCPURepresentation();
 

@@ -67,6 +67,7 @@ add_mlir_library(MhloPasses
   unfuse_batch_norm_pass.cc
 
   DEPENDS
+  MLIRDiscRalPassIncGen
   MLIRhlo_opsIncGen
   MLIRMhloLowerComplexIncGen
   MLIRMhloPassIncGen
@@ -154,9 +155,26 @@ add_mlir_library(LmhloPasses
   MLIRPass
 )
 
+add_mlir_library(DiscRalPasses
+  ral_inject_execution_context.cc
+
+  DEPENDS
+  MLIRdisc_ral_opsIncGen
+  MLIRDiscRalPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  DiscRalDialect
+  MLIRIR
+  MLIRPass
+)
+
 add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
+  DiscRalPasses
   MhloPasses
   MhloToLhloConversion
   MhloToStandard

@@ -690,17 +690,21 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
 // keeping the same order.
 std::vector<std::string> GetValidControlRets(
     absl::Span<Node* const> orig_control_ret_nodes, const Graph& graph) {
-  // Build map from control ret node to index.
-  absl::flat_hash_map<const Node*, int> control_ret_nodes_map;
+  // Build map from control ret node name to index.
+  // We use Node name instead of Node* here to index into the map as we populate
+  // the map with nodes in FunctionDef control_ret_nodes and later query it
+  // using the nodes in `graph`. The Node pointers would be different but the
+  // Node name is expected to remain the same between the two.
+  absl::flat_hash_map<const string, int> control_ret_nodes_map;
   for (int i = 0; i < orig_control_ret_nodes.size(); ++i) {
     const Node* n = orig_control_ret_nodes[i];
-    control_ret_nodes_map[n] = i;
+    control_ret_nodes_map[n->name()] = i;
   }
   // Check which control rets are still valid.
   std::vector<bool> is_valid_control_ret(orig_control_ret_nodes.size(), false);
   int num_valid_control_rets = 0;
   for (const Node* n : graph.nodes()) {
-    auto iter = control_ret_nodes_map.find(n);
+    auto iter = control_ret_nodes_map.find(n->name());
     if (iter != control_ret_nodes_map.end()) {
       ++num_valid_control_rets;
       is_valid_control_ret[iter->second] = true;

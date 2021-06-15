@@ -915,7 +915,6 @@ class StatelessRandomTest(PForTestCase):
 
 class LoggingTest(PForTestCase):
 
-  @test_util.run_v1_only("b/122612051")
   def test_print(self):
     x = random_ops.random_uniform([3, 5])
 
@@ -923,6 +922,18 @@ class LoggingTest(PForTestCase):
       x1 = array_ops.gather(x, i)
       return logging_ops.Print(
           x1, [x1, "x1", array_ops.shape(x1)], summarize=10)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_print_v2(self):
+    x = random_ops.random_uniform([3, 5])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      with ops.control_dependencies([
+          logging_ops.print_v2(
+              x1, [x1, "x1", array_ops.shape(x1)], summarize=10)]):
+        return x1
 
     self._test_loop_fn(loop_fn, 3)
 

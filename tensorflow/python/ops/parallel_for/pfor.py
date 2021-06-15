@@ -3415,6 +3415,25 @@ def _convert_print(pfor_input):
   return [wrap(x, True) for x in outputs]
 
 
+@RegisterPFor("PrintV2")
+def _convert_print_v2(pfor_input):
+  # Print the full input Tensor(s), including the batch dimension if stacked.
+  return _create_op(
+      "PrintV2", [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr)
+
+
+@RegisterPFor("StringFormat")
+def _convert_string_format(pfor_input):
+  # Format using the full input Tensor(s), including the batch dimension if
+  # stacked.
+  return _create_op(
+      "StringFormat", [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
+
+
 # data_flow_ops
 
 # TensorArray conversion is tricky since we don't support arrays of

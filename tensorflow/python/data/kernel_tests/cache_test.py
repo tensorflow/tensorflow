@@ -437,6 +437,7 @@ class CacheCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):
 
   def setUp(self):
+    super(CacheCheckpointTest, self).setUp()
     self.range_size = 10
     self.num_repeats = 3
     self.num_outputs = self.range_size * self.num_repeats

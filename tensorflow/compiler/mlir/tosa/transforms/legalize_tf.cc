@@ -444,8 +444,16 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type || !y_type) return failure();
 
-  auto reciprocal_op =
-      rewriter.create<tosa::ReciprocalOp>(op->getLoc(), y_type, tf_div_op.y());
+  Type element_type = output_type.getElementType();
+
+  if (element_type.isa<IntegerType>()) {
+    rewriter.replaceOpWithNewOp<tosa::DivOp>(op, output_type, tf_div_op.x(),
+                                             tf_div_op.y());
+    return success();
+  }
+
+  auto reciprocal_op = rewriter.create<tosa::ReciprocalOp>(
+      op->getLoc(), tf_div_op.y().getType(), tf_div_op.y());
 
   auto mul_op = rewriter.create<tosa::MulOp>(
       op->getLoc(), output_type, tf_div_op.x(), reciprocal_op.getResult(), 0);

@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 from absl.testing import parameterized
 import numpy as np
 from six.moves import range
@@ -226,8 +227,8 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([None, 3, 5], tensor.shape)
 
 
-def _generate_integer_tflite_model(quantization_type=dtypes.int8):
-  """Define an integer post-training quantized tflite model."""
+def _get_keras_model(add_unquantizable_layer=False):
+  """Define Sample keras model and returns it."""
   # Define a pseudo MNIST dataset (as downloading the dataset on-the-fly causes
   # network connection failures)
   n = 10  # Number of samples
@@ -246,6 +247,9 @@ def _generate_integer_tflite_model(quantization_type=dtypes.int8):
       tf.keras.layers.Flatten(),
       tf.keras.layers.Dense(10)
   ])
+  if add_unquantizable_layer:
+    # This adds Neg op to the model which will remain as float.
+    model.add(tf.keras.layers.Lambda(lambda x: -x))
 
   # Train
   model.compile(
@@ -260,15 +264,30 @@ def _generate_integer_tflite_model(quantization_type=dtypes.int8):
       validation_split=0.1,
   )
 
-  # Convert TF Model to an Integer Quantized TFLite Model
-  converter = tf.lite.TFLiteConverter.from_keras_model(model)
+  return model
+
+
+def _generate_integer_tflite_model(quantization_type=dtypes.int8,
+                                   use_saved_model=False,
+                                   saved_model_dir=None,
+                                   add_unquantizable_layer=False):
+  """Define an integer post-training quantized tflite model."""
+
+  model = _get_keras_model(add_unquantizable_layer)
+  if not use_saved_model:
+    # Convert TF Model to an Integer Quantized TFLite Model
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+  else:
+    model.save(saved_model_dir)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
   converter.optimizations = {tf.lite.Optimize.DEFAULT}
+
   def representative_dataset_gen():
     for _ in range(2):
       yield [
-          np.random.uniform(low=0, high=1, size=(1, 28, 28)).astype(
-              np.float32)
+          np.random.uniform(low=0, high=1, size=(1, 28, 28)).astype(np.float32)
       ]
+
   converter.representative_dataset = representative_dataset_gen
   if quantization_type == dtypes.int8:
     converter.target_spec.supported_ops = {tf.lite.OpsSet.TFLITE_BUILTINS_INT8}
@@ -301,13 +320,13 @@ def _test_param_modify_integer_model_io_type():
         istr = "_Input{}".format(itype.name.capitalize())
         for otype in v2:
           ostr = "_Output{}".format(otype.name.capitalize())
-          params.append((str_template.format(k1, qstr, istr, ostr),
-                         v1, qtype, itype, otype))
+          params.append((str_template.format(k1, qstr, istr,
+                                             ostr), v1, qtype, itype, otype))
   return params
 
 
-class UtilModifyIntegerQuantizedModelIOTypeTest(
-    test_util.TensorFlowTestCase, parameterized.TestCase):
+class UtilModifyIntegerQuantizedModelIOTypeTest(test_util.TensorFlowTestCase,
+                                                parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -377,6 +396,40 @@ class UtilModifyIntegerQuantizedModelIOTypeTest(
     output_io_data = _run_tflite_inference(model_io, in_tftype, out_tftype)
     # Validate that both the outputs are the same
     self.assertAllClose(output_data, output_io_data, atol=1.0)
+
+
+class UtilModifyIntegerQuantizedModelIOTypeSignatureDefTest(
+    test_util.TensorFlowTestCase):
+
+  def _generate_integer_tflite_model_from_saved_model(self):
+    """Define an integer post-training quantized model from saved model."""
+
+    saved_model_dir = os.path.join(self.get_temp_dir(), "simple_savedmodel")
+    return _generate_integer_tflite_model(
+        use_saved_model=True,
+        saved_model_dir=saved_model_dir,
+        add_unquantizable_layer=True)
+
+  def test(self):
+    """Makes sure modifying IO types updates Signature correctly."""
+    post_train_int8_model = (
+        self._generate_integer_tflite_model_from_saved_model())
+    modified_model = util.modify_model_io_type(post_train_int8_model, tf.int8,
+                                               tf.float32)
+    interpreter = tf.lite.Interpreter(model_content=modified_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    signature = interpreter._get_full_signature_list()
+    input_ids = []
+    output_ids = []
+    for input_tensor in input_details:
+      input_ids.append(input_tensor["index"])
+    for output_tensor in output_details:
+      output_ids.append(output_tensor["index"])
+    for _, tensor_id in signature["serving_default"]["inputs"].items():
+      assert tensor_id in input_ids
+    for _, tensor_id in signature["serving_default"]["outputs"].items():
+      assert tensor_id in output_ids
 
 
 if __name__ == "__main__":

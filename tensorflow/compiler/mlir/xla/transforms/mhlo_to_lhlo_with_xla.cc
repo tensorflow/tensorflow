@@ -285,6 +285,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitAllReduceStartOp(instr);
     case HloOpcode::kAllReduceDone:
       return EmitAllReduceDoneOp(instr);
+    case HloOpcode::kAllReduceScatter:
+      return EmitAllReduceScatterOp(instr);
     case HloOpcode::kAnd:
       return CreateOpWithoutAttrs<lmhlo::AndOp>(instr);
     case HloOpcode::kAtan2:
@@ -1233,6 +1235,23 @@ StatusOr<lmhlo_gpu::AllReduceDoneOp> LhloDialectEmitter::EmitAllReduceDoneOp(
   return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
       getLocation(instr), llvm::None, operands,
       llvm::ArrayRef<NamedAttribute>{});
+}
+
+StatusOr<lmhlo::AllReduceScatterOp> LhloDialectEmitter::EmitAllReduceScatterOp(
+    const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto reduce_scatter_op,
+                      CreateOpWithoutAttrs<lmhlo::AllReduceScatterOp>(instr));
+  auto* ars = xla::Cast<xla::HloAllReduceScatterInstruction>(instr);
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(reduce_scatter_op, instr, builder_));
+  reduce_scatter_op.use_global_device_idsAttr(
+      builder_.getBoolAttr(ars->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &reduce_scatter_op.computation(),
+      &builder_));
+  reduce_scatter_op.scatter_dimensionAttr(
+      builder_.getI64IntegerAttr(ars->scatter_dimension()));
+  return reduce_scatter_op;
 }
 
 StatusOr<lmhlo::CollectivePermuteOp>

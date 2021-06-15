@@ -323,7 +323,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ExpOp>(Location loc,
                                                   ArrayRef<Type> arg_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::ExpOp>{}(
+  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::ExpOp,
+                                 isComplexType, ::mlir::complex::ExpOp>{}(
       loc, result_types, arg_types, args, b);
 }
 

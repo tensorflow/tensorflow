@@ -212,6 +212,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
       .def("live_buffers", &PyClient::LiveBuffers)
+      .def("live_executables", &PyClient::LiveExecutables)
       .def("process_index", &PyClient::process_index)
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)

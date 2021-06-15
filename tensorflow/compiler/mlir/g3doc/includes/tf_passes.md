@@ -473,7 +473,7 @@ This pass requires that the full shape of the tensor array can be inferred:
 1) the size needs to be a constant, 2) it specifies the full element shape,
 or that can be inferred from a later write, and 3) all elements have the same
 shape.
-### `-tf-tensor-device-copy`: Fold the tf.Identity op if the op has the same device as its operand
+### `-tf-tensor-device-copy`: Fold the tf.Identity op and the tf.IdentityN op if the op has the same device as its operand
 ### `-tf-tpu-cleanup-cluster-attributes`: Eliminate _tpu_replicate and other attributes from ops in a cluster
 This pass eliminate `_tpu_replicate` and `device` attribute on operations
 that are contained in a tf_device.cluster op.
