@@ -24,6 +24,7 @@ import sys
 from absl.testing import parameterized
 
 from tensorflow.core.framework import dataset_options_pb2
+from tensorflow.python.data.experimental.ops import autotune_options
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import testing
@@ -114,6 +115,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(options1.optimization,
                      optimization_options.OptimizationOptions())
     self.assertEqual(options1.threading, threading_options.ThreadingOptions())
+    self.assertEqual(options1.autotune, autotune_options.AutotuneOptions())
 
   @combinations.generate(test_base.default_test_combinations())
   def testMutatingOptionsRaiseValueError(self):
@@ -189,6 +191,8 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_options_pb2.OptimizationOptions())
     expected_pb.threading_options.CopyFrom(
         dataset_options_pb2.ThreadingOptions())
+    expected_pb.autotune_options.CopyFrom(
+        dataset_options_pb2.AutotuneOptions())
     self.assertProtoEquals(expected_pb, result)
 
   @combinations.generate(test_base.default_test_combinations())
