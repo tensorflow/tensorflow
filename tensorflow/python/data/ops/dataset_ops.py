@@ -33,7 +33,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.data.experimental.ops import autotune_options
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import threading_options
@@ -3676,44 +3675,14 @@ class Options(options_lib.OptionsBase):
       "`tf.data.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
 
-  autotune = options_lib.create_option(
-      name="autotune",
-      ty=autotune_options.AutotuneOptions,
-      docstring="The autotune options associated with the dataset. See "
-      "`tf.data.AutotuneOptions` for more details.",
-      default_factory=autotune_options.AutotuneOptions)
-
-  def _get_optimization_autotune_opt_map(self):
-    """Helper method which returns the backward-compatibility
-    attribute mapping between `experimental_optimization` and
-    `autotune` options.
-    """
-    return {
-        # experimental_optimization : autotune
-        "autotune": "enabled",
-        "autotune_buffers": "experimental_autotune_buffers",
-        "autotune_cpu_budget": "cpu_budget",
-        "autotune_ram_budget": "ram_budget"
-    }
-
   def __getattr__(self, name):
     # handle backward compatibility with deprecated options
     if name == "experimental_threading":
       logging.warning("options.experimental_threading is deprecated. "
                       "Use options.threading instead.")
       return getattr(self, "threading")
-    elif name == "experimental_optimization":
-      value = getattr(self, "experimental_optimization")
-      autotune_opt = getattr(self, "autotune")
-      attr_map = self._get_optimization_autotune_opt_map()
-      for old_attr, new_attr in attr_map.items():
-        logging.warning("options.experimental_optimization.{}"
-        " is deprecated. Use options.autotune.{} instead".format(
-          old_attr, new_attr))
-        res = getattr(autotune_opt, new_attr)
-        if res:
-          setattr(value, old_attr, res)
-      return value
+    elif name == "autotune":
+      return getattr(self.experimental_optimization, "_autotune_option")
     else:
       raise AttributeError("Attribute %s not found." % name)
 
@@ -3723,18 +3692,9 @@ class Options(options_lib.OptionsBase):
       logging.warning("options.experimental_threading is deprecated. "
                       "Use options.threading instead.")
       super(Options, self).__setattr__("threading", value)
-    elif name == "experimental_optimization":
-      autotune_opt = getattr(self, "autotune")
-      attr_map = self._get_optimization_autotune_opt_map()
-      for old_attr, new_attr in attr_map.items():
-        logging.warning("options.experimental_optimization.{}"
-        " is deprecated. Use options.autotune.{} instead".format(
-          old_attr, new_attr))
-        res = getattr(value, old_attr)
-        if res:
-          setattr(autotune_opt, new_attr, res)
-      super(Options, self).__setattr__(name, value)
-      super(Options, self).__setattr__("autotune", autotune_opt)
+    elif name == "autotune":
+      setattr(self.experimental_optimization, "_autotune_option",
+                    value)
     else:
       super(Options, self).__setattr__(name, value)
 

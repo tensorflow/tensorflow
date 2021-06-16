@@ -20,6 +20,7 @@ from __future__ import print_function
 import enum
 
 from tensorflow.core.framework import dataset_options_pb2
+from tensorflow.python.data.experimental.ops import autotune_options
 from tensorflow.python.data.util import options
 from tensorflow.python.util.tf_export import tf_export
 
@@ -51,38 +52,6 @@ class OptimizationOptions(options.OptionsBase):
       docstring=
       "Whether to apply default graph optimizations. If False, only graph "
       "optimizations that have been explicitly enabled will be applied.")
-
-  autotune = options.create_option(
-      name="autotune",
-      ty=bool,
-      docstring=
-      "Whether to automatically tune performance knobs. If None, defaults to "
-      "True.")
-
-  autotune_buffers = options.create_option(
-      name="autotune_buffers",
-      ty=bool,
-      docstring=
-      "When autotuning is enabled (through `autotune`), determines whether to "
-      "also autotune buffer sizes for datasets with parallelism. If None,"
-      " defaults to False.")
-
-  autotune_cpu_budget = options.create_option(
-      name="autotune_cpu_budget",
-      ty=int,
-      docstring=
-      "When autotuning is enabled (through `autotune`), determines the CPU "
-      "budget to use. Values greater than the number of schedulable CPU cores "
-      "are allowed but may result in CPU contention. If None, defaults to the "
-      "number of schedulable CPU cores.")
-
-  autotune_ram_budget = options.create_option(
-      name="autotune_ram_budget",
-      ty=int,
-      docstring=
-      "When autotuning is enabled (through `autotune`), determines the RAM "
-      "budget to use. Values greater than the available RAM in bytes may "
-      "result in OOM. If None, defaults to half of the available RAM in bytes.")
 
   filter_fusion = options.create_option(
       name="filter_fusion",
@@ -140,18 +109,46 @@ class OptimizationOptions(options.OptionsBase):
       docstring="Whether to fuse shuffle and repeat transformations. If None, "
       "defaults to True.")
 
+  _autotune_option = options.create_option(
+      name="_autotune_option",
+      ty=autotune_options.AutotuneOptions,
+      docstring="The autotune options associated with the dataset. See "
+      "`tf.data.AutotuneOptions` for more details.",
+      default_factory=autotune_options.AutotuneOptions)
+
+  def _get_autotune_option_compatibility_map(self):
+    """Helper method which returns the backward-compatibility
+    attribute mapping between `experimental_optimization` and
+    `autotune` options.
+    """
+    return {
+        # deprecated `experimental_optimization` : new `_autotune_option`
+        "autotune": "enabled",
+        "autotune_buffers": "experimental_autotune_buffers",
+        "autotune_cpu_budget": "cpu_budget",
+        "autotune_ram_budget": "ram_budget"
+    }
+
+  def __getattr__(self, name):
+    # handle backward compatibility with deprecated options
+    compatibility_map = self._get_autotune_option_compatibility_map()
+    if name in compatibility_map:
+      return getattr(self._autotune_option, compatibility_map[name])
+    else:
+      return getattr(self, name)
+
+  def __setattr__(self, name, value):
+    # handle backward compatibility with deprecated options
+    compatibility_map = self._get_autotune_option_compatibility_map()
+    if name in compatibility_map:
+      setattr(self._autotune_option, compatibility_map[name], value)
+    else:
+      super(OptimizationOptions, self).__setattr__(name, value)
+
   def _to_proto(self):
     pb = dataset_options_pb2.OptimizationOptions()
     if self.apply_default_optimizations is not None:
       pb.apply_default_optimizations = self.apply_default_optimizations
-    if self.autotune is not None:
-      pb.autotune = self.autotune
-    if self.autotune_buffers is not None:
-      pb.autotune_buffers = self.autotune_buffers
-    if self.autotune_cpu_budget is not None:
-      pb.autotune_cpu_budget = self.autotune_cpu_budget
-    if self.autotune_ram_budget is not None:
-      pb.autotune_ram_budget = self.autotune_ram_budget
     if self.filter_fusion is not None:
       pb.filter_fusion = self.filter_fusion
     if self.map_and_batch_fusion is not None:
@@ -173,14 +170,6 @@ class OptimizationOptions(options.OptionsBase):
   def _from_proto(self, pb):
     if pb.WhichOneof("optional_apply_default_optimizations") is not None:
       self.apply_default_optimizations = pb.apply_default_optimizations
-    if pb.WhichOneof("optional_autotune") is not None:
-      self.autotune = pb.autotune
-    if pb.WhichOneof("optional_autotune_buffers") is not None:
-      self.autotune_buffers = pb.autotune_buffers
-    if pb.WhichOneof("optional_autotune_cpu_budget") is not None:
-      self.autotune_cpu_budget = pb.autotune_cpu_budget
-    if pb.WhichOneof("optional_autotune_ram_budget") is not None:
-      self.autotune_ram_budget = pb.autotune_ram_budget
     if pb.WhichOneof("optional_filter_fusion") is not None:
       self.filter_fusion = pb.filter_fusion
     if pb.WhichOneof("optional_map_and_batch_fusion") is not None:
