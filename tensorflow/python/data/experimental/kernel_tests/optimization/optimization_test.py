@@ -230,7 +230,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     options = dataset_ops.Options()
     if autotune is not None:
-      options.experimental_optimization.autotune = autotune
+      options.autotune.enabled = autotune
     if map_parallelization is not None:
       options.experimental_optimization.map_parallelization = (
           map_parallelization)

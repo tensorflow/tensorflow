@@ -627,7 +627,7 @@ GetOptimizationsTestCase GetOptimizationTestCase3() {
 GetOptimizationsTestCase GetOptimizationTestCase4() {
   Options options;
   options.set_deterministic(false);
-  options.mutable_optimization_options()->set_autotune_buffers(true);
+  options.mutable_autotune_options()->set_autotune_buffers(true);
   options.mutable_optimization_options()->set_filter_fusion(true);
   options.mutable_optimization_options()->set_map_and_batch_fusion(true);
   options.mutable_optimization_options()->set_map_and_filter_fusion(true);

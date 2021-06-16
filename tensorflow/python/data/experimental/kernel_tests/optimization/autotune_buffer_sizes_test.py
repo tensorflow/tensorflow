@@ -31,7 +31,7 @@ class AutotuneBufferSizesTest(test_base.DatasetTestBase,
 
   def _enable_autotune_buffers(self, dataset):
     options = dataset_ops.Options()
-    options.experimental_optimization.autotune_buffers = True
+    options.autotune.experimental_autotune_buffers = True
     return dataset.with_options(options)
 
   @combinations.generate(test_base.default_test_combinations())

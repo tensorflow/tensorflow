@@ -77,25 +77,30 @@ class FinalizeDatasetOpTest : public DatasetOpsTestBase {
 };
 
 constexpr char kNoOptimizationOptions[] = R"proto(
-  optimization_options { apply_default_optimizations: false autotune: false }
+  optimization_options { apply_default_optimizations: false }
+  autotune_options { enabled: false }
 )proto";
 constexpr char kMaxIntraOpParallelismOptions[] = R"proto(
-  optimization_options { apply_default_optimizations: false autotune: false }
+  optimization_options { apply_default_optimizations: false }
+  autotune_options { enabled: false }
   threading_options { max_intra_op_parallelism: 10 }
 )proto";
 constexpr char kPrivateThreadPoolOptions[] = R"proto(
-  optimization_options { apply_default_optimizations: false autotune: false }
+  optimization_options { apply_default_optimizations: false }
   threading_options { private_threadpool_size: 10 }
+  autotune_options { enabled: false }
 )proto";
 constexpr char kModelOptions[] = R"proto(
   optimization_options { apply_default_optimizations: false }
 )proto";
 constexpr char kOptimizationsDefaultOptions[] = R"proto(
-  optimization_options { apply_default_optimizations: true autotune: false }
+  optimization_options { apply_default_optimizations: true }
+  autotune_options { enabled: false }
 )proto";
 constexpr char kAllChainedDatasetsOptions[] = R"proto(
-  optimization_options { apply_default_optimizations: true autotune: true }
+  optimization_options { apply_default_optimizations: true }
   threading_options { max_intra_op_parallelism: 10 private_threadpool_size: 10 }
+  autotune_options { enabled: true }
 )proto";
 
 OptionsDatasetParams NoOptimizationOptionsParams() {
