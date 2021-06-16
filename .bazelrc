@@ -128,11 +128,6 @@ build --define=grpc_no_ares=true
 # archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
 
-# These are bazel 2.0's incompatible flags. Tensorflow needs to use bazel 2.0.0
-# to use cc_shared_library, as part of the Tensorflow Build Improvements RFC:
-# https://github.com/tensorflow/community/pull/179
-build --noincompatible_prohibit_aapt1
-
 build --enable_platform_specific_config
 
 # Enable XLA support by default.
