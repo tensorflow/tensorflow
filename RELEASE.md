@@ -162,7 +162,8 @@
         *   `tf.data.experimental.OptimizationOptions.reorder_data_discarding_ops`
     *   Added `tf.data.AutotuneOptions()` to tune the performance of dataset
         operations. Added nested option, `autotune` (which takes a
-        `tf.data.AutotuneOptions` object), to `tf.data.Options`.
+        `tf.data.AutotuneOptions` object), to `tf.data.Options`. Deprecate
+        respective attributes of `tf.data.experimental.OptimizationOptions`.
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
