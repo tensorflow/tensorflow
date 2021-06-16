@@ -448,6 +448,33 @@ func @inference_standard_lstm_time_major_can_fuse_last_output(%arg0: tensor<?x8x
 // -----
 
 module {
+func @inference_standard_lstm_with_mask(%arg0: tensor<?x8x8xf32>, %arg1: tensor<8x10xf32>, %arg2: tensor<8x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x40xf32>, %arg5: tensor<40xf32>, %arg6: tensor<?x8xi1>) -> (tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false", "tfshape$dim { size: -1 } dim { size: 8 }"], tf.api_implements = "lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = true} {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg3) {adj_x = false, adj_y = false} : (tensor<?x8x8xf32>, tensor<8x40xf32>) -> tensor<?x8x40xf32>
+  %1 = "tf.Add"(%0, %arg5) : (tensor<?x8x40xf32>, tensor<40xf32>) -> tensor<?x8x40xf32>
+  %2 = "tf.BatchMatMulV2"(%1, %arg4) {adj_x = false, adj_y = true} : (tensor<?x8x40xf32>, tensor<10x40xf32>) -> tensor<?x8x10xf32>
+  %3 = "tf.Add"(%2, %arg1) : (tensor<?x8x10xf32>, tensor<8x10xf32>) -> tensor<?x8x10xf32>
+  %4 = "tf.Add"(%2, %arg2) : (tensor<?x8x10xf32>, tensor<8x10xf32>) -> tensor<?x8x10xf32>
+  %5 = "tf.Add"(%arg1, %arg2) : (tensor<8x10xf32>, tensor<8x10xf32>) -> tensor<8x10xf32>
+  %6 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  return %5, %4, %5, %5, %6 : tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+}
+
+// CHECK:       func @inference_standard_lstm_with_mask([[ARG_0:%.*]]: tensor<?x8x8xf32>, [[ARG_1:%.*]]: tensor<8x10xf32>, [[ARG_2:%.*]]: tensor<8x10xf32>, [[ARG_3:%.*]]: tensor<8x40xf32>, [[ARG_4:%.*]]: tensor<10x40xf32>, [[ARG_5:%.*]]: tensor<40xf32>,  [[ARG_6:%.*]]: tensor<?x8xi1>) -> (tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false", "tfshape$dim { size: -1 } dim { size: 8 }"], tf.api_implements = "lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = true} {
+// CHECK:         [[VAL_0:%.*]] = "tf.BatchMatMulV2"([[ARG_0]], [[ARG_3]]) {adj_x = false, adj_y = false} : (tensor<?x8x8xf32>, tensor<8x40xf32>) -> tensor<?x8x40xf32>
+// CHECK:         [[VAL_1:%.*]] = "tf.Add"([[VAL_0]], [[ARG_5]]) : (tensor<?x8x40xf32>, tensor<40xf32>) -> tensor<?x8x40xf32>
+// CHECK:         [[VAL_2:%.*]] = "tf.BatchMatMulV2"([[VAL_1]], [[ARG_4]]) {adj_x = false, adj_y = true} : (tensor<?x8x40xf32>, tensor<10x40xf32>) -> tensor<?x8x10xf32>
+// CHECK:         [[VAL_3:%.*]] = "tf.Add"([[VAL_2]], [[ARG_1]]) : (tensor<?x8x10xf32>, tensor<8x10xf32>) -> tensor<?x8x10xf32>
+// CHECK:         [[VAL_4:%.*]] = "tf.Add"([[VAL_2]], [[ARG_2]]) : (tensor<?x8x10xf32>, tensor<8x10xf32>) -> tensor<?x8x10xf32>
+// CHECK:         [[VAL_5:%.*]] = "tf.Add"([[ARG_1]], [[ARG_2]]) : (tensor<8x10xf32>, tensor<8x10xf32>) -> tensor<8x10xf32>
+// CHECK:         [[VAL_6:%.*]] = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK:         return [[VAL_5]], [[VAL_4]], [[VAL_5]], [[VAL_5]], [[VAL_6]] : tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+// CHECK:       }
+
+}
+
+// -----
+
+module {
 func @inference_cannot_fuse(%arg0: tensor<?x8x8xf32>, %arg1: tensor<?x10xf32>, %arg2: tensor<?x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x40xf32>, %arg5: tensor<40xf32>) {
   %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = f32, value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
   %1:5 = "tf.PartitionedCall"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) {Tin = ["tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT"], _output_shapes = ["tfshape$dim { size: 9 } dim { size: 10 }", "tfshape$dim { size: -1 } dim { size: 9 } dim { size: 10 }", "tfshape$dim { size: -1 } dim { size: 10 }", "tfshape$dim { size: -1 } dim { size: 10 }", "tfshape$"], _read_only_resource_inputs = [], config = "", config_proto = "\0A\07\0A\03CPU\10\01\0A\07\0A\03GPU\10\002\02J\008\01", device = "", executor_type = "", f = @inference_standard_lstm_time_major_cannot_fuse} : (tensor<?x8x8xf32>, tensor<?x10xf32>, tensor<?x10xf32>, tensor<8x40xf32>, tensor<10x40xf32>, tensor<40xf32>) -> (tensor<?x10xf32>, tensor<?x8x10xf32>, tensor<?x10xf32>, tensor<?x10xf32>, tensor<f32>)
