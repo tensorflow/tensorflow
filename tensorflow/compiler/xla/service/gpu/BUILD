@@ -573,6 +573,8 @@ cc_library(
         "while_thunk.cc",
     ] + if_cuda_is_configured([
         "cholesky_thunk.cc",
+    ]) + if_rocm_is_configured([
+        "cholesky_thunk.cc",
     ]),
     hdrs = [
         "bef_thunk.h",
@@ -596,6 +598,8 @@ cc_library(
         "triangular_solve_thunk.h",
         "while_thunk.h",
     ] + if_cuda_is_configured([
+        "cholesky_thunk.h",
+    ]) + if_rocm_is_configured([
         "cholesky_thunk.h",
     ]),
     local_defines = if_cuda_is_configured([
