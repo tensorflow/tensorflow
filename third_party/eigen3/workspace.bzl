@@ -6,8 +6,8 @@ def repo():
     """Imports Eigen."""
 
     # Attention: tools parse and update these lines.
-    EIGEN_COMMIT = "3d9051ea84a5089b277c88dac456b3b1576bfa7f"
-    EIGEN_SHA256 = "1e473b94966cd3084c6df5b4fe0612ea681ac0ae6624bd151950262c29ebb917"
+    EIGEN_COMMIT = "954879183b1e008d7f0fefb97e48a925c4e3fb16"
+    EIGEN_SHA256 = "f3e8d419c39f651f50a86fd7ca2153a60e290d928887b3c44490bfb67961710b"
 
     tf_http_archive(
         name = "eigen_archive",
