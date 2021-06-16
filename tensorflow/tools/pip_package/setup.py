@@ -82,6 +82,7 @@ REQUIRED_PACKAGES = [
     # Install other dependencies
     'absl-py ~= 0.10',
     'astunparse ~= 1.6.3',
+    'clang ~= 5.0',
     'flatbuffers ~= 1.12.0',
     'google_pasta ~= 0.2',
     'h5py ~= 3.1.0',
