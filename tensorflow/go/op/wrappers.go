@@ -9976,6 +9976,14 @@ func DataServiceDatasetDataTransferProtocol(value string) DataServiceDatasetAttr
 	}
 }
 
+// DataServiceDatasetTargetWorkers sets the optional target_workers attribute to value.
+// If not specified, defaults to "AUTO"
+func DataServiceDatasetTargetWorkers(value string) DataServiceDatasetAttr {
+	return func(m optionalAttr) {
+		m["target_workers"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
 func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -48908,6 +48916,14 @@ func DataServiceDatasetV2TaskRefreshIntervalHintMs(value int64) DataServiceDatas
 func DataServiceDatasetV2DataTransferProtocol(value string) DataServiceDatasetV2Attr {
 	return func(m optionalAttr) {
 		m["data_transfer_protocol"] = value
+	}
+}
+
+// DataServiceDatasetV2TargetWorkers sets the optional target_workers attribute to value.
+// If not specified, defaults to "AUTO"
+func DataServiceDatasetV2TargetWorkers(value string) DataServiceDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["target_workers"] = value
 	}
 }
 
