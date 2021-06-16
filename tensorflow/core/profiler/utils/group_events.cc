@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -462,11 +463,6 @@ const EventNode* EventNode::FindParent(int64 event_type) const {
       this, /*include_self=*/true);
 }
 
-bool EventNode::StartsBefore(const EventNode& other) const {
-  return GetEventVisitor().TimestampPs() <=
-         other.GetEventVisitor().TimestampPs();
-}
-
 void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
                                      ContextGroupMap* context_groups) {
   // TODO(b/149095099): avoid string comparison.
@@ -567,8 +563,7 @@ void SortRootEventList(EventList* event_list) {
     // earlier timestamp will be processed first. Otherwise, the event with a
     // larger root level will be processed first.
     return e1->RootLevel() == e2->RootLevel()
-               ? e1->GetEventVisitor().TimestampPs() <
-                     e2->GetEventVisitor().TimestampPs()
+               ? *e1 < *e2
                : e1->RootLevel() > e2->RootLevel();
   });
 }
@@ -650,7 +645,8 @@ void EventForest::ProcessTensorFlowLoop() {
     EventNode* first_event = nullptr;
     std::vector<EventNode*> events;
   };
-  using TensorFlowLoop = std::map<int64 /*iter_num*/, TensorFlowLoopIteration>;
+  using TensorFlowLoop =
+      absl::flat_hash_map<int64 /*iter_num*/, TensorFlowLoopIteration>;
   absl::flat_hash_map<int64 /*step_id*/, TensorFlowLoop> tf_loops;
 
   // Sort the TF executor events by TF function/session (step_id) and iter_num.
@@ -668,38 +664,35 @@ void EventForest::ProcessTensorFlowLoop() {
     if (tf_data_step_ids_.contains(step_id)) continue;
     TensorFlowLoop& tf_loop = tf_loops[step_id];
     TensorFlowLoopIteration& iteration = tf_loop[iter_num_stat->IntValue()];
-    if (!iteration.first_event ||
-        executor_event->StartsBefore(*iteration.first_event)) {
+    if (!iteration.first_event || *executor_event < *iteration.first_event) {
       iteration.first_event = executor_event.get();
     }
     iteration.events.push_back(executor_event.get());
   }
 
-  // Sort the TF loops by start time.
-  std::map<int64 /*start_time*/, int64 /*step_id*/> sorted_tf_loops;
+  std::vector<const TensorFlowLoopIteration*> iters;
   for (const auto& step_id_and_tf_loop : tf_loops) {
-    auto& iterations = step_id_and_tf_loop.second;
+    const TensorFlowLoop& tf_loop = step_id_and_tf_loop.second;
     // Filter out TF function/session without loops.
-    if (iterations.size() == 1 && iterations.count(0)) continue;
-    int64 start_time = iterations.cbegin()
-                           ->second.first_event->GetEventVisitor()
-                           .TimestampPs();
-    DCHECK_EQ(sorted_tf_loops.count(start_time), 0);
-    sorted_tf_loops[start_time] = step_id_and_tf_loop.first;
+    if (tf_loop.size() == 1 && tf_loop.contains(0)) continue;
+    for (const auto& iter_num_and_iter : tf_loop) {
+      iters.push_back(&iter_num_and_iter.second);
+    }
   }
+
+  // Sort iterations based on timestamp of the first event in the iteration.
+  absl::c_sort(iters, [](const auto& iter1, const auto& iter2) {
+    return *iter1->first_event < *iter2->first_event;
+  });
 
   // Register the first event of each iteration as a root event. Also, add the
   // other events of the iteration as child to the root event.
-  for (const auto& start_time_and_step_id : sorted_tf_loops) {
-    TensorFlowLoop& tf_loop = tf_loops[start_time_and_step_id.second];
-    for (auto& iter_num_and_iteration : tf_loop) {
-      TensorFlowLoopIteration& iteration = iter_num_and_iteration.second;
-      EventNode* root_event = iteration.first_event;
-      tf_loop_root_events_.push_back(root_event);
-      for (EventNode* event : iteration.events) {
-        if (event == root_event) continue;
-        root_event->AddChild(event);
-      }
+  for (const TensorFlowLoopIteration* iter : iters) {
+    EventNode* root_event = iter->first_event;
+    tf_loop_root_events_.push_back(root_event);
+    for (EventNode* event : iter->events) {
+      if (event == root_event) continue;
+      root_event->AddChild(event);
     }
   }
 }

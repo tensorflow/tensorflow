@@ -582,6 +582,9 @@ py_test(
         "//tensorflow/lite/python/testdata:interpreter_test_data",
     ],
     python_version = "PY3",
+    tags = [
+        "no_mac",  # b/191191684
+    ],
     deps = [
         ":analyzer",
         "//tensorflow/python:client_testlib",

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -38,25 +39,63 @@ inline int GetNumDims(const SubGraph* subgraph, const Operator* op, int idx) {
   return subgraph->tensors()->Get(op->inputs()->Get(idx))->shape()->size();
 }
 
-OpSignatureTensorSpec GetOpSignatureTensorSpec(int32_t idx,
-                                               const SubGraph* subgraph) {
-  OpSignatureTensorSpec tensor = {kTensorTypeNone};
-  if (idx == -1 || idx < 0)
-    // For optional input/output, return none type directly.
-    // Also some tests have a graph with invalid tensor index.
-    return tensor;
+std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
+    const flatbuffers::Vector<int32_t>* tensors, const SubGraph* subgraph) {
+  std::vector<OpSignatureTensorSpec> tensor_specs;
+  StderrReporter error_reporter;
 
-  if (subgraph->tensors() && idx < subgraph->tensors()->Length()) {
-    tensor.type = subgraph->tensors()->Get(idx)->type();
-    const flatbuffers::Vector<int32_t>* shape_vec =
-        subgraph->tensors()->Get(idx)->shape();
-    if (shape_vec) {
-      for (int32_t i = 0; i < shape_vec->Length(); ++i) {
-        tensor.dims.push_back(shape_vec->Get(i));
+  for (int32_t i = 0; i < tensors->Length(); ++i) {
+    int32_t tensor_no = tensors->Get(i);
+
+    OpSignatureTensorSpec tensor_spec = {kTfLiteNoType};
+    if (tensor_no >= 0) {
+      if (subgraph->tensors() && tensor_no < subgraph->tensors()->Length()) {
+        ConvertTensorType(subgraph->tensors()->Get(tensor_no)->type(),
+                          &tensor_spec.type, &error_reporter);
+        const flatbuffers::Vector<int32_t>* shape_vec =
+            subgraph->tensors()->Get(tensor_no)->shape();
+        if (shape_vec) {
+          for (int32_t j = 0; j < shape_vec->Length(); ++j) {
+            tensor_spec.dims.push_back(shape_vec->Get(j));
+          }
+        }
       }
     }
+    tensor_specs.push_back(tensor_spec);
   }
-  return tensor;
+  return tensor_specs;
+}
+
+std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
+    TfLiteIntArray* tensors, const TfLiteContext* context,
+    const TfLiteNode* tflite_node) {
+  std::vector<OpSignatureTensorSpec> tensor_specs;
+
+  for (int32_t i = 0; i < tensors->size; ++i) {
+    int32_t tensor_no = tensors->data[i];
+
+    OpSignatureTensorSpec tensor_spec = {kTfLiteNoType};
+    if (tensor_no >= 0) {
+      const TfLiteTensor* tfl_tensor =
+          GetOptionalInputTensor(context, tflite_node, tensor_no);
+      if (tfl_tensor != nullptr) {
+        tensor_spec.type = tfl_tensor->type;
+        tensor_spec.is_const = (tfl_tensor->allocation_type == kTfLiteMmapRo);
+        if (tfl_tensor->dims_signature) {
+          // To handle dynamic shapes. Unknown dimensions are represented as -1.
+          for (int32_t j = 0; j < tfl_tensor->dims_signature->size; ++j) {
+            tensor_spec.dims.push_back(tfl_tensor->dims_signature->data[j]);
+          }
+        } else if (tfl_tensor->dims) {
+          for (int32_t j = 0; i < tfl_tensor->dims->size; ++j) {
+            tensor_spec.dims.push_back(tfl_tensor->dims->data[j]);
+          }
+        }
+      }
+    }
+    tensor_specs.push_back(tensor_spec);
+  }
+  return tensor_specs;
 }
 
 }  // namespace
@@ -148,17 +187,23 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       break;
   }
 
-  for (int32_t i = 0; i < op->inputs()->Length(); ++i) {
-    int32_t tensor_no = op->inputs()->Get(i);
-    OpSignatureTensorSpec input = GetOpSignatureTensorSpec(tensor_no, subgraph);
-    op_sig.inputs.push_back(input);
-  }
-  for (int32_t i = 0; i < op->outputs()->Length(); ++i) {
-    int32_t tensor_no = op->outputs()->Get(i);
-    OpSignatureTensorSpec output =
-        GetOpSignatureTensorSpec(tensor_no, subgraph);
-    op_sig.outputs.push_back(output);
-  }
+  op_sig.inputs = GetOpSignatureTensorSpecs(op->inputs(), subgraph);
+  op_sig.outputs = GetOpSignatureTensorSpecs(op->outputs(), subgraph);
+  return op_sig;
+}
+
+OpSignature GetOpSignature(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) {
+  OpSignature op_sig = {
+      static_cast<BuiltinOperator>(registration->builtin_code)};
+  op_sig.builtin_data = tflite_node->builtin_data;
+  std::memset(&op_sig.ext_options, 0, sizeof(op_sig.ext_options));
+
+  op_sig.inputs =
+      GetOpSignatureTensorSpecs(tflite_node->inputs, context, tflite_node);
+  op_sig.outputs =
+      GetOpSignatureTensorSpecs(tflite_node->outputs, context, tflite_node);
   return op_sig;
 }
 

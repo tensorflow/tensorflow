@@ -83,6 +83,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                   m::Broadcast(m::ConstantScalar(&alpha))))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
+
+      // Do not fuse alpha into S32 GEMM, as they only support fixed values for
+      // alpha/beta.
+      if (existing_gemm->shape().element_type() == S32) {
+        return Status::OK();
+      }
+
       if (config.beta() == 0.0 && existing_gemm->user_count() == 1) {
         complex128 prev_alpha = {config.alpha_real(), config.alpha_imag()};
         complex128 new_alpha =
@@ -102,6 +109,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               m::AddAnyOrder(
                   m::Op(&existing_gemm).WithCustomCallTarget(kGemmCallTarget),
                   m::Op(&bias)))) {
+      // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
+      // supports fixed values for alpha/beta.
+      if (existing_gemm->shape().element_type() == S32) {
+        return Status::OK();
+      }
       auto config =
           existing_gemm->backend_config<GemmBackendConfig>().ValueOrDie();
       if (config.beta() == 0 && bias->user_count() == 1 &&

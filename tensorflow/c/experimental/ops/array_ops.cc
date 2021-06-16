@@ -67,7 +67,7 @@ Status IdentityN(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInputList(input));
-  int num_retvals = input.size();
+  int num_retvals = output.size();
   return op_ptr->Execute(output, &num_retvals);
 }
 

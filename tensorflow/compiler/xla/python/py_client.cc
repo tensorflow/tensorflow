@@ -67,6 +67,17 @@ std::vector<py::object> PyClient::LiveBuffers() {
   return buffers;
 }
 
+std::vector<std::shared_ptr<PyExecutable>> PyClient::LiveExecutables() {
+  CHECK(PyGILState_Check());
+  std::vector<std::shared_ptr<PyExecutable>> executables;
+  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
+    if (!exec->is_deleted()) {
+      executables.push_back(exec->shared_from_this());
+    }
+  }
+  return executables;
+}
+
 Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
   return pjrt_client_->Defragment();

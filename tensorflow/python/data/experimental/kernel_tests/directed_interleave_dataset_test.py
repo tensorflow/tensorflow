@@ -321,9 +321,12 @@ class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                                   seed=1813)
     return dataset.take(num_samples)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCheckpointCore(self):
-    self.run_core_tests(lambda: self._build_dataset([0.5, 0.5], 100), 100)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(
+        self, lambda: self._build_dataset([0.5, 0.5], 100), num_outputs=100)
 
 
 if __name__ == "__main__":

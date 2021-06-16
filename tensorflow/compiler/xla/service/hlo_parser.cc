@@ -3139,7 +3139,28 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   return true;
 }
 
+// Similar to ParseLiteral(Literal* literal, const Shape& shape), but parse the
+// shape instead of accepting one as argument.
 bool HloParserImpl::ParseLiteral(Literal* literal) {
+  if (lexer_.GetKind() == TokKind::kLparen) {
+    // Consume Lparen
+    lexer_.Lex();
+    std::vector<Literal> elements;
+    while (lexer_.GetKind() != TokKind::kRparen) {
+      Literal element;
+      if (!ParseLiteral(&element)) {
+        return TokenError("Fails when parsing tuple element");
+      }
+      elements.emplace_back(std::move(element));
+      if (lexer_.GetKind() != TokKind::kRparen) {
+        ParseToken(TokKind::kComma, "expects ',' to separate tuple elements");
+      }
+    }
+
+    *literal = LiteralUtil::MakeTupleOwned(std::move(elements));
+    // Consume Rparen
+    return ParseToken(TokKind::kRparen, "expects ')' to close a tuple literal");
+  }
   Shape literal_shape;
   if (!ParseShape(&literal_shape)) {
     return false;
@@ -3930,14 +3951,8 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kLiteral: {
-        if (!ParseToken(TokKind::kLparen, "expects '(' before literal")) {
-          return false;
-        }
         Literal result;
         if (!ParseLiteral(&result)) {
-          return false;
-        }
-        if (!ParseToken(TokKind::kRparen, "expects ')' after literal")) {
           return false;
         }
         static_cast<optional<Literal>*>(attr_out_ptr)
@@ -4724,8 +4739,20 @@ bool HloParserImpl::ParseShape(Shape* result) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
+  if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "invalid") {
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kLbrace) {
+      return false;
+    }
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kRbrace) {
+      return false;
+    }
+    lexer_.Lex();
+    result->mutable_layout()->Clear();
+    return true;
+  }
   LayoutUtil::SetToDefaultLayout(result);
-
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
   //

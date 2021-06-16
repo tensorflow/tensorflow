@@ -437,6 +437,12 @@ GENERATE_DEFAULT_TEST(Exp, DT_DOUBLE, DT_DOUBLE, std::exp,
 GENERATE_DEFAULT_TEST_2(Exp, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::exp,
                         test::OpsTestConfig())
 
+GENERATE_DEFAULT_TEST(Exp, DT_COMPLEX64, DT_COMPLEX64, std::exp,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Exp, DT_COMPLEX128, DT_COMPLEX128, std::exp,
+                      test::OpsTestConfig())
+
 /// Test `tf.Expm1`.
 
 GENERATE_DEFAULT_TEST(Expm1, DT_FLOAT, DT_FLOAT, std::expm1,

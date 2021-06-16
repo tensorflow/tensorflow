@@ -122,17 +122,19 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
     ],
 )
@@ -710,9 +712,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "random_dataset_test",
+    name = "random_test",
     size = "small",
-    srcs = ["random_dataset_test.py"],
+    srcs = ["random_test.py"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",

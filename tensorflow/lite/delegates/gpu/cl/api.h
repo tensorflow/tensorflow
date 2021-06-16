@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -86,12 +87,9 @@ class InferenceEnvironment {
       std::vector<uint8_t>* serialized_model) = 0;
 
   // std::unique_ptr<InferenceBuilder>* builder - required parameter
-  // std::vector<int64_t>* in_refs - optional, can be nullptr
-  // std::vector<int64_t>* out_refs - optional, can be nullptr
   virtual absl::Status NewInferenceBuilder(
       const absl::Span<const uint8_t> serialized_model,
-      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
-      std::vector<int64_t>* out_refs) = 0;
+      std::unique_ptr<InferenceBuilder>* builder) = 0;
 
   virtual absl::Status NewInferenceBuilder(
       const InferenceOptions& options, GraphFloat32 model,

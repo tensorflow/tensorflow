@@ -454,8 +454,11 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       return InitializeTypedBuffer<double>(stream, buffer, rng_state);
     case xla::S8:
       return InitializeTypedBuffer<int8>(stream, buffer, rng_state);
+    case xla::S32:
+      return InitializeTypedBuffer<int32>(stream, buffer, rng_state);
     default:
-      LOG(FATAL) << "Unexpected type";
+      LOG(FATAL) << "Unexpected type: "
+                 << primitive_util::LowercasePrimitiveTypeName(buffer_type);
   }
 }
 

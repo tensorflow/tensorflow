@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -26,7 +26,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-static StatusOr<bool> PadForTensorCores(HloDotInstruction* dot) {
+static StatusOr<bool> PadForGemm(HloDotInstruction* dot, PrimitiveType datatype,
+                                 int pad_to_multiple_of) {
   auto* lhs = dot->mutable_operand(0);
   auto* rhs = dot->mutable_operand(1);
 
@@ -34,13 +35,13 @@ static StatusOr<bool> PadForTensorCores(HloDotInstruction* dot) {
   Shape rshape = rhs->shape();
   Shape result_shape = dot->shape();
 
-  if (lshape.element_type() != PrimitiveType::F16 ||
-      rshape.element_type() != PrimitiveType::F16) {
+  if (lshape.element_type() != datatype || rshape.element_type() != datatype) {
     return false;
   }
 
-  auto pad_dim = [](Shape& s, int64 dim) {
-    s.set_dimensions(dim, RoundUpToNearest<int64>(s.dimensions(dim), 8));
+  auto pad_dim = [&](Shape& s, int dim) {
+    s.set_dimensions(
+        dim, RoundUpToNearest<int64>(s.dimensions(dim), pad_to_multiple_of));
   };
 
   auto pad_matrix_dims = [&pad_dim](Shape s) {
@@ -82,7 +83,7 @@ static StatusOr<bool> PadForTensorCores(HloDotInstruction* dot) {
   HloComputation* parent = dot->parent();
 
   HloInstruction* zero_float = parent->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<half>((half)0.0)));
+      HloInstruction::CreateConstant(LiteralUtil::Zero(datatype)));
   zero_float->set_metadata(dot->metadata());
 
   HloInstruction* lpad = parent->AddInstruction(
@@ -116,7 +117,7 @@ static StatusOr<bool> PadForTensorCores(HloDotInstruction* dot) {
 
 namespace {
 
-// We need this check because PadForTensorCores works in the assumption that
+// We need this check because PadForGemm works in the assumption that
 // the dot instruction is canonicalized.
 bool CheckCanonical(HloDotInstruction* dot) {
   auto dimension_numbers = dot->dot_dimension_numbers();
@@ -147,25 +148,28 @@ bool CheckCanonical(HloDotInstruction* dot) {
 
 }  // namespace
 
-static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp) {
-  std::vector<HloDotInstruction*> convs;
+static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp,
+                                                       PrimitiveType datatype) {
+  std::vector<HloDotInstruction*> gemms;
 
   for (HloInstruction* instr : comp->instructions()) {
     if (IsMatrixMultiplication(*instr)) {
       HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
-      if (CheckCanonical(dot)) {
-        convs.push_back(dot);
+      if (instr->operand(0)->shape().element_type() == datatype &&
+          CheckCanonical(dot)) {
+        gemms.push_back(dot);
       }
     }
   }
-  return convs;
+  return gemms;
 }
 
-StatusOr<bool> CublasGemmPadForTensorCores::Run(HloModule* module) {
+StatusOr<bool> CublasPadForGemms::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (HloDotInstruction* dot : GetRelevantDots(comp)) {
-      TF_ASSIGN_OR_RETURN(bool result, PadForTensorCores(dot));
+    for (HloDotInstruction* dot : GetRelevantDots(comp, datatype_)) {
+      TF_ASSIGN_OR_RETURN(bool result,
+                          PadForGemm(dot, datatype_, pad_to_multiple_of_));
       changed |= result;
     }
   }

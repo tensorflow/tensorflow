@@ -19,12 +19,15 @@ limitations under the License.
 #include <cctype>
 #include <climits>
 #include <cstdint>
+#include <string>
+#include <tuple>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -112,8 +115,134 @@ llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
   return map;
 }
 
+llvm::Optional<llvm::SetVector<char>> GetAvailableLabels(
+    llvm::StringRef lhs, llvm::StringRef rhs, int* lhs_named_label_count,
+    int* rhs_named_label_count) {
+  llvm::SetVector<char> labels;
+  for (int i = 0; i < 26; ++i) {
+    labels.insert('a' + i);
+    labels.insert('A' + i);
+  }
+  bool ellipsis_observed = false;
+
+  auto is_start_of_ellipsis = [](StringRef equation, int start_index) {
+    if (equation.size() < (start_index + 3)) return false;
+
+    if (equation.substr(start_index, 3) != "...") return false;
+    return true;
+  };
+
+  int lhs_count = 0;
+  const int lhs_size = lhs.size();
+  for (int i = 0; i < lhs_size; ++i) {
+    const char label = lhs[i];
+    if (std::isalpha(label)) {
+      labels.remove(label);
+      ++lhs_count;
+    } else if (label == '.') {
+      if (!is_start_of_ellipsis(lhs, i)) return llvm::None;
+      ellipsis_observed = true;
+      i += 2;
+    } else {
+      // Unsupported character in the equation.
+      return llvm::None;
+    }
+  }
+
+  *lhs_named_label_count = lhs_count;
+
+  int rhs_count = 0;
+  const int rhs_size = rhs.size();
+  for (int i = 0; i < rhs_size; ++i) {
+    const char label = rhs[i];
+    if (std::isalpha(label)) {
+      labels.remove(label);
+      ++rhs_count;
+    } else if (label == '.') {
+      if (!is_start_of_ellipsis(lhs, i)) return llvm::None;
+      // We do not support both lhs & rhs have ellipsis for now.
+      if (ellipsis_observed) return llvm::None;
+      i += 2;
+      ellipsis_observed = true;
+    } else {
+      // Unsupported character in the equation.
+      return llvm::None;
+    }
+  }
+
+  *rhs_named_label_count = rhs_count;
+  return labels;
+}
+
+// Generate new unnamed labels for the expression.
+// For example, if we have GenerateLabels(2, {'b', 'c', 'd'}) for "...xy"
+// We will have "dcxy" for the ellipsis expression since it's rank 4,
+// we will have dcbxy if it's rank 5.
+std::string GenerateLabels(int count, llvm::SetVector<char>* available_labels) {
+  std::string new_labels;
+  new_labels.reserve(count);
+  for (int i = 0; i < count; ++i) {
+    new_labels.push_back(available_labels->pop_back_val());
+  }
+
+  return new_labels;
+}
+
+std::tuple<std::string, std::string, std::string> FlattenEllipsis(
+    llvm::StringRef lhs, int lhs_named_label_count, llvm::StringRef rhs,
+    int rhs_named_label_count, llvm::StringRef out, RankedTensorType lhs_ty,
+    RankedTensorType rhs_ty, llvm::SetVector<char>* available_labels) {
+  std::string new_labels;
+  std::string new_lhs;
+  for (int i = 0; i < lhs.size(); ++i) {
+    const char label = lhs[i];
+    if (std::isalpha(label)) {
+      new_lhs.push_back(label);
+    } else {
+      // Encounter ellipsis: generate unnamed labels then insert to the new
+      // labels.
+      new_labels = GenerateLabels(lhs_ty.getRank() - lhs_named_label_count,
+                                  available_labels);
+      new_lhs.append(new_labels);
+      i += 2;
+    }
+  }
+
+  std::string new_rhs;
+  for (int i = 0; i < rhs.size(); ++i) {
+    const char label = rhs[i];
+    if (std::isalpha(label)) {
+      new_rhs.push_back(label);
+    } else {
+      // Encounter ellipsis: generate unnamed labels then insert to the new
+      // labels.
+      new_labels = GenerateLabels(rhs_ty.getRank() - rhs_named_label_count,
+                                  available_labels);
+      new_rhs.append(new_labels);
+      i += 2;
+    }
+  }
+
+  // Deal with the output next.
+  std::string new_output;
+  for (int i = 0; i < out.size(); ++i) {
+    const char label = out[i];
+    if (std::isalpha(label)) {
+      new_output.push_back(label);
+    } else {
+      // Encounter ellipsis: we will just insert the generated labels to the new
+      // output label.
+      new_output.append(new_labels);
+      i += 2;
+    }
+  }
+
+  return std::make_tuple(new_lhs, new_rhs, new_output);
+}
+
 llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
-    llvm::StringRef equation) {
+    llvm::StringRef equation, RankedTensorType lhs_ty,
+    RankedTensorType rhs_ty) {
   llvm::StringRef lhs_rhs;
   llvm::StringRef out;
   std::tie(lhs_rhs, out) = equation.split("->");
@@ -123,6 +252,24 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
   llvm::StringRef rhs;
   std::tie(lhs, rhs) = lhs_rhs.split(',');
   if (lhs.empty() || rhs.empty()) return llvm::None;
+
+  // Try to flatten the "..." if possible.
+  // Currently we only support either lhs or the rhs has "..." but not both.
+  // Both usually will require a broadcasting semantics which is not supported
+  // by the batch_matmul.
+  // TODO(b/181244617): Consider handling the broadcasting scenario as well.
+  int lhs_named_label, rhs_named_label;
+  auto avaiable_labels =
+      GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
+  if (!avaiable_labels.hasValue()) return llvm::None;
+
+  auto flattended_labels =
+      FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
+                      rhs_ty, &avaiable_labels.getValue());
+
+  lhs = std::get<0>(flattended_labels);
+  rhs = std::get<1>(flattended_labels);
+  out = std::get<2>(flattended_labels);
 
   auto lhs_map_or = EquationToMap(lhs);
   if (!lhs_map_or.hasValue()) return llvm::None;
@@ -349,17 +496,17 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
 
 LogicalResult ConvertTFEinsumOp::matchAndRewrite(
     TF::EinsumOp op, PatternRewriter& rewriter) const {
-  const auto dnums_or = GetEinsumDimensionNumbers(op.equation());
-  if (!dnums_or.hasValue()) return failure();
-  const auto& dnums = dnums_or.getValue();
-
   RankedTensorType lhs =
       op.getOperand(0).getType().dyn_cast_or_null<RankedTensorType>();
   RankedTensorType rhs =
       op.getOperand(1).getType().dyn_cast_or_null<RankedTensorType>();
-  if (!lhs || !rhs) return failure();
+  if (!lhs || !rhs) {
+    return failure();
+  }
 
-  return rewriteToBatchMatmul(op, dnums, rewriter);
+  if (const auto dnums_or = GetEinsumDimensionNumbers(op.equation(), lhs, rhs))
+    return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
+  return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
 // Transform Einsum to other TF Ops for the supported variants.

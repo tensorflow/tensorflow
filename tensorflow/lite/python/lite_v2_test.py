@@ -1335,10 +1335,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter = tf.lite.Interpreter(model_content=tflite_model)
     signature_defs = interpreter.get_signature_list()
     self.assertEqual(len(signature_defs), 2)
-    add_signature_runner = interpreter.get_signature_runner('add')
-    sub_signature_runner = interpreter.get_signature_runner('sub')
-    self.assertIsNotNone(add_signature_runner)
-    self.assertIsNotNone(sub_signature_runner)
+
+    with self.assertRaises(ValueError) as error:
+      _ = interpreter.get_signature_runner('add')
+    self.assertIn('This Interpreter doesnt handle multiple signatures properly',
+                  str(error.exception))
 
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):

@@ -81,7 +81,7 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(b"the", self.evaluate(next_element()))
 
     with self.assertRaises(errors.OutOfRangeError):
-      self.assertEqual(b"test", self.evaluate(next_element()))
+      self.evaluate(next_element())
 
   @combinations.generate(
       combinations.times(
@@ -125,10 +125,11 @@ class TakeWhileCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(num_elements=[10, 23], upper_bound=[10, 23])))
-  def testCore(self, num_elements, upper_bound):
-    self.run_core_tests(lambda: self._build_dataset(num_elements, upper_bound),
-                        min(num_elements, upper_bound))
+  def test(self, verify_fn, num_elements, upper_bound):
+    verify_fn(self, lambda: self._build_dataset(num_elements, upper_bound),
+              min(num_elements, upper_bound))
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -29,7 +29,12 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class CublasGemmPadForTensorCoresTest : public HloTestBase {};
+class CublasGemmPadForTensorCoresTest : public HloTestBase {
+ protected:
+  bool PadForF16Gemms(HloModule* module) {
+    return CublasPadForGemms(PrimitiveType::F16, 8).Run(module).ValueOrDie();
+  }
+};
 
 TEST_F(CublasGemmPadForTensorCoresTest, OneDotRootComputation) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -44,7 +49,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, OneDotRootComputation) {
                 })")
                     .ValueOrDie();
 
-  EXPECT_TRUE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(PadForF16Gemms(module.get()));
   SCOPED_TRACE(module->ToString());
 
   auto* root = module->entry_computation()->root_instruction();
@@ -66,6 +71,42 @@ TEST_F(CublasGemmPadForTensorCoresTest, OneDotRootComputation) {
                       /*rhs_contracting_dim=*/0)))));
 }
 
+TEST_F(CublasGemmPadForTensorCoresTest, OneDotS8RootComputation) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    %param1 = s8[2047,1023] parameter(0)
+    %param2 = s8[1023,33707] parameter(1)
+    ROOT %dot.2309 = s32[2047,33707]{1,0} dot(s8[2047,1023]{1,0} %param1,
+                s8[1023,33707]{0,1} %param2),
+                lhs_contracting_dims={1}, rhs_contracting_dims={0}
+                })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(
+      CublasPadForGemms(PrimitiveType::S8, 4).Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(
+          op::Shape("s32[2047, 33707]"),
+          op::Slice(AllOf(
+              op::Shape("s32[2048, 33708]"),
+              op::Dot(AllOf(op::Shape("s8[2048, 1024]"),
+                            op::Pad(AllOf(op::Shape("s8[2047, 1023]"),
+                                          op::Parameter()),
+                                    AllOf(op::Shape("s8[]"), op::Constant()))),
+                      AllOf(op::Shape("s8[1024, 33708]"),
+                            op::Pad(AllOf(op::Shape("s8[1023, 33707]"),
+                                          op::Parameter()),
+                                    AllOf(op::Shape("s8[]"), op::Constant()))),
+                      /*lhs_contracting_dim=*/1,
+                      /*rhs_contracting_dim=*/0)))));
+}
+
 TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
@@ -83,7 +124,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
   })")
                     .ValueOrDie();
 
-  EXPECT_TRUE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(PadForF16Gemms(module.get()));
   SCOPED_TRACE(module->ToString());
 
   auto* root = module->entry_computation()->root_instruction();
@@ -145,7 +186,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, DotWithBatchDimensions) {
                 f16[3, 5, 1024, 33708]{2, 3, 0,1} %param2), lhs_batch_dims={0, 1}, rhs_batch_dims={0, 1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}})")
                     .ValueOrDie();
 
-  EXPECT_TRUE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(PadForF16Gemms(module.get()));
   SCOPED_TRACE(module->ToString());
 
   auto* root = module->entry_computation()->root_instruction();
@@ -178,7 +219,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, NoDotComputation) {
   })")
                     .ValueOrDie();
 
-  EXPECT_FALSE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(PadForF16Gemms(module.get()));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, F32DotComputation) {
@@ -193,7 +234,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, F32DotComputation) {
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}})")
                     .ValueOrDie();
 
-  EXPECT_FALSE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(PadForF16Gemms(module.get()));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, F64DotComputation) {
@@ -208,7 +249,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, F64DotComputation) {
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}})")
                     .ValueOrDie();
 
-  EXPECT_FALSE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(PadForF16Gemms(module.get()));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, MultiplesOf8DotComputation) {
@@ -223,7 +264,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, MultiplesOf8DotComputation) {
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}})")
                     .ValueOrDie();
 
-  EXPECT_FALSE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(PadForF16Gemms(module.get()));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, CheckSavingMetadata) {
@@ -242,7 +283,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, CheckSavingMetadata) {
 
   SCOPED_TRACE(module->ToString());
 
-  EXPECT_TRUE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(PadForF16Gemms(module.get()));
   auto metadata = module->entry_computation()->root_instruction()->metadata();
   EXPECT_EQ("MatMul", metadata.op_type());
   EXPECT_EQ(
@@ -261,7 +302,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, NotCanonicalizedDot) {
     ROOT %dot.2309 = f16[3,2048, 33708]{2, 1, 0} dot(f16[3, 5, 2048, 1024]{3, 2, 1, 0} %param1, f16[3, 5, 1024, 33708]{3, 2, 1, 0} %param2), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={3, 1}, rhs_contracting_dims={2, 1}})")
                     .ValueOrDie();
 
-  EXPECT_FALSE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(PadForF16Gemms(module.get()));
 }
 
 }  // anonymous namespace
