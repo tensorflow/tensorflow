@@ -111,6 +111,14 @@ gentbl_cc_library(
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
         (
+            ["-gen-attr-interface-decls"],
+            "lib/Dialect/Test/TestAttrInterfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "lib/Dialect/Test/TestAttrInterfaces.cpp.inc",
+        ),
+        (
             ["-gen-type-interface-decls"],
             "lib/Dialect/Test/TestTypeInterfaces.h.inc",
         ),
