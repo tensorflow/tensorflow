@@ -39,27 +39,6 @@ message OptimizationOptions {
   oneof optional_apply_default_optimizations {
     bool apply_default_optimizations = 1;
   }
-  // Whether to automatically tune performance knobs.
-  oneof optional_autotune {
-    bool autotune = 2;
-  }
-  // When autotuning is enabled (through autotune), determines whether to also
-  // autotune buffer sizes for datasets with parallelism.
-  oneof optional_autotune_buffers {
-    bool autotune_buffers = 3;
-  }
-  // When autotuning is enabled (through autotune), determines the CPU budget to
-  // use. Values greater than the number of schedulable CPU cores are allowed
-  // but may result in CPU contention.
-  oneof optional_autotune_cpu_budget {
-    int32 autotune_cpu_budget = 4;
-  }
-  // When autotuning is enabled (through autotune), determines the RAM budget to
-  // use. Values greater than the available RAM in bytes may result in OOM. If
-  // 0, defaults to half of the available RAM in bytes.
-  oneof optional_autotune_ram_budget {
-    int64 autotune_ram_budget = 5;
-  }
   // Whether to fuse filter transformations.
   oneof optional_filter_fusion {
     bool filter_fusion = 6;
