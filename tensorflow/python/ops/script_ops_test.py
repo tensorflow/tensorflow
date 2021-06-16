@@ -20,6 +20,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.script_ops import numpy_function
+from tensorflow.python.ops.variables import Variable
 from tensorflow.python.platform import test
 
 
@@ -36,37 +37,45 @@ class NumpyFunctionTest(test.TestCase):
     self.assertAllEqual(actual_result, expect_result)
 
   def test_stateless_flag(self):
-    call_count = 0
+    call_count = Variable(0, dtype=dtypes.int32)
+
+    # make sure to have a significant difference to the expected number of execution, which is 1
+    nruns = 10
 
     def plus(a, b):
-      nonlocal call_count
-      call_count += 1
+      call_count.assign_add(1)
       return a + b
 
     @def_function.function
     def tensor_double_plus_stateless(a, b):
-      sum1 = numpy_function(plus, [a, b], dtypes.int32, stateful=False)
-      sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=False)
-      return sum1 + sum2
+      sum1 = 0.
+      for _ in range(nruns):
+        sum1 += numpy_function(plus, [a, b], dtypes.int32, stateful=False)
+      return sum1
 
     # different argument
     tensor_double_plus_stateless(
       constant_op.constant(1),
       constant_op.constant(2),
     )
-    self.assertEqual(call_count, 1)  # +1 as only the first encounter was executed
+    # This is not a safe test: as the docs say, using a stateful function while guaranteeing statelessness is
+    # undefined. Since it is a guarantee we give without receiving anything for it, we cannot test an expected
+    # behavior really. As a proxy, we can say that it will *most likely* not be called 10 times.
+    self.assertNotEqual(call_count, nruns)  # If it is 10, every call was executed (most likely)
 
     @def_function.function
     def tensor_double_plus_stateful(a, b):
-      sum1 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
-      sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
-      return sum1 + sum2
+      sum1 = 0.
+      for _ in range(nruns):
+        sum1 += numpy_function(plus, [a, b], dtypes.int32, stateful=True)
+      return sum1
 
+    call_count.assign(0)
     tensor_double_plus_stateful(
       constant_op.constant(3),
       constant_op.constant(4),
                           )
-    self.assertEqual(call_count, 3)  # +2 as it is stateful, func was both times executed
+    self.assertEqual(call_count, nruns)  # as it is stateful, func was executed every time executed
 
 
 if __name__ == "__main__":
