@@ -1179,9 +1179,8 @@ def save(obj, export_dir, signatures=None, options=None):
   """
   # pylint: enable=line-too-long
   metrics.IncrementWriteApi(_SAVE_V2_LABEL)
-  result = save_and_return_nodes(obj, export_dir, signatures, options)
+  save_and_return_nodes(obj, export_dir, signatures, options)
   metrics.IncrementWrite()
-  return result
 
 
 def save_and_return_nodes(obj,
