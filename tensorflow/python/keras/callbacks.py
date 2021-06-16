@@ -1478,7 +1478,7 @@ class ModelCheckpoint(Callback):
       # `filepath` may contain placeholders such as `{epoch:02d}`,`{batch:02d}`
       # and `{mape:.2f}`. A mismatch between logged metrics and the path's
       # placeholders can cause formatting to fail.
-      if batch is None:
+      if batch is None or "batch" in logs:
         file_path = self.filepath.format(epoch=epoch + 1, **logs)
       else:
         file_path = self.filepath.format(epoch=epoch + 1,
