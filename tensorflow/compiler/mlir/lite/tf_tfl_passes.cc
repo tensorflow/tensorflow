@@ -92,21 +92,6 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
 
-  if (session.hasValue()) {
-    // Add a pass that converts reference variables to resource variables.
-    pass_manager->addPass(
-        mlir::TF::
-            CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
-
-    // Add a pass that promotes resource variable to the function arguments.
-    pass_manager->addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
-
-    // Add a pass that creates global tensors and converts the function
-    // arguments to the tf_saved_model.bound_input arguments.
-    pass_manager->addPass(
-        mlir::tf_saved_model::CreateLiftVariablesPass(session.getValue()));
-  }
-
   // Keep this pass after the shape inference pass, which couldn't do shape
   // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
