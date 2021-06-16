@@ -20,4 +20,5 @@ def repo(name):
             "//third_party/mlir:BUILD": "mlir/BUILD",
             "//third_party/mlir:test.BUILD": "mlir/test/BUILD",
         },
+        patch_file = "//third_party/llvm:disable_parallelism_in_verifier.patch",
     )
