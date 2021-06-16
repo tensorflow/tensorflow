@@ -38,11 +38,24 @@ void GetModelDatasetParams(const Options& options,
                            model::AutotuneAlgorithm* algorithm,
                            bool* cpu_budget, bool* ram_budget) {
   *algorithm = model::AutotuneAlgorithm::HILL_CLIMB;
-  if (options.autotune_options().autotune_buffers()) {
-    *algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
+
+  // check for deprecated autotune options in optimization_options
+  // the condition below checks for the presence of the deprecated option
+  // and decides whether to go with the deprecated options or not.
+  if(options.optimization_options.optional_autotune_buffers_case() ==
+    OptimizationOptions::kAutotuneBuffers){
+      if (options.optimization_options().autotune_buffers()) {
+        *algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
+      }
+      *cpu_budget = options.optimization_options().autotune_cpu_budget();
+      *ram_budget = options.optimization_options().autotune_ram_budget();
+  } else {
+    if (options.autotune_options().autotune_buffers()) {
+      *algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
+    }
+    *cpu_budget = options.autotune_options().cpu_budget();
+    *ram_budget = options.autotune_options().ram_budget();
   }
-  *cpu_budget = options.autotune_options().cpu_budget();
-  *ram_budget = options.autotune_options().ram_budget();
 }
 
 void MakeDatasetHelper(OpKernelContext* ctx, bool has_captured_ref,

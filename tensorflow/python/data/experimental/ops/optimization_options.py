@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import enum
+from absl import logging
 
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.python.data.experimental.ops import autotune_options
@@ -109,6 +110,11 @@ class OptimizationOptions(options.OptionsBase):
       docstring="Whether to fuse shuffle and repeat transformations. If None, "
       "defaults to True.")
 
+  # The `autotune` related options in this class have been moved to
+  # `tf.data.AutotuneOptions`. To ensure backward-compatibility with the
+  # deprecated `autotune` options in this class, we are creating a private
+  # `AutotuneOption` based attribute (which will not be serialized/deserialized
+  # as a part of `OptimizationOptions`) and handling the mapping.
   _autotune_option = options.create_option(
       name="_autotune_option",
       ty=autotune_options.AutotuneOptions,
@@ -133,6 +139,9 @@ class OptimizationOptions(options.OptionsBase):
     # handle backward compatibility with deprecated options
     compatibility_map = self._get_autotune_option_compatibility_map()
     if name in compatibility_map:
+      logging.warning("options.experimental_optimization.{} is deprecated."
+                      " Use options.autotune.{} instead.".format(
+                        name, compatibility_map[name]))
       return getattr(self._autotune_option, compatibility_map[name])
     else:
       return getattr(self, name)
@@ -141,6 +150,9 @@ class OptimizationOptions(options.OptionsBase):
     # handle backward compatibility with deprecated options
     compatibility_map = self._get_autotune_option_compatibility_map()
     if name in compatibility_map:
+      logging.warning("options.experimental_optimization.{} is deprecated."
+                      " Use options.autotune.{} instead.".format(
+                        name, compatibility_map[name]))
       setattr(self._autotune_option, compatibility_map[name], value)
     else:
       super(OptimizationOptions, self).__setattr__(name, value)

@@ -59,15 +59,31 @@ Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
   params.autotune = ShouldUseAutotuning(options);
   if (params.autotune) {
     params.autotune_algorithm = model::AutotuneAlgorithm::HILL_CLIMB;
-    if (options.autotune_options().autotune_buffers()) {
-      params.autotune_algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
+    // check for deprecated autotune options in optimization_options
+    // the condition below checks for the presence of the deprecated option
+    // and decides whether to go with the deprecated options or not.
+    if(optimization_options.optional_autotune_buffers_case() ==
+      OptimizationOptions::kAutotuneBuffers){
+      if (options.optimization_options().autotune_buffers()) {
+        params.autotune_algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
+      }
+      params.autotune_cpu_budget =
+          value_or_default(options.optimization_options().autotune_cpu_budget(),
+                          0, port::NumSchedulableCPUs());
+      params.autotune_ram_budget =
+          value_or_default(options.optimization_options().autotune_ram_budget(),
+                          0, kRamBudgetShare * port::AvailableRam());
+    } else {
+      if (options.autotune_options().autotune_buffers()) {
+        params.autotune_algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
+      }
+      params.autotune_cpu_budget =
+          value_or_default(options.autotune_options().cpu_budget(),
+                          0, port::NumSchedulableCPUs());
+      params.autotune_ram_budget =
+          value_or_default(options.autotune_options().ram_budget(),
+                          0, kRamBudgetShare * port::AvailableRam());
     }
-    params.autotune_cpu_budget =
-        value_or_default(options.autotune_options().cpu_budget(),
-                         0, port::NumSchedulableCPUs());
-    params.autotune_ram_budget =
-        value_or_default(options.autotune_options().ram_budget(),
-                         0, kRamBudgetShare * port::AvailableRam());
   }
   *output = new RootDataset(input, params);
   return Status::OK();

@@ -191,18 +191,36 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kShuffleAndRepeatFusionOpt);
     }
   }
+  // check for deprecated autotune options in optimization_options
+  const bool has_autotune_legacy =
+      optimization_options.optional_autotune_case() ==
+      OptimizationOptions::kAutotune;
+  const bool has_autotune_buffers_legacy =
+      optimization_options.optional_autotune_buffers_case() ==
+      OptimizationOptions::kAutotuneBuffers;
+
   const auto& autotune_options = options.autotune_options();
   const bool has_autotune = autotune_options.optional_enabled_case() ==
                             AutotuneOptions::kEnabled;
   const bool has_autotune_buffers =
       autotune_options.optional_autotune_buffers_case() ==
       AutotuneOptions::kAutotuneBuffers;
-  if (!(has_autotune && !autotune_options.enabled()) &&
+
+  if (!(has_autotune_legacy && !optimization_options.autotune()) &&
+      (has_autotune_buffers_legacy && optimization_options.autotune_buffers())) {
+    optimization_enabled->insert(kAutotuneBufferSizesOpt);
+    optimization_enabled->insert(kDisablePrefetchLegacyAutotuneOpt);
+  }
+  else if (!(has_autotune && !autotune_options.enabled()) &&
       (has_autotune_buffers && autotune_options.autotune_buffers())) {
     optimization_enabled->insert(kAutotuneBufferSizesOpt);
     optimization_enabled->insert(kDisablePrefetchLegacyAutotuneOpt);
   }
-  if (has_autotune && !autotune_options.enabled()) {
+  if (has_autotune_legacy && !optimization_options.autotune()) {
+    optimization_disabled->insert(kAutotuneBufferSizesOpt);
+    optimization_disabled->insert(kDisablePrefetchLegacyAutotuneOpt);
+  }
+  else if (has_autotune && !autotune_options.enabled()) {
     optimization_disabled->insert(kAutotuneBufferSizesOpt);
     optimization_disabled->insert(kDisablePrefetchLegacyAutotuneOpt);
   }
@@ -1046,13 +1064,22 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
 
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
+  const auto& optimization_options = options.optimization_options();
   const auto& autotune_options = options.autotune_options();
   std::vector<tstring> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
       kMapParallelizationOpt};
 
-  if (autotune_options.optional_enabled_case() ==
+  // check for deprecated autotune options in optimization_options
+  if (optimization_options.optional_autotune_case() ==
+          OptimizationOptions::kAutotune &&
+      !optimization_options.autotune()) {
+    for (const auto& optimization : autotune_only_optimizations) {
+      configs.insert(
+          absl::StrCat(optimization.data(), ":", kAutotuneOpt, ":false"));
+    }
+  } else if (autotune_options.optional_enabled_case() ==
           AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
     for (const auto& optimization : autotune_only_optimizations) {
@@ -1088,6 +1115,11 @@ bool ShouldUsePrivateThreadPool(const Options& options) {
 }
 
 bool ShouldUseAutotuning(const Options& options) {
+  // check for deprecated autotune options in optimization_options
+  if (options.optimization_options().optional_autotune_case() ==
+             OptimizationOptions::kAutotune){
+               return options.optimization_options().autotune();
+  }
   return options.autotune_options().optional_enabled_case() !=
              AutotuneOptions::kEnabled ||
          options.autotune_options().enabled();
