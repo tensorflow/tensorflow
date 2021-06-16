@@ -54,7 +54,7 @@ class NumpyFunctionTest(test.TestCase):
       return sum1 + sum2
 
     # different argument
-    tensor_double_plus_stateless(
+    _ = tensor_double_plus_stateless(  # executing empty
       constant_op.constant(1),
       constant_op.constant(2),
     )
@@ -66,7 +66,7 @@ class NumpyFunctionTest(test.TestCase):
       sum2 = numpy_function(plus, [a, b], dtypes.int32, stateful=True)
       return sum1 + sum2
 
-    tensor_double_plus_stateful(
+    _ = tensor_double_plus_stateful( # executing empty
       constant_op.constant(3),
       constant_op.constant(4),
                           )
