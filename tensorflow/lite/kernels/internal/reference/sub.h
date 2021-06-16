@@ -318,50 +318,12 @@ void BroadcastQuantSubSlow(const ArithmeticParams& params,
   NDOpsHelper<N>(output_desc, sub_func);
 }
 
-// Element-wise Sub that can often be used for inner loop of broadcast sub as
-// well as the non-broadcast sub.
-inline void SubElementwise(int size, const ArithmeticParams& params,
-                           const uint8_t* input1_data,
-                           const uint8_t* input2_data, uint8_t* output_data) {
-  TFLITE_DCHECK_GT(params.input1_offset, -256);
-  TFLITE_DCHECK_GT(params.input2_offset, -256);
-  TFLITE_DCHECK_LT(params.input1_offset, 256);
-  TFLITE_DCHECK_LT(params.input2_offset, 256);
-
-  for (int i = 0; i < size; ++i) {
-    const int32_t input1_val = params.input1_offset + input1_data[i];
-    const int32_t input2_val = params.input2_offset + input2_data[i];
-    const int32_t shifted_input1_val = input1_val * (1 << params.left_shift);
-    const int32_t shifted_input2_val = input2_val * (1 << params.left_shift);
-    const int32_t scaled_input1_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input1_val, params.input1_multiplier, params.input1_shift);
-    const int32_t scaled_input2_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input2_val, params.input2_multiplier, params.input2_shift);
-    const int32_t raw_sub = scaled_input1_val - scaled_input2_val;
-    const int32_t raw_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            raw_sub, params.output_multiplier, params.output_shift) +
-        params.output_offset;
-    const int32_t clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, raw_output));
-    output_data[i] = static_cast<uint8_t>(clamped_output);
-  }
-}
-
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
+template <typename T>
 inline void SubElementwise(int size, const ArithmeticParams& params,
-                           const int8_t* input1_data, const int8_t* input2_data,
-                           int8_t* output_data) {
-  const int32_t int8_max_value = std::numeric_limits<int8_t>::max();
-  TFLITE_DCHECK_GE(params.input1_offset, -1 * int8_max_value);
-  TFLITE_DCHECK_GE(params.input2_offset, -1 * int8_max_value);
-  TFLITE_DCHECK_LE(params.input1_offset, int8_max_value);
-  TFLITE_DCHECK_LE(params.input2_offset, int8_max_value);
-
+                           const T* input1_data, const T* input2_data,
+                           T* output_data) {
   for (int i = 0; i < size; ++i) {
     const int32_t input1_val = params.input1_offset + input1_data[i];
     const int32_t input2_val = params.input2_offset + input2_data[i];
@@ -381,7 +343,7 @@ inline void SubElementwise(int size, const ArithmeticParams& params,
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));
-    output_data[i] = static_cast<int8_t>(clamped_output);
+    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 
@@ -416,6 +378,21 @@ inline void Sub(const ArithmeticParams& params,
   TFLITE_DCHECK_GE(params.input2_offset, -1 * int8_max_value);
   TFLITE_DCHECK_LE(params.input1_offset, int8_max_value);
   TFLITE_DCHECK_LE(params.input2_offset, int8_max_value);
+  SubElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void Sub(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, int16_t* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+
+  TFLITE_DCHECK_EQ(params.input1_offset, 0);
+  TFLITE_DCHECK_EQ(params.input2_offset, 0);
   SubElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
