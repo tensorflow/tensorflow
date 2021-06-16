@@ -11340,6 +11340,13 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -11408,6 +11415,13 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
     }
   }
   is_stateful: true
