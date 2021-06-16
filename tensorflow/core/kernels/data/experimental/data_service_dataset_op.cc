@@ -25,11 +25,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -47,6 +49,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -305,6 +309,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
+                  << " tasks size:" << tasks_.size()
                   << " finished_tasks_:" << finished_tasks_
                   << " num_running_worker_threads_:"
                   << num_running_worker_threads_;
@@ -530,10 +535,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     Status AddTask(const TaskInfo& task_info) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      std::unique_ptr<DataServiceWorkerClient> worker;
-      TF_RETURN_IF_ERROR(CreateDataServiceWorkerClient(
-          task_info.transfer_address(), dataset()->protocol_,
-          dataset()->data_transfer_protocol_, worker));
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<DataServiceWorkerClient> worker,
+          CreateDataServiceWorkerClient(task_info.transfer_address(),
+                                        dataset()->protocol_,
+                                        dataset()->data_transfer_protocol_));
       tasks_.push_back(std::make_shared<Task>(task_info, std::move(worker)));
       worker_thread_cv_.notify_one();
       if (StrictRoundRobin()) {
@@ -1022,7 +1028,9 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kDataTransferProtocol, &data_transfer_protocol_));
   }
-  if (data_transfer_protocol_.empty()) data_transfer_protocol_ = "grpc";
+  if (data_transfer_protocol_.empty()) {
+    data_transfer_protocol_ = kGrpcTransferProtocol;
+  }
 
   std::string target_workers_str = "AUTO";
   if (ctx->HasAttr(kTargetWorkers)) {
@@ -1032,6 +1040,9 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
       ParseTargetWorkers(target_workers_str);
   OP_REQUIRES_OK(ctx, status_or_target_workers.status());
   target_workers_ = *status_or_target_workers;
+  if (target_workers_ == TargetWorkers::LOCAL) {
+    data_transfer_protocol_ = kLocalTransferProtocol;
+  }
 
   auto& op_name = ctx->def().op();
   if (op_name == kDataServiceDatasetV1) {

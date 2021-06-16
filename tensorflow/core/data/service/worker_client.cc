@@ -26,12 +26,15 @@ limitations under the License.
 #include "grpcpp/support/status.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -64,21 +68,21 @@ Status DataServiceWorkerClient::EnsureInitialized() {
 
 void DataServiceWorkerClient::TryCancel() { client_->TryCancel(); }
 
-Status CreateDataServiceWorkerClient(
-    const std::string& address, const std::string& protocol,
-    const std::string& transfer_protocol,
-    std::unique_ptr<DataServiceWorkerClient>& out) {
+StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+CreateDataServiceWorkerClient(const std::string& address,
+                              const std::string& protocol,
+                              const std::string& transfer_protocol) {
   auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol,
                                                            transfer_protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
-  out = std::move(client);
-  return Status::OK();
+  return client;
 }
 
 class GrpcDataTransferClient : public DataTransferClient {
  public:
   GrpcDataTransferClient(std::shared_ptr<grpc::ChannelCredentials> credentials,
                          std::string address) {
+    VLOG(2) << "Create GrpcDataTransferClient for worker " << address << ".";
     grpc::ChannelArguments args;
     args.SetMaxReceiveMessageSize(-1);
     auto channel = grpc::CreateCustomChannel(address, credentials, args);
@@ -87,6 +91,8 @@ class GrpcDataTransferClient : public DataTransferClient {
 
   Status GetElement(const GetElementRequest& req,
                     GetElementResult& result) override {
+    VLOG(3) << "GetElement for task " << req.task_id() << " from gRPC worker "
+            << "server.";
     {
       mutex_lock l(mu_);
       if (cancelled_) {
@@ -131,6 +137,7 @@ class GrpcDataTransferClient : public DataTransferClient {
   }
 
   void TryCancel() override {
+    VLOG(2) << "Cancel GrpcDataTransferClient.";
     mutex_lock l(mu_);
     cancelled_ = true;
     for (const auto& ctx : active_contexts_) {
@@ -154,8 +161,8 @@ class GrpcTransferClientRegistrar {
  public:
   GrpcTransferClientRegistrar() {
     DataTransferClient::Register(
-        "grpc", [](DataTransferClient::Config config,
-                   std::unique_ptr<DataTransferClient>* out) {
+        kGrpcTransferProtocol, [](DataTransferClient::Config config,
+                                  std::unique_ptr<DataTransferClient>* out) {
           std::shared_ptr<grpc::ChannelCredentials> credentials;
           TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
               config.protocol, &credentials));
@@ -165,7 +172,76 @@ class GrpcTransferClientRegistrar {
         });
   }
 };
-static GrpcTransferClientRegistrar registrar;
+static GrpcTransferClientRegistrar gprc_client_registrar;
+
+class LocalDataTransferClient : public DataTransferClient {
+ public:
+  explicit LocalDataTransferClient(absl::string_view worker_address)
+      : worker_address_(worker_address) {
+    VLOG(2) << "Create LocalDataTransferClient for worker " << worker_address_
+            << ".";
+  }
+
+  Status GetElement(const GetElementRequest& req,
+                    GetElementResult& result) override {
+    VLOG(3) << "GetElement for task " << req.task_id() << " from local worker.";
+    TF_RETURN_IF_ERROR(VerifyClientIsNotCancelled());
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<DataServiceWorkerImpl> worker,
+                        GetWorker(req));
+    return worker->GetElementResult(&req, &result);
+  }
+
+  void TryCancel() override {
+    VLOG(2) << "Cancel LocalDataTransferClient for worker " << worker_address_
+            << ".";
+    // Cancels incoming requests. Currently local reads assume the requests are
+    // first-come-first-served. If we need to support coordinated reads, we need
+    // to cancel in-flight requests since they may wait infinitely.
+    mutex_lock l(mu_);
+    cancelled_ = true;
+  }
+
+ private:
+  Status VerifyClientIsNotCancelled() TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    if (cancelled_) {
+      return errors::Cancelled(absl::Substitute(
+          "Client for worker $0 has been cancelled.", worker_address_));
+    }
+    return Status::OK();
+  }
+
+  StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
+      const GetElementRequest& req) const {
+    std::shared_ptr<DataServiceWorkerImpl> worker =
+        LocalWorkers::Get(worker_address_);
+    if (!worker) {
+      return errors::Cancelled(absl::Substitute(
+          "Worker at address $0 is no longer available; cancel request for "
+          "task $1.",
+          worker_address_, req.task_id()));
+    }
+    return worker;
+  }
+
+  const std::string worker_address_;
+
+  mutex mu_;
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
+};
+
+class LocalTransferClientRegistrar {
+ public:
+  LocalTransferClientRegistrar() {
+    DataTransferClient::Register(
+        kLocalTransferProtocol, [](DataTransferClient::Config config,
+                                   std::unique_ptr<DataTransferClient>* out) {
+          *out = absl::make_unique<LocalDataTransferClient>(config.address);
+          return Status::OK();
+        });
+  }
+};
+static LocalTransferClientRegistrar local_client_registrar;
 
 }  // namespace data
 }  // namespace tensorflow

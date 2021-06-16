@@ -23,10 +23,14 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
+
+constexpr const char kLocalTransferProtocol[] = "local";
+constexpr const char kGrpcTransferProtocol[] = "grpc";
 
 // Client for communicating with the tf.data service worker.
 class DataServiceWorkerClient : public DataServiceClientBase {
@@ -56,10 +60,10 @@ class DataServiceWorkerClient : public DataServiceClientBase {
 };
 
 // Creates and initializes a new tf.data service worker client.
-Status CreateDataServiceWorkerClient(
-    const std::string& address, const std::string& protocol,
-    const std::string& transfer_protocol,
-    std::unique_ptr<DataServiceWorkerClient>& out);
+StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+CreateDataServiceWorkerClient(const std::string& address,
+                              const std::string& protocol,
+                              const std::string& transfer_protocol);
 
 }  // namespace data
 }  // namespace tensorflow
