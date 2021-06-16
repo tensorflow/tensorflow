@@ -137,8 +137,10 @@ add_mlir_library(MhloLhloToLinalg
 )
 
 add_mlir_library(LmhloPasses
+  fusion_utils.cc
   legalize_tensor_load_op.cc
   lhlo_fuse_linalg.cc
+  lhlo_fusion.cc
   lhlo_legalize_to_affine.cc
   lhlo_legalize_to_gpu.cc
   lhlo_legalize_to_parallel_loops.cc
