@@ -339,6 +339,147 @@ void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<GatherSlice>(context);
 }
 
+namespace {
+
+// following https://www.tensorflow.org/xla/operation_semantics#gather
+// The bounds for the output array along dimension i is computed as follows:
+// (1) If i is present in batch_dims (i.e. is equal to batch_dims[k] for some k)
+// then we pick
+// the corresponding dimension bounds out of start_indices.shape, skipping
+// index_vector_dim
+// (i.e. pick start_indices.shape.dims[k] if k < index_vector_dim and
+// start_indices.shape.dims[k+1] otherwise).
+// (2) If i is present in offset_dims (i.e. equal to offset_dims[k] for some k)
+// then we pick
+// the corresponding bound out of slice_sizes after accounting for
+// collapsed_slice_dims
+// (i.e. we pick adjusted_slice_sizes[k] where adjusted_slice_sizes is
+// slice_sizes with the bounds at indices collapsed_slice_dims removed).
+
+void GetSliceSizeValues(GatherOp* gather, OpBuilder& builder, Location loc,
+                        ValueRange operands,
+                        SmallVectorImpl<Value>& slice_sizes) {
+  for (int64_t val : gather->slice_sizes().getValues<int64_t>()) {
+    slice_sizes.push_back(builder.create<ConstantIndexOp>(loc, val));
+  }
+}
+
+void GetSliceSizeValues(DynamicGatherOp* d_gather, OpBuilder& builder,
+                        Location loc, ValueRange operands,
+                        SmallVectorImpl<Value>& slice_size_values) {
+  DynamicGatherOp::Adaptor adaptor(operands);
+  Value slice_sizes = adaptor.slice_sizes();
+  auto slice_sizes_ty = slice_sizes.getType().cast<ShapedType>();
+  for (int64_t i = 0; i < slice_sizes_ty.getDimSize(0); ++i) {
+    Value idx = builder.create<ConstantIndexOp>(loc, i);
+    slice_size_values.push_back(
+        builder.create<tensor::ExtractOp>(loc, slice_sizes, idx));
+  }
+}
+
+template <typename Op>
+LogicalResult GatherShapeInferImpl(
+    Op* op, OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  // Not support unranked pad a.t.m.
+  auto result_ty =
+      op->getResult().getType().template dyn_cast<RankedTensorType>();
+  if (!result_ty) return failure();
+
+  typename Op::Adaptor adaptor(operands);
+  Value start_indices = adaptor.start_indices();
+
+  Location loc = op->getLoc();
+  int result_rank = result_ty.getRank();
+  Type shape_scalar_type =
+      start_indices.getType().cast<ShapedType>().getElementType();
+  auto to_shape_scalar_type = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+  };
+
+  auto dimension_numbers = op->dimension_numbers();
+  SmallVector<int64_t, 4> collapsed_slice_dims(
+      dimension_numbers.collapsed_slice_dims().template getValues<int64_t>());
+  SmallVector<int64_t, 4> offset_dims(
+      dimension_numbers.offset_dims().template getValues<int64_t>());
+  int64_t index_vector_dim =
+      dimension_numbers.index_vector_dim().getValue().getSExtValue();
+
+  SmallVector<Value, 4> slice_sizes;
+  GetSliceSizeValues(op, builder, loc, operands, slice_sizes);
+  // Convert to `shape_scalar_type`
+  llvm::transform(slice_sizes, slice_sizes.begin(),
+                  [&](Value v) { return to_shape_scalar_type(v); });
+
+  // we label dimensions in the output array not in offset_dims as batch_dims
+  SmallVector<int64_t, 4> batch_dims;
+  for (int64_t i = 0; i < result_rank; ++i) {
+    if (std::find(offset_dims.begin(), offset_dims.end(), i) ==
+        offset_dims.end()) {
+      batch_dims.push_back(i);
+    }
+  }
+  // adjusted_slice_sizes is slice_sizes with the bounds at indices
+  // collapsed_slice_dims removed
+  SmallVector<Value, 4> adjusted_slice_sizes;
+  for (int64_t i = 0; i < slice_sizes.size(); ++i) {
+    if (std::find(collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
+                  i) == collapsed_slice_dims.end()) {
+      adjusted_slice_sizes.push_back(slice_sizes[i]);
+    }
+  }
+
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(result_rank);
+  for (int64_t i = 0; i < result_rank; ++i) {
+    auto iter = std::find(batch_dims.begin(), batch_dims.end(), i);
+    if (iter != batch_dims.end()) {
+      // i is present in batch_dims
+      int64_t k = std::distance(batch_dims.begin(), iter);
+      if (k < index_vector_dim) {
+        shape_values.push_back(to_shape_scalar_type(
+            builder.create<memref::DimOp>(loc, start_indices, k)));
+      } else {
+        shape_values.push_back(to_shape_scalar_type(
+            builder.create<memref::DimOp>(loc, start_indices, k + 1)));
+      }
+    } else {
+      // i is present in offset_dims
+      auto offset_dims_iter =
+          std::find(offset_dims.begin(), offset_dims.end(), i);
+      assert(offset_dims_iter != offset_dims.end());
+      int64_t k = std::distance(offset_dims.begin(), offset_dims_iter);
+      assert(k < adjusted_slice_sizes.size());
+      shape_values.push_back(adjusted_slice_sizes[k]);
+    }
+  }
+
+  Value output_shape = builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values);
+  reifiedReturnShapes.push_back(output_shape);
+
+  return success();
+}
+
+}  // namespace
+
+LogicalResult GatherOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return GatherShapeInferImpl(this, builder, operands, reifiedReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicGatherOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult DynamicGatherOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return GatherShapeInferImpl(this, builder, operands, reifiedReturnShapes);
+}
+
 //===----------------------------------------------------------------------===//
 // GetDimensionSizeOp
 //===----------------------------------------------------------------------===//

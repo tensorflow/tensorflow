@@ -1618,7 +1618,7 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]> {
   let results = (outs HLO_Tensor);
 }
 
-def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]> {
+def HLO_GatherOp: HLO_ShapedInterfaceOp<"gather", [NoSideEffect]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_IntTensor:$start_indices,
@@ -2268,7 +2268,7 @@ def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather", [NoSideEffect]> {
+def HLO_DynamicGatherOp: HLO_ShapedInterfaceOp<"dynamic_gather", [NoSideEffect]> {
   string summary = "Dynamic Gather operator";
   string description = [{
     The dynamic shape version of GatherOp. Stitches together several slices of an input
