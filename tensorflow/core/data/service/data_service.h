@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 
+#include <string>
+
 #include "grpcpp/impl/codegen/client_context.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -48,6 +53,24 @@ Status ParseProcessingMode(const std::string& s, ProcessingMode& mode);
 
 // Converts a processing mode to its corresponding string.
 std::string ProcessingModeToString(ProcessingMode mode);
+
+// Specifies which tf.data service workers to read from.
+enum class TargetWorkers : int64 {
+  UNSET = 0,
+  // tf.data service runtime decides which workers to read from.
+  AUTO = 1,
+  // Reads from any available worker.
+  ANY = 2,
+  // Only reads from local workers. If no local worker is found, it is an error.
+  LOCAL = 3,
+};
+
+// Parses a string representing a `TargetWorkers` (case-insensitive).
+// Returns InvalidArgument if the string is not recognized.
+StatusOr<TargetWorkers> ParseTargetWorkers(absl::string_view s);
+
+// Converts a `TargetWorkers` enum to string.
+std::string TargetWorkersToString(TargetWorkers target_workers);
 
 // Base class for data service clients. Data service clients are
 // threadsafe.

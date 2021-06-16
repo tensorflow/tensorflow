@@ -70,6 +70,18 @@
 *   TF Core:
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
         peak memory returned by `tf.config.experimental.get_memory_info`.
+*  `tf.data`:
+    *   Added `target_workers` param to `data_service_ops.from_dataset_id` and
+        `data_service_ops.distribute`. Users can specify `"AUTO"`, `"ANY"`, or
+        `"LOCAL"` (case insensitive). If `"AUTO"`, tf.data service runtime
+        decides which workers to read from. If `"ANY"`, TF workers read from any
+        tf.data service workers. If `"LOCAL"`, TF workers will only read from
+        local in-processs tf.data service workers. `"AUTO"` works well for most
+        cases, while users can specify other targets. For example, `"LOCAL"`
+        would help avoid RPCs and data copy if every TF worker colocates with a
+        tf.data service worker. Currently, `"AUTO"` reads from any tf.data
+        service workers to preserve existing behavior. The default value is
+        `"AUTO"`.
 
 ## Bug Fixes and Other Changes
 
