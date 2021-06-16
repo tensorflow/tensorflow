@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/tridiagonal.h"
 
+#include <functional>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -154,8 +155,12 @@ StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
                       CheckSystemAndReturnNumEquations(
                           lower_diagonal, main_diagonal, upper_diagonal, rhs));
 
+  // x = rhs
+  // x[:,0] = x[:,0] / main_diagoal[:, 0]
   auto x =
       UpdateEq(rhs, 0, Coefficient(rhs, 0) / Coefficient(main_diagonal, 0));
+
+  // main_diagonal[:,0] = upper_diagonal[:,0] / main_diagoal[:, 0]
   main_diagonal =
       UpdateEq(main_diagonal, 0,
                Coefficient(upper_diagonal, 0) / Coefficient(main_diagonal, 0));
@@ -176,7 +181,7 @@ StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
                  Coefficient(lower_diagonal, i) *
                      Coefficient(main_diagonal, i_minus_one);
 
-    // x[:, i] = (x[:, i] - lower_diagonal[:, i] * x[:, i - 1]) / denom;
+    // x[:, i] -= x[:, i - 1] / denom;
     x = UpdateEq(x, i,
                  (Coefficient(x, i) - Coefficient(lower_diagonal, i) *
                                           Coefficient(x, i_minus_one)) /
@@ -221,6 +226,189 @@ StatusOr<XlaOp> TridiagonalSolverImpl<kThomas>(XlaOp lower_diagonal,
   return values_after_bwd_reduction[0];
 }
 
+// Applies partially pivoted Gaussian elimination to solve a tridiagonal linear
+// system. It is expected that the three diagonals are represented as tensors of
+// shape [..., 1, num_equations] where num_equations is the number of dimensions
+// of the unknowns considered in the linear systems. The first innermost
+// dimension of `lower_diagonal` (`lower_diagonal[..., :, 0]`) will be ignored.
+// The last innermost dimension of `upper_diagonal`
+// (`upper_diagonal[..., :, num_equations - 1]`) will be ignored. The shape of
+// the right-hand-side `rhs` should be [..., num_rhs, num_equations]. The
+// solution will have the shape [..., num_rhs, num_equations].
+template <>
+StatusOr<XlaOp> TridiagonalSolverImpl<kPartialPivoting>(XlaOp lower_diagonal,
+                                                        XlaOp main_diagonal,
+                                                        XlaOp upper_diagonal,
+                                                        XlaOp rhs) {
+  XlaBuilder* builder = lower_diagonal.builder();
+  TF_ASSIGN_OR_RETURN(
+      int64 n, CheckSystemAndReturnNumEquations(lower_diagonal, main_diagonal,
+                                                upper_diagonal, rhs));
+  if (n == 0) return rhs;
+  // Create the rhs_pivot_mask_shape [..., num_rhs, 1] to which we need to
+  // broadcast the pivot mask of shape [..., 1, 1] created in each step during
+  // the forward transformation.
+  TF_ASSIGN_OR_RETURN(Shape rhs_shape, builder->GetShape(rhs));
+  const int64 rhs_rank = rhs_shape.rank();
+  std::vector<int64> rhs_pivot_mask_shape(rhs_shape.dimensions().begin(),
+                                          rhs_shape.dimensions().end());
+  rhs_pivot_mask_shape[rhs_rank - 1] = 1;
+  std::vector<int64> dims_to_broadcast(rhs_rank);
+  std::iota(dims_to_broadcast.begin(), dims_to_broadcast.end(),
+            static_cast<int64>(0));
+
+  auto forward_transformation_fn =
+      [&rhs_pivot_mask_shape, &dims_to_broadcast](
+          XlaOp i, absl::Span<const XlaOp> values, XlaBuilder* builder,
+          bool is_penultimate_row = false) -> StatusOr<std::vector<XlaOp>> {
+    auto lower_diagonal = values[0];
+    auto main_diagonal = values[1];
+    auto upper_diagonal = values[2];
+    auto rhs = values[3];
+
+    auto one = ScalarLike(i, 1);
+
+    // Values referenced in the i'th step:
+    // rhs[:, i]
+    auto rhs_i = Coefficient(rhs, i);
+    // rhs[:, i+1]
+    auto rhs_ip1 = Coefficient(rhs, i + one);
+    // diagonal[:, i]
+    auto diag_i = Coefficient(main_diagonal, i);
+    // diagonal[:, i+1]
+    auto diag_ip1 = Coefficient(main_diagonal, i + one);
+    // upper_diagonal[:, i]
+    auto upper_diag_i = Coefficient(upper_diagonal, i);
+    // upper_diagonal[:, i + 1]
+    auto upper_diag_ip1 = Coefficient(upper_diagonal, i + one);
+    // lower_diagonal[:, i + 1]
+    auto lower_diag_ip1 = Coefficient(lower_diagonal, i + one);
+    // Pivoting mask. We implicitly interchange rows i and i + 1
+    // for values of j where |lower_diag[j, i + 1]| > |diag[j, i]|.
+    auto pivot_mask = Gt(Abs(lower_diag_ip1), Abs(diag_i));
+    auto pivot_mask_rhs =
+        BroadcastInDim(pivot_mask, rhs_pivot_mask_shape, dims_to_broadcast);
+
+    // Notice: The second upper diagonal of the matrix U in the
+    // partially pivoted LU decomposition overwrites lower_diagonal.
+
+    // Updated values for the non-pivoted case:
+    auto factor_no_pivot = lower_diag_ip1 / diag_i;
+    auto diag_i_no_pivot = diag_i;
+    auto diag_ip1_no_pivot = diag_ip1 - factor_no_pivot * upper_diag_i;
+    auto upper_diag_i_no_pivot = upper_diag_i;
+    auto upper_diag_ip1_no_pivot = upper_diag_ip1;
+    auto lower_diag_i_no_pivot = ZerosLike(upper_diag_ip1);
+    auto rhs_i_no_pivot = rhs_i;
+    auto rhs_ip1_no_pivot = rhs_ip1 - factor_no_pivot * rhs_i;
+
+    // Updated values for the pivoted case:
+    auto factor_pivot = diag_i / lower_diag_ip1;
+    auto diag_i_pivot = lower_diag_ip1;
+    auto diag_ip1_pivot = upper_diag_i - factor_pivot * diag_ip1;
+    auto upper_diag_i_pivot = diag_ip1;
+    auto upper_diag_ip1_pivot = -factor_pivot * upper_diag_ip1;
+    auto lower_diag_i_pivot = upper_diag_ip1;
+    auto rhs_i_pivot = rhs_ip1;
+    auto rhs_ip1_pivot = rhs_i - factor_pivot * rhs_ip1;
+
+    // Write the updated values. For each batch dimension (outer batch x rhs),
+    // select either the pivoted or non-pivoted values, depending on the
+    // corresponding value in pivot_mask.
+    main_diagonal = UpdateEq(main_diagonal, i,
+                             Select(pivot_mask, diag_i_pivot, diag_i_no_pivot));
+    main_diagonal =
+        UpdateEq(main_diagonal, i + one,
+                 Select(pivot_mask, diag_ip1_pivot, diag_ip1_no_pivot));
+    upper_diagonal =
+        UpdateEq(upper_diagonal, i,
+                 Select(pivot_mask, upper_diag_i_pivot, upper_diag_i_no_pivot));
+    rhs = UpdateEq(rhs, i, Select(pivot_mask_rhs, rhs_i_pivot, rhs_i_no_pivot));
+    rhs = UpdateEq(rhs, i + one,
+                   Select(pivot_mask_rhs, rhs_ip1_pivot, rhs_ip1_no_pivot));
+
+    if (!is_penultimate_row) {
+      upper_diagonal = UpdateEq(
+          upper_diagonal, i + one,
+          Select(pivot_mask, upper_diag_ip1_pivot, upper_diag_ip1_no_pivot));
+      lower_diagonal = UpdateEq(
+          lower_diagonal, i,
+          Select(pivot_mask, lower_diag_i_pivot, lower_diag_i_no_pivot));
+    }
+
+    return std::vector<XlaOp>{lower_diagonal, main_diagonal, upper_diagonal,
+                              rhs};
+  };
+  TF_ASSIGN_OR_RETURN(
+      auto values_after_fwd_transformation,
+      ForEachIndex(
+          n - 2, S32,
+          std::bind(forward_transformation_fn, std::placeholders::_1,
+                    std::placeholders::_2, std::placeholders::_3, false),
+          {lower_diagonal, main_diagonal, upper_diagonal, rhs},
+          "forward_transformation", builder));
+
+  // Transform the final rows.
+  lower_diagonal = values_after_fwd_transformation[0];
+  main_diagonal = values_after_fwd_transformation[1];
+  upper_diagonal = values_after_fwd_transformation[2];
+  rhs = values_after_fwd_transformation[3];
+  auto n_minus_2 = ConstantR0<int32>(builder, n - 2);
+  TF_ASSIGN_OR_RETURN(
+      values_after_fwd_transformation,
+      forward_transformation_fn(
+          n_minus_2, {lower_diagonal, main_diagonal, upper_diagonal, rhs},
+          builder, true));
+
+  // Get the diagonals of the U matrix constructed during the partially pivoted
+  // LU decomposition.
+  auto second_upper_diagonal = values_after_fwd_transformation[0];
+  main_diagonal = values_after_fwd_transformation[1];
+  upper_diagonal = values_after_fwd_transformation[2];
+  auto x = values_after_fwd_transformation[3];
+
+  // Backward reduction.
+  x = UpdateEq(x, n - 1,
+               Coefficient(x, n - 1) / Coefficient(main_diagonal, n - 1));
+  if (n < 2) return x;
+  x = UpdateEq(x, n - 2,
+               (Coefficient(x, n - 2) -
+                Coefficient(upper_diagonal, n - 2) * Coefficient(x, n - 1)) /
+                   Coefficient(main_diagonal, n - 2));
+  auto bwd_reduction_fn =
+      [n](XlaOp j, absl::Span<const XlaOp> values,
+          XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    auto main_diagonal = values[0];
+    auto upper_diagonal = values[1];
+    auto second_upper_diagonal = values[2];
+    auto x = values[3];
+
+    auto one = ScalarLike(j, 1);
+    auto two = ScalarLike(j, 2);
+    auto i = ScalarLike(j, n - 3) - j;
+    // for (int i = num_eqs - 3; i >= 0; i--)
+    //   x[:, i] =  ( x[:, i] - upper_diagonal[:, i] * x[:, i + 1]) -
+    //                second_upper_diagnal[:,i] * x[:, i + 2] ) /
+    //                main_diagoal[:,i]
+    x = UpdateEq(
+        x, i,
+        (Coefficient(x, i) -
+         Coefficient(upper_diagonal, i) * Coefficient(x, i + one) -
+         Coefficient(second_upper_diagonal, i) * Coefficient(x, i + two)) /
+            Coefficient(main_diagonal, i));
+
+    return std::vector<XlaOp>{main_diagonal, upper_diagonal,
+                              second_upper_diagonal, x};
+  };
+
+  TF_ASSIGN_OR_RETURN(
+      auto values_after_bwd_reduction,
+      ForEachIndex(n - 2, S32, bwd_reduction_fn,
+                   {main_diagonal, upper_diagonal, second_upper_diagonal, x},
+                   "backward_reduction", builder));
+  return values_after_bwd_reduction[3];
+}
+
 }  // namespace
 
 StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
@@ -230,10 +418,11 @@ StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
     case kThomas:
       return TridiagonalSolverImpl<kThomas>(lower_diagonal, main_diagonal,
                                             upper_diagonal, rhs);
+    case kPartialPivoting:
+      return TridiagonalSolverImpl<kPartialPivoting>(
+          lower_diagonal, main_diagonal, upper_diagonal, rhs);
     default:
-      return Unimplemented(
-          "Only algorithm kThomas (%d) is implemented, got: %d",
-          static_cast<int>(kThomas), algo);
+      return Unimplemented("Got unknown algorithm: %d", algo);
   }
 }
 
@@ -280,10 +469,14 @@ StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
                                                   upper_diagonal, rhs));
       return Transpose(x, transpose_order);
     }
+    case kPartialPivoting: {
+      TF_ASSIGN_OR_RETURN(
+          XlaOp x, TridiagonalSolverImpl<kPartialPivoting>(
+                       lower_diagonal, main_diagonal, upper_diagonal, rhs));
+      return Transpose(x, transpose_order);
+    }
     default:
-      return Unimplemented(
-          "Only algorithm kThomas (%d) is implemented, got: %d",
-          static_cast<int>(kThomas), algo);
+      return Unimplemented("Got unknown algorithm: %d", algo);
   }
 }
 

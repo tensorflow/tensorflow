@@ -45,8 +45,10 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    # TODO(b/187847053): Enable test in pip.
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",  # TODO(b/190842754): Enable test in OSS.
+        "no_pip",  # TODO(b/187847053): Enable test in pip.
+    ],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
@@ -510,6 +512,9 @@ pytype_strict_library(
 py_test(
     name = "metrics_nonportable_test",
     srcs = ["metrics_nonportable_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
+    ],
     python_version = "PY3",
     tags = ["no_oss"],
     visibility = ["//visibility:public"],
@@ -577,6 +582,9 @@ py_test(
         "//tensorflow/lite/python/testdata:interpreter_test_data",
     ],
     python_version = "PY3",
+    tags = [
+        "no_mac",  # b/191191684
+    ],
     deps = [
         ":analyzer",
         "//tensorflow/python:client_testlib",

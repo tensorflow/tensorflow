@@ -68,6 +68,25 @@ func @test_mul(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> tensor<
 
 // -----
 
+// CHECK-LABEL: test_real_div
+// CHECK: %[[VAR0:.*]] = "tosa.div"(%arg0, %arg1)
+func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) -> tensor<13x21x3xi32> {
+  %2 = "tf.RealDiv"(%arg0, %arg1)   : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
+  return %2 : tensor<13x21x3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_floor_div
+// CHECK: %[[VAR0:.*]] = "tosa.div"(%arg0, %arg1)
+func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) -> tensor<13x21x3xi32> {
+  %2 = "tf.FloorDiv"(%arg0, %arg1)   : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
+  return %2 : tensor<13x21x3xi32>
+}
+
+
+// -----
+
 // CHECK-LABEL: test_exp
 // CHECK: %[[VAR0:.*]] = "tosa.exp"(%arg0)
 func @test_exp(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {

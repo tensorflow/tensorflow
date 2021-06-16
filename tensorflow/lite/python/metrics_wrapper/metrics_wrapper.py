@@ -20,20 +20,20 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
-from tensorflow.lite.python.metrics_wrapper._pywrap_tensorflow_lite_metrics_wrapper import GetCollectedErrors as _get_collected_errors
 from tensorflow.lite.python.metrics_wrapper._pywrap_tensorflow_lite_metrics_wrapper import MetricsWrapper  # pylint: disable=unused-import
+from tensorflow.lite.python.metrics_wrapper._pywrap_tensorflow_lite_metrics_wrapper import RetrieveCollectedErrors as _retrieve_collected_errors
 
 
-def get_collected_errors():
-  """Returns a list of collected errors in ErrorCollector.
+def retrieve_collected_errors():
+  """Returns and clears the list of collected errors in ErrorCollector.
 
-  The GetCollectedErrors function in C++ returns a list of serialized proto
+  The RetrieveCollectedErrors function in C++ returns a list of serialized proto
   messages. This function will convert them to ConverterErrorData instances.
 
   Returns:
     A list of ConverterErrorData.
   """
-  serialized_message_list = _get_collected_errors()
+  serialized_message_list = _retrieve_collected_errors()
   return list(
       map(converter_error_data_pb2.ConverterErrorData.FromString,
           serialized_message_list))

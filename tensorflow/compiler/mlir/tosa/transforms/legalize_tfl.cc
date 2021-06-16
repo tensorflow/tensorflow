@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -142,6 +143,8 @@ DECL_CONVERT_OP(QConst);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherNd);
 DECL_CONVERT_OP(OneHot);
+DECL_CONVERT_OP(ArgMax);
+DECL_CONVERT_OP(FakeQuant);
 #undef DECL_CONVERT_OP
 
 // Input from tfl.conv2d takes 64 bits a bias, while tosa.conv2d expects 48
@@ -805,15 +808,26 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
 
   auto fused_activation_fn = tfl_div_op.fused_activation_functionAttr();
 
-  auto reciprocal_op = rewriter.create<tosa::ReciprocalOp>(
-      op->getLoc(), output_type, tfl_div_op.rhs());
-  auto mul_op =
-      rewriter.create<tosa::MulOp>(op->getLoc(), output_type, tfl_div_op.lhs(),
-                                   reciprocal_op.getResult(), 0);
+  Type element_type = output_type.getElementType();
+  Value div_op;
+  if (element_type.isa<IntegerType>()) {
+    div_op = rewriter
+                 .create<tosa::DivOp>(op->getLoc(), output_type,
+                                      tfl_div_op.lhs(), tfl_div_op.rhs())
+                 .getResult();
+  } else {
+    auto reciprocal_op = rewriter.create<tosa::ReciprocalOp>(
+        op->getLoc(), tfl_div_op.rhs().getType(), tfl_div_op.rhs());
+    div_op =
+        rewriter
+            .create<tosa::MulOp>(op->getLoc(), output_type, tfl_div_op.lhs(),
+                                 reciprocal_op.getResult(), 0)
+            .getResult();
+  }
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
-        rewriter, op, mul_op.getResult(), fused_activation_fn);
+    llvm::Optional<Value> fused_activation_val =
+        convertFusedActivation(rewriter, op, div_op, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
 
@@ -821,7 +835,7 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
     return success();
   }
 
-  rewriter.replaceOp(op, {mul_op.getResult()});
+  rewriter.replaceOp(op, {div_op});
 
   return success();
 }
@@ -2499,9 +2513,9 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
         op->getLoc(), output_type, tfl_hardswish_op.input(),
         op3_relu_op2_6.getResult(), 0);
 
+    auto const_6 = getTosaConstTensorSingleF32(rewriter, op, 6.0);
     auto op5_reciprocal_6 = rewriter.create<tosa::ReciprocalOp>(
-        op->getLoc(), output_type,
-        getTosaConstTensorSingleF32(rewriter, op, 6.0));
+        op->getLoc(), const_6.getType(), const_6);
 
     auto op6_mul_op4_op5 = rewriter.create<tosa::MulOp>(
         op->getLoc(), output_type, op4_mul_x_op3.getResult(),
@@ -2907,7 +2921,11 @@ LogicalResult ConvertTFLDequantizeOp::matchAndRewrite(
 
   UniformQuantizedType element_type =
       qtype.getElementType().dyn_cast<UniformQuantizedType>();
-  if (!element_type) return failure();
+  if (!element_type) {
+    rewriter.replaceOpWithNewOp<tosa::CastOp>(op, output_type,
+                                              tfl_dequantize_op.input());
+    return success();
+  }
 
   double scale = element_type.getScale();
   int64_t zp = element_type.getZeroPoint();
@@ -3021,6 +3039,44 @@ LogicalResult ConvertTFLOneHotOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto arg_max_op = cast<TFL::ArgMaxOp>(op);
+
+  ElementsAttr dim_elems;
+  if (!matchPattern(arg_max_op.dim(), m_Constant(&dim_elems))) return failure();
+
+  int32_t dim = dim_elems.getValue<IntegerAttr>({}).getInt();
+  rewriter.replaceOpWithNewOp<tosa::ArgMaxOp>(
+      op, arg_max_op.getType(), arg_max_op.input(),
+      rewriter.getIntegerAttr(rewriter.getI64Type(), dim));
+
+  return success();
+}
+
+LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto fakequant_op = cast<TFL::FakeQuantOp>(op);
+
+  RankedTensorType output_type =
+      fakequant_op.getResult().getType().dyn_cast<RankedTensorType>();
+  // Not a ranked tensor output
+  if (!output_type) return failure();
+
+  llvm::Optional<Value> result =
+      convertFakeQuantOp(rewriter, op, output_type, fakequant_op.input(),
+                         fakequant_op.minAttr().getValueAsDouble(),
+                         fakequant_op.maxAttr().getValueAsDouble(),
+                         fakequant_op.num_bitsAttr().getInt(),
+                         fakequant_op.narrow_rangeAttr().getValue());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
 void LegalizeTFL::runOnFunction() {
   OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
@@ -3105,6 +3161,8 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(Constant);
   DEF_PATTERN_INSERT(TFLGather);
   DEF_PATTERN_INSERT(TFLGatherNd);
+  DEF_PATTERN_INSERT(TFLArgMax);
+  DEF_PATTERN_INSERT(TFLFakeQuant);
   DEF_PATTERN_INSERT(TFLOneHot);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

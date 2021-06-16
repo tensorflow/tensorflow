@@ -1378,7 +1378,7 @@ cuda_py_test(
     name = "tridiagonal_solve_op_test",
     size = "medium",
     srcs = ["tridiagonal_solve_op_test.py"],
-    shard_count = 10,
+    shard_count = 12,
     tags = [
         "no_oss",  # TODO(b/142818120): Re-enable.
     ],

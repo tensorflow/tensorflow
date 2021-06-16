@@ -18,18 +18,23 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <queue>
+#include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
@@ -63,6 +68,7 @@ namespace data {
     DataServiceDatasetOp::kMaxOutstandingRequests;
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kTaskRefreshIntervalHintMs;
+/* static */ constexpr const char* const DataServiceDatasetOp::kTargetWorkers;
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kIterationCounter;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputTypes;
@@ -89,8 +95,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           const std::string& data_transfer_protocol,
           const std::string& job_name, absl::optional<int64> consumer_index,
           absl::optional<int64> num_consumers, int64 max_outstanding_requests,
-          int64 task_refresh_interval_ms, IterationCounter* iteration_counter,
-          bool owns_resource, ResourceHandle iteration_counter_handle,
+          int64 task_refresh_interval_ms, const TargetWorkers target_workers,
+          IterationCounter* iteration_counter, bool owns_resource,
+          ResourceHandle iteration_counter_handle,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
@@ -105,6 +112,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         num_consumers_(num_consumers),
         max_outstanding_requests_(max_outstanding_requests),
         task_refresh_interval_ms_(task_refresh_interval_ms),
+        target_workers_(target_workers),
         iteration_counter_(iteration_counter),
         owns_resource_(owns_resource),
         iteration_counter_handle_(iteration_counter_handle),
@@ -210,11 +218,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(task_refresh_interval_ms_,
                       &task_refresh_interval_hint_ms);
 
+    AttrValue target_workers;
+    b->BuildAttrValue(TargetWorkersToString(target_workers_), &target_workers);
+
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, inputs,
         {std::make_pair(kTaskRefreshIntervalHintMs,
                         task_refresh_interval_hint_ms),
-         std::make_pair(kDataTransferProtocol, data_transfer_protocol)},
+         std::make_pair(kDataTransferProtocol, data_transfer_protocol),
+         std::make_pair(kTargetWorkers, target_workers)},
         output));
     return Status::OK();
   }
@@ -248,18 +260,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               << job_client_id_;
     }
 
-    void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
-      mutex_lock l(mu_);
-      for (const auto& task : tasks_) {
-        task->worker->TryCancel();
-      }
-      cancelled_ = true;
-      worker_thread_cv_.notify_all();
-      manager_thread_cv_.notify_all();
-      get_next_cv_.notify_all();
-    }
-
     Status Initialize(IteratorContext* ctx) override {
+      TF_RETURN_IF_ERROR(ValidateDataset());
       VLOG(3) << "Connecting to " << dataset()->address_
               << " in data service dataset op";
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -296,13 +298,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       EnsureThreadsStarted(ctx);
       bool skip = true;
       while (skip) {
-        while ((results_.empty() || !results_.front().ready) &&
-               !(job_finished_ && num_running_worker_threads_ == 0) &&
+        while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
           VLOG(3) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
+                  << " finished_tasks_:" << finished_tasks_
                   << " num_running_worker_threads_:"
                   << num_running_worker_threads_;
           get_next_cv_.wait(l);
@@ -414,6 +416,39 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool skip TF_GUARDED_BY(&Iterator::mu_) = false;
     };
 
+    Status ValidateDataset() const {
+      if (dataset()->target_workers_ == TargetWorkers::LOCAL &&
+          LocalWorkers::Empty()) {
+        return errors::InvalidArgument(
+            "`target_workers` is `local`, but no local worker is found.");
+      }
+      if (dataset()->target_workers_ == TargetWorkers::LOCAL &&
+          StrictRoundRobin()) {
+        return errors::InvalidArgument(
+            "Coordinated reads require non-local workers, but `target_workers` "
+            "is `local`.");
+      }
+      return Status::OK();
+    }
+
+    // Returns whether all local tasks have finished.
+    bool LocalTasksFinished() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      return !tasks_.empty() && finished_tasks_ >= tasks_.size();
+    }
+
+    // Returns whether the iterator has finished and should return.
+    // If `target_workers_` is LOCAL, it waits for all local tasks to finish.
+    // If `target_workers_` is ANY, it waits for the job to finish.
+    bool Finished() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (num_running_worker_threads_ > 0) {
+        return false;
+      }
+      if (dataset()->target_workers_ == TargetWorkers::LOCAL) {
+        return job_finished_ || LocalTasksFinished();
+      }
+      return job_finished_;
+    }
+
     void EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!task_thread_manager_ && !cancelled_) {
@@ -422,6 +457,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             ctx->StartThread("task-thread-manager",
                              [this, new_ctx]() { TaskThreadManager(new_ctx); });
       }
+    }
+
+    void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
+      for (const auto& task : tasks_) {
+        task->worker->TryCancel();
+      }
+      cancelled_ = true;
+      worker_thread_cv_.notify_all();
+      manager_thread_cv_.notify_all();
+      get_next_cv_.notify_all();
     }
 
     // Periodically refresh the task list.
@@ -577,6 +623,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (it == task_id_to_task.end()) {
           continue;
         }
+        if (!ShouldReadFromTask(task)) {
+          VLOG(3) << "Skipping untargeted worker task " << task.task_id();
+          continue;
+        }
         Status s = AddTask(it->second);
         if (!s.ok()) {
           status_ = s;
@@ -588,6 +638,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // Adjust max_outstanding_requests to account for newly added tasks.
         max_outstanding_requests_ = tasks_.size();
       }
+    }
+
+    bool ShouldReadFromTask(const TaskInfo& task) const {
+      if (dataset()->target_workers_ == TargetWorkers::LOCAL &&
+          LocalWorkers::Get(task.worker_address()) == nullptr) {
+        return false;
+      }
+      return true;
     }
 
     void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
@@ -668,7 +726,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
           outstanding_requests_--;
           while (true) {
-            if (cancelled_ || job_finished_) {
+            if (cancelled_ || job_finished_ ||
+                (dataset()->target_workers_ == TargetWorkers::LOCAL &&
+                 LocalTasksFinished())) {
               return;
             }
             if (ElementSpaceAvailable()) {
@@ -865,7 +925,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
              max_outstanding_requests_;
     }
 
-    bool StrictRoundRobin() { return dataset()->num_consumers_.has_value(); }
+    bool StrictRoundRobin() const {
+      return dataset()->num_consumers_.has_value();
+    }
 
     const int64 iterator_index_;
 
@@ -937,6 +999,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const absl::optional<int64> num_consumers_;
   const int64 max_outstanding_requests_;
   const int64 task_refresh_interval_ms_;
+  const TargetWorkers target_workers_;
   IterationCounter* const iteration_counter_;  // Owned
   const bool owns_resource_;
   const ResourceHandle iteration_counter_handle_;
@@ -959,6 +1022,16 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
         ctx, ctx->GetAttr(kDataTransferProtocol, &data_transfer_protocol_));
   }
   if (data_transfer_protocol_.empty()) data_transfer_protocol_ = "grpc";
+
+  std::string target_workers_str = "AUTO";
+  if (ctx->HasAttr(kTargetWorkers)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kTargetWorkers, &target_workers_str));
+  }
+  StatusOr<TargetWorkers> status_or_target_workers =
+      ParseTargetWorkers(target_workers_str);
+  OP_REQUIRES_OK(ctx, status_or_target_workers.status());
+  target_workers_ = *status_or_target_workers;
+
   auto& op_name = ctx->def().op();
   if (op_name == kDataServiceDatasetV1) {
     op_version_ = 1;
@@ -1053,12 +1126,12 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       errors::InvalidArgument(kMaxOutstandingRequests, " must be positive or ",
                               model::kAutotune));
 
-  *output = new Dataset(ctx, op_version_, dataset_id, processing_mode, address,
-                        protocol, data_transfer_protocol_, job_name,
-                        consumer_index, num_consumers, max_outstanding_requests,
-                        task_refresh_interval_hint_ms_, iteration_counter,
-                        owns_resource, iteration_counter_handle, output_types_,
-                        output_shapes_);
+  *output = new Dataset(
+      ctx, op_version_, dataset_id, processing_mode, address, protocol,
+      data_transfer_protocol_, job_name, consumer_index, num_consumers,
+      max_outstanding_requests, task_refresh_interval_hint_ms_, target_workers_,
+      iteration_counter, owns_resource, iteration_counter_handle, output_types_,
+      output_shapes_);
 }
 
 REGISTER_KERNEL_BUILDER(Name("DataServiceDataset").Device(DEVICE_CPU),

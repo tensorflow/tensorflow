@@ -765,6 +765,11 @@ class Interpreter(object):
                 len(self._signature_defs)))
       else:
         method_name = next(iter(self._signature_defs))
+    if len(self._signature_defs) > 1:
+      raise ValueError(
+          'This Interpreter doesnt handle multiple signatures properly. '
+          'Proper support is coming soon.'
+      )
     return SignatureRunner(interpreter=self, signature_def_name=method_name)
 
   def get_tensor(self, tensor_index):

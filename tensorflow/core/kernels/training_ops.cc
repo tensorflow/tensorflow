@@ -2619,12 +2619,12 @@ class ApplyFtrlOp : public OpKernel {
                                   "is not a scalar: ",
                                   l2_shrinkage.shape().DebugString()));
       if (multiply_linear_by_lr_) {
-        functor::ApplyFtrlV2<Device, T>()(
+        functor::ApplyFtrlV2MultiplyLinearByLr<Device, T>()(
             device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
             grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
             l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
       } else {
-        functor::ApplyFtrlV2MultiplyLinearByLr<Device, T>()(
+        functor::ApplyFtrlV2<Device, T>()(
             device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
             grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
             l2_shrinkage.scalar<T>(), lr_power.scalar<T>());

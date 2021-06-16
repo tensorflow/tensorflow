@@ -94,7 +94,7 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def HLO_DynamicIotaOp: HLO_Op<"dynamic_iota", [NoSideEffect]> {
+def HLO_DynamicIotaOp: HLO_ShapedInterfaceOp<"dynamic_iota", [NoSideEffect]> {
   let summary = "Create linear increasing values from 0 to length -1.";
   let description = [{
     Produces an HLO Tensor of the specified shape, with an incremental set of
@@ -904,11 +904,11 @@ def HLO_WhileOp: HLO_Op<"while", [
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
-  let arguments = (ins HLO_TensorOrTuple:$val);
+  let arguments = (ins Variadic<HLO_TensorOrTuple>:$arg);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs Variadic<HLO_TensorOrTuple>);
 
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -954,6 +954,26 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_AllReduceScatterOp : HLO_Op<"all_reduce_scatter",
+    [SameOperandsAndResultElementType]> {
+  let summary = "AllReduceScatter operator";
+  let description = [{
+     Performs all_reduce followed by a scatter.
+
+     See https://www.tensorflow.org/xla/operation_semantics#allreducescatter
+  }];
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64Attr:$scatter_dimension,
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<ChannelHandle>:$channel_handle
+  );
+  let regions = (region SizedRegion<1>:$computation);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_AllToAllOp : HLO_Op<"all_to_all",
     [NoSideEffect, SameOperandsElementType, SameOperandsShape]> {
 
@@ -967,7 +987,7 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
   let results = (outs HLO_Tensor);
 }
 
-def HLO_ReduceOp: HLO_Op<"reduce", [
+def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
       RecursiveSideEffects,
       SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"ReturnOp">,
@@ -1341,8 +1361,8 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
   let results = (outs HLO_FpOrComplexTensor);
 }
 
-def HLO_ClampOp : HLO_Op<"clamp",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+def HLO_ClampOp : HLO_Op<"clamp", [NoSideEffect,
+  SameOperandsAndResultElementType, HLO_BroadcastingElementwise]> {
   let summary = "Clamp operator";
   let description = [{
     Clamps an operand to within the range between a minimum and maximum value.
@@ -1353,16 +1373,16 @@ def HLO_ClampOp : HLO_Op<"clamp",
 
     See https://www.tensorflow.org/xla/operation_semantics#clamp.
   }];
+
   let arguments = (ins
     HLO_Tensor:$min,
     HLO_Tensor:$operand,
     HLO_Tensor:$max
   );
-
   let results = (outs HLO_Tensor);
 }
 
-def HLO_ConcatenateOp : HLO_Op<"concatenate",
+def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
     [NoSideEffect, SameOperandsAndResultElementType,
      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "XLA's concatenate op";
@@ -1723,11 +1743,10 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
 }
 
 // TODO(jpienaar): Add broadcastable trait.
-def HLO_SelectOp: HLO_Op<"select", [NoSideEffect,
+def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
     ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    ]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Select operator";
   let description = [{
     Constructs an output tensor from the elements of `on_true` and `on_false`
@@ -1881,7 +1900,7 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_TransposeOp: HLO_Op<"transpose",
+def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
       [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Transpose operator";
   let description = [{
@@ -2199,7 +2218,7 @@ def HLO_ReducePrecisionOp :
   let results = (outs HLO_FpTensor:$output);
 }
 
-def HLO_RealDynamicSliceOp: HLO_Op<
+def HLO_RealDynamicSliceOp: HLO_ShapedInterfaceOp<
       "real_dynamic_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
        AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
@@ -2217,10 +2236,11 @@ def HLO_RealDynamicSliceOp: HLO_Op<
     HLO_DimensionTensor:$strides
   );
   let results = (outs HLO_Tensor:$result);
+  let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicPadOp: HLO_Op<"dynamic_pad",
+def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
       [NoSideEffect, AllElementTypesMatch<["operand", "padding_value", "result"]>,
       AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
   let summary = "Dynamic Pad operator";

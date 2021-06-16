@@ -3785,6 +3785,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
         type: DT_INT8
         type: DT_INT16
         type: DT_INT32
@@ -3803,6 +3804,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
         type: DT_INT8
         type: DT_INT16
         type: DT_INT32
@@ -11338,6 +11340,13 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -11406,6 +11415,13 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
     }
   }
   is_stateful: true
@@ -50191,6 +50207,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -57089,6 +57106,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "perturb_singular"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {

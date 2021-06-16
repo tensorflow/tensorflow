@@ -9976,6 +9976,14 @@ func DataServiceDatasetDataTransferProtocol(value string) DataServiceDatasetAttr
 	}
 }
 
+// DataServiceDatasetTargetWorkers sets the optional target_workers attribute to value.
+// If not specified, defaults to "AUTO"
+func DataServiceDatasetTargetWorkers(value string) DataServiceDatasetAttr {
+	return func(m optionalAttr) {
+		m["target_workers"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
 func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -20661,9 +20669,9 @@ func IgammaGradA(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 //
 // where
 //
-// \\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+// \\(Gamma(a, x) = \int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
 //
-// is the upper incomplete Gama function.
+// is the upper incomplete Gamma function.
 //
 // Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
 // Gamma function.
@@ -44936,8 +44944,8 @@ func ResourceApplyFtrlV2MultiplyLinearByLr(value bool) ResourceApplyFtrlV2Attr {
 
 // Update '*var' according to the Ftrl-proximal scheme.
 //
+// accum_new = accum + grad * grad
 // grad_with_shrinkage = grad + 2 * l2_shrinkage * var
-// accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
 // linear += grad_with_shrinkage +
 //     (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
 // quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
@@ -48911,6 +48919,14 @@ func DataServiceDatasetV2DataTransferProtocol(value string) DataServiceDatasetV2
 	}
 }
 
+// DataServiceDatasetV2TargetWorkers sets the optional target_workers attribute to value.
+// If not specified, defaults to "AUTO"
+func DataServiceDatasetV2TargetWorkers(value string) DataServiceDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["target_workers"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
 func DataServiceDatasetV2(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, consumer_index tf.Output, num_consumers tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetV2Attr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -50803,6 +50819,14 @@ type TridiagonalSolveAttr func(optionalAttr)
 func TridiagonalSolvePartialPivoting(value bool) TridiagonalSolveAttr {
 	return func(m optionalAttr) {
 		m["partial_pivoting"] = value
+	}
+}
+
+// TridiagonalSolvePerturbSingular sets the optional perturb_singular attribute to value.
+// If not specified, defaults to false
+func TridiagonalSolvePerturbSingular(value bool) TridiagonalSolveAttr {
+	return func(m optionalAttr) {
+		m["perturb_singular"] = value
 	}
 }
 

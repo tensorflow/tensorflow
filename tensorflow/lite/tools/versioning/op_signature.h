@@ -15,16 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
-const auto kTensorTypeNone = static_cast<::tflite::TensorType>(-1);
-
 // OpSignature contains operator parameters for version functions.
 typedef struct {
-  TensorType type;
+  TfLiteType type;
   std::vector<int32_t> dims;
+  bool is_const;
 } OpSignatureTensorSpec;
 
 typedef struct {
@@ -69,5 +70,12 @@ typedef struct {
 OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
                            const SubGraph* subgraph);
 
+// Generate OpSignature with the given TfLiteContext, TfLiteNode and
+// TfLiteRegistration.
+// The function can be used by a compatibility checker of a delegate such as
+// TFLiteOperationParser::IsSupported() in the GPU delegate.
+OpSignature GetOpSignature(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration);
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_

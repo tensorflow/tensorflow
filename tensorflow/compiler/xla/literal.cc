@@ -1335,6 +1335,10 @@ string LiteralBase::ToStringWithLayout() const {
   return absl::StrJoin(pieces, "");
 }
 
+string LiteralBase::ToStringWithLayoutOneline() const {
+  return CompactOneline(ToStringWithLayout());
+}
+
 void LiteralBase::EachCellAsString(
     const std::function<void(absl::Span<const int64> indices,
                              const string& value)>& per_cell) const {

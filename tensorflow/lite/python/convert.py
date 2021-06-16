@@ -297,7 +297,7 @@ def toco_convert_protos(model_flags_str,
       return model_str
     except Exception as e:
       converter_error = ConverterError(str(e))
-      for error_data in _metrics_wrapper.get_collected_errors():
+      for error_data in _metrics_wrapper.retrieve_collected_errors():
         converter_error.append_error(error_data)
       raise converter_error
 

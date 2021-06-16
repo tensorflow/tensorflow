@@ -1541,6 +1541,109 @@ class LowerResizeNearestNeighbor : public RewritePattern {
   }
 };
 
+struct LowerRollOp : public RewritePattern {
+  explicit LowerRollOp(MLIRContext *context)
+      : RewritePattern(
+            RollOp::getOperationName(), 1, context,
+            {ConstOp::getOperationName(), SliceOp::getOperationName(),
+             ConcatV2Op::getOperationName()}) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tf_roll_op = cast<RollOp>(op);
+
+    auto input_ty = tf_roll_op.input().getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require the type of input to have static shapes");
+    }
+
+    DenseIntElementsAttr shift_attr;
+    Value shift = tf_roll_op.shift();
+    auto shift_ranked_attr_type = shift.getType().dyn_cast<RankedTensorType>();
+    if (!shift_ranked_attr_type ||
+        !matchPattern(shift, m_Constant(&shift_attr))) {
+      return failure();
+    }
+
+    DenseIntElementsAttr axis_attr;
+    Value axis = tf_roll_op.axis();
+    auto axis_ranked_attr_type = axis.getType().dyn_cast<RankedTensorType>();
+    if (!axis_ranked_attr_type || !matchPattern(axis, m_Constant(&axis_attr))) {
+      return failure();
+    }
+
+    // Combine duplicate axis and make sure they are in [0, rank(input)) range.
+    auto input_shape = input_ty.getShape();
+    int input_rank = input_shape.size();
+    SmallVector<int32_t, 4> shift_map(input_rank, 0);
+    for (int i = 0; i < axis_attr.getNumElements(); ++i) {
+      int32_t axis_i = axis_attr.getValue<int32_t>(i);
+      if (axis_i < 0) axis_i += input_rank;
+      int32_t shift_i = shift_attr.getValue<int32_t>(i);
+      shift_map[axis_i] += shift_i;
+    }
+
+    SmallVector<int32_t, 4> adjusted_axis;
+    SmallVector<int32_t, 4> adjusted_shift;
+    for (int i = 0; i < input_rank; ++i) {
+      int32_t input_dims_i = input_shape[i];
+      int32_t shift_i = shift_map[i] % input_dims_i;
+      if (shift_i < 0) shift_i += input_dims_i;
+      if (shift_i == 0) continue;
+      adjusted_axis.push_back(i);
+      adjusted_shift.push_back(shift_i);
+    }
+
+    // Convert rolling in each dimension to two Slice ops and one Concat op.
+    auto axis_type =
+        RankedTensorType::get({input_rank}, rewriter.getIntegerType(64));
+    auto create_slice_op = [&](int32_t axis_i, int32_t begin_i, int32_t size_i,
+                               Value input) {
+      SmallVector<int64_t, 4> begin_values(input_rank, 0);
+      begin_values[axis_i] = begin_i;
+      auto begin_attr = DenseIntElementsAttr::get(axis_type, begin_values);
+      auto begin =
+          rewriter.create<ConstOp>(op->getLoc(), axis_type, begin_attr);
+
+      SmallVector<int64_t, 4> output_shape;
+      output_shape.append(input_shape.begin(), input_shape.end());
+      output_shape[axis_i] = size_i;
+      auto size_attr = DenseIntElementsAttr::get(axis_type, output_shape);
+      auto size = rewriter.create<ConstOp>(op->getLoc(), axis_type, size_attr);
+
+      auto slice_op_ty =
+          RankedTensorType::get(output_shape, input_ty.getElementType());
+      return rewriter.create<SliceOp>(op->getLoc(), slice_op_ty, input, begin,
+                                      size);
+    };
+
+    auto result = tf_roll_op.input();
+    auto scalar_type =
+        mlir::RankedTensorType::get({}, rewriter.getIntegerType(32));
+    for (int i = 0; i < adjusted_axis.size(); ++i) {
+      int32_t axis_i = adjusted_axis[i];
+      int32_t shift_i = adjusted_shift[i];
+      auto slice_op_1 = create_slice_op(axis_i, input_shape[axis_i] - shift_i,
+                                        shift_i, result);
+      auto slice_op_2 =
+          create_slice_op(axis_i, 0, input_shape[axis_i] - shift_i, result);
+
+      auto dim_attr = DenseIntElementsAttr::get(scalar_type, {axis_i});
+      auto concat_dim =
+          rewriter.create<ConstOp>(op->getLoc(), scalar_type, dim_attr);
+      auto concat_op = rewriter.create<ConcatV2Op>(
+          op->getLoc(), input_ty,
+          ArrayRef<Value>({slice_op_1.output(), slice_op_2.output()}),
+          concat_dim);
+      result = concat_op.getResult();
+    }
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
@@ -1551,7 +1654,7 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
                    LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
                    LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
                    LowerResizeNearestNeighbor, LowerSparseMatMulOp,
-                   Lower_UnaryOpsComposition>(context);
+                   Lower_UnaryOpsComposition, LowerRollOp>(context);
   populateWithGenerated(*patterns);
 }
 
@@ -1569,7 +1672,8 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerResizeNearestNeighbor,
       LowerSpaceToBatchNDOp,
       LowerSparseMatMulOp,
-      Lower_UnaryOpsComposition>(context);
+      Lower_UnaryOpsComposition,
+      LowerRollOp>(context);
   // clang-format on
 
   // Populate the relevant generated patterns.

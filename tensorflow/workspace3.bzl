@@ -16,11 +16,11 @@ def workspace():
 
     http_archive(
         name = "tf_toolchains",
-        sha256 = "6c1faf5d36ee3270d3c27dbb6f29210cb5ddd738272fffcf32c4184d03c7eab5",
-        strip_prefix = "toolchains-1.1.12",
+        sha256 = "cee8bb01434d4dae43e0c8958ff5f513277829d08b053762baa943bb1c30bd5d",
+        strip_prefix = "toolchains-1.1.18",
         urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.1.12.tar.gz",
-            "https://github.com/tensorflow/toolchains/archive/v1.1.12.tar.gz",
+            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.1.18.tar.gz",
+            "https://github.com/tensorflow/toolchains/archive/v1.1.18.tar.gz",
         ],
     )
 

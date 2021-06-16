@@ -98,6 +98,7 @@ cc_library(
     name = "tfrt_exec_ctx_injector",
     testonly = True,
     srcs = ["tfrt_exec_ctx_injector.cc"],
+    tags = ["manual"],
     deps = [
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         # copybara:uncomment_begin(target not open-sourced yet)
@@ -210,6 +211,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",

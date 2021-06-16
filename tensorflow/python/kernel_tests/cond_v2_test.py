@@ -22,6 +22,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -45,7 +46,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.util import compat
-
 
 _OPTIONAL_OPS = frozenset([
     "OptionalFromValue", "OptionalNone", "OptionalHasValue", "OptionalGetValue"
@@ -1002,7 +1002,12 @@ class CondV2Test(test.TestCase):
 
   def testLowering(self):
     with ops.Graph().as_default() as g:
-      with self.session(graph=g) as sess:
+      # Disable Loop_optimizer grappler pass for this test because it replaces
+      # Switch with Identity when it's part of a dead branch.
+      config = config_pb2.ConfigProto()
+      config.graph_options.rewrite_options.loop_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      with self.session(graph=g, config=config) as sess:
         cond_output, _ = self._createCond("cond")
 
         run_options = config_pb2.RunOptions(output_partition_graphs=True)

@@ -99,7 +99,10 @@ cc_library(
         ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         tf_grpc_cc_dependency(),
     ],
@@ -336,8 +339,11 @@ cc_library(
     deps = [
         ":worker_cc_grpc_proto",
         ":worker_impl",
+        ":worker_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -525,6 +531,7 @@ cc_library(
         ":server_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -654,6 +661,19 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         tf_grpc_cc_dependency(),
     ],
+)
+
+tf_cc_test(
+    name = "worker_impl_test",
+    srcs = ["worker_impl_test.cc"],
+    deps = [
+        ":local_credentials_factory",
+        ":test_cluster",
+        ":worker_impl",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + tf_protos_profiler_service(),
 )
