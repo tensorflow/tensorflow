@@ -20,7 +20,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.script_ops import numpy_function
-from tensorflow.python.ops.variables import Variable
 from tensorflow.python.platform import test
 
 
@@ -37,13 +36,11 @@ class NumpyFunctionTest(test.TestCase):
     self.assertAllEqual(actual_result, expect_result)
 
   def test_stateless_flag(self):
-    call_count = Variable(0, dtype=dtypes.int32)
-
-    # make sure to have a significant difference to the expected number of execution, which is 1
-    nruns = 10
+    call_count = 0
 
     def plus(a, b):
-      call_count.assign_add(1)
+      nonlocal call_count
+      call_count += 1
       return a + b
 
     @def_function.function
