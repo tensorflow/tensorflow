@@ -17,20 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
-#if !defined(TENSORFLOW_USE_ROCM)
-
-using gpuStream_t = cudaStream_t;
-
-#else
-
+#if defined(TENSORFLOW_USE_ROCM)
 #include "rocm/include/hip/hip_complex.h"
-
-using gpuStream_t = hipStream_t;
-
-#define cusolverDnCreate rocblas_create_handle
-#define cusolverDnSetStream rocblas_set_stream
-#define cusolverDnDestroy rocblas_destroy_handle
-
 #endif
 
 namespace xla {
@@ -53,8 +41,6 @@ struct CUDAComplexT<std::complex<double>> {
   typedef cuDoubleComplex type;
 };
 #else
-// can't use gpuFloatComplex, gpuDoubleComplex, because e.g.
-// hipFloatComplex and rocblas_float_complex are two unrelated types
 template <>
 struct CUDAComplexT<std::complex<float>> {
   typedef rocblas_float_complex type;
@@ -162,6 +148,7 @@ Status CusolverStatusToStatus(rocblas_status status) {
 
 }  // namespace
 
+#if !defined(TENSORFLOW_USE_ROCM)
 StatusOr<CusolverContext> CusolverContext::Create(se::Stream* stream) {
   cusolverDnHandle_t handle;
   TF_RETURN_IF_ERROR(CusolverStatusToStatus(cusolverDnCreate(&handle)));
@@ -169,8 +156,8 @@ StatusOr<CusolverContext> CusolverContext::Create(se::Stream* stream) {
 
   if (stream) {
     // StreamExecutor really should just expose the Cuda stream to clients...
-    const gpuStream_t* cuda_stream =
-        CHECK_NOTNULL(reinterpret_cast<const gpuStream_t*>(
+    const cudaStream_t* cuda_stream =
+        CHECK_NOTNULL(reinterpret_cast<const cudaStream_t*>(
             stream->implementation()->GpuStreamMemberHack()));
     TF_RETURN_IF_ERROR(
         CusolverStatusToStatus(cusolverDnSetStream(handle, *cuda_stream)));
@@ -178,6 +165,24 @@ StatusOr<CusolverContext> CusolverContext::Create(se::Stream* stream) {
 
   return std::move(context);
 }
+#else
+StatusOr<CusolverContext> CusolverContext::Create(se::Stream* stream) {
+  cusolverDnHandle_t handle;
+  TF_RETURN_IF_ERROR(CusolverStatusToStatus(rocblas_create_handle(&handle)));
+  CusolverContext context(stream, handle);
+
+  if (stream) {
+    // StreamExecutor really should just expose the Cuda stream to clients...
+    const hipStream_t* hip_stream =
+        CHECK_NOTNULL(reinterpret_cast<const hipStream_t*>(
+            stream->implementation()->GpuStreamMemberHack()));
+    TF_RETURN_IF_ERROR(
+        CusolverStatusToStatus(rocblas_set_stream(handle, *hip_stream)));
+  }
+
+  return std::move(context);
+}
+#endif
 
 CusolverContext::CusolverContext(se::Stream* stream, cusolverDnHandle_t handle)
     : stream_(stream), handle_(handle) {}
@@ -195,6 +200,7 @@ CusolverContext& CusolverContext::operator=(CusolverContext&& other) {
   return *this;
 }
 
+#if !defined(TENSORFLOW_USE_ROCM)
 CusolverContext::~CusolverContext() {
   if (handle_) {
     Status status = CusolverStatusToStatus(cusolverDnDestroy(handle_));
@@ -203,6 +209,16 @@ CusolverContext::~CusolverContext() {
     }
   }
 }
+#else
+CusolverContext::~CusolverContext() {
+  if (handle_) {
+    Status status = CusolverStatusToStatus(rocblas_destroy_handle(handle_));
+    if (!status.ok()) {
+      LOG(ERROR) << "cusolverDnDestroy failed: " << status;
+    }
+  }
+}
+#endif
 
 #if !defined(TENSORFLOW_USE_ROCM)
 #define CALL_LAPACK_TYPES(m) \
