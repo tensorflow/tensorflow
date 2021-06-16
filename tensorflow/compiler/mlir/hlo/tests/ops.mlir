@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | mlir-hlo-opt | FileCheck %s
+// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | FileCheck %s
 
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
@@ -10,6 +10,104 @@ func private @token_type() -> !mhlo.token
 
 // expected-error@+1 {{unknown mhlo type: foobar}}
 func private @invalid_type() -> !mhlo.foobar
+
+// -----
+
+// CHECK-LABEL: func @reduce_scatter
+func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x5xf32> {
+  // expected-error@+1 {{operand scatter dimension has size 16, expected to be a multiple of result scatter dimension size 5}}
+  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// -----
+
+func @invalid_reduce_scatter(%data: tensor<4x0xf32>) -> tensor<4x4xf32> {
+  // expected-error@+1 {{operand scatter dimension cannot be zero}}
+  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x0xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x0xf32> {
+  // expected-error@+1 {{result scatter dimension cannot be zero}}
+  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x0xf32>
+  return %0 : tensor<4x0xf32>
+}
+
+// -----
+
+func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4xf32> {
+  // expected-error@+1 {{operand and result should have same rank}}
+  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// -----
+
+func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  // expected-error@+1 {{scatter dim should be less than operand/result rank}}
+  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 4 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<3x4xf32> {
+  // expected-error@+1 {{non scatter dimensions should be same for operand (4) and result (3)}}
+  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
 
 // -----
 
@@ -1501,4 +1599,26 @@ func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> ten
          {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   return %0 : tensor<1x8x8x16xf32>
+}
+
+// -----
+
+// CHECK: func @lt_loop
+func @lt_loop(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<4xf32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>, %arg8: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
+  %cst = constant dense<-1> : tensor<i32>
+  %cst_0 = constant dense<1> : tensor<i32>
+  %cst_1 = constant dense<0> : tensor<i32>
+  %cst_2 = constant dense<1000> : tensor<i32>
+  %0 = "mhlo.tuple"(%cst_1, %cst, %cst_2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>, tensor<i32>>
+  %1:3 = "mhlo.while"(%cst_1, %cst, %cst_2) ( {
+  ^bb0(%arg9: tensor<i32>, %arg10: tensor<i32>, %arg11: tensor<i32>):  // no predecessors
+    %4 = "mhlo.compare"(%arg9, %arg11) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%4) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg9: tensor<i32>, %arg10: tensor<i32>, %arg11: tensor<i32>):  // no predecessors
+    %3 = mhlo.add %arg9, %cst_0 : tensor<i32>
+    %6 = "mhlo.tuple"(%3, %arg10, %arg11) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>, tensor<i32>>
+    "mhlo.return"(%3, %arg10, %arg11) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
+  }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
+  return %1#0, %1#2, %1#2: tensor<i32>, tensor<i32>, tensor<i32>
 }

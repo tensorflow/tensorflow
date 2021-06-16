@@ -22,6 +22,7 @@ from unittest import mock
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import metrics_nonportable as metrics
 from tensorflow.lite.python.convert import ConverterError
@@ -32,10 +33,12 @@ from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training.tracking import tracking
@@ -407,6 +410,73 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
         'UNKNOWN').value()
     self.assertEqual(exported_error,
                      "\'width\' attribute is not set or not an integer\n")
+
+  def test_need_flex_ops(self):
+
+    def create_graph_with_custom_add(opname='CustomAdd'):
+      custom_opdefs_str = (
+          'name: \'' + opname +
+          '\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
+          'input_arg: {name: \'Input2\' type: DT_FLOAT} output_arg: {name: '
+          '\'Output\' type: DT_FLOAT}')
+
+      # Create a graph that has one add op.
+      new_graph = graph_pb2.GraphDef()
+      with ops.Graph().as_default():
+        with session.Session() as sess:
+          in_tensor = array_ops.placeholder(
+              shape=[1, 16, 16, 3], dtype=dtypes.float32, name='input')
+          out_tensor = in_tensor + in_tensor
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+
+          new_graph.CopyFrom(sess.graph_def)
+
+      # Rename Add op name to opname.
+      for node in new_graph.node:
+        if node.op.startswith('Add'):
+          node.op = opname
+          del node.attr['T']
+
+      # Register custom op defs to import modified graph def.
+      register_custom_opdefs([custom_opdefs_str])
+
+      return (new_graph, inputs, outputs)
+
+    new_graph, inputs, outputs = create_graph_with_custom_add()
+
+    # Import to load the custom opdef.
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        import_graph_def(new_graph, name='')
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    with self.assertRaises(ConverterError):
+      converter.convert()
+    exported_error = metrics._gauge_conversion_errors.get_cell(
+        'CONVERT_TF_TO_TFLITE_MODEL', 'CONVERT_SAVED_MODEL', 'tf.CustomAdd',
+        'ERROR_NEEDS_CUSTOM_OPS').value()
+    self.assertEqual(
+        exported_error,
+        "\'tf.CustomAdd\' op is neither a custom op nor a flex op")
+
+  def test_unsupported_control_flow_v1(self):
+    filename = resource_loader.get_path_to_datafile(
+        'testdata/control_flow_v1_saved_model')
+    converter = lite.TFLiteConverterV2.from_saved_model(filename)
+    with self.assertRaises(ConverterError):
+      converter.convert()
+    exported_error = metrics._gauge_conversion_errors.get_cell(
+        'CONVERT_TF_TO_TFLITE_MODEL', 'CONVERT_SAVED_MODEL', '',
+        'ERROR_UNSUPPORTED_CONTROL_FLOW_V1').value()
+    self.assertEqual(
+        exported_error,
+        'Merge only has 4 inputs, while only merge nodes with two inputs '
+        'supported.\n\tFailed to functionalize Control Flow V1 ops. Consider '
+        'using Control Flow V2 ops instead. See https://www.tensorflow.org/'
+        'api_docs/python/tf/compat/v1/enable_control_flow_v2.')
 
 
 if __name__ == '__main__':

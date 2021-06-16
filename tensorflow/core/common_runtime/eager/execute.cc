@@ -133,7 +133,11 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
     case DEVICE_PLACEMENT_EXPLICIT:
       // tf.identity is allowed to copy, as indicated in the error message
       // below.
-      if (op->Name() == "Identity" || op->Name() == "IdentityN") {
+      if (op->Name() == "Identity" ||
+          op->Name() == "IdentityN"
+          // Constants start on CPU:0 and are copied via EagerConst to the
+          // current device.
+          || op->Name() == "_EagerConst") {
         break;
       }
       return errors::InvalidArgument(

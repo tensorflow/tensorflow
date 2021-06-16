@@ -29,6 +29,12 @@ def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";
+  let options = [
+    Option<"convert_to_lmhlo_only_", "convert-to-lmhlo-only", "bool",
+           /*default=*/"false", "If enabled, simply lower all mhlo ops to their lmhlo counterparts, "
+          "otherwise, some metadata-only ops (e.g. reshape) may be lowerred "
+          "to memref dialect to elide some buffer copy.">,
+  ];
 }
 
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "FuncOp"> {
@@ -112,11 +118,11 @@ def TransformUnrankedHloPass : Pass<"mhlo-transform-unranked-hlo", "FuncOp"> {
   let constructor = "createTransformUnrankedHloPass()";
 }
 
-def MoveUpDynamicBroadcastsForFusionPass :
-    Pass<"mhlo-move-up-dynamic-broadcasts-for-fusion", "FuncOp"> {
-  let summary = "Move up dynamic broadcasts and shape computations to allow "
-      "for fusion across broadcasts.";
-  let constructor = "createMoveUpDynamicBroadcastsForFusionPass()";
+def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "FuncOp"> {
+  let summary = "Move dynamic broadcasts up over element-wise operations and "
+    "broadcast the operands rather than the result. This will eventually allow "
+    "for larger fusions.";
+  let constructor = "createBroadcastPropagationPass()";
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 class ServerDef;
@@ -58,6 +59,9 @@ class CoordinationServiceInterface {
           std::unique_ptr<CoordinationClientCache> cache,
           StatusCallback error_fn)>;
 
+  using StatusOrValueCallback =
+      std::function<void(const StatusOr<std::string>&)>;
+
   virtual ~CoordinationServiceInterface() {}
 
   static void RegisterCoordinationService(
@@ -79,8 +83,14 @@ class CoordinationServiceInterface {
                  << service_type;
       return nullptr;
     }
-    return factories_iter->second(env, server_def, std::move(cache),
-                                  std::move(error_fn));
+    auto service = factories_iter->second(env, server_def, std::move(cache),
+                                          std::move(error_fn));
+    *GetCoordinationServiceInstancePtr() = service.get();
+    return service;
+  }
+
+  static CoordinationServiceInterface* GetCoordinationServiceInstance() {
+    return *GetCoordinationServiceInstancePtr();
   }
 
   // Start coordination service. This is a blocking call and will only return
@@ -105,12 +115,38 @@ class CoordinationServiceInterface {
   virtual Status RecordHeartbeat(const std::string& job_name, const int task_id,
                                  const uint64 incarnation) = 0;
 
+  // Set a configuration key-value on the leader of cluster. The value becomes
+  // accessible by all workers in the cluster. For now, a key-value can only be
+  // set once and cannot be updated. The key-values are not persisted and will
+  // be lost if the leader fails.
+  virtual Status SetKeyValue(const std::string& key,
+                             const std::string& value) = 0;
+
+  // Get a configuration key-value from the leader of cluster. Block until the
+  // key-value is available.
+  virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
+  // Get a configuration key-value from the leader of cluster. The `done`
+  // callback is invoked when the key-value becomes available.
+  virtual void GetKeyValueAsync(const std::string& key,
+                                StatusOrValueCallback done) = 0;
+
+  // Delete configuration key-value. If is_directory is true, recursively clean
+  // up all key-values under the path specified by `key`.
+  virtual Status DeleteKeyValue(const std::string& key, bool is_directory) = 0;
+
  private:
   static std::unordered_map<std::string, CoordinationServiceFactory>*
   GetCoordinationServiceFactories() {
     static auto* coordination_service_factories =
         new std::unordered_map<std::string, CoordinationServiceFactory>();
     return coordination_service_factories;
+  }
+
+  // TODO(haoyuzhang): Remove singleton once we decide on how to access the
+  // coordination service from op kernel.
+  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
+    static CoordinationServiceInterface* instance = nullptr;
+    return &instance;
   }
 };
 

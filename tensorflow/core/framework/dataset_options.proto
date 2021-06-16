@@ -33,19 +33,6 @@ message DistributeOptions {
   }
 }
 
-message MapVectorization {
-  // Whether to vectorize map transformations.
-  oneof optional_enabled {
-    bool enabled = 1;
-  }
-  // Whether to use ChooseFastestBranchDataset with this transformation. If
-  // True, the pipeline picks between the vectorized and original segment at
-  // runtime based on their iterations speed.
-  oneof optional_use_choose_fastest {
-    bool use_choose_fastest = 2;
-  }
-}
-
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -102,8 +89,10 @@ message OptimizationOptions {
   oneof optional_map_parallelization {
     bool map_parallelization = 12;
   }
-  // The map vectorization options associated with the dataset.
-  MapVectorization map_vectorization = 13;
+
+  // NOTE: field id 13 deleted in June 2021.
+  reserved 13;
+
   // Whether to eliminate no-op transformations.
   oneof optional_noop_elimination {
     bool noop_elimination = 14;

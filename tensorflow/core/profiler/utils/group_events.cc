@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -462,11 +463,6 @@ const EventNode* EventNode::FindParent(int64 event_type) const {
       this, /*include_self=*/true);
 }
 
-bool EventNode::StartsBefore(const EventNode& other) const {
-  return GetEventVisitor().TimestampPs() <=
-         other.GetEventVisitor().TimestampPs();
-}
-
 void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
                                      ContextGroupMap* context_groups) {
   // TODO(b/149095099): avoid string comparison.
@@ -477,8 +473,6 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
       auto cur_node = absl::make_unique<EventNode>(visitor, &line, &event);
       // Update `context_groups` for `ConnectInterThread`.
       SetContextGroup(cur_node.get(), context_groups);
-      // Update `root_events_` for `CreateEventGroup`.
-      if (cur_node->RootLevel() != 0) root_events_.push_back(cur_node.get());
       // Async events are ignored when processing the nesting relationship.
       if (cur_node->IsAsync()) continue;
       while (!parent_nodes.empty()) {
@@ -569,8 +563,7 @@ void SortRootEventList(EventList* event_list) {
     // earlier timestamp will be processed first. Otherwise, the event with a
     // larger root level will be processed first.
     return e1->RootLevel() == e2->RootLevel()
-               ? e1->GetEventVisitor().TimestampPs() <
-                     e2->GetEventVisitor().TimestampPs()
+               ? *e1 < *e2
                : e1->RootLevel() > e2->RootLevel();
   });
 }
@@ -585,9 +578,23 @@ void EventForest::CreateEventGroups() {
     return;
   }
 
-  SortRootEventList(&root_events_);
+  // Iterate over all events and collect all root events.
+  EventList root_events;
+  for (const auto& typed_events : event_node_map_) {
+    for (const auto& event : typed_events.second) {
+      if (!event->RootLevel()) continue;
+      absl::optional<XStatVisitor> step_id_stat =
+          event->GetEventVisitor().GetStat(StatType::kStepId);
+      // If this is a root event that associated with tf.data, skip.
+      if (step_id_stat && tf_data_step_ids_.contains(step_id_stat->IntValue()))
+        continue;
+      root_events.push_back(event.get());
+    }
+  }
 
-  for (EventNode* root_event : root_events_) {
+  SortRootEventList(&root_events);
+
+  for (EventNode* root_event : root_events) {
     if (RootNeedsGrouping(root_event) &&
         // Ignores legacy TF root events for JAX profiles.
         (!HasJaxEvent(event_node_map_) ||
@@ -615,15 +622,7 @@ void EventForest::MarkEagerlyExecutedCpuTfOps() {
   }
 }
 
-void EventForest::ProcessTensorFlowLoop() {
-  struct TensorFlowLoopIteration {
-    EventNode* first_event = nullptr;
-    std::vector<EventNode*> events;
-  };
-  using TensorFlowLoop = std::map<int64 /*iter_num*/, TensorFlowLoopIteration>;
-  absl::flat_hash_map<int64 /*step_id*/, TensorFlowLoop> tf_loops;
-
-  absl::flat_hash_set<int64> tf_data_step_ids;
+void EventForest::ProcessTfDataSteps() {
   const int64 tf_data_event_types[] = {
       HostEventType::kTfDataCapturedFunctionRun,
       HostEventType::kTfDataCapturedFunctionRunAsync,
@@ -636,9 +635,19 @@ void EventForest::ProcessTensorFlowLoop() {
       absl::optional<XStatVisitor> step_id_stat =
           tf_data_event->GetEventVisitor().GetStat(StatType::kStepId);
       if (!step_id_stat) continue;
-      tf_data_step_ids.insert(step_id_stat->IntValue());
+      tf_data_step_ids_.insert(step_id_stat->IntValue());
     }
   }
+}
+
+void EventForest::ProcessTensorFlowLoop() {
+  struct TensorFlowLoopIteration {
+    EventNode* first_event = nullptr;
+    std::vector<EventNode*> events;
+  };
+  using TensorFlowLoop =
+      absl::flat_hash_map<int64 /*iter_num*/, TensorFlowLoopIteration>;
+  absl::flat_hash_map<int64 /*step_id*/, TensorFlowLoop> tf_loops;
 
   // Sort the TF executor events by TF function/session (step_id) and iter_num.
   auto executor_event_list =
@@ -652,41 +661,38 @@ void EventForest::ProcessTensorFlowLoop() {
     if (!step_id_stat || !iter_num_stat) continue;
     int64 step_id = step_id_stat->IntValue();
     // Skip tf.data events.
-    if (tf_data_step_ids.count(step_id)) continue;
+    if (tf_data_step_ids_.contains(step_id)) continue;
     TensorFlowLoop& tf_loop = tf_loops[step_id];
     TensorFlowLoopIteration& iteration = tf_loop[iter_num_stat->IntValue()];
-    if (!iteration.first_event ||
-        executor_event->StartsBefore(*iteration.first_event)) {
+    if (!iteration.first_event || *executor_event < *iteration.first_event) {
       iteration.first_event = executor_event.get();
     }
     iteration.events.push_back(executor_event.get());
   }
 
-  // Sort the TF loops by start time.
-  std::map<int64 /*start_time*/, int64 /*step_id*/> sorted_tf_loops;
+  std::vector<const TensorFlowLoopIteration*> iters;
   for (const auto& step_id_and_tf_loop : tf_loops) {
-    auto& iterations = step_id_and_tf_loop.second;
+    const TensorFlowLoop& tf_loop = step_id_and_tf_loop.second;
     // Filter out TF function/session without loops.
-    if (iterations.size() == 1 && iterations.count(0)) continue;
-    int64 start_time = iterations.cbegin()
-                           ->second.first_event->GetEventVisitor()
-                           .TimestampPs();
-    DCHECK_EQ(sorted_tf_loops.count(start_time), 0);
-    sorted_tf_loops[start_time] = step_id_and_tf_loop.first;
+    if (tf_loop.size() == 1 && tf_loop.contains(0)) continue;
+    for (const auto& iter_num_and_iter : tf_loop) {
+      iters.push_back(&iter_num_and_iter.second);
+    }
   }
+
+  // Sort iterations based on timestamp of the first event in the iteration.
+  absl::c_sort(iters, [](const auto& iter1, const auto& iter2) {
+    return *iter1->first_event < *iter2->first_event;
+  });
 
   // Register the first event of each iteration as a root event. Also, add the
   // other events of the iteration as child to the root event.
-  for (const auto& start_time_and_step_id : sorted_tf_loops) {
-    TensorFlowLoop& tf_loop = tf_loops[start_time_and_step_id.second];
-    for (auto& iter_num_and_iteration : tf_loop) {
-      TensorFlowLoopIteration& iteration = iter_num_and_iteration.second;
-      EventNode* root_event = iteration.first_event;
-      tf_loop_root_events_.push_back(root_event);
-      for (EventNode* event : iteration.events) {
-        if (event == root_event) continue;
-        root_event->AddChild(event);
-      }
+  for (const TensorFlowLoopIteration* iter : iters) {
+    EventNode* root_event = iter->first_event;
+    tf_loop_root_events_.push_back(root_event);
+    for (EventNode* event : iter->events) {
+      if (event == root_event) continue;
+      root_event->AddChild(event);
     }
   }
 }
@@ -702,7 +708,6 @@ void EventForest::ProcessWorker() {
       // A function op becomes a new root.
       root_event = eager_kernel_execute_event.get();
       root_event->SetRootLevel(1);
-      root_events_.push_back(root_event);
     } else if (root_event) {
       // Add non-function eager ops as child.
       root_event->AddChild(eager_kernel_execute_event.get());
@@ -711,16 +716,19 @@ void EventForest::ProcessWorker() {
 }
 
 void EventForest::ProcessModelIds() {
-  auto session_run_event_list =
-      gtl::FindOrNull(event_node_map_, HostEventType::kSessionRun);
-  if (!session_run_event_list) return;
-  for (const auto& session_run_event : *session_run_event_list) {
-    auto group_id = session_run_event->GetGroupId();
-    if (!group_id.has_value()) continue;
-    absl::optional<XStatVisitor> model_id =
-        session_run_event->GetEventVisitor().GetStat(StatType::kModelId);
-    if (!model_id.has_value()) continue;
-    group_metadata_map_[*group_id].model_id = model_id->ToString();
+  const int64 model_id_event_type_list[] = {HostEventType::kSessionRun,
+                                            HostEventType::kTfrtModelRun};
+  for (const int64 event_type : model_id_event_type_list) {
+    auto event_list = gtl::FindOrNull(event_node_map_, event_type);
+    if (!event_list) continue;
+    for (const auto& event : *event_list) {
+      auto group_id = event->GetGroupId();
+      if (!group_id.has_value()) continue;
+      absl::optional<XStatVisitor> model_id =
+          event->GetEventVisitor().GetStat(StatType::kModelId);
+      if (!model_id.has_value()) continue;
+      group_metadata_map_[*group_id].model_id = model_id->ToString();
+    }
   }
 }
 
@@ -832,6 +840,7 @@ void EventForest::ConnectTfDataEvents() {
 }
 
 void EventForest::GroupEvents() {
+  ProcessTfDataSteps();
   ProcessTensorFlowLoop();
   ProcessWorker();
   CreateEventGroups();

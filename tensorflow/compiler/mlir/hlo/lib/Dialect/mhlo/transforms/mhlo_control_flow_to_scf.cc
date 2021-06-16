@@ -50,6 +50,9 @@ class ControlFlowToScfPass
 
 // TODO(jpienaar): Look into reformulating as a pattern.
 void MatchAndRewrite(WhileOp whileOp) {
+  // TODO(jpienaar): Supports multi-operand while op.
+  if (whileOp.arg().size() != 1) return;
+
   // Handle pattern:
   //   x = start
   //   step = ...
@@ -57,7 +60,8 @@ void MatchAndRewrite(WhileOp whileOp) {
   //   while (x < limit) { ... x += step; }
 
   // Only handling multi value while loops at the moment.
-  auto tupleOp = whileOp.getOperand().getDefiningOp<TupleOp>();
+  // TODO(jpienaar): Support multi-operand while op.
+  auto tupleOp = whileOp.getOperand(0).getDefiningOp<TupleOp>();
   if (!tupleOp) return;
   auto bodyReturn = whileOp.body()
                         .front()

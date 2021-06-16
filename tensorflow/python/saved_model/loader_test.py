@@ -103,7 +103,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
   def test_load_function(self, builder_cls):
     # Force test to run in graph mode.
-    # The SaveModelLoader.load method is a v1-only API that requires a session
+    # The SavedModelLoader.load method is a v1-only API that requires a session
     # to work.
     with ops.Graph().as_default():
       self.export_simple_graph(builder_cls)
@@ -141,7 +141,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
   def test_load_with_import_scope(self, builder_cls):
     # Force test to run in graph mode.
-    # The SaveModelLoader.restore_variables ahd SaveModelLoader.run_init_ops
+    # The SavedModelLoader.restore_variables and SavedModelLoader.run_init_ops
     # methods are v1-only APIs that require a session to work.
     with ops.Graph().as_default():
       self.export_graph_with_main_op(builder_cls)
@@ -175,7 +175,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
   def test_restore_variables(self, builder_cls):
     # Force test to run in graph mode.
-    # The SaveModelLoader.restore_variables method is a v1-only API requiring a
+    # The SavedModelLoader.restore_variables method is a v1-only API requiring a
     # session to work.
     with ops.Graph().as_default():
       self.export_graph_with_main_op(builder_cls)
@@ -196,7 +196,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
   def test_run_init_op(self, builder_cls):
     # Force test to run in graph mode.
-    # The SaveModelLoader.restore_variables ahd SaveModelLoader.run_init_ops
+    # The SavedModelLoader.restore_variables and SavedModelLoader.run_init_ops
     # methods are v1-only APIs that require a session to work.
     with ops.Graph().as_default():
       self.export_graph_with_main_op(builder_cls)
@@ -242,8 +242,9 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
       builder_cls: SavedModelBuilder or _SavedModelBuilder class
     """
     # Force test to run in graph mode.
-    # The SaveModelBuilder.add_meta_graph_and_variables and SaveModelLoader.load
-    # methods are v1-only APIs that require a session to work.
+    # The SavedModelBuilder.add_meta_graph_and_variables and
+    # SavedModelLoader.load methods are v1-only APIs that require a session to
+    # work.
     with ops.Graph().as_default():
       path = _get_export_dir("no_variable_saved_model")
       with session.Session(graph=ops.Graph()) as sess:

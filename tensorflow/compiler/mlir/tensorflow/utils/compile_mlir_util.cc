@@ -633,6 +633,14 @@ Status CompileGraphSetup(
 
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("compile_graph_setup_before", module_op);
+  if (VLOG_IS_ON(2)) {
+    // Print the whole module after each pass which requires disabling
+    // multi-threading as well.
+    module_op.getContext()->disableMultithreading();
+    pm.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
+        /*print_module_scope=*/true));
+  }
+
   mlir::StatusScopedDiagnosticHandler diag_handler(module_op.getContext());
   if (failed(pm.run(module_op))) return diag_handler.ConsumeStatus();
   if (VLOG_IS_ON(1))

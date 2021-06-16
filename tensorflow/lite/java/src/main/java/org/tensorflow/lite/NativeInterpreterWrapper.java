@@ -262,15 +262,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native long allocateTensors(long interpreterHandle, long errorHandle);
 
-  void setNumThreads(int numThreads) {
-    numThreads(interpreterHandle, numThreads);
-  }
-
-  void modifyGraphWithDelegate(Delegate delegate) {
-    applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
-    delegates.add(delegate);
-  }
-
   void resetVariableTensors() {
     resetVariableTensors(interpreterHandle, errorHandle);
   }
@@ -582,8 +573,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native String[] getInputNames(long interpreterHandle);
 
   private static native String[] getOutputNames(long interpreterHandle);
-
-  private static native void numThreads(long interpreterHandle, int numThreads);
 
   private static native void allowFp16PrecisionForFp32(long interpreterHandle, boolean allow);
 

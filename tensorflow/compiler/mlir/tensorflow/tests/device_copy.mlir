@@ -2,28 +2,68 @@
 
 // CHECK-LABEL: func @fold_identity_test
 func @fold_identity_test(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %0 = tf_executor.graph {
-    // CHECK: tf.MatMul
-    %outputs, %control = tf_executor.island wraps "tf.MatMul"(%arg0, %arg1) {device = "", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    // CHECK-NOT: tf.Identity
-    %outputs_0, %control_1 = tf_executor.island wraps "tf.Identity"(%outputs) {device = ""} : (tensor<2x2xf32>) -> tensor<2x2xf32>
-    tf_executor.fetch %outputs_0 : tensor<2x2xf32>
-  }
-  return %0 : tensor<2x2xf32>
+  // CHECK: tf.MatMul
+  %outputs = "tf.MatMul"(%arg0, %arg1) {device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NOT: tf.Identity
+  %outputs_0 = "tf.Identity"(%outputs) {device = "/device:CPU:0"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %outputs_0 : tensor<2x2xf32>
+}
+
+// CHECK-LABEL: func @fold_identity_test_device_not_defined
+func @fold_identity_test_device_not_defined(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: tf.MatMul
+  %outputs = "tf.MatMul"(%arg0, %arg1) {device = "", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NOT: tf.Identity
+  %outputs_0 = "tf.Identity"(%outputs) {device = ""} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %outputs_0 : tensor<2x2xf32>
 }
 
 // CHECK-LABEL: func @keep_identity_test
 func @keep_identity_test(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %0 = tf_executor.graph {
-    // CHECK: tf.MatMul
-    %outputs, %control = tf_executor.island wraps "tf.MatMul"(%arg0, %arg1) {device = "/device:GPU:0", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    // CHECK: tf.Identity
-    %outputs_0, %control_1 = tf_executor.island wraps "tf.Identity"(%outputs) {device = "/device:CPU:0"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
-    tf_executor.fetch %outputs_0 : tensor<2x2xf32>
-  }
-  return %0 : tensor<2x2xf32>
+  // CHECK: tf.MatMul
+  %outputs = "tf.MatMul"(%arg0, %arg1) {device = "/device:GPU:0", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: tf.Identity
+  %outputs_0 = "tf.Identity"(%outputs) {device = "/device:CPU:0"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %outputs_0 : tensor<2x2xf32>
 }
 
+// CHECK-LABEL: func @keep_identity_test_device_not_defined
+func @keep_identity_test_device_not_defined(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: tf.MatMul
+  %outputs = "tf.MatMul"(%arg0, %arg1) {device = "/device:GPU:0", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: tf.Identity
+  %outputs_0 = "tf.Identity"(%outputs) {device = ""} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %outputs_0 : tensor<2x2xf32>
+}
+
+// CHECK-LABEL: func @keep_identity_test_op_device_not_defined
+func @keep_identity_test_op_device_not_defined(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: tf.MatMul
+  %outputs = "tf.MatMul"(%arg0, %arg1) {device = "", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: tf.Identity
+  %outputs_0 = "tf.Identity"(%outputs) {device = "/device:CPU:0"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %outputs_0 : tensor<2x2xf32>
+}
+
+// CHECK-LABEL: func @fold_identity_n_test
+func @fold_identity_n_test(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>) {
+  // CHECK: tf.MatMul
+  %outputs = "tf.MatMul"(%arg0, %arg1) {device = "TPU", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  %outputs_0 = "tf.MatMul"(%arg0, %arg1) {device = "TPU", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NOT: tf.IdentityN
+  %outputs_1, %outputs_2 = "tf.IdentityN"(%outputs, %outputs_0) {device = "TPU"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>)
+  return %outputs_0, %outputs_1 : tensor<2x2xf32>, tensor<2x2xf32>
+}
+
+// CHECK-LABEL: func @keep_identity_n_test
+func @keep_identity_n_test(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>) {
+    // CHECK: tf.MatMul
+    %outputs = "tf.MatMul"(%arg0, %arg1) {device = "TPU", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+    %outputs_0 = "tf.MatMul"(%arg0, %arg1) {device = "TPU", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+    // CHECK: tf.IdentityN
+    %outputs_1, %outputs_2 = "tf.IdentityN"(%outputs, %outputs_0) {device = "CPU"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>)
+    return %outputs_0, %outputs_1 : tensor<2x2xf32>, tensor<2x2xf32>
+}
 
 // CHECK: func @while_loop_test(%[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<i32>, %arg2: tensor<*xf32>)
 func @while_loop_test(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<*xf32>) {

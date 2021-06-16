@@ -627,9 +627,6 @@ GetOptimizationsTestCase GetOptimizationTestCase3() {
 GetOptimizationsTestCase GetOptimizationTestCase4() {
   Options options;
   options.set_deterministic(false);
-  options.mutable_optimization_options()
-      ->mutable_map_vectorization()
-      ->set_enabled(true);
   options.mutable_optimization_options()->set_autotune_buffers(true);
   options.mutable_optimization_options()->set_filter_fusion(true);
   options.mutable_optimization_options()->set_filter_with_random_uniform_fusion(
@@ -650,8 +647,8 @@ GetOptimizationsTestCase GetOptimizationTestCase4() {
            "filter_fusion", "filter_with_random_uniform_fusion",
            "hoist_random_uniform", "make_sloppy", "map_and_batch_fusion",
            "map_and_filter_fusion", "map_fusion", "map_parallelization",
-           "map_vectorization", "noop_elimination", "parallel_batch",
-           "reorder_data_discarding_ops", "shuffle_and_repeat_fusion", "slack"},
+           "noop_elimination", "parallel_batch", "reorder_data_discarding_ops",
+           "shuffle_and_repeat_fusion", "slack"},
           /*expected_disabled=*/{},
           /*expected_default=*/{}};
 }

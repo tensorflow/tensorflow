@@ -21,9 +21,9 @@ REGISTER6(UnaryOp, CPU, "Cosh", functor::cosh, float, double, Eigen::half,
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER4(UnaryOp, GPU, "Cosh", functor::cosh, float, double, Eigen::half,
-          bfloat16);
+REGISTER3(UnaryOp, GPU, "Cosh", functor::cosh, float, double, Eigen::half)
 #endif
+REGISTER(UnaryOp, GPU, "Cosh", functor::cosh, bfloat16)
 #endif
 
 }  // namespace tensorflow

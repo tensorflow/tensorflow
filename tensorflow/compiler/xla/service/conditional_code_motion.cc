@@ -181,6 +181,7 @@ bool WorthHoisting(HloOpcode op, HloOpcode child_op) {
           return true;
       }
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAbs:
     case HloOpcode::kReduce:
     case HloOpcode::kAdd:
@@ -948,7 +949,7 @@ class GroupConnectedBoundaries {
     // It is not safe to move collective ops from outside to inside
     // conditional branches, as it may cause synchronization problems,
     // when different layouts are assigned to different branches.
-    if (opcode == HloOpcode::kAllReduce && !is_inside_branch) {
+    if (DynCast<HloCollectiveInstruction>(instruction) && !is_inside_branch) {
       return false;
     }
 
@@ -1374,9 +1375,9 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     }
 
     // Boundaries to move out or to move into the branches.
-    std::vector<std::vector<Boundary> > to_move_out, to_move_in;
-    std::vector<std::vector<Boundary> > new_boundaries_for_moveout;
-    std::vector<std::vector<Boundary> > new_boundaries_for_movein;
+    std::vector<std::vector<Boundary>> to_move_out, to_move_in;
+    std::vector<std::vector<Boundary>> new_boundaries_for_moveout;
+    std::vector<std::vector<Boundary>> new_boundaries_for_movein;
     // Number of times each instruction has been visited for moving.
     absl::flat_hash_map<HloInstruction*, int> visited_count;
     int benefit_move_out = 0, benefit_move_in = 0;

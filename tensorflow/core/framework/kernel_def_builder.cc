@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
@@ -40,7 +41,6 @@ KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64>(
   constraint->set_name(attr_name);
   auto* allowed_values = constraint->mutable_allowed_values()->mutable_list();
   for (const int64 integer : allowed) {
-    LOG(INFO) << integer;
     allowed_values->add_i(integer);
   }
   return *this;

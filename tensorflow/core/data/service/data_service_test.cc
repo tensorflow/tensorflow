@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -62,6 +63,34 @@ TEST(DataService, ProcessingModeToString) {
             ProcessingModeToString(ProcessingMode::PARALLEL_EPOCHS));
   EXPECT_EQ("distributed_epoch",
             ProcessingModeToString(ProcessingMode::DISTRIBUTED_EPOCH));
+}
+
+TEST(DataService, ParseTargetWorkers) {
+  TF_ASSERT_OK_AND_ASSIGN(TargetWorkers target_workers,
+                          ParseTargetWorkers("AUTO"));
+  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("Auto"));
+  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("ANY"));
+  EXPECT_EQ(target_workers, TargetWorkers::ANY);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("any"));
+  EXPECT_EQ(target_workers, TargetWorkers::ANY);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("LOCAL"));
+  EXPECT_EQ(target_workers, TargetWorkers::LOCAL);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("local"));
+  EXPECT_EQ(target_workers, TargetWorkers::LOCAL);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers(""));
+  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
+}
+
+TEST(DataService, ParseInvalidTargetWorkers) {
+  EXPECT_TRUE(errors::IsInvalidArgument(ParseTargetWorkers("UNSET").status()));
+}
+
+TEST(DataService, TargetWorkersToString) {
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::AUTO), "AUTO");
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::ANY), "ANY");
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::LOCAL), "LOCAL");
 }
 
 TEST(DataService, GetWorkers) {

@@ -83,7 +83,9 @@ class ContextTest(test.TestCase):
         return x + constant_op.constant(1.)
 
     with context.collect_graphs() as graphs:
-      f(constant_op.constant(1.))
+      with ops.device('CPU:0'):
+        x = constant_op.constant(1.)
+      f(x)
 
     self.assertLen(graphs, 1)
     graph, = graphs

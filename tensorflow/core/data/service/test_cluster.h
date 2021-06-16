@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_CLUSTER_H_
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/data/service/server_lib.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -26,18 +31,22 @@ class TestCluster {
  public:
   // Creates a new test cluster with a dispatcher and `num_workers` workers.
   explicit TestCluster(int num_workers);
-
   // Initializes the test cluster. This must be called before interacting with
   // the cluster. Initialize should be called only once.
   Status Initialize();
   // Adds a new worker to the cluster.
   Status AddWorker();
   // Returns the dispatcher address in the form "hostname:port".
-  std::string DispatcherAddress();
+  std::string DispatcherAddress() const;
   // Returns the address of the worker at the specified index, in the form
   // "hostname:port". The index must be non-negative and less than the number of
   // workers in the cluster.
-  std::string WorkerAddress(int index);
+  std::string WorkerAddress(int index) const;
+
+  // Stops one worker.
+  void StopWorker(size_t index);
+  // Stops all workers.
+  void StopWorkers();
 
  private:
   bool initialized_ = false;

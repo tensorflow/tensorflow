@@ -83,7 +83,6 @@ Status GetIteratorName(StringPiece key, string* name) {
 
 // Use "Opt" suffix so that they are not confused with the enums in Options
 // proto.
-constexpr char kMapVectorizationOpt[] = "map_vectorization";
 constexpr char kMapAndBatchFusionOpt[] = "map_and_batch_fusion";
 constexpr char kNoopEliminationOpt[] = "noop_elimination";
 constexpr char kMapParallelizationOpt[] = "map_parallelization";
@@ -107,27 +106,10 @@ constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 
-void MapVectorizationGraphRewrites(
-    const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
-    absl::flat_hash_set<tstring>* optimization_disabled) {
-  if (options.optimization_options()
-          .map_vectorization()
-          .optional_enabled_case() != MapVectorization::kEnabled) {
-    return;
-  }
-  if (options.optimization_options().map_vectorization().enabled()) {
-    optimization_enabled->insert(kMapVectorizationOpt);
-  } else {
-    optimization_disabled->insert(kMapVectorizationOpt);
-  }
-}
-
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
     absl::flat_hash_set<tstring>* optimization_disabled,
     absl::flat_hash_set<tstring>* optimization_default) {
-  MapVectorizationGraphRewrites(options, optimization_enabled,
-                                optimization_disabled);
   const auto& optimization_options = options.optimization_options();
   if (optimization_options.optional_apply_default_optimizations_case() !=
           OptimizationOptions::kApplyDefaultOptimizations ||
@@ -1011,6 +993,8 @@ Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
 Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
                  const std::vector<std::vector<Tensor>>& batch_elements,
                  std::vector<Tensor>* out_tensors) {
+  static bool in_experiment =
+      GetExperiments().contains("parallelize_batch_copy");
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
   const int64 num_batch_elements = batch_elements.size();
@@ -1049,7 +1033,8 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
           std::move(batch_elements.at(index)[component_index]),
           &batch_component, index);
     };
-    if (parallel_copy) {
+    if (parallel_copy ||
+        (in_experiment && first_element.AllocatedBytes() > (1 << 15))) {
       Status status;
       mutex status_mu;
       BlockingCounter counter(num_batch_elements);
@@ -1066,8 +1051,9 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
                           &copy_element_fn]() {
           for (size_t j = offset; j < offset + length; ++j) {
             {
+              Status s = copy_element_fn(j);
               mutex_lock l(status_mu);
-              status.Update(copy_element_fn(j));
+              status.Update(s);
             }
             counter.DecrementCount();
           }
@@ -1088,19 +1074,6 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& optimization_options = options.optimization_options();
-  const auto& map_vectorization = optimization_options.map_vectorization();
-  if (map_vectorization.optional_enabled_case() == MapVectorization::kEnabled &&
-      map_vectorization.enabled() &&
-      map_vectorization.optional_use_choose_fastest_case() ==
-          MapVectorization::kUseChooseFastest) {
-    if (map_vectorization.use_choose_fastest()) {
-      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
-                                  kUseChooseFastestOpt, ":true"));
-    } else {
-      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
-                                  kUseChooseFastestOpt, ":false"));
-    }
-  }
   std::vector<tstring> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
@@ -1174,7 +1147,7 @@ absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
 namespace {
 
 REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
-
+REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 50);
 }
 }  // namespace data
 }  // namespace tensorflow

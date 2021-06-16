@@ -1069,13 +1069,17 @@ absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
     return absl::DataLossError("Deserialization failed.");
   }
   auto fb_inference = data::GetInferenceContext(serialized_model.data());
-  in_refs->clear();
-  out_refs->clear();
-  for (auto in_fb : *fb_inference->input_refs()) {
-    in_refs->push_back(in_fb);
+  if (in_refs) {
+    in_refs->clear();
+    for (auto in_fb : *fb_inference->input_refs()) {
+      in_refs->push_back(in_fb);
+    }
   }
-  for (auto out_fb : *fb_inference->output_refs()) {
-    out_refs->push_back(out_fb);
+  if (out_refs) {
+    out_refs->clear();
+    for (auto out_fb : *fb_inference->output_refs()) {
+      out_refs->push_back(out_fb);
+    }
   }
   return absl::OkStatus();
 }

@@ -304,10 +304,13 @@ class ScanCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         initial_state=[0, 1],
         scan_func=lambda a, _: ([a[1], a[0] + a[1]], a[1]))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testScanCore(self):
-    num_output = 5
-    self.run_core_tests(lambda: self._build_dataset(num_output), num_output)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    num_outputs = 5
+    verify_fn(
+        self, lambda: self._build_dataset(num_outputs), num_outputs=num_outputs)
 
 
 if __name__ == "__main__":
