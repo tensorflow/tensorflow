@@ -1361,8 +1361,8 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
   let results = (outs HLO_FpOrComplexTensor);
 }
 
-def HLO_ClampOp : HLO_Op<"clamp",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+def HLO_ClampOp : HLO_Op<"clamp", [NoSideEffect,
+  SameOperandsAndResultElementType, HLO_BroadcastingElementwise]> {
   let summary = "Clamp operator";
   let description = [{
     Clamps an operand to within the range between a minimum and maximum value.
@@ -1373,12 +1373,12 @@ def HLO_ClampOp : HLO_Op<"clamp",
 
     See https://www.tensorflow.org/xla/operation_semantics#clamp.
   }];
+
   let arguments = (ins
     HLO_Tensor:$min,
     HLO_Tensor:$operand,
     HLO_Tensor:$max
   );
-
   let results = (outs HLO_Tensor);
 }
 
@@ -1743,11 +1743,10 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
 }
 
 // TODO(jpienaar): Add broadcastable trait.
-def HLO_SelectOp: HLO_Op<"select", [NoSideEffect,
+def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
     ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    ]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Select operator";
   let description = [{
     Constructs an output tensor from the elements of `on_true` and `on_false`

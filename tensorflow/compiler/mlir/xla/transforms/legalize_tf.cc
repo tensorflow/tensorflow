@@ -3418,9 +3418,9 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
   // The last two dimensions are the matrix row/col dimensions. Don't broadcast
   // them.
   SmallVector<int64_t, 6> result_batch_shape_compile_time_extents;
-  OpTrait::util::getBroadcastedShape(lhs_type.getShape().drop_back(2),
-                                     rhs_type.getShape().drop_back(2),
-                                     result_batch_shape_compile_time_extents);
+  mlir::OpTrait::util::getBroadcastedShape(
+      lhs_type.getShape().drop_back(2), rhs_type.getShape().drop_back(2),
+      result_batch_shape_compile_time_extents);
   auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
       loc, shape_type, lhs_splitted.head(), rhs_splitted.head(),
       /*error=*/nullptr);

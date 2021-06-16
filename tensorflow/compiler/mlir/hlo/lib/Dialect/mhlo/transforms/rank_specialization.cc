@@ -66,9 +66,9 @@ namespace {
 bool IsClusterable(Operation *op) {
   if (!llvm::isa<InferShapedTypeOpInterface>(op)) return false;
   if (op->getNumOperands() == 0) return false;
-  return (op->hasTrait<OpTrait::Elementwise>() &&
-          op->hasTrait<OpTrait::SameOperandsAndResultShape>()) ||
-         (op->hasTrait<chlo::OpTrait::BroadcastingElementwise>() &&
+  return (op->hasTrait<mlir::OpTrait::Elementwise>() &&
+          op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) ||
+         (op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>() &&
           op->hasTrait<chlo::OpTrait::Broadcasting>());
 }
 
@@ -729,7 +729,7 @@ SmallVector<SmallVector<Value, 4>, 4> FindNonScalarShapeEquivalences(
     for (Value v : vs.drop_front()) eqs.unionSets(repr, v);
   };
   for (Operation &nested_op : op.getBody()->without_terminator()) {
-    if (nested_op.hasTrait<OpTrait::SameOperandsAndResultShape>()) {
+    if (nested_op.hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) {
       union_sets(nested_op.getOperands());
       union_sets(nested_op.getResults());
       if (!nested_op.getOperands().empty() && !nested_op.getResults().empty())

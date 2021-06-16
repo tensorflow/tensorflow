@@ -1561,7 +1561,8 @@ class DynamicReshapeOpSameShapeOpResult
   LogicalResult matchAndRewrite(DynamicReshapeOp op,
                                 PatternRewriter& rewriter) const override {
     Operation* def_op = op.operand().getDefiningOp();
-    if (!def_op || !def_op->hasTrait<OpTrait::SameOperandsAndResultShape>()) {
+    if (!def_op ||
+        !def_op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) {
       return failure();
     }
     Operation* input_def_op = def_op->getOperand(0).getDefiningOp();
@@ -2098,7 +2099,7 @@ Operation* ReduceWindowOp::getReductionOp(int result_index) {
   if (arg0_num == result_index && arg1_num == other_arg_index)
     return compute_op;
   if (arg0_num == other_arg_index && arg1_num == result_index &&
-      compute_op->hasTrait<OpTrait::IsCommutative>())
+      compute_op->hasTrait<mlir::OpTrait::IsCommutative>())
     return compute_op;
   return nullptr;
 }
