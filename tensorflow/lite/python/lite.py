@@ -80,7 +80,7 @@ from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.lib.io import file_io as _file_io
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader_impl as _loader_impl
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
@@ -2160,9 +2160,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     with _ops.Graph().as_default():
       with _session.Session() as sess:
         # Read GraphDef from file.
-        if not _file_io.file_exists(graph_def_file):
+        if not gfile.Exists(graph_def_file):
           raise IOError("File '{0}' does not exist.".format(graph_def_file))
-        with _file_io.FileIO(graph_def_file, "rb") as f:
+        with gfile.GFile(graph_def_file, "rb") as f:
           file_content = f.read()
 
         try:
