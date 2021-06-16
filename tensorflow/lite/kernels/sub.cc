@@ -390,8 +390,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                GetTensorData<data_type>(input1), GetTensorShape(input2), \
                GetTensorData<data_type>(input2), GetTensorShape(output), \
                GetTensorData<data_type>(output))
-  // NOTE: We are using the add kernels. This is possible as the second values
-  // multiplier is negated before being passed down.
   if (output->type == kTfLiteInt8) {
     if (need_broadcast) {
       TF_LITE_SUB(reference_ops, BroadcastQuantSubSlow, int8_t);
@@ -411,8 +409,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_SUB(reference_ops, Sub, uint8_t);
     }
   } else {
-    // In the case of 16-bit sub with POT scaling, we use the sub kernels as
-    // there is no multiplier to negate to reuse the add kernels.
     if (kernel_type == kReference) {
       if (need_broadcast) {
         TF_LITE_SUB(reference_ops, BroadcastSub16POTSlow, int16_t);
