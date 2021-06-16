@@ -767,6 +767,7 @@ cc_library(
         "//tensorflow/core/kernels:bcast_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:host_constant_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:reduction_ops",

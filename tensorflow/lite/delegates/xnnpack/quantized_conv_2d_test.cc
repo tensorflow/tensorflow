@@ -368,7 +368,7 @@ TEST(QuantizedConv2D, ReluActivation) {
 
   QuantizedConv2DTester()
       .InputZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(0)
       .BatchSize(batch_rng())
       .InputHeight(input_rng())
       .InputWidth(input_rng())
@@ -406,7 +406,7 @@ TEST(QuantizedConv2D, Relu6Activation) {
 
   QuantizedConv2DTester()
       .InputZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(0)
       .BatchSize(batch_rng())
       .InputHeight(input_rng())
       .InputWidth(input_rng())

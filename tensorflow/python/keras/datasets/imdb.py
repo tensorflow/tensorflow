@@ -135,7 +135,7 @@ def load_data(path='imdb.npz',
                        str(maxlen) + ', no sequence was kept. '
                        'Increase maxlen.')
 
-  xs = np.concatenate([x_train, x_test])
+  xs = x_train + x_test
   labels = np.concatenate([labels_train, labels_test])
 
   if not num_words:
@@ -152,9 +152,8 @@ def load_data(path='imdb.npz',
     xs = [[w for w in x if skip_top <= w < num_words] for x in xs]
 
   idx = len(x_train)
-  x_train, y_train = np.array(xs[:idx]), np.array(labels[:idx])
-  x_test, y_test = np.array(xs[idx:]), np.array(labels[idx:])
-
+  x_train, y_train = np.array(xs[:idx], dtype='object'), labels[:idx]
+  x_test, y_test = np.array(xs[idx:], dtype='object'), labels[idx:]
   return (x_train, y_train), (x_test, y_test)
 
 

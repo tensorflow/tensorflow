@@ -16,11 +16,13 @@ limitations under the License.
 // See docs in ../ops/parse_ops.cc.
 
 #include <algorithm>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/byte_order.h"
 
 namespace tensorflow {
@@ -137,6 +139,7 @@ REGISTER(int64);
 REGISTER(bool);
 REGISTER(complex64);
 REGISTER(complex128);
+REGISTER(bfloat16);
 
 #undef REGISTER
 

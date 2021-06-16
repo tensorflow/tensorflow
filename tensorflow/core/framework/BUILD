@@ -598,7 +598,7 @@ cc_library(
     testonly = 1,
     srcs = ["fake_input.cc"],
     hdrs = ["fake_input.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":attr_value_proto_cc",
         ":op_def_proto_cc",

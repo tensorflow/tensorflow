@@ -97,6 +97,8 @@ void AddSupportedOpsUsingDynamicPadder(
   llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
       OperationName(TF::WhereOp::getOperationName(), context),
       OperationName(TF::UniqueOp::getOperationName(), context),
+      OperationName(TF::XlaSetDynamicDimensionSizeOp::getOperationName(),
+                    context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());

@@ -416,11 +416,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   return status;
 }
 
-void TRTOptimizationPass::Feedback(grappler::Cluster* cluster,
-                                   const grappler::GrapplerItem& item,
-                                   const GraphDef& optimized_graph,
-                                   double result) {}
-
 class VerboseCustomGraphOptimizerRegistrar
     : public grappler::CustomGraphOptimizerRegistrar {
  public:

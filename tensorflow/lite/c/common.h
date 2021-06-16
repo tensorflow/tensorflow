@@ -944,7 +944,7 @@ typedef struct TfLiteDelegate {
 
 // Build a 'null' delegate, with all the fields properly set to their default
 // values.
-TfLiteDelegate TfLiteDelegateCreate();
+TfLiteDelegate TfLiteDelegateCreate(void);
 
 #ifdef __cplusplus
 }  // extern "C"

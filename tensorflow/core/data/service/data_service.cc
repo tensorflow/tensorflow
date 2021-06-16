@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
+#include "absl/strings/ascii.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -33,7 +34,9 @@ namespace data {
 namespace {
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
-
+constexpr const char kAuto[] = "AUTO";
+constexpr const char kAny[] = "ANY";
+constexpr const char kLocal[] = "LOCAL";
 }  // namespace
 
 Status ParseProcessingMode(const std::string& s, ProcessingMode& mode) {
@@ -56,6 +59,34 @@ std::string ProcessingModeToString(ProcessingMode mode) {
     default:
       DCHECK(false);
       return "Unknown";
+  }
+}
+
+StatusOr<TargetWorkers> ParseTargetWorkers(absl::string_view s) {
+  std::string str_upper = absl::AsciiStrToUpper(s);
+  if (str_upper.empty() || str_upper == kAuto) {
+    return TargetWorkers::AUTO;
+  }
+  if (str_upper == kAny) {
+    return TargetWorkers::ANY;
+  }
+  if (str_upper == kLocal) {
+    return TargetWorkers::LOCAL;
+  }
+  return errors::InvalidArgument("Unrecognized target workers: ", s);
+}
+
+std::string TargetWorkersToString(TargetWorkers target_workers) {
+  switch (target_workers) {
+    case TargetWorkers::AUTO:
+      return kAuto;
+    case TargetWorkers::ANY:
+      return kAny;
+    case TargetWorkers::LOCAL:
+      return kLocal;
+    default:
+      DCHECK(false);
+      return "UNKNOWN";
   }
 }
 

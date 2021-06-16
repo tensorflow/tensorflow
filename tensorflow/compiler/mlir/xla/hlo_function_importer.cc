@@ -539,6 +539,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               builder_->getI64IntegerAttr(instruction->concatenate_dimension()))
           .getOperation();
     }
+    case HloOpcode::kAllGather: {
+      auto all_gather = Cast<HloAllGatherInstruction>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "all_gather_dim",
+          builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
+      attributes.push_back(
+          ConvertReplicaGroups(all_gather->replica_groups(), builder_));
+      attributes.push_back(ConvertChannelHandle(all_gather->channel_id()));
+      MakeAndReturn(AllGatherOp);
+    }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
       attributes.push_back(
@@ -955,7 +965,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
-    const std::vector<ReplicaGroup>& replica_groups, mlir::Builder* builder) {
+    absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder) {
   const int64_t num_groups = replica_groups.size();
   // Replica groups in HLO can be non-uniform in size, for example:
   // replica_groups={{0},{1,2},{3}}. Since we are representing them as a 2D

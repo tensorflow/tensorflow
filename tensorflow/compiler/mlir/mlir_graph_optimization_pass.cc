@@ -39,14 +39,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-auto* mlir_function_optimization_pass_success =
-    monitoring::Counter<0>::New("/tensorflow/core/mlir_shadow_run_success",
-                                "Success count of MLIR pass runs");
-
-auto* mlir_function_optimization_pass_failure = monitoring::Counter<2>::New(
-    "/tensorflow/core/mlir_shadow_run_failure",
-    "Failure count of MLIR pass runs", "kind", "name");
-
 auto* mlir_function_pass_failed_fallback = monitoring::Counter<0>::New(
     "/tensorflow/core/mlir_pass_failed_fallback",
     "Failure count of MLIR pass runs when fallback used");
@@ -212,8 +204,6 @@ Status MlirFunctionOptimizationPass::Run(
       return module_ref_status.status();
     }
 
-    mlir_function_optimization_pass_failure->GetCell("graph_to_mlir", "")
-        ->IncrementBy(1);
     // Do not fail, just keep the original TF graph unchanged in shadow mode.
     return Status::OK();
   }
@@ -259,13 +249,10 @@ Status MlirFunctionOptimizationPass::Run(
 
     if (!pass_status.ok()) {
       // If pass failed and it is:
-      //   (Shadow|Fallback)Enabled - only collect metrics, do not propagate
+      //   FallbackEnabled - only collect metrics, do not propagate
       //     error to the caller.
       //   Enabled - return error back to the caller.
-      if (pass_state == MlirOptimizationPassState::ShadowEnabled) {
-        mlir_function_optimization_pass_failure->GetCell("pass", name.str())
-            ->IncrementBy(1);
-      } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
         LOG(WARNING) << StringRefToView(name)
                      << " pass failed, continuing without the pass because the "
                         "pass has fallback enabled";
@@ -296,12 +283,6 @@ Status MlirFunctionOptimizationPass::Run(
     auto mlir_to_graph_status =
         ConvertMlirToGraph(*module_ref, export_config, &empty_graph,
                            &empty_flib, &control_ret_nodes);
-    if (mlir_to_graph_status.ok()) {
-      mlir_function_optimization_pass_success->GetCell()->IncrementBy(1);
-    } else {
-      mlir_function_optimization_pass_failure->GetCell("mlir_to_graph", "")
-          ->IncrementBy(1);
-    }
 
     return Status::OK();
   }

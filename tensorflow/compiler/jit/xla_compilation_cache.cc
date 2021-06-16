@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -294,18 +295,20 @@ Status XlaCompilationCache::CompileSingleOp(
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
-    const ConfigProto* config = ctx->function_library()->config_proto();
-    auto bridge_rollout = GetMlirBridgeRolloutState(
-        config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
-
     auto compile_with_old_bridge = [&]() {
       return compiler->CompileGraph(compile_options, node_def.name(),
                                     std::move(graph), args, result);
     };
 
+    const ConfigProto* config = ctx->function_library()->config_proto();
+    auto bridge_rollout = GetMlirBridgeRolloutState(
+        config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
     if (bridge_rollout ==
             ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
-        node_def.op() == "VarIsInitializedOp") {
+        node_def.op() == "VarIsInitializedOp" ||
+        (bridge_rollout !=
+             ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
+         options.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
       return compile_with_old_bridge();
     }
 

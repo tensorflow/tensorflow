@@ -122,6 +122,14 @@ class IntegerLookupLayerTest(keras_parameterized.TestCase,
           adapt_data=vocab_data)
     self.assertAllClose(expected_output, output_data)
 
+  def test_layer_with_list_input(self):
+    vocab = [12, 36, 1138, 42]
+    data = [[12, 1138, 42], [42, 1000, 36]]  # Note OOV tokens
+    layer = integer_lookup.IntegerLookup(vocabulary=vocab)
+    output = layer(data)
+    expected_output = np.array([[1, 3, 4], [4, 0, 2]])
+    self.assertEqual(output.numpy().tolist(), expected_output.tolist())
+
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class CategoricalEncodingInputTest(
@@ -413,7 +421,26 @@ class IntegerLookupVocabularyTest(
       layer = integer_lookup.IntegerLookup()
       layer([[1]])
 
-  def test_binary_output(self):
+  def test_one_hot_output(self):
+    vocab_data = [2, 3, 4, 5]
+    input_array = np.array([2, 3, 4, 5, 6])
+    expected_output = [
+        [0, 1, 0, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0],
+    ]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.int64)
+    layer = integer_lookup.IntegerLookup(
+        vocabulary=vocab_data, output_mode="one_hot")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_multi_hot_output(self):
     vocab_data = [2, 3, 4, 5]
     input_array = np.array([[2, 2, 3, 4], [0, 1, 5, 2]])
     expected_output = [[0, 1, 1, 1, 0], [1, 1, 0, 0, 1]]

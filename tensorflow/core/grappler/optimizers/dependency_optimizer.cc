@@ -787,12 +787,5 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
-void DependencyOptimizer::Feedback(Cluster* /*cluster*/,
-                                   const GrapplerItem& /*item*/,
-                                   const GraphDef& /*optimized_graph*/,
-                                   double /*result*/) {
-  // Nothing to do for DependencyOptimizer.
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow

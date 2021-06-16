@@ -281,8 +281,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testStringTensorOnGPU(self):
     with ops.device("/device:GPU:0"):
       t = _create_tensor("test string")
-      self.assertIn("CPU", t.device)
-      self.assertIn("CPU", t.backing_device)
+      self.assertIn("GPU", t.device)
 
   def testInvalidUTF8ProducesReasonableError(self):
     if sys.version_info[0] < 3:
@@ -378,9 +377,10 @@ class TFETensorTest(test_util.TensorFlowTestCase):
           constant_op.constant(t.min, dtype=t).numpy(), t.min)
 
   def test_numpyIsView(self):
-    t = constant_op.constant([0.0])
-    t._numpy()[0] = 42.0
-    self.assertAllClose(t, constant_op.constant([42.0]))
+    with ops.device("CPU"):
+      t = constant_op.constant([0.0])
+      t._numpy()[0] = 42.0
+      self.assertAllClose(t, constant_op.constant([42.0]))
 
   def test_numpyFailsForResource(self):
     v = variables.Variable(42)

@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -135,16 +134,13 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
     self._element_spec = structure.convert_legacy_structure(
         first_output_types, output_shapes, first_output_classes)
 
-    compat_kwargs = {}
-    if compat.forward_compatible(2021, 5, 14) or self._stop_on_empty_dataset:
-      compat_kwargs["stop_on_empty_dataset"] = self._stop_on_empty_dataset
-
     # pylint: disable=protected-access
     variant_tensor = (
         gen_experimental_dataset_ops.directed_interleave_dataset(
             self._selector_input._variant_tensor,
             [data_input._variant_tensor for data_input in self._data_inputs],
-            **compat_kwargs, **self._flat_structure))
+            stop_on_empty_dataset=self._stop_on_empty_dataset,
+            **self._flat_structure))
 
     super(_DirectedInterleaveDataset, self).__init__(variant_tensor)
 

@@ -198,9 +198,7 @@ PlatformUtil::GetStreamExecutors(
       }
       thread_pool.Schedule([platform, i, &stream_executors]() {
         VLOG(1) << "Started device init " << i;
-        se::StreamExecutorConfig config;
-        config.ordinal = i;
-        auto executor_status = platform->GetExecutor(config);
+        auto executor_status = platform->ExecutorForDevice(i);
         if (executor_status.ok()) {
           se::StreamExecutor* executor = executor_status.ValueOrDie();
           if (IsDeviceSupported(executor)) {

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -49,20 +50,6 @@ Status CheckInvalidLabelIndex(const Tensor& labels, int64 max_index) {
   return Status::OK();
 }
 
-namespace {
-
-// TODO(duncanriach): Factor this into a shared utility library
-bool RequireDeterminism() {
-  static bool require_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return require_determinism;
-}
-
 bool DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions() {
   static bool cached_disable = [] {
     bool disable = false;
@@ -73,8 +60,6 @@ bool DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions() {
   }();
   return cached_disable;
 }
-
-}  // namespace
 
 template <typename Device, typename T, typename Index>
 class SparseSoftmaxXentWithLogitsOp : public OpKernel {
@@ -105,11 +90,11 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
           context,
-          !RequireDeterminism() ||
+          !OpDeterminismRequired() ||
               DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions(),
           errors::Unimplemented(
               "Deterministic GPU implementation of"
-              " SparseSoftmaxCrossEntropyWithLogits not available."));
+              " SparseSoftmaxXentWithLogitsOp not available."));
     }
 
     Tensor scratch;

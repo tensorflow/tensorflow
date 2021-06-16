@@ -1165,14 +1165,16 @@ class ParseExampleDatasetCheckpointTest(tf_record_test_base.FeaturesTestBase,
         reader_num_threads=5,
         parser_num_threads=10)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCheckpointCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     num_repeat = 5
     batch_size = 2
     num_outputs = self._num_records * self._num_files * num_repeat // batch_size
     # pylint: disable=g-long-lambda
-    self.run_core_tests(
-        lambda: self._parse_example_dataset(
+    verify_fn(
+        self, lambda: self._parse_example_dataset(
             num_repeat=num_repeat, batch_size=batch_size), num_outputs)
 
 

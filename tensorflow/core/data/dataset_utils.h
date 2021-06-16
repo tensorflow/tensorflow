@@ -321,8 +321,8 @@ Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
 
 // Copies the input elements to a batch.
 Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
-                 std::vector<Tensor>* out_tensors,
-                 std::vector<std::vector<Tensor>>* batch_elements);
+                 const std::vector<std::vector<Tensor>>& batch_elements,
+                 std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, rollout
 // percentage of registered experiments, and the TF_DATA_EXPERIMENT_OPT_IN and

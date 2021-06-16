@@ -2144,6 +2144,7 @@ def _convert_softmax(pfor_input, op_type, op_func):
 @RegisterPForWithArgs("StopGradient", array_ops.stop_gradient)
 @RegisterPForWithArgs("MatrixDiag", array_ops.matrix_diag)
 @RegisterPForWithArgs("MatrixDiagPart", array_ops.matrix_diag_part)
+@RegisterPForWithArgs("_EagerConst", array_ops.identity)
 def _convert_identity(pfor_input, op_type, op_func):
   del op_type
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
@@ -3412,6 +3413,25 @@ def _convert_print(pfor_input):
       [x.dtype for x in pfor_input.outputs],
       attrs=pfor_input.op.node_def.attr).outputs
   return [wrap(x, True) for x in outputs]
+
+
+@RegisterPFor("PrintV2")
+def _convert_print_v2(pfor_input):
+  # Print the full input Tensor(s), including the batch dimension if stacked.
+  return _create_op(
+      "PrintV2", [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr)
+
+
+@RegisterPFor("StringFormat")
+def _convert_string_format(pfor_input):
+  # Format using the full input Tensor(s), including the batch dimension if
+  # stacked.
+  return _create_op(
+      "StringFormat", [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
 
 
 # data_flow_ops

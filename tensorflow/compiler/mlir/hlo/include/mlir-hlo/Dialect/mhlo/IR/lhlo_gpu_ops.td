@@ -230,4 +230,31 @@ def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
     BoolAttr:$is_lower);
 }
 
+def LHLOGPU_AllReduceStartOp :
+  LHLOGPU_Op<"all_reduce_start", [SameOperandsElementType, SameVariadicOperandSize]> {
+  let summary = "AllReduceStart operator";
+  let description = [{
+    Performs an asynchronous custom reduction across replicas.
+  }];
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
+    I64ElementsAttr:$replica_groups,
+    DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
+    OptionalAttr<ChannelHandle>:$channel_id,
+    DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
+  );
+  let regions = (region SizedRegion<1>:$computation);
+  let verifier = [{ return Verify(*this); }];
+}
+
+def LHLOGPU_AllReduceDoneOp:
+  LHLOGPU_Op<"all_reduce_done", [SameVariadicOperandSize]> {
+  let summary = "AllReduceDone operator";
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results
+  );
+}
+
 #endif // LHLO_GPU_OPS

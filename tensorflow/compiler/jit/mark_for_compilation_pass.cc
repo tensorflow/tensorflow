@@ -1792,9 +1792,9 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
             "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
             "SelectV2", "Transpose", "ConjugateTranspose",
             "_UnaryOpsComposition", "CollectiveReduceV2",
-            // The following 4 operations are converted to identity
+            // The following 5 operations are converted to identity
             "PlaceholderWithDefault", "PreventGradient", "StopGradient",
-            "Snapshot"}},
+            "Snapshot", "_EagerConst"}},
           // clang-format off
     {"RED",
      {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},

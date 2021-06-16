@@ -1099,7 +1099,7 @@ class Dense(Layer):
 
   Note: If the input to the layer has a rank greater than 2, then `Dense`
   computes the dot product between the `inputs` and the `kernel` along the
-  last axis of the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+  last axis of the `inputs` and axis 0 of the `kernel` (using `tf.tensordot`).
   For example, if input has dimensions `(batch_size, d0, d1)`,
   then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
   along axis 2 of the `input`, on every sub-tensor of shape `(1, 1, d1)`

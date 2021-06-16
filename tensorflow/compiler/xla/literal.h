@@ -110,6 +110,10 @@ class LiteralBase {
   // shape string with its layout.does *not* include the shape string.
   string ToStringWithLayout() const;
 
+  // Similar to ToStringWithLayout, but return the result in a compact
+  // one-line form.
+  string ToStringWithLayoutOneline() const;
+
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
   template <typename NativeT>

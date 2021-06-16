@@ -335,6 +335,7 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle, int depth,
     // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
       // TODO(b/33009255): Implement constant folding for cross replica sum.
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
@@ -2878,9 +2879,71 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
   });
 }
 
+XlaOp XlaBuilder::AllReduceScatter(
+    XlaOp operand, const XlaComputation& computation, int64 scatter_dimension,
+    int64 shard_count, absl::Span<const ReplicaGroup> replica_groups,
+    const absl::optional<ChannelHandle>& channel_id,
+    const absl::optional<Layout>& layout,
+    const absl::optional<bool> use_global_device_ids) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    std::vector<const Shape*> operand_shapes;
+    std::vector<XlaOp> operands;
+    if (operand_shape->IsTuple()) {
+      if (operand_shape->tuple_shapes_size() == 0) {
+        return Unimplemented(
+            "0 element tuple AllReduceScatter is not supported");
+      }
+      for (int64 i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+        if (operand_shape->tuple_shapes(i).element_type() !=
+            operand_shape->tuple_shapes(0).element_type()) {
+          return Unimplemented(
+              "All the shapes of a tuple input of AllReduceScatter must have "
+              "the same "
+              "element type");
+        }
+        operand_shapes.push_back(&operand_shape->tuple_shapes(i));
+        operands.push_back(GetTupleElement(operand, i));
+      }
+    } else {
+      operand_shapes.push_back(operand_shape);
+      operands.push_back(operand);
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                        ShapeInference::InferAllReduceScatterShape(
+                            operand_shapes, scatter_dimension, shard_count));
+    if (layout) {
+      *inferred_shape.mutable_layout() = *layout;
+      instr.set_constrain_layout(true);
+    }
+    *instr.mutable_shape() = inferred_shape.ToProto();
+
+    AddCalledComputation(computation, &instr);
+
+    instr.add_dimensions(scatter_dimension);
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(use_global_device_ids.value());
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        auto all_reduce_scatter,
+        AddInstruction(std::move(instr), HloOpcode::kAllReduceScatter,
+                       {operand}));
+    return all_reduce_scatter;
+  });
+}
+
 XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                            int64 concat_dimension, int64 split_count,
-                           const std::vector<ReplicaGroup>& replica_groups,
+                           absl::Span<const ReplicaGroup> replica_groups,
                            const absl::optional<Layout>& layout) {
   // Array all_to_all may need to violate layout constraint to be legal so use
   // the tuple version.
@@ -2892,9 +2955,9 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                        replica_groups);
 }
 
-XlaOp XlaBuilder::AllToAllArray(
-    XlaOp operand, int64 split_dimension, int64 concat_dimension,
-    int64 split_count, const std::vector<ReplicaGroup>& replica_groups) {
+XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64 split_dimension,
+                                int64 concat_dimension, int64 split_count,
+                                absl::Span<const ReplicaGroup> replica_groups) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(
@@ -2946,7 +3009,7 @@ XlaOp XlaBuilder::AllToAllArray(
 
 XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64 split_dimension,
                                 int64 concat_dimension, int64 split_count,
-                                const std::vector<ReplicaGroup>& replica_groups,
+                                absl::Span<const ReplicaGroup> replica_groups,
                                 const absl::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -4449,9 +4512,20 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
                                       channel_id, shape_with_layout);
 }
 
+XlaOp AllReduceScatter(const XlaOp operand, const XlaComputation& computation,
+                       int64 scatter_dimension, int64 shard_count,
+                       absl::Span<const ReplicaGroup> replica_groups,
+                       const absl::optional<ChannelHandle>& channel_id,
+                       const absl::optional<Layout>& layout,
+                       const absl::optional<bool> use_global_device_ids) {
+  return operand.builder()->AllReduceScatter(
+      operand, computation, scatter_dimension, shard_count, replica_groups,
+      channel_id, layout, use_global_device_ids);
+}
+
 XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                int64 concat_dimension, int64 split_count,
-               const std::vector<ReplicaGroup>& replica_groups,
+               absl::Span<const ReplicaGroup> replica_groups,
                const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
                                      split_count, replica_groups, layout);
@@ -4459,7 +4533,7 @@ XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
 
 XlaOp AllToAllTuple(const XlaOp operand, int64 split_dimension,
                     int64 concat_dimension, int64 split_count,
-                    const std::vector<ReplicaGroup>& replica_groups,
+                    absl::Span<const ReplicaGroup> replica_groups,
                     const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAllTuple(operand, split_dimension,
                                           concat_dimension, split_count,

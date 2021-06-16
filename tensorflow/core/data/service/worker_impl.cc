@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/worker_impl.h"
 
+#include <memory>
+#include <string>
+
 #include "grpcpp/create_channel.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
@@ -44,10 +48,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace {
 
 const constexpr uint64 kRetryIntervalMicros = 5ull * 1000 * 1000;
 
-namespace {
 // Moves the element into the response. If the tensor contains a single
 // CompressedElement variant, the move will be zero-copy. Otherwise, the tensor
 // data will be serialized as TensorProtos.
@@ -73,6 +77,10 @@ Status MoveElementToResponse(std::vector<Tensor>&& element,
   return Status::OK();
 }
 }  // namespace
+
+mutex LocalWorkers::mu_(LINKER_INITIALIZED);
+LocalWorkers::AddressToWorkerMap* LocalWorkers::local_workers_ =
+    new AddressToWorkerMap();
 
 DataServiceWorkerImpl::DataServiceWorkerImpl(
     const experimental::WorkerConfig& config)
@@ -424,6 +432,35 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     StopTask(*task);
   }
   return Status::OK();
+}
+
+void LocalWorkers::Add(absl::string_view worker_address,
+                       std::shared_ptr<DataServiceWorkerImpl> worker) {
+  DCHECK(worker != nullptr) << "Adding a nullptr local worker is disallowed.";
+  VLOG(1) << "Register local worker at address " << worker_address;
+  mutex_lock l(mu_);
+  (*local_workers_)[worker_address] = worker;
+}
+
+std::shared_ptr<DataServiceWorkerImpl> LocalWorkers::Get(
+    absl::string_view worker_address) {
+  tf_shared_lock l(mu_);
+  AddressToWorkerMap::const_iterator it = local_workers_->find(worker_address);
+  if (it == local_workers_->end()) {
+    return nullptr;
+  }
+  return it->second;
+}
+
+bool LocalWorkers::Empty() {
+  tf_shared_lock l(mu_);
+  return local_workers_->empty();
+}
+
+void LocalWorkers::Remove(absl::string_view worker_address) {
+  VLOG(1) << "Remove local worker at address " << worker_address;
+  mutex_lock l(mu_);
+  local_workers_->erase(worker_address);
 }
 
 }  // namespace data

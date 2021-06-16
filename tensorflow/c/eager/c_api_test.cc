@@ -21,6 +21,7 @@ limitations under the License.
 
 // clang-format off
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -42,8 +43,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+
+#ifdef PLATFORM_GOOGLE
+#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
+#endif
 
 using tensorflow::string;
 
@@ -70,7 +75,7 @@ BENCHMARK(BM_InitOp);
 
 void BM_Execute(::testing::benchmark::State& state) {
   const int async = state.range(0);
-  tensorflow::testing::SetLabel(async ? "ExecuteAsync" : "Execute");
+  state.SetLabel(async ? "ExecuteAsync" : "Execute");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
@@ -109,8 +114,7 @@ BENCHMARK(BM_Execute)->Arg(0)->Arg(1);
 
 void BM_Execute_Identity(::testing::benchmark::State& state) {
   const int async = state.range(0);
-  tensorflow::testing::SetLabel(async ? "ExecuteIdentityAsync"
-                                      : "ExecuteIdentity");
+  state.SetLabel(async ? "ExecuteIdentityAsync" : "ExecuteIdentity");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
@@ -1170,8 +1174,7 @@ TEST(CAPI, RunAddFunctionWithGrappler_TFRT) {
 
 void BM_ExecuteFunction(::testing::benchmark::State& state) {
   const int async = state.range(0);
-  tensorflow::testing::SetLabel(async ? "ExecuteFunctionAsync"
-                                      : "ExecuteFunction");
+  state.SetLabel(async ? "ExecuteFunctionAsync" : "ExecuteFunction");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
@@ -1675,9 +1678,10 @@ TEST(CAPI, TestTFE_OpGetInputAndOutputLengthsFailForUnknownArguments) {
   TFE_DeleteContext(ctx);
 }
 
-TEST(CAPI, TestTFE_OpAddAttrs) {
+void TestOpAddAttrs(bool use_tfrt) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -1699,9 +1703,23 @@ TEST(CAPI, TestTFE_OpAddAttrs) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   tensorflow::AttrValueMap attr_values;
-  tensorflow::EagerOperation* op =
-      tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
-  op->Attrs().FillAttrValueMap(&attr_values);
+  if (use_tfrt) {
+#ifdef PLATFORM_GOOGLE
+    auto* op = tensorflow::down_cast<tfrt::tf::OperationInterface*>(
+        tensorflow::unwrap(copy_op));
+    auto* tfrt_op_attrs =
+        tensorflow::down_cast<const tfrt::tf::OpAttrsInterface*>(
+            op->GetOpAttrs());
+    tensorflow::DataType result;
+    tfrt_op_attrs->GetType("dtype", &result);
+    EXPECT_EQ(tensorflow::DT_FLOAT, result);
+    tfrt_op_attrs->GetFallbackAttrs()->FillAttrValueMap(&attr_values);
+#endif
+  } else {
+    tensorflow::EagerOperation* op =
+        tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
+    op->Attrs().FillAttrValueMap(&attr_values);
+  }
   EXPECT_EQ(tensorflow::DT_FLOAT, attr_values.find("dtype")->second.type());
 
   TF_DeleteStatus(status);
@@ -1709,6 +1727,13 @@ TEST(CAPI, TestTFE_OpAddAttrs) {
   TFE_DeleteOp(copy_op);
   TFE_DeleteContext(ctx);
 }
+
+TEST(CAPI, TestTFE_OpAddAttrs) { TestOpAddAttrs(/*use_tfrt=*/false); }
+
+#ifdef PLATFORM_GOOGLE
+TEST(CAPI, TestTFE_OpAddAttrs_TFRT) { TestOpAddAttrs(/*use_tfrt=*/true); }
+
+#endif
 
 TEST(CAPI, TestTFE_OpAttrsSerialize) {
   TF_Status* status = TF_NewStatus();

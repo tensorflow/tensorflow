@@ -393,6 +393,9 @@ class Bidirectional(Wrapper):
       Note that the recommended way to create new RNN layers is to write a
       custom RNN cell and use it with `keras.layers.RNN`, instead of
       subclassing `keras.layers.Layer` directly.
+      - When the `returns_sequences` is true, the output of the masked timestep
+      will be zero regardless of the layer's original `zero_output_for_mask`
+      value.
     merge_mode: Mode by which outputs of the forward and backward RNNs will be
       combined. One of {'sum', 'mul', 'concat', 'ave', None}. If None, the
       outputs will not be combined, they will be returned as a list. Default

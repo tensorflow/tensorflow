@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
+class CoordinationServiceInterface;
 class ImmediateExecutionContext;
 class ServerDef;
 
@@ -45,6 +46,9 @@ class ImmediateExecutionDistributedManager {
   // Check if the remote task is alive.
   virtual Status CheckRemoteAlive(const std::string& remote_task_name,
                                   bool* is_alive) = 0;
+
+  // Get pointer to the coordination service instance.
+  virtual CoordinationServiceInterface* GetCoordinationService() = 0;
 };
 }  // namespace tensorflow
 

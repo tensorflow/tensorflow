@@ -983,7 +983,7 @@ cudnnDataType_t ToCudnnDataType(dnn::DataType data_type,
     return CUDNN_DATA_INT8x4;
   }
   if (data_type == dnn::DataType::kInt8 &&
-      filter_layout == dnn::FilterLayout::kOutputInputYX4) {
+      filter_layout == dnn::FilterLayout::kOutputInputYX32) {
     return CUDNN_DATA_INT8x32;
   }
   return ToCudnnDataType(data_type);
@@ -993,6 +993,11 @@ template <typename T>
 cudnnDataType_t GetCudnnDataType(
     dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   return ToCudnnDataType(dnn::ToDataType<T>::value, data_layout);
+}
+
+template <typename T>
+cudnnDataType_t GetCudnnDataType(dnn::FilterLayout filter_layout) {
+  return ToCudnnDataType(dnn::ToDataType<T>::value, filter_layout);
 }
 
 cudnnRNNInputMode_t ToCudnnRnnInputMode(dnn::RnnInputMode input_mode) {
@@ -3420,20 +3425,25 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
                        .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
+  // TODO(kaixih@nvidia): Remove the redundant float/double alpha/beta when the
+  // cudnn frontend can deduce the compute type from the operation.
   // Alpha is the scaling factor for input.
-  float alpha = 1.0;
+  float falpha = 1.0;
+  double dalpha = 1.0;
   // Beta is the scaling factor for output.
-  float beta = 0.0;
+  float fbeta = 0.0;
+  double dbeta = 0.0;
 
   // CUDNN Operation
-  auto op = cudnn_frontend::OperationBuilder(conv_mode)
-                .setxDesc(tensor_x)
-                .setyDesc(tensor_y)
-                .setwDesc(tensor_w)
-                .setcDesc(conv_desc)
-                .setAlpha(alpha)
-                .setBeta(beta)
-                .build();
+  auto op_builder = cudnn_frontend::OperationBuilder(conv_mode);
+  op_builder.setxDesc(tensor_x).setyDesc(tensor_y).setwDesc(tensor_w).setcDesc(
+      conv_desc);
+  if (cudnn_type == CUDNN_DATA_DOUBLE) {
+    op_builder.setAlpha(dalpha).setBeta(dbeta);
+  } else {
+    op_builder.setAlpha(falpha).setBeta(fbeta);
+  }
+  auto op = op_builder.build();
   RETURN_MSG_IF_CUDNN_ERROR(op);
 
   // CUDNN OperationGraph
@@ -3746,40 +3756,30 @@ GetFirstWorkingExecutionPlan(
                         .build();
   RETURN_MSG_IF_CUDNN_ERROR(heuristics);
 
-  bool use_fallback = kind != dnn::ConvolutionKind::INVALID;
-  std::unique_ptr<cudnn_frontend::EngineFallbackList> fallback_ptr;
-  if (use_fallback) {
-    cudnnBackendDescriptorType_t conv_mode = GetCudnnConvolutionType(kind);
-    auto fallback = cudnn_frontend::EngineFallbackListBuilder()
-                        .setOperationGraph(*op_graph)
-                        .setOperation(conv_mode)
-                        .build();
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-    fallback_ptr = std::unique_ptr<cudnn_frontend::EngineFallbackList>(
-        new cudnn_frontend::EngineFallbackList(std::move(fallback)));
-  }
+  cudnnBackendDescriptorType_t conv_mode = GetCudnnConvolutionType(kind);
+  auto fallback = cudnn_frontend::EngineFallbackListBuilder()
+                      .setOperationGraph(*op_graph)
+                      .setOperation(conv_mode)
+                      .build();
+  RETURN_MSG_IF_CUDNN_ERROR(fallback);
 
   auto engine_count = heuristics.getEngineConfigCount();
   auto& engine_config = heuristics.getEngineConfig(engine_count);
+  auto& fallback_list = fallback.getFallbackList();
 
   cudnn_frontend::EngineConfigList filtered_configs;
   if (RequireCudnnDeterminism()) {
     cudnn_frontend::filter(engine_config, filtered_configs,
                            IsNonDeterministicOrIsDownConverting);
-    if (use_fallback) {
-      auto& fallback_list = fallback_ptr->getFallbackList();
-      cudnn_frontend::filter(fallback_list, filtered_configs,
-                             IsNonDeterministicOrIsDownConverting);
-    }
+    cudnn_frontend::filter(fallback_list, filtered_configs,
+                           IsNonDeterministicOrIsDownConverting);
   } else {
     cudnn_frontend::filter(engine_config, filtered_configs,
                            IsDownConvertingInputs);
-    if (use_fallback) {
-      auto& fallback_list = fallback_ptr->getFallbackList();
-      cudnn_frontend::filter(fallback_list, filtered_configs,
-                             IsDownConvertingInputs);
-    }
+    cudnn_frontend::filter(fallback_list, filtered_configs,
+                           IsDownConvertingInputs);
   }
+
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
                     .setHandle(cudnn.handle())
@@ -3871,11 +3871,17 @@ port::Status CudnnSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  cudnnDataType_t cudnn_type = ToCudnnDataType(element_type);
+  cudnnDataType_t cudnn_type =
+      ToCudnnDataType(element_type, input_descriptor.layout());
+
   CudnnTensorDescriptor input_nd(input_descriptor, cudnn_type);
-  CudnnTensorDescriptor output_nd(output_descriptor,
-                                  ToCudnnDataType(output_type));
-  CudnnFilterDescriptor filter_nd(filter_descriptor, cudnn_type);
+  CudnnTensorDescriptor output_nd(
+      output_descriptor,
+      ToCudnnDataType(output_type, output_descriptor.layout()));
+  CudnnFilterDescriptor filter_nd(
+      filter_descriptor,
+      ToCudnnDataType(element_type, filter_descriptor.layout()));
+
   auto accumulator_type = GetConvAccumulatorType(element_type);
   CudnnConvolutionDescriptor conv(convolution_descriptor,
                                   ToCudnnDataType(accumulator_type));
@@ -4142,7 +4148,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
       GetCudnnDataType<OutputType>(conv_input_descriptor.layout()));
   CudnnFilterDescriptor filter(
       filter_descriptor,
-      GetCudnnDataType<ElementType>(conv_input_descriptor.layout()));
+      GetCudnnDataType<ElementType>(filter_descriptor.layout()));
   CudnnTensorDescriptor bias_nd(bias_descriptor, GetCudnnDataType<BiasType>());
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
@@ -4264,7 +4270,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
 
     SE_ASSIGN_OR_RETURN(
         current_plan,
-        GetFirstWorkingExecutionPlan(op_graph, dnn::ConvolutionKind::INVALID,
+        GetFirstWorkingExecutionPlan(op_graph, dnn::ConvolutionKind::FORWARD,
                                      cudnn, scratch_allocator));
   }
 
@@ -4451,16 +4457,29 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
                   .build();
   RETURN_MSG_IF_CUDNN_ERROR(heur);
 
-  auto& heur_configs = heur.getEngineConfig(heur.getEngineConfigCount());
+  auto fallback =
+      cudnn_frontend::EngineFallbackListBuilder()
+          .setOperationGraph(*op_graph)
+          .setOperation(GetCudnnConvolutionType(dnn::ConvolutionKind::FORWARD))
+          .build();
+  RETURN_MSG_IF_CUDNN_ERROR(fallback);
 
-  VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size();
+  auto& heur_configs = heur.getEngineConfig(heur.getEngineConfigCount());
+  auto& fallback_configs = fallback.getFallbackList();
+
+  VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size()
+          << "\nFallback engine configs size: " << fallback_configs.size();
 
   cudnn_frontend::EngineConfigList filtered_configs;
   if (RequireCudnnDeterminism()) {
     cudnn_frontend::filter(heur_configs, filtered_configs,
                            IsNonDeterministicOrIsDownConverting);
+    cudnn_frontend::filter(fallback_configs, filtered_configs,
+                           IsNonDeterministicOrIsDownConverting);
   } else {
     cudnn_frontend::filter(heur_configs, filtered_configs,
+                           IsDownConvertingInputs);
+    cudnn_frontend::filter(fallback_configs, filtered_configs,
                            IsDownConvertingInputs);
   }
 

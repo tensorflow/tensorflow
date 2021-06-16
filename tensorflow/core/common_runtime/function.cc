@@ -1237,7 +1237,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
-        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+        return profiler::TraceMeEncode("FunctionRun",
+                                       {{"id", opts.step_id}, {"_r", 1}});
       },
       profiler::ContextType::kTfExecutor, opts.step_id,
       profiler::TraceMeLevel::kInfo);
@@ -1309,7 +1310,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
-        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+        return profiler::TraceMeEncode("FunctionRun",
+                                       {{"id", opts.step_id}, {"_r", 1}});
       },
       profiler::ContextType::kTfExecutor, opts.step_id,
       profiler::TraceMeLevel::kInfo);

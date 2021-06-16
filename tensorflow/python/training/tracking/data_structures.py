@@ -73,16 +73,26 @@ class NoDependency(object):
 
 def _should_wrap_tuple(t):
   """Determine if a tuple has any trackable components."""
+  # pylint: disable=unidiomatic-typecheck
+  # Exact type checking to avoid mucking up custom logic in list/dict
+  # subclasses, e.g. collections.Counter.
   for element in t:
     if isinstance(element, NoDependency):
       return True  # We should remove the NoDependency object from the tuple.
     if isinstance(element, base.Trackable):
       return True
-    if wrap_or_unwrap(element) is not element:
+    if type(element) == dict:
+      return True
+    if type(element) == collections.OrderedDict:
+      return True
+    if type(element) == list:
+      return True
+    if isinstance(element, tuple) and _should_wrap_tuple(element):
       return True
   # There are no trackable elements or data structures. Tuples are immutable, so
   # mutation isn't a concern. Don't wrap.
   return False
+  # pylint: enable=unidiomatic-typecheck
 
 
 @tf_export("__internal__.tracking.wrap", v1=[])

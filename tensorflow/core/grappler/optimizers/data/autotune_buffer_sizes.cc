@@ -134,12 +134,6 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void AutotuneBufferSizes::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                   const GraphDef& optimize_output,
-                                   double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(AutotuneBufferSizes, "autotune_buffer_sizes");
 
 }  // namespace grappler

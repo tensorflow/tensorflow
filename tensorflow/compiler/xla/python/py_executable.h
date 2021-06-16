@@ -33,7 +33,7 @@ namespace xla {
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
-class PyExecutable {
+class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
  public:
   PyExecutable(std::shared_ptr<PyClient> client,
                std::unique_ptr<PjRtExecutable> executable,
@@ -55,6 +55,8 @@ class PyExecutable {
   }
 
   void Delete() { return executable_->Delete(); }
+
+  bool is_deleted() { return executable_->IsDeleted(); }
 
   StatusOr<std::vector<PyBuffer::object>> Execute(
       absl::Span<PyBuffer::object const> args);
