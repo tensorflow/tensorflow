@@ -682,44 +682,6 @@ class MeanMetricWrapper(Mean):
     return super(MeanMetricWrapper, cls).from_config(config)
 
 
-class SparseCategoricalMetricWrapper(MeanMetricWrapper):
-  """Wraps a stateless sparse categorical metric function with the Mean metric.
-
-  Args:
-    fn: The metric function to wrap, with signature `fn(y_true, y_pred,
-      **kwargs)`.
-    name: (Optional) string name of the metric instance.
-    dtype: (Optional) data type of the metric result.
-    **kwargs: The keyword arguments that are passed on to `fn`.
-  """
-  def __init__(self, fn, name=None, dtype=None, **kwargs):
-    super(SparseCategoricalMetricWrapper, self).__init__(fn=fn, name=name, dtype=dtype, **kwargs)
-
-  def update_state(self, y_true, y_pred, sample_weight=None):
-    """Accumulates sparse categorical metric statistics.
-
-    For sparse categorical metrics, the shapes of `y_true` and `y_pred` are different.
-
-    Args:
-      y_true: Ground truth label values. shape = `[batch_size, d0, .. dN-1]` or shape = `[batch_size, d0, .. dN-1, 1]`.
-      y_pred: The predicted probability values. shape = `[batch_size, d0, .. dN]`.
-      sample_weight: Optional `sample_weight` acts as a
-        coefficient for the metric. If a scalar is provided, then the metric is
-        simply scaled by the given value. If `sample_weight` is a tensor of size
-        `[batch_size]`, then the metric for each sample of the batch is rescaled
-        by the corresponding element in the `sample_weight` vector. If the shape
-        of `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be broadcasted
-        to this shape), then each metric element of `y_pred` is scaled by the
-        corresponding value of `sample_weight`. (Note on `dN-1`: all metric
-        functions reduce by 1 dimension, usually the last axis (-1)).
-
-    Returns:
-      Update op.
-    """
-    return super(SparseCategoricalMetricWrapper, self).update_state(
-      y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
-
-
 @keras_export('keras.metrics.Accuracy')
 class Accuracy(MeanMetricWrapper):
   """Calculates how often predictions equal labels.
@@ -860,7 +822,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
 
 
 @keras_export('keras.metrics.SparseCategoricalAccuracy')
-class SparseCategoricalAccuracy(SparseCategoricalMetricWrapper):
+class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions match integer labels.
 
   ```python
@@ -909,6 +871,30 @@ class SparseCategoricalAccuracy(SparseCategoricalMetricWrapper):
     super(SparseCategoricalAccuracy, self).__init__(
         sparse_categorical_accuracy, name, dtype=dtype)
   
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates metric statistics.
+
+    The shapes of `y_true` and `y_pred` are different.
+
+    Args:
+      y_true: Ground truth label values. shape = `[batch_size, d0, .. dN-1]` or shape = `[batch_size, d0, .. dN-1, 1]`.
+      y_pred: The predicted probability values. shape = `[batch_size, d0, .. dN]`.
+      sample_weight: Optional `sample_weight` acts as a
+        coefficient for the metric. If a scalar is provided, then the metric is
+        simply scaled by the given value. If `sample_weight` is a tensor of size
+        `[batch_size]`, then the metric for each sample of the batch is rescaled
+        by the corresponding element in the `sample_weight` vector. If the shape
+        of `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be broadcasted
+        to this shape), then each metric element of `y_pred` is scaled by the
+        corresponding value of `sample_weight`. (Note on `dN-1`: all metric
+        functions reduce by 1 dimension, usually the last axis (-1)).
+
+    Returns:
+      Update op.
+    """
+    return super(SparseCategoricalAccuracy, self).update_state(
+      y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
+
 
 @keras_export('keras.metrics.TopKCategoricalAccuracy')
 class TopKCategoricalAccuracy(MeanMetricWrapper):
@@ -950,7 +936,7 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
 
 
 @keras_export('keras.metrics.SparseTopKCategoricalAccuracy')
-class SparseTopKCategoricalAccuracy(SparseCategoricalMetricWrapper):
+class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
   """Computes how often integer targets are in the top `K` predictions.
 
   Args:
@@ -3303,7 +3289,7 @@ class CategoricalCrossentropy(MeanMetricWrapper):
 
 
 @keras_export('keras.metrics.SparseCategoricalCrossentropy')
-class SparseCategoricalCrossentropy(SparseCategoricalMetricWrapper):
+class SparseCategoricalCrossentropy(MeanMetricWrapper):
   """Computes the crossentropy metric between the labels and predictions.
 
   Use this crossentropy metric when there are two or more label classes.
