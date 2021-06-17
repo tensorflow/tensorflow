@@ -478,7 +478,7 @@ void processRegion(Region& region) {
         auto while_op = cast<mhlo::WhileOp>(&op);
         processRegion(while_op.cond());
         processRegion(while_op.body());
-        Value operand = while_op.getOperand();
+        Value operand = while_op.getOperand(0);
         auto defining_op = operand.getDefiningOp();
         // Here we assume that while's operand always from a tupleOp.
         assert(defining_op && isa<mhlo::TupleOp>(defining_op));
@@ -622,7 +622,7 @@ void PlaceShapeCalcOnHost::insertMemcpyNodes() {
           auto output_attr =
               defining_op->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
 
-          auto while_operand = while_op.getOperand();
+          auto while_operand = while_op.getOperand(0);
           auto while_operand_defining_op = while_operand.getDefiningOp();
           assert(while_operand_defining_op && "unexpected nest while");
           auto while_operand_tuple_op =
