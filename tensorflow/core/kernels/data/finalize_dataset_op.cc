@@ -42,7 +42,7 @@ void GetModelDatasetParams(const Options& options,
   // check for deprecated autotune options in optimization_options
   // the condition below checks for the presence of the deprecated option
   // and decides whether to go with the deprecated options or not.
-  if(options.optimization_options.optional_autotune_buffers_case() ==
+  if(options.optimization_options().optional_autotune_buffers_case() ==
     OptimizationOptions::kAutotuneBuffers){
       if (options.optimization_options().autotune_buffers()) {
         *algorithm = model::AutotuneAlgorithm::GRADIENT_DESCENT;
