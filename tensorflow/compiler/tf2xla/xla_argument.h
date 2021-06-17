@@ -79,6 +79,9 @@ struct XlaArgument {
   // The upper bounds of the value.
   absl::optional<Tensor> value_bound;
 
+  // Indicates whether each value is dynamic or constant.
+  absl::optional<Tensor> value_dynamism;
+
   // The name of this argument, used for debugging.
   string name;
 
