@@ -382,6 +382,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", #MultiMirroredWorker2x
         "no_oss",  # b/189866692
         "noguitar",  # b/190034522
     ],
@@ -437,6 +438,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", #MultiMirroredWorker2x
     ],
     tpu_tags = [
         "no_oss",
@@ -477,6 +479,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", #MultiMirroredWorker2x
         "no_oss",  # TODO(b/189956080)
         "noguitar",  # b/190034522
     ],
@@ -554,6 +557,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", #MultiMirroredWorker2x
     ],
     tpu_tags = ["no_oss"],
     deps = [
@@ -684,6 +688,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", #MultiMirroredWorker2x
     ],
     tpu_tags = [
         "no_oss",  # b/155502591

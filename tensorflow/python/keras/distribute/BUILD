@@ -300,6 +300,7 @@ distribute_py_test(
     main = "custom_training_loop_optimizer_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", #MultiMirroredWorker2x
     ],
     deps = [
         ":strategy_combinations",
@@ -505,6 +506,7 @@ distribute_py_test(
     main = "keras_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", #MultiMirroredWorker2x
     ],
     deps = [
         "//tensorflow/python:framework_ops",
