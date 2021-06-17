@@ -181,6 +181,10 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
   if (op->Attrs().Get("T", &data_type) != Status::OK()) {
     return false;
   }
+  // Only rewrite if op is to be run on CPU device.
+  if (op->GetDeviceParsedName().type != "CPU") {
+    return false;
+  }
   // Check if we have registered MKL kernel for this op.
   bool kernel_found = FastCheckIfKernelRegistered(op->Name(), data_type);
   if (!kernel_found) {
