@@ -937,6 +937,7 @@ class StrategyBase(object):
   # pylint: enable=line-too-long
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED, moving to `extended`
+  @deprecated(None,'use extended.colocate_vars_with() instead.')
   def colocate_vars_with(self, colocate_with_variable):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
@@ -944,7 +945,7 @@ class StrategyBase(object):
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def make_dataset_iterator(self, dataset):
     """DEPRECATED TF 1.x ONLY."""
-    tf_logging.info("Deprecated TF 1.x only")
+    
     return self._extended._make_dataset_iterator(dataset)  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
@@ -952,7 +953,6 @@ class StrategyBase(object):
                              input_fn,
                              replication_mode=InputReplicationMode.PER_WORKER):
     """DEPRECATED TF 1.x ONLY."""
-    tf_logging.info("Deprecated TF 1.x only")
     if replication_mode != InputReplicationMode.PER_WORKER:
       raise ValueError(
           "Input replication mode not supported: %r" % replication_mode)
@@ -960,10 +960,10 @@ class StrategyBase(object):
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
+  @doc_controls.do_not_generate_docs
+  @deprecated(None,'use mirrored_strategy.run() instead')  # DEPRECATED: TF 1.x only
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
-    tf_logging.info("Deprecated TF 1.x only")
     with self.scope():
       args = (input_iterator.get_next(),) if input_iterator is not None else ()
     return self.run(fn, args=args)
