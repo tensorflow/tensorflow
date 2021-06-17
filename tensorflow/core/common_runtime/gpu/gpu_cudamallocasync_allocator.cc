@@ -195,8 +195,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 #endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
 }
 
-GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
-}
+GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {}
 
 void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                                size_t num_bytes) {
@@ -215,7 +214,6 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                   num_bytes, pool_, cuda_stream_)) {
     size_t free, total;
     cuMemGetInfo(&free, &total);
-    mutex_lock lock(lock_);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes
                << ": " << GetCudaErrorMessage(result)
                << "\n Free memory/Total memory: " << free << "/" << total;
