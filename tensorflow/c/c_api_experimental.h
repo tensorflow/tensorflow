@@ -341,6 +341,19 @@ TF_CAPI_EXPORT extern void TF_AssignVariable(
                            TF_Tensor *dest),
           TF_Status* status);
 
+TF_CAPI_EXPORT extern void TF_AssignUpdateVariable(TF_OpKernelContext* ctx,
+                                    int input_index,
+                                    int value_index,
+                                    int Op,
+                                    int isVariantType,
+                                    void (*copyFunc)(TF_OpKernelContext * ctx,
+                                                     TF_Tensor *source,
+                                                     TF_Tensor *dest),
+                                    void (*updateFunc)(TF_OpKernelContext *ctx,
+                                                       TF_Tensor *tensor,
+                                                       TF_Tensor *value, int Op),
+                                    TF_Status* status);
+
 // This is a helper function which acquires mutexes in-order to provide thread-safe 
 // way of performing weights update during the optimizer op. It returns an opaque 
 // LockHolder handle back to plugin. This handle is passed to the Release API for 

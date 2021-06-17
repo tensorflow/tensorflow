@@ -35,6 +35,9 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -900,6 +903,47 @@ void TF_AssignVariable(TF_OpKernelContext* ctx,
   }
   variable->is_initialized = true;
   TF_SetStatus(status, TF_OK, "");
+}
+
+void TF_AssignUpdateVariable(TF_OpKernelContext* ctx,
+                             int input_index,
+                             int value_index,
+                             int Op,
+                             int isVariantType,
+                             void (*copyFunc)(TF_OpKernelContext * ctx,
+                                              TF_Tensor *source,
+                                              TF_Tensor *dest),
+                             void (*updateFunc)(TF_OpKernelContext *ctx,
+                                                TF_Tensor *tensor,
+                                                TF_Tensor *value, int Op),
+                             TF_Status* tf_status) {
+  using namespace tensorflow;
+  auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  core::RefCountPtr<Var> variable;
+  Status status = LookupResource(context, HandleFromInput(context, input_index),
+                                         &variable);
+  if(!status.ok()) {
+    printf("Failed with error: %s\n", status.error_message().c_str());
+    abort();
+  }
+  const Tensor& value = context->input(value_index);
+  mutex_lock ml(*variable->mu());
+  Tensor* var_tensor = variable->tensor();
+  OP_REQUIRES(context, var_tensor->shape().IsSameSize(value.shape()),
+              errors::InvalidArgument("Cannot update variable with shape ",
+                                      var_tensor->shape().DebugString(),
+                                      " using a Tensor with shape ",
+                                      value.shape().DebugString(),
+                                      ", shapes must be equal."));
+  OP_REQUIRES_OK(
+      context, PrepareToUpdateVariable(
+                   ctx, var_tensor, variable->copy_on_read_mode.load(),
+                   isVariantType, copyFunc));
+  tensorflow::Status s;
+  TF_Tensor *tf_var_tensor = TF_TensorFromTensor(*var_tensor, &s);
+  TF_Tensor *tf_value = TF_TensorFromTensor(value, &s);
+  updateFunc(ctx, tf_var_tensor, tf_value, Op);
+  TF_SetStatus(tf_status, TF_OK, "");
 }
 
 void TF_MaybeLockVariableInputMutexesInOrder(
