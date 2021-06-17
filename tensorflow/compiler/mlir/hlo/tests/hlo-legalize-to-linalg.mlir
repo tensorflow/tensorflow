@@ -256,6 +256,18 @@ func @complex_neg(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
 
 // -----
 
+// CHECK-LABEL: func @complex_sign
+func @complex_sign(
+    %arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.sign
+  %0 = "mhlo.sign"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                          -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_tanh
 func @float_tanh(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic

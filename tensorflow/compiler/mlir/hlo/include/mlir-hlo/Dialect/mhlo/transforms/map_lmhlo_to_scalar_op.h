@@ -887,6 +887,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
         b->create<::mlir::SignedShiftRightOp>(loc, args[0], bitwidth_minus_one);
     Value or_op = b->create<::mlir::OrOp>(loc, ashr, one);
     return b->create<::mlir::SelectOp>(loc, cmp, zero, or_op);
+  } else if (element_type.isa<ComplexType>()) {
+    return b->create<::mlir::complex::SignOp>(loc, element_type, args.front());
   }
   return nullptr;
 }

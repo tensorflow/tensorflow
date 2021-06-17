@@ -771,12 +771,13 @@ gpu_kernel_library(
     op = "sign",
     tile_size = "256",
     types = [
-        # TODO(b/162577610): Add bf16, c64 and c128.
         "f16",
         "f32",
         "f64",
         "i32",
         "i64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "4",
 )

@@ -810,6 +810,20 @@ func @sign_i16(%input: memref<2x2xi16>, %result: memref<2x2xi16>) {
 
 // -----
 
+// CHECK-LABEL: func @sign_complex
+func @sign_complex(%input: memref<2x2xcomplex<f32>>,
+                   %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.sign"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                   memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.sign %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
 // CHECK-LABEL: func @sqrt
 func @sqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.sqrt"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()

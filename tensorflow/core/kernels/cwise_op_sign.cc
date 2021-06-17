@@ -23,8 +23,6 @@ REGISTER4(UnaryOp, CPU, "Sign", functor::sign, int8, int16, int32, int64);
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER6(UnaryOp, GPU, "Sign", functor::sign, float, Eigen::half, double,
           int64, complex64, complex128);
-#else
-REGISTER2(UnaryOp, GPU, "Sign", functor::sign, complex64, complex128);
 #endif
 
 // A special GPU kernel for int32.
