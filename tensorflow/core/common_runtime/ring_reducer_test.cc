@@ -195,16 +195,12 @@ class RingReducerTest : public ::testing::Test {
                 << " devices: ";
       dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     }
-    if (!gpu_ring_order_) {
-      gpu_ring_order_ = absl::make_unique<string>();
-    }
     dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
     rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
                            fail_after);
     col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
-                                           dev_mgr_.get(),
-                                           gpu_ring_order_.get(), work_queue_);
+                                           dev_mgr_.get(), work_queue_);
     col_params_ = new CollectiveParams();
     col_params_->name = "test_collective";
     static const int kGroupKey = 5;
@@ -566,7 +562,6 @@ class RingReducerTest : public ::testing::Test {
   CollectiveParams* col_params_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
-  std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
   int32 reduce_counter_ TF_GUARDED_BY(mu_) = 0;
   CancellationManager cancellation_manager_;

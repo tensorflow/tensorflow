@@ -71,9 +71,6 @@ struct CollGroupParams {
   bool same_num_devices_per_task = false;
   // Task -> number of devices on that task.
   std::unordered_map<string, int32> num_devices_per_task;
-  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
-  // GPUs.  Assumes same GPU configuration at each worker.
-  string gpu_ring_order = "";
   int32 num_tasks;  // number of distinct tasks in group
   CollGroupRuntimeDetails runtime_details;
   string ToString() const;

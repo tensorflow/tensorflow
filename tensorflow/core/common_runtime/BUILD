@@ -1994,6 +1994,7 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 
