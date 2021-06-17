@@ -78,7 +78,7 @@ function test_tf_imports() {
 
   # test basic keras is available
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.keras.__name__)")
-  if ! [[ ${RET_VAL} == *'tensorflow.keras'* ]]; then
+  if ! [[ ${RET_VAL} == *'keras.api'* ]]; then
     echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1

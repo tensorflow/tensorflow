@@ -260,7 +260,15 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kAbs:
       return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
-      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+      // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
+      // AddOps on i1 are just addition with overflow; so, we have to implement
+      // the special behavior of HLO add ops on PRED here by creating an OrOp
+      // instead.
+      if (instr->shape().element_type() == xla::PRED) {
+        return CreateOpWithoutAttrs<lmhlo::OrOp>(instr);
+      } else {
+        return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+      }
     case HloOpcode::kAddDependency:
       return nullptr;
     case HloOpcode::kAfterAll:
@@ -273,6 +281,12 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitAllGatherOp(instr);
     case HloOpcode::kAllReduce:
       return EmitAllReduceOp(instr);
+    case HloOpcode::kAllReduceStart:
+      return EmitAllReduceStartOp(instr);
+    case HloOpcode::kAllReduceDone:
+      return EmitAllReduceDoneOp(instr);
+    case HloOpcode::kAllReduceScatter:
+      return EmitAllReduceScatterOp(instr);
     case HloOpcode::kAnd:
       return CreateOpWithoutAttrs<lmhlo::AndOp>(instr);
     case HloOpcode::kAtan2:
@@ -1184,6 +1198,60 @@ StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
       *instr->called_computations()[0], &all_reduce_op.computation(),
       &builder_));
   return all_reduce_op;
+}
+
+StatusOr<lmhlo_gpu::AllReduceStartOp> LhloDialectEmitter::EmitAllReduceStartOp(
+    const HloInstruction* instr) {
+  llvm::SmallVector<Value, 4> operands;
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+  }
+  // Only include result index {1}. {0} always aliases the inputs.
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{1}));
+
+  Location loc = getLocation(instr);
+  lmhlo_gpu::AllReduceStartOp all_reduce_start_op =
+      builder_.create<lmhlo_gpu::AllReduceStartOp>(
+          loc, llvm::None, operands, llvm::ArrayRef<NamedAttribute>{});
+
+  auto* all_reduce = xla::Cast<xla::HloAllReduceInstruction>(instr);
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(all_reduce_start_op, instr, builder_));
+  all_reduce_start_op.use_global_device_idsAttr(
+      builder_.getBoolAttr(all_reduce->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &all_reduce_start_op.computation(),
+      &builder_));
+  return all_reduce_start_op;
+}
+
+StatusOr<lmhlo_gpu::AllReduceDoneOp> LhloDialectEmitter::EmitAllReduceDoneOp(
+    const HloInstruction* instr) {
+  llvm::SmallVector<Value, 4> operands;
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+  }
+  // We don't need to add buffers for the outputs, as these always alias inputs.
+  return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
+      getLocation(instr), llvm::None, operands,
+      llvm::ArrayRef<NamedAttribute>{});
+}
+
+StatusOr<lmhlo::AllReduceScatterOp> LhloDialectEmitter::EmitAllReduceScatterOp(
+    const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto reduce_scatter_op,
+                      CreateOpWithoutAttrs<lmhlo::AllReduceScatterOp>(instr));
+  auto* ars = xla::Cast<xla::HloAllReduceScatterInstruction>(instr);
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(reduce_scatter_op, instr, builder_));
+  reduce_scatter_op.use_global_device_idsAttr(
+      builder_.getBoolAttr(ars->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &reduce_scatter_op.computation(),
+      &builder_));
+  reduce_scatter_op.scatter_dimensionAttr(
+      builder_.getI64IntegerAttr(ars->scatter_dimension()));
+  return reduce_scatter_op;
 }
 
 StatusOr<lmhlo::CollectivePermuteOp>

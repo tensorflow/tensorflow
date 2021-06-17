@@ -52,6 +52,8 @@ In order to run a test with Ethos-U55 enabled, a platform with corresponding har
 
 On top of that the .tflite model needs to be modified according subchapter "Ethos-U custom operator" above.
 
+The log level of the Ethos-U driver can be set in the build command. For example: ETHOSU_LOG_SEVERITY=ETHOSU_LOG_INFO.
+
 ## Example using network tester
 See tensorflow/lite/micro/examples/network_tester/README.md for more info.
 

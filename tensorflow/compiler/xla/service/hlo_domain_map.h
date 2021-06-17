@@ -93,7 +93,7 @@ class HloDomainMap {
   // creating a new domain ID.
   Status InsertDomain(std::unique_ptr<DomainMetadata::Domain> domain);
 
-  // From the given instruction, epxands operand and user wise, the set of
+  // From the given instruction, expands operand and user wise, the set of
   // instructions which can be reached without crossing a kDomain instruction
   // of the kind specified by domain_kind_.
   // The domain data structure will be populated with all the reached

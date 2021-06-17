@@ -1434,7 +1434,9 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
        absl::c_any_of(
            hlo->sharding().tuple_elements(),
            [](const HloSharding& sharding) { return sharding.IsManual(); }));
-  if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape")) {
+  if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape") &&
+      hlo->opcode() != HloOpcode::kConditional &&
+      hlo->opcode() != HloOpcode::kWhile) {
     visiting_hlo_sharding_ = hlo->sharding();
     hlo->set_sharding(
         manual_to_onedevice(hlo->shape(), *visiting_hlo_sharding_));
@@ -1642,6 +1644,9 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
 
 Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding();
+  if (sharding.HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   // Special handling for sort in TopK when first operand partitioined at
   // sort dimension.
   auto k = GetKValueInTopKWhenPartitionSortDim(hlo);
@@ -2558,6 +2563,9 @@ Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   int64 input_count = 1;
   auto per_input_sharding = hlo->sharding();
   if (hlo->shape().IsTuple()) {
@@ -2700,9 +2708,13 @@ Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
   // follow the same control flow.
   hlo->while_condition()->parameter_instruction(0)->set_sharding(sharding);
   hlo->while_body()->parameter_instruction(0)->set_sharding(sharding);
+  const HloSharding& cond_root_sharding =
+      hlo->while_condition()->root_instruction()->sharding();
   TF_RETURN_IF_ERROR(partitioner_
                          ->PartitionComputation(hlo->while_condition(),
-                                                HloSharding::Replicate(),
+                                                cond_root_sharding.IsManual()
+                                                    ? cond_root_sharding
+                                                    : HloSharding::Replicate(),
                                                 next_channel_id_, logger_)
                          .status());
   TF_RETURN_IF_ERROR(partitioner_
@@ -2739,15 +2751,17 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
                                                   next_channel_id_, logger_)
                            .status());
   }
-
-  // We replicate the predicate of the conditional (the first operand) so that
-  // all partitions follow the same control flow.
   SetPartitionedHlo(hlo, [&] {
+    HloInstruction* cond = GetPartitionedHlo(hlo->operand(0)).hlo();
+    if (!hlo->operand(0)->sharding().IsManual()) {
+      // We replicate the predicate of the conditional (the first operand) so
+      // that all partitions follow the same control flow.
+      cond = GetPartitionedHlo(hlo->operand(0))
+                 .Reshard(HloSharding::Replicate())
+                 .hlo();
+    }
     return b_.AddInstruction(HloInstruction::CreateConditional(
-        MakePartitionedShape(hlo->shape(), hlo->sharding()),
-        GetPartitionedHlo(hlo->operand(0))
-            .Reshard(HloSharding::Replicate())
-            .hlo(),
+        MakePartitionedShape(hlo->shape(), hlo->sharding()), cond,
         hlo->called_computations(), branch_args));
   });
   return Status::OK();
@@ -3658,9 +3672,19 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
     const HloComputation* entry = module->entry_computation();
     TF_RET_CHECK(entry->root_instruction()->has_sharding());
     const HloSharding& root_sharding = entry->root_instruction()->sharding();
-    TF_RET_CHECK(root_sharding.IsReplicated() ||
-                 root_sharding.UniqueDevice().has_value())
-        << "Unsupported entry root sharding: " << root_sharding.ToString();
+    if (!root_sharding.UniqueDevice().has_value()) {
+      if (root_sharding.IsTuple()) {
+        TF_RET_CHECK(absl::c_all_of(root_sharding.tuple_elements(),
+                                    [](const HloSharding& s) {
+                                      return s.IsReplicated() || s.IsManual();
+                                    }))
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+
+      } else {
+        TF_RET_CHECK(root_sharding.IsReplicated() || root_sharding.IsManual())
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+      }
+    }
 
     for (const HloInstruction* param : entry->parameter_instructions()) {
       TF_RET_CHECK(param->has_sharding());

@@ -2697,6 +2697,9 @@ def matrix_diag_part(
 
   Returns:
     A Tensor containing diagonals of `input`. Has the same type as `input`.
+
+  Raises:
+    InvalidArgumentError: When `k` is out of bound or when `k[0]>k[1:]`.
   """
   # Special case to sidestep the tf.constant conversion error:
   # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2896,7 +2899,7 @@ def _constant_if_small(value, shape, dtype, name):
   try:
     if np.prod(shape) < 1000:
       return constant(value, shape=shape, dtype=dtype, name=name)
-  except TypeError:
+  except (NotImplementedError, TypeError):
     # Happens when shape is a Tensor, list with Tensor elements, etc.
     pass
   return None
@@ -6584,3 +6587,22 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     input = reshape(input, [-1])
     axis = 0
   return repeat_with_axis(input, repeats, axis, name)
+
+
+@tf_export("guarantee_const")
+@deprecation.deprecated(None, "Not for public use.")
+def guarantee_const(input, name=None):    # pylint: disable=redefined-builtin
+  """Promise to the TF runtime that the input tensor is a constant.
+
+  The runtime is then free to make optimizations based on this.
+
+  Returns the input tensor without modification.
+
+  Args:
+    input: A `Tensor`.
+    name: A name for this operation.
+
+  Returns:
+    A `Tensor`. Has the same dtype as `input`.
+  """
+  return gen_array_ops.guarantee_const(input=input, name=name)

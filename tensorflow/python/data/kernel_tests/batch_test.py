@@ -285,14 +285,16 @@ class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     tensor_slice_len = 8
     batch_size = 2
     num_outputs = tensor_slice_len // batch_size
-    self.run_core_tests(
-        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-        num_outputs)
+    verify_fn(self,
+              lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
+              num_outputs)
 
   def _sparse(self, i):
     return sparse_tensor.SparseTensorValue(
@@ -301,16 +303,20 @@ class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   def _build_dataset_sparse(self, batch_size=5):
     return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparseCore(self):
-    self.run_core_tests(self._build_dataset_sparse, 2)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
+    verify_fn(self, self._build_dataset_sparse, num_outputs=2)
 
   def _build_dataset_nested_sparse(self):
     return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testNestedSparseCore(self):
-    self.run_core_tests(self._build_dataset_nested_sparse, 1)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testNestedSparse(self, verify_fn):
+    verify_fn(self, self._build_dataset_nested_sparse, num_outputs=1)
 
 
 if __name__ == '__main__':

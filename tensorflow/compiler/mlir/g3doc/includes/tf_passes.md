@@ -80,30 +80,6 @@ Prepares TPU computation module attached to _TPUCompileMlir op for
 TensorFlow graph export by making transformation such as replacing or
 removing MLIR or XLA specific attributes that are not legal in TensorFlow
 graph.
-### `-tf-device-attribute-to-launch`: Wraps each TF op which has a non-empty device attribute in a tf_device.launch.
-This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
-the same device attribute.
-
-For example, the following:
-
-```mlir
-func @single_op_launch() {
-  %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
-  return %a
-}
-```
-
-will be transformed into:
-
-```mlir
-func @single_op_launch() {
-  %1 = tf_device.launch() ( {
-    %a = "tf.opA"() : () -> tensor<i1>
-    tf_device.return %a
-  }) {device = "CPU:0"} : () -> tensor<i1>
-  return %1
-}
-```
 ### `-tf-device-cluster-outlining`: Outlines regions of tf_device.cluster operations
 This pass outlines the body of a `tf_device.cluster` into a function and
 replaces the `tf_device.cluster` op with an equivalent `tf_device.cluster_func`
@@ -165,40 +141,25 @@ func @cluster() -> tensor<i32> {
   return %cluster : tensor<i32>
 }
 ```
-### `-tf-device-host-launch-to-outside-compiled`: Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.
-This pass takes ops wrapped in a tf_device.launch op with host device
-assignment extracts them from launch and adds an `_xla_outside_compilation`
-attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
-
-A simple example:
-
-```mlir
-  "tf_device.cluster"() ( {
-    "tf.A"()
-    "tf_device.launch"() {
-      "tf.B"()
-      tf_device.return
-    } {device = "TPU_REPLICATED_HOST"} : () -> ()
-    "tf.C"()
-    tf_device.return
-  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-```
-
-Would become the following ops (unimportant attribute, type are omitted):
-
-```mlir
-  "tf_device.cluster"() ( {
-    "tf.A"()
-    "tf.B"() {_xla_outside_compilation = "cluster1"}
-    "tf.C"()
-    tf_device.return
-  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-```
 ### `-tf-device-mark-input-output-aliases`: Marks device cluster inputs-output pairs that read/write to the same variable as aliases
 This pass analyzes the inputs and outputs to device cluster and marks those
 input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
 and write to the same resource. This aliasing information can then be propagated
 to XLA compiler for input/output buffer space optimizations.
+### `-tf-drop-while-shape-invariant`: Drop `shape_invariant` attrbute from While/WhileRegion ops.
+Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op. This
+would allow shape inference pass to further refine operand/result shapes of
+these ops. This is only safe to do when compiling to XLA.
+### `-tf-drop-while-shape-invariant-in-device-cluster`: Drop `shape_invariant` attrbute from While/WhileRegion ops inside device cluster.
+Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
+inside device cluster. This would allow shape inference pass to further
+refine operand/result shapes of these ops. This is only safe to do when
+compiling to XLA.
+### `-tf-ensure-static-shapes`: Performs checks that the whole module does not contain dynamic shapes.
+This pass performs check that none of the ops in the MLIR module
+have dynamic shapes.
+Note, the pass is created temporary to stage the rollout of the second
+phase of the MLIR bridge and will be deleted after the rollout stage is completed.
 ### `-tf-executor-graph-pruning`: Prunes unreachable ops in a tf_executor.graph
 This pass removes ops from a `tf_executor.graph` that are not transitively, via
 data or control dependencies, connected to the associated `tf_executor.fetch`
@@ -315,6 +276,18 @@ The benefit of this optimization is reduced memory requirement on host. For
 multiple writes (one from each replica) to such variables, the host would
 allocate buffer space to recieve the device output from all replicas, which is
 not required. We can use the output of first replica in such cases.
+### `-tf-lower-quantized`: Lowers ops that require quantized input or output.
+This pass rewrites all ops that have at least one input or output that must
+be a quantized type to ops whose inputs and outputs allow non-quantized
+types. Examples of quantized types are TF_Qint8 or TF_Quint8.
+
+An example is TF_DequantizeOp, which converts a quantized type to a float.
+This op is rewritten to generic ops that perform the scale and shift
+and can operate on non-quantized types.
+
+Currently, TF_DequantizeOp is the only op with a lowering that falls
+in this category. When more lowerings are added (e.g. QuantizeV2Op),
+they should be added to this pass.
 ### `-tf-mark-ops-for-outside-compilation`: Marks ops in device cluster for outside compilation if they are unsupported on device.
 This pass marks unsupported ops in a device cluster with
 `_xla_outside_compilation` attribute so the operations will run on the host
@@ -355,6 +328,34 @@ func @unsupported_op() -> tensor<i32> {
 }
 ```
 ### `-tf-optimize`: Optimize TensorFlow module
+### `-tf-outside-compiled-to-host-launch`: Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.
+This pass wraps ops with the same `_xla_outside_compilation`
+attribute value in a tf_device.launch op with host device assignment.
+
+A simple example:
+
+```mlir
+  "tf_device.cluster"() ( {
+    "tf.A"()
+    "tf.B"() {_xla_outside_compilation = "cluster1"}
+    "tf.C"()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+```
+
+Would become the following ops (unimportant attribute, type are omitted):
+
+```mlir
+  "tf_device.cluster"() ( {
+    "tf.A"()
+    "tf_device.launch"() {
+      "tf.B"() {_xla_outside_compilation = "cluster1"}
+      tf_device.return
+    } {device = "TPU_REPLICATED_HOST"} : () -> ()
+    "tf.C"()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+```
 ### `-tf-promote-resources-to-args`: Promote resources reads/writes to function inputs/outputs.
 This pass promotes resource accesses in the main function to input arguments
 and outputs of the main function.
@@ -414,6 +415,49 @@ will be transformed into this functional operation
     then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
   } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
 ```
+### `-tf-replicate-invariant-op-hoisting`: Hoists replicate invariant operations out of replicate
+This pass looks for replicate invariant ops in a `tf_device.replicate` op
+region and hoists them out. It also makes `tf.Shape` ops replicate invariant
+if possible. This currently updates or replaces `tf.Shape` ops of replicated
+arguments, either tensors or resources.
+
+For example, the following
+
+```mlir
+tf_device.replicate([%0, %1] as %ri: tensor<*xi32>) {n = 2 : i32} {
+  %2 = "tf.Shape"(%ri) : (tensor<*xi32>) -> tensor<?xi32>
+  tf_device.return
+}
+```
+
+gets converted to
+
+```mlir
+tf_device.replicate([%0, %1] as %ri: tensor<*xi32>) {n = 2 : i32} {
+  %2 = "tf.Shape"(%0) : (tensor<*xi32>) -> tensor<?xi32>
+  tf_device.return
+}
+```
+
+and for resource variables the following
+
+```mlir
+tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
+  %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
+  %3 = "tf.Shape"(%2) : (tensor<*xi32>) -> tensor<?xi32>
+  tf_device.return
+}
+```
+
+gets converted to
+
+```mlir
+tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
+  %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
+  %3 = "tf.VariableShape"(%0) : (tensor<*x!tf.resource>) -> tensor<?xi32>
+  tf_device.return
+}
+```
 ### `-tf-shape-inference`: Simple Shape Inference on TensorFlow Dialect
 
 #### Options
@@ -429,7 +473,10 @@ This pass requires that the full shape of the tensor array can be inferred:
 1) the size needs to be a constant, 2) it specifies the full element shape,
 or that can be inferred from a later write, and 3) all elements have the same
 shape.
-### `-tf-tensor-device-copy`: Fold the tf.Identity op if the op has the same device as its operand
+### `-tf-tensor-device-copy`: Fold the tf.Identity op and the tf.IdentityN op if the op has the same device as its operand
+### `-tf-tpu-cleanup-cluster-attributes`: Eliminate _tpu_replicate and other attributes from ops in a cluster
+This pass eliminate `_tpu_replicate` and `device` attribute on operations
+that are contained in a tf_device.cluster op.
 ### `-tf-tpu-cluster-formation`: Forms clusters from operations assigned to the same TPU computation
 TPU computations from the frontend are composed of a `tf.TPUReplicateMetadata`
 op, a subgraph of ops (TensorFlow Dialect) each with a matching `_tpu_replicate`
@@ -506,6 +553,40 @@ func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, t
   return %replicate#0, %replicate#1 : tensor<i32>, tensor<i32>
 }
 ```
+### `-tf-tpu-extract-head-tail-outside-compilation`: Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.
+This pass extracts a CPU computation cluster with `_xla_outside_compilation`
+annotation from the head or tail of a TPU cluster.
+
+For example:
+
+```mlir
+  %cluster = "tf_device.cluster"() ( {
+    %a = "tf.A"(%arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+    %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
+    %c = "tf.C"(%b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+    tf_device.return %c : tensor<i32>
+  }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
+  return %cluster : tensor<i32>
+```
+
+becomes:
+
+```mlir
+%0 = "tf_device.launch"() ( {
+  %3 = "tf.A"(%arg0) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+%1 = "tf_device.cluster"() ( {
+  %3 = "tf.B"(%0) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device_assignment = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = ""} : () -> tensor<i32>
+%2 = "tf_device.launch"() ( {
+  %3 = "tf.C"(%1) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+return %2 : tensor<i32>
+
+```
 ### `-tf-tpu-extract-outside-compilation`: Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.
 This pass extracts a CPU computation cluster with `_xla_outside_compilation`
 annotation, which denotes ops that should be run on CPU/host, from a TPU cluster.
@@ -554,6 +635,35 @@ func @outside_compilation() -> tensor<f32> {
   return %0 : tensor<f32>
 }
 ```
+### `-tf-tpu-host-computation-expansion`: Expands host computation before and after TPU computation.
+This pass expands outside compilation attributes to Identity/Cast ops
+at the head of TPU computation if it's only used by outside compiled ops.
+### `-tf-tpu-merge-variables-with-execute`: Merges device variable reads and updates into TPU execute ops
+This pass finds on-device resource variable reads and updates surrounding a
+`tf.TPUExecute` op and merges them into a `tf.TPUExecuteAndUpdateVariables`
+op. This allows the TPU execution to perform more efficient in-place
+variable updates.
+
+For example,
+
+```mlir
+  %0 = "tf.ReadVariableOp"(%arg0)
+  %1 = "tf.ReadVariableOp"(%arg1)
+  %2 = "tf.TPUExecute"(%0, %1, %compile)
+  %3 = "tf.AssignVariableOp"(%arg0, %2)
+```
+
+will be transformed into
+
+```mlir
+  %2 = "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %compile)
+    { device_var_reads_indices = [0, 1],
+      device_var_updates_indices = [0, -1] }
+````
+
+The transformation happens only for on-device variables. The above
+transformation requires `%arg0`, `%arg1` to have the same device assignment
+as the `TPUExecute` op.
 ### `-tf-tpu-reorder-replicate-partitioned-inputs`: Reorder replicated and partitioned input ops.
 This pass rewrites how data parallelism and model parallelism is expressed for
 inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and
@@ -777,6 +887,9 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   return %1 : tensor<8xi32>
 }
 ```
+### `-tf-tpu-update-embedding-enqueue-op-inputs`: Updates inputs to TPU embedding enqueue ops depending on whether graph is in training mode or in evaluation mode.
+Updates inputs to TPU embedding enqueue ops depending on whether graph
+is in training mode or in evaluation mode.
 ### `-tf-verify-for-export`: Verify module is suitable for export back to TF Graph
 Verifies whether all functions in module are of single tf_executor.graph and
 each tf_executor.island in tf_executor.graph only has a single op.

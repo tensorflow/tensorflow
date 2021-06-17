@@ -667,8 +667,8 @@ class Model {
       save_dir_ = string(save_dir);
     }
     {
-      mutex_lock l(publish_mu_);
-      snapshot_buffers_[this] = SnapshotBuffer{
+      mutex_lock l(*publish_mu());
+      (*snapshot_buffers())[this] = SnapshotBuffer{
           std::shared_ptr<std::deque<OptimizationSnapshot>>(snapshot_buffer_),
           std::shared_ptr<mutex>(snapshot_buffer_mu_)};
     }
@@ -680,8 +680,8 @@ class Model {
       save_cond_var_.notify_all();
     }
     {
-      mutex_lock l(publish_mu_);
-      snapshot_buffers_.erase(this);
+      mutex_lock l(*publish_mu());
+      (*snapshot_buffers()).erase(this);
     }
   }
 
@@ -696,7 +696,7 @@ class Model {
 
   // Indicates whether publishing mode is enabled.
   static bool publish() {
-    tf_shared_lock l(publish_mu_);
+    tf_shared_lock l(*publish_mu());
     return publish_;
   }
 
@@ -750,7 +750,7 @@ class Model {
   // latest optimization snapshots in a buffer. The snapshots can be accessed
   // using `PublishLatest`.
   static void EnablePublishing() {
-    mutex_lock l(publish_mu_);
+    mutex_lock l(*publish_mu());
     publish_ = true;
   }
 
@@ -767,17 +767,24 @@ class Model {
   // publishing.
   static constexpr int64 kMaxNumBufferedSnapshots = 1;
 
+  // Indicates whether publishing mode is enabled.
+  static bool publish_ TF_GUARDED_BY(*publish_mu());
+
   // Used to coordinate (de)registering of optimization snapshot buffers for
   // publishing.
-  static mutex publish_mu_;
-
-  // Indicates whether publishing mode is enabled.
-  static bool publish_ TF_GUARDED_BY(publish_mu_);
+  static mutex* publish_mu() {
+    static mutex lock(LINKER_INITIALIZED);
+    return &lock;
+  }
 
   // Mapping from all existing model pointers to their optimization snapshot
   // buffers and locks required to access the buffers.
-  static absl::flat_hash_map<Model*, SnapshotBuffer> snapshot_buffers_
-      TF_GUARDED_BY(publish_mu_);
+  static absl::flat_hash_map<Model*, SnapshotBuffer>* snapshot_buffers()
+      TF_SHARED_LOCKS_REQUIRED(*publish_mu()) {
+    static absl::flat_hash_map<Model*, SnapshotBuffer>* const snapshot_buffers =
+        new absl::flat_hash_map<Model*, SnapshotBuffer>();
+    return snapshot_buffers;
+  }
 
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a vector which contains pairs of node names and tunable parameters.

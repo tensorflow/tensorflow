@@ -209,6 +209,7 @@ FloatFullyConnectedOpTest/FloatFullyConnectedOpTest/SimpleTest4DInput/\d+
 QuantizedFullyConnectedOpTest/QuantizedFullyConnectedOpTest/SimpleTest4dInputQuantizedUint8/\d+
 QuantizedFullyConnectedOpTest/QuantizedFullyConnectedOpTest/SimpleTest4dInputQuantizedOutputMultiplierGreaterThan1Uint8/\d+,29
 FloatFullyConnectedOpTest/FloatFullyConnectedOpTest/BlackBoxTest/\d+
+FloatFullyConnectedOpTest/SimpleTestNoBias
 
 # gather_test
 GatherOpTest/Shuffle,29
@@ -317,7 +318,8 @@ PowOpModel/.+,29
 QuantizedLstmTest/BasicQuantizedLstmTest/29
 
 # quantized_lstm op test
-IntegerLstmOpTest/NoCifg_NoPeephole_Projection_LayerNorm,30
+# Temporary disabled due to b/188515203
+//IntegerLstmOpTest/NoCifg_NoPeephole_Projection_LayerNorm,30
 
 # quantize_test
 QuantizeOpTest/UINT8,29
@@ -432,7 +434,7 @@ TransposeTest/.+
 
 # transpose_conv_test
 -TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannel16x8/.+
--TransposeConvOpTest/TransposeConvOpTest..*Bias.*
+TransposeConvOpTest/TransposeConvOpTest..*Bias.*/0,29
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29
 

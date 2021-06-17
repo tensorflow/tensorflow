@@ -43,4 +43,9 @@ def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 
 def LHLO_Buffer : MemRefOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
+def LHLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
+
+// Dynamic representation of a shape vector
+def LHLO_DimensionBuffer : MemRefRankOf<[LHLO_DimensionValue], [1]>;
+
 #endif // LHLO_OPS_BASE

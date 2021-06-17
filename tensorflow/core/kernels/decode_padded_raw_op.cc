@@ -136,6 +136,7 @@ REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);
 REGISTER(int64);
+REGISTER(bfloat16);
 
 #undef REGISTER
 

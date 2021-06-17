@@ -191,13 +191,10 @@ TEST(ConvertXPlaneToOpStats, Hostnames) {
       op_stats.core_id_to_details().at(kDefaultGpuLocalCoreId).hostname());
 }
 
-// Helper function to build a XSpace and store it to test directory.
-void BuildAndStoreXSpaceForTest(Env* test_env, absl::string_view test_dir,
-                                absl::string_view hostname) {
+void BuildXSpaceForTest(XSpace& xspace, absl::string_view hostname) {
   constexpr int64 kStepNum = 123;
   constexpr int64 kStepId = 456;
   // Create a host only XSpace for test.
-  XSpace xspace;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&xspace));
   host_plane_builder.ReserveLines(2);
 
@@ -214,39 +211,29 @@ void BuildAndStoreXSpaceForTest(Env* test_env, absl::string_view test_dir,
   // Create a TensorFlow op that runs for 70 ps.
   CreateXEvent(&host_plane_builder, &executor_thread, "aaa:bbb", 30, 70);
   GroupTfEvents(&xspace);
-
   xspace.add_hostnames(std::string(hostname));
-
-  std::string xspace_name = absl::StrCat(hostname, ".", kXPlanePb);
-  TF_CHECK_OK(
-      WriteBinaryProto(test_env, io::JoinPath(test_dir, xspace_name), xspace))
-      << "Failed to write binary XSpace to file: " << xspace_name;
 }
 
 TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
-  // Initialize environment and directory for testing.
-  Env* test_env = Env::Default();
-  std::string test_dir = io::JoinPath(testing::TmpDir(), "test_dir");
-  TF_CHECK_OK(test_env->CreateDir(test_dir))
-      << "Failed to create test directory: " << test_dir;
-
   static constexpr char kHost1[] = "host1";
   static constexpr char kHost2[] = "host2";
 
-  BuildAndStoreXSpaceForTest(test_env, test_dir, kHost1);
-  BuildAndStoreXSpaceForTest(test_env, test_dir, kHost2);
+  XSpace xspace1;
+  XSpace xspace2;
 
-  std::vector<std::string> xspace_paths;
-  xspace_paths.push_back(
-      io::JoinPath(test_dir, absl::StrCat(kHost1, ".", kXPlanePb)));
-  xspace_paths.push_back(
-      io::JoinPath(test_dir, absl::StrCat(kHost2, ".", kXPlanePb)));
+  BuildXSpaceForTest(xspace1, kHost1);
+  BuildXSpaceForTest(xspace2, kHost2);
+
+  std::vector<XSpace> xspaces;
+  xspaces.push_back(xspace1);
+  xspaces.push_back(xspace2);
+
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
 
-  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(xspace_paths, options,
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
                                                    &combined_op_stats))
       << "Failed to convert multi XSpace to OpStats";
 
@@ -274,12 +261,6 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   EXPECT_EQ(kHost1, core_details_map.at(kDefaultGpuLocalCoreId).hostname());
   EXPECT_EQ(kHost2,
             core_details_map.at(1000 + kDefaultGpuLocalCoreId).hostname());
-
-  // Tear down environment and directory for testing.
-  int64 undeleted_files, undeleted_dirs;
-  TF_CHECK_OK(
-      test_env->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs))
-      << "Failed to delete test directory: " << test_dir;
 }
 
 }  // namespace

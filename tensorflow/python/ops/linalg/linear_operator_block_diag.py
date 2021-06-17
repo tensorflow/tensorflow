@@ -34,6 +34,7 @@ __all__ = ["LinearOperatorBlockDiag"]
 
 
 @tf_export("linalg.LinearOperatorBlockDiag")
+@linear_operator.make_composite_tensor
 class LinearOperatorBlockDiag(linear_operator.LinearOperator):
   """Combines one or more `LinearOperators` in to a Block Diagonal matrix.
 
@@ -245,7 +246,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
-          is_square=True,
+          is_square=is_square,
           parameters=parameters,
           name=name)
 
@@ -346,10 +347,10 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
             "Operators are incompatible. Expected `x` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
+      with self._name_scope(name):  # pylint: disable=not-callable
         return linear_operator_algebra.matmul(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       arg_dim = -1 if adjoint_arg else -2
       block_dimensions = (self._block_range_dimensions() if adjoint
                           else self._block_domain_dimensions())
@@ -426,7 +427,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_range_dimensions() if adjoint
                           else self._block_domain_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, -1):
@@ -527,10 +528,10 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
             "Operators are incompatible. Expected `rhs` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
+      with self._name_scope(name):  # pylint: disable=not-callable
         return linear_operator_algebra.solve(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
                           else self._block_range_dimensions())
       arg_dim = -1 if adjoint_arg else -2
@@ -610,7 +611,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     Raises:
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
                           else self._block_range_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, rhs, -1):
@@ -707,3 +708,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     eig_list = linear_operator_util.broadcast_matrix_batch_dims(eig_list)
     eigs = array_ops.concat(eig_list, axis=-2)
     return array_ops.squeeze(eigs, axis=-1)
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("operators",)

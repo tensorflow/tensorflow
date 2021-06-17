@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/split_provider.h"
 
-#include "tensorflow/core/data/service/data_service.h"
+#include <memory>
+#include <string>
+
+#include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {

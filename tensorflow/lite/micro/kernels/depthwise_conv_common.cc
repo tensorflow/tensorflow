@@ -113,8 +113,7 @@ TfLiteStatus CalculateOpDataDepthwiseConv(
         context, input, filter, bias, output, params.activation,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
-        data->per_channel_output_multiplier,
-        reinterpret_cast<int*>(data->per_channel_output_shift),
+        data->per_channel_output_multiplier, data->per_channel_output_shift,
         output_channels));
   }
 

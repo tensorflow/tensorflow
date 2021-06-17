@@ -734,6 +734,13 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(flat_inp, outputs)
 
+  def test_save_returns_none(self):
+    # Test that `tf.saved_model.save` API returns None to user.
+    root = tracking.AutoTrackable()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    result = save.save(root, save_dir)
+    self.assertIsNone(result)
+
 
 class VariablePolicyEnumTest(test.TestCase):
 

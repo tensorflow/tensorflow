@@ -101,12 +101,6 @@ Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void MapParallelization::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                  const GraphDef& optimize_output,
-                                  double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(MapParallelization, "map_parallelization");
 
 }  // namespace grappler

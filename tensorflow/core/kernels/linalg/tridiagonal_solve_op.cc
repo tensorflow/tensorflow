@@ -43,6 +43,14 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
 
   explicit TridiagonalSolveOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("partial_pivoting", &pivoting_));
+    perturb_singular_ = false;
+    if (context->HasAttr("perturb_singular")) {
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("perturb_singular", &perturb_singular_));
+    }
+    OP_REQUIRES(context, pivoting_ || !perturb_singular_,
+                errors::InvalidArgument("Setting perturb_singular requires "
+                                        "also setting partial_pivoting."));
   }
 
   void ValidateInputMatrixShapes(
@@ -112,15 +120,24 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
 
     const int n = diag.size();
     MatrixMap& x = outputs->at(0);
-    const Scalar zero(0);
+    constexpr Scalar zero(0);
 
     if (n == 0) {
       return;
     }
+    if (pivoting_ && perturb_singular_) {
+      SolveWithGaussianEliminationWithPivotingAndPerturbSingular(
+          context, superdiag, diag, subdiag, rhs, x);
+      return;
+    }
+
     if (n == 1) {
-      OP_REQUIRES(context, diag(0) != zero,
-                  errors::InvalidArgument(kNotInvertibleScalarMsg));
-      x.row(0) = rhs.row(0) / diag(0);
+      if (diag(0) == zero) {
+        LOG(WARNING) << kNotInvertibleScalarMsg;
+        x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+      } else {
+        x.row(0) = rhs.row(0) / diag(0);
+      }
       return;
     }
 
@@ -134,6 +151,183 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TridiagonalSolveOp);
+
+  // Adjust pivot such that neither 'rhs[i,:] / pivot' nor '1 / pivot' cause
+  // overflow, where i numerates the multiple right-hand-sides. During the
+  // back-substitution phase in
+  // SolveWithGaussianEliminationWithPivotingAndPerturbSingular, we compute
+  // the i'th row of the solution as rhs[i,:] * (1 / pivot). This logic is
+  // extracted from the LAPACK routine xLAGTS.
+  void MaybePerturbPivot(RealScalar perturb, Scalar& pivot,
+                         Eigen::Matrix<Scalar, 1, Eigen::Dynamic>& rhs_row) {
+    constexpr RealScalar one(1);
+    // The following logic is extracted from xLAMCH in LAPACK.
+    constexpr RealScalar tiny = std::numeric_limits<RealScalar>::min();
+    constexpr RealScalar small = one / std::numeric_limits<RealScalar>::max();
+    constexpr RealScalar safemin =
+        (small < tiny
+             ? tiny
+             : (one + std::numeric_limits<RealScalar>::epsilon()) * safemin);
+    constexpr RealScalar bignum = one / safemin;
+
+    RealScalar abs_pivot = std::abs(pivot);
+    if (abs_pivot >= one) {
+      return;
+    }
+    // Safeguard against infinite loop if 'perturb' is zero.
+    // 'perturb' should never have magnitude smaller than safemin.
+    perturb = std::max(std::abs(perturb), safemin);
+    // Make sure perturb and pivot have the same sign.
+    perturb = std::copysign(perturb, std::real(pivot));
+
+    bool stop = false;
+    const RealScalar max_factor = rhs_row.array().abs().maxCoeff();
+    while (abs_pivot < one && !stop) {
+      if (abs_pivot < safemin) {
+        if (abs_pivot == 0 || max_factor * safemin > abs_pivot) {
+          pivot += perturb;
+          perturb *= 2;
+        } else {
+          pivot *= bignum;
+          rhs_row *= bignum;
+          stop = true;
+        }
+      } else if (max_factor > abs_pivot * bignum) {
+        pivot += perturb;
+        perturb *= 2;
+      } else {
+        stop = true;
+      }
+      abs_pivot = std::abs(pivot);
+    }
+  }
+
+  // This function roughly follows LAPACK's xLAGTF + xLAGTS routines.
+  //
+  // It computes the solution to the a linear system with multiple
+  // right-hand sides
+  //     T * X = RHS
+  // where T is a tridiagonal matrix using a row-pivoted LU decomposition.
+
+  // This routine differs from SolveWithGaussianEliminationWithPivoting by
+  // allowing the tridiagonal matrix to be numerically singular.
+  // If tiny diagonal elements of U are encountered, signaling that T is
+  // numerically singular, the diagonal elements are perturbed by
+  // an amount proportional to eps*max_abs_u to avoid overflow, where
+  // max_abs_u is max_{i,j} | U(i,j) |. This is useful when using this
+  // routine for computing eigenvectors of a matrix T' via inverse
+  // iteration by solving the singular system
+  //   (T' - lambda*I) X = RHS,
+  // where lambda is an eigenvalue of T'.
+  //
+  // By fusing the factorization and solution, we avoid storing L
+  // and pivoting information, and the forward solve is done on-the-fly
+  // during factorization, instead of requiring a separate loop.
+  void SolveWithGaussianEliminationWithPivotingAndPerturbSingular(
+      OpKernelContext* context, const MatrixMapRow& superdiag,
+      const MatrixMapRow& diag, const MatrixMapRow& subdiag,
+      const ConstMatrixMap& rhs, MatrixMap& x) {
+    constexpr Scalar zero(0);
+    constexpr RealScalar realzero(0);
+    constexpr Scalar one(1);
+    constexpr RealScalar eps = std::numeric_limits<RealScalar>::epsilon();
+
+    const int n = diag.size();
+    if (n == 0) return;
+    if (n == 1) {
+      Scalar denom = diag(0);
+      RealScalar tol = eps * std::abs(denom);
+      Eigen::Matrix<Scalar, 1, Eigen::Dynamic> row = rhs.row(0);
+      MaybePerturbPivot(tol, denom, row);
+      x = row * (one / denom);
+      return;
+    }
+
+    // The three columns in u are the diagonal, superdiagonal, and second
+    // superdiagonal, respectively, of the U matrix in the LU decomposition
+    // of the input matrix (subject to row exchanges due to pivoting). For
+    // a pivoted tridiagonal matrix, the U matrix has at most two non-zero
+    // superdiagonals.
+    Eigen::Array<Scalar, Eigen::Dynamic, 3> u(n, 3);
+
+    // We accumulate max( abs( U(i,j) ) ) in max_abs_u for use in perturbing
+    // near-zero pivots during the solution phase.
+    u(0, 0) = diag(0);
+    u(0, 1) = superdiag(0);
+    RealScalar max_abs_u = std::max(std::abs(u(0, 0)), std::abs(u(0, 1)));
+    RealScalar scale1 = std::abs(u(0, 0)) + std::abs(u(0, 1));
+    x.row(0) = rhs.row(0);
+    for (int k = 0; k < n - 1; ++k) {
+      // The non-zeros in the (k+1)-st row are
+      //    [ ... subdiag(k+1) (diag(k+1)-shift) superdiag(k+1) ... ]
+      u(k + 1, 0) = diag(k + 1);
+      RealScalar scale2 = std::abs(subdiag(k + 1)) + std::abs(u(k + 1, 0));
+      if (k < n - 2) scale2 += std::abs(superdiag(k + 1));
+      if (subdiag(k + 1) == zero) {
+        // The sub-diagonal in the k+1 row is already zero. Move to the next
+        // row.
+        scale1 = scale2;
+        u(k + 1, 1) = superdiag(k + 1);
+        u(k, 2) = zero;
+        x.row(k + 1) = rhs.row(k + 1);
+      } else {
+        const RealScalar piv1 =
+            u(k, 0) == zero ? realzero : std::abs(u(k, 0)) / scale1;
+        const RealScalar piv2 = std::abs(subdiag(k + 1)) / scale2;
+        if (piv2 <= piv1) {
+          // No row pivoting needed.
+          scale1 = scale2;
+          Scalar factor = subdiag(k + 1) / u(k, 0);
+          u(k + 1, 0) = diag(k + 1) - factor * u(k, 1);
+          u(k + 1, 1) = superdiag(k + 1);
+          u(k, 2) = zero;
+          x.row(k + 1) = rhs.row(k + 1) - factor * x.row(k);
+        } else {
+          // Swap rows k and k+1.
+          Scalar factor = u(k, 0) / subdiag(k + 1);
+          u(k, 0) = subdiag(k + 1);
+          u(k + 1, 0) = u(k, 1) - factor * diag(k + 1);
+          u(k, 1) = diag(k + 1);
+          if (k < n - 2) {
+            u(k, 2) = superdiag(k + 1);
+            u(k + 1, 1) = -factor * superdiag(k + 1);
+          }
+          x.row(k + 1) = x.row(k) - factor * rhs.row(k + 1);
+          x.row(k) = rhs.row(k + 1);
+        }
+      }
+      if (k < n - 2) {
+        for (int i = 0; i < 3; ++i) {
+          max_abs_u = std::max(max_abs_u, std::abs(u(k, i)));
+        }
+      }
+    }
+    max_abs_u = std::max(max_abs_u, std::abs(u(n - 1, 0)));
+
+    // We have already solved L z = P rhs above. Now we solve U x = z,
+    // possibly perturbing small pivots to avoid overflow. The variable tol
+    // contains eps * max( abs( u(:,:) ) ). If tiny pivots are encoutered,
+    // they are perturbed by a small amount on the scale of tol to avoid
+    // overflow or scaled up to avoid underflow.
+    RealScalar tol = eps * max_abs_u;
+    Scalar denom = u(n - 1, 0);
+    Eigen::Matrix<Scalar, 1, Eigen::Dynamic> row = x.row(n - 1);
+    MaybePerturbPivot(tol, denom, row);
+    x.row(n - 1) = row * (one / denom);
+    if (n > 1) {
+      denom = u(n - 2, 0);
+      row = x.row(n - 2) - u(n - 2, 1) * x.row(n - 1);
+      MaybePerturbPivot(std::copysign(tol, std::real(denom)), denom, row);
+      x.row(n - 2) = row * (one / denom);
+
+      for (int k = n - 3; k >= 0; --k) {
+        row = x.row(k) - u(k, 1) * x.row(k + 1) - u(k, 2) * x.row(k + 2);
+        denom = u(k, 0);
+        MaybePerturbPivot(std::copysign(tol, std::real(denom)), denom, row);
+        x.row(k) = row * (one / denom);
+      }
+    }
+  }
 
   void SolveWithGaussianEliminationWithPivoting(OpKernelContext* context,
                                                 const MatrixMapRow& superdiag,
@@ -158,8 +352,11 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
     for (int i = 0; i < n - 1; ++i) {
       if (std::abs(u(i)) >= std::abs(subdiag(i + 1))) {
         // No row interchange.
-        OP_REQUIRES(context, u(i) != zero,
-                    errors::InvalidArgument(kNotInvertibleMsg));
+        if (u(i) == zero) {
+          LOG(WARNING) << kNotInvertibleMsg;
+          x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+          return;
+        }
         const Scalar factor = subdiag(i + 1) / u(i, 0);
         u(i + 1, 0) = diag(i + 1) - factor * u(i, 1);
         x.row(i + 1) = rhs.row(i + 1) - factor * x.row(i);
@@ -181,8 +378,11 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
         }
       }
     }
-    OP_REQUIRES(context, u(n - 1, 0) != zero,
-                errors::InvalidArgument(kNotInvertibleMsg));
+    if (u(n - 1, 0) == zero) {
+      LOG(WARNING) << kNotInvertibleMsg;
+      x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+      return;
+    }
     x.row(n - 1) /= u(n - 1, 0);
     x.row(n - 2) = (x.row(n - 2) - u(n - 2, 1) * x.row(n - 1)) / u(n - 2, 0);
     for (int i = n - 3; i >= 0; --i) {
@@ -204,14 +404,21 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
     // one superdiagonal).
     Eigen::Matrix<Scalar, Eigen::Dynamic, 1> u(n);
 
-    OP_REQUIRES(context, diag(0) != zero,
-                errors::InvalidArgument(kThomasFailedMsg));
+    if (diag(0) == zero) {
+      LOG(WARNING) << kThomasFailedMsg;
+      x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+      return;
+    }
+
     u(0) = superdiag(0) / diag(0);
     x.row(0) = rhs.row(0) / diag(0);
     for (int i = 1; i < n; ++i) {
       auto denom = diag(i) - subdiag(i) * u(i - 1);
-      OP_REQUIRES(context, denom != zero,
-                  errors::InvalidArgument(kThomasFailedMsg));
+      if (denom == zero) {
+        LOG(WARNING) << kThomasFailedMsg;
+        x.fill(std::numeric_limits<Scalar>::quiet_NaN());
+        return;
+      }
       u(i) = superdiag(i) / denom;
       x.row(i) = (rhs.row(i) - subdiag(i) * x.row(i - 1)) / denom;
     }
@@ -221,6 +428,7 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
   }
 
   bool pivoting_;
+  bool perturb_singular_;
 };
 
 REGISTER_LINALG_OP_CPU("TridiagonalSolve", (TridiagonalSolveOp<float>), float);

@@ -54,9 +54,14 @@ additional tooling:
 pip install tflite-support
 ```
 
-TensorFlow Lite metadata tooling supports both Python 2 and Python 3.
+TensorFlow Lite metadata tooling supports Python 3.
 
-## Adding metadata
+## Adding metadata using Flatbuffers Python API
+
+Note: to create metadata for the popular ML tasks supported in
+[TensorFlow Lite Task Library](../inference_with_metadata/task_library/overview),
+use the high-level API in the
+[TensorFlow Lite Metadata Writer Library](metadata_writer_tutorial.ipynb).
 
 There are three parts to the model metadata in the
 [schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs):
@@ -192,6 +197,10 @@ When processing image data for uint8 models, normalization and quantization are
 sometimes skipped. It is fine to do so when the pixel values are in the range of
 [0, 255]. But in general, you should always process the data according to the
 normalization and quantization parameters when applicable.
+
+[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/overview)
+can handle normalization for you if you set up `NormalizationOptions` in
+metadata. Quantization and dequantization processing is always encapluated.
 
 ### Examples
 

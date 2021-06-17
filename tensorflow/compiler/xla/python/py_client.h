@@ -117,6 +117,11 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // buffer.
   std::vector<pybind11::object> LiveBuffers();
 
+  // Returns a vector of live PyExecutable objects.
+  // note: must return std::shared_ptr instead of raw ptrs
+  // https://pybind11.readthedocs.io/en/stable/advanced/smart_ptrs.html#std-shared-ptr
+  std::vector<std::shared_ptr<PyExecutable>> LiveExecutables();
+
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
   Status Defragment();
 
@@ -144,7 +149,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
-  pybind11::bytes HeapProfile();
+  StatusOr<pybind11::bytes> HeapProfile();
 
  private:
   friend class PyBuffer;

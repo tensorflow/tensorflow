@@ -3147,6 +3147,9 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
     const std::function<StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>& create_sharded_dot) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   auto& lhs = GetPartitionedHlo(hlo->operand(0));
   auto& rhs = GetPartitionedHlo(hlo->operand(1));
   Window conv_window;
@@ -3201,7 +3204,6 @@ FindInputNodesIfOnlyDependOnSmallOperands(HloInstruction* hlo) {
         }
       }
     } else if (inst->IsElementwise() && !inst->HasSideEffectNoRecurse() &&
-               inst->opcode() != HloOpcode::kAllReduce &&
                absl::c_all_of(inst->operands(),
                               [inst](const HloInstruction* o) {
                                 return ShapeUtil::CompatibleIgnoringElementType(
@@ -3404,7 +3406,6 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     } else if (inst != computation->root_instruction() &&
                inst->user_count() > 0 && inst->IsElementwise() &&
                !inst->HasSideEffectNoRecurse() &&
-               inst->opcode() != HloOpcode::kAllReduce &&
                absl::c_all_of(inst->operands(),
                               [inst](const HloInstruction* o) {
                                 return ShapeUtil::CompatibleIgnoringElementType(

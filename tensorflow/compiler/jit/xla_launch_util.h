@@ -44,7 +44,9 @@ using ResourceVarsSnapshot = absl::flat_hash_map<int, absl::optional<Tensor>>;
 // refcount on destruction.
 class VariableInfo {
  public:
-  explicit VariableInfo(int index, absl::string_view name, Var* var);
+  explicit VariableInfo(int index, absl::string_view name, Var* var,
+                        const absl::optional<ManagedStackTrace>&
+                            definition_stack_trace = absl::nullopt);
   VariableInfo(VariableInfo&& other);
 
   VariableInfo& operator=(VariableInfo&& other);
@@ -68,12 +70,17 @@ class VariableInfo {
   bool lock_held() const { return lock_held_; }
   void set_lock_held() { lock_held_ = true; }
 
+  const absl::optional<ManagedStackTrace>& definition_stack_trace() const {
+    return definition_stack_trace_;
+  }
+
   ~VariableInfo();
 
  private:
   int index_;
   std::string name_;
   Var* var_;
+  absl::optional<ManagedStackTrace> definition_stack_trace_;
 
   // We can't use a optional<mutex_lock> here because it confuses the compiler's
   // thread safety analysis. Instead we use a boolean flag and release the lock

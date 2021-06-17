@@ -15,10 +15,17 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_state.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -368,6 +375,7 @@ Status DispatcherState::TasksForJob(
 Status DispatcherState::TasksForWorker(
     absl::string_view worker_address,
     std::vector<std::shared_ptr<const Task>>& tasks) const {
+  tasks.clear();
   auto it = tasks_by_worker_.find(worker_address);
   if (it == tasks_by_worker_.end()) {
     return errors::NotFound("Worker ", worker_address, " not found");

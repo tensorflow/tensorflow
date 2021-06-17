@@ -97,6 +97,8 @@ typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteConv3DParams;
 
+typedef TfLiteConv3DParams TfLiteConv3DTransposeParams;
+
 typedef struct {
   TfLitePadding padding;
   int stride_width;

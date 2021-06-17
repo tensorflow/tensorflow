@@ -167,6 +167,11 @@ class TestWorkerCache : public WorkerCacheInterface {
     return errors::Unimplemented("Unimplemented.");
   }
 
+  Status GetCoordinationClientCache(
+      std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
+  }
+
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {
     auto it = localities_.find(device);

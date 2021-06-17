@@ -174,25 +174,31 @@ class ParameterServerStrategyV2Test(test.TestCase):
       yield
 
   @contextlib.contextmanager
-  def _assertRaisesUsageErrorWithSchedule(self):
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
-        "`reduce` must be used within a function passed to `"
-        "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`."):
+  def _assertRaisesUsageWarningWithSchedule(self):
+    with self.assertLogs(level="WARNING") as logs:
       yield
+
+    self.assertIn(
+        "It is detected that a function used with "
+        "`tf.distribute.experimental.ParameterServerStrategy` "
+        "is executed locally on the coordinator. This is inefficient but may "
+        "be valid for one-off tasks such as inferring output signature. "
+        "To properly distribute functions to run on workers, `run` or "
+        "`reduce` should be used within a function passed to `"
+        "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`.",
+        logs.output[0])
 
   def testRunNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
-    dataset = dataset_ops.DatasetV2.range(3)
+    dataset = dataset_ops.DatasetV2.range(8)
     with strategy.scope():
       v = variables.Variable(1, dtype=dtypes.int64)
 
     def step_fn(iterator):
       return next(iterator) + v
 
-    with self._assertRaisesUsageErrorWithSchedule():
+    with self._assertRaisesUsageWarningWithSchedule():
       strategy.run(step_fn, args=(iter(dataset),))
 
   def testRunUsedWithTestOnlyMode(self):
@@ -211,7 +217,7 @@ class ParameterServerStrategyV2Test(test.TestCase):
   def testReduceNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
-    with self._assertRaisesUsageErrorWithSchedule():
+    with self._assertRaisesUsageWarningWithSchedule():
       strategy.reduce("SUM", None, axis=None)
 
   def testDistributeDatasetNotUsedWithClusterCoordinator(self):

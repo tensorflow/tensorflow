@@ -382,76 +382,63 @@ class Stream {
     return port::UnimplementedError("DNN library is not found.");
   }
 
+  template <typename InputT, typename ScaleT, typename SideInputT,
+            typename BiasT, typename OutputT>
   port::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<double> &conv_input_data, double conv_input_scale,
+      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<double> &filter_data,
+      const DeviceMemory<InputT> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<double> &side_input_data, double side_input_scale,
+      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
       const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<double> &biases, dnn::ActivationMode activation_mode,
+      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoFusedConvolve(
+          this, dnn::ToDataType<InputT>::value,
+          dnn::ToDataType<SideInputT>::value, dnn::ToDataType<BiasT>::value,
+          dnn::ToDataType<OutputT>::value, conv_input_descriptor,
+          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
+          convolution_descriptor, side_input_data, side_input_scale,
+          bias_descriptor, biases, activation_mode, output_descriptor, *output,
+          scratch_allocator, algorithm_config, output_profile_result);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  port::Status FusedConvolveWithAlgorithm(
+  template <typename InputT, typename ScaleT, typename SideInputT,
+            typename BiasT, typename OutputT>
+  port::Status FusedConvolveWithExecutionPlan(
       const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<float> &conv_input_data, float conv_input_scale,
+      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
+      const DeviceMemory<InputT> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<float> &side_input_data, float side_input_scale,
+      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
       const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<Eigen::half> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<Eigen::half> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<Eigen::half> &biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<int8> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<float> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoFusedConvolveWithExecutionPlan(
+          this, dnn::ToDataType<InputT>::value, conv_input_descriptor,
+          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
+          convolution_descriptor, side_input_data, side_input_scale,
+          bias_descriptor, biases, activation_mode, output_descriptor, *output,
+          scratch_allocator, algorithm_config, output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
   Stream &ThenSeparableConvolve(
       const dnn::BatchDescriptor &input_descriptor,
@@ -1470,35 +1457,10 @@ class Stream {
       DeviceMemory<OutputType> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result) {
-    static_assert(std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<InputType, float>::value ||
-                      std::is_same<InputType, double>::value ||
-                      std::is_same<InputType, int8>::value ||
-                      std::is_same<InputType, std::complex<float>>::value ||
-                      std::is_same<InputType, std::complex<double>>::value,
-                  "The only buffer types supported are: Eigen::half, float, "
-                  "double, int8, std::complex<float> and std::complex<double>");
-    static_assert(
-        std::is_same<InputType, OutputType>::value ||
-            (std::is_same<InputType, int8>::value &&
-             std::is_same<OutputType, int32>::value),
-        "Input and output buffer types should be the same unless input is "
-        "int8 and output is int32");
-    static_assert(std::is_same<ConstantType, OutputType>::value ||
-                      (std::is_same<ConstantType, float>::value &&
-                       std::is_same<OutputType, Eigen::half>::value),
-                  "Constant and output types should match");
-    blas::ComputationType expected_computation_type =
-        blas::ToComputationType<ConstantType>::value;
-    if (expected_computation_type != computation_type &&
-        !(computation_type == blas::ComputationType::kF32 &&
-          expected_computation_type == blas::ComputationType::kF16)) {
-      return port::InternalError(absl::StrCat(
-          "Alpha/beta type and computation type have to match, got ",
-          blas::ComputationTypeString(computation_type),
-          " for computation type, expected: ",
-          blas::ComputationTypeString(expected_computation_type)));
-    }
+    TF_RETURN_IF_ERROR(
+        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
+            computation_type));
+
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -1518,6 +1480,43 @@ class Stream {
         blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
         output_profile_result);
+    if (output_profile_result) {
+      // The error is recorded in the profile.
+      return port::Status::OK();
+    }
+    return st;
+  }
+
+  template <typename InputType, typename OutputType, typename ConstantType>
+  port::Status ThenBlasGemmStridedBatchedWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
+      int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
+      ConstantType beta, DeviceMemory<OutputType> *c, int ldc, int64 stride_c,
+      int batch_count, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result) {
+    TF_RETURN_IF_ERROR(
+        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
+            computation_type));
+
+    blas::BlasSupport *blas = parent()->AsBlas();
+    if (!blas) {
+      return port::InternalError(
+          "Attempting to perform BLAS operation using "
+          "StreamExecutor without BLAS support");
+    }
+    void *alpha_ptr = &alpha;
+    void *beta_ptr = &beta;
+    float alpha_storage, beta_storage;
+    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
+                                    &beta_storage);
+    port::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
+        this, transa, transb, m, n, k, alpha_ptr, a,
+        blas::ToDataType<InputType>::value, stride_a, lda, b,
+        blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
+        blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
+        computation_type, algorithm, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
       return port::Status::OK();
@@ -2161,6 +2160,42 @@ class Stream {
   template <typename... Args>
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
   friend class ocl::CLBlas;    // for parent_.
+
+  // Checks whether types match before a call to extended BLAS version.
+  template <typename InputType, typename OutputType, typename ConstantType>
+  port::Status CheckTypesForExtendedBlas(
+      blas::ComputationType computation_type) {
+    static_assert(std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<InputType, float>::value ||
+                      std::is_same<InputType, double>::value ||
+                      std::is_same<InputType, int8>::value ||
+                      std::is_same<InputType, std::complex<float>>::value ||
+                      std::is_same<InputType, std::complex<double>>::value,
+                  "The only buffer types supported are: Eigen::half, float, "
+                  "double, int8, std::complex<float> and std::complex<double>");
+    static_assert(
+        std::is_same<InputType, OutputType>::value ||
+            (std::is_same<InputType, int8>::value &&
+             std::is_same<OutputType, int32>::value),
+        "Input and output buffer types should be the same unless input is "
+        "int8 and output is int32");
+    static_assert(std::is_same<ConstantType, OutputType>::value ||
+                      (std::is_same<ConstantType, float>::value &&
+                       std::is_same<OutputType, Eigen::half>::value),
+                  "Constant and output types should match");
+    blas::ComputationType expected_computation_type =
+        blas::ToComputationType<ConstantType>::value;
+    if (expected_computation_type != computation_type &&
+        !(computation_type == blas::ComputationType::kF32 &&
+          expected_computation_type == blas::ComputationType::kF16)) {
+      return port::InternalError(absl::StrCat(
+          "Alpha/beta type and computation type have to match, got ",
+          blas::ComputationTypeString(computation_type),
+          " for computation type, expected: ",
+          blas::ComputationTypeString(expected_computation_type)));
+    }
+    return port::Status::OK();
+  }
 
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
     absl::ReaderMutexLock lock(&mu_);

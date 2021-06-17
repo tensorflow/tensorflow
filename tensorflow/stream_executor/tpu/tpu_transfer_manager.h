@@ -93,9 +93,6 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
  private:
   XLA_TransferManager* manager_;
-  Status UpdateShapesFromMetadata(
-      const xla::MutableBorrowingLiteral& metadata_literal,
-      xla::Shape* device_shape);
 };
 
 }  // namespace tpu

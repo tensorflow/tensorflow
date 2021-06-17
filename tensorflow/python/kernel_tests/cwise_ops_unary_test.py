@@ -151,8 +151,9 @@ class UnaryOpTest(test.TestCase):
     with test_util.use_gpu():
       self._check(tf_func(x_sp), res_np, x_sp, tol)
 
-  def _compareBoth(self, x, np_func, tf_func):
-    self._compareCpu(x, np_func, tf_func)
+  def _compareBoth(self, x, np_func, tf_func, grad_tol=None):
+    self._compareCpu(x, np_func, tf_func, grad_rtol=grad_tol,
+                     grad_atol=grad_tol)
     self._compareGpu(x, np_func, tf_func)
 
   def _compareBothSparse(self, x, np_func, tf_func, tol=None):
@@ -264,7 +265,9 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.sinh, math_ops.sinh)
     self._compareBoth(x, np.arcsinh, math_ops.asinh)
     self._compareBoth(x, np.cosh, math_ops.cosh)
+    self._compareBoth(x, np.arccosh, math_ops.acosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
+    self._compareBoth(x, np.arctanh, math_ops.atanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(x, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
@@ -349,8 +352,10 @@ class UnaryOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testHalfBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float16)
+    w = x - x.min() + 1.1  # all greater than 1
     y = (x + .5).astype(np.float16)  # no zero
     z = (x + 15.5).astype(np.float16)  # all positive
+    k = np.arange(-0.90, 0.90, 0.05).astype(np.float16)  # between -1 and 1
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
@@ -363,11 +368,22 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(z, np.log, math_ops.log)
     self._compareBoth(z, np.log1p, math_ops.log1p)
+    self._compareBoth(x, np.sinh, math_ops.sinh)
+    self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
     self._compareBoth(x, np.cos, math_ops.cos)
+    self._compareBoth(x, np.tan, math_ops.tan)
+    self._compareBoth(k, np.arcsin, math_ops.asin)
+    self._compareBoth(k, np.arccos, math_ops.acos)
+    self._compareBoth(x, np.arctan, math_ops.atan)
+    self._compareBoth(x, np.arcsinh, math_ops.asinh)
+    # The derivative of acosh close to 1 is very large, and needs a high
+    # tolerance for small precision.
+    self._compareBoth(w, np.arccosh, math_ops.acosh, grad_tol=1e-3)
+    self._compareBoth(k, np.arctanh, math_ops.atanh)
     self._compareBoth(
         y, np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
         math_ops.lgamma)
@@ -383,18 +399,23 @@ class UnaryOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testBFloat16Basic(self):
+
     def compute_f32(np_func):
       """Decorator to compute Numpy function with float32 math."""
+
       def f(x):
         y = np_func(x.astype(np.float32))
         return y.astype(x.dtype)
+
       return f
 
     bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
     x = np.arange(-6, 6,
-                  2).reshape(1, 3, 2).astype(dtypes_lib.bfloat16.as_numpy_dtype)
+                  2).reshape(1, 3, 2).astype(bfloat16)
+    w = x - x.min() + 1.1  # all greater than 1
     y = (x + .5).astype(bfloat16)  # no zero
     z = (x + 15.5).astype(bfloat16)  # all positive
+    k = np.arange(-0.90, 0.90, 0.05).astype(bfloat16)  # between -1 and 1
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
@@ -405,12 +426,20 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(z, compute_f32(np.log), math_ops.log)
     self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
     self._compareCpu(y, np.sign, math_ops.sign)
+    self._compareCpu(z, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
     self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
     self._compareBoth(x, compute_f32(np.tan), math_ops.tan)
     self._compareBoth(x, compute_f32(np.sinh), math_ops.sinh)
     self._compareBoth(x, compute_f32(np.cosh), math_ops.cosh)
     self._compareBoth(x, compute_f32(np.tanh), math_ops.tanh)
+    self._compareBoth(k, compute_f32(np.arcsin), math_ops.asin)
+    self._compareBoth(k, compute_f32(np.arccos), math_ops.acos)
+    self._compareBoth(x, compute_f32(np.arctan), math_ops.atan)
+    self._compareBoth(x, compute_f32(np.arcsinh), math_ops.asinh)
+    self._compareBoth(w, compute_f32(np.arccosh), math_ops.acosh)
+    self._compareBoth(k, compute_f32(np.arctanh), math_ops.atanh,
+                      grad_tol=1e-2)
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
@@ -418,6 +447,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
+    self._compareBoth(x, np.sign, math_ops.sign)
 
   def testInt16Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
@@ -425,6 +455,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
+    self._compareBoth(x, np.sign, math_ops.sign)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)

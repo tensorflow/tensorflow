@@ -35,7 +35,7 @@ void ExecuteAddN(TfLiteTensor* tensors, int tensors_count) {
     input_array_data[i] = i - 1;
   }
   TfLiteIntArray* inputs_array = IntArrayFromInts(input_array_data);
-  const int kOutputArrayData[] = {1, tensors_count - 1};
+  int kOutputArrayData[] = {1, tensors_count - 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
   const TfLiteRegistration registration = tflite::Register_ADD_N();
@@ -47,9 +47,9 @@ void ExecuteAddN(TfLiteTensor* tensors, int tensors_count) {
 }
 
 template <typename T>
-void TestAddN(const int* input_dims_data, const T* const* input_data,
-              int input_data_count, const int* expected_dims,
-              const T* expected_data, T* output_data) {
+void TestAddN(int* input_dims_data, const T* const* input_data,
+              int input_data_count, int* expected_dims, const T* expected_data,
+              T* output_data) {
   TF_LITE_MICRO_EXPECT_LE(input_data_count, kMaxInputTensors);
 
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -89,9 +89,9 @@ float GetTolerance(float min, float max) {
 
 template <typename T, int kNumInputs, int kOutputSize>
 void TestAddNQuantized(TestQuantParams<T, kNumInputs, kOutputSize>* params,
-                       const int* input_dims_data,
-                       const float* const* input_data, const int* expected_dims,
-                       const float* expected_data, float* output_data) {
+                       int* input_dims_data, const float* const* input_data,
+                       int* expected_dims, const float* expected_data,
+                       float* output_data) {
   TF_LITE_MICRO_EXPECT_LE(kNumInputs, kMaxInputTensors);
 
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -125,7 +125,7 @@ void TestAddNQuantized(TestQuantParams<T, kNumInputs, kOutputSize>* params,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(FloatAddNOpAddMultipleTensors) {
-  constexpr int kDims[] = {4, 1, 2, 2, 1};
+  int kDims[] = {4, 1, 2, 2, 1};
   constexpr float kInput1[] = {-2.0, 0.2, 0.7, 0.8};
   constexpr float kInput2[] = {0.1, 0.2, 0.3, 0.5};
   constexpr float kInput3[] = {0.5, 0.1, 0.1, 0.2};
@@ -144,7 +144,7 @@ TF_LITE_MICRO_TEST(FloatAddNOpAddMultipleTensors) {
 }
 
 TF_LITE_MICRO_TEST(Int8AddNOpAddMultipleTensors) {
-  constexpr int kDims[] = {4, 1, 2, 2, 1};
+  int kDims[] = {4, 1, 2, 2, 1};
   constexpr float kInput1[] = {-2.0, 0.2, 0.7, 0.8};
   constexpr float kInput2[] = {0.1, 0.2, 0.3, 0.5};
   constexpr float kInput3[] = {0.5, 0.1, 0.1, 0.2};

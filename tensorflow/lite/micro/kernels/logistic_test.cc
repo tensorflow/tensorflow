@@ -30,14 +30,14 @@ const float quantized_output_scale = 1.0 / 255.0;
 const int quantized_output_zero_point_int8 = -128;
 
 const int flat_size_basic = 10;
-const int shape_basic[] = {2, 2, 5};
+int shape_basic[] = {2, 2, 5};
 const float input_data_basic[] = {1, 2, 3, 4, 5, -1, -2, -3, -4, -5};
 const float golden_basic[] = {0.73105858, 0.88079708, 0.95257413, 0.98201379,
                               0.99330715, 0.26894142, 0.11920292, 0.04742587,
                               0.01798621, 0.00669285};
 
 const int flat_size_wide_range = 10;
-const int shape_wide_range[] = {2, 1, 5};
+int shape_wide_range[] = {2, 1, 5};
 const float input_data_wide_range[]{
     1.0, 2.0, 3.0, 4.0, 93.0, -1.0, -2.0, -3.0, -4.0, -93.0,
 };
@@ -68,8 +68,8 @@ void ValidateLogisticGoldens(TfLiteTensor* tensors, const int tensor_count,
   }
 }
 
-void TestLogisticFloat(const int* input_dims_data, const float* input_data,
-                       const float* golden, const int* output_dims_data,
+void TestLogisticFloat(int* input_dims_data, const float* input_data,
+                       const float* golden, int* output_dims_data,
                        float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -88,10 +88,10 @@ void TestLogisticFloat(const int* input_dims_data, const float* input_data,
 }
 
 template <typename T>
-void TestLogisticQuantized(const int* input_dims_data, const float* input_data,
+void TestLogisticQuantized(int* input_dims_data, const float* input_data,
                            T* input_quantized, const float input_scale,
                            const int input_zero_point, const float* golden,
-                           T* golden_quantized, const int* output_dims_data,
+                           T* golden_quantized, int* output_dims_data,
                            const float output_scale,
                            const int output_zero_point, int8_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);

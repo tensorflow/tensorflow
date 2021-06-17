@@ -100,7 +100,7 @@ REGISTER_OP("DecodeRaw")
     .Attr(
         "out_type: "
         "{half,float,double,int32,uint16,uint8,int16,int8,int64,complex64,"
-        "complex128,bool}")
+        "complex128,bool,bfloat16}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
@@ -115,7 +115,9 @@ REGISTER_OP("DecodePaddedRaw")
     .Input("input_bytes: string")
     .Input("fixed_length: int32")
     .Output("output: out_type")
-    .Attr("out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64}")
+    .Attr(
+        "out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64,"
+        "bfloat16}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle fixed_length;

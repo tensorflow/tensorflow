@@ -69,7 +69,6 @@ from tensorflow.python.autograph.operators import variables
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
-from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -707,7 +706,9 @@ def _general_purpose_scan(ds, init_state, body):
   # preprocessing.
   # TODO(mdan): s/use_default_device/specialize_for_input_pipeline.
   # TODO(mdan): Don't use private symbols.
-  return scan_ops._ScanDataset(ds, init_state, body, use_default_device=False)  # pylint:disable=protected-access
+  # pylint:disable=protected-access
+  return dataset_ops._ScanDataset(
+      ds, init_state, body, use_default_device=False)
 
 
 def _tf_dataset_for_stmt(
@@ -1018,6 +1019,7 @@ def _try_handling_undefineds(
       body()
       first_iter_vars = get_state()
   except (UnboundLocalError, TypeError, ValueError, KeyError):
+    ag_logging.log(1, 'Caught error while staging loop body', exc_info=True)
     # Fall back to the old functionality. It will likely result in an input
     # validation failure.
     first_iter_vars = None

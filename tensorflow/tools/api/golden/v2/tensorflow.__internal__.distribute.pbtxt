@@ -8,4 +8,8 @@ tf_module {
     name: "multi_process_runner"
     mtype: "<type \'module\'>"
   }
+  member_method {
+    name: "variable_sync_on_read_context"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+  }
 }

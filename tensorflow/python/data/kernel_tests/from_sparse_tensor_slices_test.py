@@ -140,13 +140,15 @@ class FromSparseTensorSlicesCheckpointTest(
     return dataset_ops.Dataset.from_sparse_tensor_slices(sparse_components)
 
   @combinations.generate(
-      combinations.combine(tf_api_version=1, mode=["graph", "eager"]))
-  def testFromSparseTensorSlicesCore(self):
+      combinations.times(test_base.v1_only_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     slices = [[1., 2., 3.], [1.], [1.], [1., 2.], [], [1., 2.], [], [], []]
 
-    self.run_core_tests(
+    verify_fn(
+        self,
         lambda: self._build_sparse_tensor_slice_dataset(slices),
-        9,
+        num_outputs=9,
         sparse_tensors=True)
 
 

@@ -652,6 +652,17 @@ class DefFunctionTest(xla_test.XLATestCase):
 
   def testUpdateVariable(self):
     with ops.device('device:{}:0'.format(self.device)):
+      v = variables.Variable([0.0, 0.0])
+
+      @def_function.function(jit_compile=True)
+      def f():
+        v.assign([3.1, 2.3])
+
+      f()
+      self.assertAllClose(v, [3.1, 2.3])
+
+  def testUpdateVariableMemoryUsage(self):
+    with ops.device('device:{}:0'.format(self.device)):
 
       on_gpu = 'gpu' in self.device.lower()
       v = variables.Variable([3.1, 3.2])
@@ -1065,6 +1076,24 @@ class DefFunctionTest(xla_test.XLATestCase):
 
         v = variables.Variable([[2.]])
         self.assertAllClose(f(v), constant_op.constant([[0.5]]))
+
+  @test_util.disable_mlir_bridge('TODO(b/190444466): MLIR bridge seems to '
+                                 'ignore resource assignments')
+  def testErrMsgAssignWrongShape(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      v = variables.Variable([3.1, 3.2])
+
+      @def_function.function(jit_compile=True)
+      def f(samples):
+        v.assign(array_ops.zeros(samples))  # assignment
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  '@ .+def_function_xla_jit_test.py'):
+        f(constant_op.constant(6))
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'assignment'):
+        f(constant_op.constant(6))
 
 
 if __name__ == '__main__':

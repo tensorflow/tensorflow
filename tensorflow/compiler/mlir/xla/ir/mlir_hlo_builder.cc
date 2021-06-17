@@ -135,7 +135,9 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
         output_operand_aliasing,
-    const Literal* literal) {
+    const Literal* literal, absl::optional<Window> window,
+    absl::optional<ConvolutionDimensionNumbers> dnums,
+    CustomCallSchedule schedule) {
   if (operand_shapes_with_layout.has_value())
     return Unimplemented(
         "CustomCall doesn't support operands shapes with layout");
@@ -145,6 +147,12 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       << "MLIR CustomCallOp does not support output_operand_aliasing yet";
   TF_RET_CHECK(literal == nullptr)
       << "MLIR CustomCallOp does not support literal yet";
+  TF_RET_CHECK(!window.has_value())
+      << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
+  TF_RET_CHECK(!dnums.has_value())
+      << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
+  TF_RET_CHECK(schedule == CustomCallSchedule::SCHEDULE_NONE)
+      << "MLIR CustomCallOp does not support custom-call-schedule yet";
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
       /*has_side_effect=*/builder_.getBoolAttr(has_side_effect),
@@ -270,7 +278,10 @@ StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
   auto op = builder_.create<mlir::mhlo::WhileOp>(loc_, ty, GetValue(init));
   TF_RETURN_IF_ERROR(ImportComputation(condition.proto(), &op.cond()));
   TF_RETURN_IF_ERROR(ImportComputation(body.proto(), &op.body()));
-  return MakeXlaOp(op);
+  // TODO(jpienaar): Support multi-operand while op.
+  if (op.getNumResults() != 1)
+    return Unimplemented("Only single result MHLO WhileOp's can be import.");
+  return MakeXlaOp(op.getResult(0));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::ReducePrecisionInternal(

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,118 +15,149 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/tpu_executable.h"
 
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
+#include "tensorflow/core/tpu/tpu_executor_api.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/stream_executor/tpu/tpu_stream.h"
+
+namespace ApiConverter {
+static SE_ExecutableRunOptions ToC(
+    const xla::ServiceExecutableRunOptions& options) {
+  SE_ExecutableRunOptions se_options;
+  se_options.allocator = ApiConverter::ToC(options.run_options().allocator());
+  se_options.device_ordinal = options.run_options().device_ordinal();
+  if (options.run_options().host_to_device_stream() != nullptr) {
+    se_options.host_to_device_stream =
+        static_cast<tensorflow::tpu::TpuStream*>(
+            options.run_options().host_to_device_stream()->implementation())
+            ->se_stream();
+  } else {
+    se_options.host_to_device_stream = nullptr;
+  }
+
+  if (options.run_options().device_assignment() != nullptr) {
+    xla::DeviceAssignmentProto dev_assign_proto;
+    options.run_options()
+        .device_assignment()
+        ->Serialize(&dev_assign_proto)
+        .IgnoreError();
+    se_options.device_assignment =
+        stream_executor::tpu::SerializeProto(dev_assign_proto);
+  } else {
+    se_options.device_assignment.bytes = nullptr;
+    se_options.device_assignment.size = 0;
+  }
+
+  se_options.rng_seed = options.run_options().rng_seed();
+  se_options.run_id = options.run_options().run_id().ToInt();
+  se_options.launch_id = options.run_options().launch_id();
+
+  CHECK_EQ(options.run_options().then_execute_function(), nullptr)
+      << "ThenExecuteFunction not supported by this platform.";
+
+  auto impl =
+      const_cast<stream_executor::Stream*>(options.stream())->implementation();
+  se_options.stream =
+      static_cast<tensorflow::tpu::TpuStream*>(impl)->se_stream();
+  return se_options;
+}
+}  // namespace ApiConverter
 
 namespace xla {
 
-TpuExecutable::TpuExecutable(const XLA_TpuProgram* core_program,
-                             std::unique_ptr<HloModule> hlo_module,
-                             HostCommandHandler host_command_handler)
-    : TpuExecutableInterface(std::move(hlo_module)),
-      core_program_(core_program),
-      host_command_handler_(std::move(host_command_handler)) {}
+using ::tensorflow::tpu::ExecutorApiFn;
 
-Status TpuExecutable::LoadProgramAndEnqueueToStream(
-    const ServiceExecutableRunOptions& run_options,
-    absl::Span<const se::DeviceMemoryBase> arguments,
-    se::DeviceMemoryBase result,
-    absl::optional<se::DeviceMemoryBase> cross_program_prefetch_addr) {
-  SE_DeviceMemoryBase* arguments_bases = nullptr;
-  if (!arguments.empty()) {
-    arguments_bases = new SE_DeviceMemoryBase[arguments.size()];
-    for (int i = 0; i < arguments.size(); i++) {
-      arguments_bases[i] =
-          SE_DeviceMemoryBase{const_cast<void*>(arguments[i].opaque()),
-                              arguments[i].size(), arguments[i].payload()};
+TpuExecutable::~TpuExecutable() {
+  ExecutorApiFn()->TpuExecutable_FreeFn(se_executable_);
+}
+
+StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    std::vector<ExecutionInput> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  SE_ExecutableRunOptions se_run_options = ApiConverter::ToC(*run_options);
+  SE_ExecutionInput** se_args = new SE_ExecutionInput*[arguments.size()];
+  for (int i = 0; i < arguments.size(); ++i) {
+    auto& arg = arguments[i];
+    se_args[i] = new SE_ExecutionInput;
+
+    ApiConverter::ToC(arg.shape(), &se_args[i]->shape_tree.shape);
+    auto* arg_buffers = arg.MutableBuffers();
+    absl::InlinedVector<SE_MaybeOwningDeviceMemory, 2> se_buffers;
+    for (auto& pair : *arg_buffers) {
+      bool aliased = arg.unowned_indices().count(pair.first) > 0;
+      se_buffers.push_back(ApiConverter::ToC(pair.second, aliased));
+    }
+    se_args[i]->shape_tree.buffers =
+        new SE_MaybeOwningDeviceMemory[se_buffers.size()];
+    for (int j = 0; j < se_buffers.size(); ++j) {
+      se_args[i]->shape_tree.buffers[j] = se_buffers[j];
+    }
+
+    ApiConverter::ToC(arg.shape(), &se_args[i]->dynamic_shape);
+    const auto& unowned_indices = arg.unowned_indices();
+    se_args[i]->unowned_indices_size = unowned_indices.size();
+    se_args[i]->unowned_indices = new XLA_ShapeIndex[unowned_indices.size()];
+    int j = 0;
+    for (auto& idx : unowned_indices) {
+      se_args[i]->unowned_indices[j] = ApiConverter::ToC(idx);
+      ++j;
     }
   }
-
-  SE_DeviceMemoryBase result_base{result.opaque(), result.size(),
-                                  result.payload()};
-  SE_DeviceMemoryBase prefetch_base;
-  if (cross_program_prefetch_addr.has_value()) {
-    prefetch_base = SE_DeviceMemoryBase{cross_program_prefetch_addr->opaque(),
-                                        cross_program_prefetch_addr->size(),
-                                        cross_program_prefetch_addr->payload()};
-  }
-  int32 rng_seed = run_options.run_options().rng_seed();
-
-  XLA_DeviceAssignment c_dev_assign{/*bytes=*/nullptr, /*size=*/0};
-  auto dev_assign = run_options.run_options().device_assignment();
-  stream_executor::tpu::SerializedProto dev_assign_serialized;
-  if (dev_assign != nullptr) {
-    DeviceAssignmentProto dev_assign_proto;
-    TF_RETURN_IF_ERROR(dev_assign->Serialize(&dev_assign_proto));
-    dev_assign_serialized =
-        stream_executor::tpu::SerializeProto(dev_assign_proto);
-    c_dev_assign.bytes = dev_assign_serialized.bytes;
-    c_dev_assign.size = dev_assign_serialized.size;
-  }
-
-  auto platform = tensorflow::down_cast<tensorflow::tpu::TpuPlatform*>(
-      tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform());
-  auto stream = platform->LookupStream(
-      run_options.run_options().stream()->implementation());
+  SE_ExecutionOutput se_execution_output;
   StatusHelper status;
+  ExecutorApiFn()->TpuExecutable_ExecuteAsyncOnStreamFn(
+      se_executable_, &se_run_options, se_args, arguments.size(), nullptr,
+      &se_execution_output, status.c_status);
 
-  TpuExecutable_LoadProgramAndEnqueueToStream_Params params;
-  params.struct_size = TpuExecutable_LoadProgramAndEnqueueToStream_Params_SIZE;
-  params.priv = nullptr;
-  params.program = core_program_;
-  params.arguments = arguments_bases;
-  params.arguments_len = arguments.size();
-  params.result = &result_base;
-  params.has_cross_program_prefetch_addr =
-      cross_program_prefetch_addr.has_value();
-  params.cross_program_prefetch_addr =
-      cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr;
-  params.rng_seed = rng_seed;
-  params.device_assignment = &c_dev_assign;
-  params.stream = stream;
-  params.status = status.c_status;
-
-  tensorflow::tpu::OpsApiFn()->TpuExecutable_LoadProgramAndEnqueueToStreamFn(
-      &params);
-
-  if (dev_assign != nullptr) {
-    stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);
+  if (se_run_options.device_assignment.bytes != nullptr) {
+    stream_executor::tpu::SerializedProto_Free(
+        se_run_options.device_assignment);
   }
-  delete[] arguments_bases;
-  return status.status();
-}
+  for (int i = 0; i < arguments.size(); ++i) {
+    ApiConverter::Free(&se_args[i]->shape_tree.shape);
+    ApiConverter::Free(&se_args[i]->dynamic_shape);
+    delete[] se_args[i]->unowned_indices;
+    delete[] se_args[i]->shape_tree.buffers;
+    delete se_args[i];
+  }
+  delete[] se_args;
 
-Shape TpuExecutable::HostShapeToDeviceShape(const Shape& host_shape) {
-  XLA_Shape c_host_shape;
-  XLA_Shape c_device_shape;
-  ApiConverter::ToC(host_shape, &c_host_shape);
-  tensorflow::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
-      &c_host_shape, &c_device_shape);
-  Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Free(&c_host_shape);
-  ApiConverter::Free(&c_device_shape);
-  return device_shape;
-}
+  if (!status.ok()) {
+    return status.status();
+  }
 
-int64 TpuExecutable::ShapeSize(const Shape& shape) {
-  XLA_Shape c_shape;
-  ApiConverter::ToC(shape, &c_shape);
-  int64 size =
-      tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
-  ApiConverter::Free(&c_shape);
-  return size;
+  xla::ScopedShapedBuffer result(
+      ApiConverter::FromC(&se_execution_output.result),
+      run_options->stream()->parent()->GetAllocator());
+  ApiConverter::Free(&se_execution_output.result);
+
+  ExecutionOutput output(std::move(result));
+  for (int i = 0; i < se_execution_output.aliased_indices_size; ++i) {
+    output.AddAliasedIndex(
+        ApiConverter::FromC(&se_execution_output.aliased_indices[i]));
+  }
+  ExecutorApiFn()->TpuExecutable_FreeXlaShapeIndexArrayFn(
+      se_execution_output.aliased_indices);
+
+  for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
+    output.AddToBeReleased(
+        ApiConverter::FromC(&se_execution_output.to_be_released[i],
+                            run_options->stream()->parent()->GetAllocator())
+            .Release()
+            .value());
+  }
+  ExecutorApiFn()->TpuExecutable_FreeMaybeOwningDeviceMemoryArrayFn(
+      se_execution_output.to_be_released);
+
+  return output;
 }
 
 absl::string_view TpuExecutable::fingerprint() const {
-  // TODO(skye): the fingerprint can be plumbed through via core_program_
-  LOG(FATAL) << "TpuExecutable::fingerprint() unimplemented";
+  const char* data;
+  size_t size;
+  ExecutorApiFn()->TpuExecutable_FingerprintFn(se_executable_, &data, &size);
+  return absl::string_view(data, size);
 }
 
 }  // namespace xla

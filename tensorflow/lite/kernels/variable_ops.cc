@@ -25,6 +25,7 @@ extern "C" void AddVariableOps(::tflite::MutableOpResolver* resolver) {
                       tflite::ops::custom::Register_READ_VARIABLE());
   resolver->AddCustom("AssignVariable",
                       tflite::ops::custom::Register_ASSIGN_VARIABLE());
+  resolver->AddCustom("VarHandle", tflite::ops::custom::Register_VAR_HANDLE());
 }
 
 }  // namespace custom

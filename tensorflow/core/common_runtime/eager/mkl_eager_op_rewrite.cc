@@ -81,7 +81,8 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   std::unordered_map<std::string, bool> registered_kernels_map_;
 };
 
-REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
+REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, 20000,
+                 MklEagerOpRewrite);
 
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
@@ -178,6 +179,10 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
   }
   DataType data_type;
   if (op->Attrs().Get("T", &data_type) != Status::OK()) {
+    return false;
+  }
+  // Only rewrite if op is to be run on CPU device.
+  if (op->GetDeviceParsedName().type != "CPU") {
     return false;
   }
   // Check if we have registered MKL kernel for this op.

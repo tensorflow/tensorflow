@@ -70,7 +70,7 @@ dependencies {
     // Other dependencies
 
     // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
 }
 ```
 
@@ -95,14 +95,10 @@ for more options to configure `ObjectDetector`.
 
 ## Run inference in C++
 
-Note: we are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
-
 ```c++
 // Initialization
 ObjectDetectorOptions options;
-options.mutable_model_file_with_metadata()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
 std::unique_ptr<ObjectDetector> object_detector = ObjectDetector::CreateFromOptions(options).value();
 
 // Run inference
@@ -148,7 +144,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ObjectDetector` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+metadata for object detectors using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#object_detectors).
 
 The compatible object detector models should meet the following requirements:
 

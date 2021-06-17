@@ -25,10 +25,10 @@ namespace testing {
 namespace {
 
 void TestLogicalOp(const TfLiteRegistration& registration,
-                   const int* input1_dims_data, const bool* input1_data,
-                   const int* input2_dims_data, const bool* input2_data,
-                   const int* output_dims_data,
-                   const bool* expected_output_data, bool* output_data) {
+                   int* input1_dims_data, const bool* input1_data,
+                   int* input2_dims_data, const bool* input2_data,
+                   int* output_dims_data, const bool* expected_output_data,
+                   bool* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -68,7 +68,7 @@ void TestLogicalOp(const TfLiteRegistration& registration,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(LogicalOr) {
-  const int shape[] = {4, 1, 1, 1, 4};
+  int shape[] = {4, 1, 1, 1, 4};
   const bool input1[] = {true, false, false, true};
   const bool input2[] = {true, false, true, false};
   const bool golden[] = {true, false, true, true};
@@ -79,9 +79,9 @@ TF_LITE_MICRO_TEST(LogicalOr) {
 }
 
 TF_LITE_MICRO_TEST(BroadcastLogicalOr) {
-  const int input1_shape[] = {4, 1, 1, 1, 4};
+  int input1_shape[] = {4, 1, 1, 1, 4};
   const bool input1[] = {true, false, false, true};
-  const int input2_shape[] = {4, 1, 1, 1, 1};
+  int input2_shape[] = {4, 1, 1, 1, 1};
   const bool input2[] = {false};
   const bool golden[] = {true, false, false, true};
   bool output_data[4];
@@ -91,7 +91,7 @@ TF_LITE_MICRO_TEST(BroadcastLogicalOr) {
 }
 
 TF_LITE_MICRO_TEST(LogicalAnd) {
-  const int shape[] = {4, 1, 1, 1, 4};
+  int shape[] = {4, 1, 1, 1, 4};
   const bool input1[] = {true, false, false, true};
   const bool input2[] = {true, false, true, false};
   const bool golden[] = {true, false, false, false};
@@ -102,9 +102,9 @@ TF_LITE_MICRO_TEST(LogicalAnd) {
 }
 
 TF_LITE_MICRO_TEST(BroadcastLogicalAnd) {
-  const int input1_shape[] = {4, 1, 1, 1, 4};
+  int input1_shape[] = {4, 1, 1, 1, 4};
   const bool input1[] = {true, false, false, true};
-  const int input2_shape[] = {4, 1, 1, 1, 1};
+  int input2_shape[] = {4, 1, 1, 1, 1};
   const bool input2[] = {true};
   const bool golden[] = {true, false, false, true};
   bool output_data[4];

@@ -152,4 +152,16 @@ def ConvolutionAttributes {
 class BASE_HLO_ConvOp {
 }
 
+//===----------------------------------------------------------------------===//
+// Common traits
+//===----------------------------------------------------------------------===//
+
+class HLO_NativeOpTrait<string name> : NativeOpTrait<name> {
+  let cppNamespace = "::mlir::mhlo::OpTrait";
+}
+
+// An operation that is essentially element-wise but may implement broadcasting
+// semantics.
+def HLO_BroadcastingElementwise : HLO_NativeOpTrait<"BroadcastingElementwise">;
+
 #endif // HLO_OPS_BASE

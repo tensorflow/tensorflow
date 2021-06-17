@@ -25,7 +25,7 @@ namespace testing {
 namespace {
 
 template <typename T>
-void TestZerosLike(const int* input_dims_data, const T* input_data,
+void TestZerosLike(int* input_dims_data, const T* input_data,
                    const T* expected_output_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
@@ -64,7 +64,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestZerosLikeFloat) {
   float output_data[6];
-  const int input_dims[] = {2, 2, 3};
+  int input_dims[] = {2, 2, 3};
   const float input_values[] = {-2.0, -1.0, 0.0, 1.0, 2.0, 3.0};
   const float golden[] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   tflite::testing::TestZerosLike<float>(input_dims, input_values, golden,
@@ -73,7 +73,7 @@ TF_LITE_MICRO_TEST(TestZerosLikeFloat) {
 
 TF_LITE_MICRO_TEST(TestZerosLikeInt8) {
   int8_t output_data[6];
-  const int input_dims[] = {3, 1, 2, 3};
+  int input_dims[] = {3, 1, 2, 3};
   const int8_t input_values[] = {-2, -1, 0, 1, 2, 3};
   const int8_t golden[] = {0, 0, 0, 0, 0, 0};
   tflite::testing::TestZerosLike<int8_t>(input_dims, input_values, golden,
@@ -82,7 +82,7 @@ TF_LITE_MICRO_TEST(TestZerosLikeInt8) {
 
 TF_LITE_MICRO_TEST(TestZerosLikeInt32) {
   int32_t output_data[4];
-  const int input_dims[] = {4, 1, 2, 2, 1};
+  int input_dims[] = {4, 1, 2, 2, 1};
   const int32_t input_values[] = {-2, -1, 0, 3};
   const int32_t golden[] = {0, 0, 0, 0};
   tflite::testing::TestZerosLike<int32_t>(input_dims, input_values, golden,
@@ -91,7 +91,7 @@ TF_LITE_MICRO_TEST(TestZerosLikeInt32) {
 
 TF_LITE_MICRO_TEST(TestZerosLikeInt64) {
   int64_t output_data[4];
-  const int input_dims[] = {4, 1, 2, 2, 1};
+  int input_dims[] = {4, 1, 2, 2, 1};
   const int64_t input_values[] = {-2, -1, 0, 3};
   const int64_t golden[] = {0, 0, 0, 0};
   tflite::testing::TestZerosLike<int64_t>(input_dims, input_values, golden,

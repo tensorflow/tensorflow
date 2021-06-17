@@ -27,9 +27,12 @@ import time
 import unittest
 
 from absl import logging
+from absl.testing import parameterized
 
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 
 
@@ -71,7 +74,8 @@ def fn_that_sets_global(val):
   return old_val
 
 
-class MultiProcessRunnerTest(test.TestCase):
+@combinations.generate(combinations.combine(required_gpus=0))
+class MultiProcessRunnerTest(test.TestCase, parameterized.TestCase):
 
   def _worker_idx(self):
     config_task = json.loads(os.environ['TF_CONFIG'])['task']
@@ -600,6 +604,45 @@ class MultiProcessPoolRunnerTest(test.TestCase):
       _global_pool.run(fn_that_does_nothing)
 
     _global_pool.run(fn)
+
+
+@combinations.generate(combinations.combine(required_physical_gpus=2))
+class MultiProcessRunnerMultiGPUTest(test.TestCase, parameterized.TestCase):
+
+  def test_not_share_gpu(self):
+    num_gpus = len(context.context().list_physical_devices('GPU'))
+    if num_gpus != 2 and num_gpus != 4:
+      self.skipTest('requires 2 or 4 GPUs')
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=True, num_workers=1)
+
+    # Verify that CUDA_VISIBLE_DEVICES are different on each worker.
+
+    def cuda_visible_devices_fn():
+      return os.getenv('CUDA_VISIBLE_DEVICES')
+
+    runner = multi_process_runner.MultiProcessRunner(
+        cuda_visible_devices_fn, cluster_spec, share_gpu=False)
+    runner.start()
+    result = runner.join()
+    if num_gpus == 2:
+      self.assertAllEqual(sorted(result.return_value), ['0', '1'])
+    else:
+      self.assertAllEqual(sorted(result.return_value), ['0,2', '1,3'])
+
+    # Verify that CUDA_VISIBLE_DEVICES works.
+
+    def num_gpus_fn():
+      return len(context.context().list_physical_devices('GPU'))
+
+    runner = multi_process_runner.MultiProcessRunner(
+        num_gpus_fn, cluster_spec, share_gpu=False)
+    runner.start()
+    result = runner.join()
+    if num_gpus == 2:
+      self.assertAllEqual(result.return_value, [1, 1])
+    else:
+      self.assertAllEqual(result.return_value, [2, 2])
 
 
 if __name__ == '__main__':

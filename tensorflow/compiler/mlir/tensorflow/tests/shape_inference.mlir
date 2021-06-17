@@ -1220,4 +1220,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %15 = "tf.Identity"(%arg0) : (tensor<312x500x!tf.f32ref>) -> tensor<*xf32>
     return
   }
+
+  // CHECK-LABEL: @fill_with_shape_op
+  func @fill_with_shape_op(%arg0: tensor<3x2xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>) {
+    // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%{{.*}}) : (tensor<3x2xi32>) -> tensor<2xi32>
+    // CHECK: %[[FILL:.*]] = "tf.Fill"(%[[SHAPE]], %{{.*}}) : (tensor<2xi32>, tensor<i32>) -> tensor<3x2xi32>
+    // CHECK: return %[[FILL]] : tensor<3x2xi32>
+    %0 = "tf.Shape"(%arg0) : (tensor<3x2xi32>) -> tensor<2xi32>
+    %1 = "tf.Fill"(%0, %arg1) : (tensor<2xi32>, tensor<i32>) -> tensor<*xi32>
+    return %1 : tensor<*xi32>
+  }
 }

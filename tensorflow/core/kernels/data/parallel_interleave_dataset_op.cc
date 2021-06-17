@@ -81,8 +81,6 @@ namespace data {
 
 namespace {
 
-constexpr char kTfDataParallelInterleaveWorkerPool[] =
-    "tf_data_parallel_interleave_worker_pool";
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBlockIndex[] = "block_index";
 constexpr char kCycleIndex[] = "cycle_index";
@@ -340,8 +338,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (ctx->stats_aggregator()) {
         num_threads++;
       }
-      thread_pool_ = ctx->CreateThreadPool(kTfDataParallelInterleaveWorkerPool,
-                                           num_threads);
+      thread_pool_ = ctx->CreateThreadPool(
+          "data_parallel_interleave_worker_pool", num_threads);
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
@@ -413,9 +411,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       wait_for_checkpoint_ = true;
       // Wait for all in-flight calls to complete.
       while (num_active_workers_ > 0) {
-        RecordStop(ctx_.get());
         zero_active_workers_cond_var_.wait(l);
-        RecordStart(ctx_.get());
       }
       // Initialize all elements and filter out elements with no input.
       InitializeInputs(element_id_counter_);

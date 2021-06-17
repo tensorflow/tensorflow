@@ -435,6 +435,9 @@ cc_library(
         "init_tensorflow.h",
     ],
     visibility = [
+        # copybara:uncomment_begin(internal brella benchmark)
+        # "//learning/brain/mobile/lite/brella_benchmark:__subpackages__",
+        # copybara:uncomment_end
         "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
@@ -579,7 +582,7 @@ cc_test(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -593,6 +596,7 @@ pybind_extension(
     module_name = "_pywrap_string_util",
     deps = [
         ":string_util_lib",
+        "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",

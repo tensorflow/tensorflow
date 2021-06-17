@@ -393,7 +393,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(result->mu);
           status = CopyBatch(dataset()->parallel_copy_, ctx.get(),
-                             &result->output, batch_elements.get());
+                             *batch_elements, &result->output);
           result->status.Update(status);
           RecordBufferEnqueue(ctx.get(), result->output);
         }

@@ -159,10 +159,8 @@ class CSRSparseMatrixMulScalar<GPUDevice, T> {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if GOOGLE_CUDA
 DECLARE_GPU_SPEC(std::complex<float>);
 DECLARE_GPU_SPEC(std::complex<double>);
-#endif
 
 #undef DECLARE_GPU_SPEC
 

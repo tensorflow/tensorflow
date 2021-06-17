@@ -31,10 +31,12 @@ namespace {
 
 struct ChloLegalizeToHloPass
     : public ChloLegalizeToHloPassBase<ChloLegalizeToHloPass> {
-  explicit ChloLegalizeToHloPass(bool broadcast_only)
+  explicit ChloLegalizeToHloPass(bool legalize_broadcasts,
+                                 bool expand_compositions)
       : ChloLegalizeToHloPassBase<
             ChloLegalizeToHloPass>::ChloLegalizeToHloPassBase() {
-    this->broadcast_only_ = broadcast_only;
+    this->legalize_broadcasts_ = legalize_broadcasts;
+    this->expand_compositions_ = expand_compositions;
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -53,13 +55,15 @@ struct ChloLegalizeToHloPass
         mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
     conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 
-    if (broadcast_only_) {
+    if (legalize_broadcasts_) {
       chlo::PopulateChloBroadcastingPatterns(&getContext(),
                                              &conversionPatterns);
-      conversionTarget.addLegalOp<chlo::ZetaOp, chlo::PolygammaOp>();
+    }
+
+    if (expand_compositions_) {
+      chlo::PopulateDecomposeChloPatterns(&getContext(), &conversionPatterns);
     } else {
-      chlo::PopulateLegalizeChloToHloPatterns(&getContext(),
-                                              &conversionPatterns);
+      conversionTarget.addLegalOp<chlo::ZetaOp, chlo::PolygammaOp>();
     }
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
@@ -71,8 +75,10 @@ struct ChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(bool broadcast_only) {
-  return std::make_unique<ChloLegalizeToHloPass>(broadcast_only);
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
+    bool legalize_broadcasts, bool expand_compositions) {
+  return std::make_unique<ChloLegalizeToHloPass>(legalize_broadcasts,
+                                                 expand_compositions);
 }
 
 }  // namespace mhlo

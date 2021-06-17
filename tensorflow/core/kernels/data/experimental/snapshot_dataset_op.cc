@@ -1132,7 +1132,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, iterator_));
+        if (iterator_ != nullptr) {
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, iterator_));
+        }
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kState), static_cast<int64>(state_)));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kHashDir), hash_dir_));
@@ -1151,11 +1153,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                      << hash_dir << "; new hash: " << hash_dir_;
           return Status::OK();
         }
-        {
-          int64 temp;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kState), &temp));
-          state_ = snapshot_util::Mode(temp);
-        }
+        int64 temp;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kState), &temp));
+        state_ = snapshot_util::Mode(temp);
         experimental::SnapshotMetadataRecord metadata;
         bool file_exists;
         TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(

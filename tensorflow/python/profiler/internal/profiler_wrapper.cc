@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/variant.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
@@ -131,14 +132,64 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
   m.def("xspace_to_tools_data",
         [](const py::list& xspace_path_list, const py::str& py_tool_name) {
-          std::vector<std::string> xspace_paths;
+          std::vector<tensorflow::profiler::XSpace> xspaces;
+          xspaces.reserve(xspace_path_list.size());
+          std::vector<std::string> filenames;
+          filenames.reserve(xspace_path_list.size());
           for (py::handle obj : xspace_path_list) {
-            xspace_paths.push_back(std::string(py::cast<py::str>(obj)));
+            std::string filename = std::string(py::cast<py::str>(obj));
+
+            tensorflow::profiler::XSpace xspace;
+            tensorflow::Status status;
+
+            status = tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
+                                                 filename, &xspace);
+
+            if (!status.ok()) {
+              return py::make_tuple(py::bytes(""), py::bool_(false));
+            }
+
+            xspaces.push_back(xspace);
+            filenames.push_back(filename);
           }
           std::string tool_name = std::string(py_tool_name);
           auto tool_data_and_success =
-              tensorflow::profiler::ConvertMultiXSpacesToToolData(xspace_paths,
-                                                                  tool_name);
+              tensorflow::profiler::ConvertMultiXSpacesToToolData(
+                  xspaces, filenames, tool_name);
+          return py::make_tuple(py::bytes(tool_data_and_success.first),
+                                py::bool_(tool_data_and_success.second));
+        });
+
+  m.def("xspace_to_tools_data_from_string",
+        [](const py::list& xspace_string_list, const py::list& filenames_list,
+           const py::str& py_tool_name) {
+          std::vector<tensorflow::profiler::XSpace> xspaces;
+          xspaces.reserve(xspace_string_list.size());
+          std::vector<std::string> filenames;
+          filenames.reserve(filenames_list.size());
+
+          // XSpace string inputs
+          for (py::handle obj : xspace_string_list) {
+            std::string xspace_string = std::string(py::cast<py::str>(obj));
+
+            tensorflow::profiler::XSpace xspace;
+
+            if (!xspace.ParseFromString(xspace_string)) {
+              return py::make_tuple(py::bytes(""), py::bool_(false));
+            }
+
+            xspaces.push_back(xspace);
+          }
+
+          // Filenames
+          for (py::handle obj : filenames_list) {
+            filenames.push_back(std::string(py::cast<py::str>(obj)));
+          }
+
+          std::string tool_name = std::string(py_tool_name);
+          auto tool_data_and_success =
+              tensorflow::profiler::ConvertMultiXSpacesToToolData(
+                  xspaces, filenames, tool_name);
           return py::make_tuple(py::bytes(tool_data_and_success.first),
                                 py::bool_(tool_data_and_success.second));
         });

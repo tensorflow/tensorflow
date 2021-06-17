@@ -65,9 +65,9 @@ REGISTER_XLA_OP(Name("Cos"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
 XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
 REGISTER_XLA_OP(Name("Exp"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Expm1, xla::Expm1(x));
+REGISTER_XLA_OP(Name("Expm1"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Floor"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(IsFinite, xla::IsFinite(x));
+REGISTER_XLA_OP(Name("IsFinite"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsInf"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("IsNan"), MlirXlaOpKernel);
 // Return 1/x

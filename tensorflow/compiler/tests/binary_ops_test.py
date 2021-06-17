@@ -765,8 +765,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
-  @test_util.disable_mlir_bridge(
-      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatRemainder(self):
     for dtype in self.float_types:
       self._testRemainder(dtype)
@@ -1120,7 +1118,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           math_ops.matmul,
           np.array([], dtype=dtype).reshape((0, 2, 4)),
           np.array([], dtype=dtype).reshape((0, 4, 3)),
-          expected=np.array([], dtype=dtype).reshape(0, 2, 3))
+          expected=np.array([], dtype=dtype).reshape(0, 2, 3))  # pylint: disable=too-many-function-args
 
       # Regression test for b/31472796.
       if dtype != np.float16 and hasattr(np, "matmul"):

@@ -47,6 +47,8 @@ class AsStringOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("width", &width));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fill", &fill_string));
     switch (dtype) {
+      case DT_HALF:
+      case DT_BFLOAT16:
       case DT_FLOAT:
       case DT_DOUBLE:
       case DT_COMPLEX64:
@@ -93,6 +95,14 @@ class AsStringOp : public OpKernel {
       strings::Appendf(&format_, ".%d", precision);
     }
     switch (dtype) {
+      case DT_UINT8:
+      case DT_UINT16:
+      case DT_UINT32:
+        strings::Appendf(&format_, "u");
+        break;
+      case DT_UINT64:
+        strings::Appendf(&format_, "llu");
+        break;
       case DT_INT8:
       case DT_INT16:
       case DT_INT32:
@@ -101,6 +111,8 @@ class AsStringOp : public OpKernel {
       case DT_INT64:
         strings::Appendf(&format_, "lld");
         break;
+      case DT_HALF:
+      case DT_BFLOAT16:
       case DT_FLOAT:
       case DT_DOUBLE:
       case DT_COMPLEX64:
@@ -149,12 +161,16 @@ class AsStringOp : public OpKernel {
   } break
 
     switch (dtype) {
+      ENCODE_TYPE(DT_UINT8, uint8, format_);
+      ENCODE_TYPE(DT_UINT16, uint16, format_);
+      ENCODE_TYPE(DT_UINT32, uint32, format_);
+      ENCODE_TYPE(DT_UINT64, uint64, format_);
+      ENCODE_TYPE(DT_INT8, int8, format_);
+      ENCODE_TYPE(DT_INT16, int16, format_);
       ENCODE_TYPE(DT_INT32, int32, format_);
       ENCODE_TYPE(DT_INT64, int64, format_);
       ENCODE_TYPE(DT_FLOAT, float, format_);
       ENCODE_TYPE(DT_DOUBLE, double, format_);
-      ENCODE_TYPE(DT_INT8, int8, format_);
-      ENCODE_TYPE(DT_INT16, int16, format_);
       case (DT_BOOL): {
         const auto& input_flat = input_tensor->flat<bool>();
         for (int i = 0; i < input_flat.size(); ++i) {
@@ -165,6 +181,20 @@ class AsStringOp : public OpKernel {
         const auto& input_flat = input_tensor->flat<Variant>();
         for (int i = 0; i < input_flat.size(); ++i) {
           output_flat(i) = input_flat(i).DebugString();
+        }
+      } break;
+      case (DT_HALF): {
+        const auto& input_flat = input_tensor->flat<Eigen::half>();
+        for (int i = 0; i < input_flat.size(); ++i) {
+          output_flat(i) = strings::Printf(format_.c_str(),
+                                           static_cast<float>(input_flat(i)));
+        }
+      } break;
+      case (DT_BFLOAT16): {
+        const auto& input_flat = input_tensor->flat<bfloat16>();
+        for (int i = 0; i < input_flat.size(); ++i) {
+          output_flat(i) = strings::Printf(format_.c_str(),
+                                           static_cast<float>(input_flat(i)));
         }
       } break;
       case (DT_COMPLEX64): {

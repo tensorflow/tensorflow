@@ -216,7 +216,7 @@ tf_cuda_library(
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/lib:device_profiler_session",
     ],
 )
 
@@ -278,6 +278,7 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
     ],
 )
