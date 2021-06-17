@@ -2159,3 +2159,48 @@ func @fuseUnpackAndConcatToReshape(%arg0: tensor<1x3x2xf32>) -> tensor<1x6xf32> 
   // CHECK: %[[RES:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<1x3x2xf32>, tensor<2xi32>) -> tensor<1x6xf32>
   // CHECK: return %[[RES]]
 }
+
+// CHECK-LABEL: replaceReshapeEqualWithOneHot
+func @replaceReshapeEqualWithOneHot(%arg: tensor<2xi32>) -> tensor<2x3xi1> {
+  // Good match: Replace with one_hot
+  %shape = constant dense<[2, 1]> : tensor<2xi32>
+  %cst = constant dense<[0, 1, 2]> : tensor<3xi32>
+  %tmp = "tfl.reshape"(%arg, %shape) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x1xi32>
+  %result = "tfl.equal"(%tmp, %cst) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+  return %result : tensor<2x3xi1>
+
+  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<1xi32>
+  // CHECK: %[[CST2:.*]] = constant dense<true> : tensor<i1>
+  // CHECK: %[[CST3:.*]] = constant dense<false> : tensor<i1>
+  // CHECK: %[[RES:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<1xi32>, tensor<i1>, tensor<i1>) -> tensor<2x3xi1>
+}
+
+// CHECK-LABEL: noReplaceReshapeEqualWithOneHotBadShape
+func @noReplaceReshapeEqualWithOneHotBadShape(%arg: tensor<6xi32>) -> tensor<2x3xi1> {
+  // Do not replace: shape's last dimension isn't 1
+  %shape = constant dense<[2, 3]> : tensor<2xi32>
+  %cst = constant dense<[0, 1, 2]> : tensor<3xi32>
+  %tmp = "tfl.reshape"(%arg, %shape) : (tensor<6xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+  %result = "tfl.equal"(%tmp, %cst) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+  return %result : tensor<2x3xi1>
+
+  // CHECK: %[[CST1:.*]] = constant dense<[2, 3]> : tensor<2xi32>
+  // CHECK: %[[CST2:.*]] = constant dense<[0, 1, 2]> : tensor<3xi32>
+  // CHECK: %[[TMP:.*]] = "tfl.reshape"(%arg0, %[[CST1]]) : (tensor<6xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+  // CHECK: %[[RES:.*]] = "tfl.equal"(%[[TMP]], %[[CST2]]) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+}
+
+// CHECK-LABEL: noReplaceReshapeEqualWithOneHotBadIndex
+func @noReplaceReshapeEqualWithOneHotBadIndex(%arg: tensor<2xi32>) -> tensor<2x3xi1> {
+  // Do not replace: the constant is not a series from 0 to N-1
+  %shape = constant dense<[2, 1]> : tensor<2xi32>
+  %cst = constant dense<[1, 2, 3]> : tensor<3xi32>
+  %tmp = "tfl.reshape"(%arg, %shape) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x1xi32>
+  %result = "tfl.equal"(%tmp, %cst) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+  return %result : tensor<2x3xi1>
+
+  // CHECK: %[[CST1:.*]] = constant dense<[2, 1]> : tensor<2xi32>
+  // CHECK: %[[CST2:.*]] = constant dense<[1, 2, 3]> : tensor<3xi32>
+  // CHECK: %[[TMP:.*]] = "tfl.reshape"(%arg0, %[[CST1]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x1xi32>
+  // CHECK: %[[RES:.*]] = "tfl.equal"(%[[TMP]], %[[CST2]]) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+}

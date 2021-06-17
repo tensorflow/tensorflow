@@ -871,3 +871,27 @@ def OptimizeSliceOp : Pat<
   (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
   (replaceWithValue $input),
   [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
+
+def IsLastDimensionEqualOne : Constraint<CPred<
+  "TFL::IsLastDimensionEqualOne($0)">>;
+
+def IsOneHotIndexAttribute : Constraint<CPred<
+  "TFL::IsOneHotIndexAttribute($0)">>;
+
+// Replace
+//   Equal(Reshape(X, shape), indices)
+// With
+//   OneHot(X, N, true, false, -1)
+// where
+//  - last value in shape is 1
+//  - indices is a incrementing series from 0 to N-1. (N elements total.)
+def ReshapeEqualOpToOneHotOp : Pat<
+  (TFL_EqualOp (TFL_ReshapeOp $x, (ConstantOp $shape)),
+               (ConstantOp:$series_val $series_attr)),
+  (TFL_OneHotOp $x,
+                (ConstantOp (GetShape $series_val)),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
+                ConstantAttr<I32Attr, "-1">),
+  [(IsLastDimensionEqualOne $shape),
+   (IsOneHotIndexAttribute $series_attr)]>;
