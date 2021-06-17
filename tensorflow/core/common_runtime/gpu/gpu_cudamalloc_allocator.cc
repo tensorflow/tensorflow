@@ -49,6 +49,8 @@ void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
                << "\n Error string: " << error_string;
     return nullptr;
   }
+  VLOG(10) << "AllocateRaw " << Name() << "  " << num_bytes << " "
+           << reinterpret_cast<void*>(rv);
   return reinterpret_cast<void*>(rv);
 #else
   return nullptr;
@@ -56,6 +58,7 @@ void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 }
 void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
 #ifdef GOOGLE_CUDA
+  VLOG(10) << Name() << " Freed ptr: " << ptr;
   // free with cudaFree
   CUresult res = cuMemFree(reinterpret_cast<CUdeviceptr>(ptr));
   if (res == CUDA_ERROR_DEINITIALIZED) {
