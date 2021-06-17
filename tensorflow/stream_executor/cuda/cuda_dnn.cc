@@ -5007,6 +5007,14 @@ port::Status CudnnSupport::DoFusedConvolve(
         "GPUs with compute capability 6.1 or later.");
   }
 
+  if (input_type == dnn::DataType::kInt8 &&
+      output_type == dnn::DataType::kFloat &&
+      (CUDNN_VERSION >= 8000 && CUDNN_VERSION <= 8200)) {
+    return port::UnimplementedError(
+        "int8 -> float fused conv is disabled for this cuDNN version. See "
+        "go/nvbugs/3326122");
+  }
+
   if (input_type == dnn::DataType::kDouble) {
     return DoFusedConvolveImpl(
         stream, input_type, side_input_type, bias_type, output_type,
