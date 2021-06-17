@@ -2999,7 +2999,7 @@ HloModule TestModule
  branch_0_comp.5.clone {
  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element), metadata={op_type="neg" op_name="cond/branch_0_fun/neg" source_file="<embedded stdlib>/unittest/case.py" source_line=605}
+ %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
@@ -3028,6 +3028,7 @@ ENTRY TestComputation {
   CopyInsertion copy_insertion(nullptr,
                                /*use_region_based_live_range_analysis=*/true);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
   // The copy.1 must be kept due to modification in the other branch.
   auto conditional18 = FindInstruction(module.get(), "conditional.18");
   CHECK_NE(conditional18, nullptr);
@@ -3044,7 +3045,7 @@ HloModule TestModule
  branch_0_comp.5.clone {
  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element), metadata={op_type="neg" op_name="cond/branch_0_fun/neg" source_file="<embedded stdlib>/unittest/case.py" source_line=605}
+ %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
@@ -3093,6 +3094,49 @@ ENTRY TestComputation {
 #endif
 }
 
+TEST_F(CopyInsertionTest, ConditionalBranchMustCopy3) {
+  const string& hlo_string = R"(
+HloModule primitive_computation_cond.19
+%branch_0_comp.5.clone (parameter.0: (s32[2])) -> (s32[2]) {
+  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
+  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
+  %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
+  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
+  ROOT %tuple.5 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %copy)
+}
+
+%branch_1_comp.12.clone (parameter.4: (s32[2])) -> (s32[2]) {
+  %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
+  %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
+  %copy.1 = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %get-tuple-element.5)
+  ROOT %tuple.6 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %copy.1)
+}
+
+ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2], parameter.3: s32[2]) -> (s32[2]) {
+  %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+  %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+  %tuple.1 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.3)
+  %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+  %tuple.3 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.2)
+  ROOT %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}, metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/true);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
+  // The copy.1 must be kept b/c aliasing of parameter and root is not allowed.
+  auto conditional18 = FindInstruction(module.get(), "conditional.18");
+  CHECK_NE(conditional18, nullptr);
+  auto tuple6 = conditional18->branch_computation(1)->root_instruction();
+  CHECK_EQ(tuple6->opcode(), HloOpcode::kTuple);
+  auto copy1 = tuple6->operand(0);
+  CHECK_EQ(copy1->opcode(), HloOpcode::kCopy);
+}
+
 TEST_F(CopyInsertionTest, ConditionalBranchDoNotCopy1) {
   const string& hlo_string = R"(
 HloModule TestModule
@@ -3100,7 +3144,7 @@ HloModule TestModule
  branch_0_comp.5.clone {
  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element), metadata={op_type="neg" op_name="cond/branch_0_fun/neg" source_file="<embedded stdlib>/unittest/case.py" source_line=605}
+ %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
@@ -3125,9 +3169,6 @@ ENTRY TestComputation {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  // TODO(b/189898980): the region based live range analysis currently
-  // does not enforce a strict ordering of the merged live ranges. This wil
-  // cause the following invocation to fail when run under UNDEBUG mode.
   CopyInsertion copy_insertion(nullptr,
                                /*use_region_based_live_range_analysis=*/true);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
