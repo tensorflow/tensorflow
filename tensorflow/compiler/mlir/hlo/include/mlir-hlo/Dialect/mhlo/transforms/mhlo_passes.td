@@ -112,12 +112,6 @@ def TestInferShapedTypeMethodsPass : FunctionPass<"mhlo-test-infer-shaped-type-m
   let constructor = "createTestInferShapedTypeMethodsPass()";
 }
 
-
-def TransformUnrankedHloPass : FunctionPass<"mhlo-transform-unranked-hlo"> {
-  let summary = "Realize element-wise operations on ranked tensors where possible.";
-  let constructor = "createTransformUnrankedHloPass()";
-}
-
 def BroadcastPropagationPass : FunctionPass<"mhlo-broadcast-propagation"> {
   let summary = "Move dynamic broadcasts up over element-wise operations and "
     "broadcast the operands rather than the result. This will eventually allow "

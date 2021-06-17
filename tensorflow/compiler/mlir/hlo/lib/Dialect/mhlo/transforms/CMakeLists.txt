@@ -62,7 +62,6 @@ add_mlir_library(MhloPasses
   rank_specialization.cc
   sink_constants_to_control_flow.cc
   test_infer_shaped_type_pass.cc
-  transform_unranked_hlo.cc
   unfuse_batch_norm.cc
   unfuse_batch_norm_pass.cc
 

@@ -840,29 +840,6 @@ cc_library(
 )
 
 cc_library(
-    name = "transform_unranked_hlo",
-    srcs = ["lib/Dialect/mhlo/transforms/transform_unranked_hlo.cc"],
-    hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
-        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
-    ],
-    deps = [
-        ":hlo",
-        ":map_chlo_to_hlo_op",
-        ":pass_details",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "broadcast_propagation",
     srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
     hdrs = [
@@ -1366,7 +1343,6 @@ cc_library(
         ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",
-        ":transform_unranked_hlo",
         "@llvm-project//mlir:Pass",
     ],
 )
