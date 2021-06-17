@@ -2125,10 +2125,12 @@ struct BenchmarkErrorT : public flatbuffers::NativeTable {
   int32_t exit_code;
   int32_t signal;
   std::vector<std::unique_ptr<tflite::ErrorCodeT>> error_code;
+  int32_t mini_benchmark_error_code;
   BenchmarkErrorT()
       : stage(tflite::BenchmarkStage_UNKNOWN),
         exit_code(0),
-        signal(0) {
+        signal(0),
+        mini_benchmark_error_code(0) {
   }
 };
 
@@ -2138,7 +2140,8 @@ struct BenchmarkError FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_STAGE = 4,
     VT_EXIT_CODE = 6,
     VT_SIGNAL = 8,
-    VT_ERROR_CODE = 10
+    VT_ERROR_CODE = 10,
+    VT_MINI_BENCHMARK_ERROR_CODE = 12
   };
   tflite::BenchmarkStage stage() const {
     return static_cast<tflite::BenchmarkStage>(GetField<int32_t>(VT_STAGE, 0));
@@ -2152,6 +2155,9 @@ struct BenchmarkError FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>> *error_code() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>> *>(VT_ERROR_CODE);
   }
+  int32_t mini_benchmark_error_code() const {
+    return GetField<int32_t>(VT_MINI_BENCHMARK_ERROR_CODE, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_STAGE) &&
@@ -2160,6 +2166,7 @@ struct BenchmarkError FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_ERROR_CODE) &&
            verifier.VerifyVector(error_code()) &&
            verifier.VerifyVectorOfTables(error_code()) &&
+           VerifyField<int32_t>(verifier, VT_MINI_BENCHMARK_ERROR_CODE) &&
            verifier.EndTable();
   }
   BenchmarkErrorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2182,6 +2189,9 @@ struct BenchmarkErrorBuilder {
   void add_error_code(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>>> error_code) {
     fbb_.AddOffset(BenchmarkError::VT_ERROR_CODE, error_code);
   }
+  void add_mini_benchmark_error_code(int32_t mini_benchmark_error_code) {
+    fbb_.AddElement<int32_t>(BenchmarkError::VT_MINI_BENCHMARK_ERROR_CODE, mini_benchmark_error_code, 0);
+  }
   explicit BenchmarkErrorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2199,8 +2209,10 @@ inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(
     tflite::BenchmarkStage stage = tflite::BenchmarkStage_UNKNOWN,
     int32_t exit_code = 0,
     int32_t signal = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>>> error_code = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>>> error_code = 0,
+    int32_t mini_benchmark_error_code = 0) {
   BenchmarkErrorBuilder builder_(_fbb);
+  builder_.add_mini_benchmark_error_code(mini_benchmark_error_code);
   builder_.add_error_code(error_code);
   builder_.add_signal(signal);
   builder_.add_exit_code(exit_code);
@@ -2213,14 +2225,16 @@ inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkErrorDirect(
     tflite::BenchmarkStage stage = tflite::BenchmarkStage_UNKNOWN,
     int32_t exit_code = 0,
     int32_t signal = 0,
-    const std::vector<flatbuffers::Offset<tflite::ErrorCode>> *error_code = nullptr) {
+    const std::vector<flatbuffers::Offset<tflite::ErrorCode>> *error_code = nullptr,
+    int32_t mini_benchmark_error_code = 0) {
   auto error_code__ = error_code ? _fbb.CreateVector<flatbuffers::Offset<tflite::ErrorCode>>(*error_code) : 0;
   return tflite::CreateBenchmarkError(
       _fbb,
       stage,
       exit_code,
       signal,
-      error_code__);
+      error_code__,
+      mini_benchmark_error_code);
 }
 
 flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -3178,7 +3192,8 @@ inline bool operator==(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs) {
       (lhs.stage == rhs.stage) &&
       (lhs.exit_code == rhs.exit_code) &&
       (lhs.signal == rhs.signal) &&
-      (lhs.error_code == rhs.error_code);
+      (lhs.error_code == rhs.error_code) &&
+      (lhs.mini_benchmark_error_code == rhs.mini_benchmark_error_code);
 }
 
 inline bool operator!=(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs) {
@@ -3199,6 +3214,7 @@ inline void BenchmarkError::UnPackTo(BenchmarkErrorT *_o, const flatbuffers::res
   { auto _e = exit_code(); _o->exit_code = _e; }
   { auto _e = signal(); _o->signal = _e; }
   { auto _e = error_code(); if (_e) { _o->error_code.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->error_code[_i] = std::unique_ptr<tflite::ErrorCodeT>(_e->Get(_i)->UnPack(_resolver)); } } }
+  { auto _e = mini_benchmark_error_code(); _o->mini_benchmark_error_code = _e; }
 }
 
 inline flatbuffers::Offset<BenchmarkError> BenchmarkError::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -3213,12 +3229,14 @@ inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(flatbuffers::Fla
   auto _exit_code = _o->exit_code;
   auto _signal = _o->signal;
   auto _error_code = _o->error_code.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::ErrorCode>> (_o->error_code.size(), [](size_t i, _VectorArgs *__va) { return CreateErrorCode(*__va->__fbb, __va->__o->error_code[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _mini_benchmark_error_code = _o->mini_benchmark_error_code;
   return tflite::CreateBenchmarkError(
       _fbb,
       _stage,
       _exit_code,
       _signal,
-      _error_code);
+      _error_code,
+      _mini_benchmark_error_code);
 }
 
 
