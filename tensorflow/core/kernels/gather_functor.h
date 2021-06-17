@@ -67,6 +67,12 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
            (batch_idx == batch_idx_end && indices_idx < indices_idx_end)) {
       SliceIndex i_next = indices_idx + 1;
       SliceIndex b_next = batch_idx + 1;
+      const Index index = internal::SubtleMustCopy(indices(indices_idx));
+      if (!FastBoundsCheck(index, limit)) {
+        mutex_lock l(mu);
+        result = indices_idx;
+        return;
+      }
       if ((batch_idx == batch_idx_end && i_next < indices_idx_end) ||
           (i_next < indices_size)) {
         port::prefetch<port::PREFETCH_HINT_T0>(
@@ -77,12 +83,6 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
         port::prefetch<port::PREFETCH_HINT_T0>(&params(b_next, indices(0), 0));
         port::prefetch<port::PREFETCH_HINT_T0>(&out(b_next, 0, 0));
         i_next = 0;
-      }
-      const Index index = internal::SubtleMustCopy(indices(indices_idx));
-      if (!FastBoundsCheck(index, limit)) {
-        mutex_lock l(mu);
-        result = indices_idx;
-        return;
       }
       // Copy using memcpy if possible, otherwise an Eigen loop
       // TODO(cwhipkey): avoid linking to framework to get Allocator (to improve
