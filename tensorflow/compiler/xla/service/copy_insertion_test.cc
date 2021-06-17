@@ -3181,5 +3181,54 @@ ENTRY TestComputation {
   CHECK_EQ(tuple6->opcode(), HloOpcode::kParameter);
 }
 
+TEST_F(CopyInsertionTest, RootInstructionNotLast) {
+  // This is a test for b/189219227. When the root instruction is scheduled not
+  // as the last instruction, it still lives out. So, we make sure that the copy
+  // after the root cannot be removed.
+  const string& hlo_string = R"(
+HloModule module, is_scheduled=true
+
+body2 {
+  p_body2 = (f32[2]{0}) parameter(0)
+  p_body2.1 = f32[2]{0} get-tuple-element(p_body2), index=0
+  add.3 = f32[2]{0} add(p_body2.1, p_body2.1)
+  ROOT root2 = (f32[2]{0}) tuple(add.3)
+}
+
+condition2 {
+  p_cond2 = (f32[2]{0}) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+body {
+  p_body = (f32[2]{0}) parameter(0)
+  p_body.1 = f32[2]{0} get-tuple-element(p_body), index=0
+  ROOT root = (f32[2]{0}) tuple(p_body.1)
+  copy = f32[2]{0} copy(p_body.1)
+  tuple = (f32[2]{0}) tuple(copy)
+  while.1 = (f32[2]{0}) while(tuple), condition=condition2, body=body2
+}
+
+condition {
+  p_cond = (f32[2]{0}) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const0 = f32[2]{0} constant({1, 2})
+  while_init = (f32[2]{0}) tuple(const0)
+  ROOT while.0 = (f32[2]{0}) while(while_init), condition=condition, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/true);
+  SequentialHloOrdering ordering(module->schedule());
+  ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(ordering, module.get()));
+  auto while_1 = FindInstruction(module.get(), "while.1");
+  EXPECT_THAT(while_1, op::While(op::Tuple(op::Copy())));
+}
+
 }  // namespace
 }  // namespace xla
