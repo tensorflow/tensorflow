@@ -46,7 +46,7 @@ void SetFortranLayout(Shape* shape) {
             shape->mutable_layout()->mutable_minor_to_major()->at(1));
 }
 
-StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
+StatusOr<HloInstruction*> CreateCholesky(GpusolverContext* context,
                                          HloInstruction* operand,
                                          const CholeskyOptions& options,
                                          const OpMetadata& metadata) {
@@ -129,7 +129,7 @@ StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
 }  // namespace
 
 // Tries to rewrite a single convolution into a call to cudnn.
-StatusOr<bool> RunOnInstruction(CusolverContext* context,
+StatusOr<bool> RunOnInstruction(GpusolverContext* context,
                                 HloInstruction* instruction) {
   if (instruction->opcode() != HloOpcode::kCholesky) {
     return false;
@@ -162,8 +162,8 @@ StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(CusolverContext context,
-                      CusolverContext::Create(/*stream=*/nullptr));
+  TF_ASSIGN_OR_RETURN(GpusolverContext context,
+                      GpusolverContext::Create(/*stream=*/nullptr));
 
   bool changed = false;
   for (HloInstruction* instruction : cusolver_calls) {

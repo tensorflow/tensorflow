@@ -20,9 +20,10 @@ limitations under the License.
 
 #if !TENSORFLOW_USE_ROCM
 #include "third_party/gpus/cuda/include/cusolverDn.h"
+using gpusolverHandle_t = cusolverDnHandle_t;
 #else
 #include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
-typedef rocsolver_handle cusolverDnHandle_t;
+using gpusolverHandle_t = rocblas_handle;
 #endif
 
 #include "tensorflow/compiler/xla/statusor.h"
@@ -35,18 +36,18 @@ typedef rocsolver_handle cusolverDnHandle_t;
 namespace xla {
 namespace gpu {
 
-class CusolverContext {
+class GpusolverContext {
  public:
   // stream may be nullptr, in which case the context can only be used for
   // buffer size queries.
-  static StatusOr<CusolverContext> Create(se::Stream* stream);
-  CusolverContext() = default;
-  ~CusolverContext();
+  static StatusOr<GpusolverContext> Create(se::Stream* stream);
+  GpusolverContext() = default;
+  ~GpusolverContext();
 
-  CusolverContext(const CusolverContext&) = delete;
-  CusolverContext(CusolverContext&&);
-  CusolverContext& operator=(const CusolverContext&) = delete;
-  CusolverContext& operator=(CusolverContext&&);
+  GpusolverContext(const GpusolverContext&) = delete;
+  GpusolverContext(GpusolverContext&&);
+  GpusolverContext& operator=(const GpusolverContext&) = delete;
+  GpusolverContext& operator=(GpusolverContext&&);
 
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
   // Returns Status::OK() if the kernel was launched successfully. See:
@@ -66,19 +67,19 @@ class CusolverContext {
                                   int n, int lda);
 
  private:
-  CusolverContext(se::Stream* stream, cusolverDnHandle_t handle);
+  GpusolverContext(se::Stream* stream, gpusolverHandle_t handle);
 
-  cusolverDnHandle_t handle() const { return handle_; }
+  gpusolverHandle_t handle() const { return handle_; }
 
   se::Stream* stream_ = nullptr;
-  cusolverDnHandle_t handle_ = nullptr;
+  gpusolverHandle_t handle_ = nullptr;
 };
 
 #define CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 #define POTRF_INSTANCE(T, type_prefix)                                  \
   template <>                                                           \
-  Status CusolverContext::Potrf<T>(                                     \
+  Status GpusolverContext::Potrf<T>(                                    \
       se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda, \
       se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace);
 CALL_LAPACK_TYPES(POTRF_INSTANCE);
