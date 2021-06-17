@@ -180,6 +180,7 @@ cc_library(
     name = "delegate_data",
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
+    copts = tf_opts_nortti_if_android(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
