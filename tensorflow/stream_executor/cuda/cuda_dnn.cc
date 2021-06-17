@@ -4047,7 +4047,7 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
         GetFirstWorkingExecutionPlan(op_graph, kind, cudnn, scratch_allocator));
   }
 
-  size_t workspace_size;
+  size_t workspace_size = 0;
   cudnnBackendDescriptor_t plan_desc;
   std::string exec_plan_id = "unknown";
   if (current_plan) {
@@ -4282,7 +4282,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
                                      cudnn, scratch_allocator));
   }
 
-  size_t workspace_size;
+  size_t workspace_size = 0;
   cudnnBackendDescriptor_t plan_desc;
   std::string exec_plan_id = "unknown";
   if (current_plan) {
