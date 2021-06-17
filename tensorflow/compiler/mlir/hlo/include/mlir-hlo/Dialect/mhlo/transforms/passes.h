@@ -45,7 +45,7 @@ std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
 // Place shape calculating subgraph on host
-std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnCPUPass();
+std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnHostPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(

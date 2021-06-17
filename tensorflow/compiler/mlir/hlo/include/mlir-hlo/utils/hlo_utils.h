@@ -30,12 +30,12 @@ namespace mlir {
 namespace hlo {
 
 // Attrs for placement
-constexpr llvm::StringRef kDeviceTyAttr = "mhlo_device_type";
-constexpr llvm::StringRef kTypeCPU = "cpu";
-constexpr llvm::StringRef kTypeGPU = "gpu";
-enum class DeviceType {
-  kCPU,
-  kGPU,
+constexpr llvm::StringRef kPlaceTyAttr = "mhlo_place_type";
+constexpr llvm::StringRef kTypeHost = "host";
+constexpr llvm::StringRef kTypeDevice = "device";
+enum class PlacementType {
+  kHost,
+  kDevice,
 };
 
 // Input & output placement attr
@@ -129,7 +129,7 @@ bool IsSequenceStartingWith0(DenseIntElementsAttr attr);
 
 int64_t getArgumentIndex(mlir::FuncOp op, Value value);
 
-DeviceType getInputPlacement(Value arg);
+PlacementType getInputPlacement(Value arg);
 
 }  // namespace hlo
 }  // namespace mlir
