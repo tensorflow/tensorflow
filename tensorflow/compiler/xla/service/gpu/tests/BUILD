@@ -17,10 +17,6 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load(
-    "//tensorflow/compiler/xla/service/gpu:thunk_config.bzl",
-    "if_using_bef_thunks",
-)
 
 package(
     default_visibility = [":friends"],
@@ -102,6 +98,7 @@ cc_library(
     name = "tfrt_exec_ctx_injector",
     testonly = True,
     srcs = ["tfrt_exec_ctx_injector.cc"],
+    tags = ["manual"],
     deps = [
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         # copybara:uncomment_begin(target not open-sourced yet)
@@ -128,9 +125,12 @@ tf_cc_test(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ] + if_using_bef_thunks([
-        ":tfrt_exec_ctx_injector",
-    ]),
+    ] + select({
+        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
+            ":tfrt_exec_ctx_injector",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_test(
@@ -201,6 +201,7 @@ tf_cc_test(
     ],
     deps = [
         ":gpu_codegen_test",
+        "@com_google_absl//absl/memory",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -210,6 +211,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -217,8 +219,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/memory",
-    ],
+    ] + select({
+        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
+            ":tfrt_exec_ctx_injector",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_test(

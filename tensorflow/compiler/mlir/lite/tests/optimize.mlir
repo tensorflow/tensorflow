@@ -1548,6 +1548,18 @@ func @FoldReduceProdKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x1xf32> {
 // CHECK: return %[[RESULT]] : tensor<1x1xf32>
 }
 
+func @FoldMeanKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x128xf32> {
+  %cst = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[1, 128]> : tensor<2xi32>
+  %0 = "tfl.mean"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<128xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<128xf32>, tensor<2xi32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+// CHECK-LABEL: FoldMeanKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.mean"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+// CHECK: return %[[RESULT]] : tensor<1x128xf32>
+}
+
 func @SoftMaxWithNormalization(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {
   %cst = constant dense<1> : tensor<1xi32>
   %0 = "tfl.reduce_max"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>

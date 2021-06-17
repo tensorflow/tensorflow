@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
 
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#endif  // !IS_MOBILE_PLATFORM
+
 namespace tensorflow {
 #if !defined(IS_MOBILE_PLATFORM)
 class EagerContext;
@@ -40,8 +44,13 @@ class EagerContextDistributedManager
   Status CheckRemoteAlive(const std::string& remote_task_name,
                           bool* is_alive) override;
 
+  CoordinationServiceInterface* GetCoordinationService() override {
+    return coordination_service_.get();
+  }
+
  private:
   EagerContext* context_;
+  std::unique_ptr<CoordinationServiceInterface> coordination_service_;
 };
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

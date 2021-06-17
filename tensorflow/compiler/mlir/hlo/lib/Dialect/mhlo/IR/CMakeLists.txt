@@ -91,6 +91,17 @@ target_link_libraries(LmhloGPUDialect
   HloOpsCommon
 )
 
+add_mlir_dialect_library(DiscRalDialect
+  disc_ral_ops.cc
+
+  DEPENDS
+  MLIRdisc_ral_opsIncGen
+)
+target_link_libraries(DiscRalDialect
+  PUBLIC
+  MLIRIR
+)
+
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc
 DEPENDS

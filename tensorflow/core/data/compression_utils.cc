@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/compression_utils.h"
 
+#include <limits>
+
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -26,7 +29,7 @@ Status CompressElement(const std::vector<Tensor>& element,
   // Step 1: Determine the total uncompressed size. This requires serializing
   // non-memcopyable tensors, which we save to use again later.
   std::vector<TensorProto> non_memcpy_components;
-  int64 total_size = 0;
+  size_t total_size = 0;
   for (auto& component : element) {
     if (DataTypeCanUseMemcpy(component.dtype())) {
       const TensorBuffer* buffer = DMAHelper::buffer(&component);
@@ -64,6 +67,10 @@ Status CompressElement(const std::vector<Tensor>& element,
       metadata->set_tensor_size_bytes(proto.ByteSizeLong());
     }
     position += metadata->tensor_size_bytes();
+  }
+  if (total_size > kuint32max) {
+    return errors::OutOfRange("Encountered dataset element of size ",
+                              total_size, ", exceeding the 4GB limit.");
   }
   DCHECK_EQ(position, uncompressed.mdata() + total_size);
 

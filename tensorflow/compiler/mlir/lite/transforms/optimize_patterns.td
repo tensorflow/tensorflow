@@ -754,8 +754,8 @@ def ShapeMatchesReduceWithKeepAxes : Constraint<CPred<
 
 // Fold reshapes re-inserting reduced dimensions into the results of a reduction
 // with `keep_dims=false` by changing it to one using `keep_dims=true`.
-foreach ReduceOp = [TFL_ReduceMaxOp, TFL_ReduceMinOp, TFL_ReduceProdOp,
-                    TFL_SumOp] in {
+foreach ReduceOp = [TFL_MeanOp, TFL_ReduceMaxOp, TFL_ReduceMinOp,
+                    TFL_ReduceProdOp, TFL_SumOp] in {
   def FoldReshapeTo#ReduceOp : Pat<
     (TFL_ReshapeOp
       (ReduceOp:$reduce $input, (ConstantOp I32ElementsAttr: $axes),
@@ -830,23 +830,19 @@ class AllElementsAreBool<string val> : Constraint<CPred<
 foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
   // select(true_tensor, A, B) -> A
   def Optimize#SelectOp#True : Pat<
-    (SelectOp (ConstantOp $constant),
-               $input1,
-               $input2),
+    (SelectOp:$result (ConstantOp $constant),
+                      $input1,
+                      $input2),
     (replaceWithValue $input1),
-    [(HaveSameType $input1, $input2),
-     (IsTailOfShape $input1, $constant),
-     (IsTailOfShape $constant, $input1),
+    [(HaveSameType $input1, $result),
      (AllElementsAreBool<"true"> $constant)]>;
   // select(false_tensor, A, B) -> B
   def Optimize#SelectOp#False : Pat<
-    (SelectOp (ConstantOp $constant),
-               $input1,
-               $input2),
+    (SelectOp:$result (ConstantOp $constant),
+                      $input1,
+                      $input2),
     (replaceWithValue $input2),
-    [(HaveSameType $input1, $input2),
-     (IsTailOfShape $input1, $constant),
-     (IsTailOfShape $constant, $input1),
+    [(HaveSameType $input2, $result),
      (AllElementsAreBool<"false"> $constant)]>;
 }
 

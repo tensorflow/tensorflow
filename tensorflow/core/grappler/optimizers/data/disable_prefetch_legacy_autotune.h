@@ -54,9 +54,6 @@ class DisablePrefetchLegacyAutotune : public TFDataOptimizerBase {
                                  GraphDef* output,
                                  OptimizationStats* stats) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
-
  private:
   bool autotune_ = true;
 };

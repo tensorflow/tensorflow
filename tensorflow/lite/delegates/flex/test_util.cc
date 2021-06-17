@@ -150,6 +150,9 @@ void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
     case kTfLiteString:
       type_attribute = attr("T", "type: DT_STRING");
       break;
+    case kTfLiteBool:
+      type_attribute = attr("T", "type: DT_BOOL");
+      break;
     default:
       // TODO(b/113613439): Use nodedef string utilities to properly handle all
       // types.
@@ -174,6 +177,9 @@ void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
     AddTfOp("FlexRFFT", "RFFT", "", inputs, outputs);
   } else if (op == kImag) {
     AddTfOp("FlexImag", "Imag", "", inputs, outputs);
+  } else if (op == kLoopCond) {
+    string attributes = type_attribute;
+    AddTfOp("FlexLoopCond", "LoopCond", attributes, inputs, outputs);
   } else if (op == kNonExistent) {
     AddTfOp("NonExistentOp", "NonExistentOp", "", inputs, outputs);
   } else if (op == kIncompatibleNodeDef) {

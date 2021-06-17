@@ -19,11 +19,13 @@ from __future__ import print_function
 
 import abc
 import functools
+import multiprocessing
 import sys
 import threading
 import warnings
 import weakref
 
+from absl import logging
 import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
@@ -1868,6 +1870,15 @@ name=None))
   def flat_map(self, map_func):
     """Maps `map_func` across this dataset and flattens the result.
 
+    The type signature is:
+
+    ```
+    def flat_map(
+      self: Dataset[T],
+      map_func: Callable[[T], Dataset[S]]
+    ) -> Dataset[S]
+    ```
+
     Use `flat_map` if you want to make sure that the order of your dataset
     stays the same. For example, to flatten a dataset of batches into a
     dataset of their elements:
@@ -1898,6 +1909,15 @@ name=None))
                  num_parallel_calls=None,
                  deterministic=None):
     """Maps `map_func` across this dataset, and interleaves the results.
+
+    The type signature is:
+
+    ```
+    def interleave(
+      self: Dataset[T],
+      map_func: Callable[[T], Dataset[S]]
+    ) -> Dataset[S]
+    ```
 
     For example, you can use `Dataset.interleave()` to process many input files
     concurrently:
@@ -2061,69 +2081,135 @@ name=None))
     return dataset
 
   def window(self, size, shift=None, stride=1, drop_remainder=False):
-    """Combines (nests of) input elements into a dataset of (nests of) windows.
+    """Returns a dataset of window datasets.
 
-    A "window" is a finite dataset of flat elements of size `size` (or possibly
-    fewer if there are not enough input elements to fill the window and
-    `drop_remainder` evaluates to `False`).
+    Each window dataset iterates over a range of the input dataset. These are
+    finite datasets of size `size` (or possibly fewer if there are not enough
+    input elements to fill the window and `drop_remainder` evaluates to
+    `False`).
 
-    The `shift` argument determines the number of input elements by which the
-    window moves on each iteration.  If windows and elements are both numbered
+    For example:
+
+    >>> dataset = tf.data.Dataset.range(7).window(3)
+    >>> for window in dataset:
+    ...   print(window)
+    <_VariantDataset shapes: (), types: tf.int64>
+    <_VariantDataset shapes: (), types: tf.int64>
+    <_VariantDataset shapes: (), types: tf.int64>
+
+    To use the contents of the window datasets you need to unpack them. You can
+    unpack them in python:
+
+    >>> for window in dataset:
+    ...   print([item.numpy() for item in window])
+    [0, 1, 2]
+    [3, 4, 5]
+    [6]
+
+    Methods like `Dataset.flat_map` and `Dataset.intrerleave` can also
+    merge the window datasets back into a single dataset.
+
+    The argument to `flat_map` is a function that takes an item from the dataset
+    and returns a `Dataset`. `flat_map` chains together the resulting datasets.
+
+    So returning the window dataset unmodified joins the windows back into a
+    single dataset:
+
+    >>> flat = dataset.flat_map(lambda x: x)
+    >>> print(list(flat.as_numpy_iterator()))
+    [0, 1, 2, 3, 4, 5, 6]
+
+    To turn each window dataset into a single tensor batch apply `.batch(size)`
+    to the window dataset:
+
+    >>> batched = dataset.flat_map(lambda x: x.batch(3))
+    >>> for batch in batched:
+    ...   print(batch.numpy())
+    [0 1 2]
+    [3 4 5]
+    [6]
+
+    #### Shift and stride
+
+    The `shift` argument determines the number of input elements to step
+    between the start of each window. If windows and elements are both numbered
     starting at 0, the first element in window `k` will be element `k * shift`
     of the input dataset. In particular, the first element of the first window
     will always be the first element of the input dataset.
 
-    The `stride` argument determines the stride of the input elements, and the
-    `shift` argument determines the shift of the window.
-
-    For example:
-
-    >>> dataset = tf.data.Dataset.range(7).window(2)
-    >>> for window in dataset:
-    ...   print(list(window.as_numpy_iterator()))
-    [0, 1]
-    [2, 3]
-    [4, 5]
-    [6]
-    >>> dataset = tf.data.Dataset.range(7).window(3, 2, 1, True)
+    >>> dataset = tf.data.Dataset.range(7).window(3, shift=1,
+    ...                                           drop_remainder=True)
     >>> for window in dataset:
     ...   print(list(window.as_numpy_iterator()))
     [0, 1, 2]
+    [1, 2, 3]
     [2, 3, 4]
+    [3, 4, 5]
     [4, 5, 6]
-    >>> dataset = tf.data.Dataset.range(7).window(3, 1, 2, True)
+
+    The `stride` argument determines the stride between input elements within a
+    window.
+
+    >>> dataset = tf.data.Dataset.range(7).window(3, shift=1, stride=2,
+    ...                                           drop_remainder=True)
     >>> for window in dataset:
     ...   print(list(window.as_numpy_iterator()))
     [0, 2, 4]
     [1, 3, 5]
     [2, 4, 6]
 
+    #### Nested elements
+
     Note that when the `window` transformation is applied to a dataset of
-    nested elements, it produces a dataset of nested windows.
+    nested elements, it produces a dataset of nested window datasets. The window
+    datasets do not contain nested elements.
 
-    >>> nested = ([1, 2, 3, 4], [5, 6, 7, 8])
-    >>> dataset = tf.data.Dataset.from_tensor_slices(nested).window(2)
-    >>> for window in dataset:
-    ...   def to_numpy(ds):
-    ...     return list(ds.as_numpy_iterator())
-    ...   print(tuple(to_numpy(component) for component in window))
-    ([1, 2], [5, 6])
-    ([3, 4], [7, 8])
+    The type signature is:
 
-    >>> dataset = tf.data.Dataset.from_tensor_slices({'a': [1, 2, 3, 4]})
+    ```
+    def window(
+        self: Dataset[Nest[T]], ...
+    ) -> Dataset[Nest[Dataset[T]]]
+    ```
+
+    Appling `window` to a `Dataset` of tuples gives a tuple of `Datasets`:
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices(([1, 2, 3, 4, 5],
+    ...                                               [6, 7, 8, 9, 10]))
     >>> dataset = dataset.window(2)
-    >>> for window in dataset:
-    ...   def to_numpy(ds):
-    ...     return list(ds.as_numpy_iterator())
-    ...   print({'a': to_numpy(window['a'])})
-    {'a': [1, 2]}
-    {'a': [3, 4]}
+    >>> windows = next(iter(dataset))
+    >>> windows
+    (<_VariantDataset shapes: (), types: tf.int32>,
+     <_VariantDataset shapes: (), types: tf.int32>)
+
+    >>> def to_numpy(ds):
+    ...   return list(ds.as_numpy_iterator())
+    >>>
+    >>> for windows in dataset:
+    ...   print(to_numpy(windows[0]), to_numpy(windows[1]))
+    [1, 2] [6, 7]
+    [3, 4] [8, 9]
+    [5] [10]
+
+    Appling `window` to a `Dataset` of dictionaries gives a dictionary of
+    `Datasets`:
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices({'a': [1, 2, 3],
+    ...                                               'b': [4, 5, 6],
+    ...                                               'c': [7, 8, 9]})
+    >>> dataset = dataset.window(2)
+    >>> def to_numpy(ds):
+    ...   return list(ds.as_numpy_iterator())
+    >>> for windows in dataset:
+    ...   print(tf.nest.map_structure(to_numpy, windows))
+    {'a': [1, 2], 'b': [4, 5], 'c': [7, 8]}
+    {'a': [3], 'b': [6], 'c': [9]}
 
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
         of the input dataset to combine into a window. Must be positive.
       shift: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        number of input elements by which the window moves in each iteration.
+        number of input elements by which the start index moves between windows.
         Defaults to `size`. Must be positive.
       stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         stride of the input elements in the sliding window. Must be positive.
@@ -2133,9 +2219,8 @@ name=None))
         `size`.
 
     Returns:
-      Dataset: A `Dataset` of (nests of) windows -- a finite datasets of flat
-        elements created from the (nests of) input elements.
-
+      Dataset: A `Dataset` of (nests of) windows. Each window is a finite
+        datasets of flat elements.
     """
     if shift is None:
       shift = size
@@ -2296,7 +2381,7 @@ name=None))
     expressed as `tf.data.Dataset` operations, and you want to use those
     transformations while serving your model.
 
-    # Keras
+    #### Keras
 
     ```python
 
@@ -2321,7 +2406,7 @@ name=None))
                   )
     ```
 
-    # Estimator
+    #### Estimator
 
     In the case of estimators, you need to generally define a `serving_input_fn`
     which would require the features to be processed by the model while
@@ -2497,7 +2582,7 @@ name=None))
         `reduce_func`. Mutually exclusive with `window_size`.
 
     Returns:
-      A `tf.data.Dataset`
+      A `Dataset`.
 
     Raises:
       ValueError: if neither or both of {`window_size`, `window_size_func`} are
@@ -2584,8 +2669,7 @@ name=None))
         batch.
 
     Returns:
-      A `Dataset` transformation function, which can be passed to
-      `tf.data.Dataset.apply`.
+      A `Dataset`.
 
     Raises:
       ValueError: if `len(bucket_batch_sizes) != len(bucket_boundaries) + 1`.
@@ -2675,6 +2759,178 @@ name=None))
       Dataset: A `Dataset`.
     """
     return RandomDataset(seed=seed)
+
+  def snapshot(self,
+               path,
+               compression="AUTO",
+               reader_func=None,
+               shard_func=None):
+    """API to persist the output of the input dataset.
+
+    The snapshot API allows users to transparently persist the output of their
+    preprocessing pipeline to disk, and materialize the pre-processed data on a
+    different training run.
+
+    This API enables repeated preprocessing steps to be consolidated, and allows
+    re-use of already processed data, trading off disk storage and network
+    bandwidth for freeing up more valuable CPU resources and accelerator compute
+    time.
+
+    https://github.com/tensorflow/community/blob/master/rfcs/20200107-tf-data-snapshot.md
+    has detailed design documentation of this feature.
+
+    Users can specify various options to control the behavior of snapshot,
+    including how snapshots are read from and written to by passing in
+    user-defined functions to the `reader_func` and `shard_func` parameters.
+
+    `shard_func` is a user specified function that maps input elements to
+    snapshot shards.
+
+    Users may want to specify this function to control how snapshot files should
+    be written to disk. Below is an example of how a potential `shard_func`
+    could be written.
+
+    ```python
+    dataset = ...
+    dataset = dataset.enumerate()
+    dataset = dataset.snapshot("/path/to/snapshot/dir",
+        shard_func=lambda x, y: x % NUM_SHARDS, ...)
+    dataset = dataset.map(lambda x, y: y)
+    ```
+
+    `reader_func` is a user specified function that accepts a single argument:
+    (1) a Dataset of Datasets, each representing a "split" of elements of the
+    original dataset. The cardinality of the input dataset matches the
+    number of the shards specified in the `shard_func` (see above). The function
+    should return a Dataset of elements of the original dataset.
+
+    Users may want specify this function to control how snapshot files should be
+    read from disk, including the amount of shuffling and parallelism.
+
+    Here is an example of a standard reader function a user can define. This
+    function enables both dataset shuffling and parallel reading of datasets:
+
+    ```python
+    def user_reader_func(datasets):
+      # shuffle the datasets splits
+      datasets = datasets.shuffle(NUM_CORES)
+      # read datasets in parallel and interleave their elements
+      return datasets.interleave(lambda x: x, num_parallel_calls=AUTOTUNE)
+
+    dataset = dataset.snapshot("/path/to/snapshot/dir",
+        reader_func=user_reader_func)
+    ```
+
+    By default, snapshot parallelizes reads by the number of cores available on
+    the system, but will not attempt to shuffle the data.
+
+    Args:
+      path: Required. A directory to use for storing / loading the snapshot to /
+        from.
+      compression: Optional. The type of compression to apply to the snapshot
+        written to disk. Supported options are `GZIP`, `SNAPPY`, `AUTO` or None.
+        Defaults to `AUTO`, which attempts to pick an appropriate compression
+        algorithm for the dataset.
+      reader_func: Optional. A function to control how to read data from
+        snapshot shards.
+      shard_func: Optional. A function to control how to shard data when writing
+        a snapshot.
+
+    Returns:
+      A `Dataset`.
+    """
+
+    project_func = None
+    input_dataset = self
+    if shard_func is None:
+      input_dataset = input_dataset.enumerate()
+      # This sets the amount of parallelism based on the number of CPU cores on
+      # the machine where this Python code is executed, which may differ from
+      # the number of CPU cores where the input pipeline graph is actually
+      # executed (e.g. remote Cloud TPU workers).
+      local_shard_func = lambda index, _: index % multiprocessing.cpu_count()
+      project_func = lambda _, elem: elem
+    else:
+      local_shard_func = shard_func
+    dataset = _SnapshotDataset(
+        input_dataset=input_dataset,
+        path=path,
+        compression=compression,
+        reader_func=reader_func,
+        # This will not do the right thing where the graph is built on a
+        # different machine than the executor (e.g. Cloud TPUs).
+        shard_func=local_shard_func)
+    if project_func is not None:
+      dataset = dataset.map(project_func)
+    return dataset
+
+  def scan(self, initial_state, scan_func):
+    """A transformation that scans a function across an input dataset.
+
+    This transformation is a stateful relative of `tf.data.Dataset.map`.
+    In addition to mapping `scan_func` across the elements of the input dataset,
+    `scan()` accumulates one or more state tensors, whose initial values are
+    `initial_state`.
+
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> initial_state = tf.constant(0, dtype=tf.int64)
+    >>> scan_func = lambda state, i: (state + i, state + i)
+    >>> dataset = dataset.scan(initial_state=initial_state, scan_func=scan_func)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
+
+    Args:
+      initial_state: A nested structure of tensors, representing the initial
+        state of the accumulator.
+      scan_func: A function that maps `(old_state, input_element)` to
+        `(new_state, output_element)`. It must take two arguments and return a
+        pair of nested structures of tensors. The `new_state` must match the
+        structure of `initial_state`.
+
+    Returns:
+      A `Dataset`.
+    """
+
+    return _ScanDataset(self, initial_state=initial_state, scan_func=scan_func)
+
+  def take_while(self, predicate):
+    """A transformation that stops dataset iteration based on a `predicate`.
+
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> dataset = dataset.take_while(lambda x: x < 5)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 2, 3, 4]
+
+    Args:
+      predicate: A function that maps a nested structure of tensors (having
+        shapes and types defined by `self.output_shapes` and
+        `self.output_types`) to a scalar `tf.bool` tensor.
+
+    Returns:
+      A `Dataset`.
+    """
+
+    return _TakeWhileDataset(self, predicate)
+
+  def unique(self):
+    """A transformation that discards duplicate elements of a `Dataset`.
+
+    Use this transformation to produce a dataset that contains one instance of
+    each unique element in the input. For example:
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 37, 2, 37, 2, 1])
+    >>> dataset = dataset.unique()
+    >>> sorted(list(dataset.as_numpy_iterator()))
+    [1, 2, 37]
+
+    Note: This transformation only supports datasets which fit into memory
+    and have elements of either `tf.int32`, `tf.int64` or `tf.string` type.
+
+    Returns:
+      A `Dataset`.
+    """
+
+    return _UniqueDataset(self)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -3402,14 +3658,6 @@ class Options(options_lib.OptionsBase):
       "frequency is determined by the number of devices attached to this "
       "input pipeline. If None, defaults to False.")
 
-  experimental_threading = options_lib.create_option(
-      name="experimental_threading",
-      ty=threading_options.ThreadingOptions,
-      docstring=
-      "The threading options associated with the dataset. See "
-      "`tf.data.experimental.ThreadingOptions` for more details.",
-      default_factory=threading_options.ThreadingOptions)
-
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
       ty=distribute_options.ExternalStatePolicy,
@@ -3419,6 +3667,29 @@ class Options(options_lib.OptionsBase):
       "IGNORE: External state is ignored without a warning; WARN: External "
       "state is ignored and a warning is logged; FAIL: External state results "
       "in an error.")
+
+  threading = options_lib.create_option(
+      name="threading",
+      ty=threading_options.ThreadingOptions,
+      docstring="The threading options associated with the dataset. See "
+      "`tf.data.ThreadingOptions` for more details.",
+      default_factory=threading_options.ThreadingOptions)
+
+  def __getattr__(self, name):
+    if name == "experimental_threading":
+      logging.warning("options.experimental_threading is deprecated. "
+                      "Use options.threading instead.")
+      return getattr(self, "threading")
+    else:
+      raise AttributeError("Attribute %s not found." % name)
+
+  def __setattr__(self, name, value):
+    if name == "experimental_threading":
+      logging.warning("options.experimental_threading is deprecated. "
+                      "Use options.threading instead.")
+      super(Options, self).__setattr__("threading", value)
+    else:
+      super(Options, self).__setattr__(name, value)
 
   def _to_proto(self):
     pb = dataset_options_pb2.Options()
@@ -3432,7 +3703,7 @@ class Options(options_lib.OptionsBase):
     pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
-    pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
+    pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
   def _from_proto(self, pb):
@@ -3446,7 +3717,7 @@ class Options(options_lib.OptionsBase):
     self.experimental_optimization._from_proto(pb.optimization_options)  # pylint: disable=protected-access
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
-    self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
+    self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -3454,7 +3725,7 @@ class Options(options_lib.OptionsBase):
     object.__setattr__(self, "_mutable", mutable)
     self.experimental_distribute._set_mutable(mutable)
     self.experimental_optimization._set_mutable(mutable)
-    self.experimental_threading._set_mutable(mutable)
+    self.threading._set_mutable(mutable)
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
@@ -3803,22 +4074,6 @@ class StructuredFunctionWrapper(object):
 
     ag_ctx = autograph_ctx.control_status_ctx()
 
-    def warn_if_collections(transformation_name):
-      """Prints a warning if the given graph uses common graph collections.
-
-      NOTE(mrry): Currently a warning is only generated for resources. Any
-      variables created will be automatically hoisted out to the outermost scope
-      using `init_scope()`. Some collections (such as for control-flow contexts)
-      are benign and should not generate a warning.
-
-      Args:
-        transformation_name: A human-readable name for the transformation.
-      """
-      warnings.warn("Creating resources inside a function passed to %s "
-                    "is not supported. Create each resource outside the "
-                    "function, and capture it inside the function to use it." %
-                    transformation_name, stacklevel=5)
-
     def wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
       nested_args = structure.from_compatible_tensor_list(
@@ -3915,22 +4170,17 @@ class StructuredFunctionWrapper(object):
               "Even though the `tf.config.experimental_run_functions_eagerly` "
               "option is set, this option does not apply to tf.data functions. "
               "To force eager execution of tf.data functions, please use "
-              "`tf.data.experimental.enable.debug_mode()`.")
+              "`tf.data.experimental.enable_debug_mode()`.")
         fn_factory = trace_tf_function(defun_kwargs)
 
-    resource_tracker = tracking.ResourceTracker()
-    with tracking.resource_tracker_scope(resource_tracker):
-      self._function = fn_factory()
-      # There is no graph to add in eager mode.
-      add_to_graph &= not context.executing_eagerly()
-      # There are some lifetime issues when a legacy function is not added to a
-      # out-living graph. It's already deprecated so de-prioritizing the fix.
-      add_to_graph |= use_legacy_function
-      if add_to_graph:
-        self._function.add_to_graph(ops.get_default_graph())
-
-    if resource_tracker.resources:
-      warn_if_collections(transformation_name)
+    self._function = fn_factory()
+    # There is no graph to add in eager mode.
+    add_to_graph &= not context.executing_eagerly()
+    # There are some lifetime issues when a legacy function is not added to a
+    # out-living graph. It's already deprecated so de-prioritizing the fix.
+    add_to_graph |= use_legacy_function
+    if add_to_graph:
+      self._function.add_to_graph(ops.get_default_graph())
 
     if not use_legacy_function:
       outer_graph_seed = ops.get_default_graph().seed
@@ -4082,17 +4332,12 @@ class ConcatenateDataset(DatasetV2):
           "Two datasets to concatenate have different classes %s and %s" %
           (output_classes, get_legacy_output_classes(dataset_to_concatenate)))
 
-    input_shapes = get_legacy_output_shapes(self._input_dataset)
-    output_shapes = nest.pack_sequence_as(input_shapes, [
-        ts1.most_specific_compatible_shape(ts2)
-        for (ts1, ts2) in zip(
-            nest.flatten(input_shapes),
-            nest.flatten(get_legacy_output_shapes(
-                self._dataset_to_concatenate)))
+    spec1 = input_dataset.element_spec
+    spec2 = dataset_to_concatenate.element_spec
+    self._structure = nest.pack_sequence_as(spec1, [
+        ts1.most_specific_compatible_type(ts2)
+        for (ts1, ts2) in zip(nest.flatten(spec1), nest.flatten(spec2))
     ])
-
-    self._structure = structure.convert_legacy_structure(
-        output_types, output_shapes, output_classes)
 
     self._input_datasets = [input_dataset, dataset_to_concatenate]
     # pylint: disable=protected-access
@@ -5191,6 +5436,53 @@ class RandomDataset(DatasetSource):
     return tensor_spec.TensorSpec([], dtypes.int64)
 
 
+class _TakeWhileDataset(UnaryUnchangedStructureDataset):
+  """A dataset that stops iteration when `predicate` returns false."""
+
+  def __init__(self, input_dataset, predicate):
+    """See `take_while()` for details."""
+
+    self._input_dataset = input_dataset
+    wrapped_func = StructuredFunctionWrapper(
+        predicate, self._transformation_name(), dataset=self._input_dataset)
+
+    if not wrapped_func.output_structure.is_compatible_with(
+        tensor_spec.TensorSpec([], dtypes.bool)):
+      raise ValueError("`predicate` must return a scalar boolean tensor.")
+
+    self._predicate = wrapped_func
+    var_tensor = ged_ops.take_while_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        other_arguments=self._predicate.function.captured_inputs,
+        predicate=self._predicate.function,
+        **self._flat_structure)
+    super(_TakeWhileDataset, self).__init__(input_dataset, var_tensor)
+
+  def _functions(self):
+    return [self._predicate]
+
+  def _transformation_name(self):
+    return "Dataset.take_while()"
+
+
+class _UniqueDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` contains the unique elements from its input."""
+
+  def __init__(self, input_dataset):
+    """See `unique()` for details."""
+    self._input_dataset = input_dataset
+    if get_legacy_output_types(input_dataset) not in (dtypes.int32,
+                                                      dtypes.int64,
+                                                      dtypes.string):
+      raise TypeError(
+          "`tf.data.Dataset.unique()` only supports inputs with a single "
+          "`tf.int32`, `tf.int64`, or `tf.string` component.")
+    variant_tensor = ged_ops.unique_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        **self._flat_structure)
+    super(_UniqueDataset, self).__init__(input_dataset, variant_tensor)
+
+
 def _collect_resource_inputs(op):
   """Collects resource inputs for the given ops (and its variant inputs)."""
 
@@ -5231,6 +5523,191 @@ def _collect_resource_inputs(op):
     all_writes.extend(writes)
 
   return all_reads, all_writes
+
+
+class _SnapshotDataset(UnaryUnchangedStructureDataset):
+  """A dataset that allows saving and re-use of already processed data."""
+
+  def __init__(self,
+               input_dataset,
+               path,
+               shard_func,
+               compression=None,
+               reader_func=None,
+               pending_snapshot_expiry_seconds=None,
+               use_legacy_function=False):
+
+    if reader_func is None:
+      reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
+          lambda x: x,
+          cycle_length=multiprocessing.cpu_count(),
+          num_parallel_calls=AUTOTUNE)
+
+    self._input_dataset = input_dataset
+    self._path = path
+    self._compression = compression
+
+    self._reader_func = StructuredFunctionWrapper(
+        reader_func,
+        self._transformation_name() + ".reader_func",
+        # Dataset of datasets of input elements
+        input_structure=DatasetSpec(DatasetSpec(input_dataset.element_spec)),
+        use_legacy_function=use_legacy_function)
+    self._shard_func = StructuredFunctionWrapper(
+        shard_func,
+        self._transformation_name() + ".shard_func",
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
+
+    if ((not self._shard_func.output_structure.is_compatible_with(
+        tensor_spec.TensorSpec([], dtypes.int32))) and
+        (not self._shard_func.output_structure.is_compatible_with(
+            tensor_spec.TensorSpec([], dtypes.int64)))):
+      raise TypeError(
+          "shard_func must return a 0-dimension tensor containing an int.")
+
+    variant_tensor = ged_ops.snapshot_dataset_v2(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        path,
+        self._reader_func.function.captured_inputs,
+        self._shard_func.function.captured_inputs,
+        compression=compression,
+        reader_func=self._reader_func.function,
+        shard_func=self._shard_func.function,
+        **self._flat_structure)
+    super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._reader_func, self._shard_func]
+
+  def _transformation_name(self):
+    return "Dataset.snapshot()"
+
+
+class _ScanDataset(UnaryDataset):
+  """A dataset that scans a function across its input."""
+
+  def __init__(self,
+               input_dataset,
+               initial_state,
+               scan_func,
+               use_default_device=None):
+    """See `scan()` for details."""
+    self._input_dataset = input_dataset
+    self._initial_state = structure.normalize_element(initial_state)
+
+    # Compute initial values for the state classes, shapes and types based on
+    # the initial state. The shapes may be refined by running `tf_scan_func` one
+    # or more times below.
+    self._state_structure = structure.type_spec_from_value(self._initial_state)
+
+    # Iteratively rerun the scan function until reaching a fixed point on
+    # `self._state_shapes`.
+    need_to_rerun = True
+    while need_to_rerun:
+
+      wrapped_func = StructuredFunctionWrapper(
+          scan_func,
+          self._transformation_name(),
+          input_structure=(self._state_structure, input_dataset.element_spec),
+          add_to_graph=False)
+      if not (isinstance(wrapped_func.output_types, collections_abc.Sequence)
+              and len(wrapped_func.output_types) == 2):
+        raise TypeError("The scan function must return a pair comprising the "
+                        "new state and the output value.")
+
+      new_state_classes, self._output_classes = wrapped_func.output_classes
+
+      # Extract and validate class information from the returned values.
+      new_state_classes, output_classes = wrapped_func.output_classes
+      old_state_classes = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
+          self._state_structure)
+      for new_state_class, old_state_class in zip(
+          nest.flatten(new_state_classes), nest.flatten(old_state_classes)):
+        if not issubclass(new_state_class, old_state_class):
+          raise TypeError(
+              "The element classes for the new state must match the initial "
+              "state. Expected %s; got %s." %
+              (old_state_classes, new_state_classes))
+
+      # Extract and validate type information from the returned values.
+      new_state_types, output_types = wrapped_func.output_types
+      old_state_types = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
+          self._state_structure)
+      for new_state_type, old_state_type in zip(
+          nest.flatten(new_state_types), nest.flatten(old_state_types)):
+        if new_state_type != old_state_type:
+          raise TypeError(
+              "The element types for the new state must match the initial "
+              "state. Expected %s; got %s." %
+              (old_state_types, new_state_types))
+
+      # Extract shape information from the returned values.
+      new_state_shapes, output_shapes = wrapped_func.output_shapes
+      old_state_shapes = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
+          self._state_structure)
+      self._element_spec = structure.convert_legacy_structure(
+          output_types, output_shapes, output_classes)
+
+      flat_state_shapes = nest.flatten(old_state_shapes)
+      flat_new_state_shapes = nest.flatten(new_state_shapes)
+      weakened_state_shapes = [
+          original.most_specific_compatible_shape(new)
+          for original, new in zip(flat_state_shapes, flat_new_state_shapes)
+      ]
+
+      need_to_rerun = False
+      for original_shape, weakened_shape in zip(flat_state_shapes,
+                                                weakened_state_shapes):
+        if original_shape.ndims is not None and (
+            weakened_shape.ndims is None or
+            original_shape.as_list() != weakened_shape.as_list()):
+          need_to_rerun = True
+          break
+
+      if need_to_rerun:
+        # TODO(b/110122868): Support a "most specific compatible structure"
+        # method for combining structures, to avoid using legacy structures
+        # in this method.
+        self._state_structure = structure.convert_legacy_structure(
+            old_state_types,
+            nest.pack_sequence_as(old_state_shapes, weakened_state_shapes),
+            old_state_classes)
+
+    self._scan_func = wrapped_func
+    self._scan_func.function.add_to_graph(ops.get_default_graph())
+    # pylint: disable=protected-access
+    if use_default_device is not None:
+      variant_tensor = ged_ops.scan_dataset(
+          self._input_dataset._variant_tensor,
+          structure.to_tensor_list(self._state_structure, self._initial_state),
+          self._scan_func.function.captured_inputs,
+          f=self._scan_func.function,
+          preserve_cardinality=True,
+          use_default_device=use_default_device,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.scan_dataset(
+          self._input_dataset._variant_tensor,
+          structure.to_tensor_list(self._state_structure, self._initial_state),
+          self._scan_func.function.captured_inputs,
+          f=self._scan_func.function,
+          preserve_cardinality=True,
+          **self._flat_structure)
+    super(_ScanDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._scan_func]
+
+  @property
+  def element_spec(self):
+    return self._element_spec
+
+  def _transformation_name(self):
+    return "Dataset.scan()"
 
 
 @auto_control_deps.register_acd_resource_resolver

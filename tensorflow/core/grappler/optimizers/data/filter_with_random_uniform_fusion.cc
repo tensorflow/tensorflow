@@ -262,13 +262,6 @@ Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(
   return Status::OK();
 }
 
-void FilterWithRandomUniformFusion::Feedback(Cluster* cluster,
-                                             const GrapplerItem& item,
-                                             const GraphDef& optimize_output,
-                                             double result) {
-  // Nothing to do for FilterWithRandomUniformFusion
-}
-
 // TODO(b/131229793): The current implementation of the optimization is brittle
 // as it depends on the order of inputs to commutative nodes. Make the
 // optimization robust to the input ordering before re-enabling it.

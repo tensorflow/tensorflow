@@ -63,7 +63,7 @@ class TestErrorIterator : public TaskIterator {
   explicit TestErrorIterator(Status status) : status_(std::move(status)) {}
 
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
-    return errors::Aborted("Aborted");
+    return status_;
   }
 
   int64 Cardinality() const override { return kInfiniteCardinality; }

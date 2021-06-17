@@ -103,8 +103,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
         &data->params.output_multiplier, &data->params.output_shift,
         &data->params.quantized_activation_min,
         &data->params.quantized_activation_max,
-        data->per_channel_output_multiplier,
-        reinterpret_cast<int*>(data->per_channel_output_shift),
+        data->per_channel_output_multiplier, data->per_channel_output_shift,
         output_channels));
   }
   return kTfLiteOk;

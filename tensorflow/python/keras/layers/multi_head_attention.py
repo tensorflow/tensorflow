@@ -45,21 +45,23 @@ def _build_attention_equation(rank, attn_axes):
   """Builds einsum equations for the attention computation.
 
   Query, key, value inputs after projection are expected to have the shape as:
-  (bs, <non-attention dims>, <attention dims>, num_heads, channels).
-  bs and <non-attention dims> are treated as <batch dims>.
+  `(bs, <non-attention dims>, <attention dims>, num_heads, channels)`.
+  `bs` and `<non-attention dims>` are treated as `<batch dims>`.
+
   The attention operations can be generalized:
   (1) Query-key dot product:
-  (<batch dims>, <query attention dims>, num_heads, channels), (<batch dims>,
+  `(<batch dims>, <query attention dims>, num_heads, channels), (<batch dims>,
   <key attention dims>, num_heads, channels) -> (<batch dims>,
-  num_heads, <query attention dims>, <key attention dims>)
+  num_heads, <query attention dims>, <key attention dims>)`
   (2) Combination:
-  (<batch dims>, num_heads, <query attention dims>, <key attention dims>),
+  `(<batch dims>, num_heads, <query attention dims>, <key attention dims>),
   (<batch dims>, <value attention dims>, num_heads, channels) -> (<batch dims>,
-  <query attention dims>, num_heads, channels)
+  <query attention dims>, num_heads, channels)`
 
   Args:
-    rank: the rank of query, key, value tensors.
-    attn_axes: a list/tuple of axes, [-1, rank), that will do attention.
+    rank: Rank of query, key, value tensors.
+    attn_axes: List/tuple of axes, `[-1, rank)`,
+      that attention will be applied to.
 
   Returns:
     Einsum equations.
@@ -124,16 +126,17 @@ def _get_output_shape(output_rank, known_last_dims):
 class MultiHeadAttention(Layer):
   """MultiHeadAttention layer.
 
-  This is an implementation of multi-headed attention based on "Attention
-  is all you Need". If `query`, `key,` `value` are the same, then
+  This is an implementation of multi-headed attention as described in the paper
+  "Attention is all you Need" (Vaswani et al., 2017).
+  If `query`, `key,` `value` are the same, then
   this is self-attention. Each timestep in `query` attends to the
   corresponding sequence in `key`, and returns a fixed-width vector.
 
   This layer first projects `query`, `key` and `value`. These are
   (effectively) a list of tensors of length `num_attention_heads`, where the
-  corresponding shapes are [batch_size, <query dimensions>, key_dim],
-  [batch_size, <key/value dimensions>, key_dim],
-  [batch_size, <key/value dimensions>, value_dim].
+  corresponding shapes are `(batch_size, <query dimensions>, key_dim)`,
+  `(batch_size, <key/value dimensions>, key_dim)`,
+  `(batch_size, <key/value dimensions>, value_dim)`.
 
   Then, the query and key tensors are dot-producted and scaled. These are
   softmaxed to obtain attention probabilities. The value tensors are then
@@ -169,7 +172,7 @@ class MultiHeadAttention(Layer):
   Args:
     num_heads: Number of attention heads.
     key_dim: Size of each attention head for query and key.
-    value_dim:  Size of each attention head for value.
+    value_dim: Size of each attention head for value.
     dropout: Dropout probability.
     use_bias: Boolean, whether the dense layers use bias vectors/matrices.
     output_shape: The expected shape of an output tensor, besides the batch and
@@ -185,11 +188,11 @@ class MultiHeadAttention(Layer):
     bias_constraint: Constraint for dense layer kernels.
 
   Call arguments:
-    query: Query `Tensor` of shape `[B, T, dim]`.
-    value: Value `Tensor` of shape `[B, S, dim]`.
-    key: Optional key `Tensor` of shape `[B, S, dim]`. If not given, will use
+    query: Query `Tensor` of shape `(B, T, dim)`.
+    value: Value `Tensor` of shape `(B, S, dim)`.
+    key: Optional key `Tensor` of shape `(B, S, dim)`. If not given, will use
       `value` for both `key` and `value`, which is the most common case.
-    attention_mask: a boolean mask of shape `[B, T, S]`, that prevents
+    attention_mask: a boolean mask of shape `(B, T, S)`, that prevents
       attention to certain positions. The boolean mask specifies which query
       elements can attend to which key elements, 1 indicates attention and 0
       indicates no attention. Broadcasting can happen for the missing batch
@@ -203,7 +206,7 @@ class MultiHeadAttention(Layer):
       or False (inference) if there is no parent layer.
 
   Returns:
-    attention_output: The result of the computation, of shape [B, T, E],
+    attention_output: The result of the computation, of shape `(B, T, E)`,
       where `T` is for target sequence shapes and `E` is the query input last
       dimension if `output_shape` is `None`. Otherwise, the multi-head outputs
       are project to the shape specified by `output_shape`.
@@ -250,20 +253,13 @@ class MultiHeadAttention(Layer):
 
   def get_config(self):
     config = {
-        "num_heads":
-            self._num_heads,
-        "key_dim":
-            self._key_dim,
-        "value_dim":
-            self._value_dim,
-        "dropout":
-            self._dropout,
-        "use_bias":
-            self._use_bias,
-        "output_shape":
-            self._output_shape,
-        "attention_axes":
-            self._attention_axes,
+        "num_heads": self._num_heads,
+        "key_dim": self._key_dim,
+        "value_dim": self._value_dim,
+        "dropout": self._dropout,
+        "use_bias": self._use_bias,
+        "output_shape": self._output_shape,
+        "attention_axes": self._attention_axes,
         "kernel_initializer":
             initializers.serialize(self._kernel_initializer),
         "bias_initializer":
@@ -295,8 +291,8 @@ class MultiHeadAttention(Layer):
     layer = cls(**config)
     if None in [query_shape, key_shape, value_shape]:
       logging.warning(
-          "One of the input shape is missing. They should be "
-          "memorized when the layer was serialized. "
+          "One of dimensions of the input shape is missing. It should have been"
+          " memorized when the layer was serialized. "
           "%s is created without weights.",
           str(cls))
     else:
@@ -309,9 +305,9 @@ class MultiHeadAttention(Layer):
     Once the method is called, self._built_from_signature will be set to True.
 
     Args:
-      query: query tensor or TensorShape.
-      value: value tensor or TensorShape.
-      key: key tensor or TensorShape.
+      query: Query tensor or TensorShape.
+      value: Value tensor or TensorShape.
+      key: Key tensor or TensorShape.
     """
     self._built_from_signature = True
     if hasattr(query, "shape"):
@@ -383,7 +379,7 @@ class MultiHeadAttention(Layer):
     Args:
       free_dims: Number of free dimensions for einsum equation building.
       common_kwargs: Common keyword arguments for einsum layer.
-      name: the name for the projection layer.
+      name: Name for the projection layer.
 
     Returns:
       Projection layer.
@@ -450,10 +446,10 @@ class MultiHeadAttention(Layer):
     attention implementation.
 
     Args:
-      query: Projected query `Tensor` of shape `[B, T, N, key_dim]`.
-      key: Projected key `Tensor` of shape `[B, T, N, key_dim]`.
-      value: Projected value `Tensor` of shape `[B, T, N, value_dim]`.
-      attention_mask: a boolean mask of shape `[B, T, S]`, that prevents
+      query: Projected query `Tensor` of shape `(B, T, N, key_dim)`.
+      key: Projected key `Tensor` of shape `(B, T, N, key_dim)`.
+      value: Projected value `Tensor` of shape `(B, T, N, value_dim)`.
+      attention_mask: a boolean mask of shape `(B, T, S)`, that prevents
         attention to certain positions.
       training: Python boolean indicating whether the layer should behave in
         training mode (adding dropout) or in inference mode (doing nothing).

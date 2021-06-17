@@ -19,6 +19,7 @@ package_group(
         "//learning/brain/google/xla/mlir/...",
         "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
+        "//platforms/darwinn/contrib/waymo/...",
         "//platforms/xla/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
@@ -164,6 +165,7 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
@@ -293,9 +295,24 @@ cc_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "hlo_utils_test",
+    srcs = ["hlo_utils_test.cc"],
+    deps = [
+        ":hlo_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 cc_library(
@@ -550,7 +567,6 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:mhlo_to_mhlo_lowering_patterns",
         "//tensorflow/compiler/mlir/hlo:sink_constants_to_control_flow",
         "//tensorflow/compiler/mlir/hlo:test_passes",
-        "//tensorflow/compiler/mlir/hlo:transform_unranked_hlo",
     ],
 )
 

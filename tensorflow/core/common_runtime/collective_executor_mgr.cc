@@ -62,8 +62,7 @@ CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64 step_id) {
 CollectiveExecutor* CollectiveExecutorMgr::Create(int64 step_id) {
   CollectiveRemoteAccessLocal* rma =
       new CollectiveRemoteAccessLocal(dev_mgr_, dev_resolver_.get(), step_id);
-  return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_,
-                                    &gpu_ring_order_, work_queue_);
+  return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_, work_queue_);
 }
 
 void CollectiveExecutorMgr::Cleanup(int64 step_id) {

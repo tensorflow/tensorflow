@@ -70,7 +70,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     context.ensure_initialized()
 
     def copy_tensor(dtype=dtypes.int32):
-      cpu_tensor = constant_op.constant(1, dtype=dtype)
+      with ops.device('CPU:0'):
+        cpu_tensor = constant_op.constant(1, dtype=dtype)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
 
@@ -399,7 +400,10 @@ class DeviceTest(test.TestCase):
     with ops.device('/device:CPU:2'):
       c = constant_op.constant(1.0)
       self.evaluate(c)
-    self.assertIn('CPU:0', c.device)
+    if test_util.is_gpu_available():
+      self.assertIn('GPU:0', c.device)
+    else:
+      self.assertIn('CPU:0', c.device)
 
     # Ensure we can place ops on each of the device names
     for vcpu in vcpus:
@@ -644,19 +648,21 @@ class DeviceTest(test.TestCase):
     self.assertGreaterEqual(peak3, peak2)
     self.assertGreaterEqual(peak3, config.get_memory_info(device)['current'])
 
-  @test_util.run_gpu_only
+  @test_util.run_gpu_or_tpu
   @reset_eager
-  def testResetMemoryStats(self):
-    x = array_ops.zeros((1000, 1000), dtype=dtypes.float32)
-    config.reset_memory_stats('GPU:0')
-    info1 = config.get_memory_info('GPU:0')
+  def testResetMemoryStats(self, device_type):
+    device = f'{device_type}:0'
+    with ops.device(device):
+      x = array_ops.zeros((1000, 1000), dtype=dtypes.float32)
+    config.reset_memory_stats(device)
+    info1 = config.get_memory_info(device)
     self.assertGreaterEqual(info1['peak'], 4 * 1000 * 1000)
     self.assertGreaterEqual(info1['peak'], info1['current'])
     self.assertGreater(info1['current'], 0)
 
     del x  # With CPython, causes tensor memory to be immediately freed
-    config.reset_memory_stats('GPU:0')
-    info2 = config.get_memory_info('GPU:0')
+    config.reset_memory_stats(device)
+    info2 = config.get_memory_info(device)
     self.assertLess(info2['peak'], info1['peak'])
 
   @reset_eager

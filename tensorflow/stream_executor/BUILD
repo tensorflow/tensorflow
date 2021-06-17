@@ -4,9 +4,8 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "filegroup", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
@@ -309,6 +308,7 @@ cc_library(
     hdrs = ["device_options.h"],
     deps = [
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -504,7 +504,7 @@ cc_library(
 )
 
 # It implements :stream_executor_pimpl_header
-cc_library(
+tf_cuda_library(
     name = "stream_executor_pimpl",
     srcs = [
         "stream.cc",
@@ -530,6 +530,7 @@ cc_library(
         ":timer",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//third_party/eigen3",

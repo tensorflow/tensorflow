@@ -3785,6 +3785,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
         type: DT_INT8
         type: DT_INT16
         type: DT_INT32
@@ -3803,6 +3804,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_UINT8
         type: DT_INT8
         type: DT_INT16
         type: DT_INT32
@@ -11338,6 +11340,13 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -11406,6 +11415,13 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
     }
   }
   is_stateful: true
@@ -12157,6 +12173,7 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_INT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -12275,6 +12292,7 @@ op {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
         type: DT_BOOL
+        type: DT_BFLOAT16
       }
     }
   }
@@ -17208,8 +17226,12 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
         type: DT_UINT32
         type: DT_UINT64
         type: DT_BFLOAT16
@@ -49732,6 +49754,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -49792,6 +49815,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -49852,6 +49876,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -49921,6 +49946,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -49981,6 +50007,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -50041,6 +50068,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -50179,6 +50207,7 @@ op {
     allowed_values {
       list {
         type: DT_BFLOAT16
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -57077,6 +57106,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "perturb_singular"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {

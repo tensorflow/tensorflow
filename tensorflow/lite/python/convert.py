@@ -34,7 +34,9 @@ from tensorflow.lite.python import util
 from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
+from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
+from tensorflow.lite.python.metrics_wrapper import metrics_wrapper as _metrics_wrapper
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -194,11 +196,6 @@ class OpsSet(enum.Enum):
     return [str(option) for option in list(OpsSet)]
 
 
-class ConverterError(Exception):
-  """Raised when an error occurs during model conversion."""
-  pass
-
-
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.QUANTIZE)
 def mlir_quantize(input_data_str,
                   disable_per_channel=False,
@@ -299,7 +296,10 @@ def toco_convert_protos(model_flags_str,
                                                  enable_mlir_converter)
       return model_str
     except Exception as e:
-      raise ConverterError(str(e))
+      converter_error = ConverterError(str(e))
+      for error_data in _metrics_wrapper.retrieve_collected_errors():
+        converter_error.append_error(error_data)
+      raise converter_error
 
   return _run_toco_binary(model_flags_str, toco_flags_str, input_data_str,
                           debug_info_str)
@@ -432,6 +432,8 @@ def build_toco_flags(inference_type=dtypes.float32,
                      enable_tflite_resource_variables=False,
                      unfold_batchmatmul=True,
                      lower_tensor_list_ops=True,
+                     accumulation_type=None,
+                     allow_bfloat16=False,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -467,6 +469,11 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.enable_tflite_resource_variables = enable_tflite_resource_variables
   toco.unfold_batchmatmul = unfold_batchmatmul
   toco.lower_tensor_list_ops = lower_tensor_list_ops
+  if accumulation_type:
+    toco.accumulation_type = convert_tensor_tf_type_to_tflite_type(
+        accumulation_type, usage="accumulation_type flag")
+  toco.allow_bfloat16 = allow_bfloat16
+
   return toco
 
 
@@ -497,7 +504,9 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_exported_names=None,
                               select_user_tf_ops=None,
                               unfold_batchmatmul=True,
-                              lower_tensor_list_ops=True):
+                              lower_tensor_list_ops=True,
+                              accumulation_type=None,
+                              allow_bfloat16=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -579,6 +588,10 @@ def build_toco_convert_protos(input_tensors,
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
     lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
       not, use Flex tensor list ops.
+    accumulation_type: Data type of the accumulators in quantized inference.
+      Typically used for float16 quantization and is either fp16 or fp32.
+    allow_bfloat16: Whether the converted model supports reduced precision
+      inference with the bfloat16 type.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -608,7 +621,9 @@ def build_toco_convert_protos(input_tensors,
       conversion_summary_dir=conversion_summary_dir,
       select_user_tf_ops=select_user_tf_ops,
       unfold_batchmatmul=unfold_batchmatmul,
-      lower_tensor_list_ops=lower_tensor_list_ops)
+      lower_tensor_list_ops=lower_tensor_list_ops,
+      accumulation_type=accumulation_type,
+      allow_bfloat16=allow_bfloat16)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
@@ -664,7 +679,8 @@ def build_toco_convert_protos(input_tensors,
 @convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
                SubComponent.CONVERT_GRAPHDEF)
 def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
-                           enable_mlir_converter, *args, **kwargs):
+                           enable_mlir_converter, control_output_arrays, *args,
+                           **kwargs):
   """"Convert a model using TOCO.
 
   This function is used to convert GraphDefs that cannot be loaded into
@@ -677,12 +693,16 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     input_arrays_with_shape: Tuple of strings representing input tensor names
       and list of integers representing input shapes
       (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
-        into TensorFlow and when `input_tensors` is None. (default None)
+        into TensorFlow and when `input_tensors` is None.
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
-      (default None)
     enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
       conversion.
+    control_output_arrays: Control output node names. This is used when
+      converting a Graph with no output tensors. For example, if the
+      graph's last operation is a Print op, just specify that op's name in
+      this field. This can be used together with the `output_arrays`
+      parameter.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 
@@ -710,8 +730,12 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     input_array.name = name
     input_array.shape.dims.extend(list(map(int, shape)))
 
-  for name in output_arrays:
-    model_flags.output_arrays.append(name)
+  if output_arrays:
+    for name in output_arrays:
+      model_flags.output_arrays.append(name)
+  if control_output_arrays:
+    for name in control_output_arrays:
+      model_flags.control_output_arrays.append(name)
 
   data = toco_convert_protos(
       model_flags.SerializeToString(),

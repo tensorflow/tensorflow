@@ -1,0 +1,34 @@
+# To have reproducible builds, these dependencies should be pinned always.
+# Prefer pinning to the same version as in setup.py for now.
+# This will change in the future.
+
+absl-py ~= 0.12.0
+astunparse ~= 1.6.3
+flatbuffers ~= 2.0
+google_pasta ~= 0.2
+h5py ~= 3.1.0  # NOTE: not the latest version due to py3.6
+keras_preprocessing ~= 1.1.2
+numpy ~= 1.19.5  # NOTE: not the latest version due to py3.6
+opt_einsum ~= 3.3.0
+protobuf >= 3.17.1
+six ~= 1.16.0
+termcolor ~= 1.1.0
+typing_extensions ~= 3.10.0.0
+wheel ~= 0.36.2
+wrapt ~= 1.12.1
+
+# We need to pin the gast dependency exactly
+gast == 0.4.0
+
+# Finally, install tensorboard and estimator and keras
+# Note that here we want the latest version that matches TF major.minor version
+# Note that we must use nightly here as these are used in nightly jobs
+# For release jobs, we will pin these on the release branch
+keras-nightly ~= 2.6.0.dev
+tb-nightly ~= 2.6.0.a
+tf-estimator-nightly ~= 2.6.0.dev
+
+# Test dependencies
+grpcio ~= 1.38.0
+portpicker ~= 1.4.0
+scipy ~= 1.5.4  # NOTE: not the latest version due to py3.6

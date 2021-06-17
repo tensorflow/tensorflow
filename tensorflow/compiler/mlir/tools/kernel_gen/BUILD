@@ -44,7 +44,6 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
-        "//tensorflow/compiler/mlir/hlo:transform_unranked_hlo",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",

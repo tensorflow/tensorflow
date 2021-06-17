@@ -183,11 +183,11 @@ class TFRecordDatasetCheckpointTest(tf_record_test_base.TFRecordTestBase,
                                     checkpoint_test_base.CheckpointTestBase,
                                     parameterized.TestCase):
 
-  def _build_iterator_graph(self,
-                            num_epochs,
-                            batch_size=1,
-                            compression_type=None,
-                            buffer_size=None):
+  def make_dataset(self,
+                   num_epochs,
+                   batch_size=1,
+                   compression_type=None,
+                   buffer_size=None):
     filenames = self._createFiles()
     if compression_type == "ZLIB":
       zlib_files = []
@@ -214,37 +214,42 @@ class TFRecordDatasetCheckpointTest(tf_record_test_base.TFRecordTestBase,
         filenames, compression_type,
         buffer_size=buffer_size).repeat(num_epochs).batch(batch_size)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testTFRecordWithoutBufferCore(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(batch_size=[1, 5])))
+  def testBatchSize(self, verify_fn, batch_size):
     num_epochs = 5
-    batch_size = num_epochs
     num_outputs = num_epochs * self._num_files * self._num_records // batch_size
+    verify_fn(self,
+              lambda: self.make_dataset(num_epochs, batch_size=batch_size),
+              num_outputs)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(buffer_size=[0, 5])))
+  def testBufferSize(self, verify_fn, buffer_size):
+    num_epochs = 5
+    num_outputs = num_epochs * self._num_files * self._num_records
+    verify_fn(self,
+              lambda: self.make_dataset(num_epochs, buffer_size=buffer_size),
+              num_outputs)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(compression_type=[None, "GZIP", "ZLIB"])))
+  def testCompressionTypes(self, verify_fn, compression_type):
+    num_epochs = 5
+    num_outputs = num_epochs * self._num_files * self._num_records
     # pylint: disable=g-long-lambda
-    self.run_core_tests(
-        lambda: self._build_iterator_graph(
-            num_epochs, batch_size, buffer_size=0), num_outputs)
-    self.run_core_tests(
-        lambda: self._build_iterator_graph(num_epochs, buffer_size=0),
-        num_outputs * batch_size)
-    # pylint: enable=g-long-lambda
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testTFRecordWithBufferCore(self):
-    num_epochs = 5
-    num_outputs = num_epochs * self._num_files * self._num_records
-    self.run_core_tests(lambda: self._build_iterator_graph(num_epochs),
-                        num_outputs)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testTFRecordWithCompressionCore(self):
-    num_epochs = 5
-    num_outputs = num_epochs * self._num_files * self._num_records
-    self.run_core_tests(
-        lambda: self._build_iterator_graph(num_epochs, compression_type="ZLIB"),
-        num_outputs)
-    self.run_core_tests(
-        lambda: self._build_iterator_graph(num_epochs, compression_type="GZIP"),
-        num_outputs)
+    verify_fn(
+        self, lambda: self.make_dataset(
+            num_epochs, compression_type=compression_type), num_outputs)
 
 
 if __name__ == "__main__":

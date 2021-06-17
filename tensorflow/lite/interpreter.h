@@ -774,6 +774,10 @@ class Interpreter {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
 
+  // A map of resource Ids. Owned by interpreter and shared by multiple
+  // subgraphs.
+  resource::ResourceIDMap resource_ids_;
+
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.

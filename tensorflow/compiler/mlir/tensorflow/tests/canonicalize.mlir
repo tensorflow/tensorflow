@@ -658,6 +658,14 @@ func @testStaticAndIdenticalTypeForEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2
   return %0: tensor<2xi1>
 }
 
+// CHECK-LABEL: func @testStaticAndIdenticalTypeForNotEqualOp
+func @testStaticAndIdenticalTypeForNotEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = true
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
 // CHECK-LABEL: testLogicalNotOfEqual
 func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
@@ -885,7 +893,7 @@ func @ToBool_0DScalarFloat(%arg0: tensor<f32>) -> tensor<i1> {
 // CHECK-LABEL: func @ToBool_0DScalarString
 func @ToBool_0DScalarString(%arg0: tensor<!tf.string>) -> tensor<i1> {
   // CHECK: [[EmptyStr:%.*]] = "tf.Const"() {value = dense<""> : tensor<!tf.string>} : () -> tensor<!tf.string>
-  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = false} : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<i1>
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = true} : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<i1>
   // CHECK: return [[NE]] : tensor<i1>
   %0 = "tf.ToBool"(%arg0) : (tensor<!tf.string>) -> tensor<i1>
   return %0 : tensor<i1>
@@ -1735,3 +1743,49 @@ func @testConvertQuantizeAndDequantizeV2ToQuantizeAndDequantizeV4(%arg0 : tensor
   // CHECK: %[[QUANT:.*]] = "tf.QuantizeAndDequantizeV4"(%arg0, %arg1, %arg2) {axis = -1 : i64, narrow_range = false, num_bits = 8 : i64, range_given = false, round_mode = "HALF_TO_EVEN", signed_input = true} : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
   // CHECK: return %[[QUANT]] : tensor<?x?xf32>
 }
+
+// CHECK-LABEL: testHashTableAndInitializeTableToV2
+func @testHashTableAndInitializeTableToV2(%arg0: tensor<!tf.string>) {
+  // CHECK: [[handle:%.*]] = "tf.HashTableV2"()
+  // CHECK-SAME: container = ""
+  // CHECK-SAME: key_dtype = !tf.string
+  // CHECK-SAME: shared_name = "table"
+  // CHECK-SAME: value_dtype = i32
+  // CHECK-SAME: () -> tensor<!tf.resource>
+  %handle = "tf.HashTable"() {container = "", device = "", shared_name = "table", key_dtype = !tf.string, value_dtype = i32} : () -> tensor<*x!tf.stringref>
+
+  // CHECK: "tf.InitializeTableFromTextFileV2"([[handle]]
+  "tf.InitializeTableFromTextFile"(%handle, %arg0) {device = "", key_index=1, value_index=1, delimiter="\t"} : (tensor<*x!tf.stringref>, tensor<!tf.string>) -> ()
+  return
+}
+
+// CHECK-LABEL: @testHashTableAndLookupTableSizeToV2
+func @testHashTableAndLookupTableSizeToV2() -> tensor<i64> {
+  // CHECK: [[handle:%.*]] = "tf.HashTableV2"()
+  // CHECK-SAME: container = ""
+  // CHECK-SAME: key_dtype = !tf.string
+  // CHECK-SAME: shared_name = "table"
+  // CHECK-SAME: value_dtype = i32
+  // CHECK-SAME: () -> tensor<!tf.resource>
+  %handle = "tf.HashTable"() {container = "", device = "", shared_name = "table", key_dtype = !tf.string, value_dtype = i32} : () -> tensor<*x!tf.stringref>
+
+  // CHECK: "tf.LookupTableSizeV2"([[handle]]
+  %0 = "tf.LookupTableSize"(%handle) {} : (tensor<*x!tf.stringref>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
+
+// CHECK-LABEL: @testHashTableAndLookupTableFindToV2
+func @testHashTableAndLookupTableFindToV2(%arg0: tensor<!tf.string>, %arg1: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[handle:%.*]] = "tf.HashTableV2"()
+  // CHECK-SAME: container = ""
+  // CHECK-SAME: key_dtype = !tf.string
+  // CHECK-SAME: shared_name = "table"
+  // CHECK-SAME: value_dtype = i32
+  // CHECK-SAME: () -> tensor<!tf.resource>
+  %handle = "tf.HashTable"() {container = "", device = "", shared_name = "table", key_dtype = !tf.string, value_dtype = i32} : () -> tensor<*x!tf.stringref>
+
+  // CHECK: "tf.LookupTableFindV2"([[handle]]
+  %0 = "tf.LookupTableFind"(%handle, %arg0, %arg1) {} : (tensor<*x!tf.stringref>, tensor<!tf.string>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+

@@ -17,6 +17,7 @@ cc_library_with_tflite(
     testonly = 1,
     srcs = [
         "interpreter_test_jni.cc",
+        "supported_features_jni.cc",
         "test_init_jni.cc",
     ],
     tflite_deps = [

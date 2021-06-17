@@ -7,6 +7,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "experimental_get_compiler_ir"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
     name: "get_concrete_function"
     argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }

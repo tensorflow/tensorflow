@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_impl.h"
 
 #include <memory>
-#include <tuple>
+#include <string>
 #include <utility>
+#include <vector>
 
 #ifdef PLATFORM_GOOGLE
 #include "file/logging/log_lines.h"
@@ -26,7 +27,9 @@ limitations under the License.
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -34,14 +37,21 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
+#include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/standalone.h"
-#include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 

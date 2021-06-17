@@ -375,7 +375,7 @@ class ShardedVariableTest(test.TestCase):
     s = sharded_variable.ShardedVariable(variables)
 
     got = nest.flatten(s)
-    self.assertEqual(s, got[0])
+    self.assertIs(s, got[0])
 
     got = nest.flatten(s, expand_composites=True)
     self.assertAllEqual(variables, got)
@@ -400,7 +400,7 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(model.variables, model.trainable_variables)
 
     self.assertLen(model._checkpoint_dependencies, 1)
-    self.assertEqual(model._checkpoint_dependencies[0].ref, model.w)
+    self.assertIs(model._checkpoint_dependencies[0].ref, model.w)
 
   def test_embedding_lookup(self):
     v = [
@@ -544,6 +544,23 @@ class ShardedVariableTest(test.TestCase):
       return a
 
     self.assertAllEqual(func(), [1, 3, 5, 7, 9, 11, 13, 15])
+
+  def test_operator_overload(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+
+    v2 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv2 = sharded_variable.ShardedVariable(v2)
+
+    equal = sv1 == sv2
+    self.assertAllEqual(equal, [True, True])
+    self.assertAllEqual(sv1 + sv2, [2.0, 4.0])
 
 
 if __name__ == '__main__':

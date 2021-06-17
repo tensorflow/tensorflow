@@ -45,8 +45,10 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    # TODO(b/187847053): Enable test in pip.
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",  # TODO(b/190842754): Enable test in OSS.
+        "no_pip",  # TODO(b/187847053): Enable test in pip.
+    ],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
@@ -184,9 +186,23 @@ py_library(
         ":util",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/python/optimize:calibrator",
-        "//tensorflow/python:graph_util",
-        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
         "@six_archive//:six",
     ],
 )
@@ -364,6 +380,7 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/lite/python/metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
@@ -480,12 +497,17 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
 )
 
-pytype_strict_library(
+# Use py_library since the metrics module is imported in a try-except block,
+# which doesn't work with the pytype_strict_library.
+py_library(
     name = "convert_phase",
     srcs = ["convert_phase.py"],
-    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [
+        ":metrics",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
+    ],
 )
 
 pytype_strict_library(
@@ -495,7 +517,8 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_interface",
-        "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
+        "//tensorflow/lite/python/metrics_wrapper",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python/eager:monitoring",
     ],
 )
@@ -503,6 +526,9 @@ pytype_strict_library(
 py_test(
     name = "metrics_nonportable_test",
     srcs = ["metrics_nonportable_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
+    ],
     python_version = "PY3",
     tags = ["no_oss"],
     visibility = ["//visibility:public"],
@@ -570,6 +596,9 @@ py_test(
         "//tensorflow/lite/python/testdata:interpreter_test_data",
     ],
     python_version = "PY3",
+    tags = [
+        "no_mac",  # b/191191684
+    ],
     deps = [
         ":analyzer",
         "//tensorflow/python:client_testlib",

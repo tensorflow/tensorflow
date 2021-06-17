@@ -150,7 +150,6 @@ static void BM_UnparseString(::testing::benchmark::State& state) {
   const int size = state.range(0);
 
   auto proto = MakeProto(size);
-  testing::StartTiming();
 
   for (auto s : state) {
     string buf;
@@ -165,7 +164,6 @@ static void BM_ParseGrpc(::testing::benchmark::State& state) {
 
   CleanupAllRequest proto = MakeProto(size);
   auto buf = MakeBuffer(proto.SerializeAsString(), num_slices);
-  testing::StartTiming();
 
   for (auto s : state) {
     CHECK(GrpcMaybeParseProto(&buf, &proto));
@@ -183,7 +181,6 @@ static void BM_ParseString(::testing::benchmark::State& state) {
 
   CleanupAllRequest proto = MakeProto(size);
   string serial = proto.SerializeAsString();
-  testing::StartTiming();
 
   for (auto s : state) {
     CHECK(proto.ParseFromString(serial));

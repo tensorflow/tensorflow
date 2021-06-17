@@ -24,6 +24,7 @@ import functools
 import pprint
 import shutil
 import tempfile
+import time
 import warnings
 
 from absl import logging
@@ -79,7 +80,7 @@ from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.lib.io import file_io as _file_io
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader_impl as _loader_impl
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
@@ -215,6 +216,12 @@ class TargetSpec(object):
       experimental_select_user_tf_ops = set()
     self.experimental_select_user_tf_ops = experimental_select_user_tf_ops
     self._experimental_custom_op_registerers = []
+    # Hint for the supported accumulation type used for inference. Typically
+    # used for fp16 post-training quantization, where some models can use fp16
+    # accumulators instead of the typical fp32 type.
+    # TODO(b/188185962): Provide full API and authoring support for
+    # reduced precision accumulation types.
+    self._experimental_supported_accumulation_type = None
 
 
 class QuantizationMode(object):
@@ -272,6 +279,11 @@ class QuantizationMode(object):
     return (self.any_optimization_enabled() and
             self.contains_training_quant_op())
 
+  def is_bfloat16_inference_allowed(self):
+    return (self.any_optimization_enabled() and
+            self._smallest_supported_type().size == 2 and
+            _dtypes.bfloat16 in self._target_spec.supported_types)
+
   def post_training_int16x8_no_float(self):
     return (self.any_optimization_enabled() and
             not self._is_int8_target_required() and
@@ -294,7 +306,8 @@ class QuantizationMode(object):
 
   def post_training_fp16(self):
     return (self.any_optimization_enabled() and
-            self._smallest_supported_type() == _dtypes.float16)
+            self._smallest_supported_type().size == 2 and
+            _dtypes.float16 in self._target_spec.supported_types)
 
   def fp32_execution(self):
     """If none of the above are true."""
@@ -334,7 +347,11 @@ class QuantizationMode(object):
           "inference_type": _dtypes.float32,
           "inference_input_type": _dtypes.float32,
           "post_training_quantize": True,
-          "quantize_to_float16": True  # enable float16 quantization
+          "quantize_to_float16": True,  # enable float16 quantization
+          "accumulation_type":
+              self._target_spec._experimental_supported_accumulation_type,
+          "allow_bfloat16":
+              self.is_bfloat16_inference_allowed()
       }
     else:
       # Note this might still trigger (uint8) quantization to be compatible with
@@ -343,7 +360,8 @@ class QuantizationMode(object):
           "inference_type": inference_ty if inference_ty else _dtypes.float32,
           "inference_input_type": inference_input_ty,
           "post_training_quantize": False,  # enable dynamic range quantization
-          "quantize_to_float16": False  # disable float16 quantization
+          "quantize_to_float16": False,  # disable float16 quantization
+          "allow_bfloat16": self.is_bfloat16_inference_allowed()
       }
 
   # Below are helpers for the above functions.
@@ -626,6 +644,14 @@ class TFLiteConverterBase(object):
     converter_kwargs.update(
         quant_mode.converter_flags(inference_type, inference_input_type))
 
+    # pylint: disable=protected-access
+    if self.target_spec._experimental_supported_accumulation_type:
+      converter_kwargs.update({
+          "accumulation_type":
+              self.target_spec._experimental_supported_accumulation_type
+      })
+    # pylint: enable=protected-access
+
     def format_element(elem):
       if isinstance(elem, enum.Enum):
         return str(elem.value)
@@ -642,6 +668,9 @@ class TFLiteConverterBase(object):
     for key, value in converter_kwargs.items():
       self._tflite_metrics.set_converter_param(key, format_param(value))
     self._tflite_metrics.set_export_required()
+
+  def _set_conversion_latency_metric(self, value):
+    self._tflite_metrics.set_converter_latency(value)
 
   @convert_phase(Component.OPTIMIZE_TFLITE_MODEL)
   def _optimize_tflite_model(self, model, quant_mode, quant_io=True):
@@ -681,9 +710,12 @@ class TFLiteConverterBase(object):
     """
     self._increase_conversion_attempt_metric()
     self._save_conversion_params_metric()
+    start_time = time.process_time()
     result = convert_func(self, *args, **kwargs)
+    elapsed_time_ms = (time.process_time() - start_time) * 1000
     if result:
       self._increase_conversion_success_metric()
+    self._set_conversion_latency_metric(round(elapsed_time_ms))
     self._tflite_metrics.export_metrics()
     return result
 
@@ -1579,6 +1611,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
           input_data=optimized_graph,
           input_arrays_with_shape=self._input_arrays_with_shape,
           output_arrays=self._output_arrays,
+          control_output_arrays=self._control_output_arrays,
           **converter_kwargs)
 
     return self._optimize_tflite_model(
@@ -1896,13 +1929,10 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
     self._graph_def = graph_def
     self._input_tensors = input_tensors
     self._output_tensors = output_tensors
+    self._control_output_arrays = None
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
-      if not input_arrays_with_shape or not output_arrays:
-        raise ValueError(
-            "If input_tensors and output_tensors are None, both "
-            "input_arrays_with_shape and output_arrays must be defined.")
       self._input_arrays_with_shape = input_arrays_with_shape
       self._output_arrays = output_arrays
 
@@ -1928,6 +1958,13 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
+    if not self._has_valid_tensors():
+      if not self._input_arrays_with_shape or not (self._output_arrays or
+                                                   self._control_output_arrays):
+        raise ValueError(
+            "If input_tensors and output_tensors are None, both "
+            "input_arrays_with_shape and output_arrays|control_output_arrays "
+            "must be defined.")
     return super(TFLiteFrozenGraphConverter, self).convert()
 
 
@@ -2123,9 +2160,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     with _ops.Graph().as_default():
       with _session.Session() as sess:
         # Read GraphDef from file.
-        if not _file_io.file_exists(graph_def_file):
+        if not gfile.Exists(graph_def_file):
           raise IOError("File '{0}' does not exist.".format(graph_def_file))
-        with _file_io.FileIO(graph_def_file, "rb") as f:
+        with gfile.GFile(graph_def_file, "rb") as f:
           file_content = f.read()
 
         try:

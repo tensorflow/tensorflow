@@ -286,7 +286,7 @@ std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
   return std::vector<T>(v.begin(), v.end());
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation> allocations,
     std::string* constant_name = nullptr);
 

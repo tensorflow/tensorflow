@@ -16,6 +16,20 @@ package(
     licenses = ["notice"],
 )
 
+cc_library(
+    name = "device_profiler_session",
+    hdrs = ["device_profiler_session.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":profiler_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 tf_profiler_pybind_cc_library_wrapper(
     name = "profiler_session_for_pybind",
     actual = ":profiler_session",
@@ -238,9 +252,8 @@ filegroup(
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",
+        "device_profiler_session.h",
         "profiler_interface.h",
-        "profiler_session.cc",
-        "profiler_session.h",
         "scoped_annotation.h",
         "traceme.h",
         "traceme_encode.h",

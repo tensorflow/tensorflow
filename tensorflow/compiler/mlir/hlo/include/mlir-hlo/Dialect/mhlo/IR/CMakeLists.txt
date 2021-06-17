@@ -55,3 +55,13 @@ add_mlir_hlo_dialect_separate_files(lhlo_ops NO)
 add_mlir_hlo_dialect_separate_files(lhlo_gpu_ops YES)
 
 add_mlir_interface(infer_fusibility_op_interface)
+
+function(add_disc_ral_dialect dialect)
+  set(LLVM_TARGET_DEFINITIONS ${dialect}.td)
+  mlir_tablegen(${dialect}.h.inc -gen-op-decls)
+  mlir_tablegen(${dialect}.cc.inc -gen-op-defs)
+  add_public_tablegen_target(MLIR${dialect}IncGen)
+  add_dependencies(mlir-headers MLIR${dialect}IncGen)
+endfunction()
+
+add_disc_ral_dialect(disc_ral_ops)

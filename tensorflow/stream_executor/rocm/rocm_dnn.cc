@@ -3667,65 +3667,18 @@ bool MIOpenSupport::DoBatchNormalizationBackwardImpl(
 }
 
 port::Status MIOpenSupport::DoFusedConvolve(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<double>& conv_input_data, double conv_input_scale,
+    Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
+    dnn::DataType bias_type, dnn::DataType output_type,
+    const dnn::BatchDescriptor& conv_input_descriptor,
+    DeviceMemoryBase conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<double>& filter_data,
+    DeviceMemoryBase filter_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<double>& side_input_data, double side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<double>& biases, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
-    dnn::ProfileResult* output_profile_result) {
-  return port::UnimplementedError("fused convolve not implemented yet");
-}
-
-port::Status MIOpenSupport::DoFusedConvolve(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<float>& conv_input_data, float conv_input_scale,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<float>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<float>& side_input_data, float side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
-    dnn::ProfileResult* output_profile_result) {
-  return port::UnimplementedError("fused convolve not implemented yet");
-}
-
-port::Status MIOpenSupport::DoFusedConvolve(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<Eigen::half>& conv_input_data, float conv_input_scale,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<Eigen::half>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<Eigen::half>& side_input_data, float side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<Eigen::half>& biases,
+    DeviceMemoryBase side_input_data, double side_input_scale,
+    const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
     dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<Eigen::half>* output_data, ScratchAllocator* scratch_allocator,
-    const dnn::AlgorithmConfig& algorithm_config,
-    dnn::ProfileResult* output_profile_result) {
-  return port::UnimplementedError("fused convolve not implemented yet");
-}
-
-port::Status MIOpenSupport::DoFusedConvolve(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<int8>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const DeviceMemory<int8>& side_input_data, float side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<int8>* output_data, ScratchAllocator* scratch_allocator,
+    const dnn::BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
+    ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   return port::UnimplementedError("fused convolve not implemented yet");

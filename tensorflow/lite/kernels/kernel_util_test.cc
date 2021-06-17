@@ -353,7 +353,7 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   int32_t output_activation_min;
   int32_t output_activation_max;
   std::vector<int32_t> per_channel_multiplier(3);
-  std::vector<int> per_channel_shift(3);
+  std::vector<int32_t> per_channel_shift(3);
 
   // Call and verify results for per channel case.
   EXPECT_EQ(

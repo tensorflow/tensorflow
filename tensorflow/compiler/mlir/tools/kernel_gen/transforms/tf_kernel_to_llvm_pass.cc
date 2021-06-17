@@ -18,8 +18,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
+#include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -253,10 +255,11 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-
     populateStdExpandOpsPatterns(patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
+    populateVectorToLLVMConversionPatterns(type_converter, patterns);
+    populateMathToLibmConversionPatterns(patterns, 0);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
     patterns.insert<ConvertLaunchFuncOpToTfRuntimeCallPattern>(

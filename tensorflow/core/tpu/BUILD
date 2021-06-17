@@ -274,7 +274,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "//tensorflow/stream_executor/tpu:status_helper",
-        "//tensorflow/stream_executor/tpu:tpu_executable_interface",
+        "//tensorflow/stream_executor/tpu:tpu_executable",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_id",
@@ -330,7 +330,6 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_api",
-        ":tpu_api_dlsym_initializer",
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
         ":tpu_initializer_helper",
