@@ -38,7 +38,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -363,39 +362,6 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
 // Returns true if the value's element type is F32.
 bool IsF32Value(Value value) {
   return value.getType().cast<ShapedType>().getElementType().isF32();
-}
-
-bool IsLastDimensionEqualOne(Attribute shape) {
-  const auto int_shape = shape.dyn_cast_or_null<DenseIntElementsAttr>();
-  if (!int_shape) return false;
-
-  if (int_shape.empty()) return false;
-  const auto last_dimension_index = int_shape.getNumElements() - 1;
-  const auto dimension_iterator = int_shape.getIntValues().begin();
-  const APInt last_dimension = dimension_iterator[last_dimension_index];
-  return last_dimension == 1;
-}
-
-bool IsOneHotIndexAttribute(Attribute index_attr) {
-  const auto index_dense_attr = index_attr.dyn_cast<DenseElementsAttr>();
-  if (!index_dense_attr) {
-    return false;
-  }
-  auto index_type = index_dense_attr.getType();
-  const auto index_elem_bits = index_type.getElementTypeBitWidth();
-  if (index_elem_bits != 32 && index_elem_bits != 64) {
-    return false;
-  }
-  if (index_type.getRank() != 1) {
-    return false;
-  }
-  const auto elems = index_dense_attr.getIntValues().begin();
-  for (int i = 0; i < index_dense_attr.getNumElements(); ++i) {
-    if (i != elems[i]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
