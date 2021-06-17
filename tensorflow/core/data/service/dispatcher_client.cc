@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -26,6 +25,7 @@ limitations under the License.
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"

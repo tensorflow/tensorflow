@@ -16,10 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/data_transfer.h"

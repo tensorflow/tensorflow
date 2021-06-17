@@ -205,6 +205,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         tf_grpc_cc_dependency(),
     ],
 )
