@@ -761,7 +761,18 @@ def _trace_gradient_functions(graph, saveable_view):
           saveable_view.captured_tensor_node_ids[capture] = (
               saveable_view.captured_tensor_node_ids[outer_capture])
         elif outer_capture.graph is outer_fn.graph:
-          node = _CapturedTensor(outer_capture.name, outer_fn.name)
+          capture_name = outer_capture.name
+          # It's possible for EagerDefinedFunctions to save different names for
+          # input tensors when serialized to FunctionDef (all non-alphanumeric
+          # characters are converted to '_').
+          if isinstance(outer_fn, defun._EagerDefinedFunction):  # pylint:disable=protected-access
+            try:
+              arg_index = outer_fn.graph.inputs.index(outer_capture)
+              capture_name = outer_fn.signature.input_arg[arg_index].name + ":0"
+            except ValueError:
+              pass
+
+          node = _CapturedTensor(capture_name, outer_fn.name)
           saveable_view.add_capture_and_node(capture, node)
         else:
           bad_captures.append(capture.name)
