@@ -565,12 +565,6 @@ static void BuildReduceBody(Type element_type, Region *body,
   builder->create<ReturnOp>(loc, reducer.getResult());
 }
 
-// Builds region taking two arguments and returning second argument as the
-// result. Corresponds to the function f(x, y) = y.
-// Used in Scatter op's computation to update specific elements.
-static void BuildBinaryAssignmentRegion(Type element_type, Region *region,
-                                        OpBuilder *builder) {}
-
 // Builds a set of operations for applying reduction on the input value. A
 // tf.sum op is created and will be legalized to tfl ops automatically.
 static Value ApplyReduction(Location loc, Value input,
@@ -4590,21 +4584,25 @@ class ConvertArgMinOp
   static StringRef GetDirection() { return "LE"; }
 };
 
-// Converts TF TensorScatterUpdate op into Scatter Op with assignment:
+// Converts TF TensorScatterUpdate/Min/Max/Add/Sub op into Scatter Op with
+// assignment:
 //
 //   %result = "mhlo.scatter"(%tensor, %indices, %updates)
 //     { dimensions = ... }
 //
-class ConvertTensorScatterUpdateOp
-    : public OpRewritePattern<TF::TensorScatterUpdateOp> {
+template <typename Derived, typename OpTy>
+class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::TensorScatterUpdateOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    auto tensor_ty = op.tensor().getType().dyn_cast<RankedTensorType>();
-    auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
-    auto updates_ty = op.updates().getType().dyn_cast<RankedTensorType>();
+    auto tensor_ty =
+        op.tensor().getType().template dyn_cast<RankedTensorType>();
+    auto indices_ty =
+        op.indices().getType().template dyn_cast<RankedTensorType>();
+    auto updates_ty =
+        op.updates().getType().template dyn_cast<RankedTensorType>();
 
     if (!tensor_ty || !indices_ty || !updates_ty) return failure();
     // Last dimension of the indices needs to known at compile time for
@@ -4628,21 +4626,99 @@ class ConvertTensorScatterUpdateOp
     Location loc = op.getLoc();
     auto scatter = rewriter.create<ScatterOp>(
         loc, op.getType(), op.tensor(), op.indices(), op.updates(), dims_attr);
-
-    // Build region to assign the new value.
-    [&](Region *region) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      Block *block = rewriter.createBlock(region);
-
-      // Block arguments are scalars of the given element type.
-      Type type =
-          RankedTensorType::get(/*shape=*/{}, tensor_ty.getElementType());
-      block->addArguments({type, type});
-      rewriter.create<ReturnOp>(loc, block->getArgument(1));
-    }(&scatter.update_computation());
+    Derived::BuildScatterBody(tensor_ty.getElementType(),
+                              &scatter.update_computation(), loc, rewriter);
 
     rewriter.replaceOp(op, scatter.getResult());
     return success();
+  }
+};
+
+class ConvertTensorScatterUpdateOp
+    : public ConvertTensorScatterOp<ConvertTensorScatterUpdateOp,
+                                    TF::TensorScatterUpdateOp> {
+ public:
+  using ConvertTensorScatterOp::ConvertTensorScatterOp;
+
+  static void BuildScatterBody(Type element_type, Region *region, Location loc,
+                               OpBuilder &builder) {
+    OpBuilder::InsertionGuard guard(builder);
+    Block *block = builder.createBlock(region);
+    Type type = RankedTensorType::get(/*shape=*/{}, element_type);
+    block->addArguments({type, type});
+    builder.create<ReturnOp>(loc, block->getArgument(1));
+  }
+};
+
+class ConvertTensorScatterAddOp
+    : public ConvertTensorScatterOp<ConvertTensorScatterAddOp,
+                                    TF::TensorScatterAddOp> {
+ public:
+  using ConvertTensorScatterOp::ConvertTensorScatterOp;
+
+  static void BuildScatterBody(Type element_type, Region *region, Location loc,
+                               OpBuilder &builder) {
+    OpBuilder::InsertionGuard guard(builder);
+    Block *block = builder.createBlock(region);
+    Type type = RankedTensorType::get(/*shape=*/{}, element_type);
+    block->addArguments({type, type});
+    auto add_op = builder.create<AddOp>(loc, block->getArgument(0),
+                                        block->getArgument(1));
+    builder.create<ReturnOp>(loc, add_op.getResult());
+  }
+};
+
+class ConvertTensorScatterSubOp
+    : public ConvertTensorScatterOp<ConvertTensorScatterSubOp,
+                                    TF::TensorScatterSubOp> {
+ public:
+  using ConvertTensorScatterOp::ConvertTensorScatterOp;
+
+  static void BuildScatterBody(Type element_type, Region *region, Location loc,
+                               OpBuilder &builder) {
+    OpBuilder::InsertionGuard guard(builder);
+    Block *block = builder.createBlock(region);
+    Type type = RankedTensorType::get(/*shape=*/{}, element_type);
+    block->addArguments({type, type});
+    auto sub_op = builder.create<SubOp>(loc, block->getArgument(0),
+                                        block->getArgument(1));
+    builder.create<ReturnOp>(loc, sub_op.getResult());
+  }
+};
+
+class ConvertTensorScatterMinOp
+    : public ConvertTensorScatterOp<ConvertTensorScatterMinOp,
+                                    TF::TensorScatterMinOp> {
+ public:
+  using ConvertTensorScatterOp::ConvertTensorScatterOp;
+
+  static void BuildScatterBody(Type element_type, Region *region, Location loc,
+                               OpBuilder &builder) {
+    OpBuilder::InsertionGuard guard(builder);
+    Block *block = builder.createBlock(region);
+    Type type = RankedTensorType::get(/*shape=*/{}, element_type);
+    block->addArguments({type, type});
+    auto min_op = builder.create<MinOp>(loc, block->getArgument(0),
+                                        block->getArgument(1));
+    builder.create<ReturnOp>(loc, min_op.getResult());
+  }
+};
+
+class ConvertTensorScatterMaxOp
+    : public ConvertTensorScatterOp<ConvertTensorScatterMaxOp,
+                                    TF::TensorScatterMaxOp> {
+ public:
+  using ConvertTensorScatterOp::ConvertTensorScatterOp;
+
+  static void BuildScatterBody(Type element_type, Region *region, Location loc,
+                               OpBuilder &builder) {
+    OpBuilder::InsertionGuard guard(builder);
+    Block *block = builder.createBlock(region);
+    Type type = RankedTensorType::get(/*shape=*/{}, element_type);
+    block->addArguments({type, type});
+    auto max_op = builder.create<MaxOp>(loc, block->getArgument(0),
+                                        block->getArgument(1));
+    builder.create<ReturnOp>(loc, max_op.getResult());
   }
 };
 
@@ -7422,6 +7498,10 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertStridedSliceOp,
     ConvertStridedSliceGradOp,
     ConvertSumOp,
+    ConvertTensorScatterAddOp,
+    ConvertTensorScatterSubOp,
+    ConvertTensorScatterMinOp,
+    ConvertTensorScatterMaxOp,
     ConvertTensorScatterUpdateOp,
     ConvertTileOp,
     ConvertTopKV2Op,
