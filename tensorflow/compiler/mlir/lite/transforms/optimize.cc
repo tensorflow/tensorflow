@@ -23,6 +23,7 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <numeric>
+#include <utility>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -362,6 +364,56 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
 // Returns true if the value's element type is F32.
 bool IsF32Value(Value value) {
   return value.getType().cast<ShapedType>().getElementType().isF32();
+}
+
+// Returns the number of elements in attr if it is a DenseElementsAttr, 1
+// otherwise, as an unranked int32 Attribute.
+Attribute GetNumElementsOrOne(Attribute attr) {
+  const auto dense_attr = attr.dyn_cast_or_null<DenseElementsAttr>();
+  int32_t num_elements = dense_attr ? dense_attr.getNumElements() : 1;
+
+  OpBuilder builder(attr.getContext());
+
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get({}, builder.getI32Type()),
+      {llvm::APInt(32, num_elements, true)});
+}
+
+// Returns true if attr is a DenseIntElementsAttr with the last element equal 1.
+bool IsLastElementEqualsOne(Attribute attr) {
+  const auto ints = attr.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!ints) return false;
+  if (ints.empty()) return false;
+  const auto last_element_index = ints.getNumElements() - 1;
+  const auto iterator = ints.getIntValues().begin();
+  const APInt last_element = iterator[last_element_index];
+  return last_element == 1;
+}
+
+// Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or an
+// incrementing sequence from 0 to N-1.
+//
+// If such a value is used in an Equal operator, it can be replaced with OneHot.
+bool IsOneHotIndexAttribute(Attribute attr) {
+  const auto dense_attr = attr.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!dense_attr) {
+    return false;
+  }
+  auto index_type = dense_attr.getType();
+  const auto index_elem_bits = index_type.getElementTypeBitWidth();
+  if (index_elem_bits != 32 && index_elem_bits != 64) {
+    return false;
+  }
+  if (index_type.getRank() != 1) {
+    return false;
+  }
+  const auto elems = dense_attr.getIntValues().begin();
+  for (int i = 0; i < dense_attr.getNumElements(); ++i) {
+    if (i != elems[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
