@@ -690,6 +690,22 @@ func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex_neg
+func @complex_neg(%input: memref<2x2xcomplex<f32>>,
+                  %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.negate"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                     memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.neg %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// -----
+
 // CHECK-LABEL: func @negi
 func @negi(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
   "lmhlo.negate"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()

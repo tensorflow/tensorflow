@@ -671,8 +671,9 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::NegOp>(Location loc,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(args.front().getType());
-  if (element_type.isa<FloatType>()) {
-    return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::NegFOp>{}(
+  if (element_type.isa<ComplexType, FloatType>()) {
+    return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::NegFOp, isComplexType,
+                                   ::mlir::complex::NegOp>{}(
         loc, result_types, arg_types, args, b);
   }
   if (element_type.isa<IntegerType>()) {

@@ -1021,27 +1021,23 @@ gpu_kernel_library(
     ]
 ]
 
-# Kernels that support all floating-point and signed int types.
-[
-    gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
-        op = op,
-        tile_size = "256",
-        types = [
-            "f16",
-            "f32",
-            "f64",
-            "i8",
-            "i16",
-            "i32",
-            "i64",
-        ],
-        unroll_factors = "4",
-    )
-    for op in [
-        "neg",
-    ]
-]
+gpu_kernel_library(
+    name = "gpu_neg_kernels",
+    op = "neg",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
 
 gpu_kernel_library(
     name = "gpu_floor_div_kernels",

@@ -681,6 +681,12 @@ GENERATE_DEFAULT_TEST(Neg, DT_INT16, DT_INT16, baseline_neg,
 GENERATE_DEFAULT_TEST(Neg, DT_INT64, DT_INT64, baseline_neg,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+GENERATE_DEFAULT_TEST(Neg, DT_COMPLEX64, DT_COMPLEX64, baseline_neg,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Neg, DT_COMPLEX128, DT_COMPLEX128, baseline_neg,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.Real`.
 
 template <typename T>
