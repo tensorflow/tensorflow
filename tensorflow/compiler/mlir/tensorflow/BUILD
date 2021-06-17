@@ -914,6 +914,7 @@ cc_library(
         ":convert_tensor",
         ":lift_variables_lib",
         ":mark_initialized_variables_lib",
+        ":resource_value_typed_analyzer",
         ":session_utils",
         ":tensorflow",
         ":tensorflow_ops",
@@ -2296,5 +2297,19 @@ cc_library(
         ":tensorflow",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "resource_value_typed_analyzer",
+    srcs = ["analysis/resource_value_typed_analyzer.cc"],
+    hdrs = ["analysis/resource_value_typed_analyzer.h"],
+    deps = [
+        ":tensorflow",
+        ":tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
