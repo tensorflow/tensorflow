@@ -256,6 +256,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
 void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
   VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes;
+  void* result = nullptr;
   if (!allocation_attr.retry_on_failure) {
     // Return immediately upon the first failure if this is for allocating an
     // optional scratch space.
@@ -264,8 +265,8 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
     if (allocation_attr.freed_by_func != nullptr) {
       freed_by_count = (*allocation_attr.freed_by_func)();
     }
-    void* result = AllocateRawInternal(unused_alignment, num_bytes,
-                                       dump_log_on_failure, freed_by_count);
+    result = AllocateRawInternal(unused_alignment, num_bytes,
+                                 dump_log_on_failure, freed_by_count);
     if (result == nullptr) {
       static std::atomic<int32> log_counter{0};
       int32 counter_value = log_counter.load(std::memory_order_relaxed);
@@ -283,9 +284,12 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
     }
     return result;
   } else {
-    return AllocateRawInternalWithRetry(unused_alignment, num_bytes,
-                                        allocation_attr);
+    result = AllocateRawInternalWithRetry(unused_alignment, num_bytes,
+                                          allocation_attr);
   }
+  VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes << " "
+          << result;
+  return result;
 }
 
 // static
