@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -2428,7 +2429,7 @@ class RemoveSignTypeConverter : public TypeConverter {
 //     iterator_types = ["parallel", "parallel"],
 // } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 struct LhloLegalizeToLinalgPass
-    : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
+    : public lmhlo::LhloLegalizeToLinalgPassBase<LhloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<AffineDialect, complex::ComplexDialect, linalg::LinalgDialect,
@@ -2454,7 +2455,7 @@ struct LhloLegalizeToLinalgPass
 };
 
 struct HloLegalizeToLinalgPass
-    : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
+    : public mhlo::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<linalg::LinalgDialect, scf::SCFDialect, complex::ComplexDialect,

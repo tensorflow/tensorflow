@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -229,7 +230,7 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
 }
 
 struct LhloLegalizeToAffinePass
-    : public PassWrapper<LhloLegalizeToAffinePass, FunctionPass> {
+    : public LhloLegalizeToAffinePassBase<LhloLegalizeToAffinePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect>();
   }

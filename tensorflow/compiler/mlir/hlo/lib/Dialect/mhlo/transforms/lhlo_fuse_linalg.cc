@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
@@ -36,8 +37,7 @@ namespace {
 
 using linalg::LinalgOp;
 
-class LhloFuseLinalgPass
-    : public PassWrapper<LhloFuseLinalgPass, FunctionPass> {
+class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, linalg::LinalgDialect, scf::SCFDialect>();
   }
@@ -202,18 +202,6 @@ class LhloFuseLinalgPass
                                                      .setLoopType(loopType));
     return tiled_generic_op.hasValue();
   }
-
-  Option<bool> use_parallel_loops_{
-      *this, "use-parallel-loops",
-      llvm::cl::desc(
-          "Tiles GenericOp consumer to parallel loops before linalg fusion"),
-      llvm::cl::init(false)};
-
-  ListOption<unsigned> tile_sizes_{
-      *this, "tile-sizes",
-      llvm::cl::desc(
-          "Tile sizes by which to tile linalg generic before linalg fusion"),
-      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
 };
 
 }  // namespace

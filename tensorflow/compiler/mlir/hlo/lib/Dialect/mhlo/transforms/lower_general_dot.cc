@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -30,28 +31,16 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-using mlir::DenseIntElementsAttr;
-using mlir::ElementsAttr;
-using mlir::failure;
-using mlir::FunctionPass;
-using mlir::LogicalResult;
-using mlir::MLIRContext;
-using mlir::OpRewritePattern;
-using mlir::OwningRewritePatternList;
-using mlir::PassWrapper;
-using mlir::PatternRewriter;
-using mlir::RankedTensorType;
-using mlir::success;
-using mlir::Value;
-
+namespace mlir {
+namespace mhlo {
 namespace {
 
-Value TransposeReshape(Value arg, mlir::Location loc,
+Value TransposeReshape(Value arg, Location loc,
                        llvm::ArrayRef<int64_t> left_dims,
                        llvm::ArrayRef<int64_t> right_dims,
                        llvm::ArrayRef<int64_t> arg_shape,
                        PatternRewriter *rewriter) {
-  auto element_type = mlir::getElementTypeOrSelf(arg.getType());
+  auto element_type = getElementTypeOrSelf(arg.getType());
 
   int64_t left_size = 1;
   for (auto dim : left_dims) {
@@ -68,7 +57,7 @@ Value TransposeReshape(Value arg, mlir::Location loc,
                                                       left_dims.end());
   transpose_permutation.append(right_dims.begin(), right_dims.end());
 
-  mlir::TensorType transpose_permutation_type = RankedTensorType::get(
+  TensorType transpose_permutation_type = RankedTensorType::get(
       {static_cast<int64_t>(transpose_permutation.size())},
       rewriter->getIntegerType(64));
 
@@ -83,20 +72,18 @@ Value TransposeReshape(Value arg, mlir::Location loc,
     transposed_shape.push_back(arg_shape[val]);
   }
   auto transpose_type = RankedTensorType::get(transposed_shape, element_type);
-  auto transpose_result = rewriter->create<mlir::mhlo::TransposeOp>(
+  auto transpose_result = rewriter->create<TransposeOp>(
       loc, transpose_type, arg, transpose_permutation_attr);
 
   // Return the final result.
   auto reshaped_type =
       RankedTensorType::get({left_size, right_size}, element_type);
-  return rewriter->create<mlir::mhlo::ReshapeOp>(loc, reshaped_type,
-                                                 transpose_result);
+  return rewriter->create<ReshapeOp>(loc, reshaped_type, transpose_result);
 }
 
-Value ProcessDotArg(Value arg, mlir::Location loc,
-                    ElementsAttr contract_dims_attr, bool outer_dims_first,
-                    PatternRewriter *rewriter) {
-  auto shape = arg.getType().cast<mlir::ShapedType>().getShape();
+Value ProcessDotArg(Value arg, Location loc, ElementsAttr contract_dims_attr,
+                    bool outer_dims_first, PatternRewriter *rewriter) {
+  auto shape = arg.getType().cast<ShapedType>().getShape();
 
   llvm::SmallVector<bool, 5> is_outer_dim;
   is_outer_dim.resize(shape.size(), true);
@@ -124,7 +111,7 @@ Value ProcessDotArg(Value arg, mlir::Location loc,
   return TransposeReshape(arg, loc, contract_dims, outer_dims, shape, rewriter);
 }
 
-struct GeneralDotConvert : public OpRewritePattern<mlir::mhlo::DotGeneralOp> {
+struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
   // Attempts to lower a General Dot operator to a standard Dot operator.
   // General dots include batching dimensions and can have collapsing
   // dimensions along any axis. Inserting correctly arrange transpose and
@@ -136,9 +123,9 @@ struct GeneralDotConvert : public OpRewritePattern<mlir::mhlo::DotGeneralOp> {
   explicit GeneralDotConvert(MLIRContext *context)
       : OpRewritePattern(context) {}
 
-  LogicalResult matchAndRewrite(mlir::mhlo::DotGeneralOp op,
+  LogicalResult matchAndRewrite(DotGeneralOp op,
                                 PatternRewriter &rewriter) const override {
-    auto dot_element_type = mlir::getElementTypeOrSelf(op);
+    auto dot_element_type = getElementTypeOrSelf(op);
 
     auto dot_numbers = op.dot_dimension_numbers();
     if (dot_numbers.lhs_batching_dimensions().getNumElements() != 0 ||
@@ -155,8 +142,8 @@ struct GeneralDotConvert : public OpRewritePattern<mlir::mhlo::DotGeneralOp> {
                              /*outer_dims_first=*/false, &rewriter);
 
     // Accept only static shaped types.
-    auto lhs_shape_type = lhs.getType().dyn_cast_or_null<mlir::ShapedType>();
-    auto rhs_shape_type = rhs.getType().dyn_cast_or_null<mlir::ShapedType>();
+    auto lhs_shape_type = lhs.getType().dyn_cast_or_null<ShapedType>();
+    auto rhs_shape_type = rhs.getType().dyn_cast_or_null<ShapedType>();
     if (!lhs_shape_type || !rhs_shape_type) return failure();
     if (!lhs_shape_type.hasStaticShape() || !rhs_shape_type.hasStaticShape())
       return failure();
@@ -167,28 +154,29 @@ struct GeneralDotConvert : public OpRewritePattern<mlir::mhlo::DotGeneralOp> {
     auto new_dot_type =
         RankedTensorType::get({lhs_shape[0], rhs_shape[1]}, dot_element_type);
 
-    mlir::ArrayAttr precision_config;
+    ArrayAttr precision_config;
     if (op.precision_config()) precision_config = *op.precision_config();
-    auto new_dot_op = rewriter.create<mlir::mhlo::DotOp>(
-        op.getLoc(), new_dot_type, lhs, rhs, precision_config);
+    auto new_dot_op = rewriter.create<DotOp>(op.getLoc(), new_dot_type, lhs,
+                                             rhs, precision_config);
 
-    rewriter.replaceOpWithNewOp<mlir::mhlo::ReshapeOp>(op, op.getType(),
-                                                       new_dot_op);
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), new_dot_op);
     return success();
   }
 };
 
 struct LegalizeGeneralDotPass
-    : public PassWrapper<LegalizeGeneralDotPass, FunctionPass> {
+    : public LegalizeGeneralDotPassBase<LegalizeGeneralDotPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
-    mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
+    PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
     (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 
 }  // namespace
+}  // namespace mhlo
+}  // namespace mlir
 
 void mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(
     OwningRewritePatternList *patterns, MLIRContext *ctx) {
