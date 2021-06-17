@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -36,6 +37,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import nest
 
 
@@ -52,45 +54,87 @@ def remove_variants(get_next_op):
   return nest.map_structure(_remove_variant, get_next_op)
 
 
-class CheckpointTestBase(test.TestCase):
-  """Base test class for checkpointing datasets."""
+def default_test_combinations():
+  """Returns the default test combinations for testing checkpointing."""
 
-  def tearDown(self):
-    self._delete_ckpt()
-    super(CheckpointTestBase, self).tearDown()
-
-  # TODO(b/72657739): Remove sparse_tensor argument, which is to test the
-  # (deprecated) saveable `SparseTensorSliceDataset`, once the API
-  # `from_sparse_tensor_slices()` and related tests are deleted.
-  def run_core_tests(self, ds_fn, num_outputs, sparse_tensors=False):
-    """Runs the core tests.
-
-    Args:
-      ds_fn: 0-argument function that returns a Dataset.
-      num_outputs: Total number of outputs expected from this Dataset.
-      sparse_tensors: Whether dataset is built from SparseTensor(s).
-
-    Raises:
-      AssertionError if any test fails.
-    """
-    # NOTE: We disable all default optimizations in checkpoint tests in order
-    # to test the actual dataset in question.
+  def disable_optimizations(ds_fn):
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
 
     def ds_fn_no_opt():
       return ds_fn().with_options(options)
 
-    self.verify_unused_iterator(
-        ds_fn_no_opt, num_outputs, sparse_tensors=sparse_tensors)
-    self.verify_fully_used_iterator(
-        ds_fn_no_opt, num_outputs, sparse_tensors=sparse_tensors)
-    self.verify_exhausted_iterator(
-        ds_fn_no_opt, num_outputs, sparse_tensors=sparse_tensors)
-    self.verify_multiple_breaks(
-        ds_fn_no_opt, num_outputs, sparse_tensors=sparse_tensors)
-    self.verify_reset_restored_iterator(
-        ds_fn_no_opt, num_outputs, sparse_tensors=sparse_tensors)
+    return ds_fn_no_opt
+
+  def verify_unused_iterator(obj, ds_fn, num_outputs, sparse_tensors=False):
+    obj.verify_unused_iterator(
+        ds_fn=disable_optimizations(ds_fn=ds_fn),
+        num_outputs=num_outputs,
+        sparse_tensors=sparse_tensors)
+
+  verify_unused_iterator_combination = combinations.combine(
+      verify_fn=combinations.NamedObject("verify_unused_iterator",
+                                         verify_unused_iterator))
+
+  def verify_fully_used_iterator(obj, ds_fn, num_outputs, sparse_tensors=False):
+    obj.verify_fully_used_iterator(
+        ds_fn=disable_optimizations(ds_fn=ds_fn),
+        num_outputs=num_outputs,
+        sparse_tensors=sparse_tensors)
+
+  verify_fully_used_iterator_combination = combinations.combine(
+      verify_fn=combinations.NamedObject("verify_fully_used_iterator",
+                                         verify_fully_used_iterator))
+
+  def verify_exhausted_iterator(obj, ds_fn, num_outputs, sparse_tensors=False):
+    obj.verify_exhausted_iterator(
+        ds_fn=disable_optimizations(ds_fn=ds_fn),
+        num_outputs=num_outputs,
+        sparse_tensors=sparse_tensors)
+
+  verify_exhausted_iterator_combination = combinations.combine(
+      verify_fn=combinations.NamedObject("verify_exhausted_iterator",
+                                         verify_exhausted_iterator))
+
+  def verify_multiple_breaks(obj, ds_fn, num_outputs, sparse_tensors=False):
+    obj.verify_multiple_breaks(
+        ds_fn=disable_optimizations(ds_fn=ds_fn),
+        num_outputs=num_outputs,
+        sparse_tensors=sparse_tensors)
+
+  verify_multiple_breaks_combination = combinations.combine(
+      verify_fn=combinations.NamedObject("verify_multiple_breaks",
+                                         verify_multiple_breaks))
+
+  def verify_reset_restored_iterator(obj,
+                                     ds_fn,
+                                     num_outputs,
+                                     sparse_tensors=False):
+    obj.verify_reset_restored_iterator(
+        ds_fn=disable_optimizations(ds_fn=ds_fn),
+        num_outputs=num_outputs,
+        sparse_tensors=sparse_tensors)
+
+  verify_reset_restored_iterator_combination = combinations.combine(
+      verify_fn=combinations.NamedObject("verify_reset_restored_iterator",
+                                         verify_reset_restored_iterator))
+
+  return (verify_unused_iterator_combination +
+          verify_fully_used_iterator_combination +
+          verify_exhausted_iterator_combination +
+          verify_multiple_breaks_combination +
+          verify_reset_restored_iterator_combination)
+
+
+# TODO(b/72657739): Remove sparse_tensor argument, which is to test the
+# (deprecated) saveable `SparseTensorSliceDataset`, once the API
+# `from_sparse_tensor_slices()` and related tests are deleted.
+class CheckpointTestBase(test.TestCase):
+  """Base test class for checkpointing datasets."""
+
+  def tearDown(self):
+    self._delete_ckpt()
+    super(CheckpointTestBase, self).tearDown()
 
   def verify_unused_iterator(self,
                              ds_fn,
@@ -100,10 +144,11 @@ class CheckpointTestBase(test.TestCase):
     """Verifies that saving and restoring an unused iterator works.
 
     Args:
-      ds_fn: See `run_core_tests`.
-      num_outputs: See `run_core_tests`.
-      sparse_tensors: See `run_core_tests`.
-      verify_exhausted: See `gen_outputs`.
+      ds_fn: 0-argument function that returns a Dataset.
+      num_outputs: Total number of outputs expected from this Dataset.
+      sparse_tensors: Whether dataset is built from SparseTensor(s).
+      verify_exhausted: Whether to verify that the iterator has been exhausted
+        after producing `num_outputs` elements.
 
     Raises:
       AssertionError if any test fails.
@@ -126,9 +171,9 @@ class CheckpointTestBase(test.TestCase):
     returned.
 
     Args:
-      ds_fn: See `run_core_tests`.
-      num_outputs: See `run_core_tests`.
-      sparse_tensors: See `run_core_tests`.
+      ds_fn: 0-argument function that returns a Dataset.
+      num_outputs: Total number of outputs expected from this Dataset.
+      sparse_tensors: Whether dataset is built from SparseTensor(s).
 
     Raises:
       AssertionError if test fails.
@@ -142,9 +187,9 @@ class CheckpointTestBase(test.TestCase):
     An exhausted iterator is one which has returned an OutOfRange error.
 
     Args:
-      ds_fn: See `run_core_tests`.
-      num_outputs: See `run_core_tests`.
-      sparse_tensors: See `run_core_tests`.
+      ds_fn: 0-argument function that returns a Dataset.
+      num_outputs: Total number of outputs expected from this Dataset.
+      sparse_tensors: Whether dataset is built from SparseTensor(s).
 
     Raises:
       AssertionError if any test fails.
@@ -160,7 +205,7 @@ class CheckpointTestBase(test.TestCase):
         ckpt_saved=True,
         verify_exhausted=True,
         sparse_tensors=sparse_tensors)
-    self.assertEqual(len(actual), 0)
+    self.assertLen(actual, 0)
 
   def verify_multiple_breaks(self,
                              ds_fn,
@@ -171,12 +216,13 @@ class CheckpointTestBase(test.TestCase):
     """Attempts to save/restore at multiple break points.
 
     Args:
-      ds_fn: See `run_core_tests`.
-      num_outputs: See `run_core_tests`.
+      ds_fn: 0-argument function that returns a Dataset.
+      num_outputs: Total number of outputs expected from this Dataset.
       num_breaks: The number of break points. These are uniformly spread in [0,
         num_outputs] both inclusive.
-      sparse_tensors: See `run_core_tests`.
-      verify_exhausted: See `gen_outputs`.
+      sparse_tensors: Whether dataset is built from SparseTensor(s).
+      verify_exhausted: Whether to verify that the iterator has been exhausted
+        after producing `num_outputs` elements.
 
     Raises:
       AssertionError if any test fails.
@@ -188,7 +234,6 @@ class CheckpointTestBase(test.TestCase):
         sparse_tensors=sparse_tensors,
         verify_exhausted=verify_exhausted)
 
-  # TODO(b/183231190): implement eager mode compatible checkpointing
   def verify_reset_restored_iterator(self,
                                      ds_fn,
                                      num_outputs,
@@ -200,15 +245,19 @@ class CheckpointTestBase(test.TestCase):
     This is useful when restoring a training checkpoint during validation.
 
     Args:
-      ds_fn: See `run_core_tests`.
-      num_outputs: See `run_core_tests`.
+      ds_fn: 0-argument function that returns a Dataset.
+      num_outputs: Total number of outputs expected from this Dataset.
       break_point: Break point. Optional. Defaults to num_outputs/2.
-      sparse_tensors: See `run_core_tests`.
-      verify_exhausted: See `gen_outputs`.
+      sparse_tensors: Whether dataset is built from SparseTensor(s).
+      verify_exhausted: Whether to verify that the iterator has been exhausted
+        after producing `num_outputs` elements.
 
     Raises:
       AssertionError if any test fails.
     """
+    if context.executing_eagerly():
+      self.skipTest("Eager mode iteration do not support re-initialization.")
+
     break_point = num_outputs // 2 if not break_point else break_point
 
     # Collect ground truth containing all outputs.
@@ -243,7 +292,6 @@ class CheckpointTestBase(test.TestCase):
             sess.run(get_next_op)
     self.match(expected, actual)
 
-  # TODO(b/183231190): implement eager mode compatible checkpointing
   def verify_error_on_save(self,
                            ds_fn,
                            num_outputs,
@@ -253,30 +301,34 @@ class CheckpointTestBase(test.TestCase):
     """Attempts to save a non-saveable iterator.
 
     Args:
-      ds_fn: See `run_core_tests`.
-      num_outputs: See `run_core_tests`.
+      ds_fn: 0-argument function that returns a Dataset.
+      num_outputs: Total number of outputs expected from this Dataset.
       error: Declared error when trying to save iterator.
       break_point: Break point. Optional. Defaults to num_outputs/2.
-      sparse_tensors: See `run_core_tests`.
+      sparse_tensors: Whether dataset is built from SparseTensor(s).
 
     Raises:
       AssertionError if any test fails.
     """
-    if context.executing_eagerly():
-      self.skipTest("Support for testing eager mode checkpointing has not "
-                    "been implemented.")
-
     break_point = num_outputs // 2 if not break_point else break_point
-    with ops.Graph().as_default() as g:
-      init_op, get_next_op, saver = self._build_graph(
-          ds_fn, sparse_tensors=sparse_tensors)
-      get_next_op = remove_variants(get_next_op)
-      with self.session(graph=g) as sess:
-        self._initialize(init_op, sess)
-        for _ in range(break_point):
-          sess.run(get_next_op)
-        with self.assertRaises(error):
-          self._save(sess, saver)
+    if context.executing_eagerly():
+      iterator = iter(ds_fn())
+      ckpt = tracking_util.Checkpoint(iterator=iterator)
+      for _ in range(break_point):
+        next(iterator)
+      with self.assertRaises(error):
+        ckpt.save(self._ckpt_path())
+    else:
+      with ops.Graph().as_default() as g:
+        init_op, get_next_op, saver = self._build_graph(
+            ds_fn, sparse_tensors=sparse_tensors)
+        get_next_op = remove_variants(get_next_op)
+        with self.session(graph=g) as sess:
+          self._initialize(init_op, sess)
+          for _ in range(break_point):
+            sess.run(get_next_op)
+          with self.assertRaises(error):
+            self._save(sess, saver)
 
   def verify_run_with_breaks(self,
                              ds_fn,
@@ -294,11 +346,17 @@ class CheckpointTestBase(test.TestCase):
     Deep matches outputs from 1 and 2.
 
     Args:
-      ds_fn: See `gen_outputs`.
-      break_points: See `gen_outputs`.
-      num_outputs: See `gen_outputs`.
-      sparse_tensors: See `run_core_tests`.
-      verify_exhausted: See `gen_outputs`.
+      ds_fn: 0-argument function that returns a Dataset.
+      break_points: A list of integers. For each `break_point` in
+        `break_points`, we produce outputs till `break_point` number of items
+        have been produced and then checkpoint the state. The current graph and
+        session are destroyed and a new graph and session are used to produce
+        outputs till next checkpoint or till `num_outputs` elements have been
+        produced. `break_point` must be <= `num_outputs`.
+      num_outputs: Total number of outputs expected from this Dataset.
+      sparse_tensors: Whether dataset is built from SparseTensor(s).
+      verify_exhausted: Whether to verify that the iterator has been exhausted
+        after producing `num_outputs` elements.
 
     Raises:
       AssertionError if any test fails.
@@ -318,7 +376,6 @@ class CheckpointTestBase(test.TestCase):
 
     self.match(expected, actual)
 
-  # TODO(b/183231190): implement eager mode compatible checkpointing
   def gen_outputs(self,
                   ds_fn,
                   break_points,
@@ -353,42 +410,58 @@ class CheckpointTestBase(test.TestCase):
     Returns:
       A list of `num_outputs` items.
     """
-    if context.executing_eagerly():
-      self.skipTest("Support for testing eager mode checkpointing has not "
-                    "been implemented.")
     outputs = []
 
-    def get_ops():
-      if ckpt_saved:
-        saver = self._import_meta_graph()
-        init_op, get_next_op = self._get_iterator_ops_from_collection(
-            ds_fn, sparse_tensors=sparse_tensors)
-      else:
-        init_op, get_next_op, saver = self._build_graph(
-            ds_fn, sparse_tensors=sparse_tensors)
-      return init_op, get_next_op, saver
+    if context.executing_eagerly():
+      for i in range(len(break_points) + 1):
+        iterator = iter(ds_fn())
+        ckpt = tracking_util.Checkpoint(iterator=iterator)
+        if ckpt_saved:
+          ckpt_path = self._latest_ckpt()
+          ckpt.restore(ckpt_path)
+        start = break_points[i - 1] if i > 0 else 0
+        end = break_points[i] if i < len(break_points) else num_outputs
+        num_iters = end - start
+        for _ in range(num_iters):
+          outputs.append(self.evaluate(next(iterator)))
+        if i == len(break_points) and verify_exhausted:
+          with self.assertRaises(StopIteration):
+            next(iterator)
+        if save_checkpoint_at_end or i < len(break_points):
+          ckpt_path = ckpt.save(self._ckpt_path())
+          ckpt_saved = True
+    else:
+      def get_ops():
+        if ckpt_saved:
+          saver = self._import_meta_graph()
+          init_op, get_next_op = self._get_iterator_ops_from_collection(
+              ds_fn, sparse_tensors=sparse_tensors)
+        else:
+          init_op, get_next_op, saver = self._build_graph(
+              ds_fn, sparse_tensors=sparse_tensors)
+        return init_op, get_next_op, saver
 
-    for i in range(len(break_points) + 1):
-      with ops.Graph().as_default() as g:
-        init_op, get_next_op, saver = get_ops()
-        get_next_op = remove_variants(get_next_op)
-        with self.session(graph=g) as sess:
-          if ckpt_saved:
-            self._initialize(init_op, sess)
-            self._restore(saver, sess)
-          else:
-            self._initialize(init_op, sess)
-          start = break_points[i - 1] if i > 0 else 0
-          end = break_points[i] if i < len(break_points) else num_outputs
-          num_iters = end - start
-          for _ in range(num_iters):
-            outputs.append(sess.run(get_next_op))
-          if i == len(break_points) and verify_exhausted:
-            with self.assertRaises(errors.OutOfRangeError):
-              sess.run(get_next_op)
-          if save_checkpoint_at_end or i < len(break_points):
-            self._save(sess, saver)
-            ckpt_saved = True
+      for i in range(len(break_points) + 1):
+        with ops.Graph().as_default() as g:
+          init_op, get_next_op, saver = get_ops()
+          get_next_op = remove_variants(get_next_op)
+          with self.session(graph=g) as sess:
+            if ckpt_saved:
+              self._initialize(init_op, sess)
+              self._restore(saver, sess)
+            else:
+              self._initialize(init_op, sess)
+            start = break_points[i - 1] if i > 0 else 0
+            end = break_points[i] if i < len(break_points) else num_outputs
+            num_iters = end - start
+            for _ in range(num_iters):
+              outputs.append(sess.run(get_next_op))
+            if i == len(break_points) and verify_exhausted:
+              with self.assertRaises(errors.OutOfRangeError):
+                sess.run(get_next_op)
+            if save_checkpoint_at_end or i < len(break_points):
+              self._save(sess, saver)
+              ckpt_saved = True
 
     return outputs
 
@@ -499,18 +572,18 @@ class CheckpointTestBase(test.TestCase):
     return all_ops[0], nest.pack_sequence_as(
         self._get_output_types(ds_fn), get_next_list)
 
-  # TODO(b/183231190): replace with `element_spec` and add eager mode support
   def _get_output_types(self, ds_fn):
+    assert not context.executing_eagerly()
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_types(ds_fn())
 
-  # TODO(b/183231190): replace with `element_spec` and add eager mode support
   def _get_output_shapes(self, ds_fn):
+    assert not context.executing_eagerly()
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_shapes(ds_fn())
 
-  # TODO(b/183231190): replace with `element_spec` and add eager mode support
   def _get_output_classes(self, ds_fn):
+    assert not context.executing_eagerly()
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_classes(ds_fn())
 

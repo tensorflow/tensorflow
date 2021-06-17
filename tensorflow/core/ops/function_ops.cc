@@ -67,7 +67,7 @@ REGISTER_SYSTEM_OP("_Arg")
       if (dtype_attr->list().type().empty()) {
         return errors::InvalidArgument(
             "Invalid \"_handle_dtypes\" attribute value for _Arg node: ",
-            shape_attr->DebugString());
+            dtype_attr->DebugString());
       }
       if (shape_attr->list().shape().empty()) {
         return errors::InvalidArgument(

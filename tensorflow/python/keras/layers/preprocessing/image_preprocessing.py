@@ -412,11 +412,13 @@ class RandomFlip(base_layer.Layer):
     def random_flipped_inputs():
       flipped_outputs = inputs
       if self.horizontal:
-        flipped_outputs = image_ops.random_flip_left_right(
-            flipped_outputs, self.seed)
+        flipped_outputs = image_ops.stateless_random_flip_left_right(
+            flipped_outputs,
+            self._rng.make_seeds()[:, 0])
       if self.vertical:
-        flipped_outputs = image_ops.random_flip_up_down(flipped_outputs,
-                                                        self.seed)
+        flipped_outputs = image_ops.stateless_random_flip_up_down(
+            flipped_outputs,
+            self._rng.make_seeds()[:, 0])
       return flipped_outputs
 
     output = control_flow_util.smart_cond(training, random_flipped_inputs,
@@ -885,9 +887,15 @@ class RandomZoom(base_layer.Layer):
     seed: Integer. Used to create a random seed.
     fill_value: a float represents the value to be filled outside the boundaries
       when `fill_mode` is "constant".
-  Example:  >>> input_img = np.random.random((32, 224, 224, 3)) >>> layer =
-    tf.keras.layers.experimental.preprocessing.RandomZoom(.5, .2) >>> out_img =
-    layer(input_img) >>> out_img.shape TensorShape([32, 224, 224, 3])
+
+  Example:
+
+  >>> input_img = np.random.random((32, 224, 224, 3))
+  >>> layer = tf.keras.layers.experimental.preprocessing.RandomZoom(.5, .2)
+  >>> out_img = layer(input_img)
+  >>> out_img.shape
+  TensorShape([32, 224, 224, 3])
+
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
@@ -1077,6 +1085,7 @@ class RandomContrast(base_layer.Layer):
       raise ValueError('Factor cannot have negative values or greater than 1.0,'
                        ' got {}'.format(factor))
     self.seed = seed
+    self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomContrast, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomContrast').set(
@@ -1087,8 +1096,9 @@ class RandomContrast(base_layer.Layer):
       training = backend.learning_phase()
 
     def random_contrasted_inputs():
-      return image_ops.random_contrast(inputs, 1. - self.lower, 1. + self.upper,
-                                       self.seed)
+      return image_ops.stateless_random_contrast(inputs, 1. - self.lower,
+                                                 1. + self.upper,
+                                                 self._rng.make_seeds()[:, 0])
 
     output = control_flow_util.smart_cond(training, random_contrasted_inputs,
                                           lambda: inputs)
@@ -1219,7 +1229,7 @@ class RandomWidth(base_layer.Layer):
       lower bound. For instance, `factor=(0.2, 0.3)` results in an output with
       width changed by a random amount in the range `[20%, 30%]`. `factor=(-0.2,
       0.3)` results in an output with width changed by a random amount in the
-      range `[-20%, +30%]. `factor=0.2` results in an output with width changed
+      range `[-20%, +30%]`. `factor=0.2` results in an output with width changed
       by a random amount in the range `[-20%, +20%]`.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
@@ -1308,7 +1318,7 @@ def make_generator(seed=None):
   Returns:
     A generator object.
   """
-  if seed:
+  if seed is not None:
     return stateful_random_ops.Generator.from_seed(seed)
   else:
     return stateful_random_ops.Generator.from_non_deterministic_state()

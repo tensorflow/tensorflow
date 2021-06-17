@@ -279,7 +279,7 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
     const HloInstruction* hlo, int64 operand_index, int64 hlo_concat_dim,
     bool hlo_inserted_concat_dim,
     const ConcatGroup* combined_operand_group = nullptr) {
-  if (hlo->IsElementwise()) {
+  if (hlo->IsElementwise() || hlo->opcode() == HloOpcode::kAllReduce) {
     return std::pair<int64, bool>(hlo_concat_dim, hlo_inserted_concat_dim);
   }
   int64 operand_concat_dim = -1;
@@ -336,6 +336,8 @@ absl::optional<std::pair<int64, bool>> GetOperandConcatDim(
       if (i < operand_shape.rank() && j < hlo->shape().rank() &&
           operand_shape.dimensions(i) == hlo->shape().dimensions(j)) {
         if (j == hlo_concat_dim) {
+          operand_inserted_concat_dim =
+              hlo_inserted_concat_dim && operand_shape.dimensions(i) != 1;
           operand_concat_dim = i;
           break;
         }
@@ -477,7 +479,8 @@ bool GroupHlosForConcat(
   // processed, we also enqueue the corresponding loop outputs to keep them
   // match in shape.
   while (!pq.empty()) {
-    auto& group = pq.begin()->second;
+    auto group = std::move(pq.begin()->second);
+    pq.erase(pq.begin());
     const auto& hlos = group.elements;
     VLOG(2) << "GroupHlosForConcat dequeued " << hlos[0]->ToString();
     bool group_is_param_gtes = false;
@@ -486,13 +489,12 @@ bool GroupHlosForConcat(
         })) {
       // Shared operand.
       if (groups->GetGroupIndex(hlos[0]).has_value()) {
-        VLOG(2) << "We do not support the case if a shared operand also part "
+        VLOG(1) << "We do not support the case if a shared operand also part "
                    "of a group: "
                 << hlos[0]->ToString();
         return fail_and_cleanup();
       }
       groups->DisallowGroupingOn(hlos[0]);
-      pq.erase(pq.begin());
       continue;
     }
     if (absl::c_all_of(hlos, [&](const HloInstruction* element) {
@@ -500,7 +502,9 @@ bool GroupHlosForConcat(
                  element->operand(0) == body->parameter_instruction(0);
         })) {
       group_is_param_gtes = true;
-    } else if ((hlos[0]->IsElementwise() && !hlos[0]->HasSideEffect()) ||
+    } else if (((hlos[0]->IsElementwise() ||
+                 hlos[0]->opcode() == HloOpcode::kAllReduce) &&
+                !hlos[0]->HasSideEffect()) ||
                hlos[0]->opcode() == HloOpcode::kBroadcast ||
                hlos[0]->opcode() == HloOpcode::kReduce ||
                hlos[0]->opcode() == HloOpcode::kReshape ||
@@ -613,7 +617,6 @@ bool GroupHlosForConcat(
       VLOG(2) << "Failed to create group.";
       return fail_and_cleanup();
     }
-    pq.erase(pq.begin());
     const auto& registered_group = groups->GetGroup(guse.group_id);
     if (!guse.already_used_by_subcomp && group_is_param_gtes) {
       // When we processed a group of parameter GTEs, we should also enqueue the

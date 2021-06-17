@@ -162,6 +162,7 @@ bool CanInferShape(HloOpcode code) {
     // but we made it so that we always write the shapes explicitly.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
@@ -1245,6 +1246,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllReduceStart: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
@@ -1252,6 +1254,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64> channel_id;
       optional<bool> constrain_layout;
       optional<bool> use_global_device_ids;
+      optional<std::vector<int64>> dimensions;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
@@ -1261,6 +1264,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
+      if (opcode == HloOpcode::kAllReduceScatter) {
+        attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                               &dimensions};
+      }
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1273,6 +1280,13 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
             shape, operands, *to_apply, replica_groups,
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
+      } else if (opcode == HloOpcode::kAllReduceScatter) {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAllReduceScatter(
+                shape, operands, *to_apply, replica_groups,
+                constrain_layout ? *constrain_layout : false, channel_id,
+                use_global_device_ids ? *use_global_device_ids : false,
+                dimensions->at(0)));
       } else {
         instruction =
             builder->AddInstruction(HloInstruction::CreateAllReduceStart(
@@ -3125,7 +3139,28 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   return true;
 }
 
+// Similar to ParseLiteral(Literal* literal, const Shape& shape), but parse the
+// shape instead of accepting one as argument.
 bool HloParserImpl::ParseLiteral(Literal* literal) {
+  if (lexer_.GetKind() == TokKind::kLparen) {
+    // Consume Lparen
+    lexer_.Lex();
+    std::vector<Literal> elements;
+    while (lexer_.GetKind() != TokKind::kRparen) {
+      Literal element;
+      if (!ParseLiteral(&element)) {
+        return TokenError("Fails when parsing tuple element");
+      }
+      elements.emplace_back(std::move(element));
+      if (lexer_.GetKind() != TokKind::kRparen) {
+        ParseToken(TokKind::kComma, "expects ',' to separate tuple elements");
+      }
+    }
+
+    *literal = LiteralUtil::MakeTupleOwned(std::move(elements));
+    // Consume Rparen
+    return ParseToken(TokKind::kRparen, "expects ')' to close a tuple literal");
+  }
   Shape literal_shape;
   if (!ParseShape(&literal_shape)) {
     return false;
@@ -3916,14 +3951,8 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kLiteral: {
-        if (!ParseToken(TokKind::kLparen, "expects '(' before literal")) {
-          return false;
-        }
         Literal result;
         if (!ParseLiteral(&result)) {
-          return false;
-        }
-        if (!ParseToken(TokKind::kRparen, "expects ')' after literal")) {
           return false;
         }
         static_cast<optional<Literal>*>(attr_out_ptr)
@@ -4710,8 +4739,20 @@ bool HloParserImpl::ParseShape(Shape* result) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
+  if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "invalid") {
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kLbrace) {
+      return false;
+    }
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kRbrace) {
+      return false;
+    }
+    lexer_.Lex();
+    result->mutable_layout()->Clear();
+    return true;
+  }
   LayoutUtil::SetToDefaultLayout(result);
-
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
   //

@@ -207,6 +207,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
 
+  void MakeCrossHostReceiveBuffersForGather(
+      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override;
+
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback) override;
@@ -222,8 +226,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
-  Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                    absl::Span<PjRtExecutable* const> executables) override {
+  Status Defragment() override {
     return Unimplemented("Defragment not implemented");
   }
 
@@ -253,13 +256,20 @@ class PjRtStreamExecutorClient : public PjRtClient {
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier&& notifier) const {
+      PjRtCrossHostRecvNotifier&& notifier,
+      absl::optional<std::vector<GatherDetails>> gather_details) const {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
 
   virtual Status CopyToRemoteDevice(
       PjRtBuffer* buffer, absl::string_view serialized_descriptor) const {
     return Unimplemented("Cross host sends not implemented.");
+  }
+
+  virtual Status CopyToRemoteDeviceScattered(
+      PjRtBuffer* buffer, absl::Span<const std::string> serialized_descriptors,
+      const PjRtBuffer::ScatterDetails& scatter_details) const {
+    return Unimplemented("Scattered cross host sends not implemented.");
   }
 
   virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
@@ -550,6 +560,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override;
 
+  Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) override;
+
   Status BlockHostUntilReady() override;
 
   bool IsOnCpu() const override;
@@ -693,6 +707,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
   void Delete() override { executables_.clear(); }
 
+  bool IsDeleted() override { return executables_.empty(); }
+
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
@@ -708,7 +724,10 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);
 
-  virtual bool MustDonateParameter(int executable_idx, int parameter) const;
+  // Returns a sorted list of the parameters that must be donated. Derived
+  // classes may use custom logic.
+  virtual absl::Span<int const> ParametersThatMustBeDonated(
+      int executable_idx) const;
 
   virtual StatusOr<std::vector<ExecutionInput>>
   MakeExecutionInputsAndWaitForEvents(
@@ -747,9 +766,9 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   std::vector<std::shared_ptr<LocalExecutable>> executables_;
   // On device shapes of the executable parameters.
   std::vector<std::vector<Shape>> on_device_executable_parameter_shapes_;
-  // Per-executable set of parameters that have any aliased buffers and thus
-  // must be donated when executing the computation.
-  std::vector<absl::flat_hash_set<int>> parameters_that_must_be_donated_;
+  // Per-executable sorted vector of parameters that have any aliased buffers
+  // and thus must be donated when executing the computation.
+  std::vector<std::vector<int>> parameters_that_must_be_donated_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   // True if the executables were compiled expecting arguments in a single
@@ -768,13 +787,6 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
 };
-
-// Executables can donate buffers so that buffers can be aliased from inputs
-// to outputs. This function returns the list of parameters that must be
-// donated when executable is run. tuple_inputs reflects the option that
-// executable was compiled with.
-StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
-    const HloModule& hlo_module, bool tuple_inputs);
 
 }  // namespace xla
 

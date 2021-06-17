@@ -589,6 +589,12 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
 llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
     tflite::BuiltinOptionsUnion options,
     const std::vector<std::string>& func_names, Builder builder) {
+  if (auto* opts = options.AsCallOnceOptions()) {
+    uint32_t init_idx = opts->init_subgraph_index;
+    auto init_attr = builder.getStringAttr(func_names.at(init_idx));
+
+    return {builder.getNamedAttr("session_init_function", init_attr)};
+  }
   if (auto* opts = options.AsIfOptions()) {
     uint32_t then_idx = opts->then_subgraph_index;
     auto then_attr = builder.getSymbolRefAttr(func_names.at(then_idx));
@@ -652,11 +658,6 @@ StatusOr<Operation*> ConvertOp(
     OpBuilder builder) {
   llvm::SmallVector<Value, 4> operands;
   llvm::SmallVector<mlir::Type, 2> outputTypes;
-
-  if (op.outputs.empty()) {
-    auto err = errors::InvalidArgument("operator with no outputs");
-    return emitError(loc, err.ToString()), err;
-  }
 
   const tflite::OperatorCodeT& op_code = *op_codes.at(op.opcode_index);
 
@@ -960,8 +961,6 @@ void SetSignature(
   static const char kExportedNameAttr[] = "tf_saved_model.exported_names";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
-  llvm::SmallVector<mlir::DictionaryAttr, 4> arg_attrs, res_attrs;
-
   auto dict_attr =
       func->getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
   if (!dict_attr) return;
@@ -973,21 +972,28 @@ void SetSignature(
       GetStringsFromAttrWithSeparator(dict_attr, /*attr_key=*/"outputs");
 
   for (auto input_pair : llvm::enumerate(signature->inputs)) {
+    const int arg_index = GetTensorIndex(
+        tensors[input_pair.value()->tensor_index]->name, input_names);
+    if (arg_index == -1) {
+      func->emitWarning("Invalid signature tensors specified.");
+      return;
+    }
     func.setArgAttr(
-        GetTensorIndex(tensors[input_pair.value()->tensor_index]->name,
-                       input_names),
-        kSignatureDefIndexPath,
+        arg_index, kSignatureDefIndexPath,
         mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
                                           context, input_pair.value()->name)}));
   }
   for (auto output_pair : llvm::enumerate(signature->outputs)) {
-    func.setResultAttr(
-        GetTensorIndex(tensors[output_pair.value()->tensor_index]->name,
-                       output_names),
-        kSignatureDefIndexPath,
-        mlir::ArrayAttr::get(
-            context,
-            {mlir::StringAttr::get(context, output_pair.value()->name)}));
+    const int arg_index = GetTensorIndex(
+        tensors[output_pair.value()->tensor_index]->name, output_names);
+    if (arg_index == -1) {
+      func->emitWarning("Invalid signature tensors specified.");
+      return;
+    }
+    func.setResultAttr(arg_index, kSignatureDefIndexPath,
+                       mlir::ArrayAttr::get(
+                           context, {mlir::StringAttr::get(
+                                        context, output_pair.value()->name)}));
   }
   func->setAttr(
       kExportedNameAttr,

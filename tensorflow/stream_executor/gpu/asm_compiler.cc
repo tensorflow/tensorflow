@@ -185,8 +185,9 @@ static std::string FindCudaExecutable(const std::string binary_name,
     return it->second;
   }
 
-  // Try searching in the default PATH first.
-  if (GetVersionString(binary_filename).ok()) {
+  // Try searching in the default PATH first if applicable.
+  if (tensorflow::PreferPtxasFromPath() &&
+      GetVersionString(binary_filename).ok()) {
     VLOG(2) << "Using " << binary_filename;
     seen_binary_paths->emplace(std::move(cache_key), binary_filename);
     return binary_filename;

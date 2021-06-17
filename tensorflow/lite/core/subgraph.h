@@ -48,7 +48,8 @@ class Subgraph {
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
            std::vector<std::unique_ptr<Subgraph>>* subgraphs,
-           resource::ResourceMap* resources);
+           resource::ResourceMap* resources,
+           resource::ResourceIDMap* resource_ids);
 
   Subgraph(const Subgraph&) = delete;
 
@@ -171,6 +172,10 @@ class Subgraph {
   // WARNING: Experimental interface, subject to change.
   // TODO(ycling): Move this function to an external context interface.
   resource::ResourceMap& resources() { return *resources_; }
+
+  // WARNING: Experimental interface, subject to change.
+  // TODO(b/149099381): Move this function to an external context interface.
+  resource::ResourceIDMap& resource_ids() { return *resource_ids_; }
 
   size_t tensors_size() const { return tensors_.size(); }
 
@@ -754,6 +759,10 @@ class Subgraph {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
+
+  // A map of resources IDs. Owned by interpreter and shared by multiple
+  // subgraphs.
+  resource::ResourceIDMap* resource_ids_ = nullptr;
 
   // Name of the subgraph (analogous to function name).
   std::string name_;

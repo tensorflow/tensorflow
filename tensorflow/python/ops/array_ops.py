@@ -2899,7 +2899,7 @@ def _constant_if_small(value, shape, dtype, name):
   try:
     if np.prod(shape) < 1000:
       return constant(value, shape=shape, dtype=dtype, name=name)
-  except TypeError:
+  except (NotImplementedError, TypeError):
     # Happens when shape is a Tensor, list with Tensor elements, etc.
     pass
   return None
@@ -6606,4 +6606,3 @@ def guarantee_const(input, name=None):    # pylint: disable=redefined-builtin
     A `Tensor`. Has the same dtype as `input`.
   """
   return gen_array_ops.guarantee_const(input=input, name=name)
-

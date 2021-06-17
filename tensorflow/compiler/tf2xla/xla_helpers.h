@@ -188,6 +188,11 @@ StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
     const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
         collective_reduce_info);
 
+// Generate a message with a definition location based on a provided stack
+// trace, or an empty one if the stack trace is empty.
+std::string DefinitionLocationMsg(
+    const absl::optional<ManagedStackTrace>& stack_trace);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_

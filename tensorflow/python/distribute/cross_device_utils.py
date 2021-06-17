@@ -591,11 +591,15 @@ def divide_by_n_tensors_or_indexed_slices(value, n):
 
 
 def copy_tensor_or_indexed_slices_to_device(value, device):
+  """Copies a tensor or IndexedSlices to a device."""
   with ops.device(device):
     if isinstance(value, ops.IndexedSlices):
       copied_values = array_ops.identity(value.values)
       copied_indices = array_ops.identity(value.indices)
-      copied_shape = array_ops.identity(value.dense_shape)
+      if value.dense_shape is not None:
+        copied_shape = array_ops.identity(value.dense_shape)
+      else:
+        copied_shape = None
       result = ops.IndexedSlices(copied_values, copied_indices, copied_shape)
     else:
       result = array_ops.identity(value)

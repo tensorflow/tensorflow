@@ -80,7 +80,7 @@ Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
                         ToNcclDataType(config_.config.operand_element_type[i]));
 
     VLOG(3) << absl::StreamFormat(
-        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, count=%d, "
+        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, buffer.element_count,
         static_cast<const void*>(comm), cu_stream);

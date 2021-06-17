@@ -23,9 +23,9 @@ REGISTER5(BinaryOp, CPU, "Xdivy", functor::xdivy, float, Eigen::half, double,
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-REGISTER3(BinaryOp, GPU, "Xdivy", functor::xdivy, float, Eigen::half, double);
+REGISTER5(BinaryOp, GPU, "Xdivy", functor::xdivy, float, Eigen::half, double,
+          complex64, complex128);
 #endif
-REGISTER2(BinaryOp, GPU, "Xdivy", functor::xdivy, complex64, complex128);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

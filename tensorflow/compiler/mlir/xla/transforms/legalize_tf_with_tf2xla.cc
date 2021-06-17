@@ -222,7 +222,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SeluGradOp>(),
     TypeID::get<TF::SeluOp>(),
     TypeID::get<TF::SigmoidGradOp>(),
-    TypeID::get<TF::SinhOp>(),
     TypeID::get<TF::SinOp>(),
     TypeID::get<TF::SoftplusGradOp>(),
     TypeID::get<TF::SoftsignGradOp>(),
@@ -309,7 +308,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::Conv3DOp>(),
     TypeID::get<TF::Conv3DBackpropFilterV2Op>(),
     TypeID::get<TF::Conv3DBackpropInputV2Op>(),
-    TypeID::get<TF::CrossReplicaSumOp>(),
     TypeID::get<TF::CumprodOp>(),
     TypeID::get<TF::CumsumOp>(),
     TypeID::get<TF::DepthwiseConv2dNativeOp>(),
@@ -507,7 +505,7 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
       device_->resource_manager(),
       tensorflow::XlaContext::kXlaContextResourceName, context_);
   if (!status.ok()) {
-    return emitError(op_->getLoc())
+    return emitRemark(op_->getLoc())
            << "failed to create XlaContext resource: " << status.ToString();
   }
   params_.step_container = step_container_.get();
@@ -655,8 +653,9 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
         tensorflow::XlaExpression::CastExpressionFromTensor(*output);
     if (expr->kind() != tensorflow::XlaExpression::Kind::kXlaOp &&
         expr->kind() != tensorflow::XlaExpression::Kind::kConstant) {
-      return op_->emitError(
-          "expects XlaExpression of kind kXlaOp in compiled output");
+      return op_->emitRemark(
+          "expects XlaExpression of kind kXlaOp or kConstant in compiled "
+          "output");
     }
     mlir::Value value = hlo_builder_.GetValue(expr->AsXlaOp(&hlo_builder_));
     mlir::OpResult old_result = op_->getResult(i);

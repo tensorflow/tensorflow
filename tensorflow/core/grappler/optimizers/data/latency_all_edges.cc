@@ -115,11 +115,6 @@ Status LatencyAllEdges::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void LatencyAllEdges::Feedback(Cluster* cluster, const GrapplerItem& item,
-                               const GraphDef& optimize_output, double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(LatencyAllEdges, "latency_all_edges");
 
 }  // namespace grappler

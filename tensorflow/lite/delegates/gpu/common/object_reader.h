@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <fp16.h>
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -97,8 +98,11 @@ class ObjectReader {
           converter.SparseToDense(
               static_cast<const Eigen::half*>(tflite_tensor->data.data));
           const std::vector<Eigen::half> out = converter.GetData();
-          std::memcpy(&tensor->data[0], out.data(),
-                      out.size() * sizeof(Eigen::half));
+          std::transform(out.begin(), out.end(), tensor->data.begin(),
+                         [](const Eigen::half& x) {
+                           return fp16_ieee_to_fp32_value(
+                               Eigen::half_impl::raw_half_as_uint16(x));
+                         });
           break;
         }
         default: {

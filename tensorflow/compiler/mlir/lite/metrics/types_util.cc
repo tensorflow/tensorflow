@@ -19,7 +19,8 @@ namespace TFL {
 
 tflite::metrics::ConverterErrorData NewConverterErrorData(
     const std ::string& pass_name, const std::string& error_message,
-    const std::string& error_code, const std::string& op_name) {
+    tflite::metrics::ConverterErrorData::ErrorCode error_code,
+    const std::string& op_name) {
   using tflite::metrics::ConverterErrorData;
   ConverterErrorData error;
   if (!pass_name.empty()) {
@@ -34,10 +35,7 @@ tflite::metrics::ConverterErrorData NewConverterErrorData(
     error.mutable_operator_()->set_name(op_name);
   }
 
-  ConverterErrorData::ErrorCode error_code_obj;
-  if (ConverterErrorData::ErrorCode_Parse(error_code, &error_code_obj)) {
-    error.set_error_code(error_code_obj);
-  }
+  error.set_error_code(error_code);
   return error;
 }
 

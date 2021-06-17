@@ -28,40 +28,6 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-// Collects errors when running the pass manager.
-class ErrorCollectorInstrumentation : public PassInstrumentation {
-  using ConverterErrorData = tflite::metrics::ConverterErrorData;
-
- public:
-  explicit ErrorCollectorInstrumentation(MLIRContext *context);
-
- private:
-  // Instrumentation hooks. These hooks don't need to be thread-safe. The pass
-  // manager runs each pass for the entire module, then it walks through
-  // each op in the module and runs the pass on them, may be in async mode.
-  void runBeforePass(Pass *pass, Operation *module) override;
-  void runAfterPass(Pass *pass, Operation *module) override;
-  void runAfterPassFailed(Pass *pass, Operation *module) override;
-
-  // Helper method to creat a new error.
-  void AppendNewError(const std ::string &pass_name,
-                      const std::string &error_message,
-                      const std::string &error_code,
-                      const std::string &op_name) {
-    errors_.push_back(
-        NewConverterErrorData(pass_name, error_message, error_code, op_name));
-  }
-
-  // The handler to capture error messages.
-  std::unique_ptr<ScopedDiagnosticHandler> handler_;
-  // A map from location to op name.
-  std::unordered_map<Location, std::string, LocationHash> loc_to_name_;
-  // Collected errors.
-  std::vector<ConverterErrorData> errors_;
-  // Stores the error message for errors without op name and error code.
-  std::string common_error_message_;
-};
-
 // A singleton to store errors collected by the instrumentation.
 class ErrorCollector {
   using ConverterErrorData = tflite::metrics::ConverterErrorData;
@@ -76,6 +42,9 @@ class ErrorCollector {
     collected_errors_.insert(error);
   }
 
+  // Clear the set of collected errors.
+  void Clear() { collected_errors_.clear(); }
+
  private:
   ErrorCollector() {}
   friend ErrorCollector *GetErrorCollector();
@@ -85,6 +54,46 @@ class ErrorCollector {
 
 // Returns the global instance of ErrorCollector.
 ErrorCollector *GetErrorCollector();
+
+// Collects errors when running the pass manager.
+class ErrorCollectorInstrumentation : public PassInstrumentation {
+  using ConverterErrorData = tflite::metrics::ConverterErrorData;
+  using ErrorCode = ConverterErrorData::ErrorCode;
+
+ public:
+  explicit ErrorCollectorInstrumentation(MLIRContext *context);
+
+ private:
+  // Instrumentation hooks. These hooks don't need to be thread-safe. The pass
+  // manager runs each pass for the entire module, then it walks through
+  // each op in the module and runs the pass on them, may be in async mode.
+  void runBeforePass(Pass *pass, Operation *module) override;
+  void runAfterPass(Pass *pass, Operation *module) override;
+  void runAfterPassFailed(Pass *pass, Operation *module) override;
+
+  // The handler to capture error messages.
+  std::unique_ptr<ScopedDiagnosticHandler> handler_;
+  // A map from location to op name.
+  std::unordered_map<Location, std::string, LocationHash> loc_to_name_;
+  // Stores the error message for errors without op name and error code.
+  std::string common_error_message_;
+  // Name of the running pass.
+  std::string pass_name_;
+  // Pointer to the global ErrorCollector instance.
+  ErrorCollector *error_collector_;
+};
+
+// Prefix when adding error code as a note in Diagnostic.
+constexpr char kErrorCodePrefix[] = "Error code: ";
+
+// Adds error code to a newly created InFlightDiagnostic.
+inline InFlightDiagnostic AttachErrorCode(InFlightDiagnostic &&diag,
+                                          int error_code) {
+  using tflite::metrics::ConverterErrorData;
+  diag.attachNote() << kErrorCodePrefix
+                    << ConverterErrorData::ErrorCode_Name(error_code);
+  return std::move(diag);
+}
 
 }  // namespace TFL
 }  // namespace mlir

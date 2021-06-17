@@ -900,6 +900,21 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "array_grad_test",
+    srcs = ["ops/array_grad_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":gradients",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "array_ops",
     srcs = [
@@ -3138,6 +3153,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
+        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -3199,9 +3215,10 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
-        "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
-        "//tensorflow/core/platform:statusor",  #tfe
-        "//tensorflow/compiler/jit:flags",  #tfe
+        "//tensorflow/cc/experimental/libexport:metrics",  # SavedModel metrics
+        "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
+        "//tensorflow/core/platform:statusor",  # tfe
+        "//tensorflow/compiler/jit:flags",  # tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
@@ -3210,8 +3227,7 @@ filegroup(
         "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
-        "//tensorflow/core:op_gen_lib",  # tf_session
-        "//tensorflow/core:protos_all_cc",  # tf_text
+        "//tensorflow/core:op_gen_lib",  # tf_session, tf_text
         "//tensorflow/core/common_runtime/eager:context",  # tfe
         "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe

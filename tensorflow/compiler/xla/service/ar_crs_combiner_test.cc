@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/ar_crs_combiner.h"
+
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -375,8 +376,8 @@ ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
   EXPECT_TRUE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
 }
 
-void CompareReplicaGroups(const std::vector<ReplicaGroup>& groups_before,
-                          const std::vector<ReplicaGroup>& groups_after) {
+void CompareReplicaGroups(absl::Span<const ReplicaGroup> groups_before,
+                          absl::Span<const ReplicaGroup> groups_after) {
   ASSERT_EQ(groups_before.size(), groups_after.size());
   for (int i = 0; i < groups_before.size(); ++i) {
     // Somewhat verbose way to compare the replica_ids, because EqualsProto

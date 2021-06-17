@@ -46,6 +46,13 @@ template <typename CppType>
 
 StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     const Shape& shape, mlir::Builder builder) {
+  // N.B. IsMonotonicWithDim0Major ignores tiling, and I can't change it because
+  // some XLA code relies on it treating tiled layouts as equivalent to untiled
+  // layouts, so the check to rule out tiling has to come /before/ the
+  // early-return branch, or we'd miss tiled monotonic layouts.
+  if (!shape.layout().tiles().empty()) {
+    return tensorflow::errors::Internal("Tiled layouts are not yet supported");
+  }
   if (!shape.has_layout() ||
       LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
     return llvm::SmallVector<AffineMap, 1>{};

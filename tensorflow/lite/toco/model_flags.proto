@@ -137,7 +137,7 @@ message ArraysExtraInfo {
 //   optional int32 input_dims = 11 [ default = 4];
 //   repeated int32 input_shape = 13;
 //
-// Next ID to USE: 24.
+// Next ID to USE: 25.
 message ModelFlags {
   // Information about the input arrays, i.e. the arrays from which input
   // activations will be read.
@@ -146,6 +146,9 @@ message ModelFlags {
   // Name of the output arrays, i.e. the arrays into which output activations
   // will be written.
   repeated string output_arrays = 2;
+
+  // Name of the control outputs.
+  repeated string control_output_arrays = 24;
 
   // If true, the model accepts an arbitrary batch size. Mutually exclusive with
   // the 'batch' field: at most one of these two fields can be set.

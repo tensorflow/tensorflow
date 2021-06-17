@@ -150,12 +150,14 @@ class RangeCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   def _build_range_dataset(self, start, stop):
     return dataset_ops.Dataset.range(start, stop)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRangeCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     start = 2
     stop = 10
-    self.run_core_tests(lambda: self._build_range_dataset(start, stop),
-                        stop - start)
+    verify_fn(self, lambda: self._build_range_dataset(start, stop),
+              stop - start)
 
 
 if __name__ == "__main__":

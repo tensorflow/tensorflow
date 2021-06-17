@@ -15,23 +15,19 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/fft_io.h"
 
 void FftWriteMemmapPreamble(FILE* fp, const struct FftState* state) {
-  MICROFRONTEND_FPRINTF(fp, "static int16_t fft_input[%zu];\n",
-                        state->fft_size);
-  MICROFRONTEND_FPRINTF(fp, "static struct complex_int16_t fft_output[%zu];\n",
-                        state->fft_size / 2 + 1);
-  MICROFRONTEND_FPRINTF(fp, "static char fft_scratch[%zu];\n",
-                        state->scratch_size);
-  MICROFRONTEND_FPRINTF(fp, "\n");
+  fprintf(fp, "static int16_t fft_input[%zu];\n", state->fft_size);
+  fprintf(fp, "static struct complex_int16_t fft_output[%zu];\n",
+          state->fft_size / 2 + 1);
+  fprintf(fp, "static char fft_scratch[%zu];\n", state->scratch_size);
+  fprintf(fp, "\n");
 }
 
 void FftWriteMemmap(FILE* fp, const struct FftState* state,
                     const char* variable) {
-  MICROFRONTEND_FPRINTF(fp, "%s->input = fft_input;\n", variable);
-  MICROFRONTEND_FPRINTF(fp, "%s->output = fft_output;\n", variable);
-  MICROFRONTEND_FPRINTF(fp, "%s->fft_size = %zu;\n", variable, state->fft_size);
-  MICROFRONTEND_FPRINTF(fp, "%s->input_size = %zu;\n", variable,
-                        state->input_size);
-  MICROFRONTEND_FPRINTF(fp, "%s->scratch = fft_scratch;\n", variable);
-  MICROFRONTEND_FPRINTF(fp, "%s->scratch_size = %zu;\n", variable,
-                        state->scratch_size);
+  fprintf(fp, "%s->input = fft_input;\n", variable);
+  fprintf(fp, "%s->output = fft_output;\n", variable);
+  fprintf(fp, "%s->fft_size = %zu;\n", variable, state->fft_size);
+  fprintf(fp, "%s->input_size = %zu;\n", variable, state->input_size);
+  fprintf(fp, "%s->scratch = fft_scratch;\n", variable);
+  fprintf(fp, "%s->scratch_size = %zu;\n", variable, state->scratch_size);
 }

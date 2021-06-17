@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace mlir {
 

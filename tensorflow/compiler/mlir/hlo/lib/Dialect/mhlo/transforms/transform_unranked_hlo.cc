@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -538,7 +539,7 @@ struct ConvertUnrankedDynamicBroadcastNaryOp
 };
 
 struct TransformUnrankedHloPass
-    : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
+    : public mhlo::TransformUnrankedHloPassBase<TransformUnrankedHloPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<chlo::HloClientDialect, mhlo::MhloDialect, scf::SCFDialect,
                     shape::ShapeDialect>();

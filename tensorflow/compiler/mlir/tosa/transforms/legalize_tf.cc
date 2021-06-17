@@ -444,8 +444,16 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type || !y_type) return failure();
 
-  auto reciprocal_op =
-      rewriter.create<tosa::ReciprocalOp>(op->getLoc(), y_type, tf_div_op.y());
+  Type element_type = output_type.getElementType();
+
+  if (element_type.isa<IntegerType>()) {
+    rewriter.replaceOpWithNewOp<tosa::DivOp>(op, output_type, tf_div_op.x(),
+                                             tf_div_op.y());
+    return success();
+  }
+
+  auto reciprocal_op = rewriter.create<tosa::ReciprocalOp>(
+      op->getLoc(), tf_div_op.y().getType(), tf_div_op.y());
 
   auto mul_op = rewriter.create<tosa::MulOp>(
       op->getLoc(), output_type, tf_div_op.x(), reciprocal_op.getResult(), 0);
@@ -1711,11 +1719,49 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
     return op->emitOpError("MatMul: a/b/output not ranked tensors");
   }
 
-  // Can only handle rank=2 inputs
-  if (a_type.getShape().size() != 2) return failure();
+  if (a_type.getRank() != b_type.getRank() ||
+      a_type.getRank() != output_type.getRank()) {
+    return op->emitOpError("MatMul: a/b/output rank must match");
+  }
 
-  rewriter.replaceOpWithNewOp<tosa::MatMulOp>(op, output_type, tf_matmul_op.a(),
-                                              tf_matmul_op.b());
+  // Can only handle rank 2 tensors for tf.MatMul.
+  // Cases with rank > 2 tensors should be handled by tf.BatchMatMul or
+  // tf.BatchMatMulV2
+  if (a_type.getRank() != 2) {
+    return op->emitOpError("MatMul: a/b/output rank must be 2");
+  }
+
+  SmallVector<int64_t, 3> batch_a_shape(
+      {1, a_type.getShape()[0], a_type.getShape()[1]});
+  SmallVector<int64_t, 3> batch_b_shape(
+      {1, b_type.getShape()[0], b_type.getShape()[1]});
+  SmallVector<int64_t, 3> batch_output_shape(
+      {1, output_type.getShape()[0], output_type.getShape()[1]});
+
+  RankedTensorType batch_a_type =
+      RankedTensorType::get(batch_a_shape, a_type.getElementType());
+  RankedTensorType batch_b_type =
+      RankedTensorType::get(batch_b_shape, b_type.getElementType());
+  RankedTensorType batch_output_type =
+      RankedTensorType::get(batch_output_shape, output_type.getElementType());
+
+  // Need to reshape input and output since TOSA matmul only supports
+  // [N, H, C] * [N, C, W] -> [N, H, W].
+  auto op1_reshape_a = rewriter.create<tosa::ReshapeOp>(
+      op->getLoc(), batch_a_type, tf_matmul_op.a(),
+      rewriter.getI64ArrayAttr(batch_a_shape));
+
+  auto op2_reshape_b = rewriter.create<tosa::ReshapeOp>(
+      op->getLoc(), batch_b_type, tf_matmul_op.b(),
+      rewriter.getI64ArrayAttr(batch_b_shape));
+
+  auto op3_matmul_op1_op2 = rewriter.create<tosa::MatMulOp>(
+      op->getLoc(), batch_output_type, op1_reshape_a.getResult(),
+      op2_reshape_b.getResult());
+
+  rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
+      op, output_type, op3_matmul_op1_op2.getResult(),
+      rewriter.getI64ArrayAttr(output_type.getShape()));
 
   return success();
 }

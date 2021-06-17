@@ -51,7 +51,12 @@ cc_library(
     srcs = ["load.cc"],
     hdrs = ["load.h"],
     deps = [
+        "//tensorflow/cc/saved_model:constants",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:protobuf",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -74,6 +79,11 @@ cc_library(
     name = "metrics",
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
+    visibility = [
+        "//tensorflow/cc/saved_model:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/saved_model:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core:lib",
     ],

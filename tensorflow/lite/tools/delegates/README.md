@@ -31,6 +31,17 @@ TFLite delegate.
     reached to be delegated. A negative value or 0 means to use the default
     choice of each delegate. \
     This option is currently supported by the Hexagon and CoreML delegate.
+*   `delegate_serialize_dir`: `string` (default="") \
+    Directory to be used by delegates for serializing any model data.
+    This allows the delegate to save data into this directory to reduce init
+    time after the first run. Currently supported by NNAPI delegate with
+    specific backends on Android. Note that delegate_serialize_token is also
+    required to enable this feature.
+*   `delegate_serialize_token`: `string` (default="") \
+    Model-specific token acting as a namespace for delegate serialization.
+    Unique tokens ensure that the delegate doesn't read inapplicable/invalid
+    data. Note that delegate_serialize_dir is also required to enable this
+    feature.
 
 ### GPU delegate provider
 
@@ -99,6 +110,11 @@ the delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     efficiently manage resources, which would significantly reduce overhead
     especially if the same delegate instance is to be used for multiple
     inferences.
+*   `nnapi_support_library_path`: `string` (default=""),
+    Path from which NNAPI support library will be loaded to construct the
+    delegate. In order to use NNAPI delegate with support library,
+    --nnapi_accelerator_name must be specified and must be equal to one of the
+    devices provided by the support library.
 
 ### Hexagon delegate provider
 *   `use_hexagon`: `bool` (default=false) \

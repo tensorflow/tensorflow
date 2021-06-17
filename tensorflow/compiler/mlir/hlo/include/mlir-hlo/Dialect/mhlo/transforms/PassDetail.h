@@ -25,6 +25,23 @@ namespace mhlo {
 #include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 }  // end namespace mhlo
+
+namespace lmhlo {
+
+#define GEN_PASS_CLASSES
+#include "mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc"
+
+}  // end namespace lmhlo
+
+}  // end namespace mlir
+
+namespace mlir {
+namespace disc_ral {
+
+#define GEN_PASS_CLASSES
+#include "mlir-hlo/Dialect/mhlo/transforms/disc_ral_passes.h.inc"
+
+}  // end namespace disc_ral
 }  // end namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_

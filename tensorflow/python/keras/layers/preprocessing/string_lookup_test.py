@@ -179,7 +179,26 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
       layer = string_lookup.StringLookup()
       layer([["a"]])
 
-  def test_binary_output(self):
+  def test_one_hot_output(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array(["earth", "wind", "and", "fire", "michigan"])
+    expected_output = [
+        [0, 1, 0, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0],
+    ]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.string)
+    layer = string_lookup.StringLookup(
+        vocabulary=vocab_data, output_mode="one_hot")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_multi_hot_output(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])

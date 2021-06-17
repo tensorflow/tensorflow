@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 package(
     default_visibility = [
         "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//tensorflow/lite/python:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -48,7 +49,6 @@ cc_library(
     hdrs = ["types_util.h"],
     deps = [
         "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_cc",
-        "@com_google_protobuf//:protobuf",
         "@llvm-project//mlir:IR",
     ],
 )

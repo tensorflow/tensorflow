@@ -471,7 +471,16 @@ TEST_P(TransposeConvOpTest, TestQuantizedPerTensorMultiChannel) {
       14, 28, 42, 56, 71, 85, 99, 113, 127};
   PerChannelQuantizedTransposeConvOpModel model(
       GetRegistration(), {1, 5, 5, 2},
-      {TensorType_INT8, {2, 3, 3, 1}, 0, 0, 0, 0, true, {18.0 / 127}, {0}, 0},
+      {TensorType_INT8,
+       {2, 3, 3, 1},
+       0,
+       0,
+       0,
+       0,
+       true,
+       {18.0 / 127, 18.0 / 127},
+       {0, 0},
+       0},
       const_filter_data, {TensorType_INT8, {1, 2, 2, 1}, 0, 0, 4.0 / 255, -128},
       {TensorType_INT8, {}, 0, 0, 1, -128}, Padding_VALID, 2, 2, GetTestType(),
       /* version */ 2);

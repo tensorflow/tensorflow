@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/all_reduce_key.h"
 #include "tensorflow/compiler/xla/service/collective_combiner_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
@@ -104,45 +105,6 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   }
   return Status::OK();
 }
-
-// The group key encapsulates all of the properties which must match for it
-// to be possible to combine the instructions.
-using GroupKey = std::tuple<HloOpcode, PrimitiveType, int64_t, bool, bool,
-                            std::vector<std::vector<int64_t>>>;
-
-// Returns a key that will be equal for instructions that might be combined, or
-// different if not.
-absl::optional<GroupKey> CombineKey(const HloInstruction* instruction,
-                                    const HloDomainMap& domain_map) {
-  if (instruction->opcode() != HloOpcode::kAllReduce) {
-    return absl::nullopt;
-  }
-
-  if (instruction->to_apply()->instruction_count() != 3 ||
-      instruction->to_apply()->num_parameters() != 2) {
-    VLOG(1) << "Skipping due to non-trivial reduction function.";
-    return absl::nullopt;
-  }
-
-  const auto* ar = Cast<HloAllReduceInstruction>(instruction);
-
-  std::vector<std::vector<int64_t>> replica_groups;
-  replica_groups.reserve(ar->replica_groups().size());
-  for (const ReplicaGroup& replica_group : ar->replica_groups()) {
-    replica_groups.push_back(
-        std::vector<int64_t>(replica_group.replica_ids().begin(),
-                             replica_group.replica_ids().end()));
-  }
-
-  const HloInstruction* to_apply_root = ar->to_apply()->root_instruction();
-  return GroupKey{to_apply_root->opcode(),
-                  to_apply_root->shape().element_type(),
-                  domain_map.GetDomainMetadataId(ar),
-                  ar->channel_id().has_value(),
-                  ar->use_global_device_ids(),
-                  replica_groups};
-}
-
 }  // namespace
 
 AllReduceCombiner::AllReduceCombiner(int64 combine_threshold_in_bytes,
@@ -170,12 +132,12 @@ StatusOr<bool> AllReduceCombiner::Run(HloModule* module) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&domain_map](const HloInstruction* instruction) {
-      return CombineKey(instruction, *domain_map);
+      return GetAllReduceKey(instruction, domain_map.get());
     };
 
     TF_ASSIGN_OR_RETURN(
         bool computation_changed,
-        CombineInstructionsByKey<GroupKey>(
+        CombineInstructionsByKey<AllReduceKey>(
             computation, key_fn, &CombineAllReduces,
             combine_threshold_in_bytes_, combine_threshold_count_));
     changed |= computation_changed;

@@ -496,10 +496,9 @@ XLA_TEST_P(TriangularSolveParametricTest, Random) {
 
 std::vector<TriangularSolveTestSpec> TriangularSolveTests() {
   std::vector<TriangularSolveTestSpec> specs;
-  for (auto batch :
-       {std::initializer_list<int64>{}, std::initializer_list<int64>{1},
-        std::initializer_list<int64>{5}, std::initializer_list<int64>{65},
-        std::initializer_list<int64>{129}}) {
+  for (auto batch : {std::vector<int64_t>{}, std::vector<int64_t>{1},
+                     std::vector<int64_t>{5}, std::vector<int64_t>{65},
+                     std::vector<int64_t>{129}}) {
     for (int m : {5, 10, 150}) {
       for (int n : {5, 150}) {
         for (bool left_side : {false, true}) {

@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SPLIT_PROVIDER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SPLIT_PROVIDER_H_
 
-#include <queue>
+#include <memory>
+#include <string>
 
-#include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <functional>
 
-#include <google/protobuf/util/message_differencer.h>
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "tensorflow/lite/python/metrics_wrapper/converter_error_data.pb.h"
 
@@ -55,14 +54,15 @@ struct ConverterErrorDataComparision {
   std::size_t operator()(
       const tflite::metrics::ConverterErrorData& a,
       const tflite::metrics::ConverterErrorData& b) const noexcept {
-    return google::protobuf::util::MessageDifferencer::Equals(a, b);
+    return ConverterErrorDataHash()(a) == ConverterErrorDataHash()(b);
   }
 };
 
 // Helper function to create a new ConverterErrorData.
 tflite::metrics::ConverterErrorData NewConverterErrorData(
     const std ::string& pass_name, const std::string& error_message,
-    const std::string& error_code, const std::string& op_name);
+    tflite::metrics::ConverterErrorData::ErrorCode error_code,
+    const std::string& op_name);
 
 }  // namespace TFL
 }  // namespace mlir
