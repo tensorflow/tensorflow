@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/platform/mutex.h"
 
 using tensorflow::FunctionDef;
 using tensorflow::Node;
@@ -752,3 +753,284 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
 void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
   delete lib_handle;
 }
+
+tensorflow::Status EnsureSparseVariableAccess(TF_OpKernelContext* ctx,
+                                      bool variantType,
+                                      void (*copyFunc)(TF_OpKernelContext * ctx,
+                                                       TF_Tensor *source,
+                                                       TF_Tensor *dest),
+                                      tensorflow::Var* var) {
+  using namespace tensorflow;
+  auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (var->copy_on_read_mode.load()) {
+    return Status::OK();
+  }
+  mutex_lock ml(*var->mu());
+  // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
+  // also happen if there are no concurrent reads of the variable and
+  // copy-on-read mode is false.
+  if (var->tensor()->RefCountIsOne()) {
+    var->copy_on_read_mode.store(true);
+    return Status::OK();
+  }
+  Tensor tmp;
+  if (variantType) {
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    TF_RETURN_IF_ERROR(context->allocate_temp(var->tensor()->dtype(),
+                                          var->tensor()->shape(), &tmp, attr));
+
+    const auto elements_in = var->tensor()->flat<Variant>();
+    auto elements_out = tmp.flat<Variant>();
+    for (int64 i = 0; i < elements_in.size(); ++i) {
+      elements_out(i) = elements_in(i);
+    }
+  } else {
+    AllocatorAttributes attr;
+    attr.set_gpu_compatible(true);
+    attr.set_nic_compatible(true);
+    TF_RETURN_IF_ERROR(context->allocate_temp(var->tensor()->dtype(),
+                                          var->tensor()->shape(), &tmp, attr));
+    tensorflow::Status s;
+    TF_Tensor *tf_tmp = TF_TensorFromTensor(tmp, &s);
+    TF_Tensor *tf_tensor = TF_TensorFromTensor(*var->tensor(), &s);
+    copyFunc(ctx, tf_tensor, tf_tmp);
+  }
+  *var->tensor() = tmp;
+  var->copy_on_read_mode.store(true);
+  return Status::OK();
+}
+
+tensorflow::Status PrepareToUpdateVariable(TF_OpKernelContext* ctx, tensorflow::Tensor* tensor,
+                               bool copy_on_read_mode,
+                               bool variantType,
+                               void (*copyFunc)(TF_OpKernelContext * ctx, TF_Tensor *source, TF_Tensor *dest)) {
+
+  using namespace tensorflow;
+  auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (copy_on_read_mode || !tensor->RefCountIsOne()) {
+    // Tensor's buffer is in use by some read, so we need to copy before
+    // updating.
+    Tensor tmp;
+    if(variantType) {
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      TF_RETURN_IF_ERROR(
+          context->allocate_temp(tensor->dtype(), tensor->shape(), &tmp, attr));
+
+      const auto elements_in = tensor->flat<Variant>();
+      auto elements_out = tmp.flat<Variant>();
+      for (int64 i = 0; i < elements_in.size(); ++i) {
+        elements_out(i) = elements_in(i);
+      }
+    } else {
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+      TF_RETURN_IF_ERROR(
+          context->allocate_temp(tensor->dtype(), tensor->shape(), &tmp, attr));
+      tensorflow::Status s;
+      TF_Tensor *tf_tmp = TF_TensorFromTensor(tmp, &s);
+      TF_Tensor *tf_tensor = TF_TensorFromTensor(*tensor, &s);
+      copyFunc(ctx, tf_tensor, tf_tmp);
+    }
+    *tensor = tmp;
+  }
+  return Status::OK();
+}
+
+tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
+                                            int32_t input,
+                                            bool sparse,
+                                  void (*copyFunc)(TF_OpKernelContext * ctx,
+                                                   TF_Tensor *source,
+                                                   TF_Tensor *dest),
+                                            tensorflow::Var** maybe_resource) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  *maybe_resource = nullptr;
+  if (cc_ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
+    if (LookupResource(cc_ctx, HandleFromInput(cc_ctx, input), maybe_resource).ok()) {
+      if (sparse) {
+        EnsureSparseVariableAccess(ctx, false, copyFunc, *maybe_resource);
+      }
+      return (*maybe_resource)->mu();
+    } else {
+      cc_ctx->CtxFailureWithWarning(
+          tensorflow::errors::Internal("Invalid variable reference."));
+      return nullptr;
+    }
+  }
+  return cc_ctx->input_ref_mutex(input);
+}
+
+void TF_AssignVariable(TF_OpKernelContext* ctx,
+                       int input_index,
+                       int value_index,
+                       void (*copyFunc)(TF_OpKernelContext * ctx, TF_Tensor *source, TF_Tensor *dest),
+                       TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  tensorflow::AllocatorAttributes allocator_attr;
+  tensorflow::core::RefCountPtr<tensorflow::Var> variable;
+  const tensorflow::Tensor& value = cc_ctx->input(value_index);
+  OP_REQUIRES_OK(cc_ctx, LookupOrCreateResource<tensorflow::Var>(
+                                cc_ctx, HandleFromInput(cc_ctx, input_index), &variable,
+                                [&value](tensorflow::Var** ptr) {
+                                  *ptr = new tensorflow::Var(value.dtype());
+                                  *(*ptr)->tensor() = value;
+                                  (*ptr)->is_initialized = true;
+                                  return tensorflow::Status::OK();
+                                }));
+  tensorflow::mutex_lock ml(*variable->mu());
+
+  if (variable->copy_on_read_mode.load()) {
+    tensorflow::Tensor tmp;
+    tensorflow::AllocatorAttributes attr;
+    attr.set_gpu_compatible(true);
+    attr.set_nic_compatible(true);
+    OP_REQUIRES_OK(cc_ctx,
+                     cc_ctx->allocate_temp(value.dtype(), value.shape(),
+                                            &tmp, attr));
+    tensorflow::Status s;
+    TF_Tensor *tf_tmp = TF_TensorFromTensor(tmp, &s);
+    TF_Tensor *tf_value = TF_TensorFromTensor(value, &s);
+    copyFunc(ctx, tf_value, tf_tmp);
+    *variable->tensor() = tmp;
+  } else {
+    *variable->tensor() = value;
+  }
+  variable->is_initialized = true;
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void TF_MaybeLockVariableInputMutexesInOrder(
+    TF_OpKernelContext* ctx, bool do_lock, bool sparse,
+    const int* const inputs,
+    size_t len,
+    void (*copyFunc)(TF_OpKernelContext * ctx,
+                     TF_Tensor *source,
+                     TF_Tensor *dest),
+    TF_VariableInputLockHolder** lockHolder,
+    TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  bool any_resource = false;
+  std::vector<int> input_ids(inputs, inputs+len);
+  for (auto i : input_ids) {
+    if (cc_ctx->input_dtype(i) == tensorflow::DT_RESOURCE) {
+      any_resource = true;
+      break;
+    }
+  }
+  if (!do_lock && !any_resource) {
+    *lockHolder =  new TF_VariableInputLockHolder({}, {}, {});
+    TF_SetStatus(status, TF_OK, "");
+    return;
+
+  }
+  std::vector<tensorflow::Var*> vars;
+  std::vector<tensorflow::mutex*> mutexes;
+  std::vector<int32_t> acquire_order;
+  for (auto input : input_ids) {
+    tensorflow::Var* var;
+    tensorflow::mutex* mutex =
+        GetTrainingVariableMutex(ctx, input, sparse, copyFunc, &var);
+    if (var) vars.push_back(var);
+    // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
+    if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
+      acquire_order.push_back(mutexes.size());
+      mutexes.push_back(mutex);
+    }
+  }
+  std::sort(acquire_order.begin(), acquire_order.end(),
+            [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
+
+  auto locks = absl::make_unique<std::vector<tensorflow::mutex_lock>>();
+  auto shared_locks = absl::make_unique<std::vector<tensorflow::tf_shared_lock>>();
+  locks->reserve(acquire_order.size());
+
+  for (auto input : acquire_order) {
+    tensorflow::Var* var;
+    tensorflow::mutex* mu = GetTrainingVariableMutex(ctx, input, sparse, copyFunc, &var);
+    tensorflow::core::ScopedUnref scoped_unref(var);
+    if (mu != nullptr) {
+      if (do_lock) {
+        locks->emplace_back(*mu);
+      } else {
+        shared_locks->emplace_back(*mu);
+      }
+    }
+  }
+  *lockHolder =  new TF_VariableInputLockHolder(std::move(vars), std::move(locks),
+                                    std::move(shared_locks));
+  TF_SetStatus(status, TF_OK, "");
+  return;
+}
+
+void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, 
+                                  int input,
+                                  bool lock_held,
+                                  bool isVariantType,
+                                  bool sparse,
+                                  void (*copyFunc)(TF_OpKernelContext * ctx,
+                                                   TF_Tensor *source,
+                                                   TF_Tensor *dest),
+                                  TF_Tensor** out,
+                                  TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  tensorflow::Status s;
+  if (cc_ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
+    tensorflow::core::RefCountPtr<tensorflow::Var> var;
+    LookupResource(cc_ctx, HandleFromInput(cc_ctx, input), &var);
+    if (sparse) {
+      OP_REQUIRES_OK(cc_ctx, EnsureSparseVariableAccess(ctx, isVariantType, copyFunc, var.get()));
+      *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
+      TF_SetStatus(status, TF_OK, "");
+      return;
+    }
+    OP_REQUIRES_OK(cc_ctx, PrepareToUpdateVariable(
+        ctx, var->tensor(), var->copy_on_read_mode.load(), false, copyFunc));
+    *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
+    TF_SetStatus(status, TF_OK, "");
+    return;
+  }
+  *out = ::tensorflow::TF_TensorFromTensor(cc_ctx->mutable_input(input, lock_held),
+                                           &s);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKernelContext* ctx,
+                                                   int32_t input_index,
+                                                   int32_t output_index) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (cc_ctx->input_dtype(input_index) != tensorflow::DT_RESOURCE) {
+    cc_ctx->forward_ref_input_to_ref_output(input_index, output_index);
+  }
+}
+
+void TF_ReleaseVariableInputLockHolder(TF_VariableInputLockHolder *v) {
+  if (v != nullptr) {
+    v->locks_.reset();
+    for (tensorflow::Var* var : v->vars_) {
+      var->Unref();
+    }
+    delete v;
+  }
+}
+
+void TF_GetInputByName(TF_OpKernelContext* ctx, const char *inputName,
+                                       TF_Tensor** tensor, TF_Status* status)
+{
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  const ::tensorflow::Tensor *cc_tensor = nullptr;
+  tensorflow::Status s = cc_ctx->input(inputName, &cc_tensor);
+
+  if(!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return;
+  }
+  TF_Tensor* result =
+      ::tensorflow::TF_TensorFromTensor(*cc_tensor, &status->status);
+  if (TF_GetCode(status) == TF_OK) {
+    *tensor = result;
+  }
+}
+

@@ -326,6 +326,67 @@ TF_CAPI_EXPORT extern TF_Library* TF_LoadPluggableDeviceLibrary(
 TF_CAPI_EXPORT extern void TF_DeletePluggableDeviceLibraryHandle(
     TF_Library* lib_handle);
 
+typedef struct TF_VariableInputLockHolder TF_VariableInputLockHolder;
+
+// Expose higher level Assignment operation for Pluggable vendors to implement
+// in the plugin for Training. The API takes in the context with indices for
+// the input and value tensors. It also accepts the copy functor provided by
+// pluggable vendor to do the copying of the tensors.
+TF_CAPI_EXPORT extern void TF_AssignVariable(
+          TF_OpKernelContext* ctx,
+          int input_index,
+          int value_index,
+          void (*copyFunc)(TF_OpKernelContext * ctx,
+                           TF_Tensor *source,
+                           TF_Tensor *dest),
+          TF_Status* status);
+
+// This is a helper function which acquires mutexes in-order to provide thread-safe 
+// way of performing weights update during the optimizer op. It returns an opaque 
+// LockHolder handle back to plugin. This handle is passed to the Release API for 
+// releasing the locks when the weight update is done.
+TF_CAPI_EXPORT extern void TF_MaybeLockVariableInputMutexesInOrder(
+                                    TF_OpKernelContext* ctx,
+                                    bool do_lock, bool sparse,
+                                    const int* const input_ids,
+                                    size_t len,
+                                    void (*copyFunc)(TF_OpKernelContext * ctx,
+                                                     TF_Tensor *source,
+                                                     TF_Tensor *dest),
+                                    TF_VariableInputLockHolder** lockHolder,
+                                    TF_Status* status);
+
+// This interface returns `out` tensor which is updated corresponding to the
+// variable passed with input index.
+TF_CAPI_EXPORT extern void TF_GetInputTensorFromVariable(
+              TF_OpKernelContext* ctx, 
+              int input,
+              bool lock_held,
+              bool isVariantType,
+              bool sparse,
+              void (*copyFunc)(TF_OpKernelContext * ctx,
+                               TF_Tensor *source,
+                               TF_Tensor *dest),
+              TF_Tensor** out,
+              TF_Status* status);
+
+// This interface forwards the reference from input to the output tensors
+// corresponding to the indices provided with `input_index` and `output_index` 
+TF_CAPI_EXPORT extern void TF_OpKernelContext_ForwardRefInputToRefOutput(
+                                                   TF_OpKernelContext* ctx,
+                                                   int32_t input_index,
+                                                   int32_t output_index);
+
+// The API releases the opaque lock handle returned with
+// `TF_MaybeLockVariableInputMutexesInOrder` API
+TF_CAPI_EXPORT extern void TF_ReleaseVariableInputLockHolder(
+                                  TF_VariableInputLockHolder* lockHolder);
+
+// Allows plugin to get TF_Tensor when passed its input_name
+TF_CAPI_EXPORT extern void TF_GetInputByName(TF_OpKernelContext* ctx,
+                                             const char *inputName,
+                                             TF_Tensor** tensor,
+                                             TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */
