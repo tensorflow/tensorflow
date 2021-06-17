@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import numpy as np
 
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -66,7 +67,7 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
   # for TensorRT 7+.
   def setUp(self):
     super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
-    if trt_test.IsTensorRTVersionGreaterEqual(7):
+    if trt_utils.IsLinkedTensorRTVersionGreaterEqual(7):
       os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
 
 if __name__ == "__main__":

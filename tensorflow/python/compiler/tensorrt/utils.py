@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from distutils import version
+
+from tensorflow.compiler.tf2tensorrt import _pywrap_py_utils
 from tensorflow.core.protobuf import rewriter_config_pb2
 
 
@@ -45,3 +48,19 @@ def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
   rewriter_config.remapping = off
   rewriter_config.scoped_allocator_optimization = off
   rewriter_config.shape_optimization = off
+
+
+def _IsTensorRTVersionGreaterEqual(trt_ver, major, minor=0, patch=0):
+  assert isinstance(trt_ver, tuple)
+  assert len(trt_ver) == 3
+
+  trt_ver = [str(x) for x in trt_ver]
+  trt_ver = version.LooseVersion(".".join(trt_ver))
+  target_ver = version.LooseVersion("{}.{}.{}".format(major, minor, patch))
+
+  return trt_ver >= target_ver
+
+
+def IsLinkedTensorRTVersionGreaterEqual(major, minor=0, patch=0):
+  ver = _pywrap_py_utils.get_linked_tensorrt_version()
+  return _IsTensorRTVersionGreaterEqual(ver, major, minor, patch)
