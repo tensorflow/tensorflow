@@ -36,18 +36,18 @@ using gpusolverHandle_t = rocblas_handle;
 namespace xla {
 namespace gpu {
 
-class GpusolverContext {
+class GpuSolverContext {
  public:
   // stream may be nullptr, in which case the context can only be used for
   // buffer size queries.
-  static StatusOr<GpusolverContext> Create(se::Stream* stream);
-  GpusolverContext() = default;
-  ~GpusolverContext();
+  static StatusOr<GpuSolverContext> Create(se::Stream* stream);
+  GpuSolverContext() = default;
+  ~GpuSolverContext();
 
-  GpusolverContext(const GpusolverContext&) = delete;
-  GpusolverContext(GpusolverContext&&);
-  GpusolverContext& operator=(const GpusolverContext&) = delete;
-  GpusolverContext& operator=(GpusolverContext&&);
+  GpuSolverContext(const GpuSolverContext&) = delete;
+  GpuSolverContext(GpuSolverContext&&);
+  GpuSolverContext& operator=(const GpuSolverContext&) = delete;
+  GpuSolverContext& operator=(GpuSolverContext&&);
 
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
   // Returns Status::OK() if the kernel was launched successfully. See:
@@ -67,7 +67,7 @@ class GpusolverContext {
                                   int n, int lda);
 
  private:
-  GpusolverContext(se::Stream* stream, gpusolverHandle_t handle);
+  GpuSolverContext(se::Stream* stream, gpusolverHandle_t handle);
 
   gpusolverHandle_t handle() const { return handle_; }
 
@@ -79,7 +79,7 @@ class GpusolverContext {
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 #define POTRF_INSTANCE(T, type_prefix)                                  \
   template <>                                                           \
-  Status GpusolverContext::Potrf<T>(                                    \
+  Status GpuSolverContext::Potrf<T>(                                    \
       se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda, \
       se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace);
 CALL_LAPACK_TYPES(POTRF_INSTANCE);

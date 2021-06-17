@@ -571,9 +571,7 @@ cc_library(
         "thunk_schedule.cc",
         "triangular_solve_thunk.cc",
         "while_thunk.cc",
-    ] + if_cuda_is_configured([
-        "cholesky_thunk.cc",
-    ]) + if_rocm_is_configured([
+    ] + if_cuda_or_rocm([
         "cholesky_thunk.cc",
     ]),
     hdrs = [
@@ -597,9 +595,7 @@ cc_library(
         "thunk_schedule.h",
         "triangular_solve_thunk.h",
         "while_thunk.h",
-    ] + if_cuda_is_configured([
-        "cholesky_thunk.h",
-    ]) + if_rocm_is_configured([
+    ] + if_cuda_or_rocm([
         "cholesky_thunk.h",
     ]),
     local_defines = if_cuda_is_configured([

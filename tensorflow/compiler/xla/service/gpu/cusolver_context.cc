@@ -31,9 +31,9 @@ struct GpuComplexT {
 
 using gpuStream_t = cudaStream_t;
 
-#define gpusolverCreate cusolverDnCreate
-#define gpusolverSetStream cusolverDnSetStream
-#define gpusolverDestroy cusolverDnDestroy
+#define GpuSolverCreate cusolverDnCreate
+#define GpuSolverSetStream cusolverDnSetStream
+#define GpuSolverDestroy cusolverDnDestroy
 
 template <>
 struct GpuComplexT<std::complex<float>> {
@@ -48,9 +48,9 @@ struct GpuComplexT<std::complex<double>> {
 
 using gpuStream_t = hipStream_t;
 
-#define gpusolverCreate rocblas_create_handle
-#define gpusolverSetStream rocblas_set_stream
-#define gpusolverDestroy rocblas_destroy_handle
+#define GpuSolverCreate rocblas_create_handle
+#define GpuSolverSetStream rocblas_set_stream
+#define GpuSolverDestroy rocblas_destroy_handle
 
 template <>
 struct GpuComplexT<std::complex<float>> {
@@ -80,7 +80,7 @@ cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
 }
 
 // Converts a cuSolver status to a Status.
-Status GpusolverStatusToStatus(cusolverStatus_t status) {
+Status ConvertStatus(cusolverStatus_t status) {
   switch (status) {
     case CUSOLVER_STATUS_SUCCESS:
       return Status::OK();
@@ -123,7 +123,7 @@ rocblas_fill GpuBlasUpperLower(se::blas::UpperLower uplo) {
 }
 
 // Converts a cuSolver status to a Status.
-Status GpusolverStatusToStatus(rocblas_status status) {
+Status ConvertStatus(rocblas_status status) {
   switch (status) {
     case rocblas_status_success:
       return Status::OK();
@@ -159,44 +159,43 @@ Status GpusolverStatusToStatus(rocblas_status status) {
 
 }  // namespace
 
-StatusOr<GpusolverContext> GpusolverContext::Create(se::Stream* stream) {
+StatusOr<GpuSolverContext> GpuSolverContext::Create(se::Stream* stream) {
   gpusolverHandle_t handle;
-  TF_RETURN_IF_ERROR(GpusolverStatusToStatus(gpusolverCreate(&handle)));
-  GpusolverContext context(stream, handle);
+  TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverCreate(&handle)));
+  GpuSolverContext context(stream, handle);
 
   if (stream) {
     // StreamExecutor really should just expose the Cuda stream to clients...
     const gpuStream_t* gpu_stream =
         CHECK_NOTNULL(reinterpret_cast<const gpuStream_t*>(
             stream->implementation()->GpuStreamMemberHack()));
-    TF_RETURN_IF_ERROR(
-        GpusolverStatusToStatus(gpusolverSetStream(handle, *gpu_stream)));
+    TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverSetStream(handle, *gpu_stream)));
   }
 
   return std::move(context);
 }
 
-GpusolverContext::GpusolverContext(se::Stream* stream, gpusolverHandle_t handle)
+GpuSolverContext::GpuSolverContext(se::Stream* stream, gpusolverHandle_t handle)
     : stream_(stream), handle_(handle) {}
 
-GpusolverContext::GpusolverContext(GpusolverContext&& other) {
+GpuSolverContext::GpuSolverContext(GpuSolverContext&& other) {
   handle_ = other.handle_;
   stream_ = other.stream_;
   other.handle_ = nullptr;
   other.stream_ = nullptr;
 }
 
-GpusolverContext& GpusolverContext::operator=(GpusolverContext&& other) {
+GpuSolverContext& GpuSolverContext::operator=(GpuSolverContext&& other) {
   std::swap(handle_, other.handle_);
   std::swap(stream_, other.stream_);
   return *this;
 }
 
-GpusolverContext::~GpusolverContext() {
+GpuSolverContext::~GpuSolverContext() {
   if (handle_) {
-    Status status = GpusolverStatusToStatus(gpusolverDestroy(handle_));
+    Status status = ConvertStatus(GpuSolverDestroy(handle_));
     if (!status.ok()) {
-      LOG(ERROR) << "gpusolverDestroy failed: " << status;
+      LOG(ERROR) << "GpuSolverDestroy failed: " << status;
     }
   }
 }
@@ -219,29 +218,29 @@ GpusolverContext::~GpusolverContext() {
 // Note: NVidia have promised that it is safe to pass 'nullptr' as the argument
 // buffers to cuSolver buffer size methods and this will be a documented
 // behavior in a future cuSolver release.
-StatusOr<int64> GpusolverContext::PotrfBufferSize(PrimitiveType type,
+StatusOr<int64> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
                                                   se::blas::UpperLower uplo,
                                                   int n, int lda) {
 #if !defined(TENSORFLOW_USE_ROCM)
   int size = -1;
   switch (type) {
     case F32: {
-      TF_RETURN_IF_ERROR(GpusolverStatusToStatus(cusolverDnSpotrf_bufferSize(
+      TF_RETURN_IF_ERROR(ConvertStatus(cusolverDnSpotrf_bufferSize(
           handle(), GpuBlasUpperLower(uplo), n, /*A=*/nullptr, lda, &size)));
       break;
     }
     case F64: {
-      TF_RETURN_IF_ERROR(GpusolverStatusToStatus(cusolverDnDpotrf_bufferSize(
+      TF_RETURN_IF_ERROR(ConvertStatus(cusolverDnDpotrf_bufferSize(
           handle(), GpuBlasUpperLower(uplo), n, /*A=*/nullptr, lda, &size)));
       break;
     }
     case C64: {
-      TF_RETURN_IF_ERROR(GpusolverStatusToStatus(cusolverDnCpotrf_bufferSize(
+      TF_RETURN_IF_ERROR(ConvertStatus(cusolverDnCpotrf_bufferSize(
           handle(), GpuBlasUpperLower(uplo), n, /*A=*/nullptr, lda, &size)));
       break;
     }
     case C128: {
-      TF_RETURN_IF_ERROR(GpusolverStatusToStatus(cusolverDnZpotrf_bufferSize(
+      TF_RETURN_IF_ERROR(ConvertStatus(cusolverDnZpotrf_bufferSize(
           handle(), GpuBlasUpperLower(uplo), n, /*A=*/nullptr, lda, &size)));
       break;
     }
@@ -258,10 +257,10 @@ StatusOr<int64> GpusolverContext::PotrfBufferSize(PrimitiveType type,
 #if !defined(TENSORFLOW_USE_ROCM)
 #define POTRF_INSTANCE(T, type_prefix)                                    \
   template <>                                                             \
-  Status GpusolverContext::Potrf<T>(                                      \
+  Status GpuSolverContext::Potrf<T>(                                      \
       se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
       se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
-    return GpusolverStatusToStatus(DN_SOLVER_FN(potrf, type_prefix)(      \
+    return ConvertStatus(DN_SOLVER_FN(potrf, type_prefix)(                \
         handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(A), lda,    \
         ToDevicePointer(workspace), workspace.ElementCount(),             \
         ToDevicePointer(lapack_info)));                                   \
@@ -269,10 +268,10 @@ StatusOr<int64> GpusolverContext::PotrfBufferSize(PrimitiveType type,
 #else
 #define POTRF_INSTANCE(T, type_prefix)                                    \
   template <>                                                             \
-  Status GpusolverContext::Potrf<T>(                                      \
+  Status GpuSolverContext::Potrf<T>(                                      \
       se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
       se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
-    return GpusolverStatusToStatus(DN_SOLVER_FN(potrf, type_prefix)(      \
+    return ConvertStatus(DN_SOLVER_FN(potrf, type_prefix)(                \
         handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(A), lda,    \
         ToDevicePointer(lapack_info)));                                   \
   }
