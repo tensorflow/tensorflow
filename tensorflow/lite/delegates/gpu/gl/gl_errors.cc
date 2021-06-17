@@ -67,6 +67,10 @@ absl::Status GetOpenGlErrors() {
   if (error2 == GL_NO_ERROR) {
     return absl::InternalError(ErrorToString(error));
   }
+  EGLContext context = eglGetCurrentContext();
+  if (context == EGL_NO_CONTEXT) {
+    return absl::InternalError("EGL Context is not available");
+  }
   std::vector<GLenum> errors = {error, error2};
   for (error = glGetError(); error != GL_NO_ERROR; error = glGetError()) {
     errors.push_back(error);
