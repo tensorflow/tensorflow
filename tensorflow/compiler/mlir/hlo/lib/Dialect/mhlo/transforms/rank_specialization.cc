@@ -68,8 +68,7 @@ bool IsClusterable(Operation *op) {
   if (op->getNumOperands() == 0) return false;
   return (op->hasTrait<mlir::OpTrait::Elementwise>() &&
           op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) ||
-         (op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>() &&
-          op->hasTrait<chlo::OpTrait::Broadcasting>());
+         op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>();
 }
 
 struct RankSpecializationClusterPattern : public RewritePattern {
@@ -714,6 +713,8 @@ Value MaterializeDefaultRankSpecialization(OpBuilder &b, Location loc,
 }
 
 // This is a very limited form of shape inference. It is correct but incomplete.
+// TODO(frgossen): Infer shape equalities from surrounding shape constraints
+// when these are generated.
 SmallVector<SmallVector<Value, 4>, 4> FindNonScalarShapeEquivalences(
     chlo::RankSpecializationClusterOp op) {
   llvm::EquivalenceClasses<Value> eqs;
@@ -735,11 +736,16 @@ SmallVector<SmallVector<Value, 4>, 4> FindNonScalarShapeEquivalences(
       if (!nested_op.getOperands().empty() && !nested_op.getResults().empty())
         eqs.unionSets(nested_op.getResult(0), nested_op.getOperand(0));
     }
-    // TODO(frgossen): Replace this with a check for the appropriate trait when
-    // that is available.
+  }
+
+  // Find equalities through special knowledge of ops.
+  for (Operation &nested_op : op.getBody()->without_terminator()) {
     if (auto select_op = llvm::dyn_cast<mhlo::SelectOp>(nested_op)) {
       union_sets(
           {select_op.on_true(), select_op.on_false(), select_op.getResult()});
+    }
+    if (auto clamp_op = llvm::dyn_cast<mhlo::ClampOp>(nested_op)) {
+      union_sets({clamp_op.operand(), clamp_op.getResult()});
     }
   }
 
