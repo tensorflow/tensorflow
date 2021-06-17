@@ -35,9 +35,8 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -50,8 +49,8 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 
 using tensorflow::FunctionDef;
 using tensorflow::Node;
@@ -869,13 +868,15 @@ tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
 void TF_AssignVariable(TF_OpKernelContext* ctx,
                        int input_index,
                        int value_index,
-                       void (*copyFunc)(TF_OpKernelContext * ctx, TF_Tensor *source, TF_Tensor *dest),
+                       void (*copyFunc)(TF_OpKernelContext * ctx,
+                                        TF_Tensor *source,
+                                        TF_Tensor *dest),
                        TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   tensorflow::AllocatorAttributes allocator_attr;
   tensorflow::core::RefCountPtr<tensorflow::Var> variable;
   const tensorflow::Tensor& value = cc_ctx->input(value_index);
-  OP_REQUIRES_OK(cc_ctx, LookupOrCreateResource<tensorflow::Var>(
+  OP_REQUIRES_OK(cc_ctx, tensorflow::LookupOrCreateResource<tensorflow::Var>(
                                 cc_ctx, HandleFromInput(cc_ctx, input_index), &variable,
                                 [&value](tensorflow::Var** ptr) {
                                   *ptr = new tensorflow::Var(value.dtype());
