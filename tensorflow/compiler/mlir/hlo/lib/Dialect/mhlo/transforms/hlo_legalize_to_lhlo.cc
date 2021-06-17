@@ -669,7 +669,9 @@ void populateDynamicHLOToLHLOOnlyConversionPattern(
                    HloToLhloOpConverter<mhlo::DynamicIotaOp>,
                    HloToLhloOpConverter<mhlo::DynamicPadOp>,
                    HloToLhloOpConverter<mhlo::DynamicReshapeOp>,
-                   HloToLhloOpConverter<mhlo::RealDynamicSliceOp>
+                   HloToLhloOpConverter<mhlo::RealDynamicSliceOp>,
+                   HloToLhloOpConverter<mhlo::H2DOp>,
+                   HloToLhloOpConverter<mhlo::D2HOp>
   >(*converter, context);
   // clang-format on
 }

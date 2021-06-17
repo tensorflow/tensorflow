@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
 
+#include <set>
+#include <string>
+#include <unordered_map>
+
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -24,6 +28,24 @@ limitations under the License.
 
 namespace mlir {
 namespace hlo {
+
+// Attrs for placement
+constexpr llvm::StringRef kPlaceTyAttr = "mhlo_place_type";
+constexpr llvm::StringRef kTypeHost = "host";
+constexpr llvm::StringRef kTypeDevice = "device";
+
+const std::unordered_map<std::string, std::set<int>> kShapeCalcOperandMap = {
+    {"mhlo.real_dynamic_slice",
+     {/*start_indices*/ 1, /*limit_indices*/ 2, /*strides*/ 3}},
+    {"mhlo.dynamic_pad",
+     {/*edge_padding_low*/ 2, /*edge_padding_high*/ 3, /*interior_padding*/ 4}},
+    {"mhlo.dynamic_reshape", {/*shape*/ 1}},
+    {"mhlo.dynamic_iota", {/*shape*/ 0}},
+    {"mhlo.dynamic_broadcast_in_dim", {/*out_dim_size*/ 1}},
+    {"mhlo.dynamic_gather", {/*slice_sizes*/ 2}},
+    {"mhlo.dynamic_conv", {/*paddings*/ 2}},
+    {"mhlo.if", {/*pred*/ 0}},
+    {"mhlo.dynamic_rng_uniform", {/*start*/ 0, /*limit*/ 1, /*shape*/ 2}}};
 
 // Computes the broadcast dimensions attr for an elementwise binary operator
 // between two ranked tensors.

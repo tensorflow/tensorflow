@@ -1553,4 +1553,36 @@ def LHLO_DynamicReshapeOp: LHLO_Op<"dynamic_reshape", []> {
   );
 }
 
+// TODO: move this OP to a separate dedicated dialect
+def LHLO_H2DOp: LHLO_Op<"h2d", [CopyOpInterface]> {
+  let summary = "H2D operator";
+  let description = [{
+    Copy `operand` from host to device.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+  let extraClassDeclaration = [{
+    Value getSource() { return operand();}
+    Value getTarget() { return output(); }
+  }];
+}
+
+// TODO: move this OP to a separate dedicated dialect
+def LHLO_D2HOp: LHLO_Op<"d2h", [CopyOpInterface]> {
+  let summary = "D2H operator";
+  let description = [{
+   Copy `operand` from device to host.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output
+  );
+  let extraClassDeclaration = [{
+    Value getSource() { return operand();}
+    Value getTarget() { return output(); }
+  }];
+}
+
 #endif // LHLO_OPS

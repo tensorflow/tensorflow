@@ -186,6 +186,7 @@ gentbl_cc_library(
             ["-gen-enum-decls"],
             "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
         ),
+
         (
             ["-gen-enum-defs"],
             "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc",
@@ -530,6 +531,7 @@ cc_library(
     srcs = [
         "lib/Dialect/mhlo/IR/lhlo_ops.cc",
         "lib/Dialect/mhlo/IR/lhlo_ops_structs.cc",
+        "lib/utils/lhlo_utils.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h",
@@ -737,6 +739,25 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
     ],
+)
+
+cc_library(
+    name = "insert_memory_marker",
+    srcs = ["lib/Dialect/mhlo/transforms/insert_address_space.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1301,6 +1322,7 @@ cc_library(
         ":legalize_to_standard",
         ":legalize_trigonometric_to_approximation",
         ":lhlo",
+        ":insert_memory_marker",
         ":lhlo_fuse_linalg",
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",

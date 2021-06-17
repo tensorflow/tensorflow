@@ -301,6 +301,19 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "lhlo_utils",
+    srcs = ["lhlo_utils.cc"],
+    hdrs = ["lhlo_utils.h"],
+    includes = ["include"],
+    deps = [
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+    alwayslink = 1,
+)
+
 tf_cc_test(
     name = "hlo_utils_test",
     srcs = ["hlo_utils_test.cc"],

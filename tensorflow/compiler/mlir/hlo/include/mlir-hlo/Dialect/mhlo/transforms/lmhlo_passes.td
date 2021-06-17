@@ -56,3 +56,8 @@ def LegalizeTensorLoadOpPass : Pass<"lhlo-legalize-tensor-load-op", "FuncOp"> {
   let constructor = "createLegalizeTensorLoadOpPass()";
 }
 
+def InsertAddressSpace : Pass<"insert-address-space", "ModuleOp"> {
+  let summary = "insert address space details for memref.";
+  let constructor = "createInsertAddressSpace()";
+}
+

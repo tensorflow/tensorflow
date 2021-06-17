@@ -117,6 +117,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 // Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
 
+std::unique_ptr<OperationPass<ModuleOp>> createInsertAddressSpace();
 }  // namespace lmhlo
 
 namespace disc_ral {

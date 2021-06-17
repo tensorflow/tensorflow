@@ -706,6 +706,16 @@ LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(D2HOp op, OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(H2DOp op, OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;

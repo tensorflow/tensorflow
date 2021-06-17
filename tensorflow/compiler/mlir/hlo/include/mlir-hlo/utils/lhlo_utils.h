@@ -16,12 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_LHLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_LHLO_UTILS_H_
 
+#include <string>
+
 #include "llvm/ADT/SmallSet.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
-
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "llvm/Support/Debug.h"
 namespace mlir {
+using hlo::kTypeHost;
+using hlo::kTypeDevice;
+using hlo::kShapeCalcOperandMap;
+using hlo::kPlaceTyAttr;
+
 namespace lmhlo {
 
 // Verifies replica groups attached to collective communication operations.
@@ -93,6 +103,18 @@ static LogicalResult VerifyAllReduce(OpT op) {
   }
   return success();
 }
+
+std::string mapLhloOpToHloOpName(const std::string& lhlo_op_name);
+
+std::pair<Operation*, int> getArbitraryLhloUser(Value memref);
+
+// The MemRef is recogonized as device MemRef when the user of the MemRef
+// is either (1) an Lhlo Op placed on GPU; (2) a CallOp with kDhloTensorFuncAttr
+// and the Lhlo in the FuncOp is placed on GPU.
+// It should guaranteed by previous passes about the placement consistency
+// of the different users of a MemRef.
+// TODO: will there be a case of an memref::AllocOp with no Lhlo consumer?
+bool isDeviceAlloc(memref::AllocOp alloc);
 
 }  // namespace lmhlo
 }  // namespace mlir
