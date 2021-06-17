@@ -135,6 +135,20 @@ func @exp(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex_exp
+func @complex_exp(%input: memref<2x2xcomplex<f32>>,
+                  %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.exponential"(%input, %result)
+      : (memref<2x2xcomplex<f32>>, memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.exp %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
 // CHECK-LABEL: func @log
 func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.log"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
