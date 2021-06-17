@@ -71,6 +71,28 @@ from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
+_SPARSE_CATEGORICAL_UPDATE_STATE_DOCSTRING = """Accumulates metric statistics.
+
+For sparse categorical metrics, the shapes of `y_true` and `y_pred` are different.
+
+Args:
+  y_true: Ground truth label values. shape = `[batch_size, d0, .. dN-1]` or shape = `[batch_size, d0, .. dN-1, 1]`.
+  y_pred: The predicted probability values. shape = `[batch_size, d0, .. dN]`.
+  sample_weight: Optional `sample_weight` acts as a
+    coefficient for the metric. If a scalar is provided, then the metric is
+    simply scaled by the given value. If `sample_weight` is a tensor of size
+    `[batch_size]`, then the metric for each sample of the batch is rescaled
+    by the corresponding element in the `sample_weight` vector. If the shape
+    of `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be broadcasted
+    to this shape), then each metric element of `y_pred` is scaled by the
+    corresponding value of `sample_weight`. (Note on `dN-1`: all metric
+    functions reduce by 1 dimension, usually the last axis (-1)).
+
+Returns:
+  Update op.
+"""
+
+
 @keras_export('keras.metrics.Metric')
 class Metric(base_layer.Layer, metaclass=abc.ABCMeta):
   """Encapsulates metric logic and state.
@@ -870,30 +892,8 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   def __init__(self, name='sparse_categorical_accuracy', dtype=None):
     super(SparseCategoricalAccuracy, self).__init__(
         sparse_categorical_accuracy, name, dtype=dtype)
-  
-  def update_state(self, y_true, y_pred, sample_weight=None):
-    """Accumulates metric statistics.
 
-    The shapes of `y_true` and `y_pred` are different.
-
-    Args:
-      y_true: Ground truth label values. shape = `[batch_size, d0, .. dN-1]` or shape = `[batch_size, d0, .. dN-1, 1]`.
-      y_pred: The predicted probability values. shape = `[batch_size, d0, .. dN]`.
-      sample_weight: Optional `sample_weight` acts as a
-        coefficient for the metric. If a scalar is provided, then the metric is
-        simply scaled by the given value. If `sample_weight` is a tensor of size
-        `[batch_size]`, then the metric for each sample of the batch is rescaled
-        by the corresponding element in the `sample_weight` vector. If the shape
-        of `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be broadcasted
-        to this shape), then each metric element of `y_pred` is scaled by the
-        corresponding value of `sample_weight`. (Note on `dN-1`: all metric
-        functions reduce by 1 dimension, usually the last axis (-1)).
-
-    Returns:
-      Update op.
-    """
-    return super(SparseCategoricalAccuracy, self).update_state(
-      y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
+SparseCategoricalAccuracy.update_state.__doc__ = _SPARSE_CATEGORICAL_UPDATE_STATE_DOCSTRING
 
 
 @keras_export('keras.metrics.TopKCategoricalAccuracy')
@@ -971,6 +971,8 @@ class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
   def __init__(self, k=5, name='sparse_top_k_categorical_accuracy', dtype=None):
     super(SparseTopKCategoricalAccuracy, self).__init__(
         sparse_top_k_categorical_accuracy, name, dtype=dtype, k=k)
+
+SparseTopKCategoricalAccuracy.update_state.__doc__ = _SPARSE_CATEGORICAL_UPDATE_STATE_DOCSTRING
 
 
 class _ConfusionMatrixConditionCount(Metric):
@@ -3357,6 +3359,8 @@ class SparseCategoricalCrossentropy(MeanMetricWrapper):
         dtype=dtype,
         from_logits=from_logits,
         axis=axis)
+
+SparseCategoricalCrossentropy.update_state.__doc__ = _SPARSE_CATEGORICAL_UPDATE_STATE_DOCSTRING
 
 
 class SumOverBatchSize(Reduce):
