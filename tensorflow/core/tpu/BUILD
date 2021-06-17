@@ -215,6 +215,30 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_compile",
+    srcs = ["tpu_compile.cc"],
+    hdrs = ["tpu_compile.h"],
+    deps = [
+        ":tpu_defs",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:compile_only_client",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:versions_proto_cc",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "//tensorflow/core/tpu/kernels:tpu_util_hdrs",
+    ],
+)
+
+cc_library(
     name = "tpu_execute",
     srcs = ["tpu_execute.cc"],
     hdrs = ["tpu_execute.h"],
