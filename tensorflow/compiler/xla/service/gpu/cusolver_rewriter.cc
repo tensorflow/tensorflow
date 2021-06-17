@@ -150,7 +150,8 @@ StatusOr<bool> RunOnInstruction(GpusolverContext* context,
 
 // Rewrites the convolutions in the given computation into calls to cudnn.
 // Returns true if it made any changes.
-StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
+StatusOr<bool> GpusolverRewriter::RunOnComputation(
+    HloComputation* computation) {
   std::vector<HloInstruction*> cusolver_calls;
   for (auto* hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kCholesky) {
@@ -173,9 +174,9 @@ StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
   return changed;
 }
 
-CusolverRewriter::CusolverRewriter() = default;
+GpusolverRewriter::GpusolverRewriter() = default;
 
-StatusOr<bool> CusolverRewriter::Run(HloModule* module) {
+StatusOr<bool> GpusolverRewriter::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
