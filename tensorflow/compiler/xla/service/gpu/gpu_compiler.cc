@@ -205,10 +205,6 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
-    // Convert BF16 operations to F32 operations so that the GPU backend can
-    // support BF16 operations without directly implementing a BF16 lowering for
-    // most ops.
-    pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
 
     // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
     // where possible.  Not every batchnorm op can be implemented as a call to
@@ -274,6 +270,15 @@ Status GpuCompiler::OptimizeHloModule(
       pass.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
     }
+
+    // Convert BF16 operations to F32 operations so that the GPU backend can
+    // support BF16 operations without directly implementing a BF16 lowering for
+    // most ops.
+    pipeline.AddPass<HloElementTypeConverter>(
+        BF16, F32, [](const HloInstruction* instr) {
+          // cuBLAS supports BF16 gemms, so don't convert these.
+          return !gpu::IsMatrixMultiplication(*instr);
+        });
 
     pipeline.AddPass<TransposeFolding>(
         [](const HloInstruction& dot,

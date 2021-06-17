@@ -35,6 +35,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+bool IsAmpereOrLater(const se::StreamExecutor& stream_executor);
+
 // Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
 bool IsVoltaOrLater(const se::StreamExecutor& stream_exec);
 
