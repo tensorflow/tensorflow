@@ -1128,6 +1128,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
 def TFL_GatherNdOp : TFL_Op<"gather_nd", [
     NoSideEffect,
+    SameOperandsAndResultsScale,
     PredOpTrait<"params and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Gather_nd operator";
