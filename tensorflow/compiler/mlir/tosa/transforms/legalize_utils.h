@@ -116,9 +116,9 @@ template <typename T>
 llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
                                      ArrayRef<T> vec, ArrayRef<int64_t> shape);
 
-// Strip off quantization information for bias tensor and return a unquantized
-// bias
-Value getUnquantizedBias(PatternRewriter& rewriter, Operation* op, Value input);
+Value getZeroBiasTensor(PatternRewriter& rewriter, Operation* op,
+                        RankedTensorType input_ty, RankedTensorType filter_ty,
+                        RankedTensorType output_ty, bool quantized);
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);

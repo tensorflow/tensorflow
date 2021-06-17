@@ -526,41 +526,31 @@ template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
                                                        ArrayRef<int32_t> vec,
                                                        ArrayRef<int64_t> shape);
 
-static ElementsAttr getDefiningOpConstElementsAttr(Value input) {
-  if (!input.getDefiningOp()) {
-    return nullptr;
-  }
-  if (auto qconst_op = dyn_cast<TFL::QConstOp>(input.getDefiningOp())) {
-    return qconst_op.value().dyn_cast<ElementsAttr>();
-  }
-  if (auto tosa_const_op = dyn_cast<tosa::ConstOp>(input.getDefiningOp())) {
-    return tosa_const_op.value().dyn_cast<ElementsAttr>();
-  }
-  return nullptr;
-}
+Value getZeroBiasTensor(PatternRewriter& rewriter, Operation* op,
+                        RankedTensorType input_ty, RankedTensorType filter_ty,
+                        RankedTensorType output_ty, bool quantized) {
+  int output_channels = output_ty.getShape()[3];
+  if (quantized) {
+    uint32_t input_bits = input_ty.getElementType()
+                              .dyn_cast<mlir::quant::QuantizedType>()
+                              .getStorageTypeIntegralWidth();
+    uint32_t weight_bits = filter_ty.getElementType()
+                               .dyn_cast<mlir::quant::QuantizedType>()
+                               .getStorageTypeIntegralWidth();
 
-// Strip off quantization information for bias tensor and return a unquantized
-// bias. This assumes that the input is defined as a constant.
-Value getUnquantizedBias(PatternRewriter& rewriter, Operation* op,
-                         Value input) {
-  auto input_type = input.getType().dyn_cast<mlir::RankedTensorType>();
-  assert(input_type && "bias input is not a RankedTensorType");
-  auto input_element_type = input_type.getElementType();
-  auto input_element_qtype =
-      input_element_type.dyn_cast<mlir::quant::QuantizedType>();
-  ElementsAttr input_value_attr = getDefiningOpConstElementsAttr(input);
+    if (input_bits == 16 && weight_bits == 8) {
+      SmallVector<APInt> vec(output_channels, APInt(48, 0, true));
+      return getConstTensor<APInt>(rewriter, op, vec, {output_channels})
+          .getValue();
+    }
 
-  if (input_element_qtype && input_value_attr) {
-    auto output_type = RankedTensorType::get(
-        input_type.getShape(),
-        rewriter.getIntegerType(
-            input_element_qtype.getStorageTypeIntegralWidth()));
-    auto const_op = rewriter.create<tosa::ConstOp>(op->getLoc(), output_type,
-                                                   input_value_attr);
-    return const_op.getResult();
+    SmallVector<int32_t> vec(output_channels, 0);
+    return getConstTensor<int32_t>(rewriter, op, vec, {output_channels})
+        .getValue();
   }
 
-  return input;
+  SmallVector<float> vec(output_channels, 0.0f);
+  return getConstTensor<float>(rewriter, op, vec, {output_channels}).getValue();
 }
 
 // Check if scale32 mode is used for given output_element_type

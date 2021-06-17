@@ -2894,6 +2894,54 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
       .getResult();
 }
 
+// Lowers Per-axis Dequantize to a sequence of TOSA dequantization ops.
+llvm::Optional<Value> convertDequantizePerAxisOp(
+    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
+    Value input_value, ArrayRef<double> scale, ArrayRef<int64_t> zp,
+    int32_t axis) {
+  Location loc = op->getLoc();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return llvm::None;
+
+  // input element type could only be quantized integer
+  if (!input_type.getElementType().isa<mlir::quant::QuantizedType>())
+    return llvm::None;
+
+  auto shape = input_type.getShape();
+
+  // Create the constant values for the scales.
+  llvm::SmallVector<int64_t> scale_shape;
+  scale_shape.resize(shape.size(), 1);
+  scale_shape[axis] = scale.size();
+  RankedTensorType scale_ty =
+      RankedTensorType::get(scale_shape, rewriter.getF32Type());
+  Value scale_val = rewriter.create<tosa::ConstOp>(
+      loc, scale_ty, DenseElementsAttr::get(scale_ty, scale));
+
+  // Create the constant values for the zp adjustments. Its possible there
+  // are no zeropoint values, is so just set a 0 in.
+  llvm::SmallVector<int64_t> zp_shape;
+  zp_shape.resize(shape.size(), 1);
+  zp_shape[axis] = std::max<int64_t>(1, zp.size());
+  RankedTensorType zp_ty =
+      RankedTensorType::get(zp_shape, rewriter.getF32Type());
+
+  llvm::SmallVector<double> zp_fp;
+  zp_fp.reserve(std::max<int64_t>(1, zp.size()));
+  for (auto val : zp) zp_fp.push_back(static_cast<double>(val));
+  if (zp_fp.size() == 0) zp_fp.push_back(0.0);
+  Value zp_val = rewriter.create<tosa::ConstOp>(
+      loc, zp_ty, DenseElementsAttr::get(zp_ty, ArrayRef<double>(zp_fp)));
+
+  auto cast = rewriter.create<tosa::CastOp>(loc, output_type, input_value);
+
+  auto sub = rewriter.create<tosa::SubOp>(loc, output_type, cast, zp_val);
+
+  return rewriter.create<tosa::MulOp>(loc, output_type, sub, scale_val, 0)
+      .getResult();
+}
+
 // Lowers FakeQuant to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
                                          Operation* op,

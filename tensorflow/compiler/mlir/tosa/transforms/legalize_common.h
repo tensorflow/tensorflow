@@ -223,6 +223,12 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
                                           Value input_value, double scale,
                                           int64_t zeropoint);
 
+// Lowers Per-axis Dequantize to a sequence of TOSA dequantization ops.
+llvm::Optional<Value> convertDequantizePerAxisOp(
+    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
+    Value input_value, ArrayRef<double> scale, ArrayRef<int64_t> zp,
+    int32_t axis);
+
 // Lowers FakeQuant to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
                                          Operation* op,

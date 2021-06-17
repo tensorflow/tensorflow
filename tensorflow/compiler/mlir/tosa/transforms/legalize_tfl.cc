@@ -1114,49 +1114,75 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
 
 LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  auto tfl_conv2d_op = cast<TFL::Conv2DOp>(op);
+  Location loc = op->getLoc();
+  auto tfl_conv_op = cast<TFL::Conv2DOp>(op);
 
-  RankedTensorType input_type =
-      tfl_conv2d_op.input().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type =
-      tfl_conv2d_op.filter().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_conv2d_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_type) return failure();
-  if (!output_type) return failure();
-  if (!filter_type) return failure();
+  Value input = tfl_conv_op.input();
+  Value filter = tfl_conv_op.filter();
+  Value bias = tfl_conv_op.bias();
+  Value result = tfl_conv_op.getResult();
+
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType filter_type = filter.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType bias_type = bias.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type = result.getType().dyn_cast<RankedTensorType>();
+
+  // All convolution types should be known rank.
+  if (!input_type || !output_type || !filter_type || !bias_type)
+    return failure();
 
   bool input_is_qtype =
       input_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool filter_is_qtype =
       filter_type.getElementType().isa<mlir::quant::QuantizedType>();
+  bool bias_is_qtype =
+      bias_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool output_is_qtype =
       output_type.getElementType().isa<mlir::quant::QuantizedType>();
 
-  if ((input_is_qtype != filter_is_qtype) ||
-      (input_is_qtype != output_is_qtype)) {
-    return op->emitOpError(
-        "ConvertTFLConv2DOp: input/filter/output tensor should "
-        "be all quantized or all floating-point.");
+  bool all_quantized = input_is_qtype && filter_is_qtype && bias_is_qtype;
+
+  // Find a non-quantized element type if it exists.
+  Type compute_type = input_type.getElementType();
+  if (compute_type.isa<mlir::quant::QuantizedType>())
+    compute_type = filter_type.getElementType();
+  if (compute_type.isa<mlir::quant::QuantizedType>())
+    compute_type = bias_type.getElementType();
+
+  // Make sure the input/filter are either all quantized, or dequantize so that
+  // they are all non-quantized types.
+  if (!all_quantized && input_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(input_type.getShape(), compute_type);
+    input = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, input);
   }
 
+  if (!all_quantized && filter_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(filter_type.getShape(), compute_type);
+    filter = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, filter);
+  }
+
+  if (!all_quantized && bias_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(bias_type.getShape(), compute_type);
+    bias = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, bias);
+  } else if (all_quantized) {
+    bias = tfl_conv_op.bias();
+  }
+
+  ArrayAttr stride =
+      rewriter.getI64ArrayAttr({static_cast<int64_t>(tfl_conv_op.stride_h()),
+                                static_cast<int64_t>(tfl_conv_op.stride_w())});
+
+  ArrayAttr dilation = rewriter.getI64ArrayAttr(
+      {static_cast<int64_t>(tfl_conv_op.dilation_h_factor()),
+       static_cast<int64_t>(tfl_conv_op.dilation_w_factor())});
+
   ArrayAttr pad;
-  ArrayAttr stride;
-  ArrayAttr dilation;
-  {
-    int64_t stride_h = tfl_conv2d_op.stride_h();
-    int64_t stride_w = tfl_conv2d_op.stride_w();
-    stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
-  }
-  {
-    int64_t dilation_h = tfl_conv2d_op.dilation_h_factor();
-    int64_t dilation_w = tfl_conv2d_op.dilation_w_factor();
-    dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
-  }
   {
     tensorflow::Padding tf_pad;
-    if (!GetPaddingFromString(tfl_conv2d_op.padding().str(), &tf_pad).ok())
+    if (!GetPaddingFromString(tfl_conv_op.padding().str(), &tf_pad).ok())
       return failure();
 
     // TFLite doesn't support explicit padding
@@ -1168,27 +1194,28 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
       return failure();
   }
 
-  Value unquantized_bias =
-      getUnquantizedBias(rewriter, op, tfl_conv2d_op.bias());
+  RankedTensorType conv_type = output_type;
+  conv_type = all_quantized
+                  ? conv_type
+                  : RankedTensorType::get(conv_type.getShape(), compute_type);
 
-  auto a1_conv2d_op = rewriter.create<tosa::Conv2DOp>(
-      op->getLoc(), output_type, tfl_conv2d_op.input(), tfl_conv2d_op.filter(),
-      unquantized_bias, pad, stride, dilation);
+  auto tosa_conv_op = rewriter.create<tosa::Conv2DOp>(
+      op->getLoc(), conv_type, input, filter, bias, pad, stride, dilation);
 
-  Value conv2d_output;
-  if (input_is_qtype) {
-    conv2d_output =
-        buildRescaleOpConvOutput(rewriter, op, a1_conv2d_op.getResult(),
-                                 input_type, filter_type, output_type);
-  } else {
-    conv2d_output = a1_conv2d_op.getResult();
+  Value conv_output = tosa_conv_op.getResult();
+  if (all_quantized) {
+    conv_output = buildRescaleOpConvOutput(
+        rewriter, op, conv_output, input_type, filter_type, output_type);
+  } else if (conv_type != output_type) {
+    conv_output = rewriter.create<TFL::QuantizeOp>(
+        loc, output_type, conv_output, TypeAttr::get(output_type));
   }
 
-  auto fused_activation_fn = tfl_conv2d_op.fused_activation_functionAttr();
+  auto fused_activation_fn = tfl_conv_op.fused_activation_functionAttr();
 
   if (fused_activation_fn) {
-    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
-        rewriter, op, conv2d_output, fused_activation_fn);
+    llvm::Optional<Value> fused_activation_val =
+        convertFusedActivation(rewriter, op, conv_output, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
 
@@ -1196,53 +1223,82 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     return success();
   }
 
-  rewriter.replaceOp(op, {conv2d_output});
+  rewriter.replaceOp(op, {conv_output});
 
   return success();
 }
 
 LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
+  Location loc = op->getLoc();
   auto tfl_conv_op = cast<TFL::TransposeConvOp>(op);
 
-  RankedTensorType input_type =
-      tfl_conv_op.input().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type =
-      tfl_conv_op.weights().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_conv_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_type) return failure();
-  if (!output_type) return failure();
-  if (!filter_type) return failure();
+  Value input = tfl_conv_op.input();
+  Value filter = tfl_conv_op.weights();
+  Value bias = tfl_conv_op.bias();
+  Value result = tfl_conv_op.getResult();
+
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType filter_type = filter.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType bias_type = bias.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type = result.getType().dyn_cast<RankedTensorType>();
+
+  bool has_bias = !bias.getType().isa<NoneType>();
+
+  // All convolution types should be known rank.
+  if (!input_type || !output_type || !filter_type || (has_bias && !bias_type))
+    return failure();
 
   bool input_is_qtype =
       input_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool filter_is_qtype =
       filter_type.getElementType().isa<mlir::quant::QuantizedType>();
+  bool bias_is_qtype =
+      bias_type && bias_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool output_is_qtype =
       output_type.getElementType().isa<mlir::quant::QuantizedType>();
 
-  if ((input_is_qtype != filter_is_qtype) ||
-      (input_is_qtype != output_is_qtype)) {
-    return op->emitOpError(
-        "ConvertTFLConv2DOp: input/filter/output tensor should "
-        "be all quantized or all floating-point.");
+  bool all_quantized =
+      input_is_qtype && filter_is_qtype && (!bias || bias_is_qtype);
+
+  // Find a non-quantized element type if it exists.
+  Type compute_type = input_type.getElementType();
+  if (compute_type.isa<mlir::quant::QuantizedType>())
+    compute_type = filter_type.getElementType();
+  if (compute_type.isa<mlir::quant::QuantizedType>() && has_bias)
+    compute_type = bias_type.getElementType();
+
+  // Make sure the input/filter are either all quantized, or dequantize so that
+  // they are all non-quantized types.
+  if (!all_quantized && input_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(input_type.getShape(), compute_type);
+    input = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, input);
   }
 
-  ArrayAttr stride;
-  ArrayAttr dilation;
-  ArrayAttr outpad;
-  ArrayAttr output_shape;
-  {
-    int64_t stride_h = tfl_conv_op.stride_h();
-    int64_t stride_w = tfl_conv_op.stride_w();
-    stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+  if (!all_quantized && filter_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(filter_type.getShape(), compute_type);
+    filter = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, filter);
+  }
+
+  if (!all_quantized && bias && bias_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(bias_type.getShape(), compute_type);
+    bias = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, bias);
+  } else if (all_quantized && bias) {
+    bias = tfl_conv_op.bias();
   }
 
   // tfl.transpose_conv doesn't support dilations
-  dilation = rewriter.getI64ArrayAttr({1, 1});
+  ArrayAttr dilation = rewriter.getI64ArrayAttr({1, 1});
 
+  ArrayAttr stride = rewriter.getI64ArrayAttr({
+      tfl_conv_op.stride_h(),
+      tfl_conv_op.stride_w(),
+  });
+
+  ArrayAttr outpad;
   {
     tensorflow::Padding tf_pad;
     if (!GetPaddingFromString(tfl_conv_op.padding().str(), &tf_pad).ok())
@@ -1256,6 +1312,8 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
             outpad))
       return failure();
   }
+
+  ArrayAttr output_shape;
   {
     ElementsAttr output_shape_elems;
     // Match from input_size tensor first
@@ -1272,76 +1330,97 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     }
   }
 
-  int output_channel = output_type.getShape()[3];
+  RankedTensorType conv_type = output_type;
+  conv_type = all_quantized
+                  ? conv_type
+                  : RankedTensorType::get(conv_type.getShape(), compute_type);
 
-  llvm::Optional<Value> zero_bias;
-  if (input_is_qtype) {
-    uint32_t input_bits = input_type.getElementType()
-                              .dyn_cast<mlir::quant::QuantizedType>()
-                              .getStorageTypeIntegralWidth();
-    uint32_t weight_bits = filter_type.getElementType()
-                               .dyn_cast<mlir::quant::QuantizedType>()
-                               .getStorageTypeIntegralWidth();
-
-    if (input_bits == 16 && weight_bits == 8) {
-      SmallVector<APInt> vec(output_channel, APInt(48, 0, true));
-      zero_bias = getConstTensor<APInt>(rewriter, op, vec, {output_channel});
-    } else {
-      SmallVector<int32_t> vec(output_channel, 0);
-      zero_bias = getConstTensor<int32_t>(rewriter, op, vec, {output_channel});
-    }
-  } else {
-    SmallVector<float> vec(output_channel, 0.0f);
-    zero_bias = getConstTensor<float>(rewriter, op, vec, {output_channel});
+  if (!has_bias) {
+    bias = getZeroBiasTensor(rewriter, op, input_type, filter_type, output_type,
+                             all_quantized);
   }
 
-  if (!zero_bias) return failure();
+  if (!bias) return failure();
 
-  auto a1_conv2d_op = rewriter.create<tosa::TransposeConv2DOp>(
-      op->getLoc(), output_type, tfl_conv_op.input(), tfl_conv_op.weights(),
-      zero_bias.getValue(), outpad, stride, dilation, output_shape);
+  auto tosa_conv_op = rewriter.create<tosa::TransposeConv2DOp>(
+      op->getLoc(), conv_type, tfl_conv_op.input(), tfl_conv_op.weights(), bias,
+      outpad, stride, dilation, output_shape);
 
-  Value conv2d_output;
-  if (input_is_qtype) {
-    conv2d_output =
-        buildRescaleOpConvOutput(rewriter, op, a1_conv2d_op.getResult(),
+  Value tosa_conv_output = tosa_conv_op;
+  if (all_quantized) {
+    tosa_conv_output =
+        buildRescaleOpConvOutput(rewriter, op, tosa_conv_op.getResult(),
                                  input_type, filter_type, output_type);
-  } else {
-    conv2d_output = a1_conv2d_op.getResult();
+  } else if (conv_type != output_type) {
+    tosa_conv_output = rewriter.create<TFL::QuantizeOp>(
+        loc, output_type, tosa_conv_output, TypeAttr::get(output_type));
   }
 
-  rewriter.replaceOp(op, {conv2d_output});
+  rewriter.replaceOp(op, {tosa_conv_output});
 
   return success();
 }
 
 LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  auto tfl_conv2d_op = cast<TFL::DepthwiseConv2DOp>(op);
+  Location loc = op->getLoc();
+  auto tfl_conv_op = cast<TFL::DepthwiseConv2DOp>(op);
 
-  RankedTensorType input_type =
-      tfl_conv2d_op.input().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type =
-      tfl_conv2d_op.filter().getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      tfl_conv2d_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!input_type) return failure();
-  if (!output_type) return failure();
-  if (!filter_type) return failure();
+  Value input = tfl_conv_op.input();
+  Value filter = tfl_conv_op.filter();
+  Value bias = tfl_conv_op.bias();
+  Value result = tfl_conv_op.getResult();
+
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType filter_type = filter.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType bias_type = bias.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type = result.getType().dyn_cast<RankedTensorType>();
+
+  bool has_bias = !bias.getType().isa<NoneType>();
+
+  // All convolution types should be known rank.
+  if (!input_type || !output_type || !filter_type || (has_bias && !bias_type))
+    return failure();
 
   bool input_is_qtype =
       input_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool filter_is_qtype =
       filter_type.getElementType().isa<mlir::quant::QuantizedType>();
+  bool bias_is_qtype =
+      bias_type && bias_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool output_is_qtype =
       output_type.getElementType().isa<mlir::quant::QuantizedType>();
 
-  if ((input_is_qtype != filter_is_qtype) ||
-      (input_is_qtype != output_is_qtype)) {
-    return op->emitOpError(
-        "ConvertTFLConv2DOp: input/filter/output tensor should "
-        "be all quantized or all floating-point.");
+  bool all_quantized =
+      input_is_qtype && filter_is_qtype && (!bias || bias_is_qtype);
+
+  // Find a non-quantized element type if it exists.
+  Type compute_type = input_type.getElementType();
+  if (compute_type.isa<mlir::quant::QuantizedType>())
+    compute_type = filter_type.getElementType();
+  if (compute_type.isa<mlir::quant::QuantizedType>() && has_bias)
+    compute_type = bias_type.getElementType();
+
+  // Make sure the input/filter are either all quantized, or dequantize so that
+  // they are all non-quantized types.
+  if (!all_quantized && input_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(input_type.getShape(), compute_type);
+    input = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, input);
+  }
+
+  if (!all_quantized && filter_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(filter_type.getShape(), compute_type);
+    filter = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, filter);
+  }
+
+  if (!all_quantized && bias && bias_is_qtype) {
+    Type dequantizedTy =
+        RankedTensorType::get(bias_type.getShape(), compute_type);
+    bias = rewriter.create<TFL::DequantizeOp>(loc, dequantizedTy, bias);
+  } else if (all_quantized && bias) {
+    bias = tfl_conv_op.bias();
   }
 
   auto filter_shape = filter_type.getShape();
@@ -1357,24 +1436,18 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   // a3_transpose_conv2d = tosa.transpose_conv2d(input, a2_reshape, padding,
   // stride, dilation)
 
-  ArrayAttr pad;
-  ArrayAttr stride;
-  ArrayAttr dilation;
-  auto depth_multiplier = tfl_conv2d_op.depth_multiplierAttr();
+  auto depth_multiplier = tfl_conv_op.depth_multiplierAttr();
 
-  {
-    int64_t stride_h = tfl_conv2d_op.stride_h();
-    int64_t stride_w = tfl_conv2d_op.stride_w();
-    stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
-  }
-  {
-    int64_t dilation_h = tfl_conv2d_op.dilation_h_factor();
-    int64_t dilation_w = tfl_conv2d_op.dilation_w_factor();
-    dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
-  }
+  ArrayAttr stride = rewriter.getI64ArrayAttr(
+      {tfl_conv_op.stride_h(), tfl_conv_op.stride_w()});
+
+  ArrayAttr dilation = rewriter.getI64ArrayAttr(
+      {tfl_conv_op.dilation_h_factor(), tfl_conv_op.dilation_w_factor()});
+
+  ArrayAttr pad;
   {
     tensorflow::Padding tf_pad;
-    if (!GetPaddingFromString(tfl_conv2d_op.padding().str(), &tf_pad).ok())
+    if (!GetPaddingFromString(tfl_conv_op.padding().str(), &tf_pad).ok())
       return failure();
 
     if (!getPaddingValuesFromPadType(
@@ -1385,58 +1458,64 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
       return failure();
   }
 
-  SmallVector<int64_t, 4> a1_transpose_dims;
-  a1_transpose_dims.push_back(filter_shape[1]);
-  a1_transpose_dims.push_back(filter_shape[2]);
-  a1_transpose_dims.push_back(filter_shape[3]);
-  a1_transpose_dims.push_back(filter_shape[0]);
+  SmallVector<int64_t, 4> filter_transpose_dims;
+  filter_transpose_dims.push_back(filter_shape[1]);
+  filter_transpose_dims.push_back(filter_shape[2]);
+  filter_transpose_dims.push_back(filter_shape[3]);
+  filter_transpose_dims.push_back(filter_shape[0]);
 
-  SmallVector<int64_t, 4> a2_reshape_dims;
-  a2_reshape_dims.push_back(a1_transpose_dims[0]);
-  a2_reshape_dims.push_back(a1_transpose_dims[1]);
-  a2_reshape_dims.push_back(a1_transpose_dims[2] / depth_multiplier.getInt());
-  a2_reshape_dims.push_back(depth_multiplier.getInt());
+  SmallVector<int64_t, 4> filter_reshape_dims;
+  filter_reshape_dims.push_back(filter_transpose_dims[0]);
+  filter_reshape_dims.push_back(filter_transpose_dims[1]);
+  filter_reshape_dims.push_back(filter_transpose_dims[2] /
+                                depth_multiplier.getInt());
+  filter_reshape_dims.push_back(depth_multiplier.getInt());
 
-  llvm::Optional<Value> a1_filter_transpose_perms = getConstTensor<int32_t>(
+  llvm::Optional<Value> perms_perms = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{1, 2, 3, 0}, /*shape=*/{4});
 
-  if (!a1_filter_transpose_perms) return failure();
-
-  auto a1_filter_transpose_op = rewriter.create<tosa::TransposeOp>(
+  Type filter_element_ty = filter.getType().cast<ShapedType>().getElementType();
+  auto perms_op = rewriter.create<tosa::TransposeOp>(
       op->getLoc(),
-      RankedTensorType::get(ArrayRef<int64_t>(a1_transpose_dims),
-                            filter_type.getElementType()),
-      tfl_conv2d_op.filter(), a1_filter_transpose_perms.getValue());
+      RankedTensorType::get(ArrayRef<int64_t>(filter_transpose_dims),
+                            filter_element_ty),
+      filter, perms_perms.getValue());
 
-  auto a2_filter_reshape_op = rewriter.create<tosa::ReshapeOp>(
+  auto filter_reshape_op = rewriter.create<tosa::ReshapeOp>(
       op->getLoc(),
-      RankedTensorType::get(ArrayRef<int64_t>(a2_reshape_dims),
-                            filter_type.getElementType()),
-      a1_filter_transpose_op.getResult(),
-      rewriter.getI64ArrayAttr(a2_reshape_dims));
+      RankedTensorType::get(ArrayRef<int64_t>(filter_reshape_dims),
+                            filter_element_ty),
+      perms_op.getResult(), rewriter.getI64ArrayAttr(filter_reshape_dims));
 
-  Value unquantized_bias =
-      getUnquantizedBias(rewriter, op, tfl_conv2d_op.bias());
-
-  auto a3_depthwise_conv2d_op = rewriter.create<tosa::DepthwiseConv2DOp>(
-      op->getLoc(), output_type, tfl_conv2d_op.input(),
-      a2_filter_reshape_op.getResult(), unquantized_bias, pad, stride,
-      dilation);
-
-  Value conv2d_output;
-  if (input_is_qtype) {
-    conv2d_output = buildRescaleOpConvOutput(
-        rewriter, op, a3_depthwise_conv2d_op.getResult(), input_type,
-        filter_type, output_type);
-  } else {
-    conv2d_output = a3_depthwise_conv2d_op.getResult();
+  RankedTensorType conv_type = output_type;
+  conv_type = all_quantized
+                  ? conv_type
+                  : RankedTensorType::get(conv_type.getShape(), compute_type);
+  if (!has_bias) {
+    bias = getZeroBiasTensor(rewriter, op, input_type, filter_type, output_type,
+                             all_quantized);
   }
 
-  auto fused_activation_fn = tfl_conv2d_op.fused_activation_functionAttr();
+  auto tosa_conv_op = rewriter.create<tosa::DepthwiseConv2DOp>(
+      op->getLoc(), conv_type, input, filter_reshape_op.getResult(), bias, pad,
+      stride, dilation);
+
+  Value tosa_conv_output = tosa_conv_op.getResult();
+  if (input_is_qtype) {
+    tosa_conv_output =
+        buildRescaleOpConvOutput(rewriter, op, tosa_conv_op.getResult(),
+                                 input_type, filter_type, output_type);
+  } else if (conv_type != output_type) {
+    tosa_conv_output = tosa_conv_op.getResult();
+    tosa_conv_output = rewriter.create<TFL::QuantizeOp>(
+        loc, output_type, tosa_conv_output, TypeAttr::get(output_type));
+  }
+
+  auto fused_activation_fn = tfl_conv_op.fused_activation_functionAttr();
 
   if (fused_activation_fn) {
     llvm::Optional<Value> fused_activation_val = convertFusedActivation(
-        rewriter, op, conv2d_output, fused_activation_fn);
+        rewriter, op, tosa_conv_output, fused_activation_fn);
 
     if (!fused_activation_val) return failure();
 
@@ -1444,7 +1523,7 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
     return success();
   }
 
-  rewriter.replaceOp(op, {conv2d_output});
+  rewriter.replaceOp(op, {tosa_conv_output});
 
   return success();
 }
@@ -1535,7 +1614,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
         rewriter.create<tosa::ConstOp>(op->getLoc(), bias_type, bias_attr);
     bias_val = bias_op.getResult();
   } else {
-    bias_val = getUnquantizedBias(rewriter, op, tfl_fc_op.bias());
+    bias_val = tfl_fc_op.bias();
   }
 
   auto fc_op = rewriter.create<tosa::FullyConnectedOp>(
@@ -2919,27 +2998,56 @@ LogicalResult ConvertTFLDequantizeOp::matchAndRewrite(
       tfl_dequantize_op.input().getType().dyn_cast<RankedTensorType>();
   if (!qtype) return failure();
 
-  UniformQuantizedType element_type =
-      qtype.getElementType().dyn_cast<UniformQuantizedType>();
-  if (!element_type) {
+  if (qtype.getElementType().isa<FloatType>()) {
     rewriter.replaceOpWithNewOp<tosa::CastOp>(op, output_type,
                                               tfl_dequantize_op.input());
     return success();
   }
 
-  double scale = element_type.getScale();
-  int64_t zp = element_type.getZeroPoint();
-  int64_t num_bits = element_type.getStorageTypeIntegralWidth();
-  zp = element_type.isSigned() ? zp : zp - (1 << (num_bits - 1));
+  mlir::quant::UniformQuantizedType uniform_type =
+      qtype.getElementType().dyn_cast<mlir::quant::UniformQuantizedType>();
+  if (uniform_type) {
+    double scale = uniform_type.getScale();
+    int64_t zp = uniform_type.getZeroPoint();
+    int64_t num_bits = uniform_type.getStorageTypeIntegralWidth();
+    zp = uniform_type.isSigned() ? zp : zp - (1 << (num_bits - 1));
 
-  llvm::Optional<Value> result = convertDequantizeOp(
-      rewriter, op, output_type, tfl_dequantize_op.input(), scale, zp);
+    llvm::Optional<Value> result = convertDequantizeOp(
+        rewriter, op, output_type, tfl_dequantize_op.input(), scale, zp);
 
-  if (!result) return failure();
+    if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+    rewriter.replaceOp(op, {result.getValue()});
+    return success();
+  }
 
-  return success();
+  mlir::quant::UniformQuantizedPerAxisType per_axis_uniform_type =
+      qtype.getElementType()
+          .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>();
+  if (per_axis_uniform_type) {
+    ArrayRef<double> scales = per_axis_uniform_type.getScales();
+    ArrayRef<int64_t> zps = per_axis_uniform_type.getZeroPoints();
+    int64_t num_bits = per_axis_uniform_type.getStorageTypeIntegralWidth();
+    int32_t dim = per_axis_uniform_type.getQuantizedDimension();
+
+    SmallVector<int64_t> adjusted_zps;
+    if (!per_axis_uniform_type.isSigned()) {
+      for (auto zp : zps)
+        adjusted_zps.push_back(
+            uniform_type.isSigned() ? zp : zp - (1 << (num_bits - 1)));
+    }
+
+    llvm::Optional<Value> result = convertDequantizePerAxisOp(
+        rewriter, op, output_type, tfl_dequantize_op.input(), scales,
+        adjusted_zps, dim);
+
+    if (!result) return failure();
+
+    rewriter.replaceOp(op, {result.getValue()});
+    return success();
+  }
+
+  return failure();
 }
 
 LogicalResult ConvertTFLQConstOp::matchAndRewrite(
@@ -2950,6 +3058,25 @@ LogicalResult ConvertTFLQConstOp::matchAndRewrite(
       tfl_qconst_op.getResult().getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) return failure();
+
+  // Strip the quantization information off the i32 as quantization metadata
+  // is not supported by TOSA for i32s.
+  auto output_element_type = output_type.getElementType();
+  auto output_element_qtype =
+      output_element_type.dyn_cast<mlir::quant::QuantizedType>();
+
+  if (output_element_qtype &&
+      output_element_qtype.getStorageTypeIntegralWidth() == 32) {
+    ElementsAttr elements = tfl_qconst_op.value();
+    auto output_type_unquant = RankedTensorType::get(
+        output_type.getShape(),
+        rewriter.getIntegerType(
+            output_element_qtype.getStorageTypeIntegralWidth()));
+    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, output_type_unquant,
+                                               elements);
+
+    return success();
+  }
 
   rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, output_type,
                                              tfl_qconst_op.valueAttr());
@@ -3157,14 +3284,19 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLReverseV2);
   DEF_PATTERN_INSERT(TFLQuantize);
   DEF_PATTERN_INSERT(TFLDequantize);
-  DEF_PATTERN_INSERT(TFLQConst);
-  DEF_PATTERN_INSERT(Constant);
   DEF_PATTERN_INSERT(TFLGather);
   DEF_PATTERN_INSERT(TFLGatherNd);
   DEF_PATTERN_INSERT(TFLArgMax);
   DEF_PATTERN_INSERT(TFLFakeQuant);
   DEF_PATTERN_INSERT(TFLOneHot);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+
+  // Consts are converted at the end so we only strip quantization information
+  // when its no longer needed.
+  OwningRewritePatternList constPatterns(&getContext());
+  constPatterns.insert<ConvertConstantOp>(ctx);
+  constPatterns.insert<ConvertTFLQConstOp>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(constPatterns));
 }
 }  // namespace
 
