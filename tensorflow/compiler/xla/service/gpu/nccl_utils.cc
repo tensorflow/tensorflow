@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 namespace xla {
 namespace gpu {
@@ -214,8 +215,34 @@ StatusOr<std::unique_ptr<NcclClique>> CreateNcclClique(
 }
 
 struct NcclCliqueParticipantData : public ParticipantData {
-  using ParticipantData::ParticipantData;
-  std::string ToString() const override { return ""; }
+  // For running in StreamExecutor. To be deprecated after transitioning to
+  // TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            int64 device_ordinal, se::Stream* stream)
+      : ParticipantData(rendezvous_key),
+        device_ordinal(device_ordinal),
+        stream(stream) {}
+
+  // For running in TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            se::gpu::GpuContextHandle context)
+      : ParticipantData(rendezvous_key), stream(nullptr), context(context) {}
+
+  int64 device_ordinal;
+  se::Stream* stream;
+  se::gpu::GpuContextHandle context;
+
+  std::string ToString() const override {
+    if (stream != nullptr) {
+      return absl::StrFormat(
+          "NcclCliqueParticipantData{rendezvous_key=%s, "
+          "device_ordinal=%d, stream=%p}",
+          rendezvous_key.ToString(), device_ordinal, stream);
+    }
+    return absl::StrFormat(
+        "NcclCliqueParticipantData{rendezvous_key=%s, context=%p}",
+        rendezvous_key.ToString(), context);
+  }
 };
 
 class NcclCliqueRendezvous
