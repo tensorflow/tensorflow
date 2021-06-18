@@ -286,16 +286,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
           "collective_mgr_func did not return CollectiveExecutorMgr");
     }
   } else {
-    std::unique_ptr<DeviceResolverDistributed> dev_resolver(
-        new DeviceResolverDistributed(worker_env_.device_mgr));
-    std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
-        new CollectiveParamResolverDistributed(config, worker_env_.device_mgr,
-                                               dev_resolver.get(), worker_cache,
-                                               default_worker_name));
-    worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
-        config, worker_env_.device_mgr, std::move(dev_resolver),
-        std::move(param_resolver), MaybeCreateNcclCommunicator(), worker_cache,
-        default_worker_name));
+    worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
+        config, worker_env_.device_mgr, MaybeCreateNcclCommunicator(),
+        worker_cache, default_worker_name);
   }
 
   // Set up worker environment.
@@ -471,16 +464,9 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
                                         &default_worker_name, &unused)) {
     return errors::Internal("Could not parse worker name.");
   }
-  std::unique_ptr<DeviceResolverDistributed> dev_resolver(
-      new DeviceResolverDistributed(worker_env_.device_mgr));
-  std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
-      new CollectiveParamResolverDistributed(
-          server_def_.default_session_config(), worker_env_.device_mgr,
-          dev_resolver.get(), worker_cache, default_worker_name));
-  worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
+  worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
-      std::move(dev_resolver), std::move(param_resolver),
-      MaybeCreateNcclCommunicator(), worker_cache, default_worker_name));
+      MaybeCreateNcclCommunicator(), worker_cache, default_worker_name);
 
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr =
