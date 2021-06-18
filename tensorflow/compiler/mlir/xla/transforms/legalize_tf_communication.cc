@@ -65,6 +65,13 @@ class LegalizeTFCommunication
   }
 
  public:
+  StringRef getArgument() const final {
+    return "xla-legalize-tf-communication";
+  }
+  StringRef getDescription() const final {
+    return "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
+           "dialect";
+  }
   void runOnOperation() override;
 };
 
@@ -885,10 +892,7 @@ void LegalizeTFCommunication::runOnOperation() {
   }
 }
 
-static PassRegistration<LegalizeTFCommunication> pass(
-    "xla-legalize-tf-communication",
-    "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
-    "dialect");
+static PassRegistration<LegalizeTFCommunication> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass() {
