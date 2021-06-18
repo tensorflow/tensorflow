@@ -135,6 +135,15 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
 
 }  // namespace chlo
 
+class LLVMTypeConverter;
+
+namespace disc_ral {
+
+void populateDiscRalToLLVMConversionPatterns(LLVMTypeConverter* converter,
+                                             RewritePatternSet* patterns);
+
+}  // namespace disc_ral
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
