@@ -25,13 +25,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 
 //TODO(mconley): Should the below macro and the one in convert/utils.h be moved to an upper utils directory?
-#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
+/*#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
   ((NV_TENSORRT_MAJOR > major) ||                               \
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
     NV_TENSORRT_PATCH > patch) ||                               \
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
+    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))*/
 
 namespace tensorflow {
 namespace tensorrt {
@@ -54,13 +54,13 @@ const char* kInputTensor = "input";
 const char* kOutputTensor = "output";
 
 // Creates a network to compute y=2x+3.
-nvinfer1::IHostMemory* CreateNetwork() {
+TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
   Logger& logger = *Logger::GetLogger();
-  nvinfer1::IBuilder* builder = nvinfer1::createInferBuilder(logger);
+  TrtUniquePtrType<nvinfer1::IBuilder> builder = nvinfer1::createInferBuilder(logger);
   ScopedWeights weights(2.0);
   ScopedWeights bias(3.0);
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  nvinfer1::INetworkDefinition* network = builder->createNetworkV2(0L);
+  TrtUniquePtrType<nvinfer1::INetworkDefinition> network = builder->createNetworkV2(0L);
 #else
   nvinfer1::INetworkDefinition* network = builder->createNetwork();
 #endif
@@ -78,19 +78,16 @@ nvinfer1::IHostMemory* CreateNetwork() {
   // Build the engine
   builder->setMaxBatchSize(1);
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  auto builderConfig = builder->createBuilderConfig();
+  TrtUniquePtrType<nvinfer1::IBuilderConfig> builderConfig = builder->createBuilderConfig();
   builderConfig->setMaxWorkspaceSize(1 << 10);
-  auto engine = builder->buildEngineWithConfig(*network, *builderConfig);
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine = builder->buildEngineWithConfig(*network, *builderConfig);
 #else
   builder->setMaxWorkspaceSize(1 << 10);
   auto engine = builder->buildCudaEngine(*network);
 #endif
   EXPECT_NE(engine, nullptr);
   // Serialize the engine to create a model, then close everything.
-  nvinfer1::IHostMemory* model = engine->serialize();
-  network->destroy();
-  engine->destroy();
-  builder->destroy();
+  TrtUniquePtrType<nvinfer1::IHostMemory> model = engine->serialize();
   return model;
 }
 
@@ -124,9 +121,9 @@ void Execute(nvinfer1::IExecutionContext* context, const float* input,
   cudaStreamSynchronize(stream);
 
   // Release the stream and the buffers
-  cudaStreamDestroy(stream);
   ASSERT_EQ(0, cudaFree(buffers[input_index]));
   ASSERT_EQ(0, cudaFree(buffers[output_index]));
+  cudaStreamDestroy(stream);
 }
 
 TEST(TensorrtTest, BasicFunctions) {
@@ -137,26 +134,19 @@ TEST(TensorrtTest, BasicFunctions) {
     return;
   }
 
-  // Create the network model.
-  nvinfer1::IHostMemory* model = CreateNetwork();
+  //Create a serialized engine
+  TrtUniquePtrType<nvinfer1::IHostMemory> model = CreateSerializedEngine();
   // Use the model to create an engine and then an execution context.
   Logger& logger = *Logger::GetLogger();
-  nvinfer1::IRuntime* runtime = nvinfer1::createInferRuntime(logger);
-  nvinfer1::ICudaEngine* engine =
-      runtime->deserializeCudaEngine(model->data(), model->size(), nullptr);
-  model->destroy();
-  nvinfer1::IExecutionContext* context = engine->createExecutionContext();
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime = nvinfer1::createInferRuntime(logger);
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine = runtime->deserializeCudaEngine(model->data(), model->size(), nullptr);
+  TrtUniquePtrType<nvinfer1::IExecutionContext> context = engine->createExecutionContext();
 
   // Execute the network.
   float input = 1234;
   float output;
-  Execute(context, &input, &output);
+  Execute(context.get(), &input, &output);
   EXPECT_EQ(output, input * 2 + 3);
-
-  // Destroy the engine.
-  context->destroy();
-  engine->destroy();
-  runtime->destroy();
 }
 
 }  // namespace tensorrt

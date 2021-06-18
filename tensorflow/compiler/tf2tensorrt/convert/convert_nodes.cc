@@ -1729,10 +1729,14 @@ Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
 // layer name conflicts.
 void Converter::SetLayerName(nvinfer1::ILayer* layer, const NodeDef& node_def,
                              absl::string_view sub_op_name,
-                             absl::optional<int> sub_op_instance) {
+                             absl::optional<int> sub_op_instance,
+                             absl::optional<std::string> origin_node_name) {
   std::string sub_op_suffix = GetLayerNameSuffix(sub_op_name, sub_op_instance);
   if (sub_op_suffix.empty()) {
     SetLayerNameHelper(layer, engine_name_, node_def.name());
+  } else if (origin_node_name.has_value()) {
+    SetLayerNameHelper(layer, engine_name_,
+                       absl::StrCat(node_def.name(), "-", absl::string_view(origin_node_name.value()), "-", sub_op_suffix));
   } else {
     SetLayerNameHelper(layer, engine_name_,
                        absl::StrCat(node_def.name(), "-", sub_op_suffix));
@@ -1764,7 +1768,8 @@ Status PrepareTensorForShape(Converter* converter,
                              const bool validation_only,
                              ITensorProxyPtr* tensor,
                              const NodeDef& node_def,
-                             absl::optional<int> op_instance) {
+                             absl::optional<int> op_instance,
+                             absl::optional<std::string> origin_node_name) {
   const nvinfer1::Dims input_dims = input.GetTrtDims();
   // The input shape may have -1s for dynamic shape. The target shape may have
   // 0s representing copy over the corresponding input dimensions. It may also
@@ -1799,7 +1804,7 @@ Status PrepareTensorForShape(Converter* converter,
       nvinfer1::IShuffleLayer* layer =
           converter->network()->addShuffle(*input.tensor()->trt_tensor());
       TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
-      converter->SetLayerName(layer, node_def, "shuffle", op_instance);
+      converter->SetLayerName(layer, node_def, "shuffle", op_instance, origin_node_name);
       layer->setReshapeDimensions(dims);
       ITensorProxyPtr input_tensor = input.tensor();
       ITensorProxyPtr output_tensor = layer->getOutput(0);
@@ -5666,7 +5671,8 @@ StatusOr<ITensorProxyPtr> ConvertFullyConnectedImpl(
   const NodeDef& node_def = params->node_def;
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, input_a, reshape_dim,
-      /*validation_only=*/false, &tensor_a, node_def, /*op_instance=*/0));
+      /*validation_only=*/false, &tensor_a, node_def, /*op_instance=*/0,
+      /*origin_node_name=*/"FULLY_CONNECTED"));
 
   VLOG(2) << "New shape of A " << DebugString(tensor_a->getDimensions());
 
@@ -5713,7 +5719,7 @@ StatusOr<ITensorProxyPtr> ConvertFullyConnectedImpl(
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, TRT_TensorOrWeights(output_tensor), output_dim,
       /*validation_only=*/false, &output_tensor, node_def,
-      /*op_instance=*/1));
+      /*op_instance=*/1, /*origin_node_name=*/"FULLY_CONNECTED"));
   return output_tensor;
 }
 
@@ -6354,6 +6360,8 @@ Status ParseEquation(OpConverterParams* params,
       equation, &input_labels, &output_labels, &label_types,
       &input_label_counts, &output_label_counts, &input_has_ellipsis,
       &output_has_ellipsis));
+
+  VLOG(2) << "Output has ellipsis: " << output_has_ellipsis;
 
   if (input_has_ellipsis[0] || input_has_ellipsis[1] || output_has_ellipsis) {
     // TODO(tfeher): Handle ellipsis like EinsumHelper::ProcessDimensions.

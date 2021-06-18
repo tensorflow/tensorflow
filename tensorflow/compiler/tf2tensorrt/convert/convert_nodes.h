@@ -604,10 +604,13 @@ class Converter {
   // Constructs a name and passed it to the TensorRT layer to support xprof.
   void SetLayerName(nvinfer1::ILayer* layer, const NodeDef& node_def,
                     absl::string_view sub_op_name = "",
-                    absl::optional<int> sub_op_instance = absl::nullopt);
+                    absl::optional<int> sub_op_instance = absl::nullopt,
+                    absl::optional<std::string> origin_node_name = absl::nullopt);
+
   void SetLayerName(nvinfer1::ILayer* layer, absl::string_view main_op_name,
                     absl::string_view sub_op_name,
-                    absl::optional<int> sub_op_instance = absl::nullopt);
+                    absl::optional<int> sub_op_instance = absl::nullopt,
+                    absl::optional<std::string> origin_node_name = absl::nullopt);
 
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
