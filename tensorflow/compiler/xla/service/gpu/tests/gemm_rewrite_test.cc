@@ -354,34 +354,6 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(GemmRewriteTest, BF16Gemm) {
-  const char* hlo_text = R"(
-HloModule bf16gemm
-
-ENTRY bf16gemm {
-  %parameter.1 = bf16[12,4]{1,0} parameter(0)
-  %parameter.2 = bf16[4,8]{1,0} parameter(1)
-  ROOT %dot.8 = bf16[12,8] dot(bf16[12,4] %parameter.1, bf16[4,8] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-  )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-
-  if (IsAmpereOrLater(*backend().default_stream_executor())) {
-    MatchOptimizedHlo(hlo_text,
-                      R"(
-; CHECK: bf16[16,8]{1,0} custom-call(bf16[16,8]{1,0} %pad, bf16[8,8]{1,0} %pad.1), custom_call_target="__cublas$gemm"
-  )",
-                      /*print_operand_shape=*/true);
-  } else {
-    MatchOptimizedHlo(hlo_text,
-                      R"(
-; CHECK: bf16[12,8]{1,0} custom-call(bf16[12,4]{1,0} %parameter.1, bf16[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm"
-
-  )",
-                      /*print_operand_shape=*/true);
-  }
-}
-
 TEST_F(GemmRewriteTest, Int8Gemm) {
   const char* hlo_text = R"(
 HloModule int8gemm

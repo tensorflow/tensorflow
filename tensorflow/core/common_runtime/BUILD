@@ -340,12 +340,15 @@ cc_library(
     deps = [
         ":base_collective_executor",
         ":build_graph_options",
+        ":collective_param_resolver_local",
         ":collective_rma_local",
         ":device_mgr",
+        ":device_resolver_local",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/memory",
     ],
 )
 

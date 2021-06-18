@@ -15,6 +15,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/EquivalenceClasses.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -341,17 +342,20 @@ SmallVector<Value, 8> MaterializeRankedOperations(
 
 SmallVector<Value, 8> MaterializeFinalReshape(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
-    ValueRange unshaped_results) {
-  // Compute result shape.
-  auto non_scalar_operands = llvm::make_filter_range(
-      op.operands(), [](Value v) { return !IsScalarTensorType(v.getType()); });
-  SmallVector<Value, 8> results;
-  auto operand_shapes =
-      llvm::to_vector<8>(llvm::map_range(non_scalar_operands, [&](Value v) {
-        return b.create<shape::ShapeOfOp>(loc, v).result();
-      }));
-  auto shape = b.create<shape::BroadcastOp>(
-      loc, shape::getExtentTensorType(b.getContext()), operand_shapes);
+    ValueRange unshaped_results, llvm::Optional<Value> shape = {}) {
+  if (!shape) {
+    // Compute result shape.
+    auto non_scalar_operands = llvm::make_filter_range(
+        op.operands(),
+        [](Value v) { return !IsScalarTensorType(v.getType()); });
+    SmallVector<Value, 8> results;
+    auto operand_shapes =
+        llvm::to_vector<8>(llvm::map_range(non_scalar_operands, [&](Value v) {
+          return b.create<shape::ShapeOfOp>(loc, v).result();
+        }));
+    shape = b.create<shape::BroadcastOp>(
+        loc, shape::getExtentTensorType(b.getContext()), operand_shapes);
+  }
 
   // Reshape results.
   return llvm::to_vector<8>(
@@ -359,7 +363,7 @@ SmallVector<Value, 8> MaterializeFinalReshape(
         return b
             .create<mhlo::DynamicReshapeOp>(
                 loc, DeriveUnrankedTensorTypes(unshaped.getType()), unshaped,
-                shape)
+                shape.getValue())
             .result();
       }));
 }
@@ -664,7 +668,8 @@ MaterializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
       MaterializeRankedOperations(b, loc, bvm, op);
 
   // Restore the results' expected shape.
-  return MaterializeFinalReshape(b, loc, op, unshaped_results);
+  return MaterializeFinalReshape(b, loc, op, unshaped_results,
+                                 non_scalar_shapes.front());
 }
 
 Value MaterializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(

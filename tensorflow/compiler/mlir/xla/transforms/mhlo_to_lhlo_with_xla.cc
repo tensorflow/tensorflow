@@ -171,6 +171,10 @@ class XlaHloToLhloPass
  public:
   XlaHloToLhloPass() = default;
   XlaHloToLhloPass(const XlaHloToLhloPass&) {}
+  StringRef getArgument() const final { return "xla-hlo-to-lhlo-with-xla"; }
+  StringRef getDescription() const final {
+    return "Emit LHLO from HLO using the existing XLA implementation";
+  }
 
  private:
   void runOnOperation() final {
@@ -1910,8 +1914,6 @@ OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
   return module;
 }
 
-static PassRegistration<XlaHloToLhloPass> registration(
-    "xla-hlo-to-lhlo-with-xla",
-    "Emit LHLO from HLO using the existing XLA implementation");
+static PassRegistration<XlaHloToLhloPass> registration;
 
 }  // namespace mlir

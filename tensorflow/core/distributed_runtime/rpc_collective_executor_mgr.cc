@@ -168,4 +168,17 @@ void RpcCollectiveExecutorMgr::RetireStepId(int64 graph_key, int64 step_id) {
   }
 }
 
+std::unique_ptr<RpcCollectiveExecutorMgr> CreateProdRpcCollectiveExecutorMgr(
+    const ConfigProto& config, const DeviceMgr* device_mgr,
+    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
+    WorkerCacheInterface* worker_cache, const string& default_worker_name) {
+  auto dev_resolver = absl::make_unique<DeviceResolverDistributed>(device_mgr);
+  auto param_resolver = absl::make_unique<CollectiveParamResolverDistributed>(
+      config, device_mgr, dev_resolver.get(), worker_cache,
+      default_worker_name);
+  return absl::make_unique<RpcCollectiveExecutorMgr>(
+      config, device_mgr, std::move(dev_resolver), std::move(param_resolver),
+      std::move(nccl_communicator), worker_cache, default_worker_name);
+}
+
 }  // namespace tensorflow

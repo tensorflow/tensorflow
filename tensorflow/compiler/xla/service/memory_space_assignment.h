@@ -1058,8 +1058,7 @@ class AlternateMemoryBestFitHeap
 
   // Go through all the uses in the AllocationValues and find the aliasing
   // positions.
-  void FindAliases(std::vector<AllocationValue>* allocation_values,
-                   bool skip_values_with_no_uses) const;
+  void FindAliases(std::vector<AllocationValue>* allocation_values) const;
 
   MemorySpaceAssignment::AllocationSequence* allocations() {
     return allocations_;
