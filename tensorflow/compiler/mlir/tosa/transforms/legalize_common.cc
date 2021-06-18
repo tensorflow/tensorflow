@@ -1662,7 +1662,8 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
         op->getLoc(), rsum_type, op1_exp_in.getResult(),
         rewriter.getI64IntegerAttr(input_rank - 1));
     auto op3_reciprocal_op2 = rewriter.create<tosa::ReciprocalOp>(
-        op->getLoc(), rsum_type, op2_reducesum_op1.getResult());
+        op->getLoc(), op2_reducesum_op1.getType(),
+        op2_reducesum_op1.getResult());
 
     return rewriter
         .create<tosa::MulOp>(op->getLoc(), output_type, op1_exp_in.getResult(),
@@ -1723,7 +1724,7 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
       op->getLoc(), rsum_type, op1_exp_in.getResult(),
       rewriter.getI64IntegerAttr(input_rank - 1));
   auto op3_reciprocal_op2 = rewriter.create<tosa::ReciprocalOp>(
-      op->getLoc(), rsum_type, op2_reducesum_op1.getResult());
+      op->getLoc(), op2_reducesum_op1.getType(), op2_reducesum_op1.getResult());
 
   auto op4_mul_op1_op3 = rewriter.create<tosa::MulOp>(
       op->getLoc(), output_type, op1_exp_in.getResult(),
@@ -2199,8 +2200,16 @@ llvm::Optional<Value> convertFloorDivOp(PatternRewriter& rewriter,
   // Not a ranked tensor output
   if (!output_type) return llvm::None;
 
-  auto a1_reciprocal_rhs_op =
-      rewriter.create<tosa::ReciprocalOp>(op->getLoc(), output_type, rhs_value);
+  Type element_type = output_type.getElementType();
+
+  if (element_type.isa<IntegerType>()) {
+    return rewriter
+        .create<tosa::DivOp>(op->getLoc(), output_type, lhs_value, rhs_value)
+        .getResult();
+  }
+
+  auto a1_reciprocal_rhs_op = rewriter.create<tosa::ReciprocalOp>(
+      op->getLoc(), rhs_value.getType(), rhs_value);
   auto a2_mul_lhs_a1_op =
       rewriter.create<tosa::MulOp>(op->getLoc(), output_type, lhs_value,
                                    a1_reciprocal_rhs_op.getResult(), 0);
@@ -2227,8 +2236,8 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
   // Not a ranked tensor output
   if (!output_type) return llvm::None;
 
-  auto a1_reciprocal_rhs_op =
-      rewriter.create<tosa::ReciprocalOp>(op->getLoc(), output_type, rhs_value);
+  auto a1_reciprocal_rhs_op = rewriter.create<tosa::ReciprocalOp>(
+      op->getLoc(), rhs_value.getType(), rhs_value);
   auto a2_mul_lhs_a1_op =
       rewriter.create<tosa::MulOp>(op->getLoc(), output_type, lhs_value,
                                    a1_reciprocal_rhs_op.getResult(), 0);
@@ -2313,16 +2322,19 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
 
       if (fused_activation_fn.getValue() == "RELU") {
         return rewriter
-            .create<tosa::ReluNOp>(
+            .create<tosa::ClampOp>(
                 op->getLoc(), input_type, input_value,
+                rewriter.getI64IntegerAttr(0),
                 rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
+                rewriter.getF32FloatAttr(0.0f),
                 rewriter.getF32FloatAttr(std::numeric_limits<float>::max()))
             .getResult();
       } else if (fused_activation_fn.getValue() == "RELU6") {
         return rewriter
-            .create<tosa::ReluNOp>(op->getLoc(), input_type, input_value,
-                                   rewriter.getI64IntegerAttr(6),
-                                   rewriter.getF32FloatAttr(6.0))
+            .create<tosa::ClampOp>(
+                op->getLoc(), input_type, input_value,
+                rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(6),
+                rewriter.getF32FloatAttr(0.0f), rewriter.getF32FloatAttr(6.0f))
             .getResult();
       } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
         return rewriter
@@ -3370,8 +3382,8 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
 
   ND = indices_type.getShape()[indices_rank - 1];
 
-  if (ND >= params_rank) {
-    op->emitOpError("Size of last dimension on indices must be < params rank");
+  if (ND > params_rank) {
+    op->emitOpError("Size of last dimension on indices must be <= params rank");
     return llvm::None;
   }
 
@@ -3407,9 +3419,13 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
 
   SmallVector<int32_t> flattened_coeff_vec;
   for (int i = 1; i < ND; i++) {
-    flattened_coeff_vec.push_back(indices_type.getShape()[i]);
+    flattened_coeff_vec.push_back(params_type.getShape()[i]);
   }
   flattened_coeff_vec.push_back(1);
+
+  for (int i = ND - 1; i > 0; i--) {
+    flattened_coeff_vec[i - 1] *= flattened_coeff_vec[i];
+  }
 
   llvm::Optional<Value> flattened_coeff_value = getConstTensor<int32_t>(
       rewriter, op, flattened_coeff_vec,

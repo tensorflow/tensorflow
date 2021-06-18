@@ -329,7 +329,10 @@ class Subgraph {
     }
 
     xnn_runtime_t runtime_ptr = nullptr;
-    const uint32_t flags = has_sparse_weights ? XNN_FLAG_SPARSE_INFERENCE : 0;
+    uint32_t flags = XNN_FLAG_YIELD_WORKERS;
+    if (has_sparse_weights) {
+      flags |= XNN_FLAG_SPARSE_INFERENCE;
+    }
     status = xnn_create_runtime_v2(subgraph.get(), delegate->threadpool(),
                                    flags, &runtime_ptr);
     if (status != xnn_status_success) {

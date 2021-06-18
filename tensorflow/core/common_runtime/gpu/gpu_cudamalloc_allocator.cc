@@ -27,14 +27,11 @@ limitations under the License.
 namespace tensorflow {
 
 GPUcudaMallocAllocator::GPUcudaMallocAllocator(
-    Allocator* allocator, PlatformDeviceId platform_device_id)
-    : base_allocator_(allocator) {
+    PlatformDeviceId platform_device_id) {
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
                      .ValueOrDie();
 }
-
-GPUcudaMallocAllocator::~GPUcudaMallocAllocator() { delete base_allocator_; }
 
 void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 #ifdef GOOGLE_CUDA
@@ -78,10 +75,6 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
                << "\n Error string: " << error_string;
   }
 #endif  // GOOGLE_CUDA
-}
-
-absl::optional<AllocatorStats> GPUcudaMallocAllocator::GetStats() {
-  return base_allocator_->GetStats();
 }
 
 bool GPUcudaMallocAllocator::TracksAllocationSizes() const { return false; }

@@ -488,6 +488,10 @@ cudaDataType_t GetCUDADataType(blas::DataType ty) {
   switch (ty) {
     case blas::DataType::kHalf:
       return CUDA_R_16F;
+#if CUDA_VERSION >= 11000
+    case blas::DataType::kBF16:
+      return CUDA_R_16BF;
+#endif
     case blas::DataType::kFloat:
       return CUDA_R_32F;
     case blas::DataType::kDouble:
@@ -1758,8 +1762,11 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
         cc_major >= 8) {
       // TODO(reedwm): Remove or make this VLOG(1) once TensorFloat-32 is more
       // well tested.
-      LOG_FIRST_N(INFO, 1) << "TensorFloat-32 will be used for the matrix "
-                              "multiplication. This will only be logged once.";
+      if (tensorflow::tensor_float_32_execution_enabled()) {
+        LOG_FIRST_N(INFO, 1) << "TensorFloat-32 will be used for the matrix "
+                                "multiplication. This will only be logged "
+                                "once.";
+      }
     }
   }
 #endif

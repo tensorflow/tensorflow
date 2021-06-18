@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo(name):
     """Imports LLVM."""
-    LLVM_COMMIT = "bc56620b8b765b5720dbc1849511fb783e05b8cc"
-    LLVM_SHA256 = "dc996e2f96576274ddb089162c14afee173ff43cc6b1c8f76206a30f379087f0"
+    LLVM_COMMIT = "366df11a35392c946678f1af94038945c23f06c8"
+    LLVM_SHA256 = "cd720387229e8ee74cc9d7d685a298c709fb2bdb2063301e509f40dacbdbaaea"
 
     tf_http_archive(
         name = name,
@@ -20,4 +20,5 @@ def repo(name):
             "//third_party/mlir:BUILD": "mlir/BUILD",
             "//third_party/mlir:test.BUILD": "mlir/test/BUILD",
         },
+        patch_file = "//third_party/llvm:disable_parallelism_in_verifier.patch",
     )

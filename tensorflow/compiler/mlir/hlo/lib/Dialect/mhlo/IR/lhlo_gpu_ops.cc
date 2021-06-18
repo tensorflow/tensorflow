@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
+#include "mlir-hlo/utils/lhlo_utils.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -60,6 +61,14 @@ LmhloGpuDialect::LmhloGpuDialect(MLIRContext *context)
 
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
+
+//===----------------------------------------------------------------------===//
+// AllReduceStartOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(AllReduceStartOp op) {
+  return lmhlo::VerifyAllReduce(op);
+}
 
 }  // namespace lmhlo_gpu
 }  // namespace mlir

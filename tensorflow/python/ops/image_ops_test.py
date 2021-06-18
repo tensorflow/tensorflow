@@ -4234,11 +4234,13 @@ class JpegTest(test_util.TensorFlowTestCase):
         image1_crop = image_ops.crop_to_bounding_box(image1, y, x, h, w)
 
         # Combined decode+crop.
-        image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+        image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window, channels=3)
 
-        # Combined decode+crop should have the same shape inference
-        self.assertAllEqual(image1_crop.get_shape().as_list(),
-                            image2.get_shape().as_list())
+        # Combined decode+crop should have the same shape inference on image
+        # sizes.
+        image1_shape = image1_crop.get_shape().as_list()
+        image2_shape = image2.get_shape().as_list()
+        self.assertAllEqual(image1_shape, image2_shape)
 
         # CropAndDecode should be equal to DecodeJpeg+Crop.
         image1_crop, image2 = self.evaluate([image1_crop, image2])
@@ -4794,7 +4796,7 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     self._test(a + 1, tot_var)
 
     # If we negate all pixel-values then the total variation is unchanged.
-    self._test(-a, tot_var)
+    self._test(-a, tot_var)  # pylint: disable=invalid-unary-operand-type
 
     # Scale the pixel-values by a float. This scales the total variation as
     # well.

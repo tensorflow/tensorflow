@@ -388,7 +388,6 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
 
   void Run(::testing::benchmark::State& state, int num_tuple_elements,
            int array_size) {
-    tensorflow::testing::StopTiming();
     SetUp();
 
     std::vector<Literal> tuple_elements;
@@ -398,12 +397,11 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
     }
     Literal literal = LiteralUtil::MakeTupleOwned(std::move(tuple_elements));
     auto device_buffer = AllocateDeviceBuffer(literal.shape());
-    tensorflow::testing::StartTiming();
+
     for (auto s : state) {
       TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                              device_buffer));
     }
-    tensorflow::testing::StopTiming();
     TearDown();
   }
 

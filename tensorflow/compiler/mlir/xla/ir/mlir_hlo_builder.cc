@@ -278,7 +278,10 @@ StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
   auto op = builder_.create<mlir::mhlo::WhileOp>(loc_, ty, GetValue(init));
   TF_RETURN_IF_ERROR(ImportComputation(condition.proto(), &op.cond()));
   TF_RETURN_IF_ERROR(ImportComputation(body.proto(), &op.body()));
-  return MakeXlaOp(op);
+  // TODO(jpienaar): Support multi-operand while op.
+  if (op.getNumResults() != 1)
+    return Unimplemented("Only single result MHLO WhileOp's can be import.");
+  return MakeXlaOp(op.getResult(0));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::ReducePrecisionInternal(

@@ -1275,6 +1275,46 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
 
   @test_util.run_v2_only
+  def testSignatureDefsQuantizedModel(self):
+    """Test converting SignatureDef on quantized model."""
+    root = self._getMultiFunctionModel()
+    input_data_0 = tf.constant(1., shape=[1])
+    input_data_1 = tf.constant(3., shape=[1])
+    mul_add_func = root.mul_add.get_concrete_function(input_data_1,
+                                                      input_data_0)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, {'mul_add': mul_add_func})
+
+    converter = lite.TFLiteConverterV2.from_saved_model(
+        save_dir, signature_keys=['mul_add'])
+
+    def representative_dataset_gen():
+      for _ in range(2):
+        yield [
+            np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32),
+            np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
+        ]
+
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = representative_dataset_gen
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    tflite_model = converter.convert()
+
+    # Check signatures are valid from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 1)
+    self.assertEqual(list(signature_defs.keys()), ['mul_add'])
+    self.assertEqual(len(signature_defs.values()), 1)
+    self.assertEqual(
+        list(signature_defs['mul_add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
+    self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
+
+  @test_util.run_v2_only
   def testMultipleFunctionModel(self):
     """Convert multiple functions in a multi-functional model."""
     root = self._getMultiFunctionModel()
@@ -1295,10 +1335,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter = tf.lite.Interpreter(model_content=tflite_model)
     signature_defs = interpreter.get_signature_list()
     self.assertEqual(len(signature_defs), 2)
-    add_signature_runner = interpreter.get_signature_runner('add')
-    sub_signature_runner = interpreter.get_signature_runner('sub')
-    self.assertIsNotNone(add_signature_runner)
-    self.assertIsNotNone(sub_signature_runner)
+
+    with self.assertRaises(ValueError) as error:
+      _ = interpreter.get_signature_runner('add')
+    self.assertIn('This Interpreter doesnt handle multiple signatures properly',
+                  str(error.exception))
 
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):

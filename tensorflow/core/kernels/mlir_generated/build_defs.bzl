@@ -150,6 +150,7 @@ def _gen_kernel_bin_impl(ctx):
         executable = ctx.executable._tool,
         arguments = cmd_args + [
             "--tile_sizes=%s" % tile_sizes,
+            "--max-supported-rank=%s" % ctx.attr.max_supported_rank,
             "--arch=%s" % arch_flag,
             "--input=%s" % ctx.file.mlir_op.path,
             "--output=%s" % gpu_bin.path,
@@ -178,6 +179,7 @@ _gen_kernel_bin_rule = rule(
         "data_type": attr.string(mandatory = True),
         "tile_size": attr.string(mandatory = True),
         "unroll_factors": attr.string(),
+        "max_supported_rank": attr.int(),
         "gpu_archs": attr.string_list(),
         "cpu_codegen": attr.bool(mandatory = False),
         "extra_args": attr.string_list(),
@@ -207,11 +209,14 @@ def _gen_kernel_library(
         types,
         platform,
         tile_size,
+        max_supported_rank = 5,
         output_types = None,
         gpu_archs = [],
         tags = [],
         unroll_factors = None,
-        extra_args = []):
+        extra_args = [],
+        test_tags = [],
+        test_size = "medium"):
     """ Generate a library with GPU or CPU kernels for a specific tensorflow op.
 
     Args:
@@ -219,6 +224,7 @@ def _gen_kernel_library(
       op: The name of the tensorflow op.
       types: The types ("f16", "f32", "f64") for which a kernel should be generated.
       tile_size: The tiling specification, e.g. "16x16".
+      max_supported_rank: Maximum supported rank for rank specialization.
       output_types: The output types for which a kernel should be generated. If
                     specified, the i-th entry in types corresponds to the i-th
                     entry in output_types. By default, output_types = types is
@@ -229,6 +235,8 @@ def _gen_kernel_library(
       tags: The tags which should be added to the library.
       unroll_factors: The unrolling specification, e.g. "4,4"
       extra_args: Extra arguments to pass to the generator tool.
+      test_tags: The tags to pass to the generated test.
+      test_size: The "size" argument to pass to the test.
     """
 
     enable_cpu = bool(platform == "cpu")
@@ -265,6 +273,7 @@ def _gen_kernel_library(
                 gpu_archs = gpu_archs,
                 cpu_codegen = enable_cpu,
                 tile_size = tile_size,
+                max_supported_rank = max_supported_rank,
                 unroll_factors = filtered_unroll_factors,
                 extra_args = extra_args,
                 compatible_with = get_compatible_with_cloud(),
@@ -280,7 +289,7 @@ def _gen_kernel_library(
                     output_type = output_type,
                 ),
                 srcs = ["build_test.sh"],
-                tags = ["no_rocm"],
+                tags = ["no_rocm"] + test_tags,
                 args = [
                     "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
                     "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
@@ -291,7 +300,7 @@ def _gen_kernel_library(
                     ),
                     "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
                 ],
-                size = "medium",
+                size = test_size,
                 data = [
                     ":{op}_{platform}_{type}_{output_type}.mlir".format(
                         op = op,

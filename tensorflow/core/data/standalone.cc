@@ -130,10 +130,12 @@ Status Dataset::MakeIterator(std::unique_ptr<SplitProvider> split_provider,
       CreateParams(pflr_.get(), device_mgr_.get(), &runner_);
   OpKernelContext op_ctx(&op_params, /*num_outputs=*/0);
   IteratorContext::Params params(&op_ctx);
+  params.cancellation_manager = &cancellation_manager_;
   params.function_handle_cache = function_handle_cache_.get();
   params.resource_mgr = &resource_mgr_;
-  params.cancellation_manager = &cancellation_manager_;
   params.split_provider = std::move(split_provider);
+  params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+  params.thread_pool = &unbounded_thread_pool_;
   ctx = absl::make_unique<IteratorContext>(std::move(params));
 
   // Create the iterator from the dataset.
@@ -163,8 +165,9 @@ Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
       device_mgr_(device_mgr),
       flib_def_(flib_def),
       pflr_(pflr),
-      pool_(pool),
-      runner_(std::move(runner)) {
+      interop_threadpool_(pool),
+      runner_(std::move(runner)),
+      unbounded_thread_pool_(Env::Default(), "tf_data_standalone") {
   dataset_->Ref();
   function_handle_cache_ =
       absl::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));

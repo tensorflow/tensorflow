@@ -132,7 +132,9 @@ def register_revived_type(identifier, predicate, versions):
           "Got multiple registrations with version {} for type {}".format(
               registration.version, identifier))
     version_numbers.add(registration.version)
-  if identifier in _REVIVED_TYPE_REGISTRY:
+  # TODO(kathywu): Remove the "optimizer" special case here after the Keras
+  # repo optimizer registration has been submitted.
+  if identifier in _REVIVED_TYPE_REGISTRY and identifier != "optimizer":
     raise AssertionError(
         "Duplicate registrations for type {}".format(identifier))
 

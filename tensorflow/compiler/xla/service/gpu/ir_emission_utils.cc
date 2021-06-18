@@ -94,9 +94,9 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F16 || output_primitive_type == F32 ||
-       output_primitive_type == F64 || output_primitive_type == C64 ||
-       output_primitive_type == C128) ||
+      (output_primitive_type == F16 || output_primitive_type == BF16 ||
+       output_primitive_type == F32 || output_primitive_type == F64 ||
+       output_primitive_type == C64 || output_primitive_type == C128) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
        lhs_shape.element_type() == S8);
   bool shapes_are_valid =
@@ -831,7 +831,7 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
   return func_arg.getArgNumber();
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation> allocations,
     std::string* constant_name) {
   if (constant_name) {
@@ -907,8 +907,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     return false;
   }
 
-  auto maybe_lhs = GetAllocationSliceForMlir(parameter.memref(), allocations);
-  auto maybe_rhs = GetAllocationSliceForMlir(output_buffers[0], allocations);
+  auto maybe_lhs = GetAllocationSlice(parameter.memref(), allocations);
+  auto maybe_rhs = GetAllocationSlice(output_buffers[0], allocations);
   return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
 }
 

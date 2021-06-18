@@ -246,8 +246,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   HandleType Type() const;
   string TypeString() const;
 
-  string DebugString() const;
-
   void SetResourceHandleDtypeAndShape(
       std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes);
 

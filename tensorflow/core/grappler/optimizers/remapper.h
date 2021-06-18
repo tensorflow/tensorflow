@@ -40,9 +40,6 @@ class Remapper : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override;
-
  private:
   RewriterConfig::Toggle opt_level_;
   bool xla_auto_clustering_on_;

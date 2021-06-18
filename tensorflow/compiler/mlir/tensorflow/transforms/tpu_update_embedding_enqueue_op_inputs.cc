@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -38,8 +39,9 @@ namespace {
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kTPUEmbeddingAttr[] = "_tpu_embedding_layer";
 
-struct TPUUpdateEmbeddingEnqueueOpInputs
-    : public PassWrapper<TPUUpdateEmbeddingEnqueueOpInputs, FunctionPass> {
+struct TPUUpdateEmbeddingEnqueueOpInputsPass
+    : public TF::TPUUpdateEmbeddingEnqueueOpInputsPassBase<
+          TPUUpdateEmbeddingEnqueueOpInputsPass> {
   void runOnFunction() override;
 };
 
@@ -137,7 +139,7 @@ LogicalResult UpdateEmbeddingEnqueueOpInput(
   return success();
 }
 
-void TPUUpdateEmbeddingEnqueueOpInputs::runOnFunction() {
+void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnFunction() {
   OpBuilder builder(&getContext());
   auto func_op = getFunction();
 
@@ -171,13 +173,8 @@ void TPUUpdateEmbeddingEnqueueOpInputs::runOnFunction() {
 
 std::unique_ptr<OperationPass<FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass() {
-  return std::make_unique<TPUUpdateEmbeddingEnqueueOpInputs>();
+  return std::make_unique<TPUUpdateEmbeddingEnqueueOpInputsPass>();
 }
-
-static PassRegistration<TPUUpdateEmbeddingEnqueueOpInputs> pass(
-    "tf-tpu-update-embedding-enqueue-op-inputs",
-    "Updates inputs to TPU embedding enqueue ops depending on whether graph "
-    "is in training mode or in evaluation mode.");
 
 }  // namespace TFTPU
 }  // namespace mlir

@@ -106,8 +106,11 @@ HloInstruction* ConvertTupleElements(HloInstruction* hlo,
 }  // namespace
 
 HloElementTypeConverter::HloElementTypeConverter(
-    PrimitiveType eliminate_type, PrimitiveType replace_with_type)
-    : eliminate_type_(eliminate_type), replace_with_type_(replace_with_type) {}
+    PrimitiveType eliminate_type, PrimitiveType replace_with_type,
+    ConverterFilter converter_filter)
+    : eliminate_type_(eliminate_type),
+      replace_with_type_(replace_with_type),
+      converter_filter_(converter_filter) {}
 
 // This routine converts the arithmetic operations in the given module that use
 // eliminate_type_ to operations that use replace_with_type_.
@@ -139,12 +142,19 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
         continue;
       }
 
+      if (converter_filter_ && !converter_filter_(hlo)) {
+        continue;
+      }
+
       // These are ops with embedded computations where it suffices to convert
       // the embedded computations instead of converting the ops themselves.
       if (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
-          opcode == HloOpcode::kAllReduce || opcode == HloOpcode::kFusion ||
-          opcode == HloOpcode::kMap || opcode == HloOpcode::kReduce ||
-          opcode == HloOpcode::kReduceWindow || opcode == HloOpcode::kScatter ||
+          opcode == HloOpcode::kAllReduce ||
+          opcode == HloOpcode::kAllReduceScatter ||
+          opcode == HloOpcode::kAllReduceStart ||
+          opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
+          opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||
+          opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
           opcode == HloOpcode::kSort || opcode == HloOpcode::kConditional) {
         continue;

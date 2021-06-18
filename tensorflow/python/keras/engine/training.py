@@ -74,7 +74,6 @@ from tensorflow.python.saved_model import loader_impl as sm_loader
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
@@ -159,6 +158,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   outputs = tf.keras.layers.Dense(5, activation=tf.nn.softmax)(x)
   model = tf.keras.Model(inputs=inputs, outputs=outputs)
   ```
+
+  Note: Only dicts, lists, and tuples of input tensors are supported. Nested
+  inputs are not supported (e.g. lists of list or dicts of dict).
 
   2 - By subclassing the `Model` class: in that case, you should define your
   layers in `__init__` and you should implement the model's forward pass
@@ -337,15 +339,14 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       return
 
     if all(
-        isinstance(v, (base_layer.Layer,
-                       data_structures.TrackableDataStructure)) or
+        isinstance(v, (base_layer.Layer, variables.Variable)) or
         base_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._base_model_initialized
       except AttributeError:
         raise RuntimeError(
             'It looks like you are subclassing `Model` and you '
-            'forgot to call `super(YourClass, self).__init__()`.'
+            'forgot to call `super().__init__()`.'
             ' Always start with this line.')
 
     super(Model, self).__setattr__(name, value)
@@ -466,7 +467,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     i.e. `model(inputs)`, which relies on the underlying `call` method.
 
     Args:
-        inputs: A tensor or list of tensors.
+        inputs: Input tensor, or dict/list/tuple of input tensors.
         training: Boolean or boolean scalar tensor, indicating whether to run
           the `Network` in training mode or inference mode.
         mask: A mask or list of masks. A mask can be
@@ -619,6 +620,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.train_function = None
     self.test_function = None
     self.predict_function = None
+    # Used to cache the `tf.function`'ed `train_function` to be logged in
+    # TensorBoard, since the original `train_function` is not necessarily
+    # a `tf.function` (e.g., with ParameterServerStrategy, the `train_function`
+    # is a scheduling of the actual training function to a remote worker).
+    self.train_tf_function = None
 
     # Used to cache `trainable` attr of `Layer`s for `fit`.
     self._compiled_trainable_state = self._get_trainable_state()
@@ -871,6 +877,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if not self.run_eagerly:
       train_function = def_function.function(
           train_function, experimental_relax_shapes=True)
+      self.train_tf_function = train_function
 
     self.train_function = train_function
 
@@ -1028,9 +1035,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             `tf.data` dataset, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
             When passing an infinitely repeating dataset, you must specify the
-            `steps_per_epoch` argument. This argument is not supported with
-            array inputs. `steps_per_epoch=None` is not supported when using
-            `tf.distribute.experimental.ParameterServerStrategy`.
+            `steps_per_epoch` argument. If `steps_per_epoch=-1` the training
+            will run indefinitely with an infinitely repeating dataset.
+            This argument is not supported with array inputs.
+            When using `tf.distribute.experimental.ParameterServerStrategy`:
+              * `steps_per_epoch=None` is not supported.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
@@ -1665,9 +1674,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     `Model.fit` and `Model.evaluate`, so inputs must be unambiguous for all
     three methods.
 
-    `Model.predict` is not yet supported with
-    `tf.distribute.experimental.ParameterServerStrategy`.
-
     Returns:
         Numpy array(s) of predictions.
 
@@ -1683,9 +1689,19 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self._check_call_args('predict')
     _disallow_inside_tf_function('predict')
 
+    # TODO(yashkatariya): Cache model on the coordinator for faster prediction.
+    # If running under PSS, then swap it with OneDeviceStrategy so that
+    # execution will run on the coordinator.
+    original_pss_strategy = None
     if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
-      raise NotImplementedError('`model.predict` is not yet supported with '
-                                '`ParameterServerStrategy`.')
+      original_pss_strategy = self.distribute_strategy
+      self._distribution_strategy = None
+
+    # Cluster coordinator is set by `.fit()` and `.evaluate()` which is not
+    # needed in `.predict()` because all the predictions happen on the
+    # coordinator/locally.
+    if self._cluster_coordinator:
+      self._cluster_coordinator = None
 
     outputs = None
     with self.distribute_strategy.scope():
@@ -1753,6 +1769,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         raise ValueError('Expect x to be a non-empty array or dataset.')
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
+
+    # If originally PSS strategy was used, then replace it back since predict
+    # is running under `OneDeviceStrategy` after the swap and once its done
+    # we need to replace it back to PSS again.
+    if original_pss_strategy is not None:
+      self._distribution_strategy = original_pss_strategy
+
     return tf_utils.sync_to_numpy_or_python_type(all_outputs)
 
   def reset_metrics(self):
@@ -2724,14 +2747,17 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     train_function = self.train_function
     test_function = self.test_function
     predict_function = self.predict_function
+    train_tf_function = self.train_tf_function
     self.train_function = None
     self.test_function = None
     self.predict_function = None
+    self.train_tf_function = None
     functions = super(
         Model, self)._list_functions_for_serialization(serialization_cache)
     self.train_function = train_function
     self.test_function = test_function
     self.predict_function = predict_function
+    self.train_tf_function = train_tf_function
     return functions
 
   def _should_eval(self, epoch, validation_freq):

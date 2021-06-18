@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/graph_view.h"
 #include "tensorflow/core/common_runtime/immutable_executor_state.h"
+#include "tensorflow/core/common_runtime/metric_util.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/propagator_state.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
@@ -344,6 +345,8 @@ class ExecutorState {
   const bool log_memory_;
 
   int64 step_id_;
+  int64 start_time_usecs_ = 0;
+
   // Not owned.
   RendezvousInterface* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
@@ -394,6 +397,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
     : vlog_(VLOG_IS_ON(1)),
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
+      start_time_usecs_(args.start_time_usecs),
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
@@ -767,6 +771,11 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
               << " device: " << device->name();
     }
 
+    const NodeDef& ndef = item.kernel->def();
+    if (TF_PREDICT_FALSE(ShouldLogLatencyMetrics(ndef))) {
+      LogLatencyMetrics(ndef, EnvTime::NowMicros(), start_time_usecs_);
+    }
+
     Entry* first_input = propagator_.GetInputTensors(tagged_node);
 
     // Only execute this node if it is not dead or it is a send/recv
@@ -991,6 +1000,9 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
                 "to RunOptions for current allocation info. This isn't "
                 "available when running in Eager mode.\n"));
       }
+    } else if (s.code() == error::UNAVAILABLE &&
+               !item.is_distributed_communication) {
+      s = errors::ReplaceErrorFromNonCommunicationOps(s, item.kernel->name());
     }
     return s;
   }

@@ -15,6 +15,7 @@
 
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist")
 
 package(
     default_visibility = [
@@ -117,7 +118,7 @@ cc_library(
     name = "nnapi_plugin_impl",
     srcs = ["nnapi_plugin.cc"],
     hdrs = ["nnapi_plugin.h"],
-    visibility = [
+    visibility = nnapi_plugin_impl_visibility_allowlist() + [
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [

@@ -24,6 +24,7 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_fingerprint_deps",
+    "tf_kernel_tests_linkstatic",
 )
 
 # buildifier: disable=same-origin-load
@@ -49,12 +50,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# For platform specific build config
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -1164,6 +1159,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
+    # Suppress a benign but noisy "Stack size for entry function foo cannot be
+    # statically determined." ptxas warning.
+    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     prefix = "quantize_and_dequantize_op",
     deps = ARRAY_DEPS + [":cwise_op"],
 )
@@ -1252,6 +1250,9 @@ tf_kernel_library(
         "tile_functor_cpu_variant.cc",
     ],
     hdrs = ["tile_functor.h"],
+    # Suppress a benign but noisy "Stack size for entry function foo cannot be
+    # statically determined." ptxas warning.
+    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     gpu_srcs = [
         "tile_functor.h",
         "tile_functor_gpu.h",
@@ -1325,6 +1326,43 @@ tf_kernel_library(
                "//tensorflow/core/util:cuda_solvers",
            ]) + [":gpu_prim_hdrs"] +
            ARRAY_DEPS,
+)
+
+cc_library(
+    name = "composite_tensor_variant",
+    srcs = ["composite_tensor_variant.cc"],
+    hdrs = ["composite_tensor_variant.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "composite_tensor_variant_test",
+    size = "small",
+    srcs = ["composite_tensor_variant_test.cc"],
+    deps = [
+        ":composite_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "composite_tensor_ops",
+    srcs = ["composite_tensor_ops.cc"],
+    deps = [
+        ":composite_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -1537,6 +1575,9 @@ tf_cc_test(
     name = "batch_norm_op_test",
     size = "small",
     srcs = ["batch_norm_op_test.cc"],
+    tags = [
+        "no_oss",  # b/189866692
+    ],
     deps = [
         ":batch_norm_op",
         ":ops_testutil",
@@ -1788,6 +1829,7 @@ tf_cuda_cc_test(
     srcs = ["depthwise_conv_ops_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171342266): re-enable.
+        "no_gpu",  # flaky, TODO(b/191214648)
     ],
     deps = [
         ":conv_ops",
@@ -3421,6 +3463,7 @@ tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
     deps = MATH_DEPS + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
         "//tensorflow/core/util:cuda_solvers",
     ]),
 )
@@ -4066,6 +4109,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "xent_op",
+    # Suppress a benign but noisy "Stack size for entry function foo cannot be
+    # statically determined." ptxas warning.
+    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     prefix = "xent_op",
     deps = NN_DEPS,
 )
@@ -4223,6 +4269,9 @@ tf_kernel_library(
     name = "fake_quant_ops",
     srcs = ["fake_quant_ops.cc"],
     hdrs = ["fake_quant_ops_functor.h"],
+    # Suppress a benign but noisy "Stack size for entry function foo cannot be
+    # statically determined." ptxas warning.
+    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     gpu_srcs = [
         "fake_quant_ops_gpu.cu.cc",
         "fake_quant_ops_functor.h",
@@ -4725,6 +4774,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_xent_op",
+    # Suppress a benign but noisy "Stack size for entry function foo cannot be
+    # statically determined." ptxas warning.
+    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     prefix = "sparse_xent_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
@@ -6035,6 +6087,7 @@ filegroup(
         "//tensorflow/core/data:root_dataset.h",
         "//tensorflow/core/data:split_utils.h",
         "//tensorflow/core/data:stats_utils.h",
+        "//tensorflow/core/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
@@ -6048,7 +6101,6 @@ filegroup(
         "//tensorflow/core/kernels/data:reduce_dataset_op.h",
         "//tensorflow/core/kernels/data:repeat_dataset_op.h",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
-        "//tensorflow/core/kernels/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.h",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
@@ -6313,6 +6365,7 @@ filegroup(
         "sparse_xent_op.cc",
         "sparse_fill_empty_rows_op.cc",
         "sparse_reshape_op.cc",
+        "sparse_slice_op.cc",
         "sparse_to_dense_op.cc",
         "spectrogram.cc",
         "spectrogram_op.cc",
@@ -6380,6 +6433,7 @@ filegroup(
         "//tensorflow/core/data:root_dataset.cc",
         "//tensorflow/core/data:split_utils.cc",
         "//tensorflow/core/data:stats_utils.cc",
+        "//tensorflow/core/data:unbounded_thread_pool.cc",
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
         "//tensorflow/core/kernels/data:finalize_dataset_op.cc",
@@ -6392,7 +6446,6 @@ filegroup(
         "//tensorflow/core/kernels/data:reduce_dataset_op.cc",
         "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
-        "//tensorflow/core/kernels/data:unbounded_thread_pool.cc",
         # TODO(b/185903858): This should not be needed since this is part of tensorflow/core/kernels/data/experimental:portable_all_op_kernels.
         "//tensorflow/core/kernels/data/experimental:lookup_ops.cc",
         "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.cc",
@@ -6566,6 +6619,7 @@ cc_library(
         "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
+    features = ["-no_undefined"],
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
@@ -7492,6 +7546,7 @@ exports_files([
     "cwise_op_select.cc",
     "cwise_op_sigmoid.cc",
     "cwise_op_sin.cc",
+    "cwise_op_sign.cc",
     "cwise_op_sqrt.cc",
     "cwise_op_square.cc",
     "cwise_op_squared_difference.cc",

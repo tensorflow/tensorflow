@@ -56,7 +56,15 @@ typedef enum TfLiteStatus {
   // incompatibility between runtime and delegate, e.g., this error is returned
   // when trying to apply a TfLite delegate onto a model graph that's already
   // immutable.
-  kTfLiteApplicationError = 3
+  kTfLiteApplicationError = 3,
+
+  // Generally referring to serialized delegate data not being found.
+  // See tflite::delegates::Serialization.
+  kTfLiteDelegateDataNotFound = 4,
+
+  // Generally referring to data-writing issues in delegate serialization.
+  // See tflite::delegates::Serialization.
+  kTfLiteDelegateDataWriteError = 5,
 } TfLiteStatus;
 
 // Types supported by tensor

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -202,9 +205,10 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
       *interval.buffer->defining_instruction();
   float alternate_mem_benefit = GetAlternateMemoryBenefit(
       defining_instruction,
-      GetInstructionElapsedDueToMemory(defining_instruction,
-                                       /*operand_in_alternate_mem=*/{},
-                                       /*output_in_alternate_mem=*/true),
+      GetInstructionElapsedDueToMemory(
+          defining_instruction,
+          /*operands_in_alternate_mem=*/{},
+          /*outputs_in_alternate_mem=*/{interval.buffer->defining_index()}),
       cache);
   for (const HloBuffer* buffer : alias_analysis_->ComputeBuffersAt(
            interval.buffer->defining_position().instruction,
@@ -217,11 +221,13 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
             use.instruction->opcode() == HloOpcode::kConditional) {
           continue;
         }
-        float use_alternate_mem_benefit =
-            GetAlternateMemoryBenefit(*use.instruction,
-                                      GetInstructionElapsedDueToMemory(
-                                          *use.instruction, use.operand_number),
-                                      cache);
+        float use_alternate_mem_benefit = GetAlternateMemoryBenefit(
+            *use.instruction,
+            GetInstructionElapsedDueToMemory(
+                *use.instruction,
+                /*operands_in_alternate_mem=*/{std::make_pair(
+                    use.operand_number, use.operand_index)}),
+            cache);
         // If the benefit is positive (memory bound), add it to this buffer's
         // benefit. If the benefit is negative (compute bound), calculate the
         // maximum.
@@ -269,39 +275,28 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
-    absl::optional<int64> operand_in_alternate_mem,
-    bool output_in_alternate_mem) const {
-  float bytes_accessed = cost_analysis_.bytes_accessed(instruction);
-  float elapsed_due_to_bytes =
-      bytes_accessed /
-      cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
-  if (operand_in_alternate_mem) {
-    // Estimate the elapsed time due to the operand being in the alternate
-    // memory space.
+    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
+    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
+  float total_bytes_accessed = cost_analysis_.bytes_accessed(instruction);
+  float bytes_accessed_from_alternate_mem = 0.0;
+  for (auto& operand : operands_in_alternate_mem) {
     float operand_bytes_accessed = cost_analysis_.operand_bytes_accessed(
-        instruction, *operand_in_alternate_mem);
-    float elapsed_due_to_operand_bytes =
-        operand_bytes_accessed / alternate_mem_bandwidth_bytes_per_second_;
-    bytes_accessed -= operand_bytes_accessed;
-    elapsed_due_to_bytes =
-        elapsed_due_to_operand_bytes +
-        bytes_accessed /
-            cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+        instruction, operand.first, operand.second);
+    bytes_accessed_from_alternate_mem += operand_bytes_accessed;
   }
-  if (output_in_alternate_mem) {
-    // Estimate the elapsed time due to the output being in the alternate memory
-    // space.
+
+  for (auto& shape_idx : outputs_in_alternate_mem) {
     float output_bytes_accessed =
-        cost_analysis_.output_bytes_accessed(instruction);
-    float elapsed_due_to_output_bytes =
-        output_bytes_accessed / alternate_mem_bandwidth_bytes_per_second_;
-    bytes_accessed -= output_bytes_accessed;
-    elapsed_due_to_bytes =
-        elapsed_due_to_output_bytes +
-        bytes_accessed /
-            cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+        cost_analysis_.output_bytes_accessed(instruction, shape_idx);
+    bytes_accessed_from_alternate_mem += output_bytes_accessed;
   }
-  return elapsed_due_to_bytes;
+  float elapsed_due_to_alternate_mem =
+      bytes_accessed_from_alternate_mem /
+      alternate_mem_bandwidth_bytes_per_second_;
+  float elapsed_due_to_default_mem =
+      (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
+      cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
+  return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsed(
@@ -312,12 +307,12 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsed(
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
-    absl::optional<int64> operand_in_alternate_mem,
-    bool output_in_alternate_mem) const {
+    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
+    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
   return std::max(
       GetInstructionElapsedDueToCompute(instruction),
-      GetInstructionElapsedDueToMemory(instruction, operand_in_alternate_mem,
-                                       output_in_alternate_mem));
+      GetInstructionElapsedDueToMemory(instruction, operands_in_alternate_mem,
+                                       outputs_in_alternate_mem));
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
@@ -504,8 +499,10 @@ int64 CostAnalysisPrefetchIntervalPicker::LatestPrefetchStartTime(
         cost_analysis_.GetInstructionElapsed(*use->instruction);
     float elapsed_time_in_alternate_mem =
         cost_analysis_.GetInstructionElapsedInAlternateMemory(
-            *use->instruction, use->operand_number,
-            /*output_in_alternate_mem=*/false);
+            *use->instruction,
+            /*operands_in_alternate_mem=*/
+            {std::make_pair(use->operand_number, use->operand_index)},
+            /*outputs_in_alternate_mem=*/{});
     inst_elapsed_reduction = elapsed_time - elapsed_time_in_alternate_mem;
   }
   int end_nest_level = computation_nest_level_[end_time];
@@ -577,8 +574,9 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   float elapsed_time = cost_analysis_.GetInstructionElapsed(*use.instruction);
   float elapsed_time_in_alternate_mem =
       cost_analysis_.GetInstructionElapsedInAlternateMemory(
-          *use.instruction, use.operand_number,
-          /*output_in_alternate_mem=*/false);
+          *use.instruction, /*operands_in_alternate_mem=*/
+          {std::make_pair(use.operand_number, use.operand_index)},
+          /*outputs_in_alternate_mem=*/{});
   inst_elapsed_reduction_ = elapsed_time - elapsed_time_in_alternate_mem;
   end_logical_time_ = end_time;
   int end_nest_level = computation_nest_level_[end_logical_time_];
@@ -2782,7 +2780,6 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
   };
 }
 
-
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::Run(HloModule* module,
                            const HloLiveRange& hlo_live_range,
@@ -2804,6 +2801,13 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
   TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
+
+  if (options_.cost_analysis) {
+    float estimated_time =
+        ComputeEstimatedElapsedTime(hlo_live_range, allocations_);
+    LOG(INFO) << "Estimated elapsed time (sec): " << estimated_time;
+  }
+
   TF_RETURN_IF_ERROR(Process());
   ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(SimplifyGraph());
@@ -2871,6 +2875,58 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
   operand = get_simplified_operand(operand);
 
   uses_.push_back(use);
+}
+
+float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
+    const HloLiveRange& hlo_live_range, const AllocationSequence& allocations) {
+  absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
+      outputs_in_alternate_memory_map;
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<std::pair<int64, ShapeIndex>>>
+      operands_in_alternate_memory_map;
+
+  for (auto& allocation : allocations) {
+    if (!allocation->is_copy_allocation()) {
+      if (allocation->memory_space() == MemorySpace::kAlternate) {
+        const HloInstruction* defining_instruction =
+            allocation->defining_position().instruction;
+        outputs_in_alternate_memory_map[defining_instruction].push_back(
+            allocation->defining_position().index);
+      }
+    }
+    for (auto& hlo_use : allocation->uses()) {
+      const HloInstruction* use_instruction = hlo_use.instruction;
+      operands_in_alternate_memory_map[use_instruction].push_back(
+          std::make_pair(hlo_use.operand_number, hlo_use.operand_index));
+    }
+  }
+
+  const auto& instruction_sequence =
+      hlo_live_range.flattened_instruction_sequence().instructions();
+  float total_elapsed = 0.0;
+  for (const HloInstruction* instruction : instruction_sequence) {
+    std::vector<ShapeIndex> outputs_in_alternate_memory;
+    auto output_it = outputs_in_alternate_memory_map.find(instruction);
+    if (output_it != outputs_in_alternate_memory_map.end()) {
+      outputs_in_alternate_memory = output_it->second;
+    }
+    std::vector<std::pair<int64_t, ShapeIndex>> operands_in_alternate_memory;
+    auto operand_it = operands_in_alternate_memory_map.find(instruction);
+    if (operand_it != operands_in_alternate_memory_map.end()) {
+      operands_in_alternate_memory = operand_it->second;
+    }
+    float instruction_elapsed =
+        options_.cost_analysis->GetInstructionElapsedInAlternateMemory(
+            *instruction, operands_in_alternate_memory,
+            outputs_in_alternate_memory);
+    float while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+        kWhileExecutionCount,
+        options_.cost_analysis->CalculateComputationNestLevel(
+            instruction,
+            /*while_only=*/true));
+    total_elapsed += while_nest_multiplier * instruction_elapsed;
+  }
+  return total_elapsed;
 }
 
 Status MemorySpaceAssignment::Allocation::Process(

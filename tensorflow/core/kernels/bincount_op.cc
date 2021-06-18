@@ -55,7 +55,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     // ParallelForWithWorkerId range from 0 to NumThreads() inclusive.
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
-    const int64 num_threads = thread_pool->NumThreads() + 1;
+    const int64_t num_threads = thread_pool->NumThreads() + 1;
     Tensor partial_bins_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
         DT_BOOL, TensorShape({num_threads, num_bins}), &partial_bins_t));
@@ -63,8 +63,8 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     partial_bins.setZero();
     thread_pool->ParallelForWithWorkerId(
         arr.size(), 8 /* cost */,
-        [&](int64 start_ind, int64 limit_ind, int64 worker_id) {
-          for (int64 i = start_ind; i < limit_ind; i++) {
+        [&](int64_t start_ind, int64_t limit_ind, int64_t worker_id) {
+          for (int64_t i = start_ind; i < limit_ind; i++) {
             Tidx value = arr(i);
             if (value < num_bins) {
               partial_bins(worker_id, value) = true;
@@ -100,32 +100,65 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
     // ParallelForWithWorkerId range from 0 to NumThreads() inclusive.
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
-    const int64 num_threads = thread_pool->NumThreads() + 1;
-    Tensor partial_bins_t;
-    TF_RETURN_IF_ERROR(context->allocate_temp(
-        DataTypeToEnum<T>::value, TensorShape({num_threads, num_bins}),
-        &partial_bins_t));
-    auto partial_bins = partial_bins_t.matrix<T>();
-    partial_bins.setZero();
-    thread_pool->ParallelForWithWorkerId(
-        arr.size(), 8 /* cost */,
-        [&](int64 start_ind, int64 limit_ind, int64 worker_id) {
-          for (int64 i = start_ind; i < limit_ind; i++) {
-            Tidx value = arr(i);
-            if (value < num_bins) {
-              if (weights.size()) {
-                partial_bins(worker_id, value) += weights(i);
-              } else {
-                // Complex numbers don't support "++".
-                partial_bins(worker_id, value) += T(1);
+    const int64_t num_threads = thread_pool->NumThreads() + 1;
+    const Tidx* arr_data = arr.data();
+    const std::ptrdiff_t arr_size = arr.size();
+    const T* weight_data = weights.data();
+    if (weights.size() && weights.size() != arr_size) {
+      return errors::InvalidArgument(
+          "Input indices and weights must have the same size.");
+    }
+    if (num_threads == 1) {
+      output.setZero();
+      T* output_data = output.data();
+      if (weights.size()) {
+        for (int64_t i = 0; i < arr_size; i++) {
+          const Tidx value = arr_data[i];
+          if (value < num_bins) {
+            output_data[value] += weight_data[i];
+          }
+        }
+      } else {
+        for (int64_t i = 0; i < arr_size; i++) {
+          const Tidx value = arr_data[i];
+          if (value < num_bins) {
+            // Complex numbers don't support "++".
+            output_data[value] += T(1);
+          }
+        }
+      }
+    } else {
+      Tensor partial_bins_t;
+      TF_RETURN_IF_ERROR(context->allocate_temp(
+          DataTypeToEnum<T>::value, TensorShape({num_threads, num_bins}),
+          &partial_bins_t));
+      auto partial_bins = partial_bins_t.matrix<T>();
+      partial_bins.setZero();
+      thread_pool->ParallelForWithWorkerId(
+          arr_size, 8 /* cost */,
+          [&](int64_t start_ind, int64_t limit_ind, int64_t worker_id) {
+            if (weights.size()) {
+              for (int64_t i = start_ind; i < limit_ind; i++) {
+                Tidx value = arr_data[i];
+                if (value < num_bins) {
+                  partial_bins(worker_id, value) += weight_data[i];
+                }
+              }
+            } else {
+              for (int64_t i = start_ind; i < limit_ind; i++) {
+                Tidx value = arr_data[i];
+                if (value < num_bins) {
+                  // Complex numbers don't support "++".
+                  partial_bins(worker_id, value) += T(1);
+                }
               }
             }
-          }
-        });
+          });
 
-    // Sum the partial bins along the 0th axis.
-    Eigen::array<int, 1> reduce_dim({0});
-    output.device(context->eigen_cpu_device()) = partial_bins.sum(reduce_dim);
+      // Sum the partial bins along the 0th axis.
+      Eigen::array<int, 1> reduce_dim({0});
+      output.device(context->eigen_cpu_device()) = partial_bins.sum(reduce_dim);
+    }
     return Status::OK();
   }
 };
@@ -143,9 +176,9 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
         context->device()->tensorflow_cpu_worker_threads()->workers;
     thread_pool->ParallelForWithWorkerId(
         num_rows, 8 /* cost */,
-        [&](int64 start_row, int64 end_row, int64 worker_id) {
-          for (int64 i = start_row; i < end_row; ++i) {
-            for (int64 j = 0; j < num_cols; ++j) {
+        [&](int64_t start_row, int64_t end_row, int64_t worker_id) {
+          for (int64_t i = start_row; i < end_row; ++i) {
+            for (int64_t j = 0; j < num_cols; ++j) {
               Tidx value = in(i, j);
               if (value < num_bins) {
                 if (binary_output) {
@@ -178,20 +211,20 @@ class BincountOp : public OpKernel {
     OP_REQUIRES(ctx, size_tensor.dims() == 0,
                 errors::InvalidArgument("Shape must be rank 0 but is rank ",
                                         size_tensor.dims()));
-    int32 size = size_tensor.scalar<int32>()();
+    int32_t size = size_tensor.scalar<int32_t>()();
     OP_REQUIRES(
         ctx, size >= 0,
         errors::InvalidArgument("size (", size, ") must be non-negative"));
 
     const Tensor& weights_t = ctx->input(2);
-    const auto arr = arr_t.flat<int32>();
+    const auto arr = arr_t.flat<int32_t>();
     const auto weights = weights_t.flat<T>();
     Tensor* output_t;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({size}), &output_t));
     auto output = output_t->flat<T>();
     OP_REQUIRES_OK(ctx,
-                   functor::BincountFunctor<Device, int32, T, false>::Compute(
+                   functor::BincountFunctor<Device, int32_t, T, false>::Compute(
                        ctx, arr, weights, output, size));
   }
 };
@@ -256,10 +289,10 @@ class DenseBincountOp : public OpKernel {
                      ctx, data.flat<Tidx>(), weights.flat<T>(), out, size));
       }
     } else if (data.dims() == 2) {
-      const int64 num_rows = data.dim_size(0);
+      const int64_t num_rows = data.dim_size(0);
       auto weight_matrix =
           (weights.NumElements() == 0)
-              ? weights.shaped<T, 2>(gtl::InlinedVector<int64, 2>(2, 0))
+              ? weights.shaped<T, 2>(gtl::InlinedVector<int64_t, 2>(2, 0))
               : weights.matrix<T>();
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
@@ -329,7 +362,7 @@ class SparseBincountOp : public OpKernel {
     const Tensor& dense_shape = ctx->input(2);
     const Tensor& size_t = ctx->input(3);
     const auto weights = ctx->input(4).flat<T>();
-    const int64 weights_size = weights.size();
+    const int64_t weights_size = weights.size();
 
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(
@@ -354,15 +387,15 @@ class SparseBincountOp : public OpKernel {
                      ctx, values, weights, out, size));
       }
     } else {
-      const auto shape = dense_shape.flat<int64>();
-      const int64 num_rows = shape(0);
+      const auto shape = dense_shape.flat<int64_t>();
+      const int64_t num_rows = shape(0);
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
       const auto out = out_t->matrix<T>();
       fill(ctx->eigen_device<Device>(), out_t->flat<T>());
-      const auto indices_mat = indices.matrix<int64>();
-      for (int64 i = 0; i < indices_mat.dimension(0); ++i) {
-        const int64 batch = indices_mat(i, 0);
+      const auto indices_mat = indices.matrix<int64_t>();
+      for (int64_t i = 0; i < indices_mat.dimension(0); ++i) {
+        const int64_t batch = indices_mat(i, 0);
         const Tidx bin = values(i);
         if (bin < size) {
           if (binary_output_) {
@@ -405,11 +438,11 @@ class RaggedBincountOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    const auto splits = ctx->input(0).flat<int64>();
+    const auto splits = ctx->input(0).flat<int64_t>();
     const auto values = ctx->input(1).flat<Tidx>();
     const Tensor& size_t = ctx->input(2);
     const auto weights = ctx->input(3).flat<T>();
-    const int64 weights_size = weights.size();
+    const int64_t weights_size = weights.size();
 
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(

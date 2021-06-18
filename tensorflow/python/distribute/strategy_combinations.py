@@ -293,6 +293,10 @@ mirrored_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     "MirroredCPUAndGPU",
     lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/cpu:0"]),
     required_gpus=1)
+mirrored_strategy_with_two_cpus = combinations.NamedDistribution(
+    "Mirrored2CPUs",
+    lambda: _mirrored_strategy_with_collective_key_base(["/cpu:0", "/cpu:1"]),
+    required_gpus=0)
 mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/gpu:1"]),
@@ -302,6 +306,7 @@ mirrored_strategy_with_two_gpus_no_merge_call = combinations.NamedDistribution(
     lambda: _mirrored_strategy_with_no_merge_call(["/gpu:0", "/gpu:1"]),
     required_physical_gpus=2)
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
+# Deprecated, use mirrored_strategy_with_two_cpus instead.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
     "Mirrored2CPU",
     lambda: _mirrored_strategy_with_collective_key_base(["/cpu:1", "/cpu:2"]))

@@ -58,9 +58,6 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
                   const grappler::GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
-  void Feedback(grappler::Cluster* cluster, const grappler::GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override;
-
   void PrintDebugInfo(grappler::Cluster* cluster,
                       const grappler::GrapplerItem& item);
 

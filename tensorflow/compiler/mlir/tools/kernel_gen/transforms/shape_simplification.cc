@@ -16,9 +16,12 @@ limitations under the License.
 // This file contains the patterns to simplify shape ops that were deemed not
 // suitable for shape op canonicalization in MLIR Core.
 
+#include "llvm/ADT/Optional.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -149,6 +152,84 @@ struct ExtractFromExtentTensorCanonicalizationPattern
   }
 };
 
+// Convert cases like:
+// ```
+//  %1 = shape.shape_of %arg0 : tensor<?x?x?xf64> -> tensor<3xindex>
+//  %2 = shape.shape_of %arg1 : tensor<?x?x1xf64> -> tensor<3xindex>
+//  %3 = shape.broadcast %1, %2 : tensor<3xindex>, tensor<3xindex>
+//                                -> tensor<3xindex>
+//  %result = tensor.extract %3[%c2] : tensor<3xindex>
+// ```
+// to
+//
+// ```
+//  %result = memref.dim %arg0[%c2] : tensor<?x?x2048xf64>
+// ```
+struct ExtractFromBroadcastedTensorCanonicalizationPattern
+    : public OpRewritePattern<tensor::ExtractOp> {
+  using OpRewritePattern<tensor::ExtractOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::ExtractOp op,
+                                PatternRewriter &rewriter) const override {
+    // Confirm that there is a constant index. This is required, so we can
+    // confirm the DimOp's input will define the resulting broadcasted shape in
+    // that dimension.
+    auto index = op.indices().front().getDefiningOp<ConstantIndexOp>();
+    if (!index) return failure();
+    auto idx = index.getValue();
+    auto broadcast_op = op.tensor().getDefiningOp<BroadcastOp>();
+    if (!broadcast_op) return failure();
+
+    // Iterate through the operands with 3 considerations in this order:
+    // 1. If a static, non-1 dimension is seen, we know this to be the
+    // broadcasted result
+    // 2. If a single dynamic dimension is seen, we know this to be the
+    // broadcasted result (with a possibly 1 or non-1 result)
+    // 3. If no dynamic dimensions and no non-1 static dimensions are seen, we
+    // know the result to be 1
+    //
+    // Iterate through all operands, keeping track of dynamic dimensions and
+    // returning immediately if a non-1 static dimension is seen.
+    ShapeOfOp dynamic_shape;
+    int64_t num_dynamic = 0;
+    for (auto shape : broadcast_op.shapes()) {
+      auto shape_of_op = shape.getDefiningOp<ShapeOfOp>();
+      if (!shape_of_op) return failure();
+      auto shaped_type =
+          shape_of_op->getOperandTypes().front().cast<ShapedType>();
+
+      // Abort on the existence of unranked shapes as they require more logic.
+      if (!shaped_type.hasRank()) return failure();
+      if (shaped_type.getRank() <= idx) continue;
+
+      // Only consider dynamic dimensions after the loop because any non-1
+      // static dimension takes precedence.
+      if (shaped_type.isDynamicDim(idx)) {
+        dynamic_shape = shape_of_op;
+        num_dynamic++;
+        continue;
+      }
+
+      if (shaped_type.getDimSize(idx) == 1) continue;
+
+      // Return as soon as we see a non-1 static dim.
+      rewriter.replaceOpWithNewOp<ConstantIndexOp>(op,
+                                                   shaped_type.getDimSize(idx));
+      return success();
+    }
+    if (num_dynamic > 1) return failure();
+
+    // Replace with the single dynamic dimension or 1.
+    if (dynamic_shape) {
+      rewriter.replaceOpWithNewOp<memref::DimOp>(op, dynamic_shape.arg(),
+                                                 index);
+    } else {
+      rewriter.replaceOpWithNewOp<ConstantIndexOp>(op, 1);
+    }
+    return success();
+  }
+};
+
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
@@ -156,6 +237,7 @@ struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
+    registry.insert<mlir::StandardOpsDialect>();
     registry.insert<shape::ShapeDialect>();
   }
 
@@ -172,6 +254,7 @@ struct ShapeSimplification
     }
 
     patterns.insert<BroadcastRemoveSubsumedOperandsPattern,
+                    ExtractFromBroadcastedTensorCanonicalizationPattern,
                     ExtractFromExtentTensorCanonicalizationPattern>(context);
 
     auto func = getFunction();

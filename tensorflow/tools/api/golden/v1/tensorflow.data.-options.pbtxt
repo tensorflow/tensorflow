@@ -24,7 +24,7 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_threading"
+    name: "threading"
     mtype: "<type \'property\'>"
   }
   member_method {

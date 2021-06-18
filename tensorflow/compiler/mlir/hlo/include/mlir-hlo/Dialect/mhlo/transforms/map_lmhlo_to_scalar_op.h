@@ -323,7 +323,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ExpOp>(Location loc,
                                                   ArrayRef<Type> arg_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::ExpOp>{}(
+  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::ExpOp,
+                                 isComplexType, ::mlir::complex::ExpOp>{}(
       loc, result_types, arg_types, args, b);
 }
 
@@ -670,8 +671,9 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::NegOp>(Location loc,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(args.front().getType());
-  if (element_type.isa<FloatType>()) {
-    return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::NegFOp>{}(
+  if (element_type.isa<ComplexType, FloatType>()) {
+    return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::NegFOp, isComplexType,
+                                   ::mlir::complex::NegOp>{}(
         loc, result_types, arg_types, args, b);
   }
   if (element_type.isa<IntegerType>()) {
@@ -885,6 +887,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
         b->create<::mlir::SignedShiftRightOp>(loc, args[0], bitwidth_minus_one);
     Value or_op = b->create<::mlir::OrOp>(loc, ashr, one);
     return b->create<::mlir::SelectOp>(loc, cmp, zero, or_op);
+  } else if (element_type.isa<ComplexType>()) {
+    return b->create<::mlir::complex::SignOp>(loc, element_type, args.front());
   }
   return nullptr;
 }

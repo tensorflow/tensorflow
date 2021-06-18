@@ -162,6 +162,9 @@ bool CanInferShape(HloOpcode code) {
     // but we made it so that we always write the shapes explicitly.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
@@ -1099,6 +1102,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
@@ -1241,13 +1245,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           use_global_device_ids ? *use_global_device_ids : false));
       break;
     }
-    case HloOpcode::kAllReduce: {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kAllReduceStart: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
       optional<int64> channel_id;
       optional<bool> constrain_layout;
       optional<bool> use_global_device_ids;
+      optional<std::vector<int64>> dimensions;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
@@ -1257,6 +1264,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
+      if (opcode == HloOpcode::kAllReduceScatter) {
+        attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                               &dimensions};
+      }
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1264,10 +1275,25 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
-          shape, operands, *to_apply, replica_groups,
-          constrain_layout ? *constrain_layout : false, channel_id,
-          use_global_device_ids ? *use_global_device_ids : false));
+      if (opcode == HloOpcode::kAllReduce) {
+        instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
+            shape, operands, *to_apply, replica_groups,
+            constrain_layout ? *constrain_layout : false, channel_id,
+            use_global_device_ids ? *use_global_device_ids : false));
+      } else if (opcode == HloOpcode::kAllReduceScatter) {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAllReduceScatter(
+                shape, operands, *to_apply, replica_groups,
+                constrain_layout ? *constrain_layout : false, channel_id,
+                use_global_device_ids ? *use_global_device_ids : false,
+                dimensions->at(0)));
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAllReduceStart(
+                shape, operands, *to_apply, replica_groups,
+                constrain_layout ? *constrain_layout : false, channel_id,
+                use_global_device_ids ? *use_global_device_ids : false));
+      }
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -3113,7 +3139,28 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   return true;
 }
 
+// Similar to ParseLiteral(Literal* literal, const Shape& shape), but parse the
+// shape instead of accepting one as argument.
 bool HloParserImpl::ParseLiteral(Literal* literal) {
+  if (lexer_.GetKind() == TokKind::kLparen) {
+    // Consume Lparen
+    lexer_.Lex();
+    std::vector<Literal> elements;
+    while (lexer_.GetKind() != TokKind::kRparen) {
+      Literal element;
+      if (!ParseLiteral(&element)) {
+        return TokenError("Fails when parsing tuple element");
+      }
+      elements.emplace_back(std::move(element));
+      if (lexer_.GetKind() != TokKind::kRparen) {
+        ParseToken(TokKind::kComma, "expects ',' to separate tuple elements");
+      }
+    }
+
+    *literal = LiteralUtil::MakeTupleOwned(std::move(elements));
+    // Consume Rparen
+    return ParseToken(TokKind::kRparen, "expects ')' to close a tuple literal");
+  }
   Shape literal_shape;
   if (!ParseShape(&literal_shape)) {
     return false;
@@ -3904,14 +3951,8 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kLiteral: {
-        if (!ParseToken(TokKind::kLparen, "expects '(' before literal")) {
-          return false;
-        }
         Literal result;
         if (!ParseLiteral(&result)) {
-          return false;
-        }
-        if (!ParseToken(TokKind::kRparen, "expects ')' after literal")) {
           return false;
         }
         static_cast<optional<Literal>*>(attr_out_ptr)
@@ -4153,7 +4194,10 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
 }
 
 // This is the inverse of HloInstruction::ConvolutionDimensionNumbersToString.
-// Thestring looks like "dim_labels=0bf_0io->0bf".
+// The string looks like "dim_labels=0bf_0io->0bf".
+//
+// '?' dims don't appear in ConvolutionDimensionNumbers.  There can be more than
+// one '?' dim.
 bool HloParserImpl::ParseConvolutionDimensionNumbers(
     ConvolutionDimensionNumbers* dnums) {
   if (lexer_.GetKind() != TokKind::kDimLabels) {
@@ -4177,88 +4221,116 @@ bool HloParserImpl::ParseConvolutionDimensionNumbers(
   absl::string_view rhs = split2[0];
   absl::string_view out = split2[1];
 
-  const int64 rank = lhs.length();
-  if (rank != rhs.length() || rank != out.length()) {
-    return TokenError(
-        "convolution lhs, rhs, and output must have the same rank");
-  }
-  if (rank < 2) {
-    return TokenError("convolution rank must >=2");
-  }
-
-  auto is_unique = [](std::string str) -> bool {
-    absl::c_sort(str);
-    return std::unique(str.begin(), str.end()) == str.end();
+  auto is_unique = [](absl::string_view str) -> bool {
+    absl::flat_hash_set<char> chars;
+    for (char c : str) {
+      // '?' dims are skipped.
+      if (c == '?') {
+        continue;
+      }
+      if (!chars.insert(c).second) {
+        return false;
+      }
+    }
+    return true;
   };
 
   // lhs
   {
-    if (!is_unique(std::string(lhs))) {
+    if (!is_unique(lhs)) {
       return TokenError(
           StrCat("expects unique lhs dimension numbers, but sees ", lhs));
     }
-    for (int i = 0; i < rank - 2; i++) {
-      dnums->add_input_spatial_dimensions(-1);
+    // Count number of spatial dimensions.
+    for (char c : lhs) {
+      if (c != 'b' && c != 'f' && c != '?') {
+        dnums->add_input_spatial_dimensions(-1);
+      }
     }
-    for (int i = 0; i < rank; i++) {
+    for (int i = 0; i < lhs.size(); i++) {
       char c = lhs[i];
-      if (c == 'b') {
+      if (c == '?') {
+        continue;
+      } else if (c == 'b') {
         dnums->set_input_batch_dimension(i);
       } else if (c == 'f') {
         dnums->set_input_feature_dimension(i);
-      } else if (c < '0' + rank && c >= '0') {
+      } else if (c < '0' + lhs.size() && c >= '0') {
         dnums->set_input_spatial_dimensions(c - '0', i);
       } else {
-        return TokenError(
-            StrFormat("expects [0-%dbf] in lhs dimension numbers", rank - 1));
+        return TokenError(StrFormat(
+            "expects [0-%dbf?] in lhs dimension numbers", lhs.size() - 1));
       }
     }
   }
   // rhs
   {
-    if (!is_unique(std::string(rhs))) {
+    if (!is_unique(rhs)) {
       return TokenError(
           StrCat("expects unique rhs dimension numbers, but sees ", rhs));
     }
-    for (int i = 0; i < rank - 2; i++) {
-      dnums->add_kernel_spatial_dimensions(-1);
+    // Count number of spatial dimensions.
+    for (char c : rhs) {
+      if (c != 'i' && c != 'o' && c != '?') {
+        dnums->add_kernel_spatial_dimensions(-1);
+      }
     }
-    for (int i = 0; i < rank; i++) {
+    for (int i = 0; i < rhs.size(); i++) {
       char c = rhs[i];
-      if (c == 'i') {
+      if (c == '?') {
+        continue;
+      } else if (c == 'i') {
         dnums->set_kernel_input_feature_dimension(i);
       } else if (c == 'o') {
         dnums->set_kernel_output_feature_dimension(i);
-      } else if (c < '0' + rank && c >= '0') {
+      } else if (c < '0' + rhs.size() && c >= '0') {
         dnums->set_kernel_spatial_dimensions(c - '0', i);
       } else {
-        return TokenError(
-            StrFormat("expects [0-%dio] in rhs dimension numbers", rank - 1));
+        return TokenError(StrFormat(
+            "expects [0-%dio?] in rhs dimension numbers", rhs.size() - 1));
       }
     }
   }
   // output
   {
-    if (!is_unique(std::string(out))) {
+    if (!is_unique(out)) {
       return TokenError(
           StrCat("expects unique output dimension numbers, but sees ", out));
     }
-    for (int i = 0; i < rank - 2; i++) {
-      dnums->add_output_spatial_dimensions(-1);
+    // Count number of spatial dimensions.
+    for (char c : out) {
+      if (c != 'b' && c != 'f' && c != '?') {
+        dnums->add_output_spatial_dimensions(-1);
+      }
     }
-    for (int i = 0; i < rank; i++) {
+    for (int i = 0; i < out.size(); i++) {
       char c = out[i];
-      if (c == 'b') {
+      if (c == '?') {
+        continue;
+      } else if (c == 'b') {
         dnums->set_output_batch_dimension(i);
       } else if (c == 'f') {
         dnums->set_output_feature_dimension(i);
-      } else if (c < '0' + rank && c >= '0') {
+      } else if (c < '0' + out.size() && c >= '0') {
         dnums->set_output_spatial_dimensions(c - '0', i);
       } else {
         return TokenError(StrFormat(
-            "expects [0-%dbf] in output dimension numbers", rank - 1));
+            "expects [0-%dbf?] in output dimension numbers", out.size() - 1));
       }
     }
+  }
+
+  // lhs, rhs, and output should have the same number of spatial dimensions.
+  if (dnums->input_spatial_dimensions_size() !=
+          dnums->output_spatial_dimensions_size() ||
+      dnums->input_spatial_dimensions_size() !=
+          dnums->kernel_spatial_dimensions_size()) {
+    return TokenError(
+        StrFormat("input, kernel, and output must have same number of spatial "
+                  "dimensions, but got %d, %d, %d, respectively.",
+                  dnums->input_spatial_dimensions_size(),
+                  dnums->kernel_spatial_dimensions_size(),
+                  dnums->output_spatial_dimensions_size()));
   }
 
   lexer_.Lex();
@@ -4667,8 +4739,20 @@ bool HloParserImpl::ParseShape(Shape* result) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
+  if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "invalid") {
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kLbrace) {
+      return false;
+    }
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kRbrace) {
+      return false;
+    }
+    lexer_.Lex();
+    result->mutable_layout()->Clear();
+    return true;
+  }
   LayoutUtil::SetToDefaultLayout(result);
-
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
   //

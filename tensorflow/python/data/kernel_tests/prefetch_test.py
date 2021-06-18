@@ -79,14 +79,15 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
 class PrefetchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                              parameterized.TestCase):
 
-  def build_dataset(self, seed):
+  def build_dataset(self, seed=10):
     return dataset_ops.Dataset.range(100).prefetch(10).shuffle(
         buffer_size=10, seed=seed, reshuffle_each_iteration=False)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
-    num_outputs = 100
-    self.run_core_tests(lambda: self.build_dataset(10), num_outputs)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(self, self.build_dataset, num_outputs=100)
 
 
 if __name__ == "__main__":

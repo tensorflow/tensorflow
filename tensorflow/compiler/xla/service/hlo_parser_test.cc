@@ -421,7 +421,20 @@ R"(HloModule custom_call
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
-  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=(f32[1] {0.1})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=s32[2]{0} {1, 2}
+}
+
+)"
+},
+
+// CustomCall with literal tuple.
+{
+"CustomCallWithLiteralTuple",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=( s32[4]{0} {4, 128, 128, 3}, pred[4]{0} {1, 0, 0, 0} )
 }
 
 )"
@@ -434,7 +447,7 @@ R"(HloModule custom_call
 
 ENTRY %CustomCall () -> f32[1,2,3] {
   %constant = f32[1]{0} constant({12345})
-  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=(f32[] 0.1)
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=f32[] 0.1
 }
 
 )"
@@ -1598,7 +1611,7 @@ ENTRY CRS {
 
 )"
 },
-// all-reduce with all-reduce-id
+// all-reduce with channel-id
 {
 "AllReduceAllReduce",
 R"(HloModule CRS
@@ -1613,6 +1626,43 @@ ENTRY CRS {
   input = f32[8]{0} parameter(0)
   crs.1 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
   ROOT crs.0 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
+}
+
+)"
+},
+// all-reduce start and done
+{
+"AllReduceStartAndDone",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  crs = (f32[8]{0}, f32[8]{0}) all-reduce-start(input), replica_groups={}, to_apply=add
+  ROOT done = f32[8]{0} all-reduce-done(crs)
+}
+
+)"
+},
+// all-reduce-scatter
+{
+"AllReduceScatter",
+R"(HloModule ARS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT ars = f32[4]{0} all-reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
 }
 
 )"
@@ -2355,16 +2405,22 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 )";
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
-                      absl::StrCat(prefix, ",dim_labels=00_01_10", suffix))
+                      absl::StrCat(prefix, ",dim_labels=00_01->10", suffix))
                       .status()
                       .error_message(),
-                  "expects dim labels pattern");
+                  "expects unique");
 
   ExpectHasSubstr(ParseAndReturnUnverifiedModule(
-                      absl::StrCat(prefix, ",dim_labels=010_1100->010", suffix))
+                      absl::StrCat(prefix, ",dim_labels=012_0123->210", suffix))
                       .status()
                       .error_message(),
-                  "must have the same rank");
+                  "must have same number of spatial dimensions");
+
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(
+                      absl::StrCat(prefix, ",dim_labels=013_0123->210", suffix))
+                      .status()
+                      .error_message(),
+                  "expects [0-2bf?]");
 }
 
 TEST_F(HloParserTest, UnexpectedAttribute) {
@@ -2854,6 +2910,13 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
 }
 
+TEST_F(HloParserTest, ParseConvolutionDimensionNumbersWithUnknownDims) {
+  const string original = "b0?f_?0?io->?b?0?f";
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
+                          ParseConvolutionDimensionNumbers(original));
+  EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
 TEST_F(HloParserTest, ParseReplicaGroups) {
   const string original = "{{0,1},{2,3}}";
   TF_ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
@@ -3267,6 +3330,15 @@ TEST_F(HloParserTest, ParseShapeStringWithLayout) {
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
   Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringWithInvalidLayout) {
+  string shape_string = "f32[123,456]invalid{}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShape(F32, {123, 456});
+  ASSERT_TRUE(ShapeUtil::Compatible(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
 }

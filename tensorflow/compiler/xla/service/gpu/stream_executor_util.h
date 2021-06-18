@@ -35,6 +35,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+bool IsAmpereOrLater(const se::StreamExecutor& stream_executor);
+
 // Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
 bool IsVoltaOrLater(const se::StreamExecutor& stream_exec);
 
@@ -52,6 +54,20 @@ StatusOr<
 XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
                                      const Shape& input, const Shape& filter,
                                      const Shape& output);
+
+// Finds the VECT_C dimension in input/filter/output, if present.
+//
+// A cudnn convolution may have layout NCHW_VECT_C, which means instead of
+// [N,C,H,W], the layout is [N,C/k,H,W,k] for some k (usually 4 or 32).
+//
+// ConvolutionDimensionNumbers doesn't explicitly store which is the `k`
+// dimension, because only cudnn convolutions have this feature; it's not
+// applicable elsewhere.  We find it by finding a dimension in the
+// input/filter/output shape that is *not* in dnums.
+std::tuple<absl::optional<int64>, absl::optional<int64>, absl::optional<int64>>
+FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
+                          const Shape& input, const Shape& filter,
+                          const Shape& output);
 
 // Generates and returns a unique lock per each provided executor.
 // Guarantees that blocks of code both holding a lock for the same provided

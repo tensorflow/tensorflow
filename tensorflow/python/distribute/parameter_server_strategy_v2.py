@@ -407,15 +407,9 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   * `tf.distribute.experimental.ParameterServerStrategy` in TF2 is experimental,
   and the API is subject to further changes.
 
-  * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
-  training with GPU(s). This is a feature request being developed.
-
   * When using `Model.fit`, `tf.distribute.experimental.ParameterServerStrategy`
   must be used with a `tf.keras.utils.experimental.DatasetCreator`, and
   `steps_per_epoch` must be specified.
-
-  * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
-  `Model.evaluate` and `Model.predict`.
   """
 
   # pyformat: disable

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
@@ -83,6 +84,12 @@ void PrintCantFindCudaMessage(absl::string_view msg,
          "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
 }
 
+std::pair<int, int> ComputeCapability(stream_executor::StreamExecutor& se) {
+  int major, minor;
+  CHECK(se.GetDeviceDescription().cuda_compute_capability(&major, &minor));
+  return {major, minor};
+}
+
 }  // namespace
 
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
@@ -119,8 +126,9 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
-  pipeline.AddPass<CudnnPadForConvolutions>(IsVoltaOrLater(*stream_exec));
-  // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leaves
+  pipeline.AddPass<CudnnPadForConvolutions>(ComputeCapability(*stream_exec));
+  pipeline.AddPass<CudnnVectorizeConvolutions>(ComputeCapability(*stream_exec));
+  // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leave
   // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
   // fixes.
   pipeline.AddPass<TupleSimplifier>();
@@ -166,6 +174,10 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
+  if (IsAmpereOrLater(*stream_exec)) {
+    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::BF16,
+                                            /*pad_to_multiple_of=*/8);
+  }
   if (IsVoltaOrLater(*stream_exec)) {
     // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
     pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::S8,
@@ -193,23 +205,25 @@ namespace {
 absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
                                         const HloInstruction* operand,
                                         const ShapeIndex& user_index) {
-  // Share the bias buffer with the parent instruction.
-  if (IsCublasGemm(*user)) {
-    if (user->operand_count() == 3 && user->operand(2) == operand) {
-      return true;
-    }
+  switch (user->opcode()) {
+    case HloOpcode::kAllReduce:
+      // NCCL all-reduce can be performed in-place.
+      return user->operand_count() == 1 ||
+             (user_index.size() == 1 &&
+              user->operand(user_index[0]) == operand);
+    case HloOpcode::kCustomCall:
+      // Share the bias buffer with the parent instruction.
+      if (user->custom_call_target() == kGemmCallTarget) {
+        return user->operand_count() == 3 && user->operand(2) == operand;
+      }
+      // The operand of cholesky can be shared with the first output.
+      if (user->custom_call_target() == kCusolverCholeskyCallTarget) {
+        return user_index.size() == 1 && user_index[0] == 0;
+      }
+      return false;
+    default:
+      return absl::nullopt;
   }
-  // The operand of cholesky can be shared with the first output.
-  if (user->opcode() == HloOpcode::kCustomCall &&
-      user->custom_call_target() == kCusolverCholeskyCallTarget) {
-    return user_index.size() == 1 && user_index[0] == 0;
-  }
-  // NCCL all-reduce can be performed in-place.
-  if (user->opcode() == HloOpcode::kAllReduce && user_index.size() == 1 &&
-      user->operand(user_index[0]) == operand) {
-    return true;
-  }
-  return absl::nullopt;
 }
 
 // Try to load ptx from files defined in the FLAGS. If successful, return true.

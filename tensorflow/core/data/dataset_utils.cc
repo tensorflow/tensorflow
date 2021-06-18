@@ -83,19 +83,14 @@ Status GetIteratorName(StringPiece key, string* name) {
 
 // Use "Opt" suffix so that they are not confused with the enums in Options
 // proto.
-constexpr char kMapVectorizationOpt[] = "map_vectorization";
 constexpr char kMapAndBatchFusionOpt[] = "map_and_batch_fusion";
 constexpr char kNoopEliminationOpt[] = "noop_elimination";
 constexpr char kMapParallelizationOpt[] = "map_parallelization";
 constexpr char kShuffleAndRepeatFusionOpt[] = "shuffle_and_repeat_fusion";
 constexpr char kFilterFusionOpt[] = "filter_fusion";
-constexpr char kFilterWithRandomUniformFusionOpt[] =
-    "filter_with_random_uniform_fusion";
-constexpr char kHoistRandomUniformOpt[] = "hoist_random_uniform";
 constexpr char kMapAndFilterFusionOpt[] = "map_and_filter_fusion";
 constexpr char kMapFusionOpt[] = "map_fusion";
 constexpr char kParallelBatchOpt[] = "parallel_batch";
-constexpr char kReorderDataDiscardingOpsOpt[] = "reorder_data_discarding_ops";
 constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
@@ -107,27 +102,10 @@ constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 
-void MapVectorizationGraphRewrites(
-    const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
-    absl::flat_hash_set<tstring>* optimization_disabled) {
-  if (options.optimization_options()
-          .map_vectorization()
-          .optional_enabled_case() != MapVectorization::kEnabled) {
-    return;
-  }
-  if (options.optimization_options().map_vectorization().enabled()) {
-    optimization_enabled->insert(kMapVectorizationOpt);
-  } else {
-    optimization_disabled->insert(kMapVectorizationOpt);
-  }
-}
-
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
     absl::flat_hash_set<tstring>* optimization_disabled,
     absl::flat_hash_set<tstring>* optimization_default) {
-  MapVectorizationGraphRewrites(options, optimization_enabled,
-                                optimization_disabled);
   const auto& optimization_options = options.optimization_options();
   if (optimization_options.optional_apply_default_optimizations_case() !=
           OptimizationOptions::kApplyDefaultOptimizations ||
@@ -155,22 +133,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kFilterFusionOpt);
     } else {
       optimization_disabled->insert(kFilterFusionOpt);
-    }
-  }
-  if (optimization_options.optional_filter_with_random_uniform_fusion_case() ==
-      OptimizationOptions::kFilterWithRandomUniformFusion) {
-    if (optimization_options.filter_with_random_uniform_fusion()) {
-      optimization_enabled->insert(kFilterWithRandomUniformFusionOpt);
-    } else {
-      optimization_disabled->insert(kFilterWithRandomUniformFusionOpt);
-    }
-  }
-  if (optimization_options.optional_hoist_random_uniform_case() ==
-      OptimizationOptions::kHoistRandomUniform) {
-    if (optimization_options.hoist_random_uniform()) {
-      optimization_enabled->insert(kHoistRandomUniformOpt);
-    } else {
-      optimization_disabled->insert(kHoistRandomUniformOpt);
     }
   }
   if (optimization_options.optional_map_and_batch_fusion_case() ==
@@ -219,14 +181,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kParallelBatchOpt);
     } else {
       optimization_disabled->insert(kParallelBatchOpt);
-    }
-  }
-  if (optimization_options.optional_reorder_data_discarding_ops_case() ==
-      OptimizationOptions::kReorderDataDiscardingOps) {
-    if (optimization_options.reorder_data_discarding_ops()) {
-      optimization_enabled->insert(kReorderDataDiscardingOpsOpt);
-    } else {
-      optimization_disabled->insert(kReorderDataDiscardingOpsOpt);
     }
   }
   if (optimization_options.optional_shuffle_and_repeat_fusion_case() ==
@@ -1009,14 +963,16 @@ Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
 }
 
 Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
-                 std::vector<Tensor>* out_tensors,
-                 std::vector<std::vector<Tensor>>* batch_elements) {
-  const size_t num_tuple_components = (*batch_elements)[0].size();
+                 const std::vector<std::vector<Tensor>>& batch_elements,
+                 std::vector<Tensor>* out_tensors) {
+  static bool in_experiment =
+      GetExperiments().contains("parallelize_batch_copy");
+  const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
-  const int64 num_batch_elements = batch_elements->size();
+  const int64 num_batch_elements = batch_elements.size();
   for (size_t component_index = 0; component_index < num_tuple_components;
        ++component_index) {
-    const Tensor& first_element = (*batch_elements)[0][component_index];
+    const Tensor& first_element = batch_elements.at(0)[component_index];
     TensorShape batch_component_shape({num_batch_elements});
     // NOTE(mrry): Copy the shape of the first element here, because
     // `first_element.shape()` will become undefined after the 0th batch element
@@ -1033,48 +989,56 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
     Tensor& batch_component = out_tensors->back();
     // Build the output tuple component by copying one slice from each input
     // element in the batch.
-    auto copy_element_fn = [component_index, &batch_elements,
-                            &batch_component](int index) {
-      TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
-          std::move((*batch_elements)[index][component_index]),
-          &batch_component, index));
-      return Status::OK();
-    };
-    Status status;
-    std::unique_ptr<BlockingCounter> counter;
-    std::unique_ptr<mutex> status_mu;
-    if (TF_PREDICT_FALSE(parallel_copy)) {
-      counter = std::make_unique<BlockingCounter>(num_batch_elements);
-      status_mu = std::make_unique<mutex>();
-    }
-    for (size_t i = 0; i < num_batch_elements; ++i) {
-      if ((*batch_elements)[i][component_index].shape() !=
+    auto copy_element_fn = [component_index, &batch_elements, &batch_component,
+                            &first_element_shape](int index) {
+      if (batch_elements.at(index)[component_index].shape() !=
           first_element_shape) {
         return errors::InvalidArgument(
             "Cannot batch tensors with different shapes in component ",
             component_index, ". First element had shape ",
-            first_element_shape.DebugString(), " and element ", i,
+            first_element_shape.DebugString(), " and element ", index,
             " had shape ",
-            (*batch_elements)[i][component_index].shape().DebugString(), ".");
+            batch_elements.at(index)[component_index].shape().DebugString(),
+            ".");
       }
-      if (TF_PREDICT_FALSE(parallel_copy)) {
-        (*ctx->runner())(
-            [i, &status, &status_mu, &counter, &copy_element_fn]() {
-              Status s = copy_element_fn(i);
-              {
-                mutex_lock l(*status_mu);
-                status.Update(s);
-              }
-              counter->DecrementCount();
-            });
-      } else {
-        status.Update(copy_element_fn(i));
+      return batch_util::CopyElementToSlice(
+          std::move(batch_elements.at(index)[component_index]),
+          &batch_component, index);
+    };
+    if (parallel_copy ||
+        (in_experiment && first_element.AllocatedBytes() > (1 << 15))) {
+      Status status;
+      mutex status_mu;
+      BlockingCounter counter(num_batch_elements);
+      const auto num_threads = ctx->runner_threadpool_size();
+      const auto slice_size = num_batch_elements / num_threads;
+      int64 offset = 0;
+      for (size_t i = 0; i < num_threads; ++i) {
+        int64 length = slice_size;
+        // When the number of threads does not divide the number of elements
+        // evenly, the size of some slices is incremented to guarantee their
+        // sizes add up to the total number of elements.
+        if (i < num_batch_elements % num_threads) ++length;
+        (*ctx->runner())([offset, length, &status, &status_mu, &counter,
+                          &copy_element_fn]() {
+          for (size_t j = offset; j < offset + length; ++j) {
+            {
+              Status s = copy_element_fn(j);
+              mutex_lock l(status_mu);
+              status.Update(s);
+            }
+            counter.DecrementCount();
+          }
+        });
+        offset += length;
+      }
+      counter.Wait();
+      TF_RETURN_IF_ERROR(status);
+    } else {
+      for (size_t i = 0; i < num_batch_elements; ++i) {
+        TF_RETURN_IF_ERROR(copy_element_fn(i));
       }
     }
-    if (TF_PREDICT_FALSE(parallel_copy)) {
-      counter->Wait();
-    }
-    TF_RETURN_IF_ERROR(status);
   }
   return Status::OK();
 }
@@ -1082,19 +1046,6 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& optimization_options = options.optimization_options();
-  const auto& map_vectorization = optimization_options.map_vectorization();
-  if (map_vectorization.optional_enabled_case() == MapVectorization::kEnabled &&
-      map_vectorization.enabled() &&
-      map_vectorization.optional_use_choose_fastest_case() ==
-          MapVectorization::kUseChooseFastest) {
-    if (map_vectorization.use_choose_fastest()) {
-      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
-                                  kUseChooseFastestOpt, ":true"));
-    } else {
-      configs.insert(absl::StrCat(kMapVectorizationOpt, ":",
-                                  kUseChooseFastestOpt, ":false"));
-    }
-  }
   std::vector<tstring> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
@@ -1168,7 +1119,7 @@ absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
 namespace {
 
 REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
-
+REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 50);
 }
 }  // namespace data
 }  // namespace tensorflow

@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
+#include "tensorflow/compiler/xla/service/async_all_reduce_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -204,10 +205,6 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
-    // Convert BF16 operations to F32 operations so that the GPU backend can
-    // support BF16 operations without directly implementing a BF16 lowering for
-    // most ops.
-    pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
 
     // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
     // where possible.  Not every batchnorm op can be implemented as a call to
@@ -273,6 +270,15 @@ Status GpuCompiler::OptimizeHloModule(
       pass.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
     }
+
+    // Convert BF16 operations to F32 operations so that the GPU backend can
+    // support BF16 operations without directly implementing a BF16 lowering for
+    // most ops.
+    pipeline.AddPass<HloElementTypeConverter>(
+        BF16, F32, [](const HloInstruction* instr) {
+          // cuBLAS supports BF16 gemms, so don't convert these.
+          return !gpu::IsMatrixMultiplication(*instr);
+        });
 
     pipeline.AddPass<TransposeFolding>(
         [](const HloInstruction& dot,
@@ -381,6 +387,12 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<AllReduceCombiner>(
         /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
         /*combine_threshold_count=*/256);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  if (hlo_module->config().debug_options().xla_gpu_enable_async_all_reduce()) {
+    HloPassPipeline pipeline("async_all_reduce_creator");
+    pipeline.AddPass<AsyncAllReduceCreator>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -633,7 +645,9 @@ static Status CompileModuleToLlvmIrImpl(
   VLOG(1) << "Buffer Assignment Stats "
           << results->buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
-                         "after_optimizations");
+                         absl::StrCat("sm_", cuda_compute_capability->cc_major,
+                                      ".", cuda_compute_capability->cc_minor,
+                                      "_gpu_after_optimizations"));
 
   mlir::MLIRContext mlir_context;
   mlir_context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
@@ -879,11 +893,17 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     submodule_compile_results.push_back(result.second);
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<uint8> backend_result,
-      this->LinkModules(stream_exec, std::move(submodule_compile_results)));
+  auto maybe_backend_result =
+      this->LinkModules(stream_exec, std::move(submodule_compile_results));
+  if (!maybe_backend_result.ok()) {
+    LOG(ERROR) << "The CUDA linking API did not work. Please use "
+                  "XLA_FLAGS=--xla_gpu_force_compilation_parallelism=1 to "
+                  "bypass it, but expect to get longer compilation time due to "
+                  "the lack of multi-threading.";
+    return maybe_backend_result.status();
+  }
 
-  return std::make_pair(ptx_snippets, backend_result);
+  return std::make_pair(ptx_snippets, std::move(*maybe_backend_result));
 }
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
@@ -1149,21 +1169,10 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
 
   TF_ASSIGN_OR_RETURN(auto ir_emitter, IrEmitterUnnested::Create(
                                            module_config, ir_emitter_context));
-  ThunkSequence thunk_sequence;
-  for (mlir::Operation& op :
-       entry_function.getBody().front().without_terminator()) {
-    MlirEmitterInput input;
-    input.op = &op;
-    TF_RETURN_IF_ERROR(ir_emitter->EmitOp(input));
-    std::unique_ptr<ThunkSequence> thunks = ir_emitter->ConsumeThunkSequence();
-    TF_RET_CHECK(thunks->size() <= 1);
-    if (!thunks->empty()) {
-      auto thunk = std::move(thunks->front());
-      thunk_sequence.push_back(std::move(thunk));
-    }
-  }
-  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      std::make_unique<ThunkSequence>(std::move(thunk_sequence)));
+  TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+
+  auto thunk_schedule =
+      absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
 
   using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,

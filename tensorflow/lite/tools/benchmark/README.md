@@ -116,6 +116,8 @@ where applicable. For details about each parameter, please refer to
 #### Common parameters
 * `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
+* `delegate_serialize_dir`: `str` (default="")
+* `delegate_serialize_token`: `str` (default="")
 
 #### GPU delegate
 * `use_gpu`: `bool` (default=false)
@@ -139,6 +141,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
+*   `nnapi_allow_dynamic_dimensions`:`bool` (default=false)
 *   `nnapi_use_burst_mode`:`bool` (default=false)
 
 #### Hexagon delegate
@@ -169,6 +172,14 @@ for model benchmarking.
 As some delegates are only available on certain platforms, when running the
 benchmark tool on a particular platform, specifying `--help` will print out all
 supported parameters.
+
+### Use multiple delegates
+When multiple delegates are specified to be used in the commandline flags, the
+order of delegates applied to the TfLite runtime will be same as their enabling
+commandline flag is specified. For example, "--use_xnnpack=true --use_gpu=true"
+means applying the XNNPACK delegate first, and then the GPU delegate secondly.
+In comparison, "--use_gpu=true --use_xnnpack=true" means applying the GPU
+delegate first, and then the XNNPACK delegate secondly.
 
 ## To build/install/run
 

@@ -44,7 +44,9 @@ CollectiveParamResolverLocal::CollectiveParamResolverLocal(
     : nccl_(config.experimental().collective_nccl()),
       dev_mgr_(dev_mgr),
       dev_resolver_(dev_resolver),
-      task_name_(task_name) {}
+      task_name_(task_name),
+      gpu_ring_order_(
+          config.gpu_options().experimental().collective_ring_order()) {}
 
 void CollectiveParamResolverLocal::CompleteGroupAsync(
     const CompleteGroupRequest* request, CompleteGroupResponse* response,
@@ -140,7 +142,6 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       gr->group.group_key = cp->group.group_key;
       gr->group.group_size = cp->group.group_size;
       gr->group.device_type = cp->group.device_type;
-      gr->group.gpu_ring_order = cp->group.gpu_ring_order;
 
       // Initialize group runtime details.
       CollectiveImplementationInterface* col_impl;
@@ -420,13 +421,13 @@ void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
 // rank order for all the devices in the group, that is appropriate for a ring
 // algorithm.
 GlobalDeviceMap EstablishGlobalRank(
-    const CollGroupParams& gp,
-    const std::vector<DeviceAttributes>& attributes) {
+    const CollGroupParams& gp, const std::vector<DeviceAttributes>& attributes,
+    const string& gpu_ring_order) {
   VLOG(1) << "EstablishGlobalRank";
   GlobalDeviceMap gdm = BuildDevRecs(gp, attributes);
   for (auto& iter : gdm) {
     TaskDeviceMap& tdm = iter.second;
-    OrderTaskDeviceMap(gp.gpu_ring_order, &tdm);
+    OrderTaskDeviceMap(gpu_ring_order, &tdm);
   }
   // Connect the global rank order by the order in which tasks first appear.
   std::set<string> ordered_tasks;
@@ -572,7 +573,7 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(
   // Establish an instance-specific default rank order for devices
   // based on localities.  This rank order should be a good ring
   // order, if possible.
-  GlobalDeviceMap gdm = EstablishGlobalRank(*gp, attributes);
+  GlobalDeviceMap gdm = EstablishGlobalRank(*gp, attributes, gpu_ring_order_);
   // Reflect the new global ranking on shared
   size_t num_devices = gp->group_size;
   std::vector<string> new_device_names(num_devices, "");

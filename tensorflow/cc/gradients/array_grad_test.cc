@@ -108,6 +108,14 @@ TEST_F(ArrayGradTest, SplitGrad) {
   RunTest({x}, {x_shape}, y.output, {y_shape, y_shape});
 }
 
+TEST_F(ArrayGradTest, SplitVGrad) {
+  TensorShape x_shape({2, 6});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = SplitV(scope_, x, {1, 2, 3}, /*axis=*/1, /*num_split=*/3);
+  RunTest({x}, {x_shape}, y.output,
+          {TensorShape({2, 1}), TensorShape({2, 2}), TensorShape({2, 3})});
+}
+
 TEST_F(ArrayGradTest, FillGrad) {
   TensorShape x_shape({});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
@@ -391,6 +399,143 @@ TEST_F(ArrayGradTest, SliceGrad) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto y = Slice(scope_, x, {1, 2, 1}, {1, 3, 2});
   RunTest(x, x_shape, y, {1, 3, 2});
+}
+
+TEST_F(ArrayGradTest, ConcatV2Grad) {
+  TensorShape shape({3, 2, 5});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape)));
+  auto axis = Const(scope_, 0);
+  auto y = Concat(scope_, xs, axis);
+  TensorShape result_shape({9, 2, 5});
+  RunTest(xs, {shape, shape, shape}, {y}, {result_shape});
+}
+
+TEST_F(ArrayGradTest, BroadcastToGrad) {
+  TensorShape x_shape({2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({3, 2, 5});
+  auto y = BroadcastTo(scope_, x, Const(scope_, {3, 2, 5}));
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, TileGrad) {
+  TensorShape x_shape({2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Tile(scope_, x, Const(scope_, {3, 2}));
+  TensorShape y_shape({6, 10});
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_Simple) {
+  TensorShape shape({100});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = GatherV2(scope_, x, {2, 0, 2, 5}, /*axis=*/0);
+  TensorShape y_shape({4});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_MoreParamDims) {
+  TensorShape shape({100, 2, 3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = GatherV2(scope_, x, {2, 0, 2, 5}, /*axis=*/0);
+  TensorShape y_shape({4, 2, 3, 2});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_MoreIndexDims) {
+  TensorShape shape({100});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = GatherV2(scope_, x, {{2, 0}, {2, 5}}, /*axis=*/0);
+  TensorShape y_shape({2, 2});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_DifferentAxis) {
+  TensorShape shape({2, 10, 10, 2, 7});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = GatherV2(scope_, x, {2, 0, 2, 5, 5}, /*axis=*/1);
+  TensorShape y_shape({2, 5, 10, 2, 7});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_DifferentAxis2) {
+  TensorShape shape({2, 3, 100, 2, 7});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = GatherV2(scope_, x, {2, 0, 2, 5, 5}, /*axis=*/2);
+  TensorShape y_shape({2, 3, 5, 2, 7});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_LastAxis) {
+  TensorShape shape({2, 3, 10});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = GatherV2(scope_, x, {2, 0, 2, 5, 5}, /*axis=*/2);
+  TensorShape y_shape({2, 3, 5});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_LastAxis2) {
+  TensorShape shape({2, 3, 7, 10});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = GatherV2(scope_, x, {9, 8, 7, 6}, /*axis=*/3);
+  TensorShape y_shape({2, 3, 7, 4});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_BatchDim) {
+  TensorShape shape({2, 100, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  GatherV2::Attrs attrs;
+  attrs.batch_dims_ = 1;
+  auto y =
+      GatherV2(scope_, x, {{2, 0, 2, 5}, {1, 1, 7, 10}}, /*axis=*/1, attrs);
+  TensorShape y_shape({2, 4, 3});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_BatchDim2) {
+  TensorShape shape({2, 19});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  GatherV2::Attrs attrs;
+  attrs.batch_dims_ = 1;
+  auto y = GatherV2(scope_, x, {{0}, {0}}, /*axis=*/1, attrs);
+  TensorShape y_shape({2, 1});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_BatchDimWithAxis) {
+  TensorShape shape({2, 1, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  GatherV2::Attrs attrs;
+  attrs.batch_dims_ = 1;
+  auto y = GatherV2(scope_, x, {{0}, {0}}, /*axis=*/2, attrs);
+  TensorShape y_shape({2, 1, 1});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_TwoBatchDims) {
+  TensorShape shape({2, 2, 100});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  GatherV2::Attrs attrs;
+  attrs.batch_dims_ = 2;
+  auto y = GatherV2(scope_, x, {{{2, 0}, {2, 5}}, {{1, 1}, {7, 10}}},
+                    /*axis=*/2, attrs);
+  TensorShape y_shape({2, 2, 2});
+  RunTest(x, shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, GatherV2Grad_TwoBatchDimsWithAxis) {
+  TensorShape shape({2, 2, 3, 100});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  GatherV2::Attrs attrs;
+  attrs.batch_dims_ = 2;
+  auto y = GatherV2(scope_, x, {{{2, 0}, {2, 5}}, {{1, 1}, {7, 10}}},
+                    /*axis=*/3, attrs);
+  TensorShape y_shape({2, 2, 2, 3});
+  RunTest(x, shape, y, y_shape);
 }
 
 }  // namespace

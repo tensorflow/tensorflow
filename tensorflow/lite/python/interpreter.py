@@ -219,7 +219,7 @@ class SignatureRunner(object):
     if len(kwargs) != len(self._inputs):
       raise ValueError(
           'Invalid number of inputs provided for running a SignatureDef, '
-          'expected %s vs provided %s' % (len(kwargs), len(self._inputs)))
+          'expected %s vs provided %s' % (len(self._inputs), len(kwargs)))
     # Resize input tensors
     for input_name, value in kwargs.items():
       if input_name not in self._inputs:
@@ -765,6 +765,11 @@ class Interpreter(object):
                 len(self._signature_defs)))
       else:
         method_name = next(iter(self._signature_defs))
+    if len(self._signature_defs) > 1:
+      raise ValueError(
+          'This Interpreter doesnt handle multiple signatures properly. '
+          'Proper support is coming soon.'
+      )
     return SignatureRunner(interpreter=self, signature_def_name=method_name)
 
   def get_tensor(self, tensor_index):
