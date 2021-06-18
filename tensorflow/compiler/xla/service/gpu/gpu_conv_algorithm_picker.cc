@@ -353,8 +353,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   const int32 conv_autotune_level =
       hlo_module_config.debug_options().xla_gpu_autotune_level();
-  const bool init_conv_data = conv_autotune_level > 1;
-  const bool check_conv = conv_autotune_level > 3;
+  const bool init_conv_data = conv_autotune_level >= 2;
+  const bool check_conv = conv_autotune_level >= 4;
   const auto initialize_buffer = [init_conv_data, &stream, &rng_state](
                                      DeviceMemoryBase buffer,
                                      const Shape& buffer_shape) {
