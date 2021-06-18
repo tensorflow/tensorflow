@@ -50,7 +50,6 @@ class EagerOpRewrite {
 class EagerOpRewriteRegistry {
  public:
   // Phases at which the Eager op rewrite pass should run.
-  // For now we only added PRE_EXECUTION. Expand as needed.
   enum Phase {
     PRE_EXECUTION = 0,  // right before executing an eager op
     POST_PLACEMENT = 1  // after device placement
