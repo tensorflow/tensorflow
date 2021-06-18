@@ -945,10 +945,10 @@ class StrategyBase(object):
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def make_dataset_iterator(self, dataset):
     """DEPRECATED TF 1.x ONLY."""
-    
     return self._extended._make_dataset_iterator(dataset)  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
+  @deprecated(None,'This method is not available in TF 2.x.')
   def make_input_fn_iterator(self,
                              input_fn,
                              replication_mode=InputReplicationMode.PER_WORKER):
@@ -1488,6 +1488,7 @@ class StrategyBase(object):
     return math_ops.truediv(numer, denom)
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED
+  @deprecated(None,'use `experimental_local_results` instead.')
   def unwrap(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
@@ -1530,6 +1531,7 @@ class StrategyBase(object):
     return self._extended._local_results(value)  # pylint: disable=protected-access
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED: TF v1.x only
+  @deprecated(None,'This method is not available in TF 2.x.')
   def group(self, value, name=None):
     """Shortcut for `tf.group(self.experimental_local_results(value))`."""
     return self._extended._group(value, name)  # pylint: disable=protected-access
@@ -1540,6 +1542,7 @@ class StrategyBase(object):
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED: see doc string
+  @deprecated(None, 'use `update_config_proto` instead.')
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
@@ -1560,6 +1563,7 @@ class StrategyBase(object):
         session_config, cluster_spec, task_type, task_id)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED
+  @deprecated(None,'This method is not available in TF 2.x.')
   def update_config_proto(self, config_proto):
     """DEPRECATED TF 1.x ONLY."""
     return self._extended._update_config_proto(config_proto)  # pylint: disable=protected-access
@@ -1840,7 +1844,7 @@ class StrategyV1(StrategyBase):
   TensorFlow's partitioned variables (where a single variable is split across
   multiple devices) at this time.
   """
-
+  @deprecated(None,'This method is not available in TF 2.x.')
   def make_dataset_iterator(self, dataset):
     """Makes an iterator for input provided via `dataset`.
 
@@ -1867,6 +1871,7 @@ class StrategyV1(StrategyBase):
     """
     return self._extended._make_dataset_iterator(dataset)  # pylint: disable=protected-access
 
+  @deprecated(None,'This method is not available in TF 2.x.')
   def make_input_fn_iterator(self,  # pylint: disable=useless-super-delegation
                              input_fn,
                              replication_mode=InputReplicationMode.PER_WORKER):
@@ -1940,6 +1945,7 @@ class StrategyV1(StrategyBase):
     return self.extended.experimental_make_numpy_dataset(
         numpy_input, session=session)
 
+  @deprecated(None,'This method is not available in TF 2.x. Please switch to using `run` instead.')
   def experimental_run(self, fn, input_iterator=None):  # pylint: disable=useless-super-delegation
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
 
@@ -1980,6 +1986,7 @@ class StrategyV1(StrategyBase):
 
   reduce.__doc__ = StrategyBase.reduce.__doc__
 
+  @deprecated(None,'This method is not available in TF 2.x')
   def update_config_proto(self, config_proto):
     """Returns a copy of `config_proto` modified for use with this strategy.
 
@@ -2745,6 +2752,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
+  @deprecated(None,'please use `run` instead.')
   def experimental_run_steps_on_iterator(self,
                                          fn,
                                          iterator,
@@ -2864,6 +2872,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
     """
     raise NotImplementedError("must be implemented in descendants")
 
+  @deprecated(None,'This method is not available in TF 2.x.')
   def update_non_slot(
       self, colocate_with, fn, args=(), kwargs=None, group=True):
     """Runs `fn(*args, **kwargs)` on `colocate_with` devices.
@@ -2893,7 +2902,8 @@ class StrategyExtendedV1(StrategyExtendedV2):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
-
+    
+  @deprecated(None,'This method is not available in TF 2.x.')
   def non_slot_devices(self, var_list):
     """Device(s) for non-slot variables.
 
