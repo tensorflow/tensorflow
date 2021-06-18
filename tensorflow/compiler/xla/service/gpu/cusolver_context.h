@@ -20,6 +20,10 @@ limitations under the License.
 
 #if !TENSORFLOW_USE_ROCM
 #include "third_party/gpus/cuda/include/cusolverDn.h"
+using gpusolverHandle_t = cusolverDnHandle_t;
+#else
+#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
+using gpusolverHandle_t = rocblas_handle;
 #endif
 
 #include "tensorflow/compiler/xla/statusor.h"
@@ -32,20 +36,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#if !TENSORFLOW_USE_ROCM
-
-class CusolverContext {
+class GpuSolverContext {
  public:
   // stream may be nullptr, in which case the context can only be used for
   // buffer size queries.
-  static StatusOr<CusolverContext> Create(se::Stream* stream);
-  CusolverContext() = default;
-  ~CusolverContext();
+  static StatusOr<GpuSolverContext> Create(se::Stream* stream);
+  GpuSolverContext() = default;
+  ~GpuSolverContext();
 
-  CusolverContext(const CusolverContext&) = delete;
-  CusolverContext(CusolverContext&&);
-  CusolverContext& operator=(const CusolverContext&) = delete;
-  CusolverContext& operator=(CusolverContext&&);
+  GpuSolverContext(const GpuSolverContext&) = delete;
+  GpuSolverContext(GpuSolverContext&&);
+  GpuSolverContext& operator=(const GpuSolverContext&) = delete;
+  GpuSolverContext& operator=(GpuSolverContext&&);
 
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
   // Returns Status::OK() if the kernel was launched successfully. See:
@@ -65,54 +67,24 @@ class CusolverContext {
                                   int n, int lda);
 
  private:
-  CusolverContext(se::Stream* stream, cusolverDnHandle_t handle);
+  GpuSolverContext(se::Stream* stream, gpusolverHandle_t handle);
 
-  cusolverDnHandle_t handle() const { return handle_; }
+  gpusolverHandle_t handle() const { return handle_; }
 
   se::Stream* stream_ = nullptr;
-  cusolverDnHandle_t handle_ = nullptr;
+  gpusolverHandle_t handle_ = nullptr;
 };
 
 #define CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 #define POTRF_INSTANCE(T, type_prefix)                                  \
   template <>                                                           \
-  Status CusolverContext::Potrf<T>(                                     \
+  Status GpuSolverContext::Potrf<T>(                                    \
       se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda, \
       se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace);
 CALL_LAPACK_TYPES(POTRF_INSTANCE);
 #undef POTRF_INSTANCE
 #undef CALL_LAPACK_TYPES
-
-#else
-
-typedef void* cusolverDnHandle_t;
-
-// TODO(cheshire): Remove this hack once we have ROCM implementation.
-class CusolverContext {
- public:
-  static StatusOr<CusolverContext> Create(se::Stream* stream) {
-    LOG(FATAL) << "Unimplemented";
-  }
-
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, float>::value ||
-                            std::is_same<T, double>::value ||
-                            std::is_same<T, std::complex<float>>::value ||
-                            std::is_same<T, std::complex<double>>::value>>
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<T> dev_A,
-               int lda, se::DeviceMemory<int> dev_lapack_info,
-               se::DeviceMemory<T> workspace) {
-    LOG(FATAL) << "Unimplemented";
-  }
-
-  StatusOr<int64> PotrfBufferSize(PrimitiveType type, se::blas::UpperLower uplo,
-                                  int n, int lda) {
-    LOG(FATAL) << "Unimplemented";
-  }
-};
-
-#endif
 
 }  // namespace gpu
 }  // namespace xla
