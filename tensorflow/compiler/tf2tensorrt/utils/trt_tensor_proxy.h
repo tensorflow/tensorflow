@@ -29,14 +29,13 @@ namespace tensorflow {
 
 namespace tensorrt {
 
-namespace {
-  nvinfer1::Dims GetTestDims(const std::vector<int>& d) {
-    nvinfer1::Dims dims;
-    dims.nbDims = d.size();
-    for (int i = 0; i < d.size(); ++i) {
-      dims.d[i] = d[i];
-    }
+nvinfer1::Dims ConvertVectorDims(const std::vector<int>& d) {
+  nvinfer1::Dims dims;
+  dims.nbDims = d.size();
+  for (int i = 0; i < d.size(); ++i) {
+    dims.d[i] = d[i];
   }
+ return dims;
 }
 // SimpleITensor implements part of the ITensor interfaces to support the TF-TRT
 // validator, as well as some TF-TRT tests. The former use case only utilizes
@@ -50,7 +49,7 @@ class SimpleITensor {
   SimpleITensor(const nvinfer1::Dims& dims) : trt_dims_(dims), dynamic_range_(0.0f) {}
 
   SimpleITensor(const std::vector<int>& dims)
-      : trt_dims_(GetTestDims(dims)), dynamic_range_(0.0f) {}
+      : trt_dims_(ConvertVectorDims(dims)), dynamic_range_(0.0f) {}
 
   void setName(const char* name) {}
 
@@ -397,7 +396,7 @@ public:
 private:
   bool validate() const
   {
-    return trt_tensor_ && !simple_tensor_ || !trt_tensor_ && simple_tensor_;
+    return (trt_tensor_ && !simple_tensor_) || (!trt_tensor_ && simple_tensor_);
   }
 
   // When ITensorProxy represents an ITensor, the ITensor can be either passed

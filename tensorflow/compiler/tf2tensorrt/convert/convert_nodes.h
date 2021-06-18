@@ -343,10 +343,10 @@ class TRT_TensorOrWeights {
   //
   // If use_implicit_batch is false, batch_size_ is unused and
   // tensor_->getDimensions() will contain the entire shape (A,B,C).
+  ITensorProxyPtr tensor_proxy_ptr_ = nullptr;
   int batch_size_ = -1;
 
   TRT_ShapedWeights weights_;
-  ITensorProxyPtr tensor_proxy_ptr_ = nullptr;
   bool initialized_ = false;
   bool is_tensor_ = false;
 
@@ -609,8 +609,7 @@ class Converter {
 
   void SetLayerName(nvinfer1::ILayer* layer, absl::string_view main_op_name,
                     absl::string_view sub_op_name,
-                    absl::optional<int> sub_op_instance = absl::nullopt,
-                    absl::optional<std::string> origin_node_name = absl::nullopt);
+                    absl::optional<int> sub_op_instance = absl::nullopt);
 
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
@@ -709,7 +708,8 @@ Status PrepareTensorForShape(Converter* converter,
                              const bool validation_only,
                              ITensorProxyPtr* tensor,
                              const NodeDef& node_def,
-                             absl::optional<int> op_instance = absl::nullopt);
+                             absl::optional<int> op_instance = absl::nullopt,
+                             absl::optional<std::string> origin_node_name = absl::nullopt);
 
 // Return OK if the broadcast scheme is supported and compute the shapes after
 // broadcasting. check_feasibility can be set to false in cases where dimensions

@@ -24,15 +24,6 @@ limitations under the License.
 #include "third_party/tensorrt/NvInfer.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 
-//TODO(mconley): Should the below macro and the one in convert/utils.h be moved to an upper utils directory?
-/*#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
-  ((NV_TENSORRT_MAJOR > major) ||                               \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH > patch) ||                               \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))*/
-
 namespace tensorflow {
 namespace tensorrt {
 
