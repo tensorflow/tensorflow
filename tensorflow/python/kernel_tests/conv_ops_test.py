@@ -164,6 +164,8 @@ def GetTestConfigs():
 class Conv2DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
+    if test_util.IsMklEnabled():
+      return [dtypes.float32]
     # double datatype is currently not supported for convolution ops
     # on the ROCm platform
     optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
@@ -835,15 +837,10 @@ class Conv2DTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testConv2DGroupConvFwd(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       data_formats = ["NHWC", "NCHW"]
-    # TODO(Intel-tf) Remove this check once group conv is implemented in the
-    # oneDNN based conv2d op kernel.
-    elif (not test_util.IsMklEnabled() and
-          os.getenv("TF_ENABLE_ONEDNN_OPTS", "0") == "0"):
-      data_formats = ["NHWC"]
     else:
-      data_formats = []
+      data_formats = ["NHWC"]
     for data_format in data_formats:
       for dilation in [1, 2]:
         for stride in [1, 2]:
@@ -856,48 +853,48 @@ class Conv2DTest(test.TestCase):
                                      dtype=dtypes.float32)
 
   @test_util.deprecated_graph_mode_only
-  @test_util.run_cuda_only
   def testInputGradientGroupConv(self):
-    for data_format in ["NCHW", "NHWC"]:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for test_input in [True, False]:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=5,
-            input_cols=4,
-            filter_rows=3,
-            filter_cols=3,
-            num_groups=2,
-            padding="VALID",
-            in_depth=4,
-            out_depth=6,
-            stride_rows=1,
-            stride_cols=1,
-            test_input=test_input,
-            data_format=data_format,
-            use_gpu=True,
-            max_err=0.005)
+        for (data_format, use_gpu) in GetTestConfigs():
+          self.ConstructAndTestGradient(
+              batch=2,
+              input_rows=5,
+              input_cols=4,
+              filter_rows=3,
+              filter_cols=3,
+              num_groups=2,
+              padding="VALID",
+              in_depth=4,
+              out_depth=6,
+              stride_rows=1,
+              stride_cols=1,
+              test_input=test_input,
+              data_format=data_format,
+              use_gpu=use_gpu,
+              max_err=0.005)
 
   @test_util.deprecated_graph_mode_only
-  @test_util.run_cuda_only
   def testFilterGradientGroupConv(self):
-    for data_format in ["NCHW", "NHWC"]:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for test_input in [True, False]:
-        self.ConstructAndTestGradient(
-            batch=2,
-            input_rows=5,
-            input_cols=4,
-            filter_rows=3,
-            filter_cols=3,
-            num_groups=2,
-            padding="VALID",
-            in_depth=4,
-            out_depth=6,
-            stride_rows=1,
-            stride_cols=1,
-            test_input=test_input,
-            data_format=data_format,
-            use_gpu=True,
-            max_err=0.005)
+        for (data_format, use_gpu) in GetTestConfigs():
+          self.ConstructAndTestGradient(
+              batch=2,
+              input_rows=5,
+              input_cols=4,
+              filter_rows=3,
+              filter_cols=3,
+              num_groups=2,
+              padding="VALID",
+              in_depth=4,
+              out_depth=6,
+              stride_rows=1,
+              stride_cols=1,
+              test_input=test_input,
+              data_format=data_format,
+              use_gpu=use_gpu,
+              max_err=0.005)
   # TODO(yzhwang): this currently fails.
   # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
   #                   filter_in_sizes=[2, 2, 1, 1],
