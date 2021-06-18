@@ -2243,8 +2243,8 @@ TEST(ReduceProductOperationParserTest, TestIsSupported) {
 
 TEST(QuantizeOperationParserTest, TestIsSupported) {
   // Invalid op_version
-  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinDequantize,
-                                                     /*op_version=*/4,
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinQuantize,
+                                                     /*op_version=*/3,
                                                      /*num_inputs=*/1);
   auto parser =
       NewOperationParser(context->registration(), /*allow_quant_ops=*/true);
@@ -2253,17 +2253,613 @@ TEST(QuantizeOperationParserTest, TestIsSupported) {
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
   // Invalid num_inputs
-  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinDequantize,
-                                                /*op_version=*/3,
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinQuantize,
+                                                /*op_version=*/2,
                                                 /*num_inputs=*/2);
   EXPECT_FALSE(
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
   // Valid
-  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinDequantize,
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinQuantize,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/1);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(ReLUOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinRelu,
+                                                     /*op_version=*/3,
+                                                     /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinRelu,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/1);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(ReLU6OperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinRelu6,
+                                                     /*op_version=*/3,
+                                                     /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinRelu6,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/1);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(LeakyReLUOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinLeakyRelu,
+                                                     /*op_version=*/3,
+                                                     /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinLeakyRelu,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/1);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(ResamplerOperationParserTest, TestIsSupported) {
+  // Invalid num_inputs
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/1);
+  context->registration()->custom_name = "Resampler";
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  context->registration()->custom_name = "Resampler";
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(ReshapeOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinReshape,
+                                                     /*op_version=*/2,
+                                                     /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid num_inputs
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinReshape,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinReshape,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/1);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(Resize2DBilinearOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context =
+      std::make_unique<StubTfLiteContext>(kTfLiteBuiltinResizeBilinear,
+                                          /*op_version=*/4,
+                                          /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid num_inputs
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinResizeBilinear,
+                                                /*op_version=*/3,
+                                                /*num_inputs=*/2);
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  // Invalid: if half_pixel_centers is True, align_corners must be False
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinResizeBilinear,
                                                 /*op_version=*/3,
                                                 /*num_inputs=*/1);
+  TfLiteResizeBilinearParams* tf_options =
+      static_cast<TfLiteResizeBilinearParams*>(context->node()->builtin_data);
+  tf_options->half_pixel_centers = true;
+  tf_options->align_corners = true;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options->half_pixel_centers = true;
+  tf_options->align_corners = false;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options->half_pixel_centers = false;
+  tf_options->align_corners = true;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options->half_pixel_centers = false;
+  tf_options->align_corners = false;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(Resize2DNearestNeighborOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context =
+      std::make_unique<StubTfLiteContext>(kTfLiteBuiltinResizeNearestNeighbor,
+                                          /*op_version=*/4,
+                                          /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid num_inputs
+  context =
+      std::make_unique<StubTfLiteContext>(kTfLiteBuiltinResizeNearestNeighbor,
+                                          /*op_version=*/3,
+                                          /*num_inputs=*/2);
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  // Valid
+  context =
+      std::make_unique<StubTfLiteContext>(kTfLiteBuiltinResizeNearestNeighbor,
+                                          /*op_version=*/3,
+                                          /*num_inputs=*/1);
+  TfLiteResizeNearestNeighborParams* tf_options =
+      static_cast<TfLiteResizeNearestNeighborParams*>(
+          context->node()->builtin_data);
+  tf_options->half_pixel_centers = true;
+  tf_options->align_corners = true;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options->half_pixel_centers = true;
+  tf_options->align_corners = false;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options->half_pixel_centers = false;
+  tf_options->align_corners = true;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options->half_pixel_centers = false;
+  tf_options->align_corners = false;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(SliceOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSlice,
+                                                     /*op_version=*/3,
+                                                     /*num_inputs=*/3);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid num_inputs
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSlice,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/2);
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid input dimenstion 2d
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSlice,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/3);
+  context->tensor(1)->dims->size = 2;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSlice,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/3);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(SoftmaxOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSoftmax,
+                                                     /*op_version=*/3,
+                                                     /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid num_inputs
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSoftmax,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/2);
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid beta
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSoftmax,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/1);
+  TfLiteSoftmaxParams* tf_options =
+      static_cast<TfLiteSoftmaxParams*>(context->node()->builtin_data);
+  tf_options->beta = 2;
+  // Valid
+  tf_options->beta = 1;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(SplitOperationParserTest, TestIsSupported) {
+  // Always valid
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSplit,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(SplitVOperationParserTest, TestIsSupported) {
+  // Always valid
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinSplitV,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(StridedSliceOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinStridedSlice,
+                                                     /*op_version=*/3,
+                                                     /*num_inputs=*/4);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid num_inputs
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinStridedSlice,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/3);
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid input dimenstion 2d
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinStridedSlice,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/4);
+  context->tensor(1)->dims->size = 2;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinStridedSlice,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/5);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(TileOperationParserTest, TestIsSupported) {
+  // Invalid num_inputs
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTile,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/2);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTile,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/1);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(TransposeConvBuiltinOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context =
+      std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTransposeConv,
+                                          /*op_version=*/4,
+                                          /*num_inputs=*/2);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid num_inputs
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTransposeConv,
+                                                /*op_version=*/3,
+                                                /*num_inputs=*/3);
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  // Invalid stride
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTransposeConv,
+                                                /*op_version=*/3,
+                                                /*num_inputs=*/2);
+  TfLiteTransposeConvParams* tf_options =
+      static_cast<TfLiteTransposeConvParams*>(context->node()->builtin_data);
+  tf_options->stride_width = 0;
+  tf_options->stride_height = 1;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options->stride_width = 1;
+  tf_options->stride_height = 1;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(TransposeConvCustomOperationParserTest, TestIsSupported) {
+  // Invalid num_inputs
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/1);
+  context->registration()->custom_name = "Convolution2DTransposeBias";
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // No custom_initial_data
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  context->registration()->custom_name = "Convolution2DTransposeBias";
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  // Invalid stride
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  context->registration()->custom_name = "Convolution2DTransposeBias";
+  TfLiteTransposeConvParams tf_options;
+  context->node()->custom_initial_data = &tf_options;
+  tf_options.stride_width = 0;
+  tf_options.stride_height = 1;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options.stride_width = 1;
+  tf_options.stride_height = 1;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(TransposeOperationParserTest, TestIsSupported) {
+  // Invalid op_version
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTranspose,
+                                                     /*op_version=*/3,
+                                                     /*num_inputs=*/1);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid num_inputs
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTranspose,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/2);
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  // IValid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinTranspose,
+                                                /*op_version=*/2,
+                                                /*num_inputs=*/1);
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(Unpooling2DOperationParserTest, TestIsSupported) {
+  // Invalid num_inputs
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/1);
+  context->registration()->custom_name = "MaxUnpooling2D";
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // No custom_initial_data
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  context->registration()->custom_name = "MaxUnpooling2D";
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  // Invalid filter and stride
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCustom,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  context->registration()->custom_name = "MaxUnpooling2D";
+  TfLitePoolParams tf_options;
+  context->node()->custom_initial_data = &tf_options;
+
+  tf_options.filter_height = 0;
+  tf_options.filter_width = 0;
+  tf_options.stride_width = 0;
+  tf_options.stride_height = 0;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid filter
+  tf_options.filter_height = 0;
+  tf_options.filter_width = 1;
+  tf_options.stride_width = 1;
+  tf_options.stride_height = 1;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid stride
+  tf_options.filter_height = 1;
+  tf_options.filter_width = 1;
+  tf_options.stride_width = 0;
+  tf_options.stride_height = 1;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  tf_options.filter_height = 1;
+  tf_options.filter_width = 1;
+  tf_options.stride_width = 1;
+  tf_options.stride_height = 1;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+}
+
+TEST(MeanOperationParserTest, TestIsSupported) {
+  // Invalid num_inputs
+  auto context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinMean,
+                                                     /*op_version=*/1,
+                                                     /*num_inputs=*/3);
+  auto parser = NewOperationParser(context->registration());
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Invalid axis tensor
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinMean,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  context->tensor(2)->allocation_type = kTfLiteArenaRw;
+  context->tensor(2)->type = kTfLiteInt32;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  // Invalid axis tensor type
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinMean,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  context->tensor(2)->allocation_type = kTfLiteMmapRo;  // Treat axis as const
+  context->tensor(2)->type = kTfLiteFloat32;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+  // Valid
+  context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinMean,
+                                                /*op_version=*/1,
+                                                /*num_inputs=*/2);
+  context->tensor(2)->allocation_type = kTfLiteMmapRo;  // Treat axis as const
+  context->tensor(2)->type = kTfLiteInt32;
   EXPECT_TRUE(
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
