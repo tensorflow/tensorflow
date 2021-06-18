@@ -1449,9 +1449,9 @@ typename std::enable_if<(sizeof(NativeSrcT) == sizeof(Eigen::half) &&
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   // Eigen::half doesn't satisfy the absl::bit_cast contract, so explicitly
-  // cast to unsigned short and then use raw_uint16_to_half.
+  // cast to unsigned short first.
   auto converter = [](NativeSrcT src) {
-    return Eigen::half_impl::raw_uint16_to_half(
+    return Eigen::numext::bit_cast<Eigen::half>(
         absl::bit_cast<uint16>(GetRawValue(src)));
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, Eigen::half>(
