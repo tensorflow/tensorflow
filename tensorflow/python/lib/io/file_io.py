@@ -800,7 +800,7 @@ def join(path, *paths):
   ...   expected = "folder\\file.py"  # Windows
   ... else:
   ...   expected = "folder/file.py"  # Linux/Unix-like
-  ... path == expected
+  >>> path == expected
   True
 
   Args:
