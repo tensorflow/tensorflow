@@ -27161,6 +27161,13 @@ op {
   output_arg {
     name: "optional"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_OPTIONAL
+      args {
+        type_id: TFT_VAR
+        s: "Toutput_types"
+      }
+    }
   }
   attr {
     name: "Toutput_types"
