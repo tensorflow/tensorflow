@@ -214,7 +214,6 @@ class OpOptionData {
     // Now for every op, try to find an option.
     bool fatal = false;
     for (const auto& op_name : ops_) {
-      bool found_option = false;
       auto d = tflite::BuiltinOptionsTypeTable();
       std::string collapsed_option_name_guess =
           ToCollapsed(op_name) + "options";
@@ -224,7 +223,6 @@ class OpOptionData {
         std::string collapsed_option_name = ToCollapsed(option_name);
         if (collapsed_option_name_guess == collapsed_option_name) {
           op_to_option_.insert(std::make_pair(op_name, option_name));
-          found_option = true;
           break;
         }
       }
