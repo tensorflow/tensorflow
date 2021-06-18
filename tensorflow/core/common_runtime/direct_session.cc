@@ -548,15 +548,8 @@ Status DirectSession::RunInternal(
       }
     }
     if (!collective_executor_mgr_) {
-      std::unique_ptr<DeviceResolverInterface> drl(
-          new DeviceResolverLocal(device_mgr_.get()));
-      std::unique_ptr<ParamResolverInterface> cprl(
-          new CollectiveParamResolverLocal(options_.config, device_mgr_.get(),
-                                           drl.get(),
-                                           "/job:localhost/replica:0/task:0"));
-      collective_executor_mgr_.reset(new CollectiveExecutorMgr(
-          options_.config, device_mgr_.get(), std::move(drl), std::move(cprl),
-          MaybeCreateNcclCommunicator()));
+      collective_executor_mgr_ = CreateProdLocalCollectiveExecutorMgr(
+          options_.config, device_mgr_.get(), MaybeCreateNcclCommunicator());
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));

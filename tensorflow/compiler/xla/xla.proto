@@ -172,7 +172,14 @@ message DebugOptions {
   // among different algorithms.
   bool xla_gpu_crash_on_verification_failures = 101;
 
-  // Disable GEMM and Convolution auto-tuning.
+  // 0:   Disable gemm and convolution autotuning.
+  // 1:   Enable autotuning, but disable correctness checking.
+  // 2:   Also set output buffers to random numbers during autotuning.
+  // 3:   Also reset output buffers to random numbers after autotuning each
+  //      algorithm.
+  // 4+:  Also check for correct outputs and for out-of-bounds reads/writes.
+  //
+  // Default: 4.
   int32 xla_gpu_autotune_level = 123;
 
   // Force the host platform to pretend that there are these many host

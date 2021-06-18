@@ -951,6 +951,7 @@ py_library(
         ":auto_control_deps",
         ":ops",
         ":sparse_tensor",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",

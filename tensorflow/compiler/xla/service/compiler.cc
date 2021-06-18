@@ -100,9 +100,13 @@ Compiler::GetPlatformCompilers() {
   if (it == factories->end()) {
     string hint;
     if (platform->Name() == "Host") {
-      hint = " (hint: try linking in tensorflow/compiler/jit:xla_cpu_jit)";
+      hint =
+          " (hint: try adding tensorflow/compiler/jit:xla_cpu_jit as a "
+          "dependency)";
     } else if (platform->Name() == "CUDA") {
-      hint = " (hint: try linking in tensorflow/compiler/jit:xla_gpu_jit)";
+      hint =
+          " (hint: try adding tensorflow/compiler/jit:xla_gpu_jit as a "
+          "dependency)";
     }
 
     return NotFound(

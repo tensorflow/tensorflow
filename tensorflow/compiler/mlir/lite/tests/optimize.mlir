@@ -2159,3 +2159,73 @@ func @fuseUnpackAndConcatToReshape(%arg0: tensor<1x3x2xf32>) -> tensor<1x6xf32> 
   // CHECK: %[[RES:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<1x3x2xf32>, tensor<2xi32>) -> tensor<1x6xf32>
   // CHECK: return %[[RES]]
 }
+
+// CHECK-LABEL: replaceReshapeEqualWithOneHot
+func @replaceReshapeEqualWithOneHot(%arg: tensor<2xi32>) -> tensor<2x3xi1> {
+  // Good match: Replace with one_hot
+  %shape = constant dense<[2, 1]> : tensor<2xi32>
+  %cst = constant dense<[0, 1, 2]> : tensor<3xi32>
+  %tmp = "tfl.reshape"(%arg, %shape) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x1xi32>
+  %result = "tfl.equal"(%tmp, %cst) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+  return %result : tensor<2x3xi1>
+
+  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK: %[[CST2:.*]] = constant dense<true> : tensor<i1>
+  // CHECK: %[[CST3:.*]] = constant dense<false> : tensor<i1>
+  // CHECK: %[[RES:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<i1>, tensor<i1>) -> tensor<2x3xi1>
+}
+
+// CHECK-LABEL: noReplaceReshapeEqualWithOneHotBadShape
+func @noReplaceReshapeEqualWithOneHotBadShape(%arg: tensor<6xi32>) -> tensor<2x3xi1> {
+  // Do not replace: shape's last dimension isn't 1
+  %shape = constant dense<[2, 3]> : tensor<2xi32>
+  %cst = constant dense<[0, 1, 2]> : tensor<3xi32>
+  %tmp = "tfl.reshape"(%arg, %shape) : (tensor<6xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+  %result = "tfl.equal"(%tmp, %cst) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+  return %result : tensor<2x3xi1>
+
+  // CHECK: %[[CST1:.*]] = constant dense<[2, 3]> : tensor<2xi32>
+  // CHECK: %[[CST2:.*]] = constant dense<[0, 1, 2]> : tensor<3xi32>
+  // CHECK: %[[TMP:.*]] = "tfl.reshape"(%arg0, %[[CST1]]) : (tensor<6xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+  // CHECK: %[[RES:.*]] = "tfl.equal"(%[[TMP]], %[[CST2]]) : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+}
+
+// CHECK-LABEL: noReplaceReshapeEqualWithOneHotBadIndex
+func @noReplaceReshapeEqualWithOneHotBadIndex(%arg: tensor<2xi32>) -> tensor<2x3xi1> {
+  // Do not replace: the constant is not a series from 0 to N-1
+  %shape = constant dense<[2, 1]> : tensor<2xi32>
+  %cst = constant dense<[1, 2, 3]> : tensor<3xi32>
+  %tmp = "tfl.reshape"(%arg, %shape) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x1xi32>
+  %result = "tfl.equal"(%tmp, %cst) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+  return %result : tensor<2x3xi1>
+
+  // CHECK: %[[CST1:.*]] = constant dense<[2, 1]> : tensor<2xi32>
+  // CHECK: %[[CST2:.*]] = constant dense<[1, 2, 3]> : tensor<3xi32>
+  // CHECK: %[[TMP:.*]] = "tfl.reshape"(%arg0, %[[CST1]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x1xi32>
+  // CHECK: %[[RES:.*]] = "tfl.equal"(%[[TMP]], %[[CST2]]) : (tensor<2x1xi32>, tensor<3xi32>) -> tensor<2x3xi1>
+}
+
+// CHECK-LABEL: fuseOneHotCast
+func @fuseOneHotCast(%arg: tensor<2xi32>) -> (tensor<2x3xf32>, tensor<2x3xf32>) {
+  %depth = constant dense<3> : tensor<i32>
+  %bool_on = constant dense<true> : tensor<i1>
+  %bool_off = constant dense<false> : tensor<i1>
+  %int_on = constant dense<5> : tensor<i32>
+  %int_off = constant dense<7> : tensor<i32>
+
+  %tmp_bool = "tfl.one_hot"(%arg, %depth, %bool_on, %bool_off) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<i1>, tensor<i1>) -> tensor<2x3xi1>
+  %result_bool = "tfl.cast"(%tmp_bool) : (tensor<2x3xi1>) -> tensor<2x3xf32>
+
+  %tmp_int = "tfl.one_hot"(%arg, %depth, %int_on, %int_off) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<2x3xi1>
+  %result_int = "tfl.cast"(%tmp_int) : (tensor<2x3xi1>) -> tensor<2x3xf32>
+
+  return %result_bool, %result_int : tensor<2x3xf32>, tensor<2x3xf32>
+
+  // CHECK: %[[CST1:.*]] = constant dense<3> : tensor<i32>
+  // CHECK: %[[CST2:.*]] = constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: %[[CST3:.*]] = constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: %[[CST4:.*]] = constant dense<5.000000e+00> : tensor<f32>
+  // CHECK: %[[CST5:.*]] = constant dense<7.000000e+00> : tensor<f32>
+  // CHECK: %[[RES1:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: %[[RES2:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST4]], %[[CST5]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
+}

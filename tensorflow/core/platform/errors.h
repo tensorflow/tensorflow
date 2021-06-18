@@ -157,6 +157,17 @@ inline std::string FormatFunctionForError(const std::string& name) {
   return strings::StrCat("{{function_node ", name, "}}");
 }
 
+inline Status ReplaceErrorFromNonCommunicationOps(const Status s,
+                                                  const std::string& op_name) {
+  assert(IsUnavailable(s));
+  return Status(
+      error::INTERNAL,
+      strings::StrCat(
+          s.error_message(), "\nExecuting non-communication op <", op_name,
+          "> originally returned UnavailableError, and was replaced by "
+          "InternalError to avoid invoking TF network error handling logic."));
+}
+
 // The CanonicalCode() for non-errors.
 using ::tensorflow::error::OK;
 

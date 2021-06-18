@@ -28,7 +28,7 @@ import numpy as np
 import six
 
 from tensorflow.compiler.tf2xla.python import xla
-from tensorflow.core.framework import types_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
@@ -43,7 +43,6 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -56,6 +55,7 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import manip_ops
@@ -106,8 +106,8 @@ def _is_variant_with_internal_stacking(t):
     # TODO(b/169968286): Identify all variant tensors (e.g. maps) and we can
     # make this an error instead of assuming TensorLists have handle data.
     return None  # Presumed not a TensorList/Optional
-  return (shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST or
-          shapes_and_types[0].specialized_type == types_pb2.ST_OPTIONAL)
+  type_id = shapes_and_types[0].type.type_id
+  return type_id in (full_type_pb2.TFT_ARRAY, full_type_pb2.TFT_OPTIONAL)
 
 
 def _parse_variant_shapes_and_types(t):
@@ -115,10 +115,10 @@ def _parse_variant_shapes_and_types(t):
   shapes_and_types = _variant_handle_data(t)
   if shapes_and_types is None or not shapes_and_types:
     raise ValueError("Required handle data not set for {!r}".format(t))
-  if shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST:
+  if shapes_and_types[0].type.type_id == full_type_pb2.TFT_ARRAY:
     return shapes_and_types
   else:
-    if shapes_and_types[0].specialized_type != types_pb2.ST_INVALID:
+    if shapes_and_types[0].type.type_id == full_type_pb2.TFT_UNSET:
       return shapes_and_types
     else:
       raise ValueError(
@@ -135,7 +135,7 @@ def _stack(t, length):
   # of the variant.
   if t.dtype == dtypes.variant:
     shapes_and_types = _parse_variant_shapes_and_types(t)
-    if shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST:
+    if shapes_and_types[0].type.type_id == full_type_pb2.TFT_ARRAY:
       if len(shapes_and_types) != 1:
         raise ValueError(
             "Expected handle data of length 1, got {!r} of length {}"
@@ -146,7 +146,7 @@ def _stack(t, length):
     else:
       raise ValueError(
           ("Attempted to stack an unhandled variant-dtype tensor of "
-           "type {!r} ({!r})").format(shapes_and_types[0].specialized_type, t))
+           "type {!r} ({!r})").format(shapes_and_types[0].type, t))
   ones = array_ops.ones_like(array_ops.shape(t))
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
@@ -1577,7 +1577,7 @@ class PFor(object):
           else:
             new_outputs = []
             for old_output, new_output in zip(y_op.outputs, new_op.outputs):
-              custom_gradient.copy_handle_data(old_output, new_output)
+              handle_data_util.copy_handle_data(old_output, new_output)
               new_outputs.append(wrap(new_output, False))
         else:
           # Either some inputs are not loop invariant or op is stateful.
@@ -3773,7 +3773,7 @@ def _tile_variant_with_length(t, length):
     result = array_ops.tile(t, length)
     # TODO(b/169968286): Should regular shape functions do handle data
     # propagation here?
-    custom_gradient.copy_handle_data(original_tensor, result)
+    handle_data_util.copy_handle_data(original_tensor, result)
     return result
 
 
