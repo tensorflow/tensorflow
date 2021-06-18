@@ -36,7 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -368,9 +368,9 @@ class Loader(object):
                   # as they get captured.
                   pass
                 else:
-                  custom_gradient.copy_handle_data(handle, internal_capture)
+                  handle_data_util.copy_handle_data(handle, internal_capture)
               else:
-                custom_gradient.copy_handle_data(bound_input, internal_capture)
+                handle_data_util.copy_handle_data(bound_input, internal_capture)
             # Setting "captures" first means "capture" won't create a new
             # placeholder for this input.
             concrete_function.graph.capture(bound_input)
