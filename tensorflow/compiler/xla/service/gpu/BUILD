@@ -1320,6 +1320,19 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_all_reduce_scatter_creator",
+    srcs = ["gpu_all_reduce_scatter_creator.cc"],
+    hdrs = ["gpu_all_reduce_scatter_creator.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:all_reduce_scatter_utils",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_query",
+    ],
+)
+
+cc_library(
     name = "gpu_spmd_partitioner",
     srcs = ["gpu_spmd_partitioner.cc"],
     hdrs = ["gpu_spmd_partitioner.h"],

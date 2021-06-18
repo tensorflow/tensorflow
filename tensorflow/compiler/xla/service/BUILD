@@ -70,6 +70,15 @@ filegroup(
 )
 
 cc_library(
+    name = "all_reduce_scatter_utils",
+    srcs = ["all_reduce_scatter_utils.cc"],
+    hdrs = ["all_reduce_scatter_utils.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+    ],
+)
+
+cc_library(
     name = "async_all_reduce_creator",
     srcs = ["async_all_reduce_creator.cc"],
     hdrs = ["async_all_reduce_creator.h"],
