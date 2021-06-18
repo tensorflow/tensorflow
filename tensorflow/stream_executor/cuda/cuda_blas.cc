@@ -488,8 +488,10 @@ cudaDataType_t GetCUDADataType(blas::DataType ty) {
   switch (ty) {
     case blas::DataType::kHalf:
       return CUDA_R_16F;
+#if CUDA_VERSION >= 11000
     case blas::DataType::kBF16:
       return CUDA_R_16BF;
+#endif
     case blas::DataType::kFloat:
       return CUDA_R_32F;
     case blas::DataType::kDouble:
