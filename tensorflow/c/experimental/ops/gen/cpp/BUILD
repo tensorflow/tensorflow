@@ -36,6 +36,7 @@ tf_cc_test(
     size = "small",
     srcs = ["cpp_controller_test.cc"],
     data = ["//tensorflow/c/experimental/ops/gen/cpp/golden"],
+    tags = ["no_windows"],  # new line escape sequence: windows uses'\r\n' while linux uses '\n'.
     deps = [
         ":cpp",
         "//tensorflow/core:core_cpu",
