@@ -1583,8 +1583,7 @@ struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     // Only convert the body of reduction ops to std ops.
     auto parent_op = op.getOperation()->getParentRegion()->getParentOp();
-    if (!isa<mhlo::ReduceOp, linalg::GenericOp, linalg::IndexedGenericOp>(
-            parent_op)) {
+    if (!isa<mhlo::ReduceOp, linalg::GenericOp>(parent_op)) {
       return failure();
     }
     if (!op.getResult().getType().template isa<TensorType>()) return failure();
@@ -2105,7 +2104,7 @@ struct ReduceWindowOpOnTensorsConversion
   }
 };
 
-/// Converts xla-hlo.torch_index_select op to a linalg.indexed_generic op.
+/// Converts xla-hlo.torch_index_select op to a linalg.generic op.
 struct TorchIndexSelectOpOnTensorsConversion
     : public OpConversionPattern<mhlo::TorchIndexSelectOp> {
   using OpConversionPattern<mhlo::TorchIndexSelectOp>::OpConversionPattern;
