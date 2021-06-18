@@ -796,7 +796,7 @@ def join(path, *paths):
   But the native filesystem is handled just like os.path.join:
 
   >>> path = tf.io.gfile.join("folder", "file.py")
-  ... if os.name == "nt":
+  >>> if os.name == "nt":
   ...   print(path == "folder\\file.py")  # Windows
   ... else:
   ...   print(path == "folder/file.py")  # Linux/Unix-like
