@@ -797,9 +797,10 @@ def join(path, *paths):
 
   >>> path = tf.io.gfile.join("folder", "file.py")
   >>> if os.name == "nt":
-  ...   print(path == "folder\\file.py")  # Windows
+  ...   expected = "folder\\file.py"  # Windows
   ... else:
-  ...   print(path == "folder/file.py")  # Linux/Unix-like
+  ...   expected = "folder/file.py"  # Linux/Unix-like
+  ... path == expected
   True
 
   Args:
