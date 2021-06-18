@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
 
