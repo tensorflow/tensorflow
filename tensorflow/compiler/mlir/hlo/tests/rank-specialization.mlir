@@ -159,8 +159,7 @@ func @sqrt(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:       %[[TMP0:.*]] = "mhlo.sqrt"(%[[FLAT_ARG]]) : (tensor<?xf32>)
 // CHECK-SCF:       %[[TMP1:.*]] = "mhlo.sqrt"(%[[TMP0]]) : (tensor<?xf32>)
 // CHECK-SCF:       %[[UNSHAPED_RES:.*]] = "mhlo.sqrt"(%[[TMP1]]) : (tensor<?xf32>)
-// CHECK-SCF:       %[[RES_SHAPE:.*]] = shape.shape_of %[[ARG]]
-// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 // CHECK-SCF:       return %[[RES]]
 
 // -----
@@ -229,8 +228,7 @@ func @tan(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:      %[[TMP0:.*]] = chlo.tan %[[FLAT_ARG]] : tensor<?xf32>
 // CHECK-SCF:      %[[TMP1:.*]] = chlo.tan %[[TMP0]] : tensor<?xf32>
 // CHECK-SCF:      %[[UNSHAPED_RES:.*]] = chlo.tan %[[TMP1]] : tensor<?xf32>
-// CHECK-SCF:      %[[RES_SHAPE:.*]] = shape.shape_of %[[ARG]]
-// CHECK-SCF:      %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:      %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 // CHECK-SCF:      return %[[RES]]
 
 // -----
@@ -295,8 +293,7 @@ func @relu(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:       %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
 // CHECK-SCF:       %[[FLAT_ARG:.*]] = "mhlo.dynamic_reshape"(%[[ARG]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
 // CHECK-SCF:       %[[UNSHAPED_RES:.*]] = chlo.broadcast_maximum %[[FLAT_ARG]], %[[C0]] : (tensor<?xf32>, tensor<f32>)
-// CHECK-SCF:       %[[RES_SHAPE:.*]] = shape.shape_of %[[ARG]]
-// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 // CHECK-SCF:       return %[[RES]]
 
 // -----
@@ -327,8 +324,7 @@ func @angle(%arg : tensor<*xcomplex<f32>>) -> tensor<*xf32> {
 // CHECK-SCF:       %[[IMAG:.*]] = "mhlo.imag"(%[[FLAT_ARG]]) : (tensor<?xcomplex<f32>>)
 // CHECK-SCF:       %[[REAL:.*]] = "mhlo.real"(%[[FLAT_ARG]]) : (tensor<?xcomplex<f32>>)
 // CHECK-SCF:       %[[UNSHAPED_RES:.*]] = mhlo.atan2 %[[IMAG]], %[[REAL]] : tensor<?xf32>
-// CHECK-SCF:       %[[RES_SHAPE:.*]] = shape.shape_of %[[ARG]]
-// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+// CHECK-SCF:       %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[SHAPE]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
 // CHECK-SCF:       return %[[RES]]
 
 // -----
@@ -610,10 +606,7 @@ func @all_equal_shapes_inferrable(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
 // CHECK-SCF-DAG:   %[[FLAT0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[FLAT_S]])
 // CHECK-SCF-DAG:   %[[FLAT1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[FLAT_S]])
 // CHECK-SCF:       %[[FLAT_RES:.*]] = mhlo.add %[[FLAT0]], %[[FLAT1]]
-// CHECK-SCF-DAG:   %[[S0:.*]] = shape.shape_of %[[ARG0]]
-// CHECK-SCF-DAG:   %[[S1:.*]] = shape.shape_of %[[ARG1]]
-// CHECK-SCF-DAG:   %[[RES_S:.*]] = shape.broadcast %8, %9
-// CHECK-SCF-DAG:   %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[FLAT_RES]], %[[RES_S]])
+// CHECK-SCF-DAG:   %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[FLAT_RES]], %[[S0]])
 // CHECK-SCF:       return %[[RES]]
 
 // -----
@@ -647,8 +640,5 @@ func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF-DAG:   %[[ZERO:.*]] = "chlo.constant_like"(%[[FLAT0]]) {value = 0.0{{.*}}+00 : f32}
 // CHECK-SCF-DAG:   %[[PRED:.*]] = "mhlo.compare"(%[[FLAT0]], %[[ZERO]]) {comparison_direction = "GT"}
 // CHECK-SCF:       %[[UNSHAPED_RES:.*]] = "mhlo.select"(%[[PRED]], %[[FLAT1]], %[[ZERO]])
-// CHECK-SCF-DAG:   %[[S0:.*]] = shape.shape_of %[[ARG0]]
-// CHECK-SCF-DAG:   %[[S1:.*]] = shape.shape_of %[[ARG1]]
-// CHECK-SCF-DAG:   %[[RES_SHAPE:.*]] = shape.broadcast %[[S1]], %[[S0]]
-// CHECK-SCF-DAG:   %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[RES_SHAPE]])
+// CHECK-SCF-DAG:   %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[S1]])
 // CHECK-SCF:       return %[[RES]]

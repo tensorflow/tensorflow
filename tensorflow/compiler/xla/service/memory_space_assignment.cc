@@ -854,25 +854,22 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
 }
 
 void AlternateMemoryBestFitHeap::FindAliases(
-    std::vector<AllocationValue>* allocation_values,
-    bool skip_values_with_no_uses) const {
-  absl::flat_hash_map<const HloInstruction*, const AllocationValue*>
+    std::vector<AllocationValue>* allocation_values) const {
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<const AllocationValue*>>
       values_by_defining_inst;
   for (AllocationValue& value : *allocation_values) {
-    // Skip the value if it doesn't have any uses.
-    if (value.uses().empty() && skip_values_with_no_uses) {
-      continue;
-    }
-    CHECK_EQ(values_by_defining_inst.count(value.defining_instruction()), 0);
-    values_by_defining_inst[value.defining_instruction()] = &value;
+    values_by_defining_inst[value.defining_instruction()].push_back(&value);
   }
   auto maybe_add_alias_with_instruction = [&](const HloInstruction* instruction,
                                               AllocationValue::Use* use) {
-    auto aliased_value_it = values_by_defining_inst.find(instruction);
-    if (aliased_value_it != values_by_defining_inst.end()) {
-      VLOG(3) << "Adding aliasing for use " << use->hlo_use.ToString() << " to "
-              << aliased_value_it->second->ToShortString();
-      use->aliases.push_back(aliased_value_it->second->defining_position());
+    auto aliased_values_it = values_by_defining_inst.find(instruction);
+    if (aliased_values_it != values_by_defining_inst.end()) {
+      for (const AllocationValue* aliased_value : aliased_values_it->second) {
+        VLOG(3) << "Adding aliasing for use " << use->hlo_use.ToString()
+                << " to " << aliased_value->ToShortString();
+        use->aliases.push_back(aliased_value->defining_position());
+      }
     }
   };
 
@@ -1323,7 +1320,38 @@ void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
   for (const auto& colocated_interval : colocated_intervals) {
     CreateAllocationValues(*colocated_interval, allocation_values);
   }
-  FindAliases(&allocation_values, /*skip_values_with_no_uses=*/true);
+  // Go through the AllocationValues and delete the ones that have the identical
+  // defining instruction and use instructions. This is useful for async
+  // operations that can read and write to the same buffer, e.g., in-place
+  // asynchronous collective permute. The AllocationValues that corresponds to
+  // collective-permute-start{0} (the input) and collective-permute-start{1}
+  // (the output) refer to the same buffer by definition (since they are created
+  // from colocated intervals). If we don't delete one of these buffers, then
+  // when we try to allocate the AllocationValue, we would think they overlap.
+  auto create_instruction_vector = [](const AllocationValue& allocation_value) {
+    std::vector<const HloInstruction*> instruction_vector;
+    instruction_vector.push_back(allocation_value.defining_instruction());
+    for (const AllocationValue::Use& use : allocation_value.uses()) {
+      instruction_vector.push_back(use.hlo_use.instruction);
+    }
+    return instruction_vector;
+  };
+  for (int i = 0; i < allocation_values.size() - 1; ++i) {
+    for (int j = i + 1; j < allocation_values.size(); ++j) {
+      const AllocationValue& allocation_value_1 = allocation_values[i];
+      const AllocationValue& allocation_value_2 = allocation_values[j];
+      if (create_instruction_vector(allocation_value_1) ==
+          create_instruction_vector(allocation_value_2)) {
+        VLOG(3) << "Allocation values " << allocation_value_1.ToShortString()
+                << " and " << allocation_value_2.ToShortString()
+                << " are equivalent, deleting the second one.";
+        allocation_values.erase(allocation_values.begin() + j);
+        --j;
+      }
+    }
+  }
+
+  FindAliases(&allocation_values);
 }
 
 AlternateMemoryBestFitHeap::Result

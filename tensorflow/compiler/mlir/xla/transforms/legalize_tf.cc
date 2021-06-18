@@ -1141,7 +1141,7 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(TF::BiasAddOp op,
                                 PatternRewriter &rewriter) const override {
-    auto loc = op.getLoc();
+    Location loc = op.getLoc();
     auto feature_dim = GetFeatureDimension(
         op.data_format(), op.value().getType().cast<RankedTensorType>());
     auto bias_broadcast = Broadcast1DToFeatureDim(loc, op.value(), op.bias(),
@@ -2375,7 +2375,7 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
       fft_length = fft_length / 2 + 1;
       fft_string = "IRFFT";
     }
-    auto loc = op.getLoc();
+    Location loc = op.getLoc();
 
     // The inner-most dim cannot be dynamic.
     if (input_ty.isDynamicDim(input_shape.size() - 1)) {
@@ -3334,7 +3334,7 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
     Value logits = op.logits();
     RankedTensorType type = logits.getType().dyn_cast<RankedTensorType>();
     if (!type) return failure();
-    auto loc = op.getLoc();
+    Location loc = op.getLoc();
     int rank = type.getRank();
 
     // Note that the TensorFlow Softmax op verifies that the input rank is
@@ -3386,10 +3386,10 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
 
   LogicalResult matchAndRewrite(TF::SliceOp op,
                                      PatternRewriter& rewriter) const override {
-    auto loc = op.getLoc();
-    auto input = op.input();
-    auto begin_indices = op.begin();
-    auto sizes = op.size();
+    Location loc = op.getLoc();
+    Value input = op.input();
+    Value begin_indices = op.begin();
+    Value sizes = op.size();
 
     auto input_ty = input.getType().dyn_cast<RankedTensorType>();
     auto begin_type = begin_indices.getType().dyn_cast<RankedTensorType>();
@@ -3669,8 +3669,8 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
 
   LogicalResult matchAndRewrite(TF::SplitOp op,
                                      PatternRewriter& rewriter) const override {
-    auto loc = op.getLoc();
-    auto input = op.value();
+    Location loc = op.getLoc();
+    Value input = op.value();
     auto input_type = input.getType().dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
     // TODO: remove static shape check once folding/canonicalization func added  
@@ -6577,7 +6577,7 @@ class ConvertConstOp : public OpRewritePattern<TF::ConstOp> {
     if (!ty || !ty.getElementType().isa<FloatType, IntegerType, ComplexType>())
       return failure();
 
-    auto loc = op.getLoc();
+    Location loc = op.getLoc();
     Value result = rewriter.create<mhlo::ConstOp>(loc, op.value());
     if (result.getType() != op.getType())
       result = rewriter.create<tensor::CastOp>(loc, op.getType(), result);

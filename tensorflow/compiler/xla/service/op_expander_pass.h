@@ -27,7 +27,6 @@ namespace xla {
 // does not support into other HLO instructions.
 class OpExpanderPass : public HloModulePass {
  public:
-  // Returns `true` for instructions which should be expanded.
   using PatternExtraFilter = std::function<bool(const HloInstruction*)>;
 
   StatusOr<bool> Run(HloModule* module) override;

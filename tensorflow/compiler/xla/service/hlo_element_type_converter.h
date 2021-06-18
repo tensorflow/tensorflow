@@ -27,14 +27,10 @@ namespace xla {
 // generally not the fastest approach, but it works.
 class HloElementTypeConverter : public HloModulePass {
  public:
-  // Returns `true` for instructions which should be converted.
-  using ConverterFilter = std::function<bool(const HloInstruction*)>;
-
   // eliminate_type is the type to eliminate as the input or output of ops,
   // using Convert ops to replace it with replace_with_type.
   HloElementTypeConverter(PrimitiveType eliminate_type,
-                          PrimitiveType replace_with_type,
-                          ConverterFilter filter = nullptr);
+                          PrimitiveType replace_with_type);
 
   absl::string_view name() const override { return "element_type_converter"; }
 
@@ -44,7 +40,6 @@ class HloElementTypeConverter : public HloModulePass {
  private:
   PrimitiveType eliminate_type_;
   PrimitiveType replace_with_type_;
-  ConverterFilter converter_filter_;
 };
 
 }  // namespace xla
