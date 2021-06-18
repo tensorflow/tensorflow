@@ -96,7 +96,8 @@ static absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
     PrimitiveType type) {
   switch (type) {
     case F16:
-    case BF16:
+      // Use F32 as computation type for F16 as we currently only implement
+      // the cuDNN pseudo half configuration for half precision.
       return se::blas::ComputationType::kF32;
     case F32:
       return se::blas::ComputationType::kF32;
@@ -317,13 +318,6 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
           batch_size, lhs_matrix, rhs_matrix, output_matrix,
           static_cast<Eigen::half>(alpha.real()),
           static_cast<Eigen::half>(beta), stream, best_algorithm,
-          /*output_profile_result=*/profile_result);
-    case BF16:
-      CHECK_EQ(alpha.imag(), 0);
-      return DoGemm<Eigen::bfloat16>(
-          batch_size, lhs_matrix, rhs_matrix, output_matrix,
-          static_cast<Eigen::bfloat16>(alpha.real()),
-          static_cast<Eigen::bfloat16>(beta), stream, best_algorithm,
           /*output_profile_result=*/profile_result);
     case F32:
       CHECK_EQ(alpha.imag(), 0);
