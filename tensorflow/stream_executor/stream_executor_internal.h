@@ -377,6 +377,13 @@ class StreamExecutorInterface {
     return absl::nullopt;
   }
 
+  // If implemented, clears the internal stats except for the `in_use` fields
+  // and sets the `peak_bytes_in_use` to be equal to the `bytes_in_use`. Returns
+  // true if implemented.
+  //
+  // REQUIRES: GetAllocatorStats is overridden.
+  virtual bool ClearAllocatorStats() { return false; }
+
   // Clears the compilation cache from volatile memory. Returns OK if no
   // compilation cache exists or if clearing the compilation cache is
   // unsupported. Caches in non-volatile storage are unaffected.

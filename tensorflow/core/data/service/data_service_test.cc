@@ -15,29 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/data_service.h"
 
-#include "grpcpp/create_channel.h"
-#include "grpcpp/security/credentials.h"
-#include "absl/strings/str_split.h"
-#include "tensorflow/core/data/compression_utils.h"
-#include "tensorflow/core/data/dataset_test_base.h"
-#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
+#include <vector>
+
 #include "tensorflow/core/data/service/dispatcher.pb.h"
-#include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/server_lib.h"
+#include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/test_cluster.h"
-#include "tensorflow/core/data/service/test_util.h"
-#include "tensorflow/core/data/service/worker.grpc.pb.h"
-#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace data {
-
 namespace {
+
 constexpr const char kProtocol[] = "grpc+local";
-}
 
 TEST(DataService, ParseParallelEpochsProcessingMode) {
   ProcessingMode mode;
@@ -64,6 +57,34 @@ TEST(DataService, ProcessingModeToString) {
             ProcessingModeToString(ProcessingMode::DISTRIBUTED_EPOCH));
 }
 
+TEST(DataService, ParseTargetWorkers) {
+  TF_ASSERT_OK_AND_ASSIGN(TargetWorkers target_workers,
+                          ParseTargetWorkers("AUTO"));
+  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("Auto"));
+  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("ANY"));
+  EXPECT_EQ(target_workers, TargetWorkers::ANY);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("any"));
+  EXPECT_EQ(target_workers, TargetWorkers::ANY);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("LOCAL"));
+  EXPECT_EQ(target_workers, TargetWorkers::LOCAL);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("local"));
+  EXPECT_EQ(target_workers, TargetWorkers::LOCAL);
+  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers(""));
+  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
+}
+
+TEST(DataService, ParseInvalidTargetWorkers) {
+  EXPECT_TRUE(errors::IsInvalidArgument(ParseTargetWorkers("UNSET").status()));
+}
+
+TEST(DataService, TargetWorkersToString) {
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::AUTO), "AUTO");
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::ANY), "ANY");
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::LOCAL), "LOCAL");
+}
+
 TEST(DataService, GetWorkers) {
   TestCluster cluster(1);
   TF_ASSERT_OK(cluster.Initialize());
@@ -74,5 +95,6 @@ TEST(DataService, GetWorkers) {
   EXPECT_EQ(1, workers.size());
 }
 
+}  // namespace
 }  // namespace data
 }  // namespace tensorflow

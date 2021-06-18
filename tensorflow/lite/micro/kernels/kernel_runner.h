@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/micro/mock_micro_graph.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 
 namespace tflite {
@@ -45,6 +46,10 @@ class KernelRunner {
   // passed into the constructor of this class.
   TfLiteStatus Invoke();
 
+  // Returns a pointer to the internal MockMicroGraph which KernelRunner uses
+  // to stub out MicroGraph methods and track invocations on each subgraph.
+  MockMicroGraph* GetMockGraph() { return &mock_micro_graph_; }
+
  protected:
   static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
                                  int tensor_index);
@@ -57,6 +62,11 @@ class KernelRunner {
   static void* GetScratchBuffer(TfLiteContext* context, int buffer_index);
   static void ReportOpError(struct TfLiteContext* context, const char* format,
                             ...);
+  // This method matches GetExecutionPlan from TfLiteContext since TFLM reuses
+  // this method to get the MicroGraph from an operator context.
+  // TODO(b/188226309): Design a cleaner way to get a graph from kernel context.
+  static TfLiteStatus GetGraph(struct TfLiteContext* context,
+                               TfLiteIntArray** args);
 
  private:
   static constexpr int kNumScratchBuffers_ = 12;
@@ -67,6 +77,7 @@ class KernelRunner {
   SimpleMemoryAllocator* allocator_ = nullptr;
   const TfLiteRegistration& registration_;
   TfLiteTensor* tensors_ = nullptr;
+  MockMicroGraph mock_micro_graph_;
 
   TfLiteContext context_ = {};
   TfLiteNode node_ = {};

@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import _pywrap_tf_optimizer as tf_opt
+from tensorflow.python.grappler import _pywrap_tf_optimizer as tf_opt
 from tensorflow.python.grappler import cluster as gcluster
 
 

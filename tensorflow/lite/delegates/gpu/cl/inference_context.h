@@ -96,9 +96,6 @@ class InferenceContext {
   const std::vector<ValueId>& GetInputIds() const { return input_ids_; }
   const std::vector<ValueId>& GetOutputIds() const { return output_ids_; }
 
-  const std::vector<int64_t>& GetInputRefs() const { return in_refs_; }
-  const std::vector<int64_t>& GetOutputRefs() const { return out_refs_; }
-
   absl::Status RestoreDeserialized(
       const absl::Span<const uint8_t> serialized_model, Environment* env);
 
@@ -106,8 +103,8 @@ class InferenceContext {
   enum class TensorMemoryType { kStrongShape, kBuffer, kVariable, kConst };
 
   friend flatbuffers::Offset<data::InferenceContext> Encode(
-      const InferenceContext& inference,
-      flatbuffers::FlatBufferBuilder* builder);
+      const InferenceContext& inference, const std::vector<int64_t>& in_refs,
+      std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const data::InferenceContext* fb_inference,
                              InferenceContext* inference);
 
@@ -238,10 +235,6 @@ class InferenceContext {
   std::vector<ValueId> input_ids_;
   std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::vector<ValueId> output_ids_;
-
-  // for serialization
-  std::vector<int64_t> in_refs_;
-  std::vector<int64_t> out_refs_;
 
   std::unique_ptr<RecordableQueue> recordable_queue_;
 };

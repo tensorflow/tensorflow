@@ -93,7 +93,7 @@ TEST(RunHandlerUtilTest, PrioritySchedulingTest) {
   auto handler3 = pool->Get(/*step_id=*/3, /*timeout_in_ms=*/0, options);
 
   // The active requests should be ordered by priorites.
-  std::vector<int64> sorted_active_list =
+  std::vector<int64_t> sorted_active_list =
       pool->GetActiveHandlerPrioritiesForTesting();
   EXPECT_EQ(sorted_active_list.size(), 3);
   EXPECT_EQ(sorted_active_list[0], 3);
@@ -784,7 +784,7 @@ TEST_F(RunHandlerTest, TestWaitTimeout) {
 
   // Get the single handler in the pool.
   std::vector<std::unique_ptr<RunHandler>> blocking_handles;
-  const int32 kMaxConcurrentHandlers = 128;  // Copied from run_handler.cc.
+  const int32_t kMaxConcurrentHandlers = 128;  // Copied from run_handler.cc.
   blocking_handles.reserve(kMaxConcurrentHandlers);
   for (int i = 0; i < kMaxConcurrentHandlers; ++i) {
     blocking_handles.push_back(pool->Get(i));
@@ -798,7 +798,7 @@ TEST_F(RunHandlerTest, TestWaitTimeout) {
   // A subsequent request with no timeout will succeed once the blocking handle
   // is returned.
   auto tp = std::make_unique<thread::ThreadPool>(Env::Default(), "test", 4);
-  std::atomic<int64> release_time;
+  std::atomic<int64_t> release_time;
 
   tp->Schedule([&blocking_handles, &release_time]() {
     Env::Default()->SleepForMicroseconds(5000);

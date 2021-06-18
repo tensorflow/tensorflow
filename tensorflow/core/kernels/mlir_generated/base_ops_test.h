@@ -48,6 +48,18 @@ absl::InlinedVector<T, 10> RepeatInputToMatchShape(
   return result;
 }
 
+template <typename T>
+absl::InlinedVector<T, 10> RepeatElements(absl::InlinedVector<T, 10> input,
+                                          int num_repeats) {
+  absl::InlinedVector<T, 10> result;
+  for (T value : input) {
+    for (int i = 0; i < num_repeats; ++i) {
+      result.push_back(value);
+    }
+  }
+  return result;
+}
+
 /// Helper functions to get default input shapes.
 
 TensorShape DefaultInputShape();
@@ -133,7 +145,9 @@ absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
                               std::numeric_limits<T>::max()});
 }
 
-template <typename T>
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
 absl::InlinedVector<T, 10> NearZeroInfAndNanInput() {
   return InputAsVector<T, double>({-std::numeric_limits<double>::quiet_NaN(),
                                    -std::numeric_limits<double>::infinity(),
@@ -249,6 +263,35 @@ absl::InlinedVector<T, 10> ComplexInputFromValues(
     complex_input.emplace_back(real[i], imag[i]);
   }
   return complex_input;
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
+                                           std::complex<double>>::value,
+                           bool> = true>
+absl::InlinedVector<T, 10> DefaultInputNonZero() {
+  auto real = test::DefaultInputNonZero<typename T::value_type>();
+  auto imag = real;
+  std::reverse(imag.begin(), imag.end());
+  return test::ComplexInputFromValues<T>(real, imag);
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
+                                           std::complex<double>>::value,
+                           bool> = true>
+absl::InlinedVector<T, 10> NearZeroInfAndNanInput() {
+  using ElementType = typename T::value_type;
+  auto input = test::NearZeroInfAndNanInput<ElementType>();
+  absl::InlinedVector<ElementType, 10> real;
+  absl::InlinedVector<ElementType, 10> imag;
+  for (ElementType r : input) {
+    for (ElementType i : input) {
+      real.push_back(r);
+      imag.push_back(i);
+    }
+  }
+  return test::ComplexInputFromValues<T>(real, imag);
 }
 
 template <typename T,

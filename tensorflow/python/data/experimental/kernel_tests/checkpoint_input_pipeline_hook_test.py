@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import iterator_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -37,10 +38,6 @@ from tensorflow_estimator.python.estimator import model_fn
 
 
 # TODO(b/123904664)
-def _test_combinations():
-  return combinations.combine(tf_api_version=[1], mode=['eager', 'graph'])
-
-
 class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
 
   @staticmethod
@@ -75,7 +72,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
   def _build_iterator_saver_hook(self, est):
     return iterator_ops.CheckpointInputPipelineHook(est)
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testReturnDatasetFromInputFn(self):
 
     def _input_fn():
@@ -88,7 +85,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
     est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
     self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testBuildIteratorInInputFn(self):
 
     def _input_fn():
@@ -103,7 +100,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
     est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
     self.assertSequenceEqual(self._read_vars(est.model_dir), (4, 3))
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testDoNotRestore(self):
 
     def _input_fn():
@@ -119,7 +116,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
     est.train(_input_fn, steps=2)
     self.assertSequenceEqual(self._read_vars(est.model_dir), (6, 1))
 
-  @combinations.generate(_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testRaiseErrorIfNoIterator(self):
 
     def _input_fn():

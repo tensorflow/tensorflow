@@ -128,11 +128,6 @@ build --define=grpc_no_ares=true
 # archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
 
-# These are bazel 2.0's incompatible flags. Tensorflow needs to use bazel 2.0.0
-# to use cc_shared_library, as part of the Tensorflow Build Improvements RFC:
-# https://github.com/tensorflow/community/pull/179
-build --noincompatible_prohibit_aapt1
-
 build --enable_platform_specific_config
 
 # Enable XLA support by default.
@@ -239,6 +234,14 @@ build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
 
 # Debug config
 build:dbg -c dbg
+# Only include debug info for files under tensorflow/, excluding kernels, to
+# reduce the size of the debug info in the binary. This is because if the debug
+# sections in the ELF binary are too large, errors can occur. See
+# https://github.com/tensorflow/tensorflow/issues/48919.
+# Users can still include debug info for a specific kernel, e.g. with:
+#     --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g
+build:dbg --per_file_copt=+.*,-tensorflow.*@-g0
+build:dbg --per_file_copt=+tensorflow/core/kernels.*@-g0
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
@@ -494,8 +497,8 @@ build:rbe_linux_py3 --python_path="/usr/bin/python3"
 build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-manylinux2010-py3_config_python"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_08062020:toolchain"
-build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_08062020:cc-toolchain-x64_windows"
+build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_06152021:toolchain"
+build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_06152021:cc-toolchain-x64_windows"
 build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
 build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
 build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
@@ -599,7 +602,7 @@ build:asan --linkopt -fsanitize=address
 # CC=clang bazel build --config msan
 build:msan --strip=never
 build:msan --copt -fsanitize=memory
-build:msan --copt -DADDRESS_SANITIZER
+build:msan --copt -DMEMORY_SANITIZER
 build:msan --copt -g
 build:msan --copt -O3
 build:msan --copt -fno-omit-frame-pointer
@@ -609,6 +612,7 @@ build:msan --linkopt -fsanitize=memory
 # CC=clang bazel build --config ubsan
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
+build:ubsan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
 build:ubsan --copt -g
 build:ubsan --copt -O3
 build:ubsan --copt -fno-omit-frame-pointer

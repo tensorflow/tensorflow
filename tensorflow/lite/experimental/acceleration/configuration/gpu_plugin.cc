@@ -21,6 +21,24 @@ limitations under the License.
 
 namespace tflite {
 namespace delegates {
+namespace {
+
+TfLiteGpuInferencePriority ConvertInferencePriority(
+    GPUInferencePriority priority) {
+  switch (priority) {
+    case GPUInferencePriority_GPU_PRIORITY_AUTO:
+      return TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
+    case GPUInferencePriority_GPU_PRIORITY_MAX_PRECISION:
+      return TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+    case GPUInferencePriority_GPU_PRIORITY_MIN_LATENCY:
+      return TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+    case GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE:
+      return TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+  }
+}
+
+}  // namespace
+
 class GpuPlugin : public DelegatePluginInterface {
  public:
   TfLiteDelegatePtr Create() override {
@@ -35,24 +53,34 @@ class GpuPlugin : public DelegatePluginInterface {
   explicit GpuPlugin(const TFLiteSettings& tflite_settings)
       : options_(TfLiteGpuDelegateOptionsV2Default()) {
     const auto* gpu_settings = tflite_settings.gpu_settings();
-    if (gpu_settings) {
+    if (!gpu_settings) return;
+
+    if (gpu_settings->inference_priority1() > 0) {
+      // User has specified their own inference priorities, so just copy over.
+      options_.inference_priority1 =
+          ConvertInferencePriority(gpu_settings->inference_priority1());
+      options_.inference_priority2 =
+          ConvertInferencePriority(gpu_settings->inference_priority2());
+      options_.inference_priority3 =
+          ConvertInferencePriority(gpu_settings->inference_priority3());
+    } else {
       options_.inference_priority1 =
           gpu_settings->is_precision_loss_allowed()
               ? TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY
               : TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-      if (gpu_settings->enable_quantized_inference()) {
-        options_.experimental_flags |=
-            TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
-      }
-      if (gpu_settings->force_backend() == GPUBackend_OPENCL) {
-        options_.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY;
-      } else if (gpu_settings->force_backend() == GPUBackend_OPENGL) {
-        options_.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY;
-      }
-      if (tflite_settings.max_delegated_partitions() >= 0) {
-        options_.max_delegated_partitions =
-            tflite_settings.max_delegated_partitions();
-      }
+    }
+
+    if (gpu_settings->enable_quantized_inference()) {
+      options_.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+    }
+    if (gpu_settings->force_backend() == GPUBackend_OPENCL) {
+      options_.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY;
+    } else if (gpu_settings->force_backend() == GPUBackend_OPENGL) {
+      options_.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY;
+    }
+    if (tflite_settings.max_delegated_partitions() >= 0) {
+      options_.max_delegated_partitions =
+          tflite_settings.max_delegated_partitions();
     }
   }
 

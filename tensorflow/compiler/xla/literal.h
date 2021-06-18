@@ -110,6 +110,10 @@ class LiteralBase {
   // shape string with its layout.does *not* include the shape string.
   string ToStringWithLayout() const;
 
+  // Similar to ToStringWithLayout, but return the result in a compact
+  // one-line form.
+  string ToStringWithLayoutOneline() const;
+
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
   template <typename NativeT>
@@ -930,7 +934,7 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
 
 template <typename NativeT>
 NativeT LiteralBase::Piece::Get(absl::Span<const int64> multi_index) const {
-  CHECK(LayoutUtil::IsDenseArray(subshape()));
+  CHECK(LayoutUtil::IsDenseArray(subshape())) << subshape();
   return data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)];
 }

@@ -34,6 +34,8 @@ exports_files([
     "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
+    "unbounded_thread_pool.cc",
+    "unbounded_thread_pool.h",
 ])
 
 cc_library(
@@ -151,6 +153,8 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:str_util",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -225,10 +229,12 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -242,6 +248,7 @@ cc_library(
         ":rewrite_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:stringprintf",
@@ -324,6 +331,7 @@ cc_library(
     hdrs = ["standalone.h"],
     deps = [
         ":root_dataset",
+        ":unbounded_thread_pool",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -351,5 +359,30 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "unbounded_thread_pool",
+    srcs = ["unbounded_thread_pool.cc"],
+    hdrs = ["unbounded_thread_pool.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "unbounded_thread_pool_test",
+    size = "small",
+    srcs = ["unbounded_thread_pool_test.cc"],
+    deps = [
+        ":unbounded_thread_pool",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

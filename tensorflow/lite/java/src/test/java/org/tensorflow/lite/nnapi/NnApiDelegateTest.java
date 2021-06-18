@@ -19,10 +19,13 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.fail;
 
 import java.nio.ByteBuffer;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.SupportedFeatures;
+import org.tensorflow.lite.TestInit;
 import org.tensorflow.lite.TestUtils;
 
 /** Unit tests for {@link org.tensorflow.lite.nnapi.NnApiDelegate}. */
@@ -31,6 +34,11 @@ public final class NnApiDelegateTest {
 
   private static final String MODEL_PATH = "tensorflow/lite/java/src/testdata/add.bin";
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
+
+  @Before
+  public void setUp() throws Exception {
+    TestInit.init();
+  }
 
   @Test
   public void testBasic() throws Exception {
@@ -58,6 +66,10 @@ public final class NnApiDelegateTest {
 
   @Test
   public void testInterpreterWithNnApiAndXNNPack() throws Exception {
+    if (!SupportedFeatures.supportsXnnpack()) {
+      System.err.println("Not testing NNAPI with XNNPACK, since XNNPACK isn't supported.");
+      return;
+    }
     Interpreter.Options options = new Interpreter.Options();
     options.setUseXNNPACK(true);
 

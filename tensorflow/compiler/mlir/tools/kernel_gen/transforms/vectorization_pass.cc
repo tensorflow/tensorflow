@@ -24,8 +24,10 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
@@ -105,8 +107,6 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   // represents relative to the induction variable in its loop and the
   // bounds of the original for loop.
   auto is_op_of_interest = [&](AffineMinOp min_op, Value iv) {
-    if (min_op.getDimOperands().size() + min_op.getSymbolOperands().size() != 2)
-      return false;
     bool min_by_step = false;
     for (auto i : min_op.getAffineMap().getResults()) {
       if (i == b.getAffineConstantExpr(step_bound_value.getInt())) {
@@ -121,6 +121,12 @@ void SplitSCFForOp(scf::ForOp scf_for) {
           min_op.getDimOperands().drop_front().front() == iv &&
           min_op.getDimOperands().front() == scf_for.upperBound())
         continue;
+      if (auto idx_op = scf_for.upperBound().getDefiningOp<ConstantIndexOp>()) {
+        auto val = idx_op.getValue();
+        if (i == b.getAffineConstantExpr(val) - b.getAffineDimExpr(0) &&
+            min_op.getDimOperands().front() == iv)
+          continue;
+      }
       return false;
     }
     return min_by_step;
@@ -253,11 +259,11 @@ void RemoveDeadMemrefCode(FuncOp func) {
 
   // Gather all operations interacting with memrefs guaranteed to never be read
   // from.
-  func->walk([&](memref::AllocOp op) {
+  func->walk([&](memref::AllocaOp op) {
     llvm::SmallVector<Operation *> maybe_to_remove;
     for (auto &alias : baa.resolve(op.getResult())) {
       for (auto user : alias.getUsers()) {
-        if (!(isa<ViewLikeOpInterface>(user) || isa<memref::DeallocOp>(user) ||
+        if (!(isa<ViewLikeOpInterface>(user) ||
               (isa<linalg::CopyOp>(user) &&
                alias == cast<linalg::CopyOp>(user).output()) ||
               (isa<linalg::FillOp>(user) &&
@@ -285,24 +291,44 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
   }
 
   void runOnFunction() override {
-    mlir::linalg::LinalgTilingOptions tiling_options;
-    tiling_options =
-        tiling_options.setTileSizes(llvm::makeArrayRef<int64_t>(4));
+    // This functions in 2 passes:
+    // 1. Tile, promote, and vectorize to create elementwise operations on
+    //    <(1x)*4xty> memrefs
+    // 2. cast <(1x)*4xty> memrefs to <4xty>
+    auto f = getFunction();
+
+    // Stage 1: Vectorize to form static shaped computations
+    auto tiling_options =
+        linalg::LinalgTilingOptions().setTileSizeComputationFunction(
+            [](OpBuilder b, Operation *op) {
+              auto num_loops = llvm::cast<linalg::LinalgOp>(op).getNumLoops();
+              SmallVector<Value> tiles(
+                  num_loops, b.create<ConstantIndexOp>(op->getLoc(), 1));
+              if (!tiles.empty())
+                tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), 4);
+              return tiles;
+            });
     auto alignment = 16;
-    mlir::linalg::CodegenStrategy strategy;
-    strategy.tile<mlir::linalg::GenericOp>(tiling_options)
+    mlir::linalg::CodegenStrategy()
+        .tile<mlir::linalg::GenericOp>(tiling_options)
         .promote<mlir::linalg::GenericOp>(
             mlir::linalg::LinalgPromotionOptions()
                 .setAlignment(alignment)
                 .setUseFullTileBuffersByDefault(true)
-                .setUseAlloca(false))
+                .setUseAlloca(true))
         .vectorize<mlir::linalg::GenericOp>()
         .setVectorTransformsOptions(
             mlir::vector::VectorTransformsOptions().setVectorTransferSplit(
                 mlir::vector::VectorTransferSplit::VectorTransfer))
         .setVectorTransferToSCFOptions(
-            mlir::VectorTransferToSCFOptions().setUnroll(true));
-    strategy.transform(getFunction());
+            mlir::VectorTransferToSCFOptions().setUnroll(true))
+        .transform(f);
+
+    // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
+    auto ctx = f.getContext();
+    OwningRewritePatternList patterns(ctx);
+    mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
+    (void)applyPatternsAndFoldGreedily(f, std::move(patterns));
   }
 };
 

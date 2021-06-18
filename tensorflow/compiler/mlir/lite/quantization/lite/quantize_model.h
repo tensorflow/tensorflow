@@ -42,7 +42,7 @@ TfLiteStatus QuantizeModel(
     bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter, bool verify_numeric = false,
-    bool legacy_float_scale = true);
+    bool whole_model_verify = false, bool legacy_float_scale = true);
 }  // namespace lite
 }  // namespace mlir
 

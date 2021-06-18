@@ -635,12 +635,13 @@ class CsvDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     return readers.CsvDataset(filename, **kwargs).repeat(self._num_epochs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testCore(self, verify_fn):
     defs = [[0]] * self._num_cols
-    self.run_core_tests(
-        lambda: self.ds_func(record_defaults=defs, buffer_size=2),
-        self._num_outputs)
+    verify_fn(self, lambda: self.ds_func(record_defaults=defs, buffer_size=2),
+              self._num_outputs)
 
 
 if __name__ == '__main__':

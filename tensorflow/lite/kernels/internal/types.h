@@ -885,6 +885,8 @@ struct Conv3DParams {
   float float_activation_max;
 };
 
+typedef Conv3DParams Conv3DTransposeParams;
+
 struct DepthToSpaceParams {
   int32_t block_size;
 };

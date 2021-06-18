@@ -23,6 +23,7 @@ Tests that focus on the model structure should go in revive_test.py
 
 import os
 import shutil
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -151,7 +152,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
 
   def _save_and_load(self, model):
     saved_model_dir = self._save_model_dir()
-    tf_save.save(model, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
     loaded = keras_load.load(saved_model_dir)
     return loaded
 
@@ -194,7 +195,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
   def test_trainable_weights(self):
     """Tests that trainable status of individual weights is preserved."""
     layer = keras.layers.Dense(4, name='custom_layer')
-    layer.build([3,])
+    layer.build([None, 3])
     layer.add_weight(
         'extra_weight', shape=[],
         initializer=init_ops.constant_initializer(11),
@@ -203,12 +204,15 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
         'extra_weight_2', shape=[],
         initializer=init_ops.constant_initializer(12),
         trainable=False)
+    model = keras.Sequential([keras.Input([3,]), layer])
 
     saved_model_dir = self._save_model_dir()
     self.evaluate(variables.variables_initializer(layer.variables))
-    tf_save.save(layer, saved_model_dir)
-    loaded = keras_load.load(saved_model_dir)
-    self.evaluate(variables.variables_initializer(loaded.variables))
+    model.save(saved_model_dir, save_format='tf')
+    loaded_model = keras_load.load(saved_model_dir)
+    self.evaluate(variables.variables_initializer(loaded_model.variables))
+
+    loaded = loaded_model.layers[-1]
 
     equal_attrs = ['name', '_expects_training_arg', 'trainable']
     for attr in equal_attrs:
@@ -259,7 +263,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     previous_losses = model.losses[:]
 
     saved_model_dir = self._save_model_dir()
-    tf_save.save(model, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
 
     with previous_losses[0].graph.as_default():
       # If we try to compare symbolic Tensors in eager mode assertAllEqual will
@@ -270,15 +274,18 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
       # Test that eager losses are maintained.
       model(input_arr)  # Calls model eagerly, creating eager losses.
       previous_losses = model.losses[:]
-      tf_save.save(model, saved_model_dir)
+      model.save(saved_model_dir, save_format='tf')
       self.assertAllEqual(previous_losses, model.losses)
 
   def test_layer_with_learning_phase(self):
     layer = LayerWithLearningPhase()
     layer.build([None, None])
     saved_model_dir = self._save_model_dir()
-    tf_save.save(layer, saved_model_dir)
-    loaded = keras_load.load(saved_model_dir)
+    model = testing_utils.get_model_from_layers(
+        [layer], input_shape=[None], model_type='functional')
+    model.save(saved_model_dir, save_format='tf')
+    loaded_model = keras_load.load(saved_model_dir)
+    loaded = loaded_model.layers[-1]
     input_arr = array_ops.ones((4, 3))
 
     # Run the layer, and use the keras backend learning phase
@@ -306,7 +313,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     model.predict(np.random.random((1, 3)).astype(np.float32))
     saved_model_dir = self._save_model_dir()
 
-    tf_save.save(model, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
 
     loaded = tf_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
@@ -338,7 +345,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     # Compile and save model.
     model.compile('rmsprop', 'mse')
     saved_model_dir = self._save_model_dir()
-    tf_save.save(model, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
 
     loaded = keras_load.load(saved_model_dir)
     actual_predict = loaded.predict(input_arr)
@@ -364,7 +371,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
         super(LayerWithNestedSpec, self).__init__()
         self.input_spec = {
             'a': keras.layers.InputSpec(max_ndim=3, axes={-1: 2}),
-            'b': keras.layers.InputSpec(shape=(None, 2, 3), dtype='float16')}
+            'b': keras.layers.InputSpec(shape=(None, 2, 3), dtype='int32')}
 
       @property
       def _use_input_spec_as_call_signature(self):
@@ -372,12 +379,17 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
 
     layer = LayerWithNestedSpec()
     saved_model_dir = self._save_model_dir()
-    tf_save.save(layer, saved_model_dir)
-    loaded = keras_load.load(saved_model_dir)
+    model = testing_utils.get_model_from_layers(
+        [layer], model_type='subclass')
+    model({'a': constant_op.constant([[2, 4]]),
+           'b': array_ops.ones([1, 2, 3], dtype=dtypes.int32)})
+    model.save(saved_model_dir, save_format='tf')
+    loaded_model = keras_load.load(saved_model_dir)
+    loaded = loaded_model.layers[-1]
     self.assertEqual(3, loaded.input_spec['a'].max_ndim)
     self.assertEqual({-1: 2}, loaded.input_spec['a'].axes)
     self.assertAllEqual([None, 2, 3], loaded.input_spec['b'].shape)
-    self.assertEqual('float16', loaded.input_spec['b'].dtype)
+    self.assertEqual('int32', loaded.input_spec['b'].dtype)
 
   def test_must_restore_from_config_fails_if_layer_is_not_in_scope(self):
 
@@ -386,7 +398,9 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
 
     layer = LayerThatShouldFailIfNotAdded()
     saved_model_dir = self._save_model_dir()
-    tf_save.save(layer, saved_model_dir)
+    model = testing_utils.get_model_from_layers(
+        [layer], input_shape=[3], model_type='functional')
+    model.save(saved_model_dir, save_format='tf')
     with self.assertRaisesRegex(RuntimeError, 'Unable to restore a layer of'):
       _ = keras_load.load(saved_model_dir)
 
@@ -396,8 +410,10 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
       _must_restore_from_config = True
 
     layer = LayerThatShouldFailIfNotAdded()
+    model = testing_utils.get_model_from_layers(
+        [layer], input_shape=[3], model_type='functional')
     saved_model_dir = self._save_model_dir()
-    tf_save.save(layer, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
     with generic_utils.CustomObjectScope(
         {'LayerThatShouldFailIfNotAdded': LayerThatShouldFailIfNotAdded}):
       _ = keras_load.load(saved_model_dir)
@@ -405,7 +421,9 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
   def test_must_restore_from_config_registration(self):
     layer = GlobalLayerThatShouldFailIfNotAdded()
     saved_model_dir = self._save_model_dir()
-    tf_save.save(layer, saved_model_dir)
+    model = testing_utils.get_model_from_layers(
+        [layer], input_shape=[3], model_type='functional')
+    model.save(saved_model_dir, save_format='tf')
     _ = keras_load.load(saved_model_dir)
 
   def test_multi_input_model(self):
@@ -454,16 +472,14 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     self.evaluate(variables.variables_initializer(model.variables))
     saved_model_dir = self._save_model_dir()
 
-    # TODO(kathywu): Re-enable this check after removing the tf.saved_model.save
-    # metadata warning.
-    # with self.captureWritesToStream(sys.stderr) as captured_logs:
-    model.save(saved_model_dir, save_format='tf')
-    loaded = keras_load.load(saved_model_dir)
+    with self.captureWritesToStream(sys.stderr) as captured_logs:
+      model.save(saved_model_dir, save_format='tf')
+      loaded = keras_load.load(saved_model_dir)
 
     # Assert that saving does not log deprecation warnings
     # (even if it needs to set learning phase for compat reasons)
-    # if context.executing_eagerly():
-    #   self.assertNotIn('deprecated', captured_logs.contents())
+    if context.executing_eagerly():
+      self.assertNotIn('deprecated', captured_logs.contents())
 
     input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
     input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
@@ -806,7 +822,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
         np.zeros((batch, 64)).astype('float32'))
 
     saved_model_dir = self._save_model_dir()
-    tf_save.save(model, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
 
     loaded = keras_load.load(saved_model_dir)
     loaded_layer = loaded.layers[1]
@@ -834,7 +850,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     self.evaluate([v.initializer for v in model.variables])
     saved_model_dir = self._save_model_dir()
 
-    tf_save.save(model, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
     del model
 
     loaded = keras_load.load(saved_model_dir)
@@ -874,7 +890,7 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     model = keras.Model(f_inputs, out)
     self.evaluate(variables.variables_initializer(model.variables))
     saved_model_dir = self._save_model_dir()
-    tf_save.save(model, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
 
     loaded = keras_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
@@ -973,7 +989,7 @@ class TestSavedModelFormat(test.TestCase):
     inp = constant_op.constant([[1.0]])
     model(inp)
     saved_model_dir = self._save_model_dir()
-    tf_save.save(model, saved_model_dir)
+    model.save(saved_model_dir, save_format='tf')
 
     loaded = keras_load.load(saved_model_dir)
     self.assertAllEqual([[1.0]], self.evaluate(loaded(inp)))
@@ -1025,6 +1041,13 @@ class TestSavedModelFormat(test.TestCase):
       loaded = keras_load.load(saved_model_dir)
     with self.assertRaisesRegex(ValueError, 'I said do not trace'):
       loaded.attached_layer(constant_op.constant([1.]))
+
+  def test_load_non_keras_saved_model(self):
+    model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'Unable to create a Keras model'):
+      keras_load.load(saved_model_dir)
 
 
 class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
@@ -1124,6 +1147,16 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(previous_losses, layer.losses)
 
 
+@generic_utils.register_keras_serializable('Testing')
+class CustomMeanMetric(keras.metrics.Mean):
+
+  def update_state(self, *args):  # pylint: disable=useless-super-delegation
+    # Sometimes built-in metrics return an op in update_state. Custom
+    # metrics don't support returning ops, so wrap the update_state method
+    # while returning nothing.
+    super(CustomMeanMetric, self).update_state(*args)
+
+
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MetricTest(test.TestCase, parameterized.TestCase):
 
@@ -1145,8 +1178,12 @@ class MetricTest(test.TestCase, parameterized.TestCase):
                                  shape=(1, 5),
                                  test_sample_weight=True):
     with self.cached_session():
-      tf_save.save(metric, save_dir)
-      loaded = keras_load.load(save_dir)
+      model = testing_utils.get_model_from_layers(
+          [keras.layers.Layer()], input_shape=[3], model_type='functional')
+      model.saved_metric = metric
+      model.save(save_dir, save_format='tf')
+      loaded_model = keras_load.load(save_dir)
+      loaded = loaded_model.saved_metric
       self.evaluate([v.initializer for v in loaded.variables])
       self.assertEqual(metric.name, loaded.name)
       self.assertEqual(metric.dtype, loaded.dtype)
@@ -1236,15 +1273,6 @@ class MetricTest(test.TestCase, parameterized.TestCase):
 
   def test_registered_custom_metric(self):
 
-    @generic_utils.register_keras_serializable('Testing')
-    class CustomMeanMetric(keras.metrics.Mean):
-
-      def update_state(self, *args):  # pylint: disable=useless-super-delegation
-        # Sometimes built-in metrics return an op in update_state. Custom
-        # metrics don't support returning ops, so wrap the update_state method
-        # while returning nothing.
-        super(CustomMeanMetric, self).update_state(*args)
-
     with self.cached_session():
       metric = CustomMeanMetric()
       save_dir = self._save_model_dir('first_save')
@@ -1293,26 +1321,22 @@ class MetricTest(test.TestCase, parameterized.TestCase):
       del y_true, y_pred
       return 0
 
-    with self.cached_session():
-      custom_metric = CustomMetric()
-      model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-      model.compile(loss='mse', optimizer='SGD',
-                    metrics=[custom_metric, zero_metric])
-      self.evaluate(variables.global_variables_initializer())
-      self.evaluate([v.initializer for v in custom_metric.variables])
-      model.fit(x, y)
-      saved_model_dir = self._save_model_dir()
-      tf_save.save(model, saved_model_dir)
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.compile(loss='mse', optimizer='SGD',
+                  metrics=[CustomMetric(), zero_metric])
+    model.fit(x, y)
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
 
-      with self.assertRaisesRegex(ValueError, 'custom_objects'):
-        keras_load.load(saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'custom_objects'):
+      keras_load.load(saved_model_dir)
 
-      with generic_utils.CustomObjectScope(
-          {'CustomMetric': CustomMetric, 'zero_metric': zero_metric}):
-        loaded = keras_load.load(saved_model_dir)
+    with generic_utils.CustomObjectScope(
+        {'CustomMetric': CustomMetric, 'zero_metric': zero_metric}):
+      loaded = keras_load.load(saved_model_dir)
 
-      self.evaluate([v.initializer for v in loaded.variables])
-      loaded.fit(x, y)
+    self.evaluate([v.initializer for v in loaded.variables])
+    loaded.fit(x, y)
 
 if __name__ == '__main__':
   test.main()

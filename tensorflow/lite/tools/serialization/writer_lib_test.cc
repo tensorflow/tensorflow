@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/tools/serialization/writer_lib.h"
 
 #include <cstdlib>
+#include <fstream>
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <tuple>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -482,9 +484,63 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   CheckIntTensor(output2, {1}, {kExpectedValue});
 }
 
-}  // namespace tflite
+// Verifies the ModelWriters constructing from  an interpreter or subgraphs
+// produce the same results.
+TEST_F(WhileTest, TestModelWriterFromSubgraphs) {
+  const int kSeqNumber = 4;
+  const int kExpectedValue = 15;
 
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  interpreter_.reset(new Interpreter);
+  interpreter_->AddSubgraphs(2);
+  builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
+  builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
+  builder_->BuildWhileSubgraph(&interpreter_->primary_subgraph());
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
+
+  // Use custom allocation for second input, to ensure things work well for
+  // non-traditional allocation types.
+  auto alloc =
+      NewCustomAlloc(interpreter_->tensor(interpreter_->inputs()[1])->bytes,
+                     kDefaultTensorAlignment);
+  auto* input_data = reinterpret_cast<int*>(alloc.data);
+  input_data[0] = 1;
+  interpreter_->SetCustomAllocationForTensor(interpreter_->inputs()[1], alloc);
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output1, {1}, {kSeqNumber + 1});
+  TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
+  CheckIntTensor(output2, {1}, {kExpectedValue});
+
+  // Serializes the model using the interpreter.
+  ModelWriter writer_1(interpreter_.get());
+  const std::string test_file_1 = CreateFilePath("test_while_1.tflite");
+  writer_1.Write(test_file_1);
+
+  // Serializes the model using subgraphs.
+  std::vector<Subgraph*> subgraphs;
+  for (int i = 0; i < interpreter_->subgraphs_size(); ++i) {
+    subgraphs.push_back(interpreter_->subgraph(i));
+  }
+  ModelWriter writer_2(subgraphs);
+  const std::string test_file_2 = CreateFilePath("test_while_2.tflite");
+  writer_2.Write(test_file_2);
+
+  // The results from both ModelWriters should be the same.
+  std::ifstream file_ifs_1(test_file_1, std::ios::in);
+  std::ostringstream model_content_1;
+  model_content_1 << file_ifs_1.rdbuf();
+
+  std::ifstream file_ifs_2(test_file_2, std::ios::in);
+  std::ostringstream model_content_2;
+  model_content_2 << file_ifs_2.rdbuf();
+
+  EXPECT_FALSE(model_content_1.str().empty());
+  EXPECT_EQ(model_content_1.str(), model_content_2.str());
 }
+
+}  // namespace tflite

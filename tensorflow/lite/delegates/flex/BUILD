@@ -180,6 +180,7 @@ cc_library(
     name = "delegate_data",
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
+    copts = tf_opts_nortti_if_android(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -267,6 +268,7 @@ cc_library(
     testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    visibility = internal_visibility_allowlist(),
     deps = [
         "//tensorflow/c:c_api_internal",
         "//tensorflow/lite:string",

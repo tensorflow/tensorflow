@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -69,7 +70,7 @@ class HloModuleConfig {
   // ProgramShape creates a computation layout using this shape.
   // The layouts in the ProgramShape will be reset to default unless
   // ignore_layouts is set to false.
-  HloModuleConfig() = default;
+  HloModuleConfig() { debug_options_ = DefaultDebugOptionsIgnoringFlags(); }
 
   explicit HloModuleConfig(const ProgramShape& program_shape,
                            bool ignore_layouts = true);

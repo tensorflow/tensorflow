@@ -34,6 +34,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.coordinator import values as values_lib
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -335,7 +336,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # Closure2 was an inflight closure when it got cancelled.
     self.assertEqual(closure2.output_remote_value._status,
-                     coordinator_lib._RemoteValueStatus.READY)
+                     values_lib.RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
       closure2.output_remote_value.fetch()
 
@@ -890,30 +891,35 @@ class StrategyIntegrationTest(test.TestCase):
     per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
 
     @contextlib.contextmanager
-    def _assert_raises_usage_error():
-      with self.assertRaisesRegexp(
-          NotImplementedError,
-          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
-          '`reduce` must be used within a function passed to '
-          '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
-          '.'):
+    def _assert_logs_usage_warning():
+      with self.assertLogs(level='WARNING') as logs:
         yield
 
-    with _assert_raises_usage_error():
-      # Invoking `run` without `coordinator.schedule` should error.
-      # Don't pass input_fn args to account for failure to copy created dataset
-      # on GPU.
-      # Failure: "No unary variant device copy function found for direction .."
-      # For the purpose of this test, input args do not affect the assertion
-      # outcome.
-      self.strategy.run(replica_fn)
+      self.assertIn(
+          'It is detected that a function used with '
+          '`tf.distribute.experimental.ParameterServerStrategy` '
+          'is executed locally on the coordinator. This is inefficient but may '
+          'be valid for one-off tasks such as inferring output signature. '
+          'To properly distribute functions to run on workers, `run` or '
+          '`reduce` should be used within a function passed to `'
+          'tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
+          '.',
+          logs.output[0])
+
+    with _assert_logs_usage_warning():
+      # Invoking `run` without `coordinator.schedule` should result in a
+      # warning.
+      self.strategy.run(
+          replica_fn, args=(constant_op.constant(1, dtype=dtypes.int64),))
 
     # A proper `schedule` should succeed.
     rv = self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
 
-    with _assert_raises_usage_error():
-      # Invoking `run` without `coordinator.schedule` again should error.
-      self.strategy.run(replica_fn)
+    with _assert_logs_usage_warning():
+      # Invoking `run` without `coordinator.schedule` again should result in a
+      # warning.
+      self.strategy.run(
+          replica_fn, args=(constant_op.constant(1, dtype=dtypes.int64),))
 
     all_results = [(2, 0)] * self.strategy.num_replicas_in_sync
     expected_result = []
@@ -1196,6 +1202,25 @@ class StrategyIntegrationTest(test.TestCase):
         input_lib._create_distributed_tensor_spec(self.strategy,
                                                   dataset.element_spec),
         per_worker_distribute_dataset.element_spec)
+
+  def testPerWorkerDistributedIteratorTypeSpec(self):
+    self._tracing_count = 0
+
+    def per_worker_dataset_fn():
+      self._tracing_count += 1
+      return self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_iterator = iter(
+        self.coordinator.create_per_worker_dataset(per_worker_dataset_fn))
+    worker_fn.get_concrete_function(distributed_iterator)
+
+    self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
+    self.assertEqual(self._tracing_count, 1)
 
 
 if __name__ == '__main__':

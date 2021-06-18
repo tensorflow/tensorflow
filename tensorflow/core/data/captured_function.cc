@@ -44,8 +44,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-const char kDataServiceDataset[] = "DataServiceDataset";
-
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {
@@ -585,6 +583,8 @@ Status CapturedFunction::AddToGraph(
   return Status::OK();
 }
 
+// TODO(b/190831948): Check whether the function creates a resource and if so,
+// produce a warning.
 Status CapturedFunction::Instantiate(
     IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
                               instantiated_captured_function) {

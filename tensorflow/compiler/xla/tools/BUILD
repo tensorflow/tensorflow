@@ -331,6 +331,9 @@ tf_cc_binary(
     name = "run_hlo_module",
     testonly = True,
     srcs = ["run_hlo_module_main.cc"],
+    tags = [
+        "noasan",  # Exceeds linker limit.
+    ],
     deps = [
         ":run_hlo_module_lib",
         "@com_google_absl//absl/strings",

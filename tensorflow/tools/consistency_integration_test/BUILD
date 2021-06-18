@@ -32,8 +32,8 @@ py_library(
 )
 
 py_test(
-    name = "basic_tests",
-    srcs = ["basic_tests.py"],
+    name = "consistency_test_base_tests",
+    srcs = ["consistency_test_base_tests.py"],
     srcs_version = "PY3",
     tags = [
         "no_pip",
@@ -41,5 +41,59 @@ py_test(
     deps = [
         ":consistency_test_base",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "function_io_tests",
+    srcs = ["function_io_tests.py"],
+    srcs_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":consistency_test_base",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "tensor_array_tests",
+    srcs = ["tensor_array_tests.py"],
+    srcs_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":consistency_test_base",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "type_promotion_tests",
+    srcs = ["type_promotion_tests.py"],
+    srcs_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":consistency_test_base",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "keras_integration_tests",
+    srcs = ["keras_integration_tests.py"],
+    srcs_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        ":consistency_test_base",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

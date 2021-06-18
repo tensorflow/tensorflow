@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -332,11 +333,11 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:summary",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/summary",
         "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
@@ -514,8 +515,8 @@ py_library(
     srcs = ["summary_io.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:summary",
         "//tensorflow/python:util",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -777,9 +778,9 @@ tf_py_test(
         "//tensorflow/python:metrics",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/summary",
         "//third_party/py/numpy",
     ],
 )
@@ -925,13 +926,13 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/summary",
         "//tensorflow/python/training/tracking:base",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -1020,10 +1021,10 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/summary",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -1049,8 +1050,8 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
         "//tensorflow/python:variables",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -1204,15 +1205,27 @@ cuda_py_tests(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:state_ops_gen",
-        "//tensorflow/python:summary",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:cross_device_ops",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/summary",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+distribute_py_test(
+    name = "training_ops_mlir_test",
+    srcs = [
+        "training_ops_test.py",
+    ],
+    disable_mlir_bridge = False,
+    main = "training_ops_test.py",
+    deps = [
+        ":training",
     ],
 )
 
@@ -1256,15 +1269,16 @@ tf_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:fake_summary_writer",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/summary",
+        "//tensorflow/python/summary/writer",
+        "//tensorflow/python/summary/writer:fake_summary_writer",
     ],
 )
 
@@ -1349,10 +1363,10 @@ py_library(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resources",
-        "//tensorflow/python:summary",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/summary",
         "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
@@ -1379,11 +1393,11 @@ tf_py_test(
         "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/summary",
     ],
 )
 

@@ -46,9 +46,6 @@ class LayoutOptimizer : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
-
  private:
   std::unique_ptr<VirtualPlacer> virtual_placer_;
   std::unordered_set<string> nodes_to_preserve_;

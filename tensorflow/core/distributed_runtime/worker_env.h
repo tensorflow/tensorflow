@@ -26,6 +26,7 @@ class ThreadPool;
 }  // namespace thread
 
 class CollectiveExecutorMgrInterface;
+class CoordinationServiceInterface;
 class Device;
 class DeviceMgr;
 class Env;
@@ -64,6 +65,9 @@ struct WorkerEnv {
 
   // A pool of threads for scheduling compute work.
   thread::ThreadPool* compute_pool = nullptr;
+
+  // Coordination service.
+  CoordinationServiceInterface* coord_service;
 };
 
 }  // end namespace tensorflow

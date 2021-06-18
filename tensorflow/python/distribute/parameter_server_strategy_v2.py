@@ -407,15 +407,9 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   * `tf.distribute.experimental.ParameterServerStrategy` in TF2 is experimental,
   and the API is subject to further changes.
 
-  * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
-  training with GPU(s). This is a feature request being developed.
-
   * When using `Model.fit`, `tf.distribute.experimental.ParameterServerStrategy`
   must be used with a `tf.keras.utils.experimental.DatasetCreator`, and
   `steps_per_epoch` must be specified.
-
-  * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
-  `Model.evaluate` and `Model.predict`.
   """
 
   # pyformat: disable
@@ -763,11 +757,15 @@ class ParameterServerStrategyV2Extended(
 
   def _assert_being_scheduled_by_cluster_coordinator(self):
     if not self._being_scheduled and not self._allow_run_without_coordinator:
-      raise NotImplementedError(
-          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
-          "`reduce` must be used within a function passed to `"
-          "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule"
-          "`.")
+      logging.warning(
+          "It is detected that a function used with "
+          "`tf.distribute.experimental.ParameterServerStrategy` "
+          "is executed locally on the coordinator. This is inefficient but may "
+          "be valid for one-off tasks such as inferring output signature. "
+          "To properly distribute functions to run on workers, `run` or "
+          "`reduce` should be used within a function passed to `"
+          "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`."
+      )
 
   # options is not used right now. But we may want to support options while
   # creating InputWorkers in future, similar to MirroredStrategy.

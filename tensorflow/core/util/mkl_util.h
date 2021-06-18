@@ -706,14 +706,21 @@ inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
 }
 
 inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
-                            MklDnnShapeList* mkl_shapes) {
-  OpInputList input_mkl_tensors;
-  GetMklInputList(ctext, strings::StrCat("mkl_", name), &input_mkl_tensors);
+                            MklDnnShapeList* mkl_shapes,
+                            bool native_format = false) {
+  if (!native_format) {
+    OpInputList input_mkl_tensors;
+    GetMklInputList(ctext, strings::StrCat("mkl_", name), &input_mkl_tensors);
 
-  for (int i = 0; i < input_mkl_tensors.size(); i++) {
-    (*mkl_shapes)[i].DeSerializeMklDnnShape(
-        input_mkl_tensors[i].flat<uint8>().data(),
-        input_mkl_tensors[i].flat<uint8>().size() * sizeof(uint8));
+    for (int i = 0; i < input_mkl_tensors.size(); i++) {
+      (*mkl_shapes)[i].DeSerializeMklDnnShape(
+          input_mkl_tensors[i].flat<uint8>().data(),
+          input_mkl_tensors[i].flat<uint8>().size() * sizeof(uint8));
+    }
+  } else {
+    for (int i = 0; i < mkl_shapes->size(); ++i) {
+      (*mkl_shapes)[i].SetMklTensor(false);
+    }
   }
 }
 
@@ -1821,15 +1828,20 @@ class MklPrimitiveFactory {
   /// For those legacy device(w/o AVX512 and AVX2),
   /// MKL-DNN GEMM will be used.
   static inline bool IsLegacyPlatform() {
-    return (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
-            !port::TestCPUFeature(port::CPUFeature::AVX2));
+    static const bool is_legacy_platform =
+        (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
+         !port::TestCPUFeature(port::CPUFeature::AVX2));
+    return is_legacy_platform;
   }
 
   /// Function to check whether primitive memory optimization is enabled
   static inline bool IsPrimitiveMemOptEnabled() {
-    bool is_primitive_mem_opt_enabled = true;
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true,
-                                   &is_primitive_mem_opt_enabled));
+    static const bool is_primitive_mem_opt_enabled = [] {
+      bool value = true;
+      TF_CHECK_OK(
+          ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true, &value));
+      return value;
+    }();
     return is_primitive_mem_opt_enabled;
   }
 

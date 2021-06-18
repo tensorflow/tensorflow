@@ -156,42 +156,6 @@ const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
   return tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
 }
 
-// An utility test to detect if the subgraph is abused:
-// 1. Detects if recursion exists in the graph (recursion is not currently
-//    supported.
-// 2. Detects if the interpreter / subgraph is used in multiple subgraphs.
-//    Note: It's clearly documented that the interpreter / subgraph are not
-//    thread-safe. This serves as a check with possible false negatives
-//    unless we switch to atomic boolean flags.
-class SubgraphGuard {
- public:
-  SubgraphGuard(TfLiteContext* context, bool* is_subgraph_in_use)
-      : is_subgraph_in_use_(is_subgraph_in_use) {
-    if (*is_subgraph_in_use_) {
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Subgraph is already in use. Using an interpreter or a subgraph in "
-          "multiple threads is not supported. Recursion in the graph is not "
-          "supported.");
-      status_ = kTfLiteError;
-    } else {
-      *is_subgraph_in_use_ = true;
-    }
-  }
-  ~SubgraphGuard() {
-    // If tht original status was OK, recover the boolean flag.
-    if (status_ == kTfLiteOk) {
-      *is_subgraph_in_use_ = false;
-    }
-  }
-
-  TfLiteStatus status() const { return status_; }
-
- private:
-  TfLiteStatus status_ = kTfLiteOk;
-  bool* is_subgraph_in_use_;
-};
-
 }  // namespace
 
 // A trivial implementation of GraphInfo around the Interpreter.
@@ -235,13 +199,15 @@ class InterpreterInfo : public GraphInfo {
 Subgraph::Subgraph(ErrorReporter* error_reporter,
                    TfLiteExternalContext** external_contexts,
                    std::vector<std::unique_ptr<Subgraph>>* subgraphs,
-                   resource::ResourceMap* resources)
+                   resource::ResourceMap* resources,
+                   resource::ResourceIDMap* resource_ids)
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
       subgraphs_(subgraphs),
-      resources_(resources) {
+      resources_(resources),
+      resource_ids_(resource_ids) {
   // TODO(b/161272052): Consider a better TfLiteContext initialization pattern:
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
@@ -705,7 +671,6 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
 
 TfLiteStatus Subgraph::AllocateTensors() {
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "AllocateTensors");
-
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
@@ -728,12 +693,6 @@ TfLiteStatus Subgraph::AllocateTensors() {
     }
     return kTfLiteOk;
   }
-
-  // Note `AllocateTensors` sometimes calls itself recursively above
-  // for delegates. Therefore only the logic below need to be guarded
-  // by `SubgraphGuard`.
-  SubgraphGuard guard(&context_, &is_subgraph_in_use_);
-  TF_LITE_ENSURE_OK(&context_, guard.status());
 
   next_execution_plan_index_to_prepare_ = 0;
   next_execution_plan_index_to_plan_allocation_ = 0;
@@ -1067,9 +1026,6 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 }
 
 TfLiteStatus Subgraph::Invoke() {
-  SubgraphGuard guard(&context_, &is_subgraph_in_use_);
-  TF_LITE_ENSURE_OK(&context_, guard.status());
-
   if (!consistent_) {
     ReportError("Invoke called on model that is not consistent.");
     return kTfLiteError;
@@ -1516,6 +1472,7 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
     if (reg.builtin_code == kTfLiteBuiltinDequantize) continue;
     for (int i = 0; i < node.inputs->size; ++i) {
       const int original_input_idx = node.inputs->data[i];
+      if (original_input_idx == kTfLiteOptionalTensor) continue;
       if (tensors_[original_input_idx].type == kTfLiteFloat16) {
         node.inputs->data[i] = fp16_to_fp32[original_input_idx];
       }

@@ -188,6 +188,9 @@ class NNMemory {
   size_t byte_size_ = 0;
   uint8_t* data_ptr_ = nullptr;
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
+#ifndef __ANDROID__
+  std::string shm_region_name_;
+#endif
 };
 
 // LINT.IfChange
@@ -368,13 +371,23 @@ class NNAPIDelegateKernel {
   std::vector<uint8_t> nn_compilation_cache_token_;
 
   std::vector<int> nnapi_to_tflite_op_mapping_;
+  // Map of DENSIFY output tensor id to node id.
+  std::vector<int> densify_output_to_node_mapping_;
+  // Map of DEQUANTIZE output tensor id to node id.
+  // Only contains DEQUANTIZE nodes with non-const input.
+  std::vector<int> non_const_dequantize_output_to_node_mapping_;
 
   // Fully initialized in NNAPIDelegateKernel::AddOpsAndTensors
-  int target_sdk_version_ = 27;  // kMinSdkVersionForNNAPI13
+  int target_feature_level_ = 27;  // kMinSdkVersionForNNAPI10
 
   void AddDequantizeOperatorsWhereNeeded(
       const TfLiteContext* context, int builtin_code, const TfLiteNode* node,
       int tflite_node_index, NNAPIOpBuilder* builder, int* nnapi_errno);
+
+  TfLiteStatus DensifyAndDequantizeConstTensor(TfLiteContext* context,
+                                               int densify_node_id,
+                                               bool should_dequantize,
+                                               NNAPIOpBuilder& builder);
 
   TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno,
                                 bool allow_dynamic_dimensions);

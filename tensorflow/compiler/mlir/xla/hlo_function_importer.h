@@ -75,7 +75,7 @@ class HloFunctionImporter {
   // TODO(b/179166199): move this to attribute_importer.h.
   // Converts replica groups to attribute
   static mlir::NamedAttribute ConvertReplicaGroups(
-      const std::vector<ReplicaGroup>& replica_groups, mlir::Builder* builder);
+      absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder);
 
  private:
   HloFunctionImporter(mlir::ModuleOp module,

@@ -304,6 +304,55 @@ TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge2(
       static_cast<void*>(gauge->gauge->GetCell(label1, label2)));
 }
 
+TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1, const char* label2, const char* label3) {
+  auto* result = new TFE_MonitoringStringGauge3(
+      {name, description, label1, label2, label3});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteStringGauge3(TFE_MonitoringStringGauge3* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge3(
+    TFE_MonitoringStringGauge3* gauge, const char* label1, const char* label2,
+    const char* label3) {
+  return static_cast<TFE_MonitoringStringGaugeCell*>(
+      static_cast<void*>(gauge->gauge->GetCell(label1, label2, label3)));
+}
+
+TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
+    const char* name, TF_Status* status, const char* description,
+    const char* label1, const char* label2, const char* label3,
+    const char* label4) {
+  auto* result = new TFE_MonitoringStringGauge4(
+      {name, description, label1, label2, label3, label4});
+  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  if (!result->gauge->GetStatus().ok()) {
+    delete result;
+    return nullptr;
+  }
+  return result;
+}
+
+void TFE_MonitoringDeleteStringGauge4(TFE_MonitoringStringGauge4* gauge) {
+  delete gauge;
+}
+
+TFE_MonitoringStringGaugeCell* TFE_MonitoringGetCellStringGauge4(
+    TFE_MonitoringStringGauge4* gauge, const char* label1, const char* label2,
+    const char* label3, const char* label4) {
+  return static_cast<TFE_MonitoringStringGaugeCell*>(static_cast<void*>(
+      gauge->gauge->GetCell(label1, label2, label3, label4)));
+}
+
 void TFE_MonitoringBoolGaugeCellSet(TFE_MonitoringBoolGaugeCell* cell,
                                     bool value) {
   cell->cell.Set(value);

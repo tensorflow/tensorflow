@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
+#include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -51,7 +52,7 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
       ConversionPatternRewriter &rewriter) const override {
     auto result_ty = op.getType().cast<ShapedType>();
 
-    // Unranked uses are not supported.  Consider `mhlo-transform-unranked-hlo`.
+    // Unranked uses are not supported.
     if (!result_ty.hasRank()) return failure();
 
     // Lower to MHLO constant if statically shaped.
@@ -647,6 +648,51 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
       lgamma);
 }
 
+// Express `cosh` as
+//   cosh(x) = (e^x + e^-x) / 2
+//           = e^(x + log(1/2)) + e^(-x + log(1/2))
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not.
+//
+// This incorrectly overflows to inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+Value MaterializeCoshApproximation(ConversionPatternRewriter &rewriter,
+                                   Location loc, ValueRange operands) {
+  CoshOp::Adaptor transformed(operands);
+  Value x = transformed.operand();
+
+  Value log_one_half =
+      rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
+  Value exp_add = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
+  Value exp_sub = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::SubOp>(loc, log_one_half, x));
+  return rewriter.create<mhlo::AddOp>(loc, exp_add, exp_sub);
+}
+
+struct ConvertCoshOp : public OpConversionPattern<CoshOp> {
+  using OpConversionPattern<CoshOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      CoshOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    CoshOp::Adaptor transformed(operands);
+    Value x = transformed.operand();
+    if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
+      // TODO(hinsu): Support operands with complex element types by always
+      // using the formula for large x. The compare op is not legal for complex
+      // numbers.
+      return failure();
+    }
+    rewriter.replaceOp(op,
+                       MaterializeWithUpcast(rewriter, op.getLoc(), operands,
+                                             rewriter.getF32Type(),
+                                             &MaterializeCoshApproximation));
+    return success();
+  }
+};
+
 // Compute the Digamma function using Lanczos' approximation from "A Precision
 // Approximation of the Gamma Function". SIAM Journal on Numerical Analysis
 // series B. Vol. 1:
@@ -989,6 +1035,80 @@ struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
   }
 };
 
+Value MaterializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
+                                            Location loc, ValueRange operands) {
+  SinhOp::Adaptor transformed(operands);
+  Value x = transformed.operand();
+  auto result_ty = x.getType().cast<ShapedType>();
+
+  // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
+  Value two = rewriter.create<mhlo::ConstOp>(
+      loc, hlo::GetScalarOfType(getElementTypeOrSelf(x.getType()), 2));
+  Type extent_tensor_type = shape::getExtentTensorType(x.getContext());
+  Value uncasted_shape =
+      rewriter.create<shape::ShapeOfOp>(loc, extent_tensor_type, x);
+  Type shape_ty =
+      RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType());
+  Value shape = rewriter.create<tensor::CastOp>(loc, shape_ty, uncasted_shape);
+  Value two_with_x_shape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+      loc, result_ty, two, shape, rewriter.getI64TensorAttr({}));
+
+  Value log_two = rewriter.create<mhlo::LogOp>(loc, two_with_x_shape);
+  Value log_one_half = rewriter.create<mhlo::NegOp>(loc, log_two);
+  Value exp_add = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
+  Value exp_sub = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<mhlo::SubOp>(loc, log_one_half, x));
+  return rewriter.create<mhlo::SubOp>(loc, exp_add, exp_sub);
+}
+
+// Express `sinh` as
+//   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
+//           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
+Value MaterializeSinhApproximation(ConversionPatternRewriter &rewriter,
+                                   Location loc, ValueRange operands) {
+  Value large_sinh_result =
+      MaterializeSinhApproximationForLargeX(rewriter, loc, operands);
+
+  SinhOp::Adaptor transformed(operands);
+  Value x = transformed.operand();
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value exp_x = rewriter.create<mhlo::ExpOp>(loc, x);
+  Value exp_neg_x =
+      rewriter.create<mhlo::ExpOp>(loc, rewriter.create<mhlo::NegOp>(loc, x));
+  Value exp_difference = rewriter.create<mhlo::SubOp>(loc, exp_x, exp_neg_x);
+  Value two = getConstantLike(rewriter, loc, 2.0, x);
+  Value small_sinh_result =
+      rewriter.create<mhlo::DivOp>(loc, exp_difference, two);
+
+  Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
+  Value one = getConstantLike(rewriter, loc, 1.0, x);
+  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(loc, abs_x, one, kLT);
+  return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, small_sinh_result,
+                                         large_sinh_result);
+}
+
+struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
+  using OpConversionPattern<SinhOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      SinhOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    SinhOp::Adaptor transformed(operands);
+    Value x = transformed.operand();
+    if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
+      rewriter.replaceOp(op, MaterializeSinhApproximationForLargeX(
+                                 rewriter, op.getLoc(), operands));
+      return success();
+    }
+    rewriter.replaceOp(op,
+                       MaterializeWithUpcast(rewriter, op.getLoc(), operands,
+                                             rewriter.getF32Type(),
+                                             &MaterializeSinhApproximation));
+    return success();
+  }
+};
+
 struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
   using OpConversionPattern<ZetaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1234,21 +1354,22 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
   patterns->insert<ConvertSelectOp>(context);
+  patterns->insert<ConvertConstantLikeOp>(context);
 }
 
-void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
-                                       OwningRewritePatternList *patterns) {
+void PopulateDecomposeChloPatterns(MLIRContext *context,
+                                   OwningRewritePatternList *patterns) {
   populateWithGenerated(*patterns);
-  PopulateChloBroadcastingPatterns(context, patterns);
 
   // Other patterns.
   // clang-format off
-  patterns->insert<ConvertConstantLikeOp,
+  patterns->insert<ConvertCoshOp,
                    ConvertDigammaOp,
                    ConvertErfOp,
                    ConvertErfcOp,
                    ConvertLgammaOp,
                    ConvertPolygammaOp,
+                   ConvertSinhOp,
                    ConvertZetaOp>(context);
   // clang-format on
 }

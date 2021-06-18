@@ -455,14 +455,6 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
           )]>;
 
 //===----------------------------------------------------------------------===//
-// Nullary op patterns.
-//===----------------------------------------------------------------------===//
-
-def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
-          (Tensor_CastOp (HLO_ConstOp $value)),
-          [(HLO_Tensor $res)]>;
-
-//===----------------------------------------------------------------------===//
 // Elu op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -514,13 +506,45 @@ def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
           [(TF_SintOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
+// The condition that $gradients and $features need to have the same shape is
+// implicitly enforced: $zero is created to have the same shape as $features,
+// HLO_SelectOp enforces that $gradients and $zero have the same shape.
 def : Pat<(TF_ReluGradOp AnyTensor:$gradients, AnyTensor:$features),
-          (HLOClient_BroadcastSelectOp
-            (HLOClient_BroadcastCompareOp $features,
-              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
-              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT,
-              (HLO_DEFAULT_COMPARISON_TYPE)),
+          (HLO_SelectOp
+            (HLO_CompareOp $features, (HLO_ConstantLike<"0">:$zero $features),
+              HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
             $gradients, $zero)>;
+
+//===----------------------------------------------------------------------===//
+// Softsign op patterns.
+//===----------------------------------------------------------------------===//
+
+/// Converts a TF::SoftsignOp to HLO.
+/// Softsign(features) = features / (1 + abs(features))
+def : Pat<(TF_SoftsignOp AnyRankedTensor:$input),
+          (HLO_DivOp
+            $input,
+            (HLOClient_BroadcastAddOp:$add
+              (HLO_ConstOp:$one (GetScalarOfType<1> $input)), (HLO_AbsOp $input),
+              (BinBroadcastDimensions $one, $input)
+            )
+          )
+         >;
+
+/// Converts a TF::SoftsignGradOp to HLO.
+/// SoftsignGrad(gradient, features) = gradient / ((1 + abs(features)) ^ 2)
+def : Pattern<
+        (TF_SoftsignGradOp AnyRankedTensor:$gradients, AnyRankedTensor:$features),
+        [(HLOClient_BroadcastAddOp:$add
+          (HLO_ConstOp:$one (GetScalarOfType<1> $features)), (HLO_AbsOp $features),
+          (BinBroadcastDimensions $one, $features)
+         ),
+         (HLOClient_BroadcastDivOp
+           $gradients,
+           (HLO_MulOp $add, $add),
+           (BinBroadcastDimensions $gradients, $add)
+         )
+        ]>;
 
 //===----------------------------------------------------------------------===//
 // Slice op patterns.

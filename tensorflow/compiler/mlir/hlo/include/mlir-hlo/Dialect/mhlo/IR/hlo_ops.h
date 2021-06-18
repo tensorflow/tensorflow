@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
 // clang-format off
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
@@ -79,7 +80,7 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
 //
 // and returns %4 as the shape value.
 LogicalResult deriveShapeFromFirstOperand(
-    OpBuilder *builder, Operation *op,
+    OpBuilder *builder, Operation *op, ValueRange operands,
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
 // Type derivation function that returns a tensor type with a new element type.

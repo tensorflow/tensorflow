@@ -296,6 +296,12 @@ xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
   return channel_handle;
 }
 
+absl::optional<xla::ChannelHandle> Convert_channel_handle(
+    llvm::Optional<mlir::mhlo::ChannelHandle> attr) {
+  if (!attr.hasValue()) return absl::nullopt;
+  return Convert_channel_handle(attr.getValue());
+}
+
 // Converts the comparison_direction string attribute into the XLA enum. The
 // string is assumed to correspond to exactly one of the allowed strings
 // representing the enum. This should have been checked in the op verify method.
@@ -589,6 +595,23 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
+  auto& valueMap = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
+  TensorType operandType = op.operand().getType().cast<TensorType>();
+  TensorType resultType = op.getType();
+  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+    return failure();
+  auto allGatherDim = op.all_gather_dim();
+  int64_t shardCount = resultType.getDimSize(allGatherDim) /
+                       operandType.getDimSize(allGatherDim);
+  valueMap[op] = xla::AllGather(operand, allGatherDim, shardCount,
+                                Convert_replica_groups(op.replica_groups()),
+                                Convert_channel_handle(op.channel_handle()));
+  return success();
+}
+
 LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaComputation computation;
@@ -596,18 +619,38 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
                                                      &computation))) {
     return failure();
   }
-  auto replica_groups = Convert_replica_groups(op.replica_groups());
+
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
 
-  if (!op.channel_id().hasValue()) {
-    value_map[op] = xla::AllReduce(operand, computation, replica_groups,
-                                   /*channel_id=*/absl::nullopt);
-    return success();
+  value_map[op] = xla::AllReduce(operand, computation,
+                                 Convert_replica_groups(op.replica_groups()),
+                                 Convert_channel_handle(op.channel_handle()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(AllReduceScatterOp op, OpLoweringContext ctx) {
+  auto& valueMap = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
+  TensorType operandType = op.operand().getType().cast<TensorType>();
+  TensorType resultType = op.getType();
+  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+    return failure();
+  auto scatterDim = op.scatter_dimension();
+  int64_t shardCount =
+      operandType.getDimSize(scatterDim) / resultType.getDimSize(scatterDim);
+
+  xla::XlaComputation computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
+                                                     &computation))) {
+    return failure();
   }
-  auto channel_id = Convert_channel_handle(op.channel_id().getValue());
-  value_map[op] =
-      xla::AllReduce(operand, computation, replica_groups, channel_id);
+
+  valueMap[op] =
+      xla::AllReduceScatter(operand, computation, scatterDim, shardCount,
+                            Convert_replica_groups(op.replica_groups()),
+                            Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -882,12 +925,14 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
 
   if (op.is_host_transfer()) {
-    value_map[op] = xla::RecvFromHost(token, xla::TypeToShape(result_type),
-                                      Convert_channel_handle(op.channel_id()));
+    value_map[op] =
+        xla::RecvFromHost(token, xla::TypeToShape(result_type),
+                          Convert_channel_handle(op.channel_handle()));
     return success();
   }
-  value_map[op] = xla::RecvWithToken(token, xla::TypeToShape(result_type),
-                                     Convert_channel_handle(op.channel_id()));
+  value_map[op] =
+      xla::RecvWithToken(token, xla::TypeToShape(result_type),
+                         Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -1041,13 +1086,13 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
 
   if (op.is_host_transfer()) {
-    value_map[op] = xla::SendToHost(operand, token,
-                                    xla::TypeToShape(op.operand().getType()),
-                                    Convert_channel_handle(op.channel_id()));
+    value_map[op] = xla::SendToHost(
+        operand, token, xla::TypeToShape(op.operand().getType()),
+        Convert_channel_handle(op.channel_handle()));
     return success();
   }
-  value_map[op] = xla::SendWithToken(operand, token,
-                                     Convert_channel_handle(op.channel_id()));
+  value_map[op] = xla::SendWithToken(
+      operand, token, Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -1099,6 +1144,9 @@ LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
+  // TODO(jpienaar): Support multi-operand while op.
+  if (op.getNumResults() != 1)
+    return op.emitError("nyi: unable to export multi-result While op");
   xla::XlaComputation condition;
   xla::XlaComputation body;
   auto& value_map = *ctx.values;
@@ -1108,9 +1156,11 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+  // TODO(jpienaar): Support multi-operand while op.
+  Value val = op->getResult(0);
+  if (failed(GetXlaOp(op->getOperand(0), value_map, &operand, op)))
     return failure();
-  value_map[op] = xla::While(condition, body, operand);
+  value_map[val] = xla::While(condition, body, operand);
   return success();
 }
 
@@ -1174,6 +1224,22 @@ LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
         bitcast_config.SerializeAsString();
   }
   return success();
+}
+
+LogicalResult ExportXlaOp(RealDynamicSliceOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicGatherOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
+  return failure();
 }
 
 }  // namespace
@@ -1271,12 +1337,50 @@ LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
   return success();
 }
 
+// MHLO and XLA HLO disagree on the meaning of addition of `pred` / `i1`, so
+// there has to be a special case somewhere to account for the difference.  To
+// get the expected behavior of an `AddOp` on `i1`, we have to use `xor`.  Since
+// the majority of the conversion is generated code, we just sidestep it here
+// for this single case, and inline the code to emit an `xor`.
+LogicalResult ExportXlaOperatorWrapped(mlir::Operation* inst,
+                                       OpLoweringContext ctx) {
+  auto op = dyn_cast<mlir::mhlo::AddOp>(inst);
+  if (op && op.getResult()
+                .getType()
+                .cast<mlir::TensorType>()
+                .getElementType()
+                .isSignlessInteger(1)) {
+    auto& value_map = *ctx.values;
+    auto result = op.getResult();
+    xla::XlaOp xla_arg_0;
+    if (failed(GetXlaOp(op.lhs(), value_map, &xla_arg_0, op)))
+      return mlir::failure();
+    xla::XlaOp xla_arg_1;
+    if (failed(GetXlaOp(op.rhs(), value_map, &xla_arg_1, op)))
+      return mlir::failure();
+    auto xla_result = xla::Xor(Unwrap(xla_arg_0), Unwrap(xla_arg_1));
+    value_map[result] = xla_result;
+    return mlir::success();
+  }
+
+  return ExportXlaOperator(inst, ctx);
+}
+
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, bool is_entry_function,
     llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
+  // Explicitly fail for ops that are not supported for export.
+  if (inst->getDialect() !=
+          inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
+      !mlir::isa<mlir::ConstantOp, mlir::CallOp, mlir::tensor::CastOp,
+                 mlir::ReturnOp>(inst)) {
+    inst->emitOpError("unsupported op for export to XLA");
+    return failure();
+  }
+
   *return_value = xla::XlaOp();
 
   // See MlirToHloConversionOptions for more about layouts.
@@ -1309,7 +1413,8 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   };
 
-  if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder}))) {
+  if (succeeded(
+          ExportXlaOperatorWrapped(inst, {value_lowering, this, builder}))) {
     if (inst->getNumResults() == 1) {
       auto iter = value_lowering->find(inst->getResult(0));
       if (iter == value_lowering->end()) {
@@ -1902,6 +2007,10 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
 
 DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op,
                                           llvm::StringRef attr_name) {
+  CHECK((op->getDialect() ==
+             op->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() ||
+         mlir::isa<mlir::ConstantOp, mlir::memref::TensorLoadOp,
+                   mlir::memref::TensorStoreOp>(op)));
   return op->getAttrOfType<mlir::DenseIntElementsAttr>(attr_name);
 }
 

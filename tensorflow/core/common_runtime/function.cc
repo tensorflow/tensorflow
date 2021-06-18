@@ -961,6 +961,9 @@ bool IsOpSingleThreadedExecutorCompatible(const Node& n) {
 // This currently specializes for the case of a single operation, as created
 // via eager execution.
 bool IsSingleThreadedExecutorCompatible(const Graph* g) {
+  // TODO(b/187729969): Temporarily disabled due to b/187306798.
+  return false;
+
   // Not worth analyzing large graphs.
   if (g->num_nodes() > kMaxNodesForSingleThreadedExecutor) {
     return false;
@@ -1234,7 +1237,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
-        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+        return profiler::TraceMeEncode("FunctionRun",
+                                       {{"id", opts.step_id}, {"_r", 1}});
       },
       profiler::ContextType::kTfExecutor, opts.step_id,
       profiler::TraceMeLevel::kInfo);
@@ -1306,7 +1310,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
-        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+        return profiler::TraceMeEncode("FunctionRun",
+                                       {{"id", opts.step_id}, {"_r", 1}});
       },
       profiler::ContextType::kTfExecutor, opts.step_id,
       profiler::TraceMeLevel::kInfo);
