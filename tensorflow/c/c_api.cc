@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -154,6 +155,20 @@ void TF_DeleteBuffer(TF_Buffer* buffer) {
 
 TF_Buffer TF_GetBuffer(TF_Buffer* buffer) { return *buffer; }
 
+void TF_TensorFromProto(const TF_Buffer* from, TF_Tensor* to,
+                        TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  tensorflow::TensorProto from_tensor_proto;
+  Status cc_status;
+  cc_status = BufferToMessage(from, &from_tensor_proto);
+  if (!cc_status.ok()) {
+    Set_TF_Status_from_Status(status, cc_status);
+    return;
+  }
+  cc_status = tensorflow::down_cast<tensorflow::TensorInterface*>(to->tensor)
+                  ->FromProto(from_tensor_proto);
+  Set_TF_Status_from_Status(status, cc_status);
+}
 // --------------------------------------------------------------------------
 
 TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
