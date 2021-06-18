@@ -888,7 +888,8 @@ class FusedConv2DOpTest : public OpsTestBase {
             const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
           RunFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
-                           padding, explicit_paddings, out);
+                           padding, explicit_paddings, out,
+                           /*allow_gpu_device=*/true);
         };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
@@ -914,15 +915,14 @@ class FusedConv2DOpTest : public OpsTestBase {
               /*allow_gpu_device=*/activation == "Relu");
         };
 
-    const BiasAddGraphRunner run_fused = [this, &activation, &explicit_paddings,
-                                          padding](const Tensor& input_data,
-                                                   const Tensor& filter_data,
-                                                   const Tensor& bias_data,
-                                                   Tensor* out) {
-      RunFusedConv2DOp(input_data, filter_data, {bias_data},
-                       {"BiasAdd", activation}, padding, explicit_paddings, out,
-                       /*allow_gpu_device=*/activation == "Relu");
-    };
+    const BiasAddGraphRunner run_fused =
+        [this, &activation, &explicit_paddings, padding](
+            const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& bias_data, Tensor* out) {
+          RunFusedConv2DOp(input_data, filter_data, {bias_data},
+                           {"BiasAdd", activation}, padding, explicit_paddings,
+                           out, /*allow_gpu_device=*/activation == "Relu");
+        };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
                              image_batch_count, filter_size, filter_count,
