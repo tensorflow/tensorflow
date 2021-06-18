@@ -5858,6 +5858,11 @@ def enable_eager_execution(config=None, device_policy=None,
   at program startup and not in a library (as most libraries should be usable
   both with and without eager execution).
 
+  @compatibility(TF2)
+  This function is not necessary if you are using TF2. Eager execution is
+  enabled by default.
+  @end_compatibility
+
   Args:
     config: (Optional.) A `tf.compat.v1.ConfigProto` to use to configure the
       environment in which operations are executed. Note that
