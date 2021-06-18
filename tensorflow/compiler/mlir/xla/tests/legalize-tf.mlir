@@ -3484,6 +3484,19 @@ func @tile_just_broadcast(%arg0: tensor<1x1xf32>) -> tensor<7x3xf32> {
   return %0 : tensor<7x3xf32>
 }
 
+// CHECK-LABEL: func @tile_dynamic_shape
+func @tile_dynamic_shape(%arg0: tensor<?x8xf32>) -> tensor<?x24xf32> {
+  %multiples = "tf.Const"() { value = dense<[7,3]> : tensor<2xi32> } : () -> tensor<2xi32>
+  // CHECK: memref.dim {{.*}} : tensor<?x8xf32>
+  // CHECK: tensor.from_elements  {{.*}} : tensor<4xindex>
+  // CHECK: "mhlo.dynamic_broadcast_in_dim"({{.*}}) {broadcast_dimensions = dense<[1, 3]> : tensor<2xi64>} : (tensor<?x8xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK: muli {{.*}} : index
+  // CHECK: tensor.from_elements {{.*}} : tensor<2xindex>
+  // CHECK: "mhlo.dynamic_reshape"({{.*}}) : (tensor<?x?x?x?xf32>, tensor<2xindex>) -> tensor<?x24xf32>
+  %0 = "tf.Tile"(%arg0, %multiples) : (tensor<?x8xf32>, tensor<2xi32>) -> tensor<?x24xf32>
+  return %0 : tensor<?x24xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // ArgMax/ArgMin op legalizations.
 //===----------------------------------------------------------------------===//
@@ -4412,6 +4425,78 @@ func @tensor_scatter_update(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32
   // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: @tensor_scatter_add
+func @tensor_scatter_add(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, %updates: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
+  // CHECK: "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  // CHECK:  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+  // CHECK:    %1 = mhlo.add %arg3, %arg4 : tensor<f32>
+  // CHECK:    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  // CHECK:  })
+  // CHECK-SAME: indices_are_sorted = false
+  // CHECK-SAME: scatter_dimension_numbers
+  // CHECK-SAME:   index_vector_dim = 1 : i64
+  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME: unique_indices = false
+  %0 = "tf.TensorScatterAdd"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: @tensor_scatter_sub
+func @tensor_scatter_sub(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, %updates: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
+  // CHECK: "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  // CHECK:  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+  // CHECK:    %1 = mhlo.subtract %arg3, %arg4 : tensor<f32>
+  // CHECK:    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  // CHECK:  })
+  // CHECK-SAME: indices_are_sorted = false
+  // CHECK-SAME: scatter_dimension_numbers
+  // CHECK-SAME:   index_vector_dim = 1 : i64
+  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME: unique_indices = false
+  %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: @tensor_scatter_min
+func @tensor_scatter_min(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, %updates: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
+  // CHECK: "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  // CHECK:  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+  // CHECK:    %1 = mhlo.minimum %arg3, %arg4 : tensor<f32>
+  // CHECK:    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  // CHECK:  })
+  // CHECK-SAME: indices_are_sorted = false
+  // CHECK-SAME: scatter_dimension_numbers
+  // CHECK-SAME:   index_vector_dim = 1 : i64
+  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME: unique_indices = false
+  %0 = "tf.TensorScatterMin"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: @tensor_scatter_max
+func @tensor_scatter_max(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, %updates: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
+  // CHECK: "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  // CHECK:  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+  // CHECK:    %1 = mhlo.maximum %arg3, %arg4 : tensor<f32>
+  // CHECK:    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  // CHECK:  })
+  // CHECK-SAME: indices_are_sorted = false
+  // CHECK-SAME: scatter_dimension_numbers
+  // CHECK-SAME:   index_vector_dim = 1 : i64
+  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME: unique_indices = false
+  %0 = "tf.TensorScatterMax"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
 }
 

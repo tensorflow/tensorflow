@@ -128,8 +128,6 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.compute_pool
 }
 
-void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
-
 // Look up the requested host name and port for this task in `server_def`.
 Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
                                   string* host_name, int* port) const {
@@ -246,7 +244,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   builder.SetOption(std::move(server_build_option));
 
   // Allow subclasses to specify more args to pass to the gRPC server.
-  MaybeMutateBuilder(&builder);
+  MaybeMutateBuilder(&builder, requested_port);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
   worker_impl_ = opts.worker_func ? opts.worker_func(&worker_env_, config)

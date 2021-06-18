@@ -1434,7 +1434,9 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
        absl::c_any_of(
            hlo->sharding().tuple_elements(),
            [](const HloSharding& sharding) { return sharding.IsManual(); }));
-  if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape")) {
+  if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape") &&
+      hlo->opcode() != HloOpcode::kConditional &&
+      hlo->opcode() != HloOpcode::kWhile) {
     visiting_hlo_sharding_ = hlo->sharding();
     hlo->set_sharding(
         manual_to_onedevice(hlo->shape(), *visiting_hlo_sharding_));
@@ -2706,9 +2708,13 @@ Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
   // follow the same control flow.
   hlo->while_condition()->parameter_instruction(0)->set_sharding(sharding);
   hlo->while_body()->parameter_instruction(0)->set_sharding(sharding);
+  const HloSharding& cond_root_sharding =
+      hlo->while_condition()->root_instruction()->sharding();
   TF_RETURN_IF_ERROR(partitioner_
                          ->PartitionComputation(hlo->while_condition(),
-                                                HloSharding::Replicate(),
+                                                cond_root_sharding.IsManual()
+                                                    ? cond_root_sharding
+                                                    : HloSharding::Replicate(),
                                                 next_channel_id_, logger_)
                          .status());
   TF_RETURN_IF_ERROR(partitioner_
@@ -2745,15 +2751,17 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
                                                   next_channel_id_, logger_)
                            .status());
   }
-
-  // We replicate the predicate of the conditional (the first operand) so that
-  // all partitions follow the same control flow.
   SetPartitionedHlo(hlo, [&] {
+    HloInstruction* cond = GetPartitionedHlo(hlo->operand(0)).hlo();
+    if (!hlo->operand(0)->sharding().IsManual()) {
+      // We replicate the predicate of the conditional (the first operand) so
+      // that all partitions follow the same control flow.
+      cond = GetPartitionedHlo(hlo->operand(0))
+                 .Reshard(HloSharding::Replicate())
+                 .hlo();
+    }
     return b_.AddInstruction(HloInstruction::CreateConditional(
-        MakePartitionedShape(hlo->shape(), hlo->sharding()),
-        GetPartitionedHlo(hlo->operand(0))
-            .Reshard(HloSharding::Replicate())
-            .hlo(),
+        MakePartitionedShape(hlo->shape(), hlo->sharding()), cond,
         hlo->called_computations(), branch_args));
   });
   return Status::OK();

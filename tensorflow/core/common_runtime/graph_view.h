@@ -83,6 +83,8 @@ struct NodeItem {
                                                      // node.
   bool is_any_input_ref_typed : 1;  // True iff any IsRefType(dt) for dt in this
                                     // node's input types.
+  bool is_distributed_communication : 1;  // True iff the op is registered to
+                                          // use distributed communication.
 
   // The kernel for this node.
   OpKernel* kernel = nullptr;

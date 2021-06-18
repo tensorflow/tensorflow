@@ -70,6 +70,14 @@ bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
   return major >= 7;
 }
 
+// TODO(cheshire): Refactor the entire cuda_compute_capability function.
+bool IsAmpereOrLater(const se::StreamExecutor& stream_executor) {
+  int major, minor;
+  CHECK(stream_executor.GetDeviceDescription().cuda_compute_capability(&major,
+                                                                       &minor));
+  return major >= 8;
+}
+
 StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout input, FilterLayout filter,
@@ -445,6 +453,10 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64* rng_state, se::DeviceMemoryBase buffer) {
   switch (buffer_type) {
     case xla::F16:
+    case xla::BF16:
+      // Using F16 for BF16 initialization: it's fine since we only need some
+      // random number there, and random generator is not working for BF16 (not
+      // all required overloads are there).
       return InitializeTypedBuffer<Eigen::half>(stream, buffer, rng_state);
     case xla::F32:
     case xla::C64:

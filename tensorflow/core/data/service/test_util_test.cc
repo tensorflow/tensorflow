@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -25,8 +26,8 @@ namespace data {
 namespace test_util {
 
 TEST(TestUtil, MapTestCase) {
-  GraphDefTestCase test_case;
-  TF_ASSERT_OK(map_test_case(&test_case));
+  TF_ASSERT_OK_AND_ASSIGN(GraphDefTestCase test_case,
+                          map_test_case(/*range=*/10));
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> dataset;
   TF_ASSERT_OK(
@@ -50,6 +51,24 @@ TEST(TestUtil, MapTestCase) {
     TF_EXPECT_OK(DatasetOpsTestBase::ExpectEqual(result[i], test_case.output[i],
                                                  /*compare_order=*/true));
   }
+}
+
+TEST(TestUtil, EmptyDataset) {
+  TF_ASSERT_OK_AND_ASSIGN(GraphDefTestCase test_case,
+                          map_test_case(/*range=*/0));
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, test_case.graph_def, &dataset));
+
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+
+  std::vector<tensorflow::Tensor> outputs;
+  bool end_of_input = false;
+  TF_ASSERT_OK(iterator->GetNext(&outputs, &end_of_input));
+  EXPECT_TRUE(outputs.empty());
+  EXPECT_TRUE(end_of_input);
 }
 
 }  // namespace test_util

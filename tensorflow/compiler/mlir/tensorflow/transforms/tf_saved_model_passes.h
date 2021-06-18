@@ -63,6 +63,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMarkInitializedVariablesPass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInitializeVariablesInSessionInitializerPass(tensorflow::Session* session);
 
+// Creates a pass that freezes readonly variables in the graph.
+std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariablesPass(
+    tensorflow::Session* session);
+
 }  // namespace tf_saved_model
 
 }  // namespace mlir

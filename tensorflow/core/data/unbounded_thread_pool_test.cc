@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
+#include "tensorflow/core/data/unbounded_thread_pool.h"
 
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/random/random.h"

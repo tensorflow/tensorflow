@@ -15,10 +15,17 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_state.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {

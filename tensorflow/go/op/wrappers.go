@@ -20669,9 +20669,9 @@ func IgammaGradA(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 //
 // where
 //
-// \\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+// \\(Gamma(a, x) = \int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
 //
-// is the upper incomplete Gama function.
+// is the upper incomplete Gamma function.
 //
 // Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
 // Gamma function.

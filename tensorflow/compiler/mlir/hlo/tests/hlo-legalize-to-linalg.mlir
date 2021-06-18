@@ -169,6 +169,17 @@ func @float_exp(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @complex_exp
+func @complex_exp(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.exp
+  %0 = "mhlo.exponential"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                                 -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_expm1
 func @float_expm1(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
@@ -241,6 +252,29 @@ func @float_neg(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: negf
   %0 = "mhlo.negate"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_neg
+func @complex_neg(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.neg
+  %0 = "mhlo.negate"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                            -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_sign
+func @complex_sign(
+    %arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.sign
+  %0 = "mhlo.sign"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                          -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----

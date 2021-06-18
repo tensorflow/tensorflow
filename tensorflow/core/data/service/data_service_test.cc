@@ -15,30 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/data_service.h"
 
-#include "grpcpp/create_channel.h"
-#include "grpcpp/security/credentials.h"
-#include "absl/strings/str_split.h"
-#include "tensorflow/core/data/compression_utils.h"
-#include "tensorflow/core/data/dataset_test_base.h"
-#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
+#include <vector>
+
 #include "tensorflow/core/data/service/dispatcher.pb.h"
-#include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/server_lib.h"
+#include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/test_cluster.h"
-#include "tensorflow/core/data/service/test_util.h"
-#include "tensorflow/core/data/service/worker.grpc.pb.h"
-#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace data {
-
 namespace {
+
 constexpr const char kProtocol[] = "grpc+local";
-}
 
 TEST(DataService, ParseParallelEpochsProcessingMode) {
   ProcessingMode mode;
@@ -103,5 +95,6 @@ TEST(DataService, GetWorkers) {
   EXPECT_EQ(1, workers.size());
 }
 
+}  // namespace
 }  // namespace data
 }  // namespace tensorflow

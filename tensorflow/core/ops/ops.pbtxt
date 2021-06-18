@@ -7539,6 +7539,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveBcastRecvV2"
@@ -7604,6 +7605,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveBcastSend"
@@ -7660,6 +7662,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveBcastSendV2"
@@ -7712,6 +7715,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveGather"
@@ -7767,6 +7771,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveGatherV2"
@@ -7831,6 +7836,7 @@ op {
     has_minimum: true
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectivePermute"
@@ -7957,6 +7963,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveReduceV2"
@@ -8051,6 +8058,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CombinedNonMaxSuppression"
@@ -36628,6 +36636,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "RecvTPUEmbeddingActivations"

@@ -1823,6 +1823,7 @@ tf_cuda_cc_test(
     srcs = ["depthwise_conv_ops_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171342266): re-enable.
+        "no_gpu",  # flaky, TODO(b/191214648)
     ],
     deps = [
         ":conv_ops",
@@ -6071,6 +6072,7 @@ filegroup(
         "//tensorflow/core/data:root_dataset.h",
         "//tensorflow/core/data:split_utils.h",
         "//tensorflow/core/data:stats_utils.h",
+        "//tensorflow/core/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
@@ -6084,7 +6086,6 @@ filegroup(
         "//tensorflow/core/kernels/data:reduce_dataset_op.h",
         "//tensorflow/core/kernels/data:repeat_dataset_op.h",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
-        "//tensorflow/core/kernels/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.h",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
@@ -6417,6 +6418,7 @@ filegroup(
         "//tensorflow/core/data:root_dataset.cc",
         "//tensorflow/core/data:split_utils.cc",
         "//tensorflow/core/data:stats_utils.cc",
+        "//tensorflow/core/data:unbounded_thread_pool.cc",
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
         "//tensorflow/core/kernels/data:finalize_dataset_op.cc",
@@ -6429,7 +6431,6 @@ filegroup(
         "//tensorflow/core/kernels/data:reduce_dataset_op.cc",
         "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
-        "//tensorflow/core/kernels/data:unbounded_thread_pool.cc",
         # TODO(b/185903858): This should not be needed since this is part of tensorflow/core/kernels/data/experimental:portable_all_op_kernels.
         "//tensorflow/core/kernels/data/experimental:lookup_ops.cc",
         "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.cc",

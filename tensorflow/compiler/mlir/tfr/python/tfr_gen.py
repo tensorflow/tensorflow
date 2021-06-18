@@ -234,7 +234,7 @@ class OpDefCache(object):
     self._op_defs = {}
 
   def lookup(self, f_name, func_def=None, optional=False):
-    if f_name in self._op_defs.keys():
+    if f_name in self._op_defs:
       return self._op_defs[f_name]
 
     if isinstance(func_def, types.FunctionType):

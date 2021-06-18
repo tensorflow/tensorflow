@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -46,12 +47,14 @@ LoadFromGraphdefOrMlirSource(
     mlir::MLIRContext* context);
 
 // Load Saved model (either v1 or v2) into MLIR.
+// 'saved_model_bundle' will be initialized if V1 model was loaded.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
-    mlir::MLIRContext* context);
+    mlir::MLIRContext* context,
+    std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TF Lite dialect and

@@ -81,8 +81,6 @@ namespace data {
 
 namespace {
 
-constexpr char kTfDataParallelInterleaveWorkerPool[] =
-    "tf_data_parallel_interleave_worker_pool";
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBlockIndex[] = "block_index";
 constexpr char kCycleIndex[] = "cycle_index";
@@ -340,8 +338,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (ctx->stats_aggregator()) {
         num_threads++;
       }
-      thread_pool_ = ctx->CreateThreadPool(kTfDataParallelInterleaveWorkerPool,
-                                           num_threads);
+      thread_pool_ = ctx->CreateThreadPool(
+          "data_parallel_interleave_worker_pool", num_threads);
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }

@@ -209,9 +209,8 @@ ENTRY entry {
     instructions_by_name[instruction->name()] = instruction;
   }
 
-  SequentialHloOrdering ordering(schedule);
-  EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("send-done"),
-                                      instructions_by_name.at("n1")));
+  EXPECT_LT(absl::c_find(sequence, instructions_by_name.at("send-done")),
+            absl::c_find(sequence, instructions_by_name.at("n1")));
 }
 
 TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {

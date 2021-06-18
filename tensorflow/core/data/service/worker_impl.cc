@@ -30,16 +30,20 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
+#include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/utils.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
@@ -188,6 +192,13 @@ Status DataServiceWorkerImpl::GetElementResult(
     cv_.notify_all();
   });
   TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
+
+  if (result->end_of_sequence) {
+    mutex_lock l(mu_);
+    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
+    pending_completed_tasks_.insert(request->task_id());
+    task_completion_cv_.notify_one();
+  }
   return Status::OK();
 }
 
@@ -292,17 +303,11 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   TF_RETURN_IF_ERROR(GetElementResult(request, &result));
   response->set_end_of_sequence(result.end_of_sequence);
   response->set_skip_task(result.skip);
-  if (response->end_of_sequence()) {
-    mutex_lock l(mu_);
-    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-    pending_completed_tasks_.insert(request->task_id());
-    task_completion_cv_.notify_one();
-  } else if (!response->skip_task()) {
+  if (!response->end_of_sequence() && !response->skip_task()) {
     TF_RETURN_IF_ERROR(
         MoveElementToResponse(std::move(result.components), *response));
     VLOG(3) << "Producing an element for task " << request->task_id();
   }
-
   return Status::OK();
 }
 

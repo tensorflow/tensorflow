@@ -43,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -326,7 +327,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     c = constant_op.constant(1.)
     identity = array_ops.identity_n([c, v.handle])
     # TODO(b/137403775): Remove this.
-    custom_gradient.copy_handle_data(v.handle, identity[1])
+    handle_data_util.copy_handle_data(v.handle, identity[1])
 
     g = gradients_impl.gradients(identity[0], [c, v.handle])
     self.assertEqual(g[1].dtype, dtypes.float64)
