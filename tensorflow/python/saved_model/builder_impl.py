@@ -35,10 +35,14 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
+
+# API label for SavedModel metrics.
+_SAVE_BUILDER_LABEL = "save_v1_builder"
 
 
 # Base class for the SavedModelBuilder that is only used by Tensorflow
@@ -410,6 +414,7 @@ class _SavedModelBuilder(object):
     Returns:
       The path to which the SavedModel protocol buffer was written.
     """
+    metrics.IncrementWriteApi(_SAVE_BUILDER_LABEL)
     if not file_io.file_exists(self._export_dir):
       file_io.recursive_create_dir(self._export_dir)
 
@@ -425,7 +430,7 @@ class _SavedModelBuilder(object):
       file_io.write_string_to_file(
           path, self._saved_model.SerializeToString(deterministic=True))
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
-
+    metrics.IncrementWrite()
     return path
 
 

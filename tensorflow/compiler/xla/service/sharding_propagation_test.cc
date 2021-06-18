@@ -899,6 +899,41 @@ ENTRY %conv {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, ForwardConvolution3DSmallKernel) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %lhs = bf16[32,32,8,7,128]{4,3,2,1,0} parameter(0),
+    sharding={devices=[1,4,1,1,1]0,1,2,3 metadata={op_name="a"}}
+  %rhs = bf16[3,3,3,128,256]{4,3,2,1,0} parameter(1)
+  %convolution = bf16[16,16,8,3,256]{4,3,2,1,0}
+    convolution(bf16[32,32,8,7,128]{4,3,2,1,0} %lhs,
+    bf16[3,3,3,128,256]{4,3,2,1,0} %rhs),
+    window={size=3x3x3 stride=2x2x2 pad=1_1x1_1x0_0},
+    dim_labels=01b2f_012io->01b2f
+  ROOT %copy = bf16[16,16,8,3,256]{4,3,2,1,0} copy(%convolution)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "convolution");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,4,1,1,1]0,1,2,3}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, TransposeForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -1995,6 +2030,61 @@ ENTRY %entry {
               ::testing::HasSubstr(
                   "Instruction: while is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
+}
+
+TEST_P(ParameterizedMetadataTest, WhileConv) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) parameter(0)
+  %count.cond = u32[] get-tuple-element(%vars.cond), index=0
+  %limit = u32[] constant(2)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) parameter(0)
+  %count = u32[] get-tuple-element(%param), index=0
+  %kernel = bf16[2048, 768]{1,0}
+   get-tuple-element(%param), index=1
+  %lhs = bf16[128,512,2048]{2,1,0}
+   get-tuple-element(%param), index=2,
+   sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  %reshape = bf16[2048,768,1]{2,1,0} reshape(bf16[2048,768]{1,0} %kernel)
+  %convolution = bf16[128,512,768]{2,1,0}
+    convolution(bf16[128,512,2048]{2,1,0} %lhs,
+    bf16[2048,768,1]{2,1,0} %reshape), window={size=1},
+    dim_labels=0bf_io0->0bf, sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT %tuple = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) tuple(%count, %kernel, %lhs, %convolution)
+}
+
+ENTRY %entry {
+  %p0 = bf16[2048,768] parameter(0),
+    sharding={devices=[2,1,8]0,2,4,6,8,10,12,14,1,3,5,7,9,11,13,15 last_tile_dim_replicate}
+  %p1 = bf16[128,512,2048] parameter(1),
+   sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  %p2 = bf16[128,512,768] parameter(2)
+  %zero = u32[] constant(0)
+  %init = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) tuple(%zero, %p0, %p1, %p2)
+  %while = (u32[], bf16[2048, 768], bf16[128,512,2048], bf16[128,512,768]) while(%init), body=%body, condition=%cond
+  ROOT %result = bf16[128,512,768] get-tuple-element(%while), index=3, sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* kernel = FindInstruction(module.get(), "kernel");
+  ASSERT_NE(kernel, nullptr);
+  EXPECT_THAT(kernel, op::Sharding("{devices=[2,1,8]0,2,4,6,8,10,12,14,1,3,5,"
+                                   "7,9,11,13,15 last_tile_dim_replicate}"));
 }
 
 TEST_P(ParameterizedMetadataTest, Dot) {
@@ -4786,12 +4876,12 @@ ENTRY %module {
   %iota.11 = s32[1,4,8]{2,1,0} iota(), iota_dimension=1
   %concatenate = s32[2,4,8]{2,1,0} concatenate(s32[1,4,8]{2,1,0} %iota.11,
     s32[1,4,8]{2,1,0} %seq_b), dimensions={0}
-  %gather = s32[4,8,2,2]{3,2,1,0} gather(s32[4,8,2,2]{3,2,1,0} %input,
-    s32[2,4,8]{2,1,0} %concatenate), offset_dims={2,3},
+  %gather = s32[2,2,4,8]{3,2,1,0} gather(s32[4,8,2,2]{3,2,1,0} %input,
+    s32[2,4,8]{2,1,0} %concatenate), offset_dims={0,1},
     collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
     slice_sizes={1,1,2,2},
-    sharding={devices=[2,1,2,1]0,1,4,5 metadata={op_name="a"}}
-  ROOT %copy = s32[4,8,2,2]{3,2,1,0} copy(%gather)
+    sharding={devices=[2,1,2,1]0,4,1,5 metadata={op_name="a"}}
+  ROOT %copy = s32[2,2,4,8]{3,2,1,0} copy(%gather)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -4814,7 +4904,7 @@ ENTRY %module {
       op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* gather = FindInstruction(module.get(), "gather");
   ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(gather, op::Sharding("{devices=[2,1,2,1]0,1,4,5}"));
+  EXPECT_THAT(gather, op::Sharding("{devices=[2,1,2,1]0,4,1,5}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
     EXPECT_THAT(gather->sharding(), ShardingMetadata({CreateMetadata("a")}));
   } else {
@@ -4858,6 +4948,39 @@ ENTRY %module {
   } else {
     EXPECT_THAT(index->sharding(), ShardingMetadata({}));
   }
+}
+
+TEST_P(ParameterizedMetadataTest, GatherToOperand_ParallelDimIsNotPartitioned) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[2,1000,1]{2,1,0} parameter(0)
+  %parameter.1 = bf16[2,4819,4]{2,1,0} parameter(1)
+  %iota = s32[2,1000,1]{1,0,2} iota(), iota_dimension=0
+  %operand = bf16[2,4819,4]{2,1,0} copy(%parameter.1)
+  %index = s32[2,1000,2]{2,1,0} concatenate(s32[2,1000,1]{1,0,2} %parameter.0,
+    s32[2,1000,1]{2,1,0} %iota), dimensions={2},
+    sharding={devices=[1,4,1]0,1,2,3}
+  ROOT %gather = bf16[2,1000,4]{2,1,0} gather(bf16[2,4819,4]{2,1,0} %operand,
+    s32[2,1000,2]{2,1,0} %index), offset_dims={2},
+    collapsed_slice_dims={0,1}, start_index_map={0,1},
+    index_vector_dim=2, slice_sizes={1,1,4},
+    sharding={devices=[1,4,1]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* operand = FindInstruction(module.get(), "operand");
+  EXPECT_THAT(operand, op::Sharding("{replicated}"));
 }
 
 }  // namespace

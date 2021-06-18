@@ -60,7 +60,7 @@ filegroup(
         "virtual_scheduler.h",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
@@ -373,6 +373,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/util:overflow",
     ] + tf_protos_grappler(),
     alwayslink = 1,
 )

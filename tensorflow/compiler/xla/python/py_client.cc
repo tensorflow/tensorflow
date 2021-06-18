@@ -67,21 +67,20 @@ std::vector<py::object> PyClient::LiveBuffers() {
   return buffers;
 }
 
-Status PyClient::Defragment() {
+std::vector<std::shared_ptr<PyExecutable>> PyClient::LiveExecutables() {
   CHECK(PyGILState_Check());
-  absl::flat_hash_set<PjRtBuffer*> buffer_set;
-  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
-    if (!buffer->is_deleted()) {
-      buffer_set.insert(buffer->buffer());
+  std::vector<std::shared_ptr<PyExecutable>> executables;
+  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
+    if (!exec->is_deleted()) {
+      executables.push_back(exec->shared_from_this());
     }
   }
-  std::vector<PjRtBuffer*> buffers(buffer_set.begin(), buffer_set.end());
+  return executables;
+}
 
-  std::vector<PjRtExecutable*> execs;
-  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
-    execs.push_back(exec->mutable_pjrt_executable());
-  }
-  return pjrt_client_->Defragment(buffers, execs);
+Status PyClient::Defragment() {
+  CHECK(PyGILState_Check());
+  return pjrt_client_->Defragment();
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
@@ -265,7 +264,7 @@ H AbslHashValue(H h, const HeapProfileKey& key) {
 
 }  // namespace
 
-py::bytes PyClient::HeapProfile() {
+StatusOr<py::bytes> PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
   absl::flat_hash_set<PjRtBuffer*> buffer_set;
   absl::flat_hash_map<HeapProfileKey, int64> entries;
@@ -273,8 +272,9 @@ py::bytes PyClient::HeapProfile() {
     // We only wish to count each PjRtBuffer once, even though they may be
     // shared by multiple PyBuffers.
     if (buffer_set.insert(buffer->buffer()).second) {
-      HeapProfileKey key{buffer->traceback().get(),
-                         buffer->buffer()->OnDeviceSizeInBytes(),
+      TF_ASSIGN_OR_RETURN(size_t size,
+                          buffer->buffer()->GetOnDeviceSizeInBytes());
+      HeapProfileKey key{buffer->traceback().get(), static_cast<int64_t>(size),
                          buffer->buffer()->device()};
       ++entries[key];
     }
@@ -321,7 +321,7 @@ py::bytes PyClient::HeapProfile() {
       kind_label->set_str(executable_string_id);
     }
   }
-  return builder.profile().SerializeAsString();
+  return py::bytes(builder.profile().SerializeAsString());
 }
 
 }  // namespace xla

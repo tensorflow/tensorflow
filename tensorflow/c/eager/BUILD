@@ -407,11 +407,9 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/c:tensor_interface",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -471,6 +469,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:intrusive_ptr",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
     ],
 )
@@ -682,6 +682,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         # copybara:uncomment_begin
+        # "//tensorflow/core/tfrt/eager:c_api_tfrt",
         # "@tf_runtime//backends/cpu:tf_ops_alwayslink",
         # copybara:uncomment_end
     ],
@@ -842,6 +843,22 @@ tf_cuda_cc_test(
     ],
 )
 
+cc_library(
+    name = "graph_function",
+    srcs = ["graph_function.cc"],
+    hdrs = [
+        "graph_function.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_function",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
@@ -864,6 +881,7 @@ tf_cuda_library(
         "//conditions:default": [
             ":c_api",
             ":c_api_internal",
+            ":graph_function",
             ":tfe_context_internal",
             ":tfe_op_internal",
             ":tfe_tensorhandle_internal",
@@ -1066,6 +1084,8 @@ filegroup(
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
             "c_api_unified_experimental_internal.h",
+            "graph_function.h",
+            "graph_function.cc",
             "gradient_checker.cc",
             "gradient_checker.h",
             "gradients.cc",  # Uses RTTI.

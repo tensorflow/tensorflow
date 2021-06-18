@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 // Parallel two-sided Jacobi symmetric eigendecomposition.
 //
@@ -77,124 +78,64 @@ XlaOp Hypot(XlaOp x, XlaOp y) {
 // Given an n-by-n symmetric A and integers p and q that satisfy 0 <= p < q < n,
 // a Jacobi rotation computes a rotation matrix G = [[c, s], [-s, c]], such that
 //   G_T * A[[p, q], [p, q]] * G
-// is diagonalized. We do this by computing a 2x2 eigendecomposition.
+// is diagonalized.
 //
 // In this parallel Jacobi algorithm, we simultaneously compute Jacobi rotations
 // for all of the matrix diagonal elements at the same time. The matrix diagonal
 // elements correspond to different rows and columns of the original matrix and
 // their rotations do not interfere and hence can be computed in parallel.
 //
-// The algorithm is based on slaev2/claev2 from LAPACK, modified to allow for
-// vectorization.
-// In addition, slaev2 always returns the largest eigenvalue as rt1, which has
-// the effect of swapping eigenvalues around in the Jacob algorithm. This does
-// not converge when used in a parallel Jacobi algorithm, so we modify the
-// algorithm to maintain the following symmetry property:
-// slaev2(a, b, c) has the opposite Eigenvalue order from slaev2(c, b, a)
-
-// def symmetric_eigendecomposition_2x2(a, b, c):
-//   # Input matrix [[a, b], [b, c]].
-//   ac_sum = a + c
-//   ac_diff = a - c
-//   two_b = 2*b
-//
-//   rt = hypot(ac_diff, two_b)
-//
-//   which_max_abs = np.abs(a) > np.abs(c)
-//   ac_max = np.where(which_max_abs, a, c)
-//   ac_min = np.where(which_max_abs, c, a)
-//   rt1 = np.float32(0.5)*(ac_sum + np.where(ac_sum < 0, -rt, rt))
-//   rt2 = np.where(ac_sum != 0, (ac_max / rt1)*ac_min - (b/rt1)*b,
-//                  -np.float32(0.5)*rt)
-//
-//
-//   # Modification: don't sort the Eigenvalues.
-//   rt1, rt2 = (np.where(which_max_abs, rt1, rt2),
-//               np.where(which_max_abs, rt2, rt1))
-//
-//   # Compute eigenvectors
-//   cs = ac_diff + np.where(ac_diff >= 0, rt, -rt)
-//
-//   ct = -two_b / cs
-//   tn = -cs / two_b
-//
-//   cosine = np.where(two_b != 0, np.float32(1) / np.sqrt(1 + tn*tn),
-//                  np.float32(1))
-//   sine = np.where(two_b != 0, tn * cosine, np.float32(0))
-//
-//   tmp = 1 / np.sqrt(1 + ct*ct)
-//   cosine = np.where(np.abs(cs) > np.abs(two_b), ct*tmp, cosine)
-//   sine = np.where(np.abs(cs) > np.abs(two_b), tmp, sine)
-//   same_sign = (ac_sum >= 0) == (ac_diff >= 0)
-//   # Modification: use Eigenvalues corresponding to the Eigenvectors above.
-//   same_sign = (same_sign == which_max_abs)
-//   cosine, sine = (np.where(same_sign, -sine, cosine),
-//                   np.where(same_sign, cosine, sine))
-//   return rt1, rt2, cosine, sine
+// def sym_schur2x2(w_tl, w_tr, w_br):
+//   off_diag = np.diag(w_tr)
+//   tau = (np.diag(w_br) - np.diag(w_tl)) / (2 * off_diag)
+//   t = np.where(tau >= 0, 1.0 / (tau + np.sqrt(1 + tau ** 2)),
+//                -1.0 / (-tau + np.sqrt(1 + tau ** 2)))
+//   pred = np.abs(off_diag) > 1e-6
+//   t = np.where(pred, t, 0.)
+//   c = 1.0 / np.sqrt(1.0 + t ** 2)
+//   s = t * c
+//   rt1 = w_tl - t * w_tr
+//   rt2 = w_br + t * w_tr
+//   return rt1, rt2, c, s
 StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
                                                  XlaOp w_br) {
   TF_ASSIGN_OR_RETURN(Shape w_tl_shape, w_tl.builder()->GetShape(w_tl));
   bool is_complex = primitive_util::IsComplexType(w_tl_shape.element_type());
 
-  auto a = GetMatrixDiagonal(Real(w_tl));
-  auto b = GetMatrixDiagonal(w_tr);
-  auto abs_b = Abs(b);
+  w_tl = GetMatrixDiagonal(Real(w_tl));
+  w_tr = GetMatrixDiagonal(w_tr);
+  w_br = GetMatrixDiagonal(Real(w_br));
+  auto zero = ScalarLike(w_tl, 0.0);
+  auto one = ScalarLike(w_tl, 1.0);
+  auto two = ScalarLike(w_tl, 2.0);
 
   XlaOp w;
   if (is_complex) {
-    w = Select(Eq(abs_b, ZerosLike(abs_b)), FullLike(b, 1),
-               Conj(b) / Complex(abs_b, ZerosLike(abs_b)));
-    b = abs_b;
+    auto abs_tr = Abs(w_tr);
+    w = Select(Eq(abs_tr, ZerosLike(abs_tr)), FullLike(w_tr, 1),
+               Conj(w_tr) / Complex(abs_tr, ZerosLike(abs_tr)));
+    w_tr = abs_tr;
   }
 
-  auto c = GetMatrixDiagonal(Real(w_br));
-  auto zero = ScalarLike(a, 0.0);
-  auto half = ScalarLike(a, 0.5);
-  auto neg_half = ScalarLike(a, -0.5);
-  auto one = ScalarLike(a, 1.0);
-  auto two = ScalarLike(a, 2.0);
+  auto tol = ScalarLike(w_tr, 1e-6);
+  auto tau = (w_br - w_tl) / (two * w_tr);
+  auto t = Sqrt(one + Square(tau));
+  t = Reciprocal(tau + Select(Ge(tau, zero), t, Neg(t)));
+  t = Select(Gt(Abs(w_tr), tol), t, ZerosLike(t));
+  auto c = Rsqrt(one + Square(t));
+  auto s = t * c;
 
-  auto ac_sum = a + c;
-  auto ac_diff = a - c;
-  auto two_b = two * b;
-  auto rt = Hypot(ac_diff, two_b);
+  auto rt1 = w_tl - t * w_tr;
+  auto rt2 = w_br + t * w_tr;
 
-  // Compute eigenvalues
-  auto which_max_abs = Gt(Abs(a), Abs(c));
-  auto ac_max = Select(which_max_abs, a, c);
-  auto ac_min = Select(which_max_abs, c, a);
-  auto rt1 = half * (ac_sum + Select(Lt(ac_sum, zero), -rt, rt));
-  auto rt2 = Select(Ne(ac_sum, zero), (ac_max / rt1) * ac_min - (b / rt1) * b,
-                    neg_half * rt);
-  std::tie(rt1, rt2) = std::make_tuple(Select(which_max_abs, rt1, rt2),
-                                       Select(which_max_abs, rt2, rt1));
-
-  // Compute eigenvectors
-  auto cs = ac_diff + Select(Ge(ac_diff, zero), rt, -rt);
-  auto ct = -two_b / cs;
-  auto tn = -cs / two_b;
-
-  auto cosine = Select(Ne(two_b, zero), Rsqrt(one + Square(tn)), one);
-  auto sine = Select(Ne(two_b, zero), tn * cosine, zero);
-
-  auto tmp = Rsqrt(one + Square(ct));
-  auto abs_cs_larger = Gt(Abs(cs), Abs(two_b));
-  cosine = Select(abs_cs_larger, ct * tmp, cosine);
-  sine = Select(abs_cs_larger, tmp, sine);
-  auto same_sign = Eq(Ge(ac_sum, zero), Ge(ac_diff, zero));
-  same_sign = Eq(same_sign, which_max_abs);
-  std::tie(cosine, sine) = std::make_tuple(Select(same_sign, -sine, cosine),
-                                           Select(same_sign, cosine, sine));
-
-  // Negate 'sine' because we are returning the first row of the rotation matrix
-  // not the first eigenvector.
   if (is_complex) {
     rt1 = Complex(rt1, ZerosLike(rt1));
     rt2 = Complex(rt2, ZerosLike(rt2));
-    cosine = Complex(cosine, ZerosLike(cosine));
-    sine = Complex(sine, ZerosLike(sine)) * w;
+    c = Complex(c, ZerosLike(c));
+    s = Complex(s, ZerosLike(s)) * w;
   }
-  return Eigh2x2{rt1, rt2, cosine, -sine};
+
+  return Eigh2x2{rt1, rt2, c, s};
 }
 
 // tl, tr, bl, br = (
@@ -322,8 +263,8 @@ Status ApplyRotations(int64 n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
 }
 
 struct FrobeniusNorms {
-  XlaOp off_diagonal_norm;
-  XlaOp total_norm;
+  XlaOp off_diagonal_sq_norm;
+  XlaOp frobenius_sq_norm;
 };
 
 StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
@@ -334,28 +275,27 @@ StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
   auto square_norm = [](XlaOp x) -> XlaOp {
     return Real(x * MaybeConjugate(x, true));
   };
+  auto off_diag = [](XlaOp x) {
+    return Select(GetDiagonalMask(x), ZerosLike(x), x);
+  };
   PrimitiveType norm_type =
       primitive_util::IsComplexType(shape.element_type())
           ? primitive_util::ComplexComponentType(shape.element_type())
           : shape.element_type();
   auto zero = ScalarLike(Real(w_tl), 0.0);
-  auto frobenius_norm =
-      Sqrt(Reduce(square_norm(w_tl) + square_norm(w_tr) + square_norm(w_bl) +
-                      square_norm(w_br),
-                  zero, CreateScalarAddComputation(norm_type, builder),
-                  {num_dims - 2, num_dims - 1}));
-  auto diag_square = Reduce(
-      Square(GetMatrixDiagonal(Real(w_tl))) +
-          Square(GetMatrixDiagonal(Real(w_br))),
-      zero, CreateScalarAddComputation(norm_type, builder), {num_dims - 2});
+  FrobeniusNorms norms;
+  norms.frobenius_sq_norm =
+      Reduce(square_norm(w_tl) + square_norm(w_tr) + square_norm(w_bl) +
+                 square_norm(w_br),
+             zero, CreateScalarAddComputation(norm_type, builder),
+             {num_dims - 2, num_dims - 1});
+  norms.off_diagonal_sq_norm =
+      Reduce(square_norm(off_diag(w_tl)) + square_norm(w_tr) +
+                 square_norm(w_bl) + square_norm(off_diag(w_br)),
+             zero, CreateScalarAddComputation(norm_type, builder),
+             {num_dims - 2, num_dims - 1});
 
-  FrobeniusNorms frobenius_norms;
-
-  frobenius_norms.off_diagonal_norm =
-      Sqrt(Max(Square(frobenius_norm) - diag_square, zero));
-  frobenius_norms.total_norm = frobenius_norm;
-
-  return frobenius_norms;
+  return norms;
 }
 
 StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
@@ -371,8 +311,8 @@ StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
         std::make_tuple(values[2], values[3], values[4], values[5]);
     TF_ASSIGN_OR_RETURN(auto norms,
                         ComputeFrobeniusNorms(w_tl, w_tr, w_bl, w_br));
-    auto tol = norms.total_norm * values[1];
-    auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_norm),
+    auto tol = norms.frobenius_sq_norm * Square(values[1]);
+    auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_sq_norm),
                               xla::ConstantR0<bool>(cond_builder, false),
                               CreateScalarOrComputation(PRED, cond_builder));
 
@@ -409,7 +349,9 @@ StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
                          "EighJacobiSweeps", builder);
 }
 
-StatusOr<std::pair<XlaOp, XlaOp>> SortByEigenvalues(XlaOp v, XlaOp w) {
+}  // namespace
+
+Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   XlaBuilder* builder = v.builder();
   TF_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
   TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
@@ -428,10 +370,8 @@ StatusOr<std::pair<XlaOp, XlaOp>> SortByEigenvalues(XlaOp v, XlaOp w) {
            num_dims - 1);
   w = GetMatrixDiagonal(GetTupleElement(sort_result, 0));
   v = GetTupleElement(sort_result, 1);
-  return std::make_pair(v, w);
+  return Status::OK();
 }
-
-}  // namespace
 
 // This is the cyclic Jacobi iteration.
 //
@@ -486,7 +426,8 @@ StatusOr<std::pair<XlaOp, XlaOp>> SortByEigenvalues(XlaOp v, XlaOp w) {
 //     off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
 //             frobenius_norm + diag_norm)
 //   return A, V
-XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol) {
+XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol,
+                              bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -587,7 +528,9 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol) {
     }
     v = MaybeConjugate(TransposeInMinorDims(v), true);
 
-    TF_ASSIGN_OR_RETURN(std::tie(v, w), SortByEigenvalues(v, w));
+    if (sort_eigenvalues) {
+      TF_RETURN_IF_ERROR(SortByEigenvalues(v, w));
+    }
     return Tuple(builder, {v, w});
   });
 }
@@ -628,14 +571,16 @@ StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
         absl::StrSplit(instruction->raw_backend_config_string(), ',');
     int lower;
     int64 max_iter;
+    int sort_eigenvalues;
     float tol;
-    if (config_strs.size() != 3 || !absl::SimpleAtoi(config_strs[0], &lower) ||
-        !absl::SimpleAtoi(config_strs[1], &max_iter) ||
-        !absl::SimpleAtof(config_strs[2], &tol)) {
+    if (config_strs.size() != 4 || !absl::SimpleAtoi(config_strs[0], &lower) ||
+        !absl::SimpleAtoi(config_strs[1], &sort_eigenvalues) ||
+        !absl::SimpleAtoi(config_strs[2], &max_iter) ||
+        !absl::SimpleAtof(config_strs[3], &tol)) {
       return Internal("Unable to parse arguments to Eigh custom call, got: %s",
                       instruction->raw_backend_config_string());
     }
-    XlaOp result = BuildEigh(a, lower, max_iter, tol);
+    XlaOp result = BuildEigh(a, lower, max_iter, tol, sort_eigenvalues);
     TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
 
     TF_ASSIGN_OR_RETURN(ProgramShape program_shape,

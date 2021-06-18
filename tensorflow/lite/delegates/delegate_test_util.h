@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -33,8 +34,73 @@ namespace test_utils {
 // tensor inputs to produce a tensor output.
 TfLiteRegistration AddOpRegistration();
 
-// TestDelegate is a friend of Interpreter to access RemoveAllDelegates().
-class TestDelegate : public ::testing::Test {
+class SimpleDelegate {
+ public:
+  // Create a simple implementation of a TfLiteDelegate. We use the C++ class
+  // SimpleDelegate and it can produce a handle TfLiteDelegate that is
+  // value-copyable and compatible with TfLite.
+  //
+  // Parameters:
+  //   nodes: Indices of the graph nodes that the delegate will handle.
+  //   fail_node_prepare: To simulate failure of Delegate node's Prepare().
+  //   min_ops_per_subset: If >0, partitioning preview is used to choose only
+  //     those subsets with min_ops_per_subset number of nodes.
+  //   fail_node_invoke: To simulate failure of Delegate node's Invoke().
+  //   automatic_shape_propagation: This assumes that the runtime will
+  //     propagate shapes using the original execution plan.
+  //   custom_op: If true, the graph nodes specified in the 'nodes' parameter
+  //     should be custom ops with name "my_add"; if false, they should be
+  //     the builtin ADD operator.
+  //   set_output_tensor_dynamic: If True, this delegate sets output tensor to
+  //     as dynamic during kernel Prepare.
+  explicit SimpleDelegate(const std::vector<int>& nodes,
+                          int64_t delegate_flags = kTfLiteDelegateFlagsNone,
+                          bool fail_node_prepare = false,
+                          int min_ops_per_subset = 0,
+                          bool fail_node_invoke = false,
+                          bool automatic_shape_propagation = false,
+                          bool custom_op = true,
+                          bool set_output_tensor_dynamic = false);
+
+  static std::unique_ptr<SimpleDelegate> DelegateWithRuntimeShapePropagation(
+      const std::vector<int>& nodes, int64_t delegate_flags,
+      int min_ops_per_subset);
+
+  static std::unique_ptr<SimpleDelegate> DelegateWithDynamicOutput(
+      const std::vector<int>& nodes);
+
+  TfLiteRegistration FakeFusedRegistration();
+
+  TfLiteDelegate* get_tf_lite_delegate() { return &delegate_; }
+
+  int min_ops_per_subset() { return min_ops_per_subset_; }
+
+ private:
+  std::vector<int> nodes_;
+  TfLiteDelegate delegate_;
+  bool fail_delegate_node_prepare_ = false;
+  int min_ops_per_subset_ = 0;
+  bool fail_delegate_node_invoke_ = false;
+  bool automatic_shape_propagation_ = false;
+  bool custom_op_ = true;
+  bool set_output_tensor_dynamic_ = false;
+};
+
+// Base class for single/multiple delegate tests.
+// Friend of Interpreter to access RemoveAllDelegates().
+class TestDelegation {
+ protected:
+  TfLiteStatus RemoveAllDelegates() {
+    return interpreter_->RemoveAllDelegates();
+  }
+
+  void SetUpSubgraph(Subgraph* subgraph);
+
+  std::unique_ptr<Interpreter> interpreter_;
+};
+
+// Tests scenarios involving a single delegate.
+class TestDelegate : public TestDelegation, public ::testing::Test {
  protected:
   void SetUp() override;
 
@@ -44,55 +110,20 @@ class TestDelegate : public ::testing::Test {
 
   TfLiteBufferHandle AllocateBufferHandle() { return ++last_allocated_handle_; }
 
-  TfLiteStatus RemoveAllDelegates() {
-    return interpreter_->RemoveAllDelegates();
-  }
+  std::unique_ptr<SimpleDelegate> delegate_, delegate2_;
+};
 
-  void SetUpSubgraph(Subgraph* subgraph);
-
+// Tests scenarios involving two delegates, parametrized by the first & second
+// delegate's flags.
+class TestTwoDelegates
+    : public TestDelegation,
+      public ::testing::TestWithParam<
+          std::pair<TfLiteDelegateFlags, TfLiteDelegateFlags>> {
  protected:
-  class SimpleDelegate {
-   public:
-    // Create a simple implementation of a TfLiteDelegate. We use the C++ class
-    // SimpleDelegate and it can produce a handle TfLiteDelegate that is
-    // value-copyable and compatible with TfLite.
-    //
-    // Parameters:
-    //   nodes: Indices of the graph nodes that the delegate will handle.
-    //   fail_node_prepare: To simulate failure of Delegate node's Prepare().
-    //   min_ops_per_subset: If >0, partitioning preview is used to choose only
-    //     those subsets with min_ops_per_subset number of nodes.
-    //   fail_node_invoke: To simulate failure of Delegate node's Invoke().
-    //   automatic_shape_propagation: This assumes that the runtime will
-    //     propagate shapes using the original execution plan.
-    //   custom_op: If true, the graph nodes specified in the 'nodes' parameter
-    //     should be custom ops with name "my_add"; if false, they should be
-    //     the builtin ADD operator.
-    explicit SimpleDelegate(const std::vector<int>& nodes,
-                            int64_t delegate_flags = kTfLiteDelegateFlagsNone,
-                            bool fail_node_prepare = false,
-                            int min_ops_per_subset = 0,
-                            bool fail_node_invoke = false,
-                            bool automatic_shape_propagation = false,
-                            bool custom_op = true);
+  void SetUp() override;
 
-    TfLiteRegistration FakeFusedRegistration();
+  void TearDown() override;
 
-    TfLiteDelegate* get_tf_lite_delegate() { return &delegate_; }
-
-    int min_ops_per_subset() { return min_ops_per_subset_; }
-
-   private:
-    std::vector<int> nodes_;
-    TfLiteDelegate delegate_;
-    bool fail_delegate_node_prepare_ = false;
-    int min_ops_per_subset_ = 0;
-    bool fail_delegate_node_invoke_ = false;
-    bool automatic_shape_propagation_ = false;
-    bool custom_op_ = true;
-  };
-
-  std::unique_ptr<Interpreter> interpreter_;
   std::unique_ptr<SimpleDelegate> delegate_, delegate2_;
 };
 

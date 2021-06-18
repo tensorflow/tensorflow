@@ -81,6 +81,17 @@ else
     popd >&2
   fi
 
+  if [[ ${2} == "hifi5" ]]; then
+    pushd ${DOWNLOADS_DIR}/xa_nnlib_hifi5/ >&2
+    git init . >&2
+    git config user.email "tflm@google.com"
+    git config user.name "TensorflowLite Micro"
+    git add *
+    git commit -a -m "Commit for a temporary repository." > /dev/null
+    git apply ../../ext_libs/xtensa_depthwise_patch_hifi5.patch
+    popd >&2
+  fi
+
 fi
 
 echo "SUCCESS"

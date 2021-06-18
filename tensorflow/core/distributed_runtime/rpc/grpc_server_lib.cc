@@ -102,6 +102,11 @@ GrpcServer::~GrpcServer() {
   delete worker_service_;
   delete eager_service_;
 
+  for (auto& kv : extra_services_) {
+    AsyncServiceInterface* service = kv.second;
+    delete service;
+  }
+
   // TODO(mrry): Refactor the *Env classes so that it is less fiddly
   // to destroy them.
 
@@ -122,8 +127,6 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.env
   // - worker_env_.compute_pool
 }
-
-void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
 // Look up the requested host name and port for this task in `server_def`.
 Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
@@ -179,6 +182,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   TF_RETURN_IF_ERROR(GetHostAndPort(server_def_, &host_name_, &requested_port));
 
   SessionOptions sess_opts;
+  VLOG(3) << "Grpc Server Init Definition: " << server_def_.DebugString();
   ConfigProto config = server_def_.default_session_config();
   sess_opts.config = config;
 
@@ -240,7 +244,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   builder.SetOption(std::move(server_build_option));
 
   // Allow subclasses to specify more args to pass to the gRPC server.
-  MaybeMutateBuilder(&builder);
+  MaybeMutateBuilder(&builder, requested_port);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
   worker_impl_ = opts.worker_func ? opts.worker_func(&worker_env_, config)
@@ -252,6 +256,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
 
   profiler_service_ = profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
+
+  // Add any extra services to be started.
+  extra_services_ = ExtraServices(&builder);
 
   // extra service:
   if (opts.service_func != nullptr) {
@@ -411,6 +418,18 @@ Status GrpcServer::Start() {
       eager_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_eager_service",
                             [this] { eager_service_->HandleRPCsLoop(); }));
+
+      for (const auto& kv : extra_services_) {
+        const std::string& service_name = kv.first;
+        AsyncServiceInterface* service = kv.second;
+        std::unique_ptr<Thread> extra_service_thread;
+        extra_service_thread.reset(env_->StartThread(
+            ThreadOptions(), service_name,
+            [service = service] { service->HandleRPCsLoop(); }));
+        extra_service_threads_.push_back(std::move(extra_service_thread));
+        VLOG(3) << "Started extra service: " << service_name;
+      }
+
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
       return Status::OK();
@@ -498,6 +517,9 @@ Status GrpcServer::Join() {
       master_thread_.reset();
       worker_thread_.reset();
       eager_thread_.reset();
+      for (auto& thread : extra_service_threads_) {
+        thread.reset();
+      }
       return Status::OK();
     default:
       LOG(FATAL);

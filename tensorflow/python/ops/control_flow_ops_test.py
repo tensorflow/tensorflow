@@ -1700,8 +1700,8 @@ class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
     if not tf2.enabled():
       self.skipTest("V2-only test.")
 
-    # TODO(b/152548567): Enable this.
-    while_v2.glob_stateful_parallelism = False
+    # TODO(b/187340669): Switch to True. Current status is: not yet supported.
+    while_v2.glob_stateful_parallelism = "stateless_cond"
 
     ticker = variables.Variable(0)
     counter = variables.Variable(1)
@@ -1737,11 +1737,8 @@ class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
     if not tf2.enabled():
       self.skipTest("V2-only test.")
 
-    # TODO(b/152548567): Enable experimental_stateful_parallelism.
-    # Without proper wiring of control deps in the cond branch, the test is
-    # non-deterministic, running cond's record_side_effect ahead of its
-    # counterpart in the body.
-    while_v2.glob_stateful_parallelism = False
+    # TODO(b/187340669): Switch to True. Current status is: not yet supported.
+    while_v2.glob_stateful_parallelism = "stateless_cond"
 
     state = []
 

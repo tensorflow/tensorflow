@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -110,17 +111,19 @@ class Dataset {
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
           ProcessFunctionLibraryRuntime* pflr,
-          FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool);
+          FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool,
+          std::function<void(std::function<void()>)> runner);
 
   DatasetBase* dataset_;  // owned
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  std::unique_ptr<thread::ThreadPool> pool_;
+  std::unique_ptr<thread::ThreadPool> interop_threadpool_;
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
+  UnboundedThreadPool unbounded_thread_pool_;
 };
 
 }  // namespace standalone

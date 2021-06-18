@@ -104,6 +104,12 @@ class RaggedTensorBoundingShapeOp(test_util.TensorFlowTestCase,
            rt_row_splits_dtype=dtypes.int32,
            out_type=dtypes.int64,
            expected=[5, 3]),
+      dict(testcase_name='shape_1_3_axis_1_row_splits_int64_out_type_int32',
+           rt=[[1, 2, 3]],
+           rt_row_splits_dtype=dtypes.int64,
+           axis=1,
+           out_type=dtypes.int32,
+           expected=3)
   ])  # pyformat: disable
   def testBoundingShape(self,
                         rt,

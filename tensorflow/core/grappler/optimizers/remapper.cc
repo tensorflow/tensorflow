@@ -69,10 +69,12 @@ constexpr char kFusedConv2D[] = "_FusedConv2D";
 constexpr char kFusedMatMul[] = "_FusedMatMul";
 constexpr char kFusedDepthwiseConv2dNative[] = "_FusedDepthwiseConv2dNative";
 constexpr char kFusedBatchNormEx[] = "_FusedBatchNormEx";
-constexpr char kFusedBatchNormGradEx[] = "_FusedBatchNormGradEx";
-
+constexpr char kTensorToHashBucket[] = "_TensorToHashBucketFast";
 constexpr char kDataFormat[] = "data_format";
 constexpr char kIsTraining[] = "is_training";
+
+constexpr char kWidth[] = "width";
+constexpr char kFill[] = "fill";
 
 constexpr int kMissingIndex = -1;
 
@@ -112,17 +114,18 @@ struct FusedBatchNormEx {
   int invalidated = kMissingIndex;
 };
 
-// FusedBatchNormGrad with fused side output and/or activation.
-struct FusedBatchNormGradEx {
-  FusedBatchNormGradEx() = default;
+// TensorToHashBucket that can be replaced with AsString + StringToHashBucket.
+// We also include the fanin node of AsString ("pre_as_string") to determine the
+// device.
+struct TensorToHashBucket {
+  TensorToHashBucket() = default;
+  explicit TensorToHashBucket(int op1, int op2, int op3)
+      : pre_as_string(op1), as_string(op2), string_to_hash_bucket(op3) {}
 
-  int fused_batch_norm_grad = kMissingIndex;
-  int activation_grad = kMissingIndex;
-  int side_input_grad = kMissingIndex;
-  // Add node of the forward pass to access its "offset" input.
-  int fwd_fused_batch_norm = kMissingIndex;
+  int pre_as_string = kMissingIndex;
+  int as_string = kMissingIndex;
+  int string_to_hash_bucket = kMissingIndex;
 };
-
 // Contraction node followed by a BiasAdd.
 struct ContractionWithBiasAdd {
   ContractionWithBiasAdd() = default;
@@ -982,113 +985,65 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
   return false;
 }
 
-bool FindFusedBatchNormGradEx(const RemapperContext& ctx, int node_index,
-                              FusedBatchNormGradEx* matched) {
-  // Root of the pattern must be a FusedBatchNormGrad.
+bool FindTensorToHashBucket(const RemapperContext& ctx, int node_index,
+                            TensorToHashBucket* matched) {
+  // Root of the pattern must be a StringToHashBucketFast.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
+  const auto* node_def = node_view->node();
 
-  // Returns true iff the node is a compatible FusedBatchNormGrad node.
-  const auto valid_batch_norm_grad =
-      [&](const utils::MutableNodeView& fused_batch_norm_grad) -> bool {
-    const auto* node_def = fused_batch_norm_grad.node();
-    if (!IsFusedBatchNormGrad(*node_def) ||
-        HasControlFaninOrFanout(fused_batch_norm_grad))
-      return false;
+  if (!IsStringToHashBucketFast(*node_def) ||
+      HasControlFaninOrFanout(*node_view)) {
+    return false;
+  }
 
-    // We fuse FusedBatchNormGrad on GPU.
-    if (!NodeIsOnGpu(node_def)) return false;
-
-    // Data type must be DT_HALF.
-    DataType t_dtype = GetDataTypeFromAttr(*node_def, "T");
-    if (t_dtype != DT_HALF) return false;
-
-    // We rely on cuDNN for computing FusedBatchNormGrad with side
-    // outputs and activation. cuDNN only supports NHWC data layout.
-    string data_format;
-    if (!GetNodeAttr(*node_def, kDataFormat, &data_format).ok()) return false;
-    if (data_format != "NHWC") return false;
-
-    // Channel dimension must be a multiple of 4.
-    const auto& props =
-        ctx.graph_properties.GetInputProperties(node_def->name());
-    const bool valid_channel_dim = !props.empty() &&
-                                   props[0].shape().dim_size() == 4 &&
-                                   props[0].shape().dim(3).size() % 4 == 0;
-    if (!valid_channel_dim) return false;
-
-    // cuDNN must support CUDNN_BATCHNORM_SPATIAL_PERSISTENT mode.
-    if (!BatchnormSpatialPersistentEnabled()) return false;
-
-    // FusedBatchNormV2 and V3 have an extra type parameter.
-    if (node_def->op() != "FusedBatchNorm" &&
-        !HasDataType(node_def, DT_FLOAT, "U"))
-      return false;
-
-    return true;
-  };
-
-  if (!valid_batch_norm_grad(*node_view)) return false;
-
+  // Input to the StringToHashBucketFast must be AsString.
   if (node_view->NumRegularFanins() < 1) return false;
 
   const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
-  const auto* relugrad_node_view = regular_fanin_0.node_view();
-  const auto* relugrad_node_def = relugrad_node_view->node();
-  bool is_relugrad = IsReluGrad(*relugrad_node_def);
+  const auto* as_string_node_view = regular_fanin_0.node_view();
+  const auto* as_string_node_def = as_string_node_view->node();
+  bool is_as_string = IsAsString(*as_string_node_def);
 
-  if (!is_relugrad || HasControlFaninOrFanout(*relugrad_node_view) ||
-      IsInPreserveSet(ctx, relugrad_node_def))
+  if (!is_as_string || HasControlFaninOrFanout(*as_string_node_view) ||
+      !HasAtMostOneFanoutAtPort0(*as_string_node_view) ||
+      IsInPreserveSet(ctx, as_string_node_def))
     return false;
 
-  if (relugrad_node_view->NumRegularFanins() < 1) return false;
-  // Find its corresponding forward node. We need the node to determine if the
-  // type is bn+add+act or bn+act. Also, we need to access its "offset" input.
-  const auto& fanin_1 = relugrad_node_view->GetRegularFanin(1);
-  const auto* fwd_node_view = fanin_1.node_view();
-  FusedBatchNormEx fwd_matched;
-  FindFusedBatchNormEx(ctx, fwd_node_view->node_index(), &fwd_matched);
-  bool fwd_bn_act_used = fwd_matched.activation != kMissingIndex &&
-                         fwd_matched.side_input == kMissingIndex;
-  bool fwd_bn_add_act_used = fwd_matched.activation != kMissingIndex &&
-                             fwd_matched.side_input != kMissingIndex;
-
-  // Check that only 1 node consumes the output of the ReluGrad node.
-  if (fwd_bn_act_used && relugrad_node_view->GetRegularFanout(0).size() == 1) {
-    matched->activation_grad = regular_fanin_0.node_index();
-    matched->fused_batch_norm_grad = node_index;
-    matched->fwd_fused_batch_norm = fwd_matched.fused_batch_norm;
-    return true;
+  // DataType of AsString must be int8/16/32/64 and width/fill attrs must be
+  // default values.
+  if (!HasDataType(as_string_node_def, DT_INT8) &&
+      !HasDataType(as_string_node_def, DT_INT16) &&
+      !HasDataType(as_string_node_def, DT_INT32) &&
+      !HasDataType(as_string_node_def, DT_INT64)) {
+    return false;
   }
 
-  // Check that only 2 nodes consume the output of the ReluGrad node.
-  if (fwd_bn_add_act_used &&
-      relugrad_node_view->GetRegularFanout(0).size() == 2) {
-    const auto& fanouts_at_port_0 = relugrad_node_view->GetRegularFanouts()[0];
-    const auto* fanout_0_node_view =
-        ctx.graph_view.GetNode(fanouts_at_port_0[0].node_view()->GetName());
-    const auto* fanout_1_node_view =
-        ctx.graph_view.GetNode(fanouts_at_port_0[1].node_view()->GetName());
-    const auto* fanout_0_node_def = fanout_0_node_view->node();
-    const auto* fanout_1_node_def = fanout_1_node_view->node();
-    const auto* node_def = node_view->node();
-
-    matched->activation_grad = regular_fanin_0.node_index();
-    matched->fused_batch_norm_grad = node_index;
-    matched->fwd_fused_batch_norm = fwd_matched.fused_batch_norm;
-
-    if (fanout_0_node_def == node_def) {
-      matched->side_input_grad = fanout_1_node_view->node_index();
-      return true;
-    }
-
-    if (fanout_1_node_def == node_def) {
-      matched->side_input_grad = fanout_0_node_view->node_index();
-      return true;
-    }
+  int width;
+  if (!GetNodeAttr(*as_string_node_def, kWidth, &width).ok() || width != -1) {
+    return false;
   }
 
-  return false;
+  string fill;
+  if (!GetNodeAttr(*as_string_node_def, kFill, &fill).ok() || !fill.empty()) {
+    return false;
+  }
+
+  // An input to the AsString must exist to determine the device.
+  if (as_string_node_view->NumRegularFanins() < 1) return false;
+
+  const auto& fanin_0 = as_string_node_view->GetRegularFanin(0);
+  const auto* pre_node_view = fanin_0.node_view();
+
+  // We successfully found a AsString + StringToHashBucketFast pattern.
+  const TensorToHashBucket pattern{pre_node_view->node_index(),
+                                   as_string_node_view->node_index(),
+                                   node_index};
+
+  *matched = pattern;
+
+  return true;
 }
+
 void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
                           const NodeDef* activation = nullptr) {
   DCHECK(IsConv2D(conv2d)) << "Input node must be a Conv2D";
@@ -1154,27 +1109,6 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
 #else
     SetAttrValue(DT_FLOAT, &(*attr)["U"]);
 #endif
-  }
-}
-
-void CopyFusedBatchNormGradAttributes(const NodeDef& fused_batch_norm_grad,
-                                      NodeDef* fused_batch_norm_grad_ex) {
-  DCHECK(IsFusedBatchNormGrad(fused_batch_norm_grad))
-      << "Input node must be a FusedBatchNormGrad";
-
-  auto* attr = fused_batch_norm_grad_ex->mutable_attr();
-  auto src_attr = fused_batch_norm_grad.attr();
-
-  (*attr)["T"] = src_attr.at("T");
-  (*attr)["is_training"] = src_attr.at("is_training");
-  (*attr)["data_format"] = src_attr.at("data_format");
-  (*attr)["epsilon"] = src_attr.at("epsilon");
-
-  // FusedBatchNormV2 and V3 have an extra type parameter.
-  if (fused_batch_norm_grad.op() != "FusedBatchNormGrad") {
-    SetAttrValue(src_attr.at("U"), &(*attr)["U"]);
-  } else {
-    SetAttrValue(DT_FLOAT, &(*attr)["U"]);
   }
 }
 
@@ -1589,79 +1523,6 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
   return Status::OK();
 }
 
-Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
-                                   const FusedBatchNormGradEx& matched,
-                                   std::vector<bool>* invalidated_nodes,
-                                   std::vector<bool>* nodes_to_delete) {
-  const GraphDef* graph = ctx->graph_view.graph();
-  const NodeDef& fused_batch_norm_grad =
-      graph->node(matched.fused_batch_norm_grad);
-  const NodeDef& activation_grad = graph->node(matched.activation_grad);
-  const NodeDef& fwd_fused_batch_norm =
-      graph->node(matched.fwd_fused_batch_norm);
-
-  VLOG(2) << "Fuse FusedBatchNormGrad with " << activation_grad.op() << ": "
-          << " fused_batch_norm_grad=" << fused_batch_norm_grad.name()
-          << " side_input="
-          << (matched.side_input_grad != kMissingIndex
-                  ? graph->node(matched.side_input_grad).name()
-                  : "<none>")
-          << " activation=" << activation_grad.name()
-          << " corresponding FusedBatchNorm=" << fwd_fused_batch_norm.name();
-
-  NodeDef fused_op;
-  fused_op.set_op(kFusedBatchNormGradEx);
-  fused_op.set_name(fused_batch_norm_grad.name());
-  fused_op.set_device(fused_batch_norm_grad.device());
-
-  fused_op.add_input(activation_grad.input(0));        // 0: y_backprop
-  fused_op.add_input(fused_batch_norm_grad.input(1));  // 1: x
-  fused_op.add_input(fused_batch_norm_grad.input(2));  // 2: scale
-  fused_op.add_input(fused_batch_norm_grad.input(3));  // 3: reserve_space_1
-  fused_op.add_input(fused_batch_norm_grad.input(4));  // 4: reserve_space_2
-  fused_op.add_input(fused_batch_norm_grad.input(5));  // 5: reserve_space_3
-  fused_op.add_input(fwd_fused_batch_norm.input(2));   // 6: offset
-  fused_op.add_input(activation_grad.input(1));        // 7: y
-
-  CopyFusedBatchNormGradAttributes(fused_batch_norm_grad, &fused_op);
-
-  auto* attrs = fused_op.mutable_attr();
-  // Only support Relu mode.
-  SetAttrValue("Relu", &(*attrs)["activation_mode"]);
-
-  if (matched.side_input_grad != kMissingIndex) {
-    SetAttrValue(1, &(*attrs)["num_side_inputs"]);
-  } else {
-    SetAttrValue(0, &(*attrs)["num_side_inputs"]);
-  }
-
-  NodeDef identity_op;
-  identity_op.set_op("Identity");
-  identity_op.set_name(activation_grad.name());
-  identity_op.set_device(fused_batch_norm_grad.device());
-  identity_op.add_input(absl::StrCat(fused_batch_norm_grad.name(), ":5"));
-  (*identity_op.mutable_attr())["T"] = attrs->at("T");
-
-  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
-  mutation->AddNode(std::move(fused_op), &status);
-  TF_RETURN_IF_ERROR(status);
-  if (matched.side_input_grad != kMissingIndex) {
-    mutation->AddNode(std::move(identity_op), &status);
-    TF_RETURN_IF_ERROR(status);
-  }
-  TF_RETURN_IF_ERROR(mutation->Apply());
-
-  (*invalidated_nodes)[matched.fused_batch_norm_grad] = true;
-  if (matched.side_input_grad != kMissingIndex) {
-    (*invalidated_nodes)[matched.activation_grad] = true;
-  } else {
-    (*nodes_to_delete)[matched.activation_grad] = true;
-  }
-
-  return Status::OK();
-}
-
 Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& fused_node = graph->node(matched.fused_batch_norm);
@@ -1857,6 +1718,44 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   return mutation->Apply();
 }
 
+Status AddTensorToHashBucketNode(RemapperContext* ctx,
+                                 const TensorToHashBucket& matched,
+                                 std::vector<bool>* invalidated_nodes,
+                                 std::vector<bool>* nodes_to_delete) {
+  const GraphDef* graph = ctx->graph_view.graph();
+  const NodeDef& pre_as_string = graph->node(matched.pre_as_string);
+  const NodeDef& as_string = graph->node(matched.as_string);
+  const NodeDef& string_to_hash_bucket =
+      graph->node(matched.string_to_hash_bucket);
+  VLOG(2) << "Fuse AsString with StringToHashBucketFast:"
+          << " as_string=" << as_string.name()
+          << " string_to_hash_bucket=" << string_to_hash_bucket.name()
+          << " on device=" << pre_as_string.device();
+
+  NodeDef fused_op;
+  fused_op.set_name(string_to_hash_bucket.name());
+  fused_op.set_device(pre_as_string.device());
+  fused_op.add_input(as_string.input(0));  // 0: input
+  fused_op.set_op(kTensorToHashBucket);
+
+  auto* attr = fused_op.mutable_attr();
+  auto& src_attr0 = as_string.attr();
+  auto& src_attr1 = string_to_hash_bucket.attr();
+  (*attr)["T"] = src_attr0.at("T");
+  (*attr)["num_buckets"] = src_attr1.at("num_buckets");
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched.string_to_hash_bucket] = true;
+  (*nodes_to_delete)[matched.as_string] = true;
+
+  return Status::OK();
+}
+
 #ifdef INTEL_MKL
 bool IsConv2DOrMatMul(const NodeDef& node) {
   return IsConv2D(node) || IsMatMul(node);
@@ -1909,7 +1808,6 @@ bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
 //   (2) Fusing side input and/or activation into FusedBatchNorm.
 //   (3) Fusing Conv2D biasadd and relu on GPU
 //   (4) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
-//   (5) Fusing side output and/or activation into FusedBatchNormGrad.
 bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   // Candidate for a FusedBatchNorm splitting.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
@@ -1980,23 +1878,6 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-  // Candidate for a FusedBatchNormGrad fusion.
-  const auto is_batch_norm_grad_fusion_candidate = [&]() -> bool {
-    if (!IsFusedBatchNormGrad(*node_def)) return false;
-
-    if (node_view->NumRegularFanins() < 1) return false;
-    const auto& bn_fanin_0 = node_view->GetRegularFanin(0);
-    const auto* bn_fanin_0_node_view = bn_fanin_0.node_view();
-    const auto* bn_fanin_0_node_def = bn_fanin_0_node_view->node();
-
-    if (IsReluGrad(*bn_fanin_0_node_def)) {
-      // ReluGrad + FusedBatchNormGrad.
-      return true;
-    }
-
-    return false;
-  };
-
   // TODO(intel-tf): Clean up #ifdef.
 #ifdef INTEL_MKL
   (void)is_relu_biasadd_conv2d_candidate;  // To fix unused variable error.
@@ -2005,12 +1886,10 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
            IsContractionWithAdd(ctx, node_index);
   else
     return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
-           is_batch_norm_fusion_candidate() ||
-           is_batch_norm_grad_fusion_candidate();
+           is_batch_norm_fusion_candidate();
 #else
   return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
-         is_batch_norm_fusion_candidate() ||
-         is_batch_norm_grad_fusion_candidate();
+         is_batch_norm_fusion_candidate();
 #endif  // INTEL_MKL
 }
 
@@ -2158,12 +2037,11 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-    FusedBatchNormGradEx fused_batch_norm_grad_ex;
+    TensorToHashBucket tensor_to_hash_bucket;
     if (allow_non_differentiable_rewrites &&
-        FindFusedBatchNormGradEx(ctx, i, &fused_batch_norm_grad_ex)) {
-      TF_RETURN_IF_ERROR(
-          AddFusedBatchNormGradExNode(&ctx, fused_batch_norm_grad_ex,
-                                      &invalidated_nodes, &nodes_to_delete));
+        FindTensorToHashBucket(ctx, i, &tensor_to_hash_bucket)) {
+      TF_RETURN_IF_ERROR(AddTensorToHashBucketNode(
+          &ctx, tensor_to_hash_bucket, &invalidated_nodes, &nodes_to_delete));
       continue;
     }
 
@@ -2188,11 +2066,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = std::move(mutable_item.graph);
 
   return Status::OK();
-}
-
-void Remapper::Feedback(Cluster* cluster, const GrapplerItem& item,
-                        const GraphDef& optimized_graph, double result) {
-  // Nothing to do for RemapperOptimizer.
 }
 
 }  // namespace grappler

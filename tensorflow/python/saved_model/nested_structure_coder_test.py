@@ -26,11 +26,11 @@ from google.protobuf import text_format
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_struct
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -272,7 +272,7 @@ class NestedStructureTest(test.TestCase):
 
   def testEncodeDecodeExtensionTypeSpec(self):
 
-    class Zoo(tensor_struct.Struct):
+    class Zoo(extension_type.ExtensionType):
       __name__ = "tf.nested_structure_coder_test.Zoo"
       zookeepers: typing.Tuple[str, ...]
       animals: typing.Mapping[str, ops.Tensor]

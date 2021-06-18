@@ -1,7 +1,6 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_mobile",
@@ -25,7 +24,12 @@ exports_files([
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
     name = "portable_all_op_kernels",
-    srcs = ("threadpool_dataset_op.h", "threadpool_dataset_op.cc", "lookup_ops.cc"),
+    srcs = [
+        "lookup_ops.cc",
+        "take_while_dataset_op.cc",
+        "threadpool_dataset_op.cc",
+        "threadpool_dataset_op.h",
+    ],
     visibility = ["//tensorflow:__subpackages__"],
 )
 
@@ -181,14 +185,17 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:compression_utils",
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:data_service",
+        "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:worker_client",
+        "//tensorflow/core/data/service:worker_impl",
         "//tensorflow/core/data/service:worker_proto_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/profiler/lib:traceme",
@@ -209,8 +216,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
-        "//tensorflow/core/data/service:data_service",
+        "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/kernels/data:iterator_ops",
     ],
 )
@@ -299,7 +307,6 @@ tf_kernel_library(
     srcs = ["io_ops.cc"],
     hdrs = ["io_ops.h"],
     deps = [
-        ":snapshot_util",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -307,6 +314,7 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:root_dataset",
+        "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/kernels/data:iterator_ops",
     ],
@@ -355,6 +363,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:initializable_lookup_table",
         "//tensorflow/core/kernels:lookup_util",
@@ -607,15 +616,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ],
-)
-
-# TODO(b/168713048): Remove forwarding target once all users are updated.
-cc_library(
-    name = "snapshot_util",
-    hdrs = ["snapshot_util.h"],
-    deps = [
-        "//tensorflow/core/data:snapshot_utils",
     ],
 )
 

@@ -153,6 +153,10 @@ class LocallyConnected1D(Layer):
     self.implementation = implementation
     self.input_spec = InputSpec(ndim=3)
 
+  @property
+  def _use_input_spec_as_call_signature(self):
+    return False
+
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     if self.data_format == 'channels_first':
@@ -455,6 +459,10 @@ class LocallyConnected2D(Layer):
     self.bias_constraint = constraints.get(bias_constraint)
     self.implementation = implementation
     self.input_spec = InputSpec(ndim=4)
+
+  @property
+  def _use_input_spec_as_call_signature(self):
+    return False
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):

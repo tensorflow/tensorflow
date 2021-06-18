@@ -212,6 +212,9 @@ cc_library(
     hdrs = ["client_library_test_base.h"],
     deps = [
         ":manifest_checking_test",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
@@ -235,10 +238,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
+    ] + select({
+        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
+            "//tensorflow/compiler/xla/service/gpu/tests:tfrt_exec_ctx_injector",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -768,6 +773,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2032,6 +2038,9 @@ xla_test(
             "no_oss",
             "notap",
         ],
+        "cpu": [
+            "notsan",
+        ],
     },
     backends = [
         "gpu",
@@ -2734,6 +2743,8 @@ xla_test(
 xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
+    real_hardware_only = True,
+    shard_count = 3,
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
@@ -2749,6 +2760,7 @@ xla_test(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",

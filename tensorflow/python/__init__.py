@@ -45,13 +45,14 @@ from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 # Bring in subpackages.
 from tensorflow.python import data
 from tensorflow.python import distribute
-from tensorflow.python import keras
+# from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
-from tensorflow.python.layers import layers
+# from tensorflow.python.layers import layers
 from tensorflow.python.module import module
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import composite_tensor_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
@@ -146,7 +147,7 @@ from tensorflow.python.compiler.xla import xla
 from tensorflow.python.compiler.mlir import mlir
 
 # Structs (aka extension types)
-from tensorflow.python.framework import tensor_struct as _tensor_struct
+from tensorflow.python.framework import extension_type as _extension_type
 
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).

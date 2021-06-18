@@ -209,10 +209,8 @@ class CSRSparseMatrixToSparseTensorGPUOp : public OpKernel {
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
-#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
-#endif
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

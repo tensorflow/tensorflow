@@ -112,13 +112,18 @@ Status KernelAndDeviceOp::Init(const bool log_device_placement,
       ndef, flr_->GetFunctionLibraryDefinition(), &props));
   TF_RETURN_IF_ERROR(flr_->CreateKernel(props, &k));
   kernel_.reset(k);
+  const auto* op_reg_data = OpRegistry::Global()->LookUp(ndef.op());
+  if (op_reg_data != nullptr) {
+    is_distributed_communication_op_ =
+        op_reg_data->op_def.is_distributed_communication();
+  }
 
   input_alloc_attrs_.resize(kernel_->num_inputs());
   input_devices_.resize(kernel_->num_inputs(), device_);
   for (size_t i = 0; i < input_alloc_attrs_.size(); ++i) {
     bool host = kernel_->input_memory_types()[i] == tensorflow::HOST_MEMORY;
     input_alloc_attrs_[i].set_on_host(host);
-    if (host) {
+    if (host && input_devices_[i]->device_type() != DEVICE_CPU) {
       input_devices_[i] = host_cpu_device_;
     }
   }
@@ -303,7 +308,13 @@ Status KernelAndDeviceOp::Run(
     op_execution_state->Unref();
   }
 
-  if (!context.status().ok()) return context.status();
+  Status s = context.status();
+  if (TF_PREDICT_FALSE(!s.ok())) {
+    if (errors::IsUnavailable(s) && !is_distributed_communication_op_) {
+      s = errors::ReplaceErrorFromNonCommunicationOps(s, kernel_->name());
+    }
+    return s;
+  }
 
   if (outputs != nullptr) {
     outputs->clear();

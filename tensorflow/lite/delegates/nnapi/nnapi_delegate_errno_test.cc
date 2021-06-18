@@ -78,11 +78,7 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
     BuildInterpreter({GetShape(input1_), GetShape(input2_)}, /*num_threads=*/-1,
-                     allow_fp32_relax_to_fp16, /*apply_delegate=*/false);
-    // We defer applying the 'stateful_delegate_' till now (i.e. via setting
-    // 'apply_delegate=false' above) so that default TfLite delegates won't be
-    // applied.
-    ApplyDelegate();
+                     allow_fp32_relax_to_fp16, /*apply_delegate=*/true);
   }
 };
 
@@ -186,9 +182,3 @@ TEST_F(NnApiErrnoTest, ErrnoIsUpdatedInCaseOfAnotherFailure) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

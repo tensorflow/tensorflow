@@ -1434,7 +1434,9 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
        absl::c_any_of(
            hlo->sharding().tuple_elements(),
            [](const HloSharding& sharding) { return sharding.IsManual(); }));
-  if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape")) {
+  if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape") &&
+      hlo->opcode() != HloOpcode::kConditional &&
+      hlo->opcode() != HloOpcode::kWhile) {
     visiting_hlo_sharding_ = hlo->sharding();
     hlo->set_sharding(
         manual_to_onedevice(hlo->shape(), *visiting_hlo_sharding_));
@@ -1642,6 +1644,9 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
 
 Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding();
+  if (sharding.HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   // Special handling for sort in TopK when first operand partitioined at
   // sort dimension.
   auto k = GetKValueInTopKWhenPartitionSortDim(hlo);
@@ -2558,6 +2563,9 @@ Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
+  if (hlo->sharding().HasUniqueDevice()) {
+    return DefaultAction(hlo);
+  }
   int64 input_count = 1;
   auto per_input_sharding = hlo->sharding();
   if (hlo->shape().IsTuple()) {
@@ -2700,9 +2708,13 @@ Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
   // follow the same control flow.
   hlo->while_condition()->parameter_instruction(0)->set_sharding(sharding);
   hlo->while_body()->parameter_instruction(0)->set_sharding(sharding);
+  const HloSharding& cond_root_sharding =
+      hlo->while_condition()->root_instruction()->sharding();
   TF_RETURN_IF_ERROR(partitioner_
                          ->PartitionComputation(hlo->while_condition(),
-                                                HloSharding::Replicate(),
+                                                cond_root_sharding.IsManual()
+                                                    ? cond_root_sharding
+                                                    : HloSharding::Replicate(),
                                                 next_channel_id_, logger_)
                          .status());
   TF_RETURN_IF_ERROR(partitioner_
@@ -2739,15 +2751,17 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
                                                   next_channel_id_, logger_)
                            .status());
   }
-
-  // We replicate the predicate of the conditional (the first operand) so that
-  // all partitions follow the same control flow.
   SetPartitionedHlo(hlo, [&] {
+    HloInstruction* cond = GetPartitionedHlo(hlo->operand(0)).hlo();
+    if (!hlo->operand(0)->sharding().IsManual()) {
+      // We replicate the predicate of the conditional (the first operand) so
+      // that all partitions follow the same control flow.
+      cond = GetPartitionedHlo(hlo->operand(0))
+                 .Reshard(HloSharding::Replicate())
+                 .hlo();
+    }
     return b_.AddInstruction(HloInstruction::CreateConditional(
-        MakePartitionedShape(hlo->shape(), hlo->sharding()),
-        GetPartitionedHlo(hlo->operand(0))
-            .Reshard(HloSharding::Replicate())
-            .hlo(),
+        MakePartitionedShape(hlo->shape(), hlo->sharding()), cond,
         hlo->called_computations(), branch_args));
   });
   return Status::OK();
@@ -3658,9 +3672,19 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
     const HloComputation* entry = module->entry_computation();
     TF_RET_CHECK(entry->root_instruction()->has_sharding());
     const HloSharding& root_sharding = entry->root_instruction()->sharding();
-    TF_RET_CHECK(root_sharding.IsReplicated() ||
-                 root_sharding.UniqueDevice().has_value())
-        << "Unsupported entry root sharding: " << root_sharding.ToString();
+    if (!root_sharding.UniqueDevice().has_value()) {
+      if (root_sharding.IsTuple()) {
+        TF_RET_CHECK(absl::c_all_of(root_sharding.tuple_elements(),
+                                    [](const HloSharding& s) {
+                                      return s.IsReplicated() || s.IsManual();
+                                    }))
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+
+      } else {
+        TF_RET_CHECK(root_sharding.IsReplicated() || root_sharding.IsManual())
+            << "Unsupported entry root sharding: " << root_sharding.ToString();
+      }
+    }
 
     for (const HloInstruction* param : entry->parameter_instructions()) {
       TF_RET_CHECK(param->has_sharding());
@@ -3675,22 +3699,26 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
 }
 
 Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
-  auto skip_copy_operands = [](HloInstruction* operand) -> HloInstruction* {
+  auto skip_copy_operands = [](HloInstruction* operand,
+                               bool check_single_use =
+                                   true) -> HloInstruction* {
     while (operand->user_count() == 1 &&
            operand->opcode() == HloOpcode::kCopy) {
       operand = operand->mutable_operand(0);
     }
-    if (operand->user_count() != 1) {
+    if (check_single_use && operand->user_count() != 1) {
       return nullptr;
     }
     return operand;
   };
+
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->sharding().IsTileMaximal() || hlo->sharding().IsManual()) {
         // No need to optimize for tile-maximal or manual sharding.
         continue;
       }
+
       if (hlo->opcode() == HloOpcode::kSlice) {
         HloInstruction* operand = skip_copy_operands(hlo->mutable_operand(0));
         if (operand == nullptr || operand->sharding() != hlo->sharding()) {
@@ -3734,36 +3762,166 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
             TF_RETURN_IF_ERROR(
                 computation->RemoveInstructionAndUnusedOperands(hlo));
           }
-          continue;
         }
-        continue;
       }
       if (hlo->opcode() == HloOpcode::kConcatenate) {
         const int64 dim = hlo->concatenate_dimension();
-        if (hlo->operand_count() != 2 ||
-            hlo->sharding().tile_assignment().dim(dim) == 1) {
+        if (hlo->sharding().tile_assignment().dim(dim) == 1) {
           continue;
         }
-        // Find a pattern of "rotate right on one dimension":
-        // concat(slice(input), slice(input)).
-        HloInstruction* lhs = skip_copy_operands(hlo->mutable_operand(0));
-        HloInstruction* rhs = skip_copy_operands(hlo->mutable_operand(1));
-        if (lhs == nullptr || rhs == nullptr) {
-          continue;
+        if (hlo->operand_count() == 2) {
+          // Find a pattern of "rotate right on one dimension":
+          // concat(slice(input), slice(input)).
+          HloInstruction* lhs = skip_copy_operands(hlo->mutable_operand(0));
+          HloInstruction* rhs = skip_copy_operands(hlo->mutable_operand(1));
+          if (lhs == nullptr || rhs == nullptr) {
+            continue;
+          }
+          const int64 amount = FindRotateRightPattern(hlo, lhs, rhs);
+          if (amount < 0) {
+            continue;
+          }
+          HloInstruction* to_rotate = lhs->mutable_operand(0);
+          HloInstruction* rotate = computation->AddInstruction(
+              CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim, amount));
+          rotate->set_metadata(hlo->metadata());
+          rotate->set_sharding(hlo->sharding());
+          TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rotate));
+          TF_RETURN_IF_ERROR(
+              computation->RemoveInstructionAndUnusedOperands(hlo));
+        } else if (hlo->operand_count() == 3) {
+          // Find the pattern for "pad with wrap": concat(slice(x), x, slice(x))
+          // All involved values with same sharding.
+          HloInstruction* lhs = skip_copy_operands(hlo->mutable_operand(0));
+          HloInstruction* mid = skip_copy_operands(hlo->mutable_operand(1),
+                                                   /*check_single_use=*/false);
+          HloInstruction* rhs = skip_copy_operands(hlo->mutable_operand(2));
+          absl::optional<PadWithWrapPattern> pad_pattern =
+              FindPadWithWrapPattern(hlo, lhs, mid, rhs);
+          if (!pad_pattern) {
+            continue;
+          }
+
+          // Since the concat requires that the size of all operands along the
+          // non-concat dimension is the same, it implies that the lhs/rhs slice
+          // is slicing along the concat dims.
+
+          // Step 1: Pad the mid operand to the final size. The low padding is
+          // the size of the lhs shape, and high padding is size of rhs shape.
+          PaddingConfig padding_config =
+              MakeNoPaddingConfig(hlo->shape().rank());
+          auto* padding_config_dim = padding_config.mutable_dimensions(dim);
+          const int64 low_pad = lhs->shape().dimensions(dim);
+          const int64 high_pad = rhs->shape().dimensions(dim);
+          padding_config_dim->set_edge_padding_low(low_pad);
+          padding_config_dim->set_edge_padding_high(high_pad);
+          HloInstruction* zero =
+              computation->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::Zero(hlo->shape().element_type())));
+          zero->set_sharding(HloSharding::Replicate());
+          HloInstruction* pad =
+              computation->AddInstruction(HloInstruction::CreatePad(
+                  hlo->shape(), mid, zero, padding_config));
+          pad->set_metadata(hlo->metadata());
+          pad->set_sharding(hlo->sharding());
+
+          // Step 2: rotate the padded value so that the lhs slice aligns to the
+          // low of the padded size.
+          //  padded_operand = low_pad | mid | high_pad.
+          //  slice_start in padded_operand = lhs->slice_start + low_pad.
+          //  Rotate left by (lhs->slice_start + low_pad)
+          //  i.e., rotate right = padded_size - (lhs_slice_start + low_pad).
+          const int64 padded_size = hlo->shape().dimensions(dim);
+          const int rotate_lhs_amount =
+              padded_size - (pad_pattern->lhs_slice_start + low_pad);
+          HloInstruction* rotate_lhs = computation->AddInstruction(
+              CreateCustomCallSPMDInternal_RotateRight(pad, dim,
+                                                       rotate_lhs_amount));
+          rotate_lhs->set_metadata(hlo->metadata());
+          rotate_lhs->set_sharding(hlo->sharding());
+
+          auto apply_modifiers =
+              [&](HloInstruction* inst,
+                  const std::vector<const HloInstruction*>& modifiers) {
+                // Apply the modifiers in the reverse order.
+                for (auto it = modifiers.crbegin(), end = modifiers.crend();
+                     it != end; ++it) {
+                  const HloInstruction* modifier = *it;
+                  // New shape has same element type as the modifier, but dims
+                  // as inst.
+                  Shape new_shape = ShapeUtil::ChangeElementType(
+                      inst->shape(), modifier->shape().element_type());
+                  inst = computation->AddInstruction(
+                      modifier->CloneWithNewOperands(new_shape, {inst}));
+                }
+                return inst;
+              };
+          rotate_lhs = apply_modifiers(rotate_lhs, pad_pattern->lhs_modifiers);
+
+          // Step 3: rotate the padded value so that the rhs slice aligns to
+          // high of the padded size.
+          //  padded_operand = low_pad | mid | high_pad.
+          //  slice_start in padded_operand = rhs->slice_start + low_pad.
+          //  slice_end in padded_operand = rhs->slice_start + low_pad +
+          //  high_pad; Rotate right by padded_size - (rhs->slice_start +
+          //  low_pad + high_pad)
+          const int64 rotate_rhs_amount =
+              padded_size - (pad_pattern->rhs_slice_start + low_pad + high_pad);
+          HloInstruction* rotate_rhs = computation->AddInstruction(
+              CreateCustomCallSPMDInternal_RotateRight(pad, dim,
+                                                       rotate_rhs_amount));
+          rotate_rhs->set_metadata(hlo->metadata());
+          rotate_rhs->set_sharding(hlo->sharding());
+          rotate_rhs = apply_modifiers(rotate_rhs, pad_pattern->rhs_modifiers);
+
+          // Now merge the 3 results using appropriate selects.
+          const Shape iota_shape =
+              ShapeUtil::ChangeElementType(hlo->shape(), U32);
+          HloInstruction* iota = computation->AddInstruction(
+              HloInstruction::CreateIota(iota_shape, dim));
+          iota->set_metadata(hlo->metadata());
+          iota->set_sharding(hlo->sharding());
+
+          struct SelectSpec {
+            int64 limit;
+            HloInstruction* hlo;
+            Comparison::Direction cmp;
+          };
+          const std::array<SelectSpec, 2> selects = {
+              {// All elements < low_pad come from rotate_lhs.
+               {low_pad, rotate_lhs, Comparison::Direction::kLt},
+               // All elements >= padded_size - high_pad come from rotate_rhs
+               {padded_size - high_pad, rotate_rhs,
+                Comparison::Direction::kGe}}};
+
+          Shape pred_shape = ShapeUtil::ChangeElementType(hlo->shape(), PRED);
+
+          HloInstruction* merged = pad;
+          for (const SelectSpec& select_spec : selects) {
+            HloInstruction* limit =
+                computation->AddInstruction(HloInstruction::CreateConstant(
+                    LiteralUtil::CreateR0<uint32_t>(select_spec.limit)));
+            limit->set_sharding(HloSharding::Replicate());
+            HloInstruction* limit_bcast = computation->AddInstruction(
+                HloInstruction::CreateBroadcast(iota_shape, limit, {}));
+            limit_bcast->set_metadata(hlo->metadata());
+            limit_bcast->set_sharding(hlo->sharding());
+            HloInstruction* compare =
+                computation->AddInstruction(HloInstruction::CreateCompare(
+                    pred_shape, iota, limit_bcast, select_spec.cmp));
+            compare->set_metadata(hlo->metadata());
+            compare->set_sharding(hlo->sharding());
+            merged = computation->AddInstruction(HloInstruction::CreateTernary(
+                hlo->shape(), HloOpcode::kSelect, compare, select_spec.hlo,
+                merged));
+            merged->set_metadata(hlo->metadata());
+            merged->set_sharding(hlo->sharding());
+          }
+
+          TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(merged));
+          TF_RETURN_IF_ERROR(
+              computation->RemoveInstructionAndUnusedOperands(hlo));
         }
-        const int64 amount = FindRotateRightPattern(hlo, lhs, rhs);
-        if (amount < 0) {
-          continue;
-        }
-        HloInstruction* to_rotate = lhs->mutable_operand(0);
-        HloInstruction* rotate = computation->AddInstruction(
-            CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim, amount));
-        rotate->set_metadata(hlo->metadata());
-        rotate->set_sharding(hlo->sharding());
-        TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rotate));
-        TF_RETURN_IF_ERROR(
-            computation->RemoveInstructionAndUnusedOperands(hlo));
-        continue;
       }
     }
   }

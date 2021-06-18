@@ -21,6 +21,7 @@ import threading
 import unittest
 
 from absl import flags
+from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
@@ -51,7 +52,8 @@ FLAGS = flags.FLAGS
 # pylint: disable=g-complex-comprehension
 
 
-def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
+def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
+                external_tpu=False):
   tests = []
 
   if not cloud_tpu:
@@ -163,11 +165,30 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
       self.assertEqual(hlo_text, hlo_text_roundtrip)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
+    def testStableComputationSerialization(self):
+      # Ideally we would test identical computations produced in different
+      # processes. For now we have this limited smoke test.
+      computation = self.ExampleComputation()
+      ref = computation.as_serialized_hlo_module_proto()
+      for _ in range(10):
+        self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
           self.backend, computation.as_hlo_module())
       self.assertEqual(properties["flops"], 8.0)
+
+    def testFingerprint(self):
+      computation = self.ExampleComputation()
+      executable = self.backend.compile(computation)
+      fingerprint = executable.fingerprint
+      if self.backend.platform == "tpu" and not cloud_tpu:
+        logging.info("fingerprint: %s", fingerprint)
+        self.assertNotEmpty(fingerprint)
+      else:
+        self.assertIsNone(fingerprint)
 
   tests.append(ComputationPrinting)
 
@@ -2276,7 +2297,7 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
             memoryview(buf)
 
     # 1D reshape of full size, half size, and size of 0.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
     @parameterized.parameters((5), (3), (0))
     def testReshape1D(self, reshape_size):
       full_size = 5
@@ -2294,7 +2315,7 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
     # where the strides may differ between the host and devices. The reshaped
     # physical memory layout is not consecutive, and we test if the program can
     # return the correct logical view of the data.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2347,6 +2368,20 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
 
   tests.append(DynamicReshapeTest)
 
+  class DeviceAssignmentTest(ComputationTest):
+
+    def testSerialize(self):
+      shape = (3, 4)
+      device_assignment = xla_client.DeviceAssignment.create(
+          np.arange(np.prod(shape)).reshape(*shape))
+      self.assertEqual(device_assignment.replica_count(), shape[0])
+      self.assertEqual(device_assignment.computation_count(), shape[1])
+      serialized = device_assignment.serialize()
+      self.assertIsInstance(serialized, bytes)
+      self.assertNotEmpty(serialized)
+
+  tests.append(DeviceAssignmentTest)
+
   return tests
 
 
@@ -2361,8 +2396,14 @@ def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
     globals_dict[test.__name__] = test
 
 
+backends = {
+    "cpu": xla_client.make_cpu_client,
+    "gpu": xla_client.make_gpu_client,
+}
+
 if __name__ == "__main__":
-  flags.DEFINE_string("backend", "cpu", "Target backend.")
-  InstantiateTests(globals(),
-                   lambda: xla_client.get_local_backend(FLAGS.backend))
+  flags.DEFINE_string("backend", "cpu", "Target platform.")
+  # pylint: disable=unnecessary-lambda
+  InstantiateTests(globals(), lambda: backends[FLAGS.backend]())
+  # pylint: enable=unnecessary-lambda
   absltest.main()

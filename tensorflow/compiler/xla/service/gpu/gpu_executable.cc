@@ -447,6 +447,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   const bool is_entire_tuple_contents_aliased = [&] {
     for (auto& p : result.MutableResult()->buffers().leaves()) {
+      if (!output_info_.contains(p.first)) {
+        continue;
+      }
       const OutputInfo& output_info = output_info_.at(p.first);
       if (!output_info.alias_config.has_value()) {
         return false;

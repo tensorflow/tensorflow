@@ -8,8 +8,10 @@ package(
     licenses = ["notice"],
 )
 
+# Client of this library is responsible to provide an implementation of
+# for headers in //third_party/tensorflow/lite/nnapi:nnapi_implementation_headers
 cc_library(
-    name = "nnapi_delegate",
+    name = "nnapi_delegate_no_nnapi_implementation",
     srcs = select({
         "//tensorflow:ios": [
             "nnapi_delegate_disabled.cc",
@@ -33,13 +35,34 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_implementation_headers",
         "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/nnapi:nnapi_util",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "@FP16",
         "@farmhash_archive//:farmhash",
+    ],
+)
+
+cc_library(
+    name = "nnapi_delegate",
+    hdrs = [
+        "nnapi_delegate.h",
+        "nnapi_delegate_kernel.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":nnapi_delegate_no_nnapi_implementation",
+        "//tensorflow/lite:allocation",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
     ],
 )
 
@@ -68,16 +91,17 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/nnapi:nnapi_util",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "@FP16",
         "@farmhash_archive//:farmhash",
     ],
 )
@@ -142,7 +166,7 @@ cc_test(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -165,7 +189,7 @@ cc_test(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -189,7 +213,7 @@ cc_test(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -213,7 +237,7 @@ cc_test(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -238,7 +262,7 @@ cc_test(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -256,7 +280,7 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

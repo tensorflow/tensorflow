@@ -27,6 +27,7 @@ struct SpaceToBatchController {
   bool enable_propagations_on_base_dilations;
   bool enable_propagations_on_window_dilations;
   bool enable_propagations_on_trivial_window_dilations;
+  bool disable_starting_on_small_chains;
   int64 limit_on_batch_size;
 };
 

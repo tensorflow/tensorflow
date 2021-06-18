@@ -300,7 +300,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     Returns:
       `Tensor` with `dtype` `self.dtype`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       h = self._ifft(_to_complex(self.spectrum))
       return math_ops.cast(h, self.dtype)
 
@@ -346,7 +346,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       An `Op` that asserts this operator has Hermitian spectrum.
     """
     eps = np.finfo(self.dtype.real_dtype.as_numpy_dtype).eps
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       # Assume linear accumulation of error.
       max_err = eps * self.domain_dimension_tensor()
       imag_convolution_kernel = math_ops.imag(self.convolution_kernel())
@@ -514,8 +514,13 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     return math_ops.cast(math_ops.complex(re_d_value, im_d_value), self.dtype)
 
+  @property
+  def _composite_tensor_fields(self):
+    return ("spectrum", "input_output_dtype")
+
 
 @tf_export("linalg.LinearOperatorCirculant")
+@linear_operator.make_composite_tensor
 class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a circulant matrix.
 
@@ -772,6 +777,7 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")
+@linear_operator.make_composite_tensor
 class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a block circulant matrix.
 
@@ -959,6 +965,7 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
 
 
 @tf_export("linalg.LinearOperatorCirculant3D")
+@linear_operator.make_composite_tensor
 class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a nested block circulant matrix.
 

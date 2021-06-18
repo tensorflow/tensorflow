@@ -56,7 +56,7 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
     return platform.status();
   }
 
-  xla::StatusOr<xla::Compiler*> compiler_for_platform =
+  StatusOr<xla::Compiler*> compiler_for_platform =
       xla::Compiler::GetForPlatform(platform.ValueOrDie());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we

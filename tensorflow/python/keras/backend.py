@@ -6004,7 +6004,7 @@ def bias_add(x, bias, data_format=None):
   if len(bias_shape) != 1 and len(bias_shape) != ndim(x) - 1:
     raise ValueError(
         'Unexpected bias dimensions %d, expect to be 1 or %d dimensions' %
-        (len(bias_shape), ndim(x)))
+        (len(bias_shape), ndim(x) - 1))
 
   if len(bias_shape) == 1:
     if data_format == 'channels_first':

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/signature_def_function.h"
+#include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -53,6 +54,8 @@ class SavedModelAPI {
   // https://github.com/tensorflow/tensorflow/blob/69b08900b1e991d84bce31f3b404f5ed768f339f/tensorflow/core/protobuf/meta_graph.proto#L89
   virtual Status GetSignatureDefFunction(const std::string& signature_def_key,
                                          SignatureDefFunction** function) = 0;
+
+  virtual SavedModelV2Bundle* GetBundle() = 0;
 
   virtual ~SavedModelAPI() = default;
 };

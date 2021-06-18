@@ -29,7 +29,7 @@ namespace {
 const int broadcast_output_dims_count = 36;
 const int broadcast_num_shapes = 4;
 
-const int broadcast_input1_shape[] = {4, 2, 3, 1, 2};
+int broadcast_input1_shape[] = {4, 2, 3, 1, 2};
 const float broadcast_input1_values[] = {-0.3, 2.3, 0.9,  0.5, 0.8, -1.1,
                                          1.2,  2.8, -1.6, 0.0, 0.7, -2.2};
 const float broadcast_input2_values[] = {-0.2, -0.3, 0.4, -0.5, -1.0, -0.9};
@@ -46,19 +46,17 @@ const float
 };
 
 const int broadcast_max_shape_size = 5;
-const int broadcast_input2_shapes[broadcast_num_shapes]
-                                 [broadcast_max_shape_size] = {
-                                     {4, 1, 1, 3, 2},
-                                     {4, 1, 3, 1, 2},
-                                     {4, 2, 1, 3, 1},
-                                     {4, 2, 3, 1, 1},
+int broadcast_input2_shapes[broadcast_num_shapes][broadcast_max_shape_size] = {
+    {4, 1, 1, 3, 2},
+    {4, 1, 3, 1, 2},
+    {4, 2, 1, 3, 1},
+    {4, 2, 3, 1, 1},
 };
-const int broadcast_output_shapes[broadcast_num_shapes]
-                                 [broadcast_max_shape_size] = {
-                                     {4, 2, 3, 3, 2},
-                                     {4, 2, 3, 1, 2},
-                                     {4, 2, 3, 3, 2},
-                                     {4, 2, 3, 1, 2},
+int broadcast_output_shapes[broadcast_num_shapes][broadcast_max_shape_size] = {
+    {4, 2, 3, 3, 2},
+    {4, 2, 3, 1, 2},
+    {4, 2, 3, 3, 2},
+    {4, 2, 3, 1, 2},
 };
 
 template <typename T>
@@ -86,9 +84,9 @@ void ValidateSubGoldens(TfLiteTensor* tensors, int tensors_size,
   }
 }
 
-void TestSubFloat(const int* input1_dims_data, const float* input1_data,
-                  const int* input2_dims_data, const float* input2_data,
-                  const int* output_dims_data, const float* expected_output,
+void TestSubFloat(int* input1_dims_data, const float* input1_data,
+                  int* input2_dims_data, const float* input2_data,
+                  int* output_dims_data, const float* expected_output,
                   TfLiteFusedActivation activation, float* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
@@ -108,12 +106,12 @@ void TestSubFloat(const int* input1_dims_data, const float* input1_data,
 }
 
 template <typename T>
-void TestSubQuantized(const int* input1_dims_data, const float* input1_data,
+void TestSubQuantized(int* input1_dims_data, const float* input1_data,
                       T* input1_quantized, float input1_scale,
-                      int input1_zero_point, const int* input2_dims_data,
+                      int input1_zero_point, int* input2_dims_data,
                       const float* input2_data, T* input2_quantized,
                       float input2_scale, int input2_zero_point,
-                      const int* output_dims_data, const float* golden,
+                      int* output_dims_data, const float* golden,
                       T* golden_quantized, float output_scale,
                       int output_zero_point, TfLiteFusedActivation activation,
                       T* output_data) {
@@ -149,7 +147,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(FloatSubNoActivation) {
   const int output_dims_count = 4;
-  const int inout_shape[] = {4, 1, 2, 2, 1};
+  int inout_shape[] = {4, 1, 2, 2, 1};
   const float input1_values[] = {-2.0, 0.2, 0.7, 0.8};
   const float input2_values[] = {0.1, 0.2, 0.3, 0.5};
   const float golden_values[] = {-2.1, 0.0, 0.4, 0.3};
@@ -161,7 +159,7 @@ TF_LITE_MICRO_TEST(FloatSubNoActivation) {
 
 TF_LITE_MICRO_TEST(FloatSubActivationRelu1) {
   const int output_dims_count = 4;
-  const int inout_shape[] = {4, 1, 2, 2, 1};
+  int inout_shape[] = {4, 1, 2, 2, 1};
   const float input1_values[] = {-2.0, 0.2, 2.0, 0.8};
   const float input2_values[] = {2.0, 0.2, 0.3, 0.5};
   const float golden_values[] = {-1.0, 0.0, 1.0, 0.3};
@@ -182,7 +180,7 @@ TF_LITE_MICRO_TEST(FloatSubVariousInputShapes) {
 
   constexpr int num_shapes = 4;
   constexpr int max_shape_size = 5;
-  const int test_shapes[num_shapes][max_shape_size] = {
+  int test_shapes[num_shapes][max_shape_size] = {
       {1, 6},
       {2, 2, 3},
       {3, 2, 1, 3},
@@ -201,13 +199,13 @@ TF_LITE_MICRO_TEST(FloatSubWithScalarBroadcast) {
   float output_data[output_dims_count];
 
   const float input1_values[] = {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0};
-  const int input2_shape[] = {0};
+  int input2_shape[] = {0};
   const float input2_values[] = {0.1};
   const float expected_output[] = {-2.1, 0.1, 0.6, 0.7, 1.0, 1.9};
 
   constexpr int num_shapes = 4;
   constexpr int max_shape_size = 5;
-  const int test_shapes[num_shapes][max_shape_size] = {
+  int test_shapes[num_shapes][max_shape_size] = {
       {1, 6},
       {2, 2, 3},
       {3, 2, 1, 3},
@@ -225,7 +223,7 @@ TF_LITE_MICRO_TEST(QuantizedSubNoActivationUint8) {
   const float scales[] = {0.25, 0.5, 1.0};
   const int zero_points[] = {125, 129, 135};
   const int output_dims_count = 4;
-  const int inout_shape[] = {4, 1, 2, 2, 1};
+  int inout_shape[] = {4, 1, 2, 2, 1};
   const float input1_values[] = {-2.01, -1.01, -0.01, 0.98};
   const float input2_values[] = {-1.01, -1.99, -2.99, -4.02};
   const float golden_values[] = {-1, 1, 3, 5};
@@ -246,7 +244,7 @@ TF_LITE_MICRO_TEST(QuantizedSubNoActivationInt8) {
   const float scales[] = {0.25, 0.5, 1.0};
   const int zero_points[] = {-10, 4, 13};
   const int output_dims_count = 4;
-  const int inout_shape[] = {4, 1, 2, 2, 1};
+  int inout_shape[] = {4, 1, 2, 2, 1};
   const float input1_values[] = {-2.01, -1.01, -0.01, 0.98};
   const float input2_values[] = {-1.01, -1.99, -2.99, -4.02};
   const float golden_values[] = {-1, 1, 3, 5};
@@ -267,7 +265,7 @@ TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Uint8) {
   const float scales[] = {0.25, 0.5, 1.0};
   const int zero_points[] = {125, 129, 135};
   const int output_dims_count = 4;
-  const int inout_shape[] = {4, 1, 2, 2, 1};
+  int inout_shape[] = {4, 1, 2, 2, 1};
   const float input1_values[] = {-2.01, -1.01, -0.01, 0.98};
   const float input2_values[] = {-1.01, -1.99, -2.99, -4.02};
   const float golden_values[] = {-1, 1, 1, 1};
@@ -288,7 +286,7 @@ TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Int8) {
   const float scales[] = {0.25, 0.5, 1.0};
   const int zero_points[] = {-10, 4, 13};
   const int output_dims_count = 4;
-  const int inout_shape[] = {4, 1, 2, 2, 1};
+  int inout_shape[] = {4, 1, 2, 2, 1};
   const float input1_values[] = {-2.01, -1.01, -0.01, 0.98};
   const float input2_values[] = {-1.01, -1.99, -2.99, -4.02};
   const float golden_values[] = {-1, 1, 1, 1};
@@ -312,7 +310,7 @@ TF_LITE_MICRO_TEST(QuantizedSubVariousInputShapesUint8) {
 
   constexpr int num_shapes = 4;
   constexpr int max_shape_size = 5;
-  const int test_shapes[num_shapes][max_shape_size] = {
+  int test_shapes[num_shapes][max_shape_size] = {
       {1, 6},
       {2, 2, 3},
       {3, 2, 1, 3},
@@ -344,7 +342,7 @@ TF_LITE_MICRO_TEST(QuantizedSubVariousInputShapesInt8) {
 
   constexpr int num_shapes = 4;
   constexpr int max_shape_size = 5;
-  const int test_shapes[num_shapes][max_shape_size] = {
+  int test_shapes[num_shapes][max_shape_size] = {
       {1, 6},
       {2, 2, 3},
       {3, 2, 1, 3},
@@ -373,13 +371,13 @@ TF_LITE_MICRO_TEST(QuantizedSubWithScalarBroadcastUint8) {
   const int output_dims_count = 6;
 
   const float input1_values[] = {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0};
-  const int input2_shape[] = {0};
+  int input2_shape[] = {0};
   const float input2_values[] = {-0.1};
   const float golden[] = {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1};
 
   constexpr int num_shapes = 4;
   constexpr int max_shape_size = 5;
-  const int test_shapes[num_shapes][max_shape_size] = {
+  int test_shapes[num_shapes][max_shape_size] = {
       {1, 6},
       {2, 2, 3},
       {3, 2, 1, 3},
@@ -420,13 +418,13 @@ TF_LITE_MICRO_TEST(QuantizedSubWithScalarBroadcastInt8) {
   const int output_dims_count = 6;
 
   const float input1_values[] = {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0};
-  const int input2_shape[] = {0};
+  int input2_shape[] = {0};
   const float input2_values[] = {-0.1};
   const float golden[] = {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1};
 
   constexpr int num_shapes = 4;
   constexpr int max_shape_size = 5;
-  const int test_shapes[num_shapes][max_shape_size] = {
+  int test_shapes[num_shapes][max_shape_size] = {
       {1, 6},
       {2, 2, 3},
       {3, 2, 1, 3},

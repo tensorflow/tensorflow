@@ -194,6 +194,10 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                          Allocator* allocator,
                                          bool align_chunks) {
   switch (output->dtype()) {
+    case DT_BFLOAT16:
+      return new CollectiveAdapterImpl<Eigen::bfloat16>(
+          output, num_chunks, allocator, align_chunks);
+      break;
     case DT_HALF:
       return new CollectiveAdapterImpl<Eigen::half>(output, num_chunks,
                                                     allocator, align_chunks);
@@ -346,7 +350,6 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 void BaseCollectiveExecutor::CompleteParamsAsync(
     const DeviceAttributes& device, CollectiveParams* cp,
     CancellationManager* cancel_mgr, StatusCallback done) {
-  cp->group.gpu_ring_order = *gpu_ring_order_;
   // We need to make sure that when the timeout callback executes,
   // CollectiveExecutor and CollectiveExecutorMgr are both alive. After done()
   // is called, CollectiveExecutorMgr may be destructed and we don't have a way
@@ -411,6 +414,16 @@ Status BaseCollectiveExecutor::CreateCollective(
         // TODO(b/139421603): enable int32 all-reduce on GPU.
         return errors::Internal(
             "Collective all-reduce does not support datatype DT_INT32 on "
+            "DEVICE_GPU");
+      } else {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
+      }
+    case DT_BFLOAT16:
+      if (col_params.group.device_type == DEVICE_GPU &&
+          col_params.instance.type == REDUCTION_COLLECTIVE) {
+        return errors::Internal(
+            "Collective all-reduce does not support datatype DT_BFLOAT16 on "
             "DEVICE_GPU");
       } else {
         return CollectiveRegistry::Lookup(

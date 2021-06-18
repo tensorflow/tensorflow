@@ -13,7 +13,6 @@ limitations under the License.
 #include <cstddef>
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -24,8 +23,6 @@ limitations under the License.
 namespace mlir {
 namespace TFTPU {
 namespace {
-
-constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
 
 struct TPUReorderReplicateAndPartitionedInputsPass
     : public TF::TPUReorderReplicateAndPartitionedInputsPassBase<
@@ -108,50 +105,7 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
   return success();
 }
 
-// tf.TPUReplicatedInput ops belonging to a cluster with empty padding map
-// attribute (used by dynamic padder) can be canonicalized to not have any
-// specific index.
-// TODO(b/185527916): This would not be needed if index attribute on
-// tf.TPUReplicatedInput ops can be deprecated.
-void CanonicalizeTpuReplicatedInBlock(Block& block) {
-  // Collect all cluster names where padding map is empty.
-  llvm::SmallSet<StringRef, 4> clusters_with_empty_padding_map;
-  block.walk([&](TF::TPUReplicateMetadataOp op) {
-    if (!op.padding_map().empty()) return;
-    StringAttr cluster_name = op->getAttrOfType<StringAttr>(kTpuReplicateAttr);
-    if (cluster_name)
-      clusters_with_empty_padding_map.insert(cluster_name.getValue());
-  });
-
-  // Checks users of the tf.TPUReplicatedInput for `kTpuReplicateAttr` to get
-  // which cluster does it belong to.
-  auto get_cluster_name_from_users =
-      [](TF::TPUReplicatedInputOp op) -> StringRef {
-    for (Operation* user : op->getUsers()) {
-      if (auto cluster_name =
-              user->getAttrOfType<StringAttr>(kTpuReplicateAttr))
-        return cluster_name.getValue();
-    }
-    return {};
-  };
-
-  // Canonicalize tf.TPUReplicatedInput ops belonging to cluster with no padding
-  // map.
-  constexpr int kDefaultIndex = -1;
-  block.walk([&](TF::TPUReplicatedInputOp replicated_input) {
-    if (replicated_input.index() == kDefaultIndex) return;
-    StringRef cluster_name = get_cluster_name_from_users(replicated_input);
-    IntegerAttr attr = replicated_input.indexAttr();
-    if (clusters_with_empty_padding_map.contains(cluster_name))
-      replicated_input.indexAttr(
-          IntegerAttr::get(attr.getType(), kDefaultIndex));
-  });
-}
-
 void TPUReorderReplicateAndPartitionedInputsPass::runOnFunction() {
-  FuncOp func = getOperation();
-  for (Block& block : func.getBody()) CanonicalizeTpuReplicatedInBlock(block);
-
   auto result =
       getFunction()->walk([](TF::TPUReplicatedInputOp replicated_input) {
         if (llvm::none_of(replicated_input.inputs(), [](Value input) {

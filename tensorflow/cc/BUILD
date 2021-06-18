@@ -53,6 +53,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
@@ -456,6 +457,7 @@ cc_library(
 tf_cc_test(
     name = "gradients_nn_grad_test",
     srcs = ["gradients/nn_grad_test.cc"],
+    tags = ["no_windows"],  # b/189986187
     deps = [
         ":cc_ops",
         ":cc_ops_internal",

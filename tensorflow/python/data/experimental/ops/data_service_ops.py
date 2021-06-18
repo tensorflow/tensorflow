@@ -22,6 +22,7 @@ import functools
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
@@ -69,7 +70,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
                consumer_index=None,
                num_consumers=None,
                max_outstanding_requests=None,
-               task_refresh_interval_hint_ms=None):
+               task_refresh_interval_hint_ms=None,
+               target_workers="AUTO"):
     """Constructs a _DataServiceDatasetV2.
 
     Args:
@@ -106,6 +108,13 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         `element_size` * `max_outstanding_requests` of memory.
       task_refresh_interval_hint_ms: (Optional.) A hint for how often to query
         the dispatcher for task changes.
+      target_workers: (Optional.) Which workers to read from. If `"AUTO"`,
+        tf.data runtime decides which workers to read from. If `"ANY"`, reads
+        from any tf.data service workers. If `"LOCAL"`, only reads from local
+        in-processs tf.data service workers. `"AUTO"` works well for most cases,
+        while users can specify other targets. For example, `"LOCAL"` helps
+        avoid RPCs and data copy if every TF worker colocates with a tf.data
+        service worker. Defaults to `"AUTO"`.
     """
     if consumer_index is None != num_consumers is None:
       raise ValueError(
@@ -145,10 +154,14 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         dtype=dtypes.int64,
         name="max_outstanding_requests")
     self._element_spec = element_spec
+    self._target_workers = target_workers
 
     compat_kwargs = {}
     if data_transfer_protocol is not None:
       compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
+    if compat.forward_compatible(2021, 7, 12) or target_workers != "AUTO":
+      compat_kwargs["target_workers"] = target_workers
+
     variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
         dataset_id=self._dataset_id,
         processing_mode=self._processing_mode,
@@ -177,7 +190,7 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
   def __init__(self, dataset_id, processing_mode, address, element_spec,
                protocol, data_transfer_protocol, job_name, consumer_index,
                num_consumers, max_outstanding_requests,
-               task_refresh_interval_hint_ms):
+               task_refresh_interval_hint_ms, target_workers):
 
     self._wrapped = _DataServiceDatasetV2(
         dataset_id=dataset_id,
@@ -190,7 +203,8 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
         consumer_index=consumer_index,
         num_consumers=num_consumers,
         max_outstanding_requests=max_outstanding_requests,
-        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
+        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+        target_workers=target_workers)
     super(_DataServiceDatasetV1, self).__init__(self._wrapped)
 
 
@@ -225,6 +239,7 @@ def _parse_service(service):
   else:
     raise ValueError("malformed service string has multiple '://': %s" %
                      service)
+  # TODO(aaudibert): Considering validating reachability of address here.
   return (protocol, address)
 
 
@@ -236,7 +251,8 @@ def _distribute(processing_mode,
                 max_outstanding_requests=None,
                 task_refresh_interval_hint_ms=None,
                 data_transfer_protocol=None,
-                compression="AUTO"):
+                compression="AUTO",
+                target_workers="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
 
   This transformation is similar to `distribute`, but supports additional
@@ -247,10 +263,11 @@ def _distribute(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
@@ -276,6 +293,13 @@ def _distribute(processing_mode,
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
+      runtime decides which workers to read from. If `"ANY"`, reads from any
+      tf.data service workers. If `"LOCAL"`, only reads from local in-processs
+      tf.data service workers. `"AUTO"` works well for most cases, while users
+      can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
+      data copy if every TF worker colocates with a tf.data service worker.
+      Defaults to `"AUTO"`.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -301,7 +325,8 @@ def _distribute(processing_mode,
         max_outstanding_requests=max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         data_transfer_protocol=data_transfer_protocol,
-        compression=compression)
+        compression=compression,
+        target_workers=target_workers)
 
   return _apply_fn
 
@@ -314,7 +339,8 @@ def distribute(processing_mode,
                num_consumers=None,
                max_outstanding_requests=None,
                data_transfer_protocol=None,
-               compression="AUTO"):
+               compression="AUTO",
+               target_workers="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
 
   When you iterate over a dataset containing the `distribute` transformation,
@@ -492,10 +518,11 @@ def distribute(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
@@ -519,6 +546,13 @@ def distribute(processing_mode,
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
+      runtime decides which workers to read from. If `"ANY"`, reads from any
+      tf.data service workers. If `"LOCAL"`, only reads from local in-processs
+      tf.data service workers. `"AUTO"` works well for most cases, while users
+      can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
+      data copy if every TF worker colocates with a tf.data service worker.
+      Defaults to `"AUTO"`.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -531,7 +565,8 @@ def distribute(processing_mode,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
       data_transfer_protocol=data_transfer_protocol,
-      compression=compression)
+      compression=compression,
+      target_workers=target_workers)
 
 
 def _register_dataset(service, dataset, compression):
@@ -541,10 +576,11 @@ def _register_dataset(service, dataset, compression):
   parameters which we do not yet want to add to the public Python API.
 
   Args:
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
@@ -558,7 +594,10 @@ def _register_dataset(service, dataset, compression):
     raise ValueError(
         "Invalid compression argument: {}. Must be one of {}".format(
             compression, valid_compressions))
-  protocol, address = _parse_service(service)
+  if isinstance(service, tuple):
+    protocol, address = service
+  else:
+    protocol, address = _parse_service(service)
   external_state_policy = dataset.options().experimental_external_state_policy
   if external_state_policy is None:
     external_state_policy = ExternalStatePolicy.WARN
@@ -568,10 +607,7 @@ def _register_dataset(service, dataset, compression):
         lambda *x: compression_ops.compress(x),
         num_parallel_calls=dataset_ops.AUTOTUNE)
   dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
-  # Apply options so that the dataset executed in the tf.data service will
-  # be optimized and support autotuning.
-  # TODO(b/183497230): Move options application after deserialization.
-  dataset = dataset._apply_options()  # pylint: disable=protected-access
+  dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
 
   dataset_id = gen_experimental_dataset_ops.register_dataset(
       dataset._variant_tensor,  # pylint: disable=protected-access
@@ -614,10 +650,11 @@ def register_dataset(service, dataset):
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   Args:
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
 
   Returns:
@@ -636,7 +673,8 @@ def _from_dataset_id(processing_mode,
                      max_outstanding_requests=None,
                      task_refresh_interval_hint_ms=None,
                      data_transfer_protocol=None,
-                     compression="AUTO"):
+                     compression="AUTO",
+                     target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
 
   This transformation is similar to `from_dataset_id`, but supports additional
@@ -647,10 +685,11 @@ def _from_dataset_id(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
@@ -681,6 +720,13 @@ def _from_dataset_id(processing_mode,
       data with the tf.data service. By default, data is transferred using gRPC.
     compression: An indication of how the dataset's elements were compressed, so
       that `from_dataset_id` can uncompress them if necessary.
+    target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
+      runtime decides which workers to read from. If `"ANY"`, reads from any
+      tf.data service workers. If `"LOCAL"`, only reads from local in-processs
+      tf.data service workers. `"AUTO"` works well for most cases, while users
+      can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
+      data copy if every TF worker colocates with a tf.data service worker.
+      Defaults to `"AUTO"`.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
@@ -699,7 +745,11 @@ def _from_dataset_id(processing_mode,
       raise ValueError("job_name must not be empty")
   if element_spec is None:
     raise ValueError("element_spec must not be None")
-  protocol, address = _parse_service(service)
+
+  if isinstance(service, tuple):
+    protocol, address = service
+  else:
+    protocol, address = _parse_service(service)
 
   # If we compress, the data service side dataset will produce scalar variants.
   data_service_element_spec = (
@@ -717,7 +767,8 @@ def _from_dataset_id(processing_mode,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
-      task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
+      task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+      target_workers=target_workers)
   if compression == COMPRESSION_AUTO:
     dataset = dataset.map(
         lambda x: compression_ops.uncompress(x, output_spec=element_spec),
@@ -740,7 +791,8 @@ def from_dataset_id(processing_mode,
                     consumer_index=None,
                     num_consumers=None,
                     max_outstanding_requests=None,
-                    data_transfer_protocol=None):
+                    data_transfer_protocol=None,
+                    target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
 
   This is useful when the dataset is registered by one process, then used in
@@ -786,10 +838,11 @@ def from_dataset_id(processing_mode,
       processed by tf.data workers. Can be either "parallel_epochs" to have each
       tf.data worker process a copy of the dataset, or "distributed_epoch" to
       split a single iteration of the dataset across all the workers.
-    service: A string indicating how to connect to the tf.data service. The
-      string should be in the format `[<protocol>://]<address>`, where
-      `<address>` identifies the dispatcher address and `<protocol>` can
-      optionally be used to override the default protocol to use.
+    service: A string or a tuple indicating how to connect to the tf.data
+      service. If it's a string, it should be in the format
+      `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
@@ -816,6 +869,13 @@ def from_dataset_id(processing_mode,
       `max_outstanding_requests` of memory.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
       data with the tf.data service. By default, data is transferred using gRPC.
+    target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
+      runtime decides which workers to read from. If `"ANY"`, reads from any
+      tf.data service workers. If `"LOCAL"`, only reads from local in-processs
+      tf.data service workers. `"AUTO"` works well for most cases, while users
+      can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
+      data copy if every TF worker colocates with a tf.data service worker.
+      Defaults to `"AUTO"`.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
@@ -829,4 +889,5 @@ def from_dataset_id(processing_mode,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
-      data_transfer_protocol=data_transfer_protocol)
+      data_transfer_protocol=data_transfer_protocol,
+      target_workers=target_workers)

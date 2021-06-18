@@ -26,20 +26,6 @@ func @missing_xla_sharding(%arg0: tensor<!tf.resource<tensor<10x3xf32>>>, %arg1:
   return %ri : tensor<!tf.resource<tensor<10x3xf32>>>
 }
 
-// CHECK-LABEL:func @canonicalize_replicated_input_index
-// CHECK-SAME: ([[ARG0:%.*]]: tensor<!tf.resource<tensor<10x3xf32>>>, [[ARG1:%.*]]: tensor<!tf.resource<tensor<10x3xf32>>>, [[ARG2:%.*]]: tensor<!tf.resource<tensor<10x3xf32>>>, [[ARG3:%.*]]: tensor<!tf.resource<tensor<10x3xf32>>>)
-func @canonicalize_replicated_input_index(%arg0: tensor<!tf.resource<tensor<10x3xf32>>>, %arg1: tensor<!tf.resource<tensor<10x3xf32>>>, %arg2: tensor<!tf.resource<tensor<10x3xf32>>>, %arg3: tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<10x3xf32> {
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_0", padding_map = [], device = "device", num_replicas = 1 : i64, topology = "topology"} : () -> ()
-  // CHECK: [[RI_0:%.*]] = "tf.TPUReplicatedInput"([[ARG0]], [[ARG2]]) {index = -1 : i64}
-  // CHECK: [[RI_1:%.*]] = "tf.TPUReplicatedInput"([[ARG1]], [[ARG3]]) {index = -1 : i64}
-  // CHECK: [[PI:%.*]] = "tf.TPUPartitionedInput"([[RI_0]], [[RI_1]])
-  %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) {index = 1} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  %ri_user = "tf.SomeOp"(%ri) {_tpu_replicate = "cluster_0"} : (tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<10x3xf32>
-  return %ri_user : tensor<10x3xf32>
-}
-
 // Test IR is not modified when none of the operands of tf.TPUReplicaedInput is
 // a tf.TPUPartitionedInput op.
 
@@ -84,30 +70,6 @@ func @num_partitioned_inputs_mismatch(%arg0: tensor<!tf.resource<tensor<10x3xf32
   %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3, %arg4) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
   return %ri : tensor<!tf.resource<tensor<10x3xf32>>>
-}
-
-// -----
-
-func @unsupported_index_different_cluster(%arg0: tensor<!tf.resource<tensor<10x3xf32>>>, %arg1: tensor<!tf.resource<tensor<10x3xf32>>>, %arg2: tensor<!tf.resource<tensor<10x3xf32>>>, %arg3: tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<10x3xf32> {
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_0", padding_map = [], device = "device", num_replicas = 1 : i64, topology = "topology"} : () -> ()
-  %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  // expected-error@+1 {{'tf.TPUReplicatedInput' op unsupported index = 1}}
-  %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) {index = 1} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  %ri_user = "tf.SomeOp"(%ri) {_tpu_replicate = "cluster_1"} : (tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<10x3xf32>
-  return %ri_user : tensor<10x3xf32>
-}
-
-// -----
-
-func @unsupported_index_non_empty_padding_map(%arg0: tensor<!tf.resource<tensor<10x3xf32>>>, %arg1: tensor<!tf.resource<tensor<10x3xf32>>>, %arg2: tensor<!tf.resource<tensor<10x3xf32>>>, %arg3: tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<10x3xf32> {
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_0", padding_map = ["\10\02\18\01"], device = "device", num_replicas = 1 : i64, topology = "topology"} : () -> ()
-  %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  // expected-error@+1 {{'tf.TPUReplicatedInput' op unsupported index = 1}}
-  %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) {index = 1} : (tensor<!tf.resource<tensor<10x3xf32>>>, tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<!tf.resource<tensor<10x3xf32>>>
-  %ri_user = "tf.SomeOp"(%ri) {_tpu_replicate = "cluster_0"} : (tensor<!tf.resource<tensor<10x3xf32>>>) -> tensor<10x3xf32>
-  return %ri_user : tensor<10x3xf32>
 }
 
 // -----

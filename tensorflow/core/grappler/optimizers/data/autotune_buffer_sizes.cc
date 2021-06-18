@@ -30,7 +30,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kLegacyAutotune[] = "legacy_autotune";
 constexpr char kBufferSizeMin[] = "buffer_size_min";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
@@ -133,12 +132,6 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   return Status::OK();
-}
-
-void AutotuneBufferSizes::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                   const GraphDef& optimize_output,
-                                   double result) {
-  // no-op
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(AutotuneBufferSizes, "autotune_buffer_sizes");

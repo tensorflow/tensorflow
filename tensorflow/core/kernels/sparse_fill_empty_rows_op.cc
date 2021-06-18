@@ -228,7 +228,10 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
                               default_value_t.shape().DebugString()),
       done);
   // TODO(ebrevdo): add shape checks between values, indices,
-  // dense_shape.  Also add check that dense rank > 0.
+  // Also add check that dense rank > 0.
+  OP_REQUIRES_ASYNC(context, dense_shape_t.NumElements() != 0,
+                    errors::InvalidArgument("Dense shape cannot be empty."),
+                    done);
 
   using FunctorType = functor::SparseFillEmptyRows<Device, T, Tindex>;
   OP_REQUIRES_OK_ASYNC(context,

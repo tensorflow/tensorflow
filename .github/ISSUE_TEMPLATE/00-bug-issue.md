@@ -28,10 +28,14 @@ You can also obtain the TensorFlow version with:
 1. TF 1.0: `python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"`
 2. TF 2.0: `python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"`
 
-
 **Describe the current behavior**
 
 **Describe the expected behavior**
+
+**[Contributing](https://www.tensorflow.org/community/contribute)**
+
+- Do you want to contribute a PR? (yes/no):
+- Briefly describe your candidate solution(if contributing):
 
 **Standalone code to reproduce the issue**
 Provide a reproducible test case that is the bare minimum necessary to generate

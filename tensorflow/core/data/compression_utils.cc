@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/compression_utils.h"
 
+#include <limits>
+
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -26,12 +29,13 @@ Status CompressElement(const std::vector<Tensor>& element,
   // Step 1: Determine the total uncompressed size. This requires serializing
   // non-memcopyable tensors, which we save to use again later.
   std::vector<TensorProto> non_memcpy_components;
-  int64 total_size = 0;
+  size_t total_size = 0;
   for (auto& component : element) {
     if (DataTypeCanUseMemcpy(component.dtype())) {
-      // Some datatypes can be memcopied, allowing us to save two copies
-      // (AsProtoTensorContent and SerializeToArray).
-      total_size += DMAHelper::buffer(&component)->size();
+      const TensorBuffer* buffer = DMAHelper::buffer(&component);
+      if (buffer) {
+        total_size += buffer->size();
+      }
     } else {
       non_memcpy_components.emplace_back();
       component.AsProtoTensorContent(&non_memcpy_components.back());
@@ -53,14 +57,20 @@ Status CompressElement(const std::vector<Tensor>& element,
     component.shape().AsProto(metadata->mutable_tensor_shape());
     if (DataTypeCanUseMemcpy(component.dtype())) {
       const TensorBuffer* buffer = DMAHelper::buffer(&component);
-      memcpy(position, buffer->data(), buffer->size());
-      metadata->set_tensor_size_bytes(buffer->size());
+      if (buffer) {
+        memcpy(position, buffer->data(), buffer->size());
+        metadata->set_tensor_size_bytes(buffer->size());
+      }
     } else {
       TensorProto& proto = non_memcpy_components[non_memcpy_component_index++];
       proto.SerializeToArray(position, proto.ByteSizeLong());
       metadata->set_tensor_size_bytes(proto.ByteSizeLong());
     }
     position += metadata->tensor_size_bytes();
+  }
+  if (total_size > kuint32max) {
+    return errors::OutOfRange("Encountered dataset element of size ",
+                              total_size, ", exceeding the 4GB limit.");
   }
   DCHECK_EQ(position, uncompressed.mdata() + total_size);
 
@@ -94,8 +104,13 @@ Status UncompressElement(const CompressedElement& compressed,
     if (DataTypeCanUseMemcpy(metadata.dtype())) {
       out->emplace_back(metadata.dtype(), metadata.tensor_shape());
       TensorBuffer* buffer = DMAHelper::buffer(&out->back());
-      iov[i].iov_base = buffer->data();
-      iov[i].iov_len = buffer->size();
+      if (buffer) {
+        iov[i].iov_base = buffer->data();
+        iov[i].iov_len = buffer->size();
+      } else {
+        iov[i].iov_base = nullptr;
+        iov[i].iov_len = 0;
+      }
     } else {
       // Allocate an empty Tensor. We will fill it out later after
       // uncompressing into the tensor_proto_str.

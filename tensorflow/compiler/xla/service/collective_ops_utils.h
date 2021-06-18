@@ -33,6 +33,10 @@ namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
+// Attempts to match instruction to one of the possible cases for ReductionKind.
+absl::optional<ReductionKind> MatchReductionInstruction(
+    const HloInstruction* hlo);
+
 // Attempts to match computation to one of the possible cases in ReductionKind.
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
@@ -92,6 +96,24 @@ absl::string_view CollectiveOpGroupModeToString(
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     bool has_channel_id, absl::optional<bool> use_global_device_ids);
+
+// Figures out subgroups of participating devices from given replica_groups and
+// group_mode.
+//
+// Returns list of participants, where each participant is a list of
+// GlobalDeviceIds.
+//
+// For example:
+//   device_assignment={{33, 34}, {44, 45}, {55, 56}}  3 replicas 2 partitions
+//   group_mode=CollectiveOpGroupMode::kCrossReplica
+//   replica_groups={{0}, {1, 2}}
+//
+//   This functions returns {{33, 34}, {44, 45, 55, 56}}
+//   There are 2 subgroups of participating devices {33, 34}, {44, 45, 55, 56}.
+StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              CollectiveOpGroupMode group_mode);
 
 // Figures out which devices are participating in the collective subgroup.
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(

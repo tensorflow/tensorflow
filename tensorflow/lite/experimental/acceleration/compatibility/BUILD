@@ -139,7 +139,7 @@ cc_test(
         ":devicedb",
         ":devicedb_sample",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )

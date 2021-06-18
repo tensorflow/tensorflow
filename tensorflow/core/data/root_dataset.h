@@ -35,8 +35,7 @@ class RootDataset : public DatasetBase {
     int64 private_threadpool_size = 0;
   };
 
-  static Status FromOptions(OpKernelContext* ctx, DatasetBase* input,
-                            DatasetBase** output);
+  static Status FromOptions(DatasetBase* input, DatasetBase** output);
 
   ~RootDataset() override;
 
@@ -58,7 +57,7 @@ class RootDataset : public DatasetBase {
  private:
   class Iterator;
 
-  RootDataset(OpKernelContext* ctx, const DatasetBase* input, Params params);
+  RootDataset(const DatasetBase* input, Params params);
 
   const DatasetBase* input_;
   const Params params_;

@@ -61,9 +61,6 @@ class ConstantFolding : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
-
  private:
   bool ForwardInputs(NodeDef* node, absl::Span<const int> inputs_to_forward);
   string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;

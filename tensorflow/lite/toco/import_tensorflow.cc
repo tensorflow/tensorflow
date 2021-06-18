@@ -1071,7 +1071,7 @@ tensorflow::Status ConvertIdentityOperator(
     const ModelFlags& model_flags, Model* model) {
   CHECK(node.op() == "Identity" || node.op() == "CheckNumerics" ||
         node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient" ||
-        node.op() == "Snapshot");
+        node.op() == "Snapshot" || node.op() == "EnsureShape");
   auto* op = new TensorFlowIdentityOperator;
   // Amazingly, some TensorFlow graphs (at least rajeev_lstm.pb) have
   // identity nodes with multiple inputs, but the other inputs seem
@@ -2595,6 +2595,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"DynamicPartition", ConvertDynamicPartitionOperator},
       {"DynamicStitch", ConvertDynamicStitchOperator},
       {"Elu", ConvertSimpleOperator<EluOperator, 1, 1>},
+      {"EnsureShape", ConvertIdentityOperator},
       {"Equal", ConvertSimpleOperator<TensorFlowEqualOperator, 2, 1>},
       {"Exp", ConvertSimpleOperator<ExpOperator, 1, 1>},
       {"ExpandDims", ConvertSimpleOperator<ExpandDimsOperator, 2, 1>},
@@ -2797,17 +2798,6 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
     tf_graph = std::move(pruned_graph);
   }
   return ImportTensorFlowGraphDef(model_flags, tf_import_flags, *tf_graph);
-}
-
-std::vector<std::string> GetPotentiallySupportedOps() {
-  std::vector<std::string> supported_ops;
-  const internal::ConverterMapType& converter_map =
-      internal::GetTensorFlowNodeConverterMap();
-
-  for (const auto& item : converter_map) {
-    supported_ops.push_back(item.first);
-  }
-  return supported_ops;
 }
 
 }  // namespace toco

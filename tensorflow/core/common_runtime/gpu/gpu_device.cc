@@ -115,9 +115,7 @@ using se::rocm::ScopedActivateExecutorContext;
 class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
   EigenGpuStreamDevice()
-      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
-    Eigen::initializeDeviceProp();
-  }
+      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {}
   ~EigenGpuStreamDevice() override {}
   void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
                     TfDeviceId tf_device_id, ::tensorflow::Allocator* alloc,
@@ -135,7 +133,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     PlatformDeviceId platform_device_id;
     TF_CHECK_OK(
         GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
-    device_prop_ = &Eigen::m_deviceProperties[platform_device_id.value()];
+    device_prop_ = &Eigen::GetGpuDeviceProperties(platform_device_id.value());
   }
 
   const gpuStream_t& stream() const override { return *stream_; }
@@ -1861,6 +1859,25 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
                    "TF_MIN_GPU_MULTIPROCESSOR_COUNT.";
       continue;
     }
+
+#if defined(GOOGLE_CUDA) && !defined(PLATFORM_GOOGLE)
+    // Compare compute capability of device with list in cuda_config.h and
+    // warn about long loading time when we need to JIT kernels from PTX.
+    auto compute_capabilities = {TF_CUDA_COMPUTE_CAPABILITIES};
+    if (std::count_if(std::cbegin(compute_capabilities),
+                      std::cend(compute_capabilities), [&](int cc) {
+                        // CUBINs are backwards compatible within major version.
+                        return cc / 10 == device_capability.major_part &&
+                               cc % 10 <= device_capability.minor_part;
+                      }) == 0) {
+      LOG(WARNING)
+          << "TensorFlow was not built with CUDA kernel binaries compatible "
+          << "with compute capability " << device_capability.major_part << '.'
+          << device_capability.minor_part << ". CUDA kernels will be "
+          << "jit-compiled from PTX, which could take 30 minutes or longer.";
+    }
+#endif  // defined(GOOGLE_CUDA) && !defined(PLATFORM_GOOGLE)
+
     ids->push_back(visible_gpu_id);
   }
   if (!ids->empty()) {

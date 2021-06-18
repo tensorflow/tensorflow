@@ -195,16 +195,12 @@ class RingReducerTest : public ::testing::Test {
                 << " devices: ";
       dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     }
-    if (!gpu_ring_order_) {
-      gpu_ring_order_ = absl::make_unique<string>();
-    }
     dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
     rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
                            fail_after);
     col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
-                                           dev_mgr_.get(),
-                                           gpu_ring_order_.get(), work_queue_);
+                                           dev_mgr_.get(), work_queue_);
     col_params_ = new CollectiveParams();
     col_params_->name = "test_collective";
     static const int kGroupKey = 5;
@@ -298,7 +294,10 @@ class RingReducerTest : public ::testing::Test {
                int num_devices, int num_subdivs, int tensor_len,
                int fail_after) {
     Init(num_workers, num_devices, dtype, device_type, num_subdivs, fail_after);
-    std::vector<T> expected(tensor_len, 0.0);
+    std::vector<T> expected(tensor_len);
+    for (int i = 0; i < tensor_len; ++i) {
+      expected[i] = static_cast<T>(0.0);
+    }
     for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
       DeviceInstance* instance = instances_[di];
       instance->InitTensor(
@@ -311,7 +310,7 @@ class RingReducerTest : public ::testing::Test {
                 value = di * 10 + i;
               }
               t->flat<T>()(i) = static_cast<T>(value);
-              expected[i] += value;
+              expected[i] += static_cast<T>(value);
             }
           });
     }
@@ -326,7 +325,7 @@ class RingReducerTest : public ::testing::Test {
     } else {
       // Confirm that every device computed the same correct reduction value.
       for (int i = 0; i < tensor_len; ++i) {
-        expected[i] /= (num_workers * num_devices);
+        expected[i] /= static_cast<T>(num_workers * num_devices);
       }
       for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
         TF_EXPECT_OK(instances_[di]->status_);
@@ -349,6 +348,7 @@ class RingReducerTest : public ::testing::Test {
         auto alias = actual.template unaligned_flat<T>();
         for (int i = 0; i < tensor_len; ++i) {
           switch (dtype) {
+            case DT_BFLOAT16:
             case DT_FLOAT:
               EXPECT_FLOAT_EQ(expected[i], alias(i))
                   << "Mismatch at device " << di << " index " << i;
@@ -562,7 +562,6 @@ class RingReducerTest : public ::testing::Test {
   CollectiveParams* col_params_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
-  std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
   int32 reduce_counter_ TF_GUARDED_BY(mu_) = 0;
   CancellationManager cancellation_manager_;
@@ -740,6 +739,9 @@ TEST_F(RingReducerTest, AutomaticSubdivDisabled) {
       case DT_DOUBLE: {                                                       \
         RunTest<double>(dtype, DEVICE_##T, W, D, S, L, A);                    \
       } break;                                                                \
+      case DT_BFLOAT16: {                                                     \
+        RunTest<tensorflow::bfloat16>(dtype, DEVICE_##T, W, D, S, L, A);      \
+      } break;                                                                \
       case DT_INT32: {                                                        \
         RunTest<int32>(dtype, DEVICE_##T, W, D, S, L, A);                     \
       } break;                                                                \
@@ -767,6 +769,8 @@ DEF_TEST(FLOAT, CPU, 2, 8, 3, 1045991, 0)
 DEF_TEST(FLOAT, CPU, 4, 4, 4, 1045991, 0)
 DEF_TEST(DOUBLE, CPU, 1, 2, 1, 1001, 0)
 DEF_TEST(DOUBLE, CPU, 2, 8, 3, 4095, 0)
+DEF_TEST(BFLOAT16, CPU, 1, 2, 1, 8, 0)
+DEF_TEST(BFLOAT16, CPU, 2, 8, 3, 16, 0)
 DEF_TEST(INT32, CPU, 1, 2, 1, 1001, 0)
 DEF_TEST(INT32, CPU, 2, 8, 3, 4095, 0)
 DEF_TEST(INT64, CPU, 1, 2, 1, 1001, 0)

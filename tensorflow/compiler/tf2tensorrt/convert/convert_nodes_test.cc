@@ -2873,6 +2873,11 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
     return einsum.operation.node()->def();
   };
 
+  // TODO(b/191407966): re-enable the test for kExplicitBatch.
+  if (trt_mode_ == TrtTestMode::kExplicitBatch) {
+    return;
+  }
+
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
     Reset();
     NodeDef node_def = get_einsum_nodedef(tf_type_, "ab,cb->ac");

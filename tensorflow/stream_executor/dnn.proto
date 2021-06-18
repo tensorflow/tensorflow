@@ -24,11 +24,18 @@ enum DataLayout {
   // Batch <-> batch, or N
   // Depth <-> feature, or channel
   // TODO(timshen): turn them into cuDNN names, e.g. kNCHW.
+  //
+  // Note: In cudnn, kBatchDepthYX4 and kBatchDepthYX32 are the same layout
+  // (namely, NCHW_VECT_C).  It differentiates between these two by using a
+  // different data type (int8x4 vs int8x32).  In StreamExecutor we use
+  // different layouts for these, because we don't usually pass an explicit data
+  // type to StreamExecutor functions.
   kYXDepthBatch = 0;
   kYXBatchDepth = 1;
-  kBatchYXDepth = 2;   // cuDNN's NHWC layout
-  kBatchDepthYX = 3;   // cuDNN's NCHW layout
-  kBatchDepthYX4 = 4;  // cuDNN's NCHW_VECT_C layout
+  kBatchYXDepth = 2;    // cuDNN's NHWC layout
+  kBatchDepthYX = 3;    // cuDNN's NCHW layout
+  kBatchDepthYX4 = 4;   // cuDNN's NCHW_VECT_C with 4-elem vectors (e.g. int8x4)
+  kBatchDepthYX32 = 5;  // cuDNN's NCHW_VECT_C with 32-elem vects (e.g. int8x32)
 }
 
 // Describes how a convolution filter is laid out in the memory.
@@ -39,9 +46,10 @@ enum FilterLayout {
   // Output <-> output feature, or N
   // Input <-> input feature, or N
   // TODO(timshen): turn them into cuDNN names, e.g. kNCHW.
-  kOutputInputYX = 0;   // cuDNN's NCHW layout
-  kOutputYXInput = 1;   // cuDNN's NHWC layout
-  kOutputInputYX4 = 2;  // cuDNN's NCHW_VECT_C layout
+  kOutputInputYX = 0;    // cuDNN's NCHW layout
+  kOutputYXInput = 1;    // cuDNN's NHWC layout
+  kOutputInputYX4 = 2;   // cuDNN's NCHW_VECT_C layout with 4-elem vectors
+  kOutputInputYX32 = 5;  // cuDNN's NCHW_VECT_C layout with 32-elem vectors
   kInputYXOutput = 3;
   kYXInputOutput = 4;
 }

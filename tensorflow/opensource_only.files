@@ -28,7 +28,6 @@ tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
 tensorflow/lite/java/src/main/native/BUILD
-tensorflow/lite/java/src/main/native/nativeinterpreterwrapper_jni.cc
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
 tensorflow/opensource_only/BUILD
@@ -167,7 +166,6 @@ tensorflow/third_party/nccl/nccl_configure.bzl
 tensorflow/third_party/nccl/system.BUILD.tpl
 tensorflow/third_party/nlohmann_json.BUILD
 tensorflow/third_party/opt_einsum.BUILD
-tensorflow/third_party/pcre.BUILD
 tensorflow/third_party/png.BUILD
 tensorflow/third_party/png_fix_rpi.patch
 tensorflow/third_party/pprof.BUILD
@@ -207,7 +205,6 @@ tensorflow/third_party/systemlibs/jsoncpp.BUILD
 tensorflow/third_party/systemlibs/lmdb.BUILD
 tensorflow/third_party/systemlibs/nsync.BUILD
 tensorflow/third_party/systemlibs/opt_einsum.BUILD
-tensorflow/third_party/systemlibs/pcre.BUILD
 tensorflow/third_party/systemlibs/png.BUILD
 tensorflow/third_party/systemlibs/protobuf.BUILD
 tensorflow/third_party/systemlibs/protobuf.bzl
@@ -248,7 +245,6 @@ tensorflow/third_party/toolchains/embedded/arm-linux/armhf-linux-toolchain.BUILD
 tensorflow/third_party/toolchains/embedded/arm-linux/cc_config.bzl.tpl
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
-tensorflow/third_party/toolchains/preconfig/generate/containers.bzl
 tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_config.bzl
@@ -272,6 +268,7 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/win/BUILD
 tensorflow/third_party/toolchains/preconfig/win/bazel_211/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_06152021/BUILD
 tensorflow/third_party/toolchains/preconfig/win/tf_win_08062020/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD

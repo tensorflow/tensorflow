@@ -621,8 +621,9 @@ TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
-      WhileLoopInvariantCodeMotion(/*hoist_constants=*/true,
-                                   /*hoist_size_inflating_ops=*/false)
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/false,
+                                   /*hoist_non_constants=*/true,
+                                   /*hoist_size_inflation_ratio=*/1.0)
           .Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }

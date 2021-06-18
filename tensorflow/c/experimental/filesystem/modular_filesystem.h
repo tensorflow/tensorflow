@@ -101,6 +101,12 @@ class ModularFileSystem final : public FileSystem {
                   TransactionToken* token) override;
   std::string TranslateName(const std::string& name) const override;
   void FlushCaches(TransactionToken* token) override;
+  Status SetOption(const std::string& name,
+                   const std::vector<string>& values) override;
+  Status SetOption(const std::string& name,
+                   const std::vector<int64>& values) override;
+  Status SetOption(const std::string& name,
+                   const std::vector<double>& values) override;
 
  private:
   std::unique_ptr<TF_Filesystem> filesystem_;

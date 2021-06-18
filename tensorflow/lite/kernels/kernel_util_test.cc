@@ -353,7 +353,7 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   int32_t output_activation_min;
   int32_t output_activation_max;
   std::vector<int32_t> per_channel_multiplier(3);
-  std::vector<int> per_channel_shift(3);
+  std::vector<int32_t> per_channel_shift(3);
 
   // Call and verify results for per channel case.
   EXPECT_EQ(
@@ -817,9 +817,3 @@ TEST_F(KernelUtilTest, IsMobilePlatform) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

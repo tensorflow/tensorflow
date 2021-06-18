@@ -37,7 +37,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
-# pywrap_tensorflow must be imported first to avoid profobuf issues.
+# pywrap_tensorflow must be imported first to avoid protobuf issues.
 # (b/143110113)
 # pylint: disable=invalid-import-order,g-bad-import-order,unused-import
 from tensorflow.python import pywrap_tensorflow
@@ -396,7 +396,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       raise AttributeError("""
         '{}' object has no attribute '{}'.
         If you are looking for numpy-related methods, please run the following:
-        import tensorflow.python.ops.numpy_ops.np_config
+        from tensorflow.python.ops.numpy_ops import np_config
         np_config.enable_numpy_behavior()""".format(type(self).__name__, name))
     self.__getattribute__(name)
 
@@ -1542,7 +1542,7 @@ def convert_to_tensor(value,
   # https://docs.python.org/3.8/reference/datamodel.html#special-lookup
   overload = getattr(type(value), "__tf_tensor__", None)
   if overload is not None:
-    return overload(value, dtype, name)
+    return overload(value, dtype, name)  #  pylint: disable=not-callable
 
   for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
@@ -2624,7 +2624,8 @@ class Operation(object):
     """
     _run_using_default_session(self, feed_dict, self.graph, session)
 
-_gradient_registry = registry.Registry("gradient")
+# TODO(b/185395742): Clean up usages of _gradient_registry
+gradient_registry = _gradient_registry = registry.Registry("gradient")
 
 
 @tf_export("RegisterGradient")
@@ -2671,7 +2672,7 @@ class RegisterGradient(object):
 
   def __call__(self, f):
     """Registers the function `f` as gradient function for `op_type`."""
-    _gradient_registry.register(f, self._op_type)
+    gradient_registry.register(f, self._op_type)
     return f
 
 
@@ -2707,7 +2708,7 @@ def no_gradient(op_type):
   """
   if not isinstance(op_type, six.string_types):
     raise TypeError("op_type must be a string")
-  _gradient_registry.register(None, op_type)
+  gradient_registry.register(None, op_type)
 
 
 # Aliases for the old names, will be eventually removed.
@@ -2728,7 +2729,7 @@ def get_gradient_function(op):
     op_type = op.get_attr("_gradient_op_type")
   except ValueError:
     op_type = op.type
-  return _gradient_registry.lookup(op_type)
+  return gradient_registry.lookup(op_type)
 
 
 def set_shape_and_handle_data_for_outputs(_):
@@ -5857,6 +5858,11 @@ def enable_eager_execution(config=None, device_policy=None,
   at program startup and not in a library (as most libraries should be usable
   both with and without eager execution).
 
+  @compatibility(TF2)
+  This function is not necessary if you are using TF2. Eager execution is
+  enabled by default.
+  @end_compatibility
+
   Args:
     config: (Optional.) A `tf.compat.v1.ConfigProto` to use to configure the
       environment in which operations are executed. Note that
@@ -6606,6 +6612,41 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
 
   def __exit__(self, *exc_info):
     return self._name_scope.__exit__(*exc_info)
+
+
+@tf_export("get_current_name_scope", v1=[])
+def get_current_name_scope():
+  """Returns current full name scope specified by `tf.name_scope(...)`s.
+
+  For example,
+  ```python
+  with tf.name_scope("outer"):
+    tf.get_current_name_scope()  # "outer"
+
+    with tf.name_scope("inner"):
+      tf.get_current_name_scope()  # "outer/inner"
+  ```
+
+  In other words, `tf.get_current_name_scope()` returns the op name prefix that
+  will be prepended to, if an op is created at that place.
+
+  Note that `@tf.function` resets the name scope stack as shown below.
+
+  ```
+  with tf.name_scope("outer"):
+
+    @tf.function
+    def foo(x):
+      with tf.name_scope("inner"):
+        return tf.add(x * x)  # Op name is "inner/Add", not "outer/inner/Add"
+  ```
+  """
+
+  ctx = context.context()
+  if ctx.executing_eagerly():
+    return ctx.scope_name.rstrip("/")
+  else:
+    return get_default_graph().get_name_scope()
 
 
 @tf_export("name_scope", v1=[])

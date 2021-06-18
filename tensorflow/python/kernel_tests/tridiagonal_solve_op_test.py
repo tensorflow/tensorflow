@@ -27,7 +27,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -61,7 +60,8 @@ def flags(*args):
 
 
 def _tfconst(array):
-  return constant_op.constant(array, dtypes.float64)
+  if array is not None:
+    return constant_op.constant(array, dtypes.float64)
 
 
 def _tf_ones(shape):
@@ -69,6 +69,20 @@ def _tf_ones(shape):
 
 
 class TridiagonalSolveOpTest(test.TestCase):
+
+  def _is_unimplemented(self):
+    unimplemented = False
+    pivoting = True
+    if hasattr(self, "pivoting"):
+      pivoting = self.pivoting
+    perturb_singular = False
+    if hasattr(self, "perturb_singular"):
+      perturb_singular = self.perturb_singular
+    if (test_util.is_xla_enabled() or
+        test.is_gpu_available(cuda_only=True)) and perturb_singular:
+      # Perturbed solve not supported on XLA or GPU.
+      unimplemented = True
+    return unimplemented, pivoting, perturb_singular
 
   def _test(self,
             diags,
@@ -78,25 +92,30 @@ class TridiagonalSolveOpTest(test.TestCase):
             transpose_rhs=False,
             conjugate_rhs=False):
     with self.cached_session():
-      pivoting = True
-      if hasattr(self, "pivoting"):
-        pivoting = self.pivoting
-      if test_util.is_xla_enabled() and pivoting:
-        # Pivoting is not supported by xla backends.
+      # Skip tests for combinations with missing implementations.
+      unimplemented, pivoting, perturb_singular = self._is_unimplemented()
+      if unimplemented:
         return
+
       result = linalg_impl.tridiagonal_solve(
           diags,
           rhs,
           diags_format,
           transpose_rhs,
           conjugate_rhs,
-          partial_pivoting=pivoting)
-      self.assertAllClose(self.evaluate(result), expected)
+          partial_pivoting=pivoting,
+          perturb_singular=perturb_singular)
+      result = self.evaluate(result)
+      if expected is None:
+        self.assertAllEqual(
+            np.zeros_like(result, dtype=np.bool), np.isfinite(result))
+      else:
+        self.assertAllClose(result, expected)
 
   def _testWithLists(self,
                      diags,
                      rhs,
-                     expected,
+                     expected=None,
                      diags_format="compact",
                      transpose_rhs=False,
                      conjugate_rhs=False):
@@ -105,15 +124,15 @@ class TridiagonalSolveOpTest(test.TestCase):
         transpose_rhs, conjugate_rhs)
 
   def _assertRaises(self, diags, rhs, diags_format="compact"):
-    pivoting = True
-    if hasattr(self, "pivoting"):
-      pivoting = self.pivoting
-    if test_util.is_xla_enabled() and pivoting:
-      # Pivoting is not supported by xla backends.
-      return
-    with self.assertRaises(ValueError):
+    # Skip tests for combinations with missing implementations.
+    _, pivoting, perturb_singular = self._is_unimplemented()
+    with self.assertRaises((NotImplementedError, ValueError)):
       linalg_impl.tridiagonal_solve(
-          diags, rhs, diags_format, partial_pivoting=pivoting)
+          diags,
+          rhs,
+          diags_format,
+          partial_pivoting=pivoting,
+          perturb_singular=perturb_singular)
 
   # Tests with various dtypes
 
@@ -174,19 +193,28 @@ class TridiagonalSolveOpTest(test.TestCase):
         diags=[[0], [3], [0]], rhs=[[6, 9, 12]], expected=[[2, 3, 4]])
 
   def test1x1NotInvertible(self):
-    if test_util.is_xla_enabled():
-      # XLA implementation does not check invertibility.
+    unimplemented, _, perturb_singular = self._is_unimplemented()
+    if unimplemented:
       return
-    with self.assertRaises(errors_impl.InvalidArgumentError):
-      self._testWithLists(diags=[[0], [0], [0]], rhs=[[6, 9, 12]], expected=[])
+    if perturb_singular:
+      self._testWithLists(
+          diags=[[0], [0], [0]],
+          rhs=[[6, 9, 12]],
+          expected=[[1.797693e+307, 2.696540e+307, 3.595386e+307]])
+    else:
+      self._testWithLists(diags=[[0], [0], [0]], rhs=[[6, 9, 12]])
 
   def test2x2NotInvertible(self):
-    if test_util.is_xla_enabled():
-      # XLA implementation does not check invertibility.
+    unimplemented, _, perturb_singular = self._is_unimplemented()
+    if unimplemented:
       return
-    with self.assertRaises(errors_impl.InvalidArgumentError):
+    if perturb_singular:
       self._testWithLists(
-          diags=[[3, 0], [1, 3], [0, 1]], rhs=[1, 4], expected=[])
+          diags=[[3, 0], [1, 3], [0, 1]],
+          rhs=[1, 4],
+          expected=[-1.35107989e+16, 4.50359963e+15])
+    else:
+      self._testWithLists(diags=[[3, 0], [1, 3], [0, 1]], rhs=[1, 4])
 
   # Other edge cases
 
@@ -206,15 +234,17 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=[5, -2, -5, 3])
 
   def testNotInvertible(self):
-    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
-      # CuSparse gtsv routines don't raise errors for non-invertible
-      # matrices.
+    unimplemented, _, perturb_singular = self._is_unimplemented()
+    if unimplemented:
       return
-    with self.assertRaises(errors_impl.InvalidArgumentError):
+    if perturb_singular:
       self._testWithLists(
           diags=[[2, -1, 1, 0], [1, 4, 1, -1], [0, 2, 0, 3]],
           rhs=[1, 2, 3, 4],
-          expected=[8, -3.5, 0, -4])
+          expected=[-7.88129935e+15, 3.94064967e+15, 1.75, 1.25])
+    else:
+      self._testWithLists(
+          diags=[[2, -1, 1, 0], [1, 4, 1, -1], [0, 2, 0, 3]], rhs=[1, 2, 3, 4])
 
   def testDiagonal(self):
     self._testWithLists(
@@ -402,9 +432,6 @@ class TridiagonalSolveOpTest(test.TestCase):
       with backprop.GradientTape() as tape_rhs:
         tape_diags.watch(diags)
         tape_rhs.watch(rhs)
-        if test_util.is_xla_enabled():
-          # Pivoting is not supported by xla backends.
-          return
         x = linalg_impl.tridiagonal_solve(
             diags,
             rhs,
@@ -558,9 +585,6 @@ class TridiagonalSolveOpTest(test.TestCase):
       return
     diags = array_ops.placeholder(dtypes.float64, shape=diags_shape)
     rhs = array_ops.placeholder(dtypes.float64, shape=rhs_shape)
-    if test_util.is_xla_enabled() and self.pivoting:
-      # Pivoting is not supported by xla backends.
-      return
     x = linalg_impl.tridiagonal_solve(
         diags, rhs, diags_format, partial_pivoting=self.pivoting)
     with self.cached_session() as sess:
@@ -636,9 +660,6 @@ class TridiagonalSolveOpTest(test.TestCase):
   def testSequenceFormatWithUnknownDims(self):
     if context.executing_eagerly():
       return
-    if test_util.is_xla_enabled() and self.pivoting:
-      # Pivoting is not supported by xla backends.
-      return
     superdiag = array_ops.placeholder(dtypes.float64, shape=[None])
     diag = array_ops.placeholder(dtypes.float64, shape=[None])
     subdiag = array_ops.placeholder(dtypes.float64, shape=[None])
@@ -665,7 +686,9 @@ class TridiagonalSolveOpTest(test.TestCase):
     sizes = [(100000, 1, 1), (1000000, 1, 1), (10000000, 1, 1), (100000, 10, 1),
              (100000, 100, 1), (10000, 1, 10), (10000, 1, 100)]
 
-    pivoting_options = [(True, "pivoting"), (False, "no_pivoting")]
+    pivoting_options = [(True, False, "pivoting_perturb_singular"),
+                        (True, False, "pivoting"),
+                        (False, False, "no_pivoting")]
 
     def _generateData(self, matrix_size, batch_size, num_rhs, seed=42):
       np.random.seed(seed)
@@ -696,18 +719,18 @@ class TridiagonalSolveOpTest(test.TestCase):
           itertools.product(devices, self.pivoting_options, self.sizes):
 
         device_id, device_name = device_option
-        pivoting, pivoting_name = pivoting_option
+        pivoting, perturb_singular, pivoting_name = pivoting_option
         matrix_size, batch_size, num_rhs = size_option
 
         with ops.Graph().as_default(), \
             session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device(device_id):
           diags, rhs = generate_data_fn(matrix_size, batch_size, num_rhs)
-          # Pivoting is not supported by XLA backends.
-          if test.is_xla_enabled() and pivoting:
-            return
           x = linalg_impl.tridiagonal_solve(
-              diags, rhs, partial_pivoting=pivoting)
+              diags,
+              rhs,
+              partial_pivoting=pivoting,
+              perturb_singular=perturb_singular)
           self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
@@ -743,16 +766,19 @@ if __name__ == "__main__":
     # self.pivoting to corresponding value.
     delattr(TridiagonalSolveOpTest, name)
 
-    def decor(test_fun, pivoting):
+    def decor(test_fun, pivoting, perturb_singular=False):
 
       def wrapped(instance):
         instance.pivoting = pivoting
+        instance.perturb_singular = perturb_singular
         test_fun(instance)
 
       return wrapped
 
     setattr(TridiagonalSolveOpTest, name + "_pivoting",
             decor(fun, pivoting=True))
+    setattr(TridiagonalSolveOpTest, name + "_perturb_singular",
+            decor(fun, pivoting=True, perturb_singular=True))
     if not hasattr(fun, FLAG_REQUIRES_PIVOTING):
       setattr(TridiagonalSolveOpTest, name + "_noPivoting",
               decor(fun, pivoting=False))

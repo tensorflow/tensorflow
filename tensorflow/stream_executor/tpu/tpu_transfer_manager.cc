@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/tpu/tpu_api.h"
@@ -320,6 +321,29 @@ Status TpuTransferManager::LinearizeToBuffers(
 
   ApiConverter::Free(&c_literal);
   return status.status();
+}
+
+Status TpuTransferManager::ReadDynamicShapes(se::Stream* stream,
+                                             xla::ShapedBuffer* device_buffer,
+                                             xla::Shape* device_shape) {
+  XLA_ShapedBuffer c_device_buffer;
+  XLA_Shape c_device_shape;
+  ApiConverter::ToC(*device_buffer, &c_device_buffer);
+  ApiConverter::ToC(*device_shape, &c_device_shape);
+  XLA_Shape c_updated_shape;
+  StatusHelper status;
+  ExecutorApiFn()->TpuTransferManager_ReadDynamicShapesFn(
+      TpuPlatform::GetRegisteredPlatform()->LookupStream(
+          stream->implementation()),
+      &c_device_buffer, c_device_shape, &c_updated_shape, status.c_status);
+  ApiConverter::Free(&c_device_buffer);
+  ApiConverter::Free(&c_device_shape);
+  if (!status.ok()) {
+    return status.status();
+  }
+  *device_shape = ApiConverter::FromC(&c_updated_shape);
+  ApiConverter::Free(&c_updated_shape);
+  return Status::OK();
 }
 
 }  // namespace tpu

@@ -4,6 +4,7 @@
 
 [![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=plastic)](https://badge.fury.io/py/tensorflow)
 [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
 
 **`Documentation`** |
 ------------------- |
@@ -101,6 +102,9 @@ open-source software development:
 
 ## Continuous build status
 
+You can find more community-supported platforms and configurations in the
+[TensorFlow SIG Build community builds table](https://github.com/tensorflow/build#community-supported-tensorflow-builds).
+
 ### Official Builds
 
 Build Type                    | Status                                                                                                                                                                                             | Artifacts
@@ -119,12 +123,6 @@ Build Type                    | Status                                          
 **Libtensorflow Linux GPU**   | Status Temporarily Unavailable | [Nightly Binary](https://storage.googleapis.com/libtensorflow-nightly/prod/tensorflow/release/ubuntu_16/latest/gpu/ubuntu_gpu_libtensorflow_binaries.tar.gz) [Official GCS](https://storage.googleapis.com/tensorflow/)
 **Libtensorflow Windows CPU** | Status Temporarily Unavailable | [Nightly Binary](https://storage.googleapis.com/libtensorflow-nightly/prod/tensorflow/release/windows/latest/cpu/windows_cpu_libtensorflow_binaries.tar.gz) [Official GCS](https://storage.googleapis.com/tensorflow/)
 **Libtensorflow Windows GPU** | Status Temporarily Unavailable | [Nightly Binary](https://storage.googleapis.com/libtensorflow-nightly/prod/tensorflow/release/windows/latest/gpu/windows_gpu_libtensorflow_binaries.tar.gz) [Official GCS](https://storage.googleapis.com/tensorflow/)
-
-### Community Supported Builds
-
-See
-[TensorFlow SIG Build](https://github.com/tensorflow/build#community-supported-tensorflow-builds)
-to find our list of community-supported TensorFlow builds.
 
 ## Resources
 

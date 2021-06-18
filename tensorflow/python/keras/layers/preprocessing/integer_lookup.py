@@ -62,13 +62,13 @@ class IntegerLookup(index_lookup.IndexLookup):
       includes the OOV and mask tokens. Default to None.
     num_oov_indices: The number of out-of-vocabulary tokens to use. If this
       value is more than 1, OOV inputs are modulated to determine their OOV
-      value. If this value is 0, OOV inputs will map to -1 when `output_mode` is
-      `"int"` and are dropped otherwise. Defaults to 1.
+      value. If this value is 0, OOV inputs will cause an error when calling the
+      layer. Defaults to 1.
     mask_token: An integer token that represents masked inputs. When
       `output_mode` is `"int"`, the token is included in vocabulary and mapped
       to index 0. In other output modes, the token will not appear in the
       vocabulary and instances of the mask token in the input will be dropped.
-      If set to None, no mask term will be added. Defaults to 0.
+      If set to None, no mask term will be added. Defaults to None.
     oov_token: Only used when `invert` is True. The token to return for OOV
       indices. Defaults to -1.
     vocabulary: An optional list of integer tokens, or a path to a text file
@@ -79,13 +79,19 @@ class IntegerLookup(index_lookup.IndexLookup):
       map indices to vocabulary items instead of mapping vocabulary items to
       indices. Default to False.
     output_mode: Specification for the output of the layer. Defaults to `"int"`.
-      Values can be `"int"`, `"multi_hot"`, `"count"`, or `"tf_idf"` configuring
-      the layer as follows:
+      Values can be `"int"`, `"one_hot"`, `"multi_hot"`, `"count"`, or
+      `"tf_idf"` configuring the layer as follows:
         - `"int"`: Return the vocabulary indices of the input tokens.
-        - `"multi_hot"`: Outputs a single int array per sample, of either
-          vocabulary size or `max_tokens` size, containing 1s in all elements
-          where the token mapped to that index exists at least once in the
-          sample.
+        - `"one_hot"`: Encodes each individual element in the input into an
+          array the same size as the vocabulary, containing a 1 at the element
+          index. If the last dimension is size 1, will encode on that dimension.
+          If the last dimension is not size 1, will append a new dimension for
+          the encoded output.
+        - `"multi_hot"`: Encodes each sample in the input into a single array
+          the same size as the vocabulary, containing a 1 for each vocabulary
+          term present in the sample. Treats the last dimension as the sample
+          dimension, if input shape is (..., sample_length), output shape will
+          be (..., num_tokens).
         - `"count"`: As `"multi_hot"`, but the int array contains a count of the
           number of times the token at that index appeared in the sample.
         - `"tf_idf"`: As `"multi_hot"`, but the TF-IDF algorithm is applied to
@@ -110,8 +116,8 @@ class IntegerLookup(index_lookup.IndexLookup):
   >>> layer = IntegerLookup(vocabulary=vocab)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[2, 4, 5],
-         [5, 1, 3]])>
+  array([[1, 3, 4],
+         [4, 0, 2]])>
 
   **Creating a lookup layer with an adapted vocabulary**
 
@@ -122,19 +128,19 @@ class IntegerLookup(index_lookup.IndexLookup):
   >>> layer = IntegerLookup()
   >>> layer.adapt(data)
   >>> layer.get_vocabulary()
-  [0, -1, 42, 1138, 1000, 36, 12]
+  [-1, 42, 1138, 1000, 36, 12]
 
-  Note how the mask token 0 and the OOV token -1 have been added to the
-  vocabulary. The remaining tokens are sorted by frequency (1138, which has
-  2 occurrences, is first) then by inverse sort order.
+  Note that the OOV token -1 have been added to the vocabulary. The remaining
+  tokens are sorted by frequency (42, which has 2 occurrences, is first) then
+  by inverse sort order.
 
   >>> data = tf.constant([[12, 1138, 42], [42, 1000, 36]])
   >>> layer = IntegerLookup()
   >>> layer.adapt(data)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[6, 3, 2],
-         [2, 4, 5]])>
+  array([[5, 2, 1],
+         [1, 3, 4]])>
 
 
   **Lookups with multiple OOV indices**
@@ -149,13 +155,29 @@ class IntegerLookup(index_lookup.IndexLookup):
   >>> layer = IntegerLookup(vocabulary=vocab, num_oov_indices=2)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
-  array([[3, 5, 6],
-         [2, 1, 4]])>
+  array([[2, 4, 5],
+         [1, 0, 3]])>
 
-  Note that the output for OOV token 37 is 2, while the output for OOV token
-  1000 is 1. The in-vocab terms have their output index increased by 1 from
-  earlier examples (12 maps to 3, etc) in order to make space for the extra OOV
+  Note that the output for OOV token 37 is 1, while the output for OOV token
+  1000 is 0. The in-vocab terms have their output index increased by 1 from
+  earlier examples (12 maps to 2, etc) in order to make space for the extra OOV
   token.
+
+  **One-hot output**
+
+  Configure the layer with `output_mode='one_hot'`. Note that the first
+  `num_oov_indices` dimensions in the ont_hot encoding represent OOV values.
+
+  >>> vocab = [12, 36, 1138, 42]
+  >>> data = tf.constant([12, 36, 1138, 42, 7]) # Note OOV tokens
+  >>> layer = IntegerLookup(vocabulary=vocab, output_mode='one_hot')
+  >>> layer(data)
+  <tf.Tensor: shape=(5, 5), dtype=float32, numpy=
+    array([[0., 1., 0., 0., 0.],
+           [0., 0., 1., 0., 0.],
+           [0., 0., 0., 1., 0.],
+           [0., 0., 0., 0., 1.],
+           [1., 0., 0., 0., 0.]], dtype=float32)>
 
   **Multi-hot output**
 
@@ -227,16 +249,14 @@ class IntegerLookup(index_lookup.IndexLookup):
   vocab in this example.)
 
   >>> vocab = [12, 36, 1138, 42]
-  >>> data = tf.constant([[2, 4, 5], [5, 1, 3]])
+  >>> data = tf.constant([[1, 3, 4], [4, 0, 2]])
   >>> layer = IntegerLookup(vocabulary=vocab, invert=True)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
   array([[  12, 1138,   42],
          [  42,   -1,   36]])>
 
-  Note that the first two indices correspond to the mask and oov token by
-  default. This behavior can be disabled by setting `mask_token=None` and
-  `num_oov_indices=0`.
+  Note that the first index correspond to the oov token by default.
 
 
   **Forward and inverse lookup pairs**
@@ -258,13 +278,13 @@ class IntegerLookup(index_lookup.IndexLookup):
   1000 was not in the vocabulary - it got represented as an OOV, and all OOV
   tokens are returned as -1 in the inverse layer. Also, note that for the
   inverse to work, you must have already set the forward layer vocabulary
-  either directly or via `fit()` before calling `get_vocabulary()`.
+  either directly or via `adapt()` before calling `get_vocabulary()`.
   """
 
   def __init__(self,
                max_tokens=None,
                num_oov_indices=1,
-               mask_token=0,
+               mask_token=None,
                oov_token=-1,
                vocabulary=None,
                invert=False,
@@ -276,15 +296,20 @@ class IntegerLookup(index_lookup.IndexLookup):
 
     # Support deprecated args for this layer.
     if "max_values" in kwargs:
-      logging.warning("max_values is deprecated, use max_tokens instead.")
+      logging.log_first_n(logging.WARN,
+                          "max_values is deprecated, use max_tokens instead.",
+                          1)
       max_tokens = kwargs["max_values"]
       del kwargs["max_values"]
     if "mask_value" in kwargs:
-      logging.warning("mask_value is deprecated, use mask_token instead.")
+      logging.log_first_n(logging.WARN,
+                          "mask_value is deprecated, use mask_token instead.",
+                          1)
       mask_token = kwargs["mask_value"]
       del kwargs["mask_value"]
     if "oov_value" in kwargs:
-      logging.warning("oov_value is deprecated, use oov_token instead.")
+      logging.log_first_n(logging.WARN,
+                          "oov_value is deprecated, use oov_token instead.", 1)
       oov_token = kwargs["oov_value"]
       del kwargs["oov_value"]
 

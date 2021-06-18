@@ -182,7 +182,7 @@ static void BM_Helper(::testing::benchmark::State& state, int width,
   // Randomly initialize the input.
   Tensor x(DT_FLOAT, TensorShape({tensor_size, 1}));
 
-  testing::SetLabel(
+  state.SetLabel(
       strings::StrCat(def.node_size(), " nodes; ",
                       use_multiple_devices ? "Multi device" : "Single device",
                       "; tensor bytes/send: ", tensor_size * sizeof(float)));

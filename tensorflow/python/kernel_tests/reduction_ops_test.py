@@ -657,9 +657,16 @@ class ProdReductionTest(BaseReductionTest):
   def testInt32(self):
     # Numpy automatically upgrades the type of np.prod from int32 to int64, so
     # Numpy does not overflow an int32 np.prod while TensorFlow does. To avoid
-    # overflow, divide the incremental int32 array by 2.
-    for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.int32) / 2
+    # overflow, limit array values.
+    for rank in range(1, _MAX_RANK):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int32) % 5 + 1
+      self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testInt64(self):
+    for rank in range(1, _MAX_RANK):
+      # Avoid overflow by limiting array values.
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int64) % 11 + 1
       self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1

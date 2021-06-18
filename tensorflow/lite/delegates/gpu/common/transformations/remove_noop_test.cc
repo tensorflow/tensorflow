@@ -54,7 +54,7 @@ TEST(RemoveSingleInputAdd, Smoke) {
   ASSERT_EQ(3, graph.values().size());
 
   auto transformation = NewRemoveSingleInputAdd();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("noop", transformation.get());
 
   EXPECT_EQ(1, graph.nodes().size());
@@ -84,7 +84,7 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_TensorHWC) {
   ASSERT_EQ(3, graph.values().size());
 
   auto transformation = NewRemoveSingleInputAdd();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("noop", transformation.get());
 
   EXPECT_EQ(2, graph.nodes().size());
@@ -111,7 +111,7 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_LinearTensor) {
   ASSERT_EQ(3, graph.values().size());
 
   auto transformation = NewRemoveSingleInputAdd();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("noop", transformation.get());
 
   EXPECT_EQ(2, graph.nodes().size());
@@ -138,7 +138,7 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Scalar) {
   ASSERT_EQ(3, graph.values().size());
 
   auto transformation = NewRemoveSingleInputAdd();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("noop", transformation.get());
 
   EXPECT_EQ(2, graph.nodes().size());
@@ -166,7 +166,7 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Multiple) {
   ASSERT_EQ(4, graph.values().size());
 
   auto transformation = NewRemoveSingleInputAdd();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("noop", transformation.get());
 
   ASSERT_EQ(3, graph.nodes().size());
@@ -196,7 +196,7 @@ TEST(RemoveDegenerateUpsampling, Smoke) {
   ASSERT_EQ(3, graph.values().size());
 
   auto transformation = NewRemoveDegenerateUpsampling();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("noop", transformation.get());
 
   ASSERT_EQ(1, graph.nodes().size());
@@ -234,7 +234,7 @@ TEST(RemoveIdentityReshape, Smoke) {
               UnorderedElementsAre(simple_node, producer_node, consumer_node));
 
   auto transformation = NewRemoveIdentityReshape();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("noop", transformation.get());
 
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));

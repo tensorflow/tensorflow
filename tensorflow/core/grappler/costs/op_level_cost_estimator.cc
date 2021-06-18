@@ -736,28 +736,37 @@ DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
       }
     }
   } else if (device.type() == "GPU") {
-    const std::string architecture = device.environment().at("architecture");
-    int cores_per_multiprocessor;
-    if (architecture < "3") {
-      // Fermi
-      cores_per_multiprocessor = 32;
-    } else if (architecture < "4") {
-      // Kepler
-      cores_per_multiprocessor = 192;
-    } else if (architecture < "6") {
-      // Maxwell
-      cores_per_multiprocessor = 128;
+    const auto& device_env = device.environment();
+    auto it = device_env.find("architecture");
+    if (it != device_env.end()) {
+      const std::string architecture = device_env.at("architecture");
+      int cores_per_multiprocessor;
+      if (architecture < "3") {
+        // Fermi
+        cores_per_multiprocessor = 32;
+      } else if (architecture < "4") {
+        // Kepler
+        cores_per_multiprocessor = 192;
+      } else if (architecture < "6") {
+        // Maxwell
+        cores_per_multiprocessor = 128;
+      } else {
+        // Pascal (compute capability version 6) and Volta (compute capability
+        // version 7)
+        cores_per_multiprocessor = 64;
+      }
+      gflops = device.num_cores() * device.frequency() * 1e-3 *
+               cores_per_multiprocessor * kOpsPerMac;
+      if (device.bandwidth() > 0) {
+        gb_per_sec = device.bandwidth() / 1e6;
+      } else {
+        gb_per_sec = 100;
+      }
     } else {
-      // Pascal (compute capability version 6) and Volta (compute capability
-      // version 7)
-      cores_per_multiprocessor = 64;
-    }
-    gflops = device.num_cores() * device.frequency() * 1e-3 *
-             cores_per_multiprocessor * kOpsPerMac;
-    if (device.bandwidth() > 0) {
-      gb_per_sec = device.bandwidth() / 1e6;
-    } else {
-      gb_per_sec = 100;
+      // Architecture is not available (ex: pluggable device), return default
+      // value.
+      gflops = 100;     // Dummy value;
+      gb_per_sec = 12;  // default PCIe x16 gen3.
     }
   } else {
     LOG_EVERY_N(WARNING, 1000) << "Unknown device type: " << device.type()

@@ -1371,7 +1371,10 @@ Status FunctionLibraryDefinition::AddLibrary(
   for (auto iter : clone.function_defs_) {
     s = AddHelper(iter.second, &added);
     if (!s.ok()) {
-      Remove(funcs, funcs_with_grads);
+      Status remove_status = Remove(funcs, funcs_with_grads);
+      if (!remove_status.ok()) {
+        return remove_status;
+      }
       return s;
     }
     if (added) {
@@ -1384,7 +1387,10 @@ Status FunctionLibraryDefinition::AddLibrary(
     grad.set_gradient_func(iter.second);
     s = AddGradientDefHelper(grad, &added);
     if (!s.ok()) {
-      Remove(funcs, funcs_with_grads);
+      Status remove_status = Remove(funcs, funcs_with_grads);
+      if (!remove_status.ok()) {
+        return remove_status;
+      }
       return s;
     }
     if (added) {
@@ -1406,7 +1412,10 @@ Status FunctionLibraryDefinition::AddLibrary(
   for (const FunctionDef& fdef : lib_def.function()) {
     s = AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added);
     if (!s.ok()) {
-      Remove(funcs, funcs_with_grads);
+      Status remove_status = Remove(funcs, funcs_with_grads);
+      if (!remove_status.ok()) {
+        return remove_status;
+      }
       return s;
     }
     if (added) {
@@ -1416,7 +1425,10 @@ Status FunctionLibraryDefinition::AddLibrary(
   for (const GradientDef& grad : lib_def.gradient()) {
     s = AddGradientDefHelper(grad, &added);
     if (!s.ok()) {
-      Remove(funcs, funcs_with_grads);
+      Status remove_status = Remove(funcs, funcs_with_grads);
+      if (!remove_status.ok()) {
+        return remove_status;
+      }
       return s;
     }
     if (added) {
@@ -1476,17 +1488,23 @@ Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   return Status::OK();
 }
 
-void FunctionLibraryDefinition::Remove(
+Status FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
+  Status s;
   for (const string& f : funcs) {
-    Status s = RemoveFunctionHelper(f);
-    DCHECK(s.ok());
+    s = RemoveFunctionHelper(f);
+    if (!s.ok()) {
+      return s;
+    }
   }
   for (const string& f : funcs_with_grads) {
-    Status s = RemoveGradient(f);
-    DCHECK(s.ok());
+    s = RemoveGradient(f);
+    if (!s.ok()) {
+      return s;
+    }
   }
+  return Status::OK();
 }
 
 string FunctionLibraryDefinition::FindGradient(const string& func) const {

@@ -432,7 +432,7 @@ cc_test(
     srcs = ["transpose_utils_test.cc"],
     deps = [
         ":transpose_utils",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -467,6 +467,7 @@ cc_library(
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/conv3d.h",
+        "reference/conv3d_transpose.h",
         "reference/cumsum.h",
         "reference/densify.h",
         "reference/depth_to_space.h",

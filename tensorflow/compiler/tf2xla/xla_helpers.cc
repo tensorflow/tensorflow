@@ -16,9 +16,10 @@ limitations under the License.
 // This file defines helper routines for XLA compilation.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/tf2xla/lib/util.h"
 
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -27,8 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace tensorflow {
 
@@ -128,7 +133,7 @@ xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
 
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
   return [](const TensorShape& shape, DataType dtype,
-            bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
+            bool use_fast_memory) -> StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
     return xla_shape;
@@ -177,7 +182,7 @@ Status RewriteLayoutWithShardedShape(
 
 // There is a shape_representation_fn or sharding for an output, this function
 // uses a reshape to fix the layout.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     absl::optional<xla::OpSharding> sharding, bool fast_mem) {
@@ -213,6 +218,87 @@ xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     }
   }
   return xla::Reshape(to_shape, original);
+}
+
+StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
+    OpKernelContext* ctx,
+    const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
+        collective_reduce_info) {
+  static const int kTimeoutSeconds = 30;
+  if (!collective_reduce_info) {
+    // An empty device assignment is sufficient for the case where no
+    // collectives are present.
+    return {{absl::nullopt}};
+  }
+  if (ctx->collective_executor() == nullptr) {
+    return errors::InvalidArgument(
+        "CollectiveExecutor is required but not available");
+  }
+
+  auto params = core::RefCountPtr<CollectiveParams>(new CollectiveParams());
+  params->name = "xla-reduction-compilation";
+  params->group.device_type =
+      DeviceType{static_cast<Device*>(ctx->device())->device_type()};
+  params->group.group_size = collective_reduce_info->group_size;
+  params->group.group_key = collective_reduce_info->group_key;
+  params->instance.type = REDUCTION_COLLECTIVE;
+  params->instance.impl_details.communication_hint = "nccl";
+  params->instance.impl_details.timeout_seconds = kTimeoutSeconds;
+  params->instance.impl_details.collective_name = "NcclReduce";
+  // TODO(cheshire): Avoid passing a dummy shape, TF runtime does not resolve
+  // devices otherwise.
+  params->instance.shape = TensorShape({1});
+
+  Status st;
+  absl::Notification n;
+  ctx->collective_executor()->CompleteParamsAsync(
+      ctx->device()->attributes(), params.get(), ctx->cancellation_manager(),
+      [&](const Status& s) {
+        st = s;
+        n.Notify();
+      });
+  if (!n.WaitForNotificationWithTimeout(absl::Seconds(kTimeoutSeconds))) {
+    return errors::InvalidArgument("Timeout reached");
+  }
+  TF_RETURN_IF_ERROR(st);
+  const std::vector<std::string>& devices = params->group.device_names;
+
+  xla::DeviceAssignment out(devices.size(), 1);
+  for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
+    const std::string& device_name = devices[device_idx];
+    Device* resolved_device = nullptr;
+    TF_RETURN_IF_ERROR(ctx->function_library()->device_mgr()->LookupDevice(
+        device_name, &resolved_device));
+
+    // TODO(cheshire): CPU support.
+    // Both GPU and TPU uses GpuDeviceInfo, see DeviceBase::GpuDeviceInfo.
+    const DeviceBase::GpuDeviceInfo* gpu_device_info =
+        resolved_device->tensorflow_gpu_device_info();
+    if (!gpu_device_info || !gpu_device_info->stream) {
+      return errors::Internal(
+          "CollectiveReduceV2Op compilation is only supported on GPUs");
+    }
+
+    out(device_idx, 0) = gpu_device_info->stream->parent()->device_ordinal();
+  }
+
+  return {{out}};
+}
+
+std::string DefinitionLocationMsg(
+    const absl::optional<ManagedStackTrace>& stack_trace) {
+  if (stack_trace) {
+    std::vector<StackFrame> stack_frames =
+        stack_trace->ToStackFrames({}, IsInternalFrameForFilename,
+                                   /*reverse_traversal=*/true,
+                                   /*limit=*/1);
+    if (!stack_frames.empty()) {
+      const StackFrame& last_frame = stack_frames[0];
+      return absl::StrCat(" (defined @ ", last_frame.file_name, ":",
+                          last_frame.line_number, ")");
+    }
+  }
+  return "";
 }
 
 }  // end namespace tensorflow

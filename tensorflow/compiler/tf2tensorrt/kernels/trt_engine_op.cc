@@ -341,7 +341,7 @@ StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
         lib->GetFunctionLibraryDefinition()->Find(func_.name());
     if (!fdef) {
       return errors::Internal(
-          StrCat("Cann't find FunctionDef for", func_.name()));
+          StrCat("Can't find FunctionDef for ", func_.name()));
     }
     bool ints_on_device =
         fdef->attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
@@ -484,9 +484,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             "without the input_shapes attribute), then you need to convert the "
             "original model again to TensorRT in order to set the attribute "
             "input_shapes."));
-    OP_REQUIRES(context, !calibration_mode_,
-                errors::InvalidArgument(
-                    "Explicit batch mode does not support calibration"));
 
     string profile_strategy_name;
     status = context->GetAttr("profile_strategy", &profile_strategy_name);
@@ -504,6 +501,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
       [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
   VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
           << has_dynamic_shape_input_;
+
+  if (has_dynamic_shape_input_ && !use_implicit_batch_) {
+    OP_REQUIRES(context, !calibration_mode_,
+                errors::InvalidArgument(
+                    "Dynamic shape mode does not support calibration"));
+  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -572,8 +575,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                           "Unsupported data type encountered in input ", i),
                       dummy_async_helper);
     // Check the allocated buffer is sufficient for input
-    const auto device_tensor =
-        calib_ctx->device_tensors_.at(i).AccessTensor(ctx);
+    const auto device_tensor = &calib_ctx->device_tensors_.at(i);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     input_data.emplace(StrCat(IONamePrefixes::kInputPHName, i), data_address);
   }
@@ -1122,18 +1124,19 @@ Status TRTEngineOp::AllocateCalibrationResources(
     // allocate workspace on device for inputs
     const Tensor& t = ctx->input(i);
     shapes.emplace_back(t.shape());
-    Tensor* device_tensor;
-    TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-        t.dtype(), t.shape(), &cres->device_tensors_.at(i), &device_tensor));
-    CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
-    void* device_address = GetTensorAddress(device_tensor);
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_temp(t.dtype(), t.shape(), &cres->device_tensors_.at(i)));
+    CHECK_EQ(t.TotalBytes(),  // Crash OK
+             (cres->device_tensors_.at(i)).TotalBytes());
+    void* device_address = GetTensorAddress(&cres->device_tensors_.at(i));
     if (device_address == nullptr) {
       return errors::InvalidArgument(
           "Unsupported data type encountered in input ", i);
     }
     cres->device_buffers_.emplace(
         StrCat(IONamePrefixes::kInputPHName, i),
-        std::pair<void*, size_t>(device_address, device_tensor->TotalBytes()));
+        std::pair<void*, size_t>(device_address,
+                                 cres->device_tensors_.at(i).TotalBytes()));
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));

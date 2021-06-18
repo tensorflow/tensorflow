@@ -245,7 +245,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
     // TODO(b/149099381): Remove this part after kernels are added as
     // builtin op.
     if (operator_name == "ASSIGN_VARIABLE" ||
-        operator_name == "READ_VARIABLE") {
+        operator_name == "READ_VARIABLE" || operator_name == "VAR_HANDLE_OP") {
       continue;
     }
     os << "  if (isa<mlir::TFL::" << op_name << ">(op))\n"

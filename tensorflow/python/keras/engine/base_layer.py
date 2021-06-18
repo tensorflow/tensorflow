@@ -485,12 +485,38 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     method to support masking.
 
     Args:
-        inputs: Input tensor, or list/tuple of input tensors.
-        *args: Additional positional arguments. Currently unused.
-        **kwargs: Additional keyword arguments. Currently unused.
+      inputs: Input tensor, or dict/list/tuple of input tensors.
+        The first positional `inputs` argument is subject to special rules:
+        - `inputs` must be explicitly passed. A layer cannot have zero
+          arguments, and `inputs` cannot be provided via the default value
+          of a keyword argument.
+        - NumPy array or Python scalar values in `inputs` get cast as tensors.
+        - Keras mask metadata is only collected from `inputs`.
+        - Layers are built (`build(input_shape)` method)
+          using shape info from `inputs` only.
+        - `input_spec` compatibility is only checked against `inputs`.
+        - Mixed precision input casting is only applied to `inputs`.
+          If a layer has tensor arguments in `*args` or `**kwargs`, their
+          casting behavior in mixed precision should be handled manually.
+        - The SavedModel input specification is generated using `inputs` only.
+        - Integration with various ecosystem packages like TFMOT, TFLite,
+          TF.js, etc is only supported for `inputs` and not for tensors in
+          positional and keyword arguments.
+      *args: Additional positional arguments. May contain tensors, although
+        this is not recommended, for the reasons above.
+      **kwargs: Additional keyword arguments. May contain tensors, although
+        this is not recommended, for the reasons above.
+        The following optional keyword arguments are reserved:
+        - `training`: Boolean scalar tensor of Python boolean indicating
+          whether the `call` is meant for training or inference.
+        - `mask`: Boolean input mask. If the layer's `call()` method takes a
+          `mask` argument, its default value will be set to the mask generated
+          for `inputs` by the previous layer (if `input` did come from a layer
+          that generated a corresponding mask, i.e. if it came from a Keras
+          layer with masking support).
 
     Returns:
-        A tensor or list/tuple of tensors.
+      A tensor or list/tuple of tensors.
     """
     return inputs
 
@@ -870,7 +896,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       input_masks = nest.map_structure(
           keras_tensor.keras_tensor_to_placeholder, input_masks)
 
-      with backend.name_scope(self._name_scope()):
+      with backend.name_scope(self._name_scope()):  # pylint: disable=not-callable
         with autocast_variable.enable_auto_cast_variables(
             self._compute_dtype_object):
           # Build layer if applicable (if the `build` method has been
@@ -1016,7 +1042,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         call_fn = self.call
         name_scope = self._name
       else:
-        name_scope = self._name_scope()  # Avoid autoincrementing.
+        name_scope = self._name_scope()  # Avoid autoincrementing.  # pylint: disable=not-callable
         call_fn = self._autographed_call()
 
       with ops.name_scope_v2(name_scope):
@@ -1788,6 +1814,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     backend.batch_set_value(weight_value_tuples)
 
+    # Perform any layer defined finalization of the layer state.
+    for layer in self._flatten_layers():
+      layer.finalize_state()
+
   def get_weights(self):
     """Returns the current weights of the layer, as NumPy arrays.
 
@@ -1831,6 +1861,16 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       else:
         output_weights.append(weight)
     return backend.batch_get_value(output_weights)
+
+  @doc_controls.do_not_generate_docs
+  def finalize_state(self):
+    """Finalizes the layers state after updating layer weights.
+
+    This function can be subclassed in a layer and will be called after updating
+    a layer weights. It can be overridden to finalize any additional layer state
+    after a weight update.
+    """
+    pass
 
   @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
@@ -2375,7 +2415,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     value = dtypes.as_dtype(value).name
     self._set_dtype_policy(policy.Policy(value))
 
-  def _name_scope(self):
+  def _name_scope(self):  # pylint: disable=method-hidden
     if not tf2.enabled():
       return self.name
     name_scope = self.name
@@ -2707,7 +2747,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # other attributes referencing it.
     reference_counts = self._obj_reference_counts
     if existing_value not in reference_counts:
-      super(tracking.AutoTrackable, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
       return
 
     reference_count = reference_counts[existing_value]
@@ -2715,24 +2755,24 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # There are other remaining references. We can't remove this object from
       # _layers etc.
       reference_counts[existing_value] = reference_count - 1
-      super(tracking.AutoTrackable, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
       return
     else:
       # This is the last remaining reference.
       del reference_counts[existing_value]
 
-    super(tracking.AutoTrackable, self).__delattr__(name)
+    super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
 
     if (isinstance(existing_value, Layer)
         or base_layer_utils.has_weights(existing_value)):
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_self_tracked_trackables',
           [l for l in self._self_tracked_trackables if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_trainable_weights',
           [w for w in self._trainable_weights if w is not existing_value])
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
 
@@ -2742,7 +2782,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
       try:
-        super(tracking.AutoTrackable, self).__setattr__(name, value)
+        super(tracking.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
       except AttributeError:
         raise AttributeError(
             ('Can\'t set the attribute "{}", likely because it conflicts with '
@@ -2807,7 +2847,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     # TODO(b/180760306) Skip the auto trackable from tf.Module to keep status
     # quo. See the comment at __delattr__.
-    super(tracking.AutoTrackable, self).__setattr__(name, value)
+    super(tracking.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
 
   def _gather_children_attribute(self, attribute):
     assert attribute in {
@@ -3008,6 +3048,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def _tracking_metadata(self):
+    """Info about this layer to be saved into the SavedModel."""
     return self._trackable_saved_model_saver.tracking_metadata
 
   def _list_extra_dependencies_for_serialization(self, serialization_cache):

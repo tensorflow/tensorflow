@@ -18,7 +18,7 @@ package(
     licenses = ["notice"],
 )
 
-# Export a few files for use on Android.
+# Export files for use on Android.
 exports_files([
     "captured_function.cc",
     "captured_function.h",
@@ -26,16 +26,23 @@ exports_files([
     "dataset_utils.h",
     "name_utils.cc",
     "name_utils.h",
-    "split_utils.h",
+    "rewrite_utils.cc",
+    "rewrite_utils.h",
+    "root_dataset.cc",
+    "root_dataset.h",
     "split_utils.cc",
+    "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
+    "unbounded_thread_pool.cc",
+    "unbounded_thread_pool.h",
 ])
 
 cc_library(
     name = "captured_function",
     srcs = ["captured_function.cc"],
     hdrs = ["captured_function.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":dataset_utils",
         ":stats_utils",
@@ -96,6 +103,7 @@ cc_library(
     testonly = 1,
     srcs = ["dataset_test_base.cc"],
     hdrs = ["dataset_test_base.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":name_utils",
         ":split_utils",
@@ -120,6 +128,7 @@ cc_library(
     name = "dataset_utils",
     srcs = ["dataset_utils.cc"],
     hdrs = ["dataset_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -144,6 +153,8 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:str_util",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -182,6 +193,7 @@ cc_library(
     name = "name_utils",
     srcs = ["name_utils.cc"],
     hdrs = ["name_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -217,10 +229,12 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -234,6 +248,7 @@ cc_library(
         ":rewrite_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:stringprintf",
@@ -315,11 +330,14 @@ cc_library(
     srcs = ["standalone.cc"],
     hdrs = ["standalone.h"],
     deps = [
+        ":root_dataset",
+        ":unbounded_thread_pool",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
+        "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -341,5 +359,30 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "unbounded_thread_pool",
+    srcs = ["unbounded_thread_pool.cc"],
+    hdrs = ["unbounded_thread_pool.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "unbounded_thread_pool_test",
+    size = "small",
+    srcs = ["unbounded_thread_pool_test.cc"],
+    deps = [
+        ":unbounded_thread_pool",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

@@ -33,15 +33,6 @@ namespace tensorflow {
 
 class StepStatsCollector;
 
-// If this is called, we will sample execution cost for "inexpensive" kernels
-// and switch them to "expensive" when the estimated cost exceeds expensive-ness
-// threshold.
-// This is a temporary flag for validating the performance impact of
-// this feature. For simplicity, a global flag is used and once the flag
-// is turned on, it cannot be turned off. We will remove this flag once this
-// feature is validated.
-void EnableAlwaysTrackKernelExecutionCost();
-
 // Executor runs a graph computation.
 // Example:
 //   Graph* graph = ...;
@@ -92,6 +83,9 @@ class Executor {
   //
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
+  //
+  // "start_time_usecs" is a timestamp for the start of RunAsync()
+  // execution. Used for system-wide latency metrics.
   struct Args {
     int64 step_id = 0;
     RendezvousInterface* rendezvous = nullptr;
@@ -105,6 +99,7 @@ class Executor {
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
+    int64 start_time_usecs = 0;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;

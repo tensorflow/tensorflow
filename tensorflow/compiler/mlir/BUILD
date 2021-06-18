@@ -80,7 +80,9 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
@@ -174,6 +176,26 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
+    name = "tf-reduce",
+    srcs = ["tf_mlir_reduce_main.cc"],
+    deps = [
+        ":init_mlir",
+        ":passes",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/xla:xla_passes",
+        "//tensorflow/core:lib",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirReduceLib",
+    ],
+)
+
+tf_cc_binary(
     name = "tf-mlir-translate",
     srcs = ["tf_mlir_translate_main.cc"],
     deps = [
@@ -210,6 +232,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:optional",
+        "@llvm-project//mlir:IR",
     ],
 )
 

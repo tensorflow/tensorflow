@@ -24,6 +24,7 @@ XLA_OPS_DEPS = [
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:tf2xla_util",
     "//tensorflow/compiler/tf2xla:xla_compiler",
+    "//tensorflow/compiler/tf2xla:xla_helpers",
     "//tensorflow/compiler/tf2xla:xla_op_registry",
     "//tensorflow/compiler/xla:executable_run_options",
     "//tensorflow/compiler/xla:status_macros",
@@ -46,7 +47,7 @@ cc_library(
     name = "xla_ops_no_jit_rewrite_registration",
     srcs = ["xla_ops.cc"],
     hdrs = ["xla_ops.h"],
-    deps = XLA_OPS_DEPS,
+    deps = XLA_OPS_DEPS + ["//tensorflow/core/platform:refcount"],
     alwayslink = 1,
 )
 

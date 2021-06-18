@@ -250,3 +250,12 @@ tf_py_logged_benchmark(
     name = "benchmarks",
     target = "//tensorflow/python/training/tracking:benchmarks_test",
 )
+
+tf_py_test(
+    name = "checkpoint_metrics_test",
+    srcs = ["checkpoint_metrics_test.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:platform_test",
+    ],
+)

@@ -575,7 +575,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return per_table_gradients
 
-  def apply_gradients(self, gradients, name: Text = None):
+  def apply_gradients(self, gradients, name: Optional[Text] = None):
     """Applies the gradient update to the embedding tables.
 
     If a gradient of `None` is passed in any position of the nested structure,
@@ -670,7 +670,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     if name is not None:
       _add_key_attr(op, name)
 
-  def dequeue(self, name: Text = None):
+  def dequeue(self, name: Optional[Text] = None):
     """Get the embedding results.
 
     Returns a nested structure of `tf.Tensor` objects, matching the structure of
@@ -1631,8 +1631,22 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
                 inp.indices, array_ops.gather(table, truncated_inp.values),
                 dense_output_shape))
       else:
-        outputs.append(embedding_ops.safe_embedding_lookup_sparse_v2(
-            table, inp, sparse_weights=weight, combiner=feature.table.combiner))
+        inp_rank = inp.dense_shape.get_shape()[0]
+        if (not feature.validate_weights_and_indices and
+            inp_rank is not None and inp_rank <= 2):
+          outputs.append(
+              embedding_ops.embedding_lookup_sparse_v2(
+                  table,
+                  inp,
+                  sp_weights=weight,
+                  combiner=feature.table.combiner))
+        else:
+          outputs.append(
+              embedding_ops.safe_embedding_lookup_sparse_v2(
+                  table,
+                  inp,
+                  sparse_weights=weight,
+                  combiner=feature.table.combiner))
 
     elif isinstance(inp, ragged_tensor.RaggedTensor):
       if feature.max_sequence_length > 0:

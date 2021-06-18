@@ -66,13 +66,9 @@ struct CSRSparseMatrixZeros {
     Tensor csr_values_t(allocator, dtype, TensorShape({0}));
     const Device& d = c->eigen_device<Device>();
     functor::SetZeroFunctor<Device, int32> set_zero;
-    Tensor* csr_row_ptr_t_ptr;
-    PersistentTensor csr_row_ptr_pt;
-    TF_RETURN_IF_ERROR(
-        c->allocate_persistent(DT_INT32, TensorShape({batch_size * (rows + 1)}),
-                               &csr_row_ptr_pt, &csr_row_ptr_t_ptr));
-    set_zero(d, csr_row_ptr_t_ptr->flat<int32>());
-    csr_row_ptr_t = std::move(*csr_row_ptr_t_ptr);
+    TF_RETURN_IF_ERROR(c->allocate_temp(
+        DT_INT32, TensorShape({batch_size * (rows + 1)}), &csr_row_ptr_t));
+    set_zero(d, csr_row_ptr_t.flat<int32>());
 
     TF_RETURN_IF_ERROR(CSRSparseMatrix::CreateCSRSparseMatrix(
         dtype, dense_shape_t, batch_ptr_t, csr_row_ptr_t, coo_col_ind_t,

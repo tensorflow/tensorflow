@@ -88,6 +88,17 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         backend.eval(output_from_softmax),
         atol=1e-5)
 
+    axis = 0
+    output_from_logit_axis = losses.categorical_crossentropy(
+        target, logits, from_logits=True, axis=axis)
+    output_from_softmax_axis = losses.categorical_crossentropy(
+        target, softmax_output, axis=axis)
+
+    np.testing.assert_allclose(
+        backend.eval(output_from_logit_axis),
+        backend.eval(output_from_softmax_axis),
+        atol=1e-5)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
     t = backend.placeholder()
@@ -164,6 +175,17 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     np.testing.assert_allclose(
         backend.eval(output_from_logit),
         backend.eval(output_from_sigmoid),
+        atol=1e-5)
+
+    axis = 0
+    output_from_logit_axis = losses.binary_crossentropy(
+        target, logits, from_logits=True, axis=axis)
+    output_from_sigmoid_axis = losses.binary_crossentropy(
+        target, sigmoid_output, axis=axis)
+
+    np.testing.assert_allclose(
+        backend.eval(output_from_logit_axis),
+        backend.eval(output_from_sigmoid_axis),
         atol=1e-5)
 
   def test_get_bce(self):

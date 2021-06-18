@@ -1,8 +1,8 @@
 path: "tensorflow.losses.CategoricalHinge"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.losses.CategoricalHinge\'>"
-  is_instance: "<class \'tensorflow.python.keras.losses.LossFunctionWrapper\'>"
-  is_instance: "<class \'tensorflow.python.keras.losses.Loss\'>"
+  is_instance: "<class \'keras.losses.CategoricalHinge\'>"
+  is_instance: "<class \'keras.losses.LossFunctionWrapper\'>"
+  is_instance: "<class \'keras.losses.Loss\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

@@ -42,8 +42,8 @@ func @placeholderattr() -> ()
 // -----
 
 // CHECK-LABEL: func @testIdentity
-func @testIdentity(%arg0: tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string> {
-  %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string>
+func @testIdentity(%arg0: tensor<4x?x!tf.stringref>) -> tensor<4x2x!tf.string> {
+  %0 = "tf.Identity"(%arg0) : (tensor<4x?x!tf.stringref>) -> tensor<4x2x!tf.string>
   return %0 : tensor<4x2x!tf.string>
 }
 
@@ -4293,4 +4293,13 @@ func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
   // expected-error @+1 {{Number of results should be the same}}
   "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
   return
+}
+
+// -----
+
+func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf16> {
+  %dimension = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  // expected-error @+1 {{dim_index (1) is out of range [0, 1)}}
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf16>
+  return %0 : tensor<?xf16>
 }

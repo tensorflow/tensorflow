@@ -15,6 +15,7 @@
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -108,7 +109,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -135,7 +136,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -165,3 +166,31 @@ cc_library(
         "@flatbuffers",
     ],
 )
+
+cc_library(
+    name = "serialization",
+    srcs = ["serialization.cc"],
+    hdrs = ["serialization.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:common",
+        "@farmhash_archive//:farmhash",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "serialization_test",
+    srcs = ["serialization_test.cc"],
+    linkopts = tflite_linkopts(),
+    linkstatic = 1,
+    deps = [
+        ":serialization",
+        "//tensorflow/lite/c:common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tflite_portable_test_suite()

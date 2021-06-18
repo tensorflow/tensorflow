@@ -77,25 +77,21 @@ TfLiteDelegatePtr CreateTfLiteDelegate(const TfliteInferenceParams& params,
 }
 
 DelegateProviders::DelegateProviders()
-    : delegates_list_(tools::GetRegisteredDelegateProviders()),
+    : delegate_list_util_(&params_),
       delegates_map_([=]() -> std::unordered_map<std::string, int> {
         std::unordered_map<std::string, int> delegates_map;
-        for (int i = 0; i < delegates_list_.size(); ++i) {
-          delegates_map[delegates_list_[i]->GetName()] = i;
+        const auto& providers = delegate_list_util_.providers();
+        for (int i = 0; i < providers.size(); ++i) {
+          delegates_map[providers[i]->GetName()] = i;
         }
         return delegates_map;
       }()) {
-  for (const auto& one : delegates_list_) {
-    params_.Merge(one->DefaultParams());
-  }
+  delegate_list_util_.AddAllDelegateParams();
 }
 
 std::vector<Flag> DelegateProviders::GetFlags() {
   std::vector<Flag> flags;
-  for (const auto& one : delegates_list_) {
-    auto one_flags = one->CreateFlags(&params_);
-    flags.insert(flags.end(), one_flags.begin(), one_flags.end());
-  }
+  delegate_list_util_.AppendCmdlineFlags(&flags);
   return flags;
 }
 
@@ -118,21 +114,8 @@ TfLiteDelegatePtr DelegateProviders::CreateDelegate(
   if (it == delegates_map_.end()) {
     return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
   }
-  return delegates_list_[it->second]->CreateTfLiteDelegate(params_);
-}
-
-std::vector<TfLiteDelegatePtr> DelegateProviders::CreateAllDelegates(
-    const tools::ToolParams& params) const {
-  std::vector<TfLiteDelegatePtr> delegates;
-  for (const auto& one : delegates_list_) {
-    auto ptr = one->CreateTfLiteDelegate(params);
-    // It's possible that a delegate of certain type won't be created as
-    // user-specified benchmark params tells not to.
-    if (ptr == nullptr) continue;
-    delegates.emplace_back(std::move(ptr));
-    TFLITE_LOG(INFO) << one->GetName() << " delegate is created.";
-  }
-  return delegates;
+  const auto& providers = delegate_list_util_.providers();
+  return providers[it->second]->CreateTfLiteDelegate(params_);
 }
 
 tools::ToolParams DelegateProviders::GetAllParams(

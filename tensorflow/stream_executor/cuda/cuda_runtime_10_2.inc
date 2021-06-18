@@ -1443,7 +1443,9 @@ extern __host__ struct cudaChannelFormatDesc CUDARTAPI cudaCreateChannelDesc(
   using FuncPtr = struct cudaChannelFormatDesc(CUDARTAPI *)(
       int, int, int, int, enum cudaChannelFormatKind);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaCreateChannelDesc");
-  if (!func_ptr) return GetSymbolNotFoundError();
+  if (!func_ptr) {
+    return cudaChannelFormatDesc{cudaChannelFormatKind(-1), 0, 0, 0};
+  }
   return func_ptr(x, y, z, w, f);
 }
 

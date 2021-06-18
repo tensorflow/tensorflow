@@ -72,6 +72,16 @@ class TopK : public OpKernel {
 
     const int64 num_rows = input.dimension(0);  // generally batch_size
     const int64 num_cols = input.dimension(1);
+    OP_REQUIRES(
+        context, num_rows <= std::numeric_limits<int32>::max(),
+        errors::InvalidArgument(
+            "First dimension of flattened input must be <= INT_MAX, got ",
+            num_rows));
+    OP_REQUIRES(
+        context, num_cols <= std::numeric_limits<int32>::max(),
+        errors::InvalidArgument(
+            "Second dimension of flattened input must be <= INT_MAX, got ",
+            num_cols));
 
     TensorShape output_shape = input_in.shape();
     output_shape.set_dim(input_in.dims() - 1, k);

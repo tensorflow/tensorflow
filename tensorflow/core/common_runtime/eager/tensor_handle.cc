@@ -188,7 +188,7 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
 
   // Wait for this TensorHandle to be ready.
   profiler::TraceMe activity("TensorHandle::GetResourceHandleInfo WaitReady",
-                             profiler::TraceMeLevel::kInfo);
+                             profiler::TraceMeLevel::kVerbose);
   auto& data = absl::get<LocalTensorHandleData>(data_);
   TF_RETURN_IF_ERROR(data.WaitReady("TensorHandle::GetResourceHandleInfo"));
 
@@ -1045,23 +1045,6 @@ Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx) {
     return nullptr;
   }
   return device;
-}
-
-string TensorHandle::DebugString() const {
-  DVLOG(4) << "Calling TensorHandle::DebugString() on " << this;
-
-  string out;
-  string device_debug = SafeDeviceDebugString(device_);
-  strings::StrAppend(&out, "Device: ", device_debug);
-  bool is_cpu = device_ != nullptr;
-  // Consider supporting non-CPU tensors and CPU tensors with a device_ set to
-  // non-NULL if needed.
-  strings::StrAppend(
-      &out, ", Tensor: ",
-      is_cpu ? absl::visit([](auto& data) { return data.DebugString(); }, data_)
-             : "?",
-      "\n");
-  return out;
 }
 
 const char* TensorHandle::DeviceName(Status* status) const {

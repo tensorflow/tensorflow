@@ -24,6 +24,7 @@ namespace custom {
 
 TfLiteRegistration* Register_READ_VARIABLE();
 TfLiteRegistration* Register_ASSIGN_VARIABLE();
+TfLiteRegistration* Register_VAR_HANDLE();
 
 extern "C" void AddVariableOps(::tflite::MutableOpResolver* resolver);
 

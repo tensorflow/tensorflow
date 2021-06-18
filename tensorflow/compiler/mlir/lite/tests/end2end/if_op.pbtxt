@@ -407,8 +407,8 @@ versions {
 }
 
 # CHECK:      func @main
-# CHECK-NEXT: constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]>
-# CHECK-NEXT: constant dense<[5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00]>
+# CHECK-DAG: constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]>
+# CHECK-DAG: constant dense<[5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00]>
 # CHECK:      "tf.If"{{.+}}else_branch = @cond_false_10{{.+}}is_stateless = true{{.+}}then_branch = @cond_true_10
 # CHECK:      "tf.If"{{.+}}else_branch = @cond_false0{{.+}}is_stateless = false{{.+}}then_branch = @cond_true0
 # CHECK:      func private @cond_false_10

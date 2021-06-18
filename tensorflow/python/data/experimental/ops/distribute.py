@@ -335,13 +335,7 @@ def replicate(dataset, devices):
     return datasets
 
   with ops.colocate_with(dataset._variant_tensor):
-    # We apply options before replicating the dataset because options are
-    # currently not automatically preserved through dataset serialization and
-    # thus an explicit application of options here is needed to avoid losing
-    # `dataset` options.
-    #
-    # TODO(b/183497230): Move options application after deserialization.
-    dataset = dataset._apply_options()
+    dataset = dataset._apply_debug_options()
     graph_def = dataset._as_serialized_graph(
         strip_device_assignment=True,
         external_state_policy=ExternalStatePolicy.WARN)

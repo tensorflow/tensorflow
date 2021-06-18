@@ -17,12 +17,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
-#include "tensorflow/compiler/mlir/utils/string_container_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -38,16 +39,8 @@ bool IsVariableInitialized(mlir::TF::VarHandleOp var_handle_op,
                            llvm::StringRef device_name,
                            const tensorflow::DeviceMgr* mgr,
                            tensorflow::Session* session) {
-  tensorflow::Device* device = nullptr;
-  if (!mgr || !mgr->LookupDevice(StringRefToView(device_name), &device).ok())
-    return false;
-  tensorflow::Var* var_ptr = nullptr;
-  const auto& container = var_handle_op.container().str();
-  auto status = device->resource_manager()->Lookup(
-      (container.empty() ? device->resource_manager()->default_container()
-                         : container),
-      var_handle_op.shared_name().str(), &var_ptr);
-  if (!device || !status.ok()) return false;
+  auto* var_ptr = GetVariableFromSession(var_handle_op, device_name, mgr);
+  if (!var_ptr) return false;
   auto* tensor = var_ptr->tensor();
   bool is_initialized = tensor && tensor->IsInitialized();
   var_ptr->Unref();
@@ -60,35 +53,23 @@ LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
   if (!session || !llvm::hasSingleElement(function)) return success();
   Block& block = function.front();
 
-  // Fetch all variable in one session run call.
-  std::vector<std::string> variables;
-  std::vector<TF::VarHandleOp> var_ops;
-  for (auto var_handle_op : block.getOps<TF::VarHandleOp>()) {
-    // In some cases the shared_name attribute doesn't have the same
-    // tensor name in the model, so we first try to use the location
-    // then fallback to shared_name attribute.
-    if (auto loc = var_handle_op->getLoc().dyn_cast<NameLoc>()) {
-      variables.push_back(loc.getName().str());
-    } else {
-      variables.push_back(var_handle_op.shared_name().str());
-    }
-    var_ops.push_back(var_handle_op);
-  }
-  if (variables.empty()) return success();
-
-  std::vector<tensorflow::Tensor> resource_tensors;
-  auto status = session->Run({}, variables, {}, &resource_tensors);
-  if (!status.ok()) {
-    return function->emitError("failed to run Session: " +
-                               status.error_message());
-  }
-
   const tensorflow::DeviceMgr* mgr = nullptr;
-  status = session->LocalDeviceManager(&mgr);
+  auto status = session->LocalDeviceManager(&mgr);
   if (!status.ok())
     return function->emitError("failed to fetch device manager: " +
                                status.error_message());
-  for (auto var_and_tensor : llvm::zip(var_ops, resource_tensors)) {
+
+  // Fetch all varHandleOp in the function.
+  llvm::SmallVector<TF::VarHandleOp, 4> var_ops;
+  for (auto var_handle_op : block.getOps<TF::VarHandleOp>())
+    var_ops.emplace_back(var_handle_op);
+
+  // Get resources from Session.
+  auto resource_tensors_or = GetResourcesFromSession(var_ops, session);
+  if (!resource_tensors_or.ok())
+    return function->emitError(resource_tensors_or.status().message().data());
+
+  for (auto var_and_tensor : llvm::zip(var_ops, resource_tensors_or.value())) {
     auto& var_op = std::get<0>(var_and_tensor);
     auto& resource_tensor = std::get<1>(var_and_tensor);
     bool is_variable_initialized = false;

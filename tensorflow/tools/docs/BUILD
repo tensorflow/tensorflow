@@ -23,6 +23,11 @@ tpu_module = [
     "distribute.cluster_resolver.tpu_oss",
 ]
 
+keras_module = [
+    # TODO(scottzhu): Move the Keras docstring test to Keras repo.
+    "keras.",
+]
+
 # tf.distribute docstring often uses GPU, so they're only covered in
 # tf_doctest_gpu.
 distribute_module = [
@@ -33,6 +38,10 @@ py_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow_text/google:__pkg__",
+    ],
     deps = [
         "//third_party/py/numpy",
     ],
@@ -41,7 +50,7 @@ py_library(
 py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
-    args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module)],
+    args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
     python_version = "PY3",
     tags = [
         "no_oss_py2",
