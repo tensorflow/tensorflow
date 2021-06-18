@@ -943,6 +943,7 @@ class StrategyBase(object):
     return self._extended.colocate_vars_with(colocate_with_variable)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
+  @deprecated(None,'This method is not available in TF 2.x.')
   def make_dataset_iterator(self, dataset):
     """DEPRECATED TF 1.x ONLY."""
     return self._extended._make_dataset_iterator(dataset)  # pylint: disable=protected-access
