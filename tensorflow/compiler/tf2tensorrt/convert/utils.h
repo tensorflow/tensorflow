@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_tensor_proxy.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
@@ -100,12 +101,12 @@ string DebugString(const std::vector<CType>& vector) {
   }
   return StrCat("{", tmp_s.substr(0, tmp_s.length() - 2), "}");
 }
-string DebugString(const nvinfer1::DimensionType type);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const TrtPrecisionMode mode);
 string DebugString(const DataType tf_type);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
+string DebugString(const ITensorProxyPtr& tensor);
 string DebugString(const nvinfer1::ITensor& tensor);
 string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
 string DebugString(const std::vector<TensorShape>& shapes);

@@ -53,8 +53,8 @@ class TRTDeviceAllocator : public TRTBaseAllocator {
   virtual ~TRTDeviceAllocator() {
     VLOG(1) << "Destroying allocator attached to " << allocator_->Name();
   }
-  void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) override;
-  void free(void* memory) override;
+  void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) noexcept override;
+  void free(void* memory) noexcept override;
 
  private:
   Allocator* allocator_;
