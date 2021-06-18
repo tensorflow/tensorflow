@@ -191,6 +191,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "colorspace_op",
+    # Suppress a benign but noisy "Stack size for entry function foo cannot be
+    # statically determined." ptxas warning.
+    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     prefix = "colorspace_op",
     deps = IMAGE_DEPS,
 )
