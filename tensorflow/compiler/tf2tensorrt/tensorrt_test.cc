@@ -23,6 +23,8 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -47,11 +49,11 @@ const char* kOutputTensor = "output";
 // Creates a network to compute y=2x+3.
 TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
   Logger& logger = *Logger::GetLogger();
-  TrtUniquePtrType<nvinfer1::IBuilder> builder = nvinfer1::createInferBuilder(logger);
+  TrtUniquePtrType<nvinfer1::IBuilder> builder(nvinfer1::createInferBuilder(logger));
   ScopedWeights weights(2.0);
   ScopedWeights bias(3.0);
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  TrtUniquePtrType<nvinfer1::INetworkDefinition> network = builder->createNetworkV2(0L);
+  TrtUniquePtrType<nvinfer1::INetworkDefinition> network(builder->createNetworkV2(0L));
 #else
   nvinfer1::INetworkDefinition* network = builder->createNetwork();
 #endif
@@ -69,16 +71,16 @@ TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
   // Build the engine
   builder->setMaxBatchSize(1);
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  TrtUniquePtrType<nvinfer1::IBuilderConfig> builderConfig = builder->createBuilderConfig();
+  TrtUniquePtrType<nvinfer1::IBuilderConfig> builderConfig(builder->createBuilderConfig());
   builderConfig->setMaxWorkspaceSize(1 << 10);
-  TrtUniquePtrType<nvinfer1::ICudaEngine> engine = builder->buildEngineWithConfig(*network, *builderConfig);
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine(builder->buildEngineWithConfig(*network, *builderConfig));
 #else
   builder->setMaxWorkspaceSize(1 << 10);
   auto engine = builder->buildCudaEngine(*network);
 #endif
   EXPECT_NE(engine, nullptr);
   // Serialize the engine to create a model, then close everything.
-  TrtUniquePtrType<nvinfer1::IHostMemory> model = engine->serialize();
+  TrtUniquePtrType<nvinfer1::IHostMemory> model(engine->serialize());
   return model;
 }
 
@@ -129,9 +131,9 @@ TEST(TensorrtTest, BasicFunctions) {
   TrtUniquePtrType<nvinfer1::IHostMemory> model = CreateSerializedEngine();
   // Use the model to create an engine and then an execution context.
   Logger& logger = *Logger::GetLogger();
-  TrtUniquePtrType<nvinfer1::IRuntime> runtime = nvinfer1::createInferRuntime(logger);
-  TrtUniquePtrType<nvinfer1::ICudaEngine> engine = runtime->deserializeCudaEngine(model->data(), model->size(), nullptr);
-  TrtUniquePtrType<nvinfer1::IExecutionContext> context = engine->createExecutionContext();
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime(nvinfer1::createInferRuntime(logger));
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine(runtime->deserializeCudaEngine(model->data(), model->size(), nullptr));
+  TrtUniquePtrType<nvinfer1::IExecutionContext> context(engine->createExecutionContext());
 
   // Execute the network.
   float input = 1234;

@@ -29,14 +29,6 @@ namespace tensorflow {
 
 namespace tensorrt {
 
-nvinfer1::Dims ConvertVectorDims(const std::vector<int>& d) {
-  nvinfer1::Dims dims;
-  dims.nbDims = d.size();
-  for (int i = 0; i < d.size(); ++i) {
-    dims.d[i] = d[i];
-  }
- return dims;
-}
 // SimpleITensor implements part of the ITensor interfaces to support the TF-TRT
 // validator, as well as some TF-TRT tests. The former use case only utilizes
 // the interfaces related to shape and type information.
@@ -48,8 +40,13 @@ class SimpleITensor {
   SimpleITensor() : dynamic_range_(0.0f) {}
   SimpleITensor(const nvinfer1::Dims& dims) : trt_dims_(dims), dynamic_range_(0.0f) {}
 
-  SimpleITensor(const std::vector<int>& dims)
-      : trt_dims_(ConvertVectorDims(dims)), dynamic_range_(0.0f) {}
+  SimpleITensor(const std::vector<int>& dims) {
+    trt_dims_.nbDims = dims.size();
+    for (int i = 0; i < dims.size(); ++i) {
+      trt_dims_.d[i] = dims[i];
+    }
+    dynamic_range_ = 0.0f;
+  }
 
   void setName(const char* name) {}
 
