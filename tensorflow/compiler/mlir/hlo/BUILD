@@ -744,7 +744,7 @@ cc_library(
 )
 
 cc_library(
-    name = "insert_memory_marker",
+    name = "insert_address_space",
     srcs = ["lib/Dialect/mhlo/transforms/insert_address_space.cc"],
     deps = [
         ":lhlo",
@@ -1352,7 +1352,7 @@ cc_library(
         ":legalize_to_standard",
         ":legalize_trigonometric_to_approximation",
         ":lhlo",
-        ":insert_memory_marker",
+        ":insert_address_space",
         ":lhlo_fuse_linalg",
         ":lhlo_fusion",
         ":lhlo_legalize_to_affine",
