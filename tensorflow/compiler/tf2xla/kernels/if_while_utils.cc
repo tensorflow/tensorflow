@@ -62,6 +62,8 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
         } else {
           arg->value_bound.emplace(
               std::move(maybe_constant.ValueOrDie().value()));
+          arg->value_dynamism.emplace(
+              std::move(values_are_dynamic.ValueOrDie()));
         }
       }
     }

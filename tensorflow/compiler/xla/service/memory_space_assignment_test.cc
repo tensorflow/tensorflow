@@ -4540,6 +4540,147 @@ ENTRY entry {
                   .memory_space() == kDefaultMemorySpace);
 }
 
+TEST_P(MemorySpaceAssignmentTest, InPlaceAsyncCollectivePermute) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  negate0 = bf16[4]{0} negate(param)
+  negate1 = bf16[4]{0} negate(param)
+  const0 = s32[] constant(0)
+  const1 = s32[] constant(1)
+  tuple0 = (s32[]) tuple(const0)
+  tuple1 = (s32[]) tuple(const1)
+  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[], s32[]) collective-permute-start(negate0, negate1, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  negate2 = bf16[4]{0} negate(param)
+  negate3 = bf16[4]{0} negate(negate2)
+  negate4 = bf16[4]{0} negate(negate3)
+  collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
+  ROOT add = add(collective-permute-done, negate4)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Expect both the source and destination buffers to get alternate memory
+  // allocations.
+  if (GetParam()) {
+    HloInstruction* collective_permute_start =
+        module->entry_computation()->GetInstructionWithName(
+            "collective-permute-start");
+    EXPECT_TRUE(collective_permute_start->shape()
+                    .tuple_shapes(0)
+                    .layout()
+                    .memory_space() == kAlternateMemorySpace);
+    EXPECT_TRUE(collective_permute_start->shape()
+                    .tuple_shapes(1)
+                    .layout()
+                    .memory_space() == kAlternateMemorySpace);
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, InPlaceAsyncCollectivePermuteSameBuffer) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  negate0 = bf16[4]{0} negate(param)
+  const0 = s32[] constant(0)
+  const1 = s32[] constant(1)
+  tuple0 = (s32[]) tuple(const0)
+  tuple1 = (s32[]) tuple(const1)
+  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[], s32[]) collective-permute-start(negate0, negate0, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  negate2 = bf16[4]{0} negate(param)
+  negate3 = bf16[4]{0} negate(negate2)
+  negate4 = bf16[4]{0} negate(negate3)
+  collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
+  ROOT add = add(collective-permute-done, negate4)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Expect both the source and destination buffers to get alternate memory
+  // allocations.
+  if (GetParam()) {
+    HloInstruction* collective_permute_start =
+        module->entry_computation()->GetInstructionWithName(
+            "collective-permute-start");
+    EXPECT_TRUE(collective_permute_start->shape()
+                    .tuple_shapes(0)
+                    .layout()
+                    .memory_space() == kAlternateMemorySpace);
+    EXPECT_TRUE(collective_permute_start->shape()
+                    .tuple_shapes(1)
+                    .layout()
+                    .memory_space() == kAlternateMemorySpace);
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       InPlaceAsyncCollectivePermuteSameBufferChained) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  negate0 = bf16[4]{0} negate(param)
+  const0 = s32[] constant(0)
+  const1 = s32[] constant(1)
+  tuple0 = (s32[]) tuple(const0)
+  tuple1 = (s32[]) tuple(const1)
+  collective-permute-start.1 = (bf16[4]{0}, bf16[4]{0}, u32[], u32[], s32[]) collective-permute-start(negate0, negate0, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  negate2 = bf16[4]{0} negate(param)
+  negate3 = bf16[4]{0} negate(negate2)
+  negate4 = bf16[4]{0} negate(negate3)
+  collective-permute-done.1 = bf16[4]{0} collective-permute-done(collective-permute-start.1)
+  collective-permute-start.2 = (bf16[4]{0}, bf16[4]{0}, u32[], u32[], s32[]) collective-permute-start(collective-permute-done.1, collective-permute-done.1, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  negate5 = bf16[4]{0} negate(negate4)
+  negate6 = bf16[4]{0} negate(negate5)
+  negate7 = bf16[4]{0} negate(negate6)
+  collective-permute-done.2 = bf16[4]{0} collective-permute-done(collective-permute-start.2)
+  ROOT add = add(collective-permute-done.2, negate7)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Expect both the source and destination buffers to get alternate memory
+  // allocations.
+  if (GetParam()) {
+    HloInstruction* collective_permute_start_1 =
+        module->entry_computation()->GetInstructionWithName(
+            "collective-permute-start.1");
+    EXPECT_TRUE(collective_permute_start_1->shape()
+                    .tuple_shapes(0)
+                    .layout()
+                    .memory_space() == kAlternateMemorySpace);
+    EXPECT_TRUE(collective_permute_start_1->shape()
+                    .tuple_shapes(1)
+                    .layout()
+                    .memory_space() == kAlternateMemorySpace);
+    HloInstruction* collective_permute_start_2 =
+        module->entry_computation()->GetInstructionWithName(
+            "collective-permute-start.2");
+    EXPECT_TRUE(collective_permute_start_2->shape()
+                    .tuple_shapes(0)
+                    .layout()
+                    .memory_space() == kAlternateMemorySpace);
+    EXPECT_TRUE(collective_permute_start_2->shape()
+                    .tuple_shapes(1)
+                    .layout()
+                    .memory_space() == kAlternateMemorySpace);
+  }
+}
+
 TEST_P(MemorySpaceAssignmentTest, ReservedScopedMemory) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -5107,6 +5248,52 @@ ENTRY main {
   if (allocate_across_sequential_calls) {
     EXPECT_NE(negate_offset, -1);
   }
+}
+
+TEST_P(MemorySpaceAssignmentTest, ConditionalInPlaceOp) {
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+fused_computation {
+  param0 = f32[2,3] parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast = f32[2,1] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  ROOT dynamic-update-slice.5 = f32[2,3] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
+}
+
+true_computation {
+  p0 = (f32[2,3]) parameter(0)
+  gte = f32[2,3] get-tuple-element(p0), index=0
+  ROOT neg1 = f32[2,3] negate(gte)
+}
+
+false_computation {
+  p0 = (f32[2,3]) parameter(0)
+  gte = f32[2,3] get-tuple-element(p0), index=0
+  neg2 = f32[2,3] negate(gte)
+  ROOT fusion = f32[2,3] fusion(neg2), kind=kLoop, calls=fused_computation
+}
+
+ENTRY entry {
+  p0 = f32[2,3] parameter(0)
+  p1 = pred[] parameter(1)
+  copy = f32[2,3] copy(p0)
+  tuple = (f32[2,3]) tuple(copy)
+  ROOT conditional = f32[2,3] conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  // Make sure the root of the entry computation is in the default memory space.
+  EXPECT_EQ(module->entry_computation()
+                ->root_instruction()
+                ->shape()
+                .layout()
+                .memory_space(),
+            kDefaultMemorySpace);
 }
 
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,

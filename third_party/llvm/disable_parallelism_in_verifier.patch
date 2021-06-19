@@ -1,0 +1,13 @@
+diff --git a/mlir/lib/IR/Verifier.cpp b/mlir/lib/IR/Verifier.cpp
+index 5f10d97a6bfb..c893c154eb37 100644
+--- a/mlir/lib/IR/Verifier.cpp
++++ b/mlir/lib/IR/Verifier.cpp
+@@ -44,7 +44,7 @@ namespace {
+ class OperationVerifier {
+ public:
+   explicit OperationVerifier(MLIRContext *context)
+-      : parallelismEnabled(context->isMultithreadingEnabled()) {}
++      : parallelismEnabled(false) {}
+ 
+   /// Verify the given operation.
+   LogicalResult verifyOpAndDominance(Operation &op);

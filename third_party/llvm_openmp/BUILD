@@ -1,5 +1,6 @@
 # Build file for OpenMP library that is part of llvm
 
+load("@rules_cc//cc:defs.bzl", "cc_binary")
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
     "cmake_var_string",
@@ -22,6 +23,7 @@ genrule(
     name = "kmp_i18n_id",
     srcs = [
         "runtime/tools/message-converter.pl",
+        "runtime/tools/lib/tools.pm",
         "runtime/src/i18n/en_US.txt",
     ],
     outs = ["include/kmp_i18n_id.inc"],
@@ -32,6 +34,7 @@ genrule(
     name = "kmp_i18n_default",
     srcs = [
         "runtime/tools/message-converter.pl",
+        "runtime/tools/lib/tools.pm",
         "runtime/src/i18n/en_US.txt",
     ],
     outs = ["include/kmp_i18n_default.inc"],
@@ -109,6 +112,37 @@ expand_cmake_vars(
     dst = "include/omp.h",
 )
 
+headers = [
+    "runtime/src/kmp_affinity.h",
+    "runtime/src/kmp_atomic.h",
+    "runtime/src/kmp_debug.h",
+    "runtime/src/kmp_dispatch_hier.h",
+    "runtime/src/kmp_dispatch.h",
+    "runtime/src/kmp_environment.h",
+    "runtime/src/kmp_error.h",
+    "runtime/src/kmp_ftn_entry.h",
+    "runtime/src/kmp_ftn_os.h",
+    "runtime/src/kmp_i18n.h",
+    "runtime/src/kmp_io.h",
+    "runtime/src/kmp_itt.h",
+    "runtime/src/kmp_itt.inl",
+    "runtime/src/kmp_lock.h",
+    "runtime/src/kmp_os.h",
+    "runtime/src/kmp_platform.h",
+    "runtime/src/kmp_safe_c_api.h",
+    "runtime/src/kmp_settings.h",
+    "runtime/src/kmp_stats.h",
+    "runtime/src/kmp_str.h",
+    "runtime/src/kmp_taskdeps.h",
+    "runtime/src/kmp_version.h",
+    "runtime/src/kmp_wait_release.h",
+    "runtime/src/kmp_wrapper_getpid.h",
+    "runtime/src/kmp_wrapper_malloc.h",
+    "runtime/src/kmp.h",
+    "runtime/src/ompt-specific.h",
+    "runtime/src/tsan_annotations.h",
+]
+
 cppsources = [
     "runtime/src/kmp_alloc.cpp",
     "runtime/src/kmp_atomic.cpp",
@@ -144,7 +178,6 @@ srcdeps = [
     ":config_omp",
     ":kmp_i18n_id",
     ":kmp_i18n_default",
-    ":ldscript",
 ]
 
 common_includes = [
@@ -171,7 +204,8 @@ cc_binary(
         "runtime/src/z_Linux_util.cpp",
         "runtime/src/kmp_gsupport.cpp",
         "runtime/src/z_Linux_asm.S",
-    ] + srcdeps,
+    ] + headers + srcdeps,
+    additional_linker_inputs = [":ldscript"],
     copts = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
     includes = common_includes,
     linkopts = ["-lpthread -ldl -Wl,--version-script=$(location :ldscript)"],

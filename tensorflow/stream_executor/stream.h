@@ -278,14 +278,14 @@ class Stream {
       const DeviceMemory<float> &offset,
       const DeviceMemory<float> &estimated_mean,
       const DeviceMemory<float> &estimated_variance,
-      const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<Eigen::half> &side_input,
+      const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
-      bool is_training,
-      ScratchAllocator *reserve_space_allocator,
+      bool is_training, ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
@@ -382,76 +382,63 @@ class Stream {
     return port::UnimplementedError("DNN library is not found.");
   }
 
+  template <typename InputT, typename ScaleT, typename SideInputT,
+            typename BiasT, typename OutputT>
   port::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<double> &conv_input_data, double conv_input_scale,
+      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<double> &filter_data,
+      const DeviceMemory<InputT> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<double> &side_input_data, double side_input_scale,
+      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
       const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<double> &biases, dnn::ActivationMode activation_mode,
+      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoFusedConvolve(
+          this, dnn::ToDataType<InputT>::value,
+          dnn::ToDataType<SideInputT>::value, dnn::ToDataType<BiasT>::value,
+          dnn::ToDataType<OutputT>::value, conv_input_descriptor,
+          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
+          convolution_descriptor, side_input_data, side_input_scale,
+          bias_descriptor, biases, activation_mode, output_descriptor, *output,
+          scratch_allocator, algorithm_config, output_profile_result);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  port::Status FusedConvolveWithAlgorithm(
+  template <typename InputT, typename ScaleT, typename SideInputT,
+            typename BiasT, typename OutputT>
+  port::Status FusedConvolveWithExecutionPlan(
       const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<float> &conv_input_data, float conv_input_scale,
+      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
+      const DeviceMemory<InputT> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<float> &side_input_data, float side_input_scale,
+      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
       const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<Eigen::half> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<Eigen::half> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<Eigen::half> &biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<int8> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<float> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoFusedConvolveWithExecutionPlan(
+          this, dnn::ToDataType<InputT>::value, conv_input_descriptor,
+          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
+          convolution_descriptor, side_input_data, side_input_scale,
+          bias_descriptor, biases, activation_mode, output_descriptor, *output,
+          scratch_allocator, algorithm_config, output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
   Stream &ThenSeparableConvolve(
       const dnn::BatchDescriptor &input_descriptor,

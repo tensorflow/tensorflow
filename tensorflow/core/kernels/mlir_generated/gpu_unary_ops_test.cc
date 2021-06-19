@@ -681,6 +681,12 @@ GENERATE_DEFAULT_TEST(Neg, DT_INT16, DT_INT16, baseline_neg,
 GENERATE_DEFAULT_TEST(Neg, DT_INT64, DT_INT64, baseline_neg,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+GENERATE_DEFAULT_TEST(Neg, DT_COMPLEX64, DT_COMPLEX64, baseline_neg,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Neg, DT_COMPLEX128, DT_COMPLEX128, baseline_neg,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.Real`.
 
 template <typename T>
@@ -799,10 +805,19 @@ GENERATE_DEFAULT_TEST_2(Rsqrt, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
 // Reference implementation
 template <typename T>
 T baseline_sign(T x) {
-  if (isnan(x)) return x;
+  if (std::isnan(x)) return x;
   if (x == 0) return 0;
   if (x < 0) return -1;
   return 1;
+}
+
+template <>
+std::complex<double> baseline_sign(std::complex<double> x) {
+  double abs_x = std::abs(x);
+  if (abs_x == 0) return std::complex<double>(0);
+  double abs_x_inverse = 1 / abs_x;
+  return std::complex<double>(x.real() * abs_x_inverse,
+                              x.imag() * abs_x_inverse);
 }
 
 GENERATE_DEFAULT_TEST(Sign, DT_FLOAT, DT_FLOAT, baseline_sign,
@@ -817,6 +832,13 @@ GENERATE_DEFAULT_TEST_2(Sign, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_sign, test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST(Sign, DT_INT64, DT_INT64, baseline_sign,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST_2(Sign, DT_COMPLEX64, DT_COMPLEX128, DT_COMPLEX64,
+                        DT_COMPLEX128, baseline_sign,
+                        test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Sign, DT_COMPLEX128, DT_COMPLEX128, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Sin`.

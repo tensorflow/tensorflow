@@ -12,7 +12,7 @@ numpy ~= 1.19.5  # NOTE: not the latest version due to py3.6
 opt_einsum ~= 3.3.0
 protobuf >= 3.17.1
 six ~= 1.16.0
-termcolor ~= 1.1.0 # latest version came out in 2011. others are more-termcolor, termcolor2, etc.
+termcolor ~= 1.1.0
 typing_extensions ~= 3.10.0.0
 wheel ~= 0.36.2
 wrapt ~= 1.12.1
@@ -21,13 +21,14 @@ wrapt ~= 1.12.1
 gast == 0.4.0
 
 # Finally, install tensorboard and estimator and keras
-# Note that here we want the latest version that matches
-keras-nightly ~= 2.6.0.dev2021052700
-tb-nightly ~= 2.5.0.a # matches being 2.5 for the 2.5 release? bc there is a 2.6 out
-tensorflow_estimator ~= 2.5.0
+# Note that here we want the latest version that matches TF major.minor version
+# Note that we must use nightly here as these are used in nightly jobs
+# For release jobs, we will pin these on the release branch
+keras-nightly ~= 2.6.0.dev
+tb-nightly ~= 2.6.0.a
+tf-estimator-nightly ~= 2.6.0.dev
 
 # Test dependencies
 grpcio ~= 1.38.0
 portpicker ~= 1.4.0
-scipy ~= 1.6.3
-
+scipy ~= 1.5.4  # NOTE: not the latest version due to py3.6

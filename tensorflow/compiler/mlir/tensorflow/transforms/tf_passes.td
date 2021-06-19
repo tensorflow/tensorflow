@@ -859,7 +859,7 @@ def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
   let constructor = "TF::CreateVerifySuitableForExportPass()";
 }
 
-def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-export", "FuncOp"> {
+def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-export", "ModuleOp"> {
   let summary = "Prepare TPU computation to be legal for export to TensorFlow";
   let description = [{
     Prepares TPU computation module attached to _TPUCompileMlir op for

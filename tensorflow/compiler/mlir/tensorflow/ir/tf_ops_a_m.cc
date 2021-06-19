@@ -2319,16 +2319,22 @@ static ShapedType InferFillOpType(Value dims, Value value) {
   Type etype = value.getType().cast<ShapedType>().getElementType();
 
   DenseIntElementsAttr dims_attr;
-  if (!matchPattern(dims, m_Constant(&dims_attr))) {
-    return UnrankedTensorType::get(etype);
+  if (matchPattern(dims, m_Constant(&dims_attr))) {
+    llvm::SmallVector<int64_t, 4> shape;
+    shape.reserve(dims_attr.getNumElements());
+    for (const APInt dim : dims_attr.getValues<APInt>()) {
+      shape.push_back(dim.getSExtValue());
+    }
+    return RankedTensorType::get(shape, etype);
   }
 
-  llvm::SmallVector<int64_t, 4> shape;
-  shape.reserve(dims_attr.getNumElements());
-  for (const APInt dim : dims_attr.getValues<APInt>()) {
-    shape.push_back(dim.getSExtValue());
+  if (auto shape_op = dims.getDefiningOp<ShapeOp>()) {
+    if (auto t = shape_op.input().getType().dyn_cast<ShapedType>()) {
+      return t;
+    }
   }
-  return RankedTensorType::get(shape, etype);
+
+  return UnrankedTensorType::get(etype);
 }
 
 void FillOp::build(OpBuilder &builder, OperationState &result, Value dims,

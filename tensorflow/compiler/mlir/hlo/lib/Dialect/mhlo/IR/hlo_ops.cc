@@ -339,6 +339,147 @@ void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<GatherSlice>(context);
 }
 
+namespace {
+
+// following https://www.tensorflow.org/xla/operation_semantics#gather
+// The bounds for the output array along dimension i is computed as follows:
+// (1) If i is present in batch_dims (i.e. is equal to batch_dims[k] for some k)
+// then we pick
+// the corresponding dimension bounds out of start_indices.shape, skipping
+// index_vector_dim
+// (i.e. pick start_indices.shape.dims[k] if k < index_vector_dim and
+// start_indices.shape.dims[k+1] otherwise).
+// (2) If i is present in offset_dims (i.e. equal to offset_dims[k] for some k)
+// then we pick
+// the corresponding bound out of slice_sizes after accounting for
+// collapsed_slice_dims
+// (i.e. we pick adjusted_slice_sizes[k] where adjusted_slice_sizes is
+// slice_sizes with the bounds at indices collapsed_slice_dims removed).
+
+void GetSliceSizeValues(GatherOp* gather, OpBuilder& builder, Location loc,
+                        ValueRange operands,
+                        SmallVectorImpl<Value>& slice_sizes) {
+  for (int64_t val : gather->slice_sizes().getValues<int64_t>()) {
+    slice_sizes.push_back(builder.create<ConstantIndexOp>(loc, val));
+  }
+}
+
+void GetSliceSizeValues(DynamicGatherOp* d_gather, OpBuilder& builder,
+                        Location loc, ValueRange operands,
+                        SmallVectorImpl<Value>& slice_size_values) {
+  DynamicGatherOp::Adaptor adaptor(operands);
+  Value slice_sizes = adaptor.slice_sizes();
+  auto slice_sizes_ty = slice_sizes.getType().cast<ShapedType>();
+  for (int64_t i = 0; i < slice_sizes_ty.getDimSize(0); ++i) {
+    Value idx = builder.create<ConstantIndexOp>(loc, i);
+    slice_size_values.push_back(
+        builder.create<tensor::ExtractOp>(loc, slice_sizes, idx));
+  }
+}
+
+template <typename Op>
+LogicalResult GatherShapeInferImpl(
+    Op* op, OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  // Not support unranked pad a.t.m.
+  auto result_ty =
+      op->getResult().getType().template dyn_cast<RankedTensorType>();
+  if (!result_ty) return failure();
+
+  typename Op::Adaptor adaptor(operands);
+  Value start_indices = adaptor.start_indices();
+
+  Location loc = op->getLoc();
+  int result_rank = result_ty.getRank();
+  Type shape_scalar_type =
+      start_indices.getType().cast<ShapedType>().getElementType();
+  auto to_shape_scalar_type = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+  };
+
+  auto dimension_numbers = op->dimension_numbers();
+  SmallVector<int64_t, 4> collapsed_slice_dims(
+      dimension_numbers.collapsed_slice_dims().template getValues<int64_t>());
+  SmallVector<int64_t, 4> offset_dims(
+      dimension_numbers.offset_dims().template getValues<int64_t>());
+  int64_t index_vector_dim =
+      dimension_numbers.index_vector_dim().getValue().getSExtValue();
+
+  SmallVector<Value, 4> slice_sizes;
+  GetSliceSizeValues(op, builder, loc, operands, slice_sizes);
+  // Convert to `shape_scalar_type`
+  llvm::transform(slice_sizes, slice_sizes.begin(),
+                  [&](Value v) { return to_shape_scalar_type(v); });
+
+  // we label dimensions in the output array not in offset_dims as batch_dims
+  SmallVector<int64_t, 4> batch_dims;
+  for (int64_t i = 0; i < result_rank; ++i) {
+    if (std::find(offset_dims.begin(), offset_dims.end(), i) ==
+        offset_dims.end()) {
+      batch_dims.push_back(i);
+    }
+  }
+  // adjusted_slice_sizes is slice_sizes with the bounds at indices
+  // collapsed_slice_dims removed
+  SmallVector<Value, 4> adjusted_slice_sizes;
+  for (int64_t i = 0; i < slice_sizes.size(); ++i) {
+    if (std::find(collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
+                  i) == collapsed_slice_dims.end()) {
+      adjusted_slice_sizes.push_back(slice_sizes[i]);
+    }
+  }
+
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(result_rank);
+  for (int64_t i = 0; i < result_rank; ++i) {
+    auto iter = std::find(batch_dims.begin(), batch_dims.end(), i);
+    if (iter != batch_dims.end()) {
+      // i is present in batch_dims
+      int64_t k = std::distance(batch_dims.begin(), iter);
+      if (k < index_vector_dim) {
+        shape_values.push_back(to_shape_scalar_type(
+            builder.create<memref::DimOp>(loc, start_indices, k)));
+      } else {
+        shape_values.push_back(to_shape_scalar_type(
+            builder.create<memref::DimOp>(loc, start_indices, k + 1)));
+      }
+    } else {
+      // i is present in offset_dims
+      auto offset_dims_iter =
+          std::find(offset_dims.begin(), offset_dims.end(), i);
+      assert(offset_dims_iter != offset_dims.end());
+      int64_t k = std::distance(offset_dims.begin(), offset_dims_iter);
+      assert(k < adjusted_slice_sizes.size());
+      shape_values.push_back(adjusted_slice_sizes[k]);
+    }
+  }
+
+  Value output_shape = builder.create<tensor::FromElementsOp>(
+      loc, shape_scalar_type, shape_values);
+  reifiedReturnShapes.push_back(output_shape);
+
+  return success();
+}
+
+}  // namespace
+
+LogicalResult GatherOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return GatherShapeInferImpl(this, builder, operands, reifiedReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicGatherOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult DynamicGatherOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return GatherShapeInferImpl(this, builder, operands, reifiedReturnShapes);
+}
+
 //===----------------------------------------------------------------------===//
 // GetDimensionSizeOp
 //===----------------------------------------------------------------------===//
@@ -1561,7 +1702,8 @@ class DynamicReshapeOpSameShapeOpResult
   LogicalResult matchAndRewrite(DynamicReshapeOp op,
                                 PatternRewriter& rewriter) const override {
     Operation* def_op = op.operand().getDefiningOp();
-    if (!def_op || !def_op->hasTrait<OpTrait::SameOperandsAndResultShape>()) {
+    if (!def_op ||
+        !def_op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) {
       return failure();
     }
     Operation* input_def_op = def_op->getOperand(0).getDefiningOp();
@@ -1687,6 +1829,75 @@ static LogicalResult Verify(RealDynamicSliceOp op) {
   }
 
   return success();
+}
+
+namespace {
+// Canonicalizes RealDynamicSlice ops that can be replaced instead with Slice
+// ops. This canonicalization is applied the case when the `begin` input values
+// are compile time constants and thus can be made into a tensor.
+struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
+  using OpRewritePattern<RealDynamicSliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(RealDynamicSliceOp real_dynamic_slice,
+                                PatternRewriter& rewriter) const override {
+    Location loc = real_dynamic_slice.getLoc();
+    Value input = real_dynamic_slice.operand();
+    Value output = real_dynamic_slice.result();
+    auto input_ty = input.getType().dyn_cast<RankedTensorType>();
+    auto output_ty = output.getType().dyn_cast<RankedTensorType>();
+
+    if (!input_ty || !output_ty || !input_ty.hasStaticShape() ||
+        !output_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    int64_t input_rank = input_ty.getRank();
+
+    auto start_val = real_dynamic_slice.start_indices();
+    auto limit_val = real_dynamic_slice.limit_indices();
+    auto stride_val = real_dynamic_slice.strides();
+    auto start_op = start_val.getDefiningOp<mlir::ConstantOp>();
+    auto limit_op = limit_val.getDefiningOp<mlir::ConstantOp>();
+    auto stride_op = stride_val.getDefiningOp<mlir::ConstantOp>();
+    if (!start_op || !limit_op || !stride_op) return failure();
+
+    auto start_attr =
+        start_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
+    auto limit_attr =
+        limit_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
+    auto stride_attr =
+        stride_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
+    if (!start_attr || !limit_attr || !stride_attr) return failure();
+
+    SmallVector<int64_t, 4> temp_start_indices;
+    SmallVector<int64_t, 4> temp_limit_indices;
+    SmallVector<int64_t, 4> temp_stride;
+    for (int64_t dim_idx = 0; dim_idx < input_rank; dim_idx++) {
+      int64_t start = start_attr.getValue<IntegerAttr>(dim_idx).getInt();
+      temp_start_indices.push_back(start);
+      int64_t limit = limit_attr.getValue<IntegerAttr>(dim_idx).getInt();
+      temp_limit_indices.push_back(limit);
+      int64_t end = stride_attr.getValue<IntegerAttr>(dim_idx).getInt();
+      temp_stride.push_back(end);
+    }
+
+    DenseIntElementsAttr slice_start_indices =
+        GetI64ElementsAttr(temp_start_indices, &rewriter);
+    DenseIntElementsAttr slice_limit_indices =
+        GetI64ElementsAttr(temp_limit_indices, &rewriter);
+    DenseIntElementsAttr slice_strides =
+        GetI64ElementsAttr(temp_stride, &rewriter);
+    auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
+                                           slice_limit_indices, slice_strides);
+    rewriter.replaceOp(real_dynamic_slice, {result});
+    return success();
+  }
+};
+}  // namespace
+
+void RealDynamicSliceOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<RealDynamicSliceIsStatic, RealDSliceToSlice>(context);
 }
 
 LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
@@ -2029,7 +2240,7 @@ Operation* ReduceWindowOp::getReductionOp(int result_index) {
   if (arg0_num == result_index && arg1_num == other_arg_index)
     return compute_op;
   if (arg0_num == other_arg_index && arg1_num == result_index &&
-      compute_op->hasTrait<OpTrait::IsCommutative>())
+      compute_op->hasTrait<mlir::OpTrait::IsCommutative>())
     return compute_op;
   return nullptr;
 }

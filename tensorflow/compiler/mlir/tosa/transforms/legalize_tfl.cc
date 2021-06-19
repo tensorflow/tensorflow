@@ -144,6 +144,7 @@ DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherNd);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(ArgMax);
+DECL_CONVERT_OP(FakeQuant);
 #undef DECL_CONVERT_OP
 
 // Input from tfl.conv2d takes 64 bits a bias, while tosa.conv2d expects 48
@@ -3053,6 +3054,29 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto fakequant_op = cast<TFL::FakeQuantOp>(op);
+
+  RankedTensorType output_type =
+      fakequant_op.getResult().getType().dyn_cast<RankedTensorType>();
+  // Not a ranked tensor output
+  if (!output_type) return failure();
+
+  llvm::Optional<Value> result =
+      convertFakeQuantOp(rewriter, op, output_type, fakequant_op.input(),
+                         fakequant_op.minAttr().getValueAsDouble(),
+                         fakequant_op.maxAttr().getValueAsDouble(),
+                         fakequant_op.num_bitsAttr().getInt(),
+                         fakequant_op.narrow_rangeAttr().getValue());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
 void LegalizeTFL::runOnFunction() {
   OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
@@ -3138,6 +3162,7 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLGather);
   DEF_PATTERN_INSERT(TFLGatherNd);
   DEF_PATTERN_INSERT(TFLArgMax);
+  DEF_PATTERN_INSERT(TFLFakeQuant);
   DEF_PATTERN_INSERT(TFLOneHot);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

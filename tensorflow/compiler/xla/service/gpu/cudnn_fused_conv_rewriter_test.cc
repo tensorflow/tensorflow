@@ -487,7 +487,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
       )");
 }
 
-TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToFloat) {
+// Disabled per b/190854862 or nvbugs/3326122.
+TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestFusedConvInt8ToFloat) {
   // max(0, convert<float>(conv<int32>(int8_x),
   // conv<int32>(int8_w))+float_bias)); int8 to float via bias.
   TestClamp(

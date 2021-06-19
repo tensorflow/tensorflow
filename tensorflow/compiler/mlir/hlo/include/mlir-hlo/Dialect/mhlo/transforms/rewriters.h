@@ -81,10 +81,6 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns);
 
-// Sets up legality definitions for element-wise operations on ranked tensors.
-void SetupTransformUnrankedHloLegality(MLIRContext *context,
-                                       ConversionTarget *conversionTarget);
-
 // Populates a collection of rewrite patterns to realize element-wise operations
 // on ranked tensors where possible.
 void PopulateTransformUnrankedHloPatterns(MLIRContext *context,

@@ -1460,7 +1460,7 @@ def LHLO_DynamicGatherOp: LHLO_Op<"dynamic_gather", []> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
-    Arg<LHLO_IntBuffer, "", [MemRead]>:$slice_sizes,
+    Arg<LHLO_DimensionBuffer, "", [MemRead]>:$slice_sizes,
     GatherDimensionNumbers:$dimension_numbers,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );

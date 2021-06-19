@@ -32,9 +32,6 @@ class Pass;
 
 namespace mhlo {
 
-// Transforms unranked HLO operations to ranked ones where possible.
-std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
-
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 
@@ -117,7 +114,13 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 // Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
 
+// insert address space in memref for device memory
 std::unique_ptr<OperationPass<ModuleOp>> createInsertAddressSpace();
+
+// fuse lmhlo ops to kLoop/kInput fusion patterns
+std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
+    int max_num_arguments_per_kernel = 64);
+
 }  // namespace lmhlo
 
 namespace disc_ral {

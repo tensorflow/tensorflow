@@ -43,7 +43,6 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -56,6 +55,7 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import manip_ops
@@ -1577,7 +1577,7 @@ class PFor(object):
           else:
             new_outputs = []
             for old_output, new_output in zip(y_op.outputs, new_op.outputs):
-              custom_gradient.copy_handle_data(old_output, new_output)
+              handle_data_util.copy_handle_data(old_output, new_output)
               new_outputs.append(wrap(new_output, False))
         else:
           # Either some inputs are not loop invariant or op is stateful.
@@ -3415,6 +3415,25 @@ def _convert_print(pfor_input):
   return [wrap(x, True) for x in outputs]
 
 
+@RegisterPFor("PrintV2")
+def _convert_print_v2(pfor_input):
+  # Print the full input Tensor(s), including the batch dimension if stacked.
+  return _create_op(
+      "PrintV2", [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr)
+
+
+@RegisterPFor("StringFormat")
+def _convert_string_format(pfor_input):
+  # Format using the full input Tensor(s), including the batch dimension if
+  # stacked.
+  return _create_op(
+      "StringFormat", [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
+
+
 # data_flow_ops
 
 # TensorArray conversion is tricky since we don't support arrays of
@@ -3754,7 +3773,7 @@ def _tile_variant_with_length(t, length):
     result = array_ops.tile(t, length)
     # TODO(b/169968286): Should regular shape functions do handle data
     # propagation here?
-    custom_gradient.copy_handle_data(original_tensor, result)
+    handle_data_util.copy_handle_data(original_tensor, result)
     return result
 
 

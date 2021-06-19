@@ -1175,6 +1175,7 @@ REGISTER_OP("DataServiceDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("data_transfer_protocol: string = ''")
+    .Attr("target_workers: string = 'AUTO'")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
@@ -1195,6 +1196,7 @@ REGISTER_OP("DataServiceDatasetV2")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("data_transfer_protocol: string = ''")
+    .Attr("target_workers: string = 'AUTO'")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 

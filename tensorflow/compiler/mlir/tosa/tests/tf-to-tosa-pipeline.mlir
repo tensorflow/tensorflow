@@ -648,7 +648,10 @@ func @test_log_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_matmul
-// CHECK: %[[VAR0:.*]] = "tosa.matmul"(%arg0, %arg1)
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 14, 19]}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 19, 28]}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
+// CHECK: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [14, 28]}
 func @test_matmul(%arg0: tensor<14x19xf32>, %arg1: tensor<19x28xf32>) -> tensor<14x28xf32> {
   %2 = "tf.MatMul"(%arg0, %arg1)  {transpose_a = false, transpose_b = false}  : (tensor<14x19xf32>, tensor<19x28xf32>) -> tensor<14x28xf32>
   return %2 : tensor<14x28xf32>

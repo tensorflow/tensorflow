@@ -4739,8 +4739,20 @@ bool HloParserImpl::ParseShape(Shape* result) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
+  if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "invalid") {
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kLbrace) {
+      return false;
+    }
+    lexer_.Lex();
+    if (lexer_.GetKind() != TokKind::kRbrace) {
+      return false;
+    }
+    lexer_.Lex();
+    result->mutable_layout()->Clear();
+    return true;
+  }
   LayoutUtil::SetToDefaultLayout(result);
-
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
   //

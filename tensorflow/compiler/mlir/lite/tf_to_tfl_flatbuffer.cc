@@ -246,7 +246,8 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
-    mlir::MLIRContext* context) {
+    mlir::MLIRContext* context,
+    std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
   // Register extra TF ops passed as OpDef.
   auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
   if (!extra_opdefs_status.ok()) return extra_opdefs_status;

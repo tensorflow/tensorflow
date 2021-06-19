@@ -184,3 +184,51 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
   } : (tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   return %concat : tensor<?x?xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @gather
+// CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?xi32>) -> memref<?x?xf32>
+func @gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>)
+    -> tensor<?x?xf32> {
+  // CHECK: %[[ARG1_DIM0:.*]] = memref.dim %[[ARG1]], %c0 : memref<?xi32>
+  // CHECK: %[[TMP:.*]] = memref.alloc(%0) : memref<?x7xf32>
+  // CHECK: %[[OUT:.*]] = memref.cast %[[TMP:.*]] : memref<?x7xf32> to memref<?x?xf32>
+  // CHECK: "lmhlo.gather"(%[[ARG0]], %[[ARG1]], %[[OUT]])
+  %result =
+    "mhlo.gather"(%operand, %idxs)
+      { dimension_numbers =
+        { collapsed_slice_dims = dense<0> : tensor<1xi64>
+        , index_vector_dim = 1 : i64
+        , offset_dims = dense<1> : tensor<1xi64>
+        , start_index_map = dense<0> : tensor<1xi64> }
+      , indices_are_sorted = false
+      , name = "gather.71"
+      , slice_sizes = dense<[1, 7]> : tensor<2xi64> }
+      : (tensor<?x?xf32>, tensor<?xi32>) -> tensor<?x?xf32>
+  return %result : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @dynamic_gather
+// CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?xi32>, %[[ARG2:.*]]: memref<2xi32>) -> memref<?x?xf32>
+func @dynamic_gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>, %slice_sizes: tensor<2xi32>)
+    -> tensor<?x?xf32> {
+  // CHECK-DAG: %[[SIZE1_i32:.*]] = memref.load %[[ARG2]][%c1] : memref<2xi32>
+  // CHECK-DAG: %[[ARG1_DIM0:.*]] = memref.dim %[[ARG1]], %c0 : memref<?xi32>
+  // CHECK-DAG: %[[SIZE:.*]] = index_cast %[[SIZE1_i32]] : i32 to index
+  // CHECK: %[[OUT:.*]] = memref.alloc(%[[ARG1_DIM0]], %[[SIZE]]) : memref<?x?xf32>
+  // CHECK: "lmhlo.dynamic_gather"(%[[ARG0]], %[[ARG1]], %[[ARG2]], %[[OUT]])
+  %result =
+    "mhlo.dynamic_gather"(%operand, %idxs, %slice_sizes)
+      { dimension_numbers =
+        { collapsed_slice_dims = dense<0> : tensor<1xi64>
+        , index_vector_dim = 1 : i64
+        , offset_dims = dense<1> : tensor<1xi64>
+        , start_index_map = dense<0> : tensor<1xi64> }
+      , indices_are_sorted = false
+      , name = "gather.71"}
+      : (tensor<?x?xf32>, tensor<?xi32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %result : tensor<?x?xf32>
+}

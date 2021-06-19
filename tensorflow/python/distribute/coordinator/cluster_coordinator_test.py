@@ -34,6 +34,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.coordinator import values as values_lib
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -335,7 +336,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # Closure2 was an inflight closure when it got cancelled.
     self.assertEqual(closure2.output_remote_value._status,
-                     coordinator_lib._RemoteValueStatus.READY)
+                     values_lib.RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
       closure2.output_remote_value.fetch()
 
@@ -1202,10 +1203,11 @@ class StrategyIntegrationTest(test.TestCase):
                                                   dataset.element_spec),
         per_worker_distribute_dataset.element_spec)
 
-  # TODO(rchao): Enable this once PerWorkerValues is made a CompositeTensor.
-  def DISABLED_testPerWorkerDistributedIteratorTypeSpec(self):
+  def testPerWorkerDistributedIteratorTypeSpec(self):
+    self._tracing_count = 0
 
     def per_worker_dataset_fn():
+      self._tracing_count += 1
       return self.strategy.distribute_datasets_from_function(
           lambda _: dataset_ops.DatasetV2.range(1, 2))
 
@@ -1213,9 +1215,12 @@ class StrategyIntegrationTest(test.TestCase):
     def worker_fn(iterator):
       return next(iterator)
 
-    distributed_dataset = self.coordinator.create_per_worker_dataset(
-        per_worker_dataset_fn)
-    worker_fn.get_concrete_function(iter(distributed_dataset))
+    distributed_iterator = iter(
+        self.coordinator.create_per_worker_dataset(per_worker_dataset_fn))
+    worker_fn.get_concrete_function(distributed_iterator)
+
+    self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
+    self.assertEqual(self._tracing_count, 1)
 
 
 if __name__ == '__main__':

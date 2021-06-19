@@ -98,10 +98,12 @@ cc_library(
     name = "tfrt_exec_ctx_injector",
     testonly = True,
     srcs = ["tfrt_exec_ctx_injector.cc"],
+    tags = ["manual"],
     deps = [
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/core:lib",
         # copybara:uncomment_begin(target not open-sourced yet)
-        # "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        # "//tensorflow/core/tfrt/runtime:work_queue_interface",
         # copybara:uncomment_end
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:core_runtime",
