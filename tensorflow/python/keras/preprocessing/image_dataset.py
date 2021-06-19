@@ -206,7 +206,9 @@ def image_dataset_from_directory(directory,
   image_paths, labels = dataset_utils.get_training_or_validation_split(
       image_paths, labels, validation_split, subset)
   if not image_paths:
-    raise ValueError('No images found.')
+    raise ValueError((
+        'No images found. '
+        'Supported image formats: %s' % (str(ALLOWLIST_FORMATS,)[1:-1])))
 
   dataset = paths_and_labels_to_dataset(
       image_paths=image_paths,
