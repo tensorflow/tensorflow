@@ -189,6 +189,10 @@ class KerasClassifier(BaseWrapper):
   """Implementation of the scikit-learn classifier API for Keras.
   """
 
+  def __init__(self, build_fn=None, **sk_params):
+    self._estimator_type = "classifier"
+    super(KerasClassifier, self).__init__(build_fn, **sk_params)
+
   def fit(self, x, y, **kwargs):
     """Constructs a new model with `build_fn` & fit the model to `(x, y)`.
 
@@ -311,6 +315,10 @@ class KerasClassifier(BaseWrapper):
 class KerasRegressor(BaseWrapper):
   """Implementation of the scikit-learn regressor API for Keras.
   """
+
+  def __init__(self, build_fn=None, **sk_params):
+    self._estimator_type = "regressor"
+    super(KerasRegressor, self).__init__(build_fn, **sk_params)
 
   def predict(self, x, **kwargs):
     """Returns predictions for the given test data.
