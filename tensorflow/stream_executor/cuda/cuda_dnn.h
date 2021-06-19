@@ -207,7 +207,8 @@ class CudnnSupport : public dnn::DnnSupport {
                      dnn::ProfileResult* output_profile_result) override;
 
   bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveExecutionPlans(
@@ -233,11 +234,13 @@ class CudnnSupport : public dnn::DnnSupport {
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(

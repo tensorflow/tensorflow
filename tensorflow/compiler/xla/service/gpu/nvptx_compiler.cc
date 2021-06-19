@@ -84,12 +84,6 @@ void PrintCantFindCudaMessage(absl::string_view msg,
          "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
 }
 
-std::pair<int, int> ComputeCapability(stream_executor::StreamExecutor& se) {
-  int major, minor;
-  CHECK(se.GetDeviceDescription().cuda_compute_capability(&major, &minor));
-  return {major, minor};
-}
-
 }  // namespace
 
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
@@ -126,8 +120,10 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
-  pipeline.AddPass<CudnnPadForConvolutions>(ComputeCapability(*stream_exec));
-  pipeline.AddPass<CudnnVectorizeConvolutions>(ComputeCapability(*stream_exec));
+  pipeline.AddPass<CudnnPadForConvolutions>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
+  pipeline.AddPass<CudnnVectorizeConvolutions>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
   // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leave
   // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
   // fixes.
@@ -174,7 +170,8 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
-  if (IsVoltaOrLater(*stream_exec)) {
+  if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::VOLTA)) {
     // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
     pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::S8,
                                             /*pad_to_multiple_of=*/4);
@@ -352,16 +349,7 @@ HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
 }
 
 GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
-  int cc_major, cc_minor;
-  if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                   &cc_minor)) {
-    LOG(WARNING)
-        << "Couldn't get compute capability for device; assuming sm_20.";
-    cc_major = 2;
-    cc_minor = 0;
-  }
-
-  return std::make_pair(cc_major, cc_minor);
+  return stream_exec->GetDeviceDescription().cuda_compute_capability();
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
@@ -371,9 +359,6 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    se::StreamExecutor* stream_exec,
                                    bool relocatable,
                                    const HloModule* debug_module) {
-  std::pair<int, int> compute_capability =
-      absl::get<std::pair<int, int>>(gpu_version);
-
   std::string libdevice_dir;
   {
     tensorflow::mutex_lock lock(mutex_);
@@ -406,7 +391,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, compute_capability.first, compute_capability.second,
+      stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
       module_config, relocatable);
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
@@ -414,8 +399,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 }
 
 std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
-    int cc_minor, const HloModuleConfig& hlo_module_config, bool relocatable) {
+    se::StreamExecutor* stream_exec, const string& ptx,
+    se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
+    bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
   tensorflow::profiler::TraceMe activity(
       "PTX->CUBIN", tensorflow::profiler::TraceMeLevel::kInfo);
@@ -430,7 +416,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     tensorflow::mutex_lock lock(mutex_);
     std::tie(iter, inserted) = compilation_cache_.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(ptx, cc_major, cc_minor, relocatable),
+        std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable),
         std::forward_as_tuple());
     cache_ptx = &iter->first.ptx;
     cache_value = &iter->second;

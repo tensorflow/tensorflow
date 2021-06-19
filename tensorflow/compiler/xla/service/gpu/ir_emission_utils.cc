@@ -128,7 +128,7 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    absl::optional<CudaComputeCapability> cuda_compute_capability) {
+    se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
@@ -139,14 +139,11 @@ std::array<int64, 3> GetReductionTiling(
         0) {
       return {tile_z, 1, 64};
     }
-    int cc_major = 0;
-    if (cuda_compute_capability) {
-      cc_major = cuda_compute_capability->cc_major;
-    }
     int unroll_x = 8;
-    if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
+    if (cuda_compute_capability.major >= 6 && smallest_input_dtype_bits == 16) {
       unroll_x = 16;
-    } else if (cc_major >= 6 && smallest_input_dtype_bits == 8) {
+    } else if (cuda_compute_capability.major >= 6 &&
+               smallest_input_dtype_bits == 8) {
       unroll_x = 64;
     }
     return {tile_z, 1, unroll_x};

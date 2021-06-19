@@ -96,7 +96,10 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
-  if (input_ty != F16 || !IsVoltaOrLater(*stream_executor) ||
+  if (input_ty != F16 ||
+      !stream_executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
       instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
