@@ -49,6 +49,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using memory_space_assignment::PresetAssignments;
 using ::testing::UnorderedElementsAre;
 
 // DFS visitor that collects the instructions referenced by a computation

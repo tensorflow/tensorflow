@@ -718,13 +718,6 @@ bool ConvUseDefaultAlgorithm() {
   return use_default;
 }
 
-std::tuple<int, int> GetCcMajorMinor(Stream* stream) {
-  int cc_major, cc_minor;
-  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                   &cc_minor);
-  return std::make_tuple(cc_major, cc_minor);
-}
-
 // Turns a ConvolutionDescriptor structure into a cudnn convolution handle
 // within a scope.
 class CudnnConvolutionDescriptor {
@@ -802,12 +795,13 @@ static bool IsTensorMathOpSet(const CudnnConvolutionDescriptor& conv) {
 #endif
 }
 
-static bool TensorOpMathAvailable(int cc_major) { return cc_major >= 7; }
+static bool TensorOpMathAvailable(
+    CudaComputeCapability cuda_compute_capability) {
+  return cuda_compute_capability.IsAtLeast(7);
+}
 
 static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
-  int cc_major, cc_minor;
-  std::tie(cc_major, cc_minor) = GetCcMajorMinor(stream);
-  if (!TensorOpMathAvailable(cc_major)) {
+  if (!TensorOpMathAvailable(stream->GetCudaComputeCapability())) {
     return false;
   }
   if (input_type == dnn::DataType::kFloat) {
@@ -4521,14 +4515,15 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
 }
 
 bool CudnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   // Preload sub libs for cudnn 8.0.4+
 #if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
   cudnnOpsInferVersionCheck();
   cudnnCnnInferVersionCheck();
 #endif
-  bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
+  bool tensor_op_math_available =
+      TensorOpMathAvailable(cuda_compute_capability);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types;
@@ -4591,7 +4586,7 @@ bool CudnnSupport::GetRnnAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   // Preload sub libs for cudnn 8.0.4+
 #if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
@@ -4600,7 +4595,8 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   cudnnCnnInferVersionCheck();
   cudnnCnnTrainVersionCheck();
 #endif
-  bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
+  bool tensor_op_math_available =
+      TensorOpMathAvailable(cuda_compute_capability);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -4630,7 +4626,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   // Preload sub libs for cudnn 8.0.4+
 #if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
@@ -4639,7 +4635,8 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   cudnnCnnInferVersionCheck();
   cudnnCnnTrainVersionCheck();
 #endif
-  bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
+  bool tensor_op_math_available =
+      TensorOpMathAvailable(cuda_compute_capability);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -4701,7 +4698,8 @@ bool CudnnSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
     const DeviceMemory<float>& estimated_variance,
-    const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<Eigen::half>& side_input,
+    const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
@@ -4726,7 +4724,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
     const DeviceMemory<U>& estimated_mean,
     const DeviceMemory<U>& estimated_variance,
-    const DeviceMemory<U>& side_input, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<T>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
@@ -4997,11 +4995,8 @@ port::Status CudnnSupport::DoFusedConvolve(
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  int cc_major, cc_minor;
-  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                   &cc_minor);
   if (input_type == dnn::DataType::kInt8 &&
-      (cc_major < 6 || (cc_major == 6 && cc_minor < 1))) {
+      !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
     return port::UnimplementedError(
         "cudnnConvolutionBiasActivationForward() for int8 is only supported on "
         "GPUs with compute capability 6.1 or later.");

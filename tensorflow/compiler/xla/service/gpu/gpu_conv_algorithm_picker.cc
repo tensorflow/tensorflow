@@ -171,11 +171,10 @@ tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
 tensorflow::ComputeCapability GetComputeCapability(
     se::StreamExecutor* stream_executor) {
   tensorflow::ComputeCapability cc;
-  int cc_major, cc_minor;
-  stream_executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                  &cc_minor);
-  cc.set_major(cc_major);
-  cc.set_minor(cc_minor);
+  se::CudaComputeCapability se_cc =
+      stream_executor->GetDeviceDescription().cuda_compute_capability();
+  cc.set_major(se_cc.major);
+  cc.set_minor(se_cc.minor);
   return cc;
 }
 

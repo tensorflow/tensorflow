@@ -1752,10 +1752,8 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
 #else
   if (dtype == blas::DataType::kFloat) {
     math_type = CUBLAS_TF32_TENSOR_OP_MATH;
-    int cc_major, cc_minor;
-    if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-            &cc_major, &cc_minor) &&
-        cc_major >= 8) {
+    if (stream->GetCudaComputeCapability().IsAtLeast(
+            CudaComputeCapability::AMPERE)) {
       // TODO(reedwm): Remove or make this VLOG(1) once TensorFloat-32 is more
       // well tested.
       if (tensorflow::tensor_float_32_execution_enabled()) {
@@ -2045,21 +2043,19 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
   }
 
   // GPUs < sm_50 don't support cublasGemmEx.
-  int cc_major, cc_minor;
-  if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-          &cc_major, &cc_minor) &&
-      cc_major < 5) {
+  CudaComputeCapability cc = stream->GetCudaComputeCapability();
+  if (cc.major < 5) {
     return port::InternalError(absl::StrCat(
-        "sm_", cc_major, " does not support explicit gemm algorithms."));
+        "sm_", cc.major, " does not support explicit gemm algorithms."));
   }
 
   bool algo_uses_tensor_ops = UsesTensorOps(algorithm);
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
   if (algo_uses_tensor_ops) {
-    if (cc_major < 7) {
+    if (cc.major < 7) {
       return port::InternalError(absl::StrCat(
           "Algorithm ", algorithm,
-          " uses tensor ops, but tensor ops are not available in sm", cc_major,
+          " uses tensor ops, but tensor ops are not available in sm", cc.major,
           "X devices."));
     } else if (type_a == blas::DataType::kFloat) {
 #if CUDA_VERSION < 11000
@@ -2067,11 +2063,11 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
           "Algorithm ", algorithm,
           " uses tensor ops, but tensor ops are not available for fp32"));
 #else
-      if (cc_major < 8) {
+      if (cc.major < 8) {
         return port::InternalError(absl::StrCat(
             "Algorithm ", algorithm,
             " uses tensor ops, but tensor ops are not available in sm",
-            cc_major, "X devices for float input types."));
+            cc.major, "X devices for float input types."));
       } else if (!tensorflow::tensor_float_32_execution_enabled()) {
         return port::InternalError(absl::StrCat(
             "Algorithm ", algorithm,
@@ -2337,10 +2333,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   cudaDataType_t data_type = CUDADataType<T>::type;
 
 #if CUDA_VERSION >= 9010
-  int cc_major, cc_minor;
-  if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-          &cc_major, &cc_minor) &&
-      cc_major >= 5) {
+  if (stream->GetCudaComputeCapability().IsAtLeast(5)) {
     cublasMath_t math_type;
     cublasGemmAlgo_t algo;
     if (data_type == CUDA_R_16F) {
@@ -2513,12 +2506,10 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
   switch (dtype) {
     case dnn::kHalf: {
 #if CUDA_VERSION >= 9010
-      int cc_major, cc_minor;
-      if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-              &cc_major, &cc_minor) &&
-          cc_major >= 5) {
+      CudaComputeCapability cc = stream->GetCudaComputeCapability();
+      if (cc.major >= 5) {
         cublasGemmAlgo_t algo =
-            (cc_major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+            (cc.major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
         return DoBlasInternalImpl(
             AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
             true /* = pointer_mode_host */, math_type,

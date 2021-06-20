@@ -39,9 +39,10 @@ namespace xla {
     TransferManager::platform_transfer_manager_mutex_(
         tensorflow::LINKER_INITIALIZED);
 
-/* static */ std::map<se::Platform::Id, TransferManager::State>*
+/* static */ absl::flat_hash_map<se::Platform::Id, TransferManager::State>*
 TransferManager::GetPlatformTransferManagers() {
-  static auto* r = new std::map<se::Platform::Id, TransferManager::State>;
+  static auto* r =
+      new absl::flat_hash_map<se::Platform::Id, TransferManager::State>;
   return r;
 }
 

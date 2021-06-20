@@ -26,6 +26,7 @@ import re
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -1371,7 +1372,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # NOTE(ebrevdo): shape_and_type lacks append() in some versions of protobuf.
     variant_shape_and_type_data.shape_and_type.extend([
         cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
-            shape=stored_shape, dtype=stored_dtype)])
+            shape=stored_shape,
+            dtype=stored_dtype,
+            type=full_type_pb2.FullTypeDef())
+    ])
     return variant_shape_and_type_data
 
   @def_function.function

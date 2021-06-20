@@ -29,6 +29,13 @@ package(
     licenses = ["notice"],
 )
 
+package_group(
+    name = "friends",
+    packages = [
+        "//third_party/car/...",
+    ],
+)
+
 bool_flag(
     name = "enable_gpu",
     build_setting_default = True,
@@ -324,6 +331,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     srcs = [],
+    visibility = [
+        ":friends",
+        "//tensorflow/core/kernels:__subpackages__",
+    ],
     deps = [
         ":cpu_cwise_binary_op",
         ":cpu_cwise_unary_op",

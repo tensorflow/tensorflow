@@ -136,13 +136,13 @@ struct DividesBy<float, Eigen::half> {
 
 struct HalfToFloat {
   __host__ __device__ float operator()(const Eigen::half& x) const {
-    return Eigen::half_impl::half_to_float(x);
+    return static_cast<float>(x);
   }
 };
 
 struct FloatToHalf {
   __host__ __device__ Eigen::half operator()(const float& x) const {
-    return Eigen::half_impl::float_to_half_rtne(x);
+    return static_cast<Eigen::half>(x);
   }
 };
 

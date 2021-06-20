@@ -1159,9 +1159,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
-    # Suppress a benign but noisy "Stack size for entry function foo cannot be
-    # statically determined." ptxas warning.
-    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     prefix = "quantize_and_dequantize_op",
     deps = ARRAY_DEPS + [":cwise_op"],
 )
@@ -1250,9 +1247,6 @@ tf_kernel_library(
         "tile_functor_cpu_variant.cc",
     ],
     hdrs = ["tile_functor.h"],
-    # Suppress a benign but noisy "Stack size for entry function foo cannot be
-    # statically determined." ptxas warning.
-    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     gpu_srcs = [
         "tile_functor.h",
         "tile_functor_gpu.h",
@@ -4109,9 +4103,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "xent_op",
-    # Suppress a benign but noisy "Stack size for entry function foo cannot be
-    # statically determined." ptxas warning.
-    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     prefix = "xent_op",
     deps = NN_DEPS,
 )
@@ -4269,9 +4260,6 @@ tf_kernel_library(
     name = "fake_quant_ops",
     srcs = ["fake_quant_ops.cc"],
     hdrs = ["fake_quant_ops_functor.h"],
-    # Suppress a benign but noisy "Stack size for entry function foo cannot be
-    # statically determined." ptxas warning.
-    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     gpu_srcs = [
         "fake_quant_ops_gpu.cu.cc",
         "fake_quant_ops_functor.h",
@@ -4774,9 +4762,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_xent_op",
-    # Suppress a benign but noisy "Stack size for entry function foo cannot be
-    # statically determined." ptxas warning.
-    gpu_copts = ["-Xcuda-ptxas --disable-warnings"],
     prefix = "sparse_xent_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",

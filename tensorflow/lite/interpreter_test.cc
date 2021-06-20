@@ -266,8 +266,7 @@ TEST(BasicInterpreter, CheckResize) {
   const uint8_t uint8s[] = {3, 4};
   const int64_t int64s[] = {6, -7};
   const int16_t int16s[] = {8, -9};
-  const Eigen::half float16s[] = {Eigen::half_impl::float_to_half_rtne(-3.f),
-                                  Eigen::half_impl::float_to_half_rtne(-4.f)};
+  const Eigen::half float16s[] = {Eigen::half(-3.f), Eigen::half(-4.f)};
 
   struct {
     TfLiteType type;

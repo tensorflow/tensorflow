@@ -47,6 +47,27 @@ FuncOp GetSessionInitializerFunc(ModuleOp module) {
   }
   return nullptr;
 }
+
+// Returns ID for identifying a resource.
+std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
+    Operation* op) {
+  llvm::StringRef device;
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>("device")) {
+    device = attr.getValue();
+  }
+
+  llvm::StringRef container;
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>("container")) {
+    container = attr.getValue();
+  }
+
+  llvm::StringRef shared_name;
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>("shared_name")) {
+    shared_name = attr.getValue();
+  }
+
+  return {device, container, shared_name};
+}
 }  // namespace
 ResourceAnalyzer::ResourceAnalyzer(ModuleOp module, bool skip_session_init) {
   auto session_init_func = GetSessionInitializerFunc(module);
@@ -60,11 +81,8 @@ void ResourceAnalyzer::SetPotentiallyWritten(Value resource) {
   assert(IsResource(resource));
   resource_infos_[resource].potentially_written = true;
   auto* operation = resource.getDefiningOp();
-  if (!operation) return;
-  if (auto var_handle_op = llvm::dyn_cast<TF::VarHandleOp>(operation)) {
-    mutable_variables_.insert(
-        {var_handle_op->getAttrOfType<StringAttr>("device").getValue(),
-         var_handle_op.container(), var_handle_op.shared_name()});
+  if (operation && llvm::isa<TF::VarHandleOp>(operation)) {
+    mutable_variables_.insert(GetResourceKey(operation));
   }
 }
 
@@ -72,10 +90,7 @@ bool ResourceAnalyzer::IsPotentiallyWritten(Value resource) const {
   assert(IsResource(resource));
   auto* operation = resource.getDefiningOp();
   if (operation && llvm::isa<TF::VarHandleOp>(operation))
-    return mutable_variables_.contains(
-        {operation->getAttrOfType<StringAttr>("device").getValue(),
-         operation->getAttrOfType<StringAttr>("container").getValue(),
-         operation->getAttrOfType<StringAttr>("shared_name").getValue()});
+    return mutable_variables_.contains(GetResourceKey(operation));
   auto it = resource_infos_.find(resource);
   if (it == resource_infos_.end()) {
     return false;
