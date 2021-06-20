@@ -30,6 +30,12 @@ def internal_visibility_allowlist():
         "//visibility:public",
     ]
 
+def nonportable_visibility_allowlist():
+    """Grant public visibility to nonportable targets so that other repos can depend on them."""
+    return [
+        "//visibility:public",
+    ]
+
 def op_resolver_internal_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/core/api:op_resolver_internal.
 

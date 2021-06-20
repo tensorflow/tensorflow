@@ -304,6 +304,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute_sharded_on_local_devices",
            &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
+      .def("keep_alive", &PyExecutable::KeepAlive)
       .def_property_readonly("traceback", &PyExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyExecutable* exec) -> py::object {

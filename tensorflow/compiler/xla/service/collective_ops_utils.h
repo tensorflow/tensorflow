@@ -220,17 +220,12 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
 
 // Participant data for each rendezvous.
 struct ParticipantData {
-  ParticipantData(const RendezvousKey& rendezvous_key, int64 device_ordinal,
-                  se::Stream* stream)
-      : rendezvous_key(rendezvous_key),
-        device_ordinal(device_ordinal),
-        stream(stream) {}
+  explicit ParticipantData(const RendezvousKey& rendezvous_key)
+      : rendezvous_key(rendezvous_key) {}
 
   virtual ~ParticipantData() {}
 
   RendezvousKey rendezvous_key;
-  int64 device_ordinal;
-  se::Stream* stream;
 
   virtual std::string ToString() const = 0;
 };
@@ -239,7 +234,9 @@ struct ParticipantData {
 struct AllReduceParticipantData : ParticipantData {
   AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
                            int64 device_ordinal_p, se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+      : ParticipantData(rendezvous_key_p),
+        device_ordinal(device_ordinal_p),
+        stream(stream_p) {}
 
   // TODO(b/125951860): We should vet that we're buffer allocating such that
   // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
@@ -251,6 +248,8 @@ struct AllReduceParticipantData : ParticipantData {
     se::DeviceMemoryBase destination_data;
     PrimitiveType primitive_type;
   };
+  int64 device_ordinal;
+  se::Stream* stream;
   std::vector<Buffer> buffers;
   const gpu::NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
@@ -370,9 +369,9 @@ class Rendezvous {
     all_participants_present_.DecrementCount();
     WaitAndLogIfStuck(&all_participants_present_, [&] {
       return absl::StrFormat(
-          "participant for device ordinal %d, stream %p waiting for all "
-          "participants to arrive at rendezvous %s",
-          participant.device_ordinal, participant.stream, key_.ToString());
+          "participant %s waiting for all participants to arrive at rendezvous "
+          "%s",
+          participant.ToString(), key_.ToString());
     });
 
     TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));

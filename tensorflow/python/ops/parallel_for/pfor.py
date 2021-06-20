@@ -1588,7 +1588,11 @@ class PFor(object):
           if converter is None:
             has_variant_outputs = any(x.dtype == dtypes.variant for x in
                                       y_op.outputs)
-            if self._fallback_to_while_loop and not has_variant_outputs:
+            has_vectorized_variant_inputs = any(
+                _is_variant_with_internal_stacking(x) for x in
+                y_op.inputs)
+            if (self._fallback_to_while_loop and not has_variant_outputs
+                and not has_vectorized_variant_inputs):
               converter = _fallback_converter
             else:
               message = ("No pfor vectorization defined for %s\n"

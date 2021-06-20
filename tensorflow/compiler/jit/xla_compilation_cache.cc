@@ -270,6 +270,64 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   return graph;
 }
 
+Status XlaSingleOpToHlo(XlaCompiler* compiler,
+                        const XlaCompiler::Options& options,
+                        const std::vector<XlaCompiler::Argument>& args,
+                        OpKernelContext* ctx,
+                        const XlaCompiler::CompileOptions& compile_options,
+                        XlaCompiler::CompilationResult* compilation_result) {
+  std::vector<DataType> result_dtypes(ctx->num_outputs());
+  for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
+    result_dtypes[i] = ctx->expected_output_dtype(i);
+  }
+
+  const NodeDef& node_def = ctx->op_kernel().def();
+  TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
+
+  auto compile_with_old_bridge = [&]() {
+    return compiler->CompileGraph(compile_options, node_def.name(),
+                                  std::move(graph), args, compilation_result);
+  };
+
+  const ConfigProto* config = ctx->function_library()->config_proto();
+  auto bridge_rollout = GetMlirBridgeRolloutState(
+      config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
+  if (bridge_rollout ==
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
+      node_def.op() == "VarIsInitializedOp" ||
+      (bridge_rollout !=
+           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
+       options.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
+    return compile_with_old_bridge();
+  }
+
+  GraphDebugInfo debug_info;
+  std::vector<std::string> control_rets;
+  if (result_dtypes.empty()) {
+    control_rets.push_back(node_def.name());
+  }
+
+  bool mlir_enabled = (bridge_rollout ==
+                       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
+  VLOG(1) << "Attempting MLIR bridge."
+          << (mlir_enabled ? " MLIR is explicitly enabled." : "");
+  auto mlir_result = CompileGraphToXlaHlo(
+      *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
+      options.device_type.type_string(), compile_options.use_tuple_arg,
+      /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
+      options.shape_representation_fn, compilation_result);
+
+  if (mlir_result.ok() || mlir_enabled) {
+    return mlir_result;
+  }
+
+  LOG_FIRST_N(WARNING, 5)
+      << "Failed second phase of the MLIR bridge. Will "
+         "retry with the old bridge. MLIR bridge compilation status: "
+      << mlir_result;
+  return compile_with_old_bridge();
+}
+
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
@@ -287,57 +345,8 @@ Status XlaCompilationCache::CompileSingleOp(
   auto compile_op = [&](XlaCompiler* compiler,
                         const std::vector<XlaCompiler::Argument>& args,
                         XlaCompiler::CompilationResult* result) {
-    std::vector<DataType> result_dtypes(ctx->num_outputs());
-    for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
-      result_dtypes[i] = ctx->expected_output_dtype(i);
-    }
-
-    const NodeDef& node_def = ctx->op_kernel().def();
-    TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
-
-    auto compile_with_old_bridge = [&]() {
-      return compiler->CompileGraph(compile_options, node_def.name(),
-                                    std::move(graph), args, result);
-    };
-
-    const ConfigProto* config = ctx->function_library()->config_proto();
-    auto bridge_rollout = GetMlirBridgeRolloutState(
-        config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
-    if (bridge_rollout ==
-            ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
-        node_def.op() == "VarIsInitializedOp" ||
-        (bridge_rollout !=
-             ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
-         options.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
-      return compile_with_old_bridge();
-    }
-
-    GraphDebugInfo debug_info;
-    std::vector<std::string> control_rets;
-    if (result_dtypes.empty()) {
-      control_rets.push_back(node_def.name());
-    }
-
-    bool mlir_enabled =
-        (bridge_rollout ==
-         ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
-    VLOG(1) << "Attempting MLIR bridge."
-            << (mlir_enabled ? " MLIR is explicitly enabled." : "");
-    auto mlir_result = CompileGraphToXlaHlo(
-        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
-        options.device_type.type_string(), compile_options.use_tuple_arg,
-        /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
-        options.shape_representation_fn, result);
-
-    if (mlir_result.ok() || mlir_enabled) {
-      return mlir_result;
-    }
-
-    LOG_FIRST_N(WARNING, 5)
-        << "Failed second phase of the MLIR bridge. Will "
-           "retry with the old bridge. MLIR bridge compilation status: "
-        << mlir_result;
-    return compile_with_old_bridge();
+    return XlaSingleOpToHlo(compiler, options, args, ctx, compile_options,
+                            result);
   };
   return CompileImpl(options, name, args, compile_op, CompileMode::kStrict,
                      out_compilation_result, out_executable);

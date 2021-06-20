@@ -25,6 +25,10 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
+load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
@@ -95,6 +99,8 @@ cc_library(
     name = "gpu_types",
     hdrs = ["gpu_types.h"],
     deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/stream_executor:device_description",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -527,6 +533,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor/lib",
     ]) + if_nccl([
         ":virtual_nccl",
@@ -571,7 +578,7 @@ cc_library(
         "thunk_schedule.cc",
         "triangular_solve_thunk.cc",
         "while_thunk.cc",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
         "cholesky_thunk.cc",
     ]),
     hdrs = [
@@ -595,7 +602,7 @@ cc_library(
         "thunk_schedule.h",
         "triangular_solve_thunk.h",
         "while_thunk.h",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
         "cholesky_thunk.h",
     ]),
     local_defines = if_cuda_is_configured([
@@ -938,13 +945,9 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-    srcs = if_cuda_is_configured(["cusolver_context.cc"]),
+    srcs = if_gpu_is_configured(["cusolver_context.cc"]),
     hdrs = ["cusolver_context.h"],
     deps = [
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cublas_headers",
-        "@local_config_cuda//cuda:cusolver_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -952,16 +955,24 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
     ] + if_cuda_is_configured([
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        "@local_config_cuda//cuda:cusolver_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+        "@local_config_rocm//rocm:rocblas",
     ]),
 )
 
 cc_library(
     name = "cusolver_rewriter",
-    srcs = if_cuda_is_configured(["cusolver_rewriter.cc"]),
-    hdrs = if_cuda_is_configured(["cusolver_rewriter.h"]),
-    deps = if_cuda_is_configured([
+    srcs = if_gpu_is_configured(["cusolver_rewriter.cc"]),
+    hdrs = if_gpu_is_configured(["cusolver_rewriter.h"]),
+    deps = if_gpu_is_configured([
         ":cusolver_context",
         ":ir_emission_utils",
         "@com_google_absl//absl/types:optional",
@@ -1577,6 +1588,7 @@ cc_library(
         "amdgpu_compiler.h",
     ],
     deps = [
+        ":cusolver_rewriter",
         ":gemm_rewriter",
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",

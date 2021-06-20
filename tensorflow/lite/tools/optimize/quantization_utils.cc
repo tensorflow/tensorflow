@@ -515,7 +515,7 @@ TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
                  quantized_buffer.begin(), [=](float a) {
                    float clamped = std::min(std::max(a, kMinFloat16Value),
                                             kMaxFloat16Value);
-                   return Eigen::half_impl::float_to_half_rtne(clamped);
+                   return static_cast<Eigen::half>(clamped);
                  });
 
   char* half_buffer = reinterpret_cast<char*>(quantized_buffer.data());
