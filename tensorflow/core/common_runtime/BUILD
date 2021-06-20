@@ -168,6 +168,7 @@ filegroup(
         "graph_optimizer.h",
         "graph_runner.h",
         "inline_function_utils.h",
+        "lower_function_call_inline_policy.h",
         "metrics.h",
         "process_function_library_runtime.h",
         "scoped_allocator.h",
@@ -932,6 +933,7 @@ cc_library(
         ":function_body",
         ":function_utils",
         ":graph_constructor",
+        ":lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1009,6 +1011,16 @@ cc_library(
 )
 
 cc_library(
+    name = "lower_function_call_inline_policy",
+    srcs = ["lower_function_call_inline_policy.cc"],
+    hdrs = ["lower_function_call_inline_policy.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+    ],
+)
+
+cc_library(
     name = "lower_function_call_op",
     srcs = ["lower_function_call_op.cc"],
     hdrs = ["lower_function_call_op.h"],
@@ -1016,6 +1028,7 @@ cc_library(
     deps = [
         ":function_def_utils",
         ":inline_function_utils",
+        ":lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
