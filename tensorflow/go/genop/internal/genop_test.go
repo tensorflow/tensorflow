@@ -45,7 +45,12 @@ func GetAPIDef(t *testing.T, opdef *odpb.OpDef, apidefText string) *adpb.ApiDef 
 	return apidef
 }
 
+// This test is disabled and should be rewritten. Serialized protocol buffers
+// are not stable, see https://github.com/golang/protobuf/issues/1121
 func TestGenerateOp(t *testing.T) {
+
+        t.Skip("this test is disabled")
+
 	// TestGenerateOp validates the generated source code for an op.
 	// The OpDef for the test cases are simplified forms of real ops.
 	testdata := []struct {
