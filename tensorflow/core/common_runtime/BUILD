@@ -124,6 +124,28 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "collective_test_util",
+    testonly = 1,
+    srcs = ["collective_test_util.cc"],
+    hdrs = ["collective_test_util.h"],
+    copts = tf_copts(),
+    deps = [
+        ":device_resolver_local",
+        ":process_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Public Android targets
 
@@ -2023,6 +2045,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2049,6 +2072,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2075,6 +2099,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2101,6 +2126,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2115,6 +2141,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
