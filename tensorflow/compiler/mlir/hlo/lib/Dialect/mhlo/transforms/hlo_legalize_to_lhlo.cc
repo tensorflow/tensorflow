@@ -666,6 +666,7 @@ void populateDynamicHLOToLHLOOnlyConversionPattern(
     OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
+                   HloToLhloOpConverter<mhlo::DynamicGatherOp>,
                    HloToLhloOpConverter<mhlo::DynamicIotaOp>,
                    HloToLhloOpConverter<mhlo::DynamicPadOp>,
                    HloToLhloOpConverter<mhlo::DynamicReshapeOp>,
@@ -696,6 +697,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::CeilOp>,
       HloToLhloOpConverter<mhlo::CompareOp>,
       HloToLhloOpConverter<mhlo::ComplexOp>,
+      HloToLhloOpConverter<mhlo::ConcatenateOp>,
       HloToLhloOpConverter<mhlo::ConstOp>,
       HloToLhloOpConverter<mhlo::ConvOp>,
       HloToLhloOpConverter<mhlo::ConvertOp>,

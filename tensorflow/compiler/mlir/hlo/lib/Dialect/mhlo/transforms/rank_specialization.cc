@@ -15,6 +15,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/EquivalenceClasses.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -66,10 +67,9 @@ namespace {
 bool IsClusterable(Operation *op) {
   if (!llvm::isa<InferShapedTypeOpInterface>(op)) return false;
   if (op->getNumOperands() == 0) return false;
-  return (op->hasTrait<OpTrait::Elementwise>() &&
-          op->hasTrait<OpTrait::SameOperandsAndResultShape>()) ||
-         (op->hasTrait<chlo::OpTrait::BroadcastingElementwise>() &&
-          op->hasTrait<chlo::OpTrait::Broadcasting>());
+  return (op->hasTrait<mlir::OpTrait::Elementwise>() &&
+          op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) ||
+         op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>();
 }
 
 struct RankSpecializationClusterPattern : public RewritePattern {
@@ -342,17 +342,20 @@ SmallVector<Value, 8> MaterializeRankedOperations(
 
 SmallVector<Value, 8> MaterializeFinalReshape(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
-    ValueRange unshaped_results) {
-  // Compute result shape.
-  auto non_scalar_operands = llvm::make_filter_range(
-      op.operands(), [](Value v) { return !IsScalarTensorType(v.getType()); });
-  SmallVector<Value, 8> results;
-  auto operand_shapes =
-      llvm::to_vector<8>(llvm::map_range(non_scalar_operands, [&](Value v) {
-        return b.create<shape::ShapeOfOp>(loc, v).result();
-      }));
-  auto shape = b.create<shape::BroadcastOp>(
-      loc, shape::getExtentTensorType(b.getContext()), operand_shapes);
+    ValueRange unshaped_results, llvm::Optional<Value> shape = {}) {
+  if (!shape) {
+    // Compute result shape.
+    auto non_scalar_operands = llvm::make_filter_range(
+        op.operands(),
+        [](Value v) { return !IsScalarTensorType(v.getType()); });
+    SmallVector<Value, 8> results;
+    auto operand_shapes =
+        llvm::to_vector<8>(llvm::map_range(non_scalar_operands, [&](Value v) {
+          return b.create<shape::ShapeOfOp>(loc, v).result();
+        }));
+    shape = b.create<shape::BroadcastOp>(
+        loc, shape::getExtentTensorType(b.getContext()), operand_shapes);
+  }
 
   // Reshape results.
   return llvm::to_vector<8>(
@@ -360,7 +363,7 @@ SmallVector<Value, 8> MaterializeFinalReshape(
         return b
             .create<mhlo::DynamicReshapeOp>(
                 loc, DeriveUnrankedTensorTypes(unshaped.getType()), unshaped,
-                shape)
+                shape.getValue())
             .result();
       }));
 }
@@ -665,7 +668,8 @@ MaterializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
       MaterializeRankedOperations(b, loc, bvm, op);
 
   // Restore the results' expected shape.
-  return MaterializeFinalReshape(b, loc, op, unshaped_results);
+  return MaterializeFinalReshape(b, loc, op, unshaped_results,
+                                 non_scalar_shapes.front());
 }
 
 Value MaterializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(
@@ -714,6 +718,8 @@ Value MaterializeDefaultRankSpecialization(OpBuilder &b, Location loc,
 }
 
 // This is a very limited form of shape inference. It is correct but incomplete.
+// TODO(frgossen): Infer shape equalities from surrounding shape constraints
+// when these are generated.
 SmallVector<SmallVector<Value, 4>, 4> FindNonScalarShapeEquivalences(
     chlo::RankSpecializationClusterOp op) {
   llvm::EquivalenceClasses<Value> eqs;
@@ -729,17 +735,22 @@ SmallVector<SmallVector<Value, 4>, 4> FindNonScalarShapeEquivalences(
     for (Value v : vs.drop_front()) eqs.unionSets(repr, v);
   };
   for (Operation &nested_op : op.getBody()->without_terminator()) {
-    if (nested_op.hasTrait<OpTrait::SameOperandsAndResultShape>()) {
+    if (nested_op.hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) {
       union_sets(nested_op.getOperands());
       union_sets(nested_op.getResults());
       if (!nested_op.getOperands().empty() && !nested_op.getResults().empty())
         eqs.unionSets(nested_op.getResult(0), nested_op.getOperand(0));
     }
-    // TODO(frgossen): Replace this with a check for the appropriate trait when
-    // that is available.
+  }
+
+  // Find equalities through special knowledge of ops.
+  for (Operation &nested_op : op.getBody()->without_terminator()) {
     if (auto select_op = llvm::dyn_cast<mhlo::SelectOp>(nested_op)) {
       union_sets(
           {select_op.on_true(), select_op.on_false(), select_op.getResult()});
+    }
+    if (auto clamp_op = llvm::dyn_cast<mhlo::ClampOp>(nested_op)) {
+      union_sets({clamp_op.operand(), clamp_op.getResult()});
     }
   }
 

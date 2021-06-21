@@ -234,7 +234,7 @@ class OpDefCache(object):
     self._op_defs = {}
 
   def lookup(self, f_name, func_def=None, optional=False):
-    if f_name in self._op_defs.keys():
+    if f_name in self._op_defs:
       return self._op_defs[f_name]
 
     if isinstance(func_def, types.FunctionType):
@@ -277,7 +277,7 @@ class OpDefCache(object):
     return (op_def, derived_attrs)
 
   def mlir_external_funcs(self):
-    tfr_funcs = []
+    tfr_funcs = set()
     for _, (op_def, derived_attrs) in sorted(self._op_defs.items()):
       tfr_func = '\ntfr.func @tf__{}_('.format(_camel_to_snake(op_def.name))
 
@@ -297,7 +297,7 @@ class OpDefCache(object):
       attrs_with_default = [
           attr for attr in non_derived_attrs if attr.HasField('default_value')
       ]
-      attr_names = set()
+      attr_names = {'f32_', 'i32_', 'i64_', 'i1_'}  # reserved
       for attr_def in attrs_no_default + attrs_with_default:
         inputs.append(_get_type_info_from_proto(None, attr_def))
         attr_names.add(attr_def.name)
@@ -310,9 +310,9 @@ class OpDefCache(object):
       inputs = ','.join(inputs)
       outputs = ','.join(outputs)
       attrs = ','.join(sorted(derived_attrs.union(attr_names)))
-      tfr_funcs.append('{}{}) -> ({}) attributes {{{}}}'.format(
+      tfr_funcs.add('{}{}) -> ({}) attributes {{{}}}'.format(
           tfr_func, inputs, outputs, attrs))
-    return tfr_funcs
+    return sorted(list(tfr_funcs))
 
 
 _PY_TYPE_TO_TFR = {
@@ -1506,9 +1506,9 @@ def tfr_gen(func, op_defs):
   return mlir_code
 
 
-def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
+def tfr_funcs_gen_from_module(source, op_defs, method_prefix=None,
+                              op_libraries=None):
   """Parse the input source module and emit the TFR functions."""
-  op_defs = OpDefCache()
 
   # Load the op library so the op is added to the op registry. This is
   # required when the op cc_library couldn't be statically linked in open
@@ -1546,5 +1546,14 @@ def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
   # functions called.
   py_funcs = sorted(py_funcs, key=lambda x: x.__code__.co_firstlineno)
   mlir_funcs = [tfr_gen(func, op_defs) for func in py_funcs]
+
+  return mlir_funcs
+
+
+def tfr_gen_from_module(source, method_prefix=None, op_libraries=None,
+                        op_defs=OpDefCache()):
+  """Parse the input source module and emit the TFR and external functions."""
+  mlir_funcs = tfr_funcs_gen_from_module(
+      source, op_defs, method_prefix, op_libraries)
 
   return '\n'.join(mlir_funcs + op_defs.mlir_external_funcs())

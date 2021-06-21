@@ -7597,6 +7597,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveBcastRecvV2"
@@ -7662,6 +7663,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveBcastSend"
@@ -7718,6 +7720,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveBcastSendV2"
@@ -7770,6 +7773,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveGather"
@@ -7825,6 +7829,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveGatherV2"
@@ -7889,6 +7894,7 @@ op {
     has_minimum: true
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectivePermute"
@@ -8015,6 +8021,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveReduceV2"
@@ -8109,6 +8116,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CombinedNonMaxSuppression"
@@ -11398,6 +11406,13 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -11466,6 +11481,13 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+  attr {
+    name: "target_workers"
+    type: "string"
+    default_value {
+      s: "AUTO"
     }
   }
   is_stateful: true
@@ -27197,6 +27219,13 @@ op {
   output_arg {
     name: "optional"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_OPTIONAL
+      args {
+        type_id: TFT_VAR
+        s: "Toutput_types"
+      }
+    }
   }
   attr {
     name: "Toutput_types"
@@ -36672,6 +36701,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "RecvTPUEmbeddingActivations"
@@ -57150,6 +57180,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "perturb_singular"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {

@@ -24,6 +24,7 @@ from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import dataset_creator_model_fit_test_base as test_base
@@ -51,6 +52,30 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
   def testModelFit(self, strategy):
     model = self._model_fit(strategy)
     self.assertEqual(model.optimizer.iterations, 100)
+
+  def testModelFitwithStepsPerEpochNegativeOne(self, strategy):
+    def dataset_fn(input_context):
+      del input_context
+      x = random_ops.random_uniform((10, 10))
+      y = random_ops.random_uniform((10,))
+      return dataset_ops.DatasetV2.from_tensor_slices(
+          (x, y)).shuffle(10).batch(2)
+
+    if strategy._should_use_with_coordinator:
+      with self.assertRaises((errors.OutOfRangeError, errors.CancelledError)):
+        self._model_fit(
+            strategy,
+            steps_per_epoch=-1,
+            x=dataset_creator.DatasetCreator(dataset_fn),
+            validation_data=dataset_creator.DatasetCreator(dataset_fn),
+        )
+    else:
+      self._model_fit(
+          strategy,
+          steps_per_epoch=-1,
+          x=dataset_creator.DatasetCreator(dataset_fn),
+          validation_data=dataset_creator.DatasetCreator(dataset_fn),
+      )
 
   def testModelFitWithNumpyData(self, strategy):
     x = np.random.rand(100, 10)

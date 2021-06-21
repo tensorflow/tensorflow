@@ -444,6 +444,35 @@ Status DeviceNameUtils::MergeOverrideDevNames(ParsedName* target,
 }
 
 /* static */
+void DeviceNameUtils::MergeUnsetDevNames(ParsedName* target,
+                                         const ParsedName& other) {
+  if (other.has_job && !target->has_job) {
+    target->has_job = other.has_job;
+    target->job = other.job;
+  }
+
+  if (other.has_replica && !target->has_replica) {
+    target->has_replica = other.has_replica;
+    target->replica = other.replica;
+  }
+
+  if (other.has_task && !target->has_task) {
+    target->has_task = other.has_task;
+    target->task = other.task;
+  }
+
+  if (other.has_type && !target->has_type) {
+    target->has_type = other.has_type;
+    target->type = other.type;
+  }
+
+  if (other.has_id && !target->has_id) {
+    target->has_id = other.has_id;
+    target->id = other.id;
+  }
+}
+
+/* static */
 bool DeviceNameUtils::IsSameAddressSpace(const ParsedName& a,
                                          const ParsedName& b) {
   return (a.has_job && b.has_job && (a.job == b.job)) &&

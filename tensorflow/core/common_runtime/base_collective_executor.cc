@@ -350,7 +350,6 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 void BaseCollectiveExecutor::CompleteParamsAsync(
     const DeviceAttributes& device, CollectiveParams* cp,
     CancellationManager* cancel_mgr, StatusCallback done) {
-  cp->group.gpu_ring_order = *gpu_ring_order_;
   // We need to make sure that when the timeout callback executes,
   // CollectiveExecutor and CollectiveExecutorMgr are both alive. After done()
   // is called, CollectiveExecutorMgr may be destructed and we don't have a way

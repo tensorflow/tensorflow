@@ -429,6 +429,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      target_ops=None,
                      conversion_summary_dir=None,
                      select_user_tf_ops=None,
+                     allow_all_select_tf_ops=False,
                      enable_tflite_resource_variables=False,
                      unfold_batchmatmul=True,
                      lower_tensor_list_ops=True,
@@ -451,6 +452,7 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.allow_custom_ops = allow_custom_ops
   if select_user_tf_ops:
     toco.select_user_tf_ops.extend(select_user_tf_ops)
+  toco.allow_all_select_tf_ops = allow_all_select_tf_ops
   toco.post_training_quantize = post_training_quantize
   toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
@@ -503,6 +505,7 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_tags=None,
                               saved_model_exported_names=None,
                               select_user_tf_ops=None,
+                              allow_all_select_tf_ops=False,
                               unfold_batchmatmul=True,
                               lower_tensor_list_ops=True,
                               accumulation_type=None,
@@ -584,6 +587,8 @@ def build_toco_convert_protos(input_tensors,
     select_user_tf_ops: List of user's defined TensorFlow ops need to be
       supported in the TensorFlow Lite runtime. These ops will be supported as
       select TensorFlow ops.
+    allow_all_select_tf_ops: If True, automatically add all TF ops (including
+      custom TF ops) to the converted model as flex ops.
     unfold_batchmatmul: Whether to unfold tf.BatchMatMul to a set of
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
     lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
@@ -620,6 +625,7 @@ def build_toco_convert_protos(input_tensors,
       target_ops=target_ops,
       conversion_summary_dir=conversion_summary_dir,
       select_user_tf_ops=select_user_tf_ops,
+      allow_all_select_tf_ops=allow_all_select_tf_ops,
       unfold_batchmatmul=unfold_batchmatmul,
       lower_tensor_list_ops=lower_tensor_list_ops,
       accumulation_type=accumulation_type,

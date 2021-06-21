@@ -37,6 +37,11 @@ PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
 PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
 
+PyClient::~PyClient() {
+  py::gil_scoped_release gil;
+  pjrt_client_ = nullptr;
+}
+
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
   auto span = pjrt_client_->devices();
@@ -65,6 +70,17 @@ std::vector<py::object> PyClient::LiveBuffers() {
     }
   }
   return buffers;
+}
+
+std::vector<std::shared_ptr<PyExecutable>> PyClient::LiveExecutables() {
+  CHECK(PyGILState_Check());
+  std::vector<std::shared_ptr<PyExecutable>> executables;
+  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
+    if (!exec->is_deleted()) {
+      executables.push_back(exec->shared_from_this());
+    }
+  }
+  return executables;
 }
 
 Status PyClient::Defragment() {

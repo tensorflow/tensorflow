@@ -96,7 +96,10 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
-  if (input_ty != F16 || !IsVoltaOrLater(*stream_executor) ||
+  if (input_ty != F16 ||
+      !stream_executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
       instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
@@ -315,6 +318,13 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kAllReduceScatter) {
+      // XLA:GPU can only support all-reduce-scatter where the scatter dimension
+      // is the most major dimension in the layout.
+      auto ars = Cast<HloAllReduceScatterInstruction>(instruction);
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
+          ars));
     } else if (instruction->opcode() == HloOpcode::kAllGather) {
       // XLA:GPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.

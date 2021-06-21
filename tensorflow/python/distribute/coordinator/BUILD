@@ -13,6 +13,7 @@ py_library(
     deps = [
         ":metric_utils",
         ":utils",
+        ":values",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
@@ -29,6 +30,21 @@ py_library(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:remote",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "values",
+    srcs = ["values.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -49,6 +65,7 @@ distribute_py_test(
     ],
     deps = [
         ":cluster_coordinator",
+        ":values",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

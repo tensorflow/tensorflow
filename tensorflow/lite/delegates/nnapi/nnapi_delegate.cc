@@ -31,6 +31,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
@@ -58,6 +59,7 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
+#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 #include "tensorflow/lite/util.h"
 #ifdef NNAPI_VERBOSE_VALIDATION
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -384,6 +386,28 @@ bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
     default:
       return false;
   }
+}
+
+bool IsDequantizeConstFloat16(TfLiteContext* context, const TfLiteNode* node,
+                              const TfLiteRegistration* registration) {
+  return registration->builtin_code == kTfLiteBuiltinDequantize &&
+         context->tensors[node->inputs->data[0]].type ==
+             TfLiteType::kTfLiteFloat16 &&
+         IsConstantTensor(&context->tensors[node->inputs->data[0]]);
+}
+
+bool IsDequantizeNonConstFloat16(TfLiteContext* context, const TfLiteNode* node,
+                                 const TfLiteRegistration* registration) {
+  return registration->builtin_code == kTfLiteBuiltinDequantize &&
+         context->tensors[node->inputs->data[0]].type ==
+             TfLiteType::kTfLiteFloat16 &&
+         !IsConstantTensor(&context->tensors[node->inputs->data[0]]);
+}
+
+bool IsDensifyConstTensor(TfLiteContext* context, const TfLiteNode* node,
+                          const TfLiteRegistration* registration) {
+  return registration->builtin_code == kTfLiteBuiltinDensify &&
+         IsConstantTensor(&context->tensors[node->inputs->data[0]]);
 }
 
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
@@ -1546,7 +1570,7 @@ class NNAPIOpBuilder {
         RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
             context_,
             nnapi_->ANeuralNetworksModel_setOperandValue(
-                nn_model_, ann_tensor_index, tensor->data.raw, tensor->bytes),
+                nn_model_, ann_tensor_index, tensor->data.data, tensor->bytes),
             "setting new operand value", tensor, nnapi_errno_);
       }
     }
@@ -1816,7 +1840,11 @@ bool NNAPIDelegateKernel::Validate(
       }
     } break;
     case kTfLiteBuiltinMul: {
-      ExpectMaxOpVersion(version, 2, &val_ctx);
+      if (is_accelerator_specified) {
+        ExpectMaxOpVersion(version, 3, &val_ctx);
+      } else {
+        ExpectMaxOpVersion(version, 2, &val_ctx);
+      }
       if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
         if (IsInt32(context->tensors[node->inputs->data[0]].type)) {
@@ -2150,6 +2178,13 @@ bool NNAPIDelegateKernel::Validate(
       }
     } break;
     case kTfLiteBuiltinDequantize: {
+      // Allow dequantizing fp16->fp32.
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13 &&
+          context->tensors[node->inputs->data[0]].type == kTfLiteFloat16 &&
+          context->tensors[node->inputs->data[0]].allocation_type !=
+              kTfLiteMmapRo) {
+        return true;
+      }
       Expect(version == 1 || version == 2,
              NNAPIValidationFailureType::kUnsupportedOperatorVersion,
              "Supported op versions are 1 and 2 only", &val_ctx);
@@ -2170,6 +2205,15 @@ bool NNAPIDelegateKernel::Validate(
                  &val_ctx);
         }
       }
+    } break;
+    case kTfLiteBuiltinDensify: {
+      // Allow densifying sparse weights.
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13 &&
+          context->tensors[node->inputs->data[0]].allocation_type ==
+              kTfLiteMmapRo) {
+        return true;
+      }
+      return false;
     } break;
     case kTfLiteBuiltinFloor: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -3709,6 +3753,10 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
     nodes_.push_back(node_index);
   }
 
+  // Initialize densify map and dequantize map.
+  densify_output_to_node_mapping_ = std::vector<int>(context->tensors_size, -1);
+  non_const_dequantize_output_to_node_mapping_ =
+      std::vector<int>(context->tensors_size, -1);
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(params->delegate);
   if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
@@ -3935,6 +3983,17 @@ TfLiteStatus NNAPIDelegateKernel::GetOperationsSupportedByTargetNnApiDevices(
     const auto tflite_op_index = nnapi_to_tflite_op_mapping_[nnapi_op_index];
     tflite_ops_support_status[tflite_op_index] &=
         nnapi_ops_support_flags[nnapi_op_index];
+    if (!tflite_ops_support_status[tflite_op_index]) {
+      if (std::count(non_const_dequantize_output_to_node_mapping_.begin(),
+                     non_const_dequantize_output_to_node_mapping_.end(), -1) <
+              non_const_dequantize_output_to_node_mapping_.size() ||
+          std::count(densify_output_to_node_mapping_.begin(),
+                     densify_output_to_node_mapping_.end(),
+                     -1) < densify_output_to_node_mapping_.size()) {
+        // Only allow full model delegation for sparse model.
+        return kTfLiteOk;
+      }
+    }
   }
 
   supported_nodes->clear();
@@ -4386,13 +4445,85 @@ void NNAPIDelegateKernel::AddDequantizeOperatorsWhereNeeded(
   }
 }
 
-static bool IsDequantizeConstFloat16(TfLiteContext* context,
-                                     const TfLiteNode* node,
-                                     const TfLiteRegistration* registration) {
-  return registration->builtin_code == kTfLiteBuiltinDequantize &&
-         context->tensors[node->inputs->data[0]].type ==
-             TfLiteType::kTfLiteFloat16 &&
-         IsConstantTensor(&context->tensors[node->inputs->data[0]]);
+TfLiteStatus NNAPIDelegateKernel::DensifyAndDequantizeConstTensor(
+    TfLiteContext* context, int densify_node_id, bool should_dequantize,
+    NNAPIOpBuilder& builder) {
+  TfLiteNode* densify_node;
+  TfLiteRegistration* reg;
+  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
+      context, densify_node_id, &densify_node, &reg));
+  int sparse_weight_tid = densify_node->inputs->data[0];
+  auto input_tensor = context->tensors[sparse_weight_tid];
+  auto output_tensor = context->tensors[densify_node->outputs->data[0]];
+  if (input_tensor.sparsity == nullptr) {
+    return kTfLiteError;
+  }
+  const int dims_count = output_tensor.dims->size;
+  std::vector<int> vector_shape(dims_count);
+  for (int i = 0; i < dims_count; i++) {
+    vector_shape[i] = output_tensor.dims->data[i];
+  }
+  size_t dense_size;
+  int new_tensor_index = -1;
+  switch (input_tensor.type) {
+    case kTfLiteFloat32: {
+      dense_size = output_tensor.bytes / sizeof(float);
+      std::vector<float> output_data(dense_size);
+      tflite::optimize::sparsity::FormatConverter<float> converter(
+          vector_shape, *input_tensor.sparsity);
+      converter.SparseToDense(static_cast<const float*>(input_tensor.data.data),
+                              dense_size, output_data.data(), context);
+      TF_LITE_ENSURE_STATUS(builder.AddNewInputConstantTensor<float>(
+          ANEURALNETWORKS_TENSOR_FLOAT32, kTfLiteFloat32, output_tensor.dims,
+          output_data, output_tensor.params, &new_tensor_index));
+      break;
+    }
+    case kTfLiteFloat16: {
+      dense_size = output_tensor.bytes / sizeof(Eigen::half);
+      std::vector<uint16_t> output_data(dense_size);
+      Eigen::half* unpacked_fp16_data =
+          reinterpret_cast<Eigen::half*>(output_data.data());
+      tflite::optimize::sparsity::FormatConverter<Eigen::half> converter(
+          vector_shape, *input_tensor.sparsity);
+      converter.SparseToDense(
+          static_cast<const Eigen::half*>(input_tensor.data.data), dense_size,
+          unpacked_fp16_data, context);
+      if (should_dequantize) {
+        // we need to dequantize the fp16 dense tensor
+        std::vector<float> float_dense_data(dense_size);
+        for (int i = 0; i < dense_size; ++i) {
+          float_dense_data[i] = fp16_ieee_to_fp32_value(
+              reinterpret_cast<uint16_t*>(output_data.data())[i]);
+        }
+        TF_LITE_ENSURE_STATUS(builder.AddNewInputConstantTensor<float>(
+            ANEURALNETWORKS_TENSOR_FLOAT32, kTfLiteFloat32, output_tensor.dims,
+            float_dense_data, output_tensor.params, &new_tensor_index));
+      } else {
+        TF_LITE_ENSURE_STATUS(builder.AddNewInputConstantTensor<uint16_t>(
+            ANEURALNETWORKS_TENSOR_FLOAT16, kTfLiteFloat16, output_tensor.dims,
+            output_data, output_tensor.params, &new_tensor_index));
+      }
+      break;
+    }
+    case kTfLiteInt8: {
+      dense_size = output_tensor.bytes / sizeof(int8_t);
+      std::vector<int8_t> output_data(dense_size);
+      tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+          vector_shape, *input_tensor.sparsity);
+      converter.SparseToDense(
+          static_cast<const int8_t*>(input_tensor.data.data), dense_size,
+          output_data.data(), context);
+      TF_LITE_ENSURE_STATUS(builder.AddNewInputConstantTensor<int8_t>(
+          ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED, kTfLiteInt8,
+          output_tensor.dims, output_data, output_tensor.params,
+          &new_tensor_index));
+      break;
+    }
+    default: {
+      return kTfLiteError;
+    }
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
@@ -4411,7 +4542,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     TF_LITE_ENSURE_STATUS(GetTargetFeatureLevel(
         context, nnapi_, nnapi_devices_, &target_feature_level_, nnapi_errno));
   }
-  // First path, handle fp16->fp32 dequantize if needed.
+  // First path, handle const fp16->fp32 dequantize and densify if needed.
   for (auto node_index : nodes_) {
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
@@ -4420,6 +4551,13 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     if (IsDequantizeConstFloat16(context, node, registration)) {
       builder.AddTensorInput(node->inputs->data[0], /*hybrid_op=*/false,
                              NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION);
+    }
+    if (IsDensifyConstTensor(context, node, registration)) {
+      densify_output_to_node_mapping_[node->outputs->data[0]] = node_index;
+    }
+    if (IsDequantizeNonConstFloat16(context, node, registration)) {
+      non_const_dequantize_output_to_node_mapping_[node->outputs->data[0]] =
+          node_index;
     }
   }
   // Clear the input and output lists for the dequantize path.
@@ -4432,6 +4570,11 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     TfLiteRegistration* reg;
     TF_LITE_ENSURE_STATUS(
         context->GetNodeAndRegistration(context, node_index, &node, &reg));
+    // skip DENSIFY -> DEQUANTIZE as they are handled elsewhere.
+    if (IsDensifyConstTensor(context, node, reg) ||
+        IsDequantizeNonConstFloat16(context, node, reg)) {
+      continue;
+    }
 
     // Fully quantized full LSTM.
     if (target_feature_level_ >= kMinSdkVersionForNNAPI13 &&
@@ -4572,6 +4715,30 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
         continue;
       }
       const auto input_index = node->inputs->data[input_pos];
+      // handle sparse weights for Conv2d
+      if (reg->builtin_code == kTfLiteBuiltinConv2d && input_pos == 1) {
+        int densify_node_id = -1;
+        bool should_dequantize = false;
+        int dequantize_node_id =
+            non_const_dequantize_output_to_node_mapping_[input_index];
+        if (dequantize_node_id != -1) {
+          should_dequantize = true;
+          // Find densify->dequantize pattern.
+          TfLiteNode* dequant_node;
+          TfLiteRegistration* reg;
+          TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
+              context, dequantize_node_id, &dequant_node, &reg));
+          densify_node_id =
+              densify_output_to_node_mapping_[dequant_node->inputs->data[0]];
+        } else {
+          densify_node_id = densify_output_to_node_mapping_[input_index];
+        }
+        if (densify_node_id != -1) {
+          TF_LITE_ENSURE_STATUS(DensifyAndDequantizeConstTensor(
+              context, densify_node_id, should_dequantize, builder));
+          continue;
+        }
+      }
       if (need_int8_conversion &&
           (input_pos == 0 ||
            reg->builtin_code == kTfLiteBuiltinFullyConnected ||
@@ -5407,8 +5574,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     TfLiteRegistration* registration = nullptr;
     TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
         context, node_id, &node, &registration));
-    if (delegate::nnapi::IsDequantizeConstFloat16(context, node,
-                                                  registration)) {
+    if (IsDequantizeConstFloat16(context, node, registration)) {
       should_prune_fp16_dequantize = true;
       break;
     }

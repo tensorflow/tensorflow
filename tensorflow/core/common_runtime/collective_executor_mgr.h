@@ -22,7 +22,6 @@ limitations under the License.
 namespace tensorflow {
 class ConfigProto;
 class DeviceMgr;
-class NcclManager;
 
 class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  public:
@@ -83,6 +82,15 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   gtl::FlatMap<int64, CollectiveExecutor*> executor_table_
       TF_GUARDED_BY(exec_mu_);
 };
+
+// Creates a local CollectiveExecutorMgr with production implementations of each
+// components. Cases that need to inject other implementations of these
+// components should call CollectiveExecutorMgr constructor directly. This only
+// supports a single host. For distributed use case, use
+// CreateProdRpcCollectiveExecutorMgr() instead.
+std::unique_ptr<CollectiveExecutorMgr> CreateProdLocalCollectiveExecutorMgr(
+    const ConfigProto& config, const DeviceMgr* device_mgr,
+    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_EXECUTOR_MGR_H_

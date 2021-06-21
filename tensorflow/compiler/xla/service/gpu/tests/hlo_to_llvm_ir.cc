@@ -65,9 +65,9 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   gpu_device_info.block_dim_limit_y = 65535;
   gpu_device_info.block_dim_limit_z = 65535;
 
-  xla::gpu::CudaComputeCapability cuda_compute_capability;
-  cuda_compute_capability.cc_major = sm / 10;
-  cuda_compute_capability.cc_minor = sm % 10;
+  tensorflow::se::CudaComputeCapability cuda_compute_capability;
+  cuda_compute_capability.major = sm / 10;
+  cuda_compute_capability.minor = sm % 10;
   std::string amdgpu_arch;
 #if GOOGLE_CUDA
   std::string target_triple = "nvptx64-nvidia-cuda";
@@ -92,13 +92,11 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
     llvm_module->print(llvm::outs(), nullptr);
   } else {
 #if GOOGLE_CUDA
-    std::pair<int, int> gpu_version = std::make_pair(
-        cuda_compute_capability.cc_major, cuda_compute_capability.cc_minor);
     std::string libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module->config());
-    TF_ASSIGN_OR_RETURN(
-        std::string ptx,
-        xla::gpu::nvptx::CompileToPtx(llvm_module.get(), gpu_version,
-                                      hlo_module->config(), libdevice_dir));
+    TF_ASSIGN_OR_RETURN(std::string ptx,
+                        xla::gpu::nvptx::CompileToPtx(
+                            llvm_module.get(), cuda_compute_capability,
+                            hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
 #else
     std::string arch_str = "gfx908";

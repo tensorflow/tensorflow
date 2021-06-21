@@ -148,7 +148,9 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
   """A `tf_export`, `keras_export` and `estimator_export` aware doc_visitor."""
 
   def _score_name(self, name):
-    all_exports = [tf_export.TENSORFLOW_API_NAME, tf_export.ESTIMATOR_API_NAME]
+    all_exports = [tf_export.TENSORFLOW_API_NAME,
+                   tf_export.KERAS_API_NAME,
+                   tf_export.ESTIMATOR_API_NAME]
 
     for api_name in all_exports:
       canonical = tf_export.get_canonical_name_for_symbol(
@@ -253,7 +255,7 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
       "tf/nn/sigmoid_cross_entropy_with_logits.md":
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
-          "tensorflow/python/keras/engine/training.py",
+          "keras/engine/training.py",
       "tf/keras/preprocessing/image/random_brightness.md":
           "keras_preprocessing/image/affine_transformations.py"
   }

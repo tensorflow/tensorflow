@@ -21,6 +21,7 @@ def mlir_generated_test_denylisted_models():
 # Test cases which only work with MLIR-based conversion now.
 def mlir_only_generated_test_models():
     return [
+        "avg_pool3d",
         "batchmatmul",
         "broadcast_to",
         "broadcast_gradient_args",
@@ -63,6 +64,7 @@ def mlir_only_generated_test_models():
         "tensor_list_resize",
         "tensor_list_set_item",
         "tensor_list_dynamic_shape",
+        "tensor_scatter_update",
         "where_v2",
         "while",
     ]

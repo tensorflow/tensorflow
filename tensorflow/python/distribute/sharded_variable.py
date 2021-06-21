@@ -626,6 +626,25 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
         resource_variable_ops.VariableSpec(v.shape, v.dtype)
         for v in self._variables))
 
+  @classmethod
+  def _overload_all_operators(cls):
+    """Register overloads for all operators."""
+    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+      if operator == '__getitem__':
+        continue
+
+      cls._overload_operator(operator)
+
+  @classmethod
+  def _overload_operator(cls, operator):
+    """Delegate an operator overload to `ops.Tensor`."""
+    tensor_operator = getattr(ops.Tensor, operator)
+
+    def _operator(v, *args, **kwargs):
+      return tensor_operator(_var_to_tensor(v), *args, **kwargs)
+
+    setattr(cls, operator, _operator)
+
 
 def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
   """Converts a `ShardedVariable` to a `Tensor`."""
@@ -659,6 +678,8 @@ def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(ShardedVariable, _var_to_tensor)
+
+ShardedVariable._overload_all_operators()  # pylint: disable=protected-access
 
 
 # Override the behavior of embedding_lookup(sharded_variable, ...)

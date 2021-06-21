@@ -63,6 +63,7 @@ PACKAGES=(
   "dill"
   "tblib"
   "pybind11"
+  "clang"
 )
 
 # tf.mock require the following for python2:

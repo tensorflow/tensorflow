@@ -25,6 +25,10 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
+load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
@@ -95,6 +99,8 @@ cc_library(
     name = "gpu_types",
     hdrs = ["gpu_types.h"],
     deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/stream_executor:device_description",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -547,6 +553,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor/lib",
     ]) + if_nccl([
         ":virtual_nccl",
@@ -591,9 +598,7 @@ cc_library(
         "thunk_schedule.cc",
         "triangular_solve_thunk.cc",
         "while_thunk.cc",
-    ] + if_cuda_is_configured([
-        "cholesky_thunk.cc",
-    ]) + if_rocm_is_configured([
+    ] + if_gpu_is_configured([
         "cholesky_thunk.cc",
     ]),
     hdrs = [
@@ -617,9 +622,7 @@ cc_library(
         "thunk_schedule.h",
         "triangular_solve_thunk.h",
         "while_thunk.h",
-    ] + if_cuda_is_configured([
-        "cholesky_thunk.h",
-    ]) + if_rocm_is_configured([
+    ] + if_gpu_is_configured([
         "cholesky_thunk.h",
     ]),
     local_defines = if_cuda_is_configured([
@@ -962,7 +965,7 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-    srcs = if_cuda_or_rocm(["cusolver_context.cc"]),
+    srcs = if_gpu_is_configured(["cusolver_context.cc"]),
     hdrs = ["cusolver_context.h"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
@@ -981,14 +984,15 @@ cc_library(
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+        "@local_config_rocm//rocm:rocblas",
     ]),
 )
 
 cc_library(
     name = "cusolver_rewriter",
-    srcs = if_cuda_or_rocm(["cusolver_rewriter.cc"]),
-    hdrs = if_cuda_or_rocm(["cusolver_rewriter.h"]),
-    deps = if_cuda_or_rocm([
+    srcs = if_gpu_is_configured(["cusolver_rewriter.cc"]),
+    hdrs = if_gpu_is_configured(["cusolver_rewriter.h"]),
+    deps = if_gpu_is_configured([
         ":cusolver_context",
         ":ir_emission_utils",
         "@com_google_absl//absl/types:optional",
@@ -1283,9 +1287,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "cublas_gemm_pad_for_tensor_cores",
-    srcs = ["cublas_gemm_pad_for_tensor_cores.cc"],
-    hdrs = ["cublas_gemm_pad_for_tensor_cores.h"],
+    name = "cublas_pad_for_gemms",
+    srcs = ["cublas_pad_for_gemms.cc"],
+    hdrs = ["cublas_pad_for_gemms.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
@@ -1299,11 +1303,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cublas_gemm_pad_for_tensor_cores_test",
-    srcs = ["cublas_gemm_pad_for_tensor_cores_test.cc"],
+    name = "cublas_pad_for_gemms_test",
+    srcs = ["cublas_pad_for_gemms_test.cc"],
     tags = ["no_pip"],
     deps = [
-        ":cublas_gemm_pad_for_tensor_cores",
+        ":cublas_pad_for_gemms",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1344,6 +1348,19 @@ cc_library(
         "@llvm-project//llvm:Core",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
+cc_library(
+    name = "gpu_all_reduce_scatter_creator",
+    srcs = ["gpu_all_reduce_scatter_creator.cc"],
+    hdrs = ["gpu_all_reduce_scatter_creator.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:all_reduce_scatter_utils",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_query",
+    ],
 )
 
 cc_library(
@@ -1503,7 +1520,7 @@ cc_library(
         "nvptx_compiler.h",
     ]),
     deps = if_cuda_is_configured([
-        ":cublas_gemm_pad_for_tensor_cores",
+        ":cublas_pad_for_gemms",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
         ":cudnn_vectorize_convolutions",
@@ -1591,13 +1608,13 @@ cc_library(
         "amdgpu_compiler.h",
     ],
     deps = [
+        ":cusolver_rewriter",
         ":gemm_rewriter",
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
-        ":cusolver_rewriter",
         ":reduction_degenerate_dim_remover",
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",

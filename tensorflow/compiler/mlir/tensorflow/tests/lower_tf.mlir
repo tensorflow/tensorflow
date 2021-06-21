@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-tf-lower-tf | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -test-tf-lower-tf
 
 // CHECK-LABEL: invert_permutation
 func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {
@@ -1138,3 +1138,18 @@ func @roll_non_constant_shift(%arg0: tensor<3x8x4xi32>, %arg1: tensor<i32>) -> t
   // CHECK:  "tf.Roll"
 }
 
+func @scatter_nd_updates(%arg0: tensor<14xf32>, %arg1: tensor<1x1xi32>, %arg2: tensor<1xf32>) -> tensor<14xf32> {
+  %0 = "tf.TensorScatterUpdate"(%arg0, %arg1, %arg2) : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
+  return %0 : tensor<14xf32>
+
+  // CHECK-LABEL: scatter_nd_updates
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[CST0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
+  // CHECK: %[[CST1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<14xf32>} : () -> tensor<*xf32>
+  // CHECK: %[[SCATTER:.*]] = "tf.TensorScatterAdd"(%cst_1, %arg1, %[[CST0]]) : (tensor<*xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
+  // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[CST]], %[[SCATTER]]) : (tensor<f32>, tensor<14xf32>) -> tensor<14xf32>
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[SUB]], %arg0) : (tensor<14xf32>, tensor<14xf32>) -> tensor<14xf32>
+  // CHECK: %[[SCATTER1:.*]] = "tf.TensorScatterAdd"(%[[CST1]], %arg1, %arg2) : (tensor<*xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
+  // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[SCATTER1]]) : (tensor<14xf32>, tensor<14xf32>) -> tensor<14xf32>
+  // CHECK: return %[[ADD]] : tensor<14xf32>
+}
