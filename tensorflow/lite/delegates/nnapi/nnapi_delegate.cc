@@ -24,6 +24,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -2861,10 +2862,10 @@ bool NNAPIDelegateKernel::Validate(
       const auto& value_tensor = context->tensors[node->inputs->data[1]];
       EXPECT_INPUT_TYPE_IN(value_tensor.type, kTfLiteFloat32, kTfLiteInt32,
                            kTfLiteInt64);
-      if (value_tensor.type == kTfLiteInt64) {
+      if (value_tensor.type == kTfLiteInt64 &&
+          IsConstantTensor(&value_tensor)) {
         Expect(
-            IsConstantTensor(&value_tensor) &&
-                *value_tensor.data.i64 <= std::numeric_limits<int32_t>::max() &&
+            *value_tensor.data.i64 <= std::numeric_limits<int32_t>::max() &&
                 *value_tensor.data.i64 >= std::numeric_limits<int32_t>::min(),
             NNAPIValidationFailureType::kUnsupportedInputType,
             "NNAPI only supports int32 input. If the input type is int64 and "
@@ -4197,8 +4198,22 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                   static_cast<const int32_t>(tensor->data.int8[i]) + 128;
             }
           }
+        } else if (tensor->type == kTfLiteInt64 &&
+                   ann_type_equivalent == kTfLiteInt32) {
+          // Check that values fit into int32.
+          int32_t* input_ptr_i32 = reinterpret_cast<int32_t*>(input_ptr);
+          for (int i = 0; i < num_elements; ++i) {
+            if (input_ptr_i32[i] < std::numeric_limits<int32_t>::min() ||
+                input_ptr_i32[i] > std::numeric_limits<int32_t>::max()) {
+              TF_LITE_KERNEL_LOG(context,
+                                 "NN API Delegate: int64 value out of bounds "
+                                 "for int32 target NNAPI tensor\n");
+              return kTfLiteError;
+            }
+            input_ptr_i32[i] = static_cast<int32_t>(tensor->data.i64[i]);
+          }
         } else {
-          context->ReportError(
+          TF_LITE_KERNEL_LOG(
               context,
               "NN API Delegate: unsupported tensor types conversion: "
               "from type code %d to type code %d.\n",
@@ -5018,18 +5033,36 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
           const TfLiteTensor& value_tensor = context->tensors[value_id];
           switch (value_tensor.type) {
             case kTfLiteFloat32:
-              TF_LITE_ENSURE_STATUS(
-                  builder.AddScalarFloat32Operand(*value_tensor.data.f));
+              if (value_tensor.allocation_type == kTfLiteMmapRo) {
+                TF_LITE_ENSURE_STATUS(
+                    builder.AddScalarFloat32Operand(*value_tensor.data.f));
+              } else {
+                TF_LITE_ENSURE_STATUS(
+                    builder.AddSingleValueTensorAsScalarOperand(
+                        value_id, ANEURALNETWORKS_FLOAT32));
+              }
               break;
             case kTfLiteInt32:
-              TF_LITE_ENSURE_STATUS(
-                  builder.AddScalarInt32Operand(*value_tensor.data.i32));
+              if (value_tensor.allocation_type == kTfLiteMmapRo) {
+                TF_LITE_ENSURE_STATUS(
+                    builder.AddScalarInt32Operand(*value_tensor.data.i32));
+              } else {
+                TF_LITE_ENSURE_STATUS(
+                    builder.AddSingleValueTensorAsScalarOperand(
+                        value_id, ANEURALNETWORKS_INT32));
+              }
               break;
             case kTfLiteInt64:
-              // Map() function already makes sure int64 input is constant and
-              // fits into int32.
-              TF_LITE_ENSURE_STATUS(builder.AddScalarInt32Operand(
-                  static_cast<int32_t>(*value_tensor.data.i64)));
+              if (value_tensor.allocation_type == kTfLiteMmapRo) {
+                // Map() function already makes sure const int64 input fits into
+                // int32.
+                TF_LITE_ENSURE_STATUS(builder.AddScalarInt32Operand(
+                    static_cast<int32_t>(*value_tensor.data.i64)));
+              } else {
+                TF_LITE_ENSURE_STATUS(
+                    builder.AddSingleValueTensorAsScalarOperand(
+                        value_id, ANEURALNETWORKS_INT32));
+              }
               break;
             default:
               return kTfLiteError;
