@@ -1867,6 +1867,20 @@ class WhileV2Test(PForTestCase):
         v_log_prob, (x,), delta=1e-3)
     self.assertAllClose(theoretical, numerical, rtol=1e-2)
 
+  def test_scan_captured_variable(self):
+    if not context.executing_eagerly():
+      self.skipTest("Test only written for 2.x")
+    v = variables.Variable(math_ops.range(10, dtype=dtypes.float32))
+
+    def loop_fn(idx):
+      del idx
+      return functional_ops.scan_v2(lambda _, i: array_ops.gather(v, i),
+                                    elems=math_ops.range(v.shape[0]),
+                                    initializer=0.0)
+    with backprop.GradientTape() as tape:
+      result = pfor_control_flow_ops.pfor(loop_fn, 2)
+    self.assertAllClose([2.] * 10, tape.gradient(result, v))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NestedControlFlowTest(PForTestCase):
