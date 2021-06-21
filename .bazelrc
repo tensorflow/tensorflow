@@ -348,6 +348,8 @@ build:windows --verbose_failures
 
 # On windows, we never cross compile
 build:windows --distinct_host_configuration=false
+# On linux, don't cross compile by default
+build:linux --distinct_host_configuration=false
 
 # Configure short or long logs
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
