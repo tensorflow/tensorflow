@@ -20,16 +20,10 @@ limitations under the License.
 
 #if !TENSORFLOW_USE_ROCM
 #include "third_party/gpus/cuda/include/cusolverDn.h"
-<<<<<<< HEAD
-#else
-#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
-typedef rocsolver_handle cusolverDnHandle_t;
-=======
 using gpusolverHandle_t = cusolverDnHandle_t;
 #else
 #include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
 using gpusolverHandle_t = rocblas_handle;
->>>>>>> upstream/master
 #endif
 
 #include "tensorflow/compiler/xla/statusor.h"
@@ -42,11 +36,7 @@ using gpusolverHandle_t = rocblas_handle;
 namespace xla {
 namespace gpu {
 
-<<<<<<< HEAD
-class CusolverContext {
-=======
 class GpuSolverContext {
->>>>>>> upstream/master
  public:
   // stream may be nullptr, in which case the context can only be used for
   // buffer size queries.

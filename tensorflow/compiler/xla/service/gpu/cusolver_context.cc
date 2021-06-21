@@ -135,9 +135,6 @@ template <typename T>
 struct GpuComplexT {
   typedef T type;
 };
-<<<<<<< HEAD
-#if GOOGLE_CUDA
-=======
 #if !defined(TENSORFLOW_USE_ROCM)
 
 using gpuStream_t = cudaStream_t;
@@ -146,7 +143,6 @@ using gpuStream_t = cudaStream_t;
 #define GpuSolverSetStream cusolverDnSetStream
 #define GpuSolverDestroy cusolverDnDestroy
 
->>>>>>> upstream/master
 template <>
 struct GpuComplexT<std::complex<float>> {
   typedef cuComplex type;
@@ -155,18 +151,6 @@ template <>
 struct GpuComplexT<std::complex<double>> {
   typedef cuDoubleComplex type;
 };
-#else
-// can't use gpuFloatComplex, gpuDoubleComplex, because e.g.
-// hipFloatComplex and rocblas_float_complex are two unrelated types
-template <>
-struct CUDAComplexT<std::complex<float>> {
-  typedef rocblas_float_complex type;
-};
-template <>
-struct CUDAComplexT<std::complex<double>> {
-  typedef rocblas_double_complex type;
-};
-#endif
 
 #else
 
@@ -203,7 +187,6 @@ cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
   }
 }
 
-#if GOOGLE_CUDA
 // Converts a cuSolver status to a Status.
 Status ConvertStatus(cusolverStatus_t status) {
   switch (status) {
@@ -236,11 +219,6 @@ Status ConvertStatus(cusolverStatus_t status) {
   }
 }
 #else
-<<<<<<< HEAD
-// Converts a cuSolver status to a Status.
-Status CusolverStatusToStatus(rocblas_status status) {
-  switch(status) {
-=======
 rocblas_fill GpuBlasUpperLower(se::blas::UpperLower uplo) {
   switch (uplo) {
     case se::blas::UpperLower::kUpper:
@@ -255,7 +233,6 @@ rocblas_fill GpuBlasUpperLower(se::blas::UpperLower uplo) {
 // Converts a cuSolver status to a Status.
 Status ConvertStatus(rocblas_status status) {
   switch (status) {
->>>>>>> upstream/master
     case rocblas_status_success:
       return Status::OK();
     case rocblas_status_invalid_handle:
@@ -297,11 +274,7 @@ StatusOr<GpuSolverContext> GpuSolverContext::Create(se::Stream* stream) {
 
   if (stream) {
     // StreamExecutor really should just expose the Cuda stream to clients...
-<<<<<<< HEAD
-    const gpuStream_t* cuda_stream =
-=======
     const gpuStream_t* gpu_stream =
->>>>>>> upstream/master
         CHECK_NOTNULL(reinterpret_cast<const gpuStream_t*>(
             stream->implementation()->GpuStreamMemberHack()));
     TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverSetStream(handle, *gpu_stream)));
@@ -335,11 +308,8 @@ GpuSolverContext::~GpuSolverContext() {
   }
 }
 
-<<<<<<< HEAD
-#if GOOGLE_CUDA
-=======
 #if !defined(TENSORFLOW_USE_ROCM)
->>>>>>> upstream/master
+
 #define CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 
@@ -347,11 +317,7 @@ GpuSolverContext::~GpuSolverContext() {
 
 #else
 
-<<<<<<< HEAD
-#define CALL_LAPACK_TYPES(m)						\
-=======
 #define CALL_LAPACK_TYPES(m) \
->>>>>>> upstream/master
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 
 #define DN_SOLVER_FN(method, type_prefix) \
@@ -361,17 +327,10 @@ GpuSolverContext::~GpuSolverContext() {
 // Note: NVidia have promised that it is safe to pass 'nullptr' as the argument
 // buffers to cuSolver buffer size methods and this will be a documented
 // behavior in a future cuSolver release.
-<<<<<<< HEAD
-StatusOr<int64> CusolverContext::PotrfBufferSize(PrimitiveType type,
-                                                 se::blas::UpperLower uplo,
-                                                 int n, int lda) {
-#if GOOGLE_CUDA  
-=======
 StatusOr<int64> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
                                                   se::blas::UpperLower uplo,
                                                   int n, int lda) {
 #if !defined(TENSORFLOW_USE_ROCM)
->>>>>>> upstream/master
   int size = -1;
   switch (type) {
     case F32: {
@@ -401,17 +360,10 @@ StatusOr<int64> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
   return size;
 #else
   return 0;
-<<<<<<< HEAD
-#endif  
-}
-
-#if GOOGLE_CUDA
-=======
 #endif
 }
 
 #if !defined(TENSORFLOW_USE_ROCM)
->>>>>>> upstream/master
 #define POTRF_INSTANCE(T, type_prefix)                                    \
   template <>                                                             \
   Status GpuSolverContext::Potrf<T>(                                      \
@@ -425,19 +377,11 @@ StatusOr<int64> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
 #else
 #define POTRF_INSTANCE(T, type_prefix)                                    \
   template <>                                                             \
-<<<<<<< HEAD
-  Status CusolverContext::Potrf<T>(                                       \
-      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
-      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
-    return CusolverStatusToStatus(DN_SOLVER_FN(potrf, type_prefix)(       \
-        handle(), CUDABlasUpperLower(uplo), n, ToDevicePointer(A), lda,   \
-=======
   Status GpuSolverContext::Potrf<T>(                                      \
       se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
       se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
     return ConvertStatus(DN_SOLVER_FN(potrf, type_prefix)(                \
         handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(A), lda,    \
->>>>>>> upstream/master
         ToDevicePointer(lapack_info)));                                   \
   }
 #endif

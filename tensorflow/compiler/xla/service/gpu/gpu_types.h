@@ -35,11 +35,7 @@ namespace gpu {
 // The string contains all the information needed to create an exact LLVM
 // AMDGPUTarget corresponding the AMDGPU device it represents.
 using GpuVersion =
-<<<<<<< HEAD
-    absl::variant<std::pair<int, int>, std::string>;
-=======
-    absl::variant<se::CudaComputeCapability, std::pair<int, std::string>>;
->>>>>>> upstream/master
+    absl::variant<se::CudaComputeCapability, std::string>;
 }  // namespace gpu
 }  // namespace xla
 

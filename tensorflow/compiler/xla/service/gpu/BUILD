@@ -600,8 +600,6 @@ cc_library(
         "while_thunk.cc",
     ] + if_gpu_is_configured([
         "cholesky_thunk.cc",
-    ]) + if_rocm_is_configured([
-        "cholesky_thunk.cc",
     ]),
     hdrs = [
         "bef_thunk.h",
@@ -625,8 +623,6 @@ cc_library(
         "triangular_solve_thunk.h",
         "while_thunk.h",
     ] + if_gpu_is_configured([
-        "cholesky_thunk.h",
-    ]) + if_rocm_is_configured([
         "cholesky_thunk.h",
     ]),
     local_defines = if_cuda_is_configured([
@@ -969,11 +965,7 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-<<<<<<< HEAD
-    srcs = if_cuda_or_rocm(["cusolver_context.cc"]),
-=======
     srcs = if_gpu_is_configured(["cusolver_context.cc"]),
->>>>>>> upstream/master
     hdrs = ["cusolver_context.h"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
@@ -992,24 +984,15 @@ cc_library(
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
-<<<<<<< HEAD
-=======
         "@local_config_rocm//rocm:rocblas",
->>>>>>> upstream/master
     ]),
 )
 
 cc_library(
     name = "cusolver_rewriter",
-<<<<<<< HEAD
-    srcs = if_cuda_or_rocm(["cusolver_rewriter.cc"]),
-    hdrs = if_cuda_or_rocm(["cusolver_rewriter.h"]),
-    deps = if_cuda_or_rocm([
-=======
     srcs = if_gpu_is_configured(["cusolver_rewriter.cc"]),
     hdrs = if_gpu_is_configured(["cusolver_rewriter.h"]),
     deps = if_gpu_is_configured([
->>>>>>> upstream/master
         ":cusolver_context",
         ":ir_emission_utils",
         "@com_google_absl//absl/types:optional",
@@ -1632,7 +1615,6 @@ cc_library(
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
-        ":cusolver_rewriter",
         ":reduction_degenerate_dim_remover",
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",

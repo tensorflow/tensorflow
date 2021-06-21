@@ -65,17 +65,11 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   gpu_device_info.block_dim_limit_y = 65535;
   gpu_device_info.block_dim_limit_z = 65535;
 
-<<<<<<< HEAD
-  xla::gpu::CudaComputeCapability cuda_compute_capability;
-  cuda_compute_capability.cc_major = sm / 10;
-  cuda_compute_capability.cc_minor = sm % 10;
-  std::string amdgpu_arch;
-#if GOOGLE_CUDA
-=======
   tensorflow::se::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.major = sm / 10;
   cuda_compute_capability.minor = sm % 10;
->>>>>>> upstream/master
+  std::string amdgpu_arch;
+#if GOOGLE_CUDA
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
   std::string platform_name = "CUDA";

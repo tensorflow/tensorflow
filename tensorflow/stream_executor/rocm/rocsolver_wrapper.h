@@ -62,17 +62,10 @@ namespace wrap {
 #endif
 
 // clang-format off
-<<<<<<< HEAD
-#define FOREACH_ROCSOLVER_API(__macro)		\
-  __macro(rocsolver_spotrf)			\
-  __macro(rocsolver_dpotrf)			\
-  __macro(rocsolver_cpotrf)			\
-=======
 #define FOREACH_ROCSOLVER_API(__macro) \
   __macro(rocsolver_spotrf)            \
   __macro(rocsolver_dpotrf)            \
   __macro(rocsolver_cpotrf)            \
->>>>>>> upstream/master
   __macro(rocsolver_zpotrf)
 
 // clang-format on

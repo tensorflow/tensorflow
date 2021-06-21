@@ -36,23 +36,13 @@ namespace gpu {
 // assignment and the name uniquer.
 class IrEmitterContext {
  public:
-<<<<<<< HEAD
-  // cuda_compute_capability is nullopt if we're not compiling for NVIDIA GPUs.
-  IrEmitterContext(
-      const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      std::string platform_name, GpuDeviceInfo gpu_device_info,
-      absl::optional<CudaComputeCapability> cuda_compute_capability,
-      std::string amdgpu_arch,
-      const HloProfileIndexMap* profile_index_map,
-      mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
-=======
   IrEmitterContext(const HloModule* hlo_module,
                    const BufferAssignment* buffer_assignment,
                    std::string platform_name, GpuDeviceInfo gpu_device_info,
                    se::CudaComputeCapability cuda_compute_capability,
+                   std::string amdgpu_arch,
                    const HloProfileIndexMap* profile_index_map,
                    mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
->>>>>>> upstream/master
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         platform_name_(std::move(platform_name)),
@@ -104,12 +94,8 @@ class IrEmitterContext {
   absl::Span<const BufferAllocation> allocations_;
   std::string platform_name_;
   GpuDeviceInfo gpu_device_info_;
-<<<<<<< HEAD
-  absl::optional<CudaComputeCapability> cuda_compute_capability_;
-  std::string amdgpu_arch_;
-=======
   se::CudaComputeCapability cuda_compute_capability_;
->>>>>>> upstream/master
+  std::string amdgpu_arch_;
   const HloProfileIndexMap* profile_index_map_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
