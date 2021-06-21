@@ -139,6 +139,16 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
       if (op->hasOneUse() &&
           op->user_begin()->hasTrait<OpTrait::IsTerminator>())
         return failure();
+      // If the quantize op is a requantize op, it is being used in other scale
+      // adjustments and should be kept. Instead, moving dequantize op before
+      // the requantize op to remove the unnecessary requantize op.
+      if (auto qtype = quant::QuantizedType::getQuantizedElementType(
+              q.input().getType())) {
+        rewriter.setInsertionPoint(op);
+        rewriter.replaceOpWithNewOp<DequantizeOp>(op, op.output().getType(),
+                                                  q.input());
+        return success();
+      }
 
       op.replaceAllUsesWith(q.input());
       return success();

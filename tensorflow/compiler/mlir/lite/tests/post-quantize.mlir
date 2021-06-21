@@ -106,3 +106,16 @@ func @PruneUnusedLstm(%arg0: tensor<1x28x28xf32>) -> (tensor<1x28x28xf32>) {
     return %arg0 : tensor<1x28x28xf32>
 // CHECK-NEXT: return %arg0
 }
+
+// CHECK-LABEL: HandleVolatileRequantizeOp
+func @HandleVolatileRequantizeOp(%arg0: tensor<1x3x3xf32>) -> (tensor<1x3x3xf32>) {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x3x3x!quant.uniform<i8:f32, 0.003:-128>>} : (tensor<1x3x3xf32>) -> tensor<1x3x3x!quant.uniform<i8:f32, 0.003:-128>>
+  %1 = "tfl.logistic"(%0) : (tensor<1x3x3x!quant.uniform<i8:f32, 0.003:-128>>) -> tensor<1x3x3x!quant.uniform<i8:f32, 3.906250e-03:-128>>
+  %2 = "tfl.quantize"(%1) {qtype = tensor<1x3x3x!quant.uniform<i8:f32, 0.004:-128>>, volatile} : (tensor<1x3x3x!quant.uniform<i8:f32, 3.906250e-03:-128>>) -> tensor<1x3x3x!quant.uniform<i8:f32, 0.004:-128>>
+  %3 = "tfl.dequantize"(%2) : (tensor<1x3x3x!quant.uniform<i8:f32, 0.004:-128>>) -> tensor<1x3x3xf32>
+  %4 = "tfl.div"(%arg0, %3) {fused_activation_function = "NONE"} : (tensor<1x3x3xf32>, tensor<1x3x3xf32>) -> tensor<1x3x3xf32>
+  return %4 : tensor<1x3x3xf32>
+//  CHECK: %[[logistic:.*]] = "tfl.logistic"
+//  CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[logistic]])
+//  CHECK: %[[div:.*]] = tfl.div %arg0, %[[dq]]
+}
