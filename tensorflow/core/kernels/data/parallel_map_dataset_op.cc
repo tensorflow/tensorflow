@@ -339,7 +339,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         for (size_t j = 0; j < num_return_values; j++) {
           result.return_values.emplace_back();
           TF_RETURN_IF_ERROR(reader->ReadTensor(
-              element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+              ctx->flr(), element_prefix, absl::StrCat(kComponent, "[", j, "]"),
               &result.return_values.back()));
         }
         result.end_of_input = reader->Contains(element_prefix, kEndOfInput);

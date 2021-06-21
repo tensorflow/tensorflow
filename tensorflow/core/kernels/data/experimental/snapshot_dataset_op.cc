@@ -1890,6 +1890,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             for (size_t j = 0; j < value_size; j++) {
               buffer_element.value.emplace_back();
               TF_RETURN_IF_ERROR(reader->ReadTensor(
+                  ctx->flr(),
                   full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
                   &buffer_element.value.back()));
             }
@@ -1932,7 +1933,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           for (size_t i = 0; i < next_elem_size; i++) {
             next_elem_.value.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat(kNextElem, "[", i, "]")),
+                ctx->flr(), full_name(strings::StrCat(kNextElem, "[", i, "]")),
                 &next_elem_.value.back()));
           }
           VLOG(2) << "Restoring SnapshotWriterIterator: "
