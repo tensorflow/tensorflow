@@ -86,3 +86,8 @@ def make_pool3d_tests(pool_op):
 @register_make_test_function()
 def make_avg_pool3d_tests(options):
   make_pool3d_tests(tf.nn.avg_pool3d)(options, expected_tf_failures=6)
+
+
+@register_make_test_function()
+def make_max_pool3d_tests(options):
+  make_pool3d_tests(tf.nn.max_pool3d)(options, expected_tf_failures=6)

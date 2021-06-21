@@ -44,6 +44,7 @@ def mlir_only_generated_test_models():
         "imag",
         "irfft2d",
         "is_finite",
+        "max_pool3d",
         "max_pool_with_argmax",
         "parse_example",
         "real",

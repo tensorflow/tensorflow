@@ -387,6 +387,8 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
                                     tflite::ops::custom::Register_IRFFT2D());
     builtin_op_resolver_->AddCustom(
         "AvgPool3D", tflite::ops::custom::Register_AVG_POOL_3D());
+    builtin_op_resolver_->AddCustom(
+        "MaxPool3D", tflite::ops::custom::Register_MAX_POOL_3D());
     tflite::ops::custom::AddGradientOps(builtin_op_resolver_);
     tflite::ops::custom::AddParseExampleOp(builtin_op_resolver_);
     tflite::ops::custom::AddPerceptionOps(builtin_op_resolver_);
