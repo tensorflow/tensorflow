@@ -42002,6 +42002,24 @@ func RegexReplace(scope *Scope, input tf.Output, pattern tf.Output, rewrite tf.O
 	return op.Output(0)
 }
 
+// Inverse of XlaSetDynamicDimensionSize. Make an xla bounded
+//
+//         dynamic dimension into a static dimension. The bound of the size of
+//         dimension `dim_index` becomes the static dimension size.
+func XlaRemoveDynamicDimensionSize(scope *Scope, input tf.Output, dim_index tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaRemoveDynamicDimensionSize",
+		Input: []tf.Input{
+			input, dim_index,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Concatenates tensors along one dimension.
 //
 // Arguments:
