@@ -1768,7 +1768,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
                     "https://www.tensorflow.org/install/gpu for how to "
                     "download and setup the required libraries for your "
                     "platform.\n";
-    return errors::FailedPrecondition("Cannot dlopen some GPU libraries.");
+    return handle_or;
   }
 #endif
 
