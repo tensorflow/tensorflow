@@ -758,7 +758,7 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
 
     if (IsMklEnabled() &&
         absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
-      // All MKL eager ops have _kerenl private attribute that needs to be set
+      // All MKL eager ops have `_kernel` private attribute that needs to be set
       // to a fixed label.
       AttrValue attr_kernel;
       attr_kernel.set_s(mkl_op_registry::kMklNameChangeOpLabel);
