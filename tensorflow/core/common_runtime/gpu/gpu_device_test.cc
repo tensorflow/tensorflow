@@ -113,6 +113,8 @@ class GPUDeviceTest : public ::testing::Test {
   }
 };
 
+#if !defined(TENSORFLOW_USE_ROCM)
+
 TEST_F(GPUDeviceTest, CudaMallocAsync) {
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
                                            /*use_cuda_malloc_async=*/true);
@@ -139,6 +141,8 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
             GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
   EXPECT_EQ(status.code(), error::OK);
 }
+
+#endif
 
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,abc");
