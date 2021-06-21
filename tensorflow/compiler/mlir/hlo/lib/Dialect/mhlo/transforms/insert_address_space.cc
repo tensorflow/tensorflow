@@ -41,6 +41,10 @@ Value MaybeGetCastedMemref(OpBuilder& builder, Value& memref) {
 
 struct InsertAddressSpace
     : public PassWrapper<InsertAddressSpace, OperationPass<ModuleOp>> {
+  InsertAddressSpace() = default;
+  InsertAddressSpace(const InsertAddressSpace& o) {}
+  StringRef getArgument() const final { return "insert-address-space"; }
+
   void runOnOperation() override {
     ModuleOp module = getOperation();
     std::vector<FuncOp> func_ops;
