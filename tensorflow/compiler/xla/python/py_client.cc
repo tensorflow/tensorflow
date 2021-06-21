@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_client.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -33,9 +34,17 @@ namespace py = pybind11;
 namespace pprof = tensorflow::tfprof::pprof;
 
 PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
-    : pjrt_client_(std::move(pjrt_client)) {}
+    : PyClient(std::shared_ptr<PjRtClient>(std::move(pjrt_client))) {}
+
 PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
-    : pjrt_client_(std::move(pjrt_client)) {}
+    : pjrt_client_(std::move(pjrt_client)) {
+  buffers_.resize(pjrt_client_->device_count());
+  for (PjRtDevice* device : pjrt_client_->addressable_devices()) {
+    if (device->id() >= buffers_.size()) {
+      buffers_.resize(device->id() + 1);
+    }
+  }
+}
 
 PyClient::~PyClient() {
   py::gil_scoped_release gil;
@@ -64,7 +73,23 @@ std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
 std::vector<py::object> PyClient::LiveBuffers() {
   CHECK(PyGILState_Check());
   std::vector<py::object> buffers;
-  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
+  for (PyBuffer* device_buffers : buffers_) {
+    for (PyBuffer* buffer = device_buffers; buffer; buffer = buffer->next_) {
+      if (!buffer->is_deleted()) {
+        buffers.push_back(
+            py::reinterpret_borrow<py::object>(buffer->AsHandle()));
+      }
+    }
+  }
+  return buffers;
+}
+
+std::vector<py::object> PyClient::LiveBuffersOnDevice(PjRtDevice* device) {
+  CHECK_EQ(device->client(), pjrt_client());
+  CHECK(PyGILState_Check());
+  std::vector<py::object> buffers;
+  for (PyBuffer* buffer = buffers_[device->id()]; buffer;
+       buffer = buffer->next_) {
     if (!buffer->is_deleted()) {
       buffers.push_back(py::reinterpret_borrow<py::object>(buffer->AsHandle()));
     }
@@ -273,15 +298,18 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
   absl::flat_hash_set<PjRtBuffer*> buffer_set;
   absl::flat_hash_map<HeapProfileKey, int64> entries;
-  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
-    // We only wish to count each PjRtBuffer once, even though they may be
-    // shared by multiple PyBuffers.
-    if (buffer_set.insert(buffer->buffer()).second) {
-      TF_ASSIGN_OR_RETURN(size_t size,
-                          buffer->buffer()->GetOnDeviceSizeInBytes());
-      HeapProfileKey key{buffer->traceback().get(), static_cast<int64_t>(size),
-                         buffer->buffer()->device()};
-      ++entries[key];
+  for (PyBuffer* device_buffers : buffers_) {
+    for (PyBuffer* buffer = device_buffers; buffer; buffer = buffer->next_) {
+      // We only wish to count each PjRtBuffer once, even though they may be
+      // shared by multiple PyBuffers.
+      if (buffer_set.insert(buffer->buffer()).second) {
+        TF_ASSIGN_OR_RETURN(size_t size,
+                            buffer->buffer()->GetOnDeviceSizeInBytes());
+        HeapProfileKey key{buffer->traceback().get(),
+                           static_cast<int64_t>(size),
+                           buffer->buffer()->device()};
+        ++entries[key];
+      }
     }
   }
 
