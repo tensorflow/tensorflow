@@ -48,14 +48,16 @@ TfLiteStatus QuantizeModel(
     const TensorType& input_type, const TensorType& output_type,
     bool allow_float, const std::unordered_set<string>& operator_names,
     const TensorType& activations_type, ErrorReporter* error_reporter,
-    bool disable_per_channel = false) {
+    bool disable_per_channel = false,
+    const absl::flat_hash_set<std::string>& blocked_ops = {},
+    const absl::flat_hash_set<std::string>& blocked_nodes = {}) {
   TensorType inference_tensor_type = activations_type;
   bool fully_quantize = !allow_float;
   auto status = mlir::lite::QuantizeModel(
       *model, input_type, output_type, inference_tensor_type,
       /*operator_names=*/{}, disable_per_channel, fully_quantize, builder,
       error_reporter, /*verify_numeric=*/false, /*whole_model_verify=*/false,
-      /*legacy_float_scale=*/true);
+      /*legacy_float_scale=*/true, blocked_ops, blocked_nodes);
   if (status != kTfLiteOk) {
     return status;
   }
@@ -254,6 +256,33 @@ TEST_P(QuantizeConvModelTest, QuantizationSucceeds) {
   const uint8_t* buffer = builder_.GetBufferPointer();
   const Model* output_model = GetModel(buffer);
   ASSERT_TRUE(output_model);
+}
+
+TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayer) {
+  auto status = QuantizeModel(
+      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+      /*allow_float=*/true, /*operator_names=*/{}, TensorType_FLOAT32,
+      &error_reporter_, /*disable_per_channel=*/false, {"CONV_2D"});
+  EXPECT_EQ(status, kTfLiteOk);
+
+  ModelT expected_model;
+  readonly_model_->UnPackTo(&expected_model);
+  // The resulting model should be the same.
+  ExpectSameModels(model_, expected_model);
+}
+
+TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayerByName) {
+  auto status = QuantizeModel(
+      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+      /*allow_float=*/true, /*operator_names=*/{}, TensorType_FLOAT32,
+      &error_reporter_, /*disable_per_channel=*/false, /*blocked_ops=*/{},
+      {"output"});
+  EXPECT_EQ(status, kTfLiteOk);
+
+  ModelT expected_model;
+  readonly_model_->UnPackTo(&expected_model);
+  // The resulting model should be the same.
+  ExpectSameModels(model_, expected_model);
 }
 
 TEST_P(QuantizeConvModelTest, GraphIsFullyQuantized) {
