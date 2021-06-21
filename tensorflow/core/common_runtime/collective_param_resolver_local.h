@@ -189,6 +189,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   const DeviceMgr* dev_mgr_;
   DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;
+  string gpu_ring_order_;
   mutex group_mu_;
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_
       TF_GUARDED_BY(group_mu_);

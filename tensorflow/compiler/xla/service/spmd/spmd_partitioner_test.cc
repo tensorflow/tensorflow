@@ -3563,6 +3563,72 @@ ENTRY entry {
               AllOf(op::Copy(op::Parameter()), op::Shape("f32[2,5]")));
 }
 
+TEST_F(SpmdPartitioningTest, ConditionalManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+Negate {
+  x = f32[4,5] parameter(0), sharding={manual}
+  ROOT negate = f32[4,5] negate(x), sharding={manual}
+}
+
+Identity {
+  y = f32[4,5] parameter(0), sharding={manual}
+  ROOT copy = f32[4,5] copy(y), sharding={manual}
+}
+
+ENTRY entry {
+  %param.0 = pred[] parameter(0), sharding={manual}
+  %param.1 = f32[4,5] parameter(1), sharding={manual}
+  %param.2 = f32[4,5] parameter(2), sharding={manual}
+  ROOT cond = f32[4,5] conditional(%param.0, %param.1, %param.2),
+    true_computation=Negate, false_computation=Identity, sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("pred[]"));
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[4,5]"));
+  auto param2 = AllOf(op::Parameter(2), op::Shape("f32[4,5]"));
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Conditional(param0, param1, param2),
+                          op::Shape("f32[4,5]")));
+}
+
+TEST_F(SpmdPartitioningTest, WhileManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+LoopCond {
+  x = s32[] parameter(0), sharding={manual}
+  const = s32[] constant(5), sharding={manual}
+  ROOT lt = pred[] compare(x, const), direction=LT, sharding={manual}
+}
+
+Inc {
+  x = s32[] parameter(0), sharding={manual}
+  const = s32[] constant(1), sharding={manual}
+  ROOT add = s32[] add(x, const), sharding={manual}
+}
+
+ENTRY entry {
+  zero = s32[] parameter(0), sharding={manual}
+  ROOT while = s32[] while(zero), body=Inc, condition=LoopCond,
+    sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto zero = AllOf(op::Parameter(0), op::Shape("s32[]"));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
+}
+
 TEST_F(SpmdPartitioningTest, SelectAndScatter_RetinaNet) {
   absl::string_view hlo_string = R"(
 HloModule module

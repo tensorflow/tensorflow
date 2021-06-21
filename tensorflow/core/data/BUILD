@@ -34,6 +34,8 @@ exports_files([
     "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
+    "unbounded_thread_pool.cc",
+    "unbounded_thread_pool.h",
 ])
 
 cc_library(
@@ -329,6 +331,7 @@ cc_library(
     hdrs = ["standalone.h"],
     deps = [
         ":root_dataset",
+        ":unbounded_thread_pool",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -356,5 +359,30 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "unbounded_thread_pool",
+    srcs = ["unbounded_thread_pool.cc"],
+    hdrs = ["unbounded_thread_pool.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "unbounded_thread_pool_test",
+    size = "small",
+    srcs = ["unbounded_thread_pool_test.cc"],
+    deps = [
+        ":unbounded_thread_pool",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

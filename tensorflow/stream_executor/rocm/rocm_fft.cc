@@ -329,6 +329,7 @@ port::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
 
 port::Status ROCMFftPlan::UpdateScratchAllocator(
     Stream *stream, ScratchAllocator *scratch_allocator) {
+  scratch_allocator_ = scratch_allocator;
   if (scratch_size_bytes_ != 0) {
     auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
     if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {

@@ -1750,8 +1750,8 @@ Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
     case nvinfer1::DataType::kHALF: {
       auto inp = static_cast<Eigen::half const*>(weights.GetValues());
       auto result = std::minmax_element(inp, inp + weights.count());
-      *out_min = Eigen::half_impl::half_to_float(*result.first);
-      *out_max = Eigen::half_impl::half_to_float(*result.second);
+      *out_min = static_cast<float>(*result.first);
+      *out_max = static_cast<float>(*result.second);
       break;
     }
     case nvinfer1::DataType::kINT32: {
@@ -4004,10 +4004,10 @@ Status ConvertClipByValue(OpConverterParams* params) {
     clip_value_min = inputs.at(1).weights().GetSpan<float>()[0];
     clip_value_max = inputs.at(2).weights().GetSpan<float>()[0];
   } else if (dtype == DataType::DT_HALF) {
-    clip_value_min = Eigen::half_impl::half_to_float(
-        inputs.at(1).weights().GetSpan<Eigen::half>()[0]);
-    clip_value_max = Eigen::half_impl::half_to_float(
-        inputs.at(2).weights().GetSpan<Eigen::half>()[0]);
+    clip_value_min =
+        static_cast<float>(inputs.at(1).weights().GetSpan<Eigen::half>()[0]);
+    clip_value_max =
+        static_cast<float>(inputs.at(2).weights().GetSpan<Eigen::half>()[0]);
   }
 
   nvinfer1::IActivationLayer* layer =
@@ -5448,15 +5448,13 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
         if (parameter_type == nvinfer1::DataType::kFLOAT) {
           batchnorm_data[j] = vals_array[j][i];
         } else if (parameter_type == nvinfer1::DataType::kHALF) {
-          batchnorm_data[j] =
-              Eigen::half_impl::half_to_float(cast_vals_array[j][i]);
+          batchnorm_data[j] = static_cast<float>(cast_vals_array[j][i]);
         }
       } else {
         if (parameter_type == nvinfer1::DataType::kFLOAT) {
           batchnorm_data[j] = vals_array[j][0];
         } else if (parameter_type == nvinfer1::DataType::kHALF) {
-          batchnorm_data[j] =
-              Eigen::half_impl::half_to_float(cast_vals_array[j][0]);
+          batchnorm_data[j] = static_cast<float>(cast_vals_array[j][0]);
         }
       }
     }

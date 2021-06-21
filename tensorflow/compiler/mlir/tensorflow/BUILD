@@ -601,6 +601,7 @@ cc_library(
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "//tensorflow/core/common_runtime:lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + [":tensorflow_" + target["name"] for target in tf_ops_category_list],
@@ -906,6 +907,7 @@ cc_library(
         "transforms/mark_initialized_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/remove_vars_in_session_initializer.cc",
+        "transforms/tf_saved_model_freeze_variables.cc",
     ],
     hdrs = [
         "transforms/tf_saved_model_passes.h",
@@ -914,6 +916,7 @@ cc_library(
         ":convert_tensor",
         ":lift_variables_lib",
         ":mark_initialized_variables_lib",
+        ":resource_value_typed_analyzer",
         ":session_utils",
         ":tensorflow",
         ":tensorflow_ops",
@@ -923,6 +926,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1022,6 +1026,29 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/tf_savedmodel_passes.td",
+    td_srcs = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tf_saved_model_test_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TensorFlowSavedModelTest",
+            ],
+            "transforms/tf_saved_model_test_passes.h.inc",
+        ),
+        (
+            ["-gen-pass-doc"],
+            "g3doc/includes/tf_saved_model_test_passes.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/tf_saved_model_test_passes.td",
     td_srcs = [
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
@@ -1220,6 +1247,12 @@ cc_library(
         "transforms/lift_variables_test_pass.cc",
         "transforms/lower_tf_pass.cc",
         "transforms/mark_initialized_variables_test_pass.cc",
+        "transforms/tf_saved_model_freeze_variables_test_pass.cc",
+    ],
+    hdrs = [
+        "transforms/test_passes.h",
+        "transforms/test_passes_detail.h",
+        "transforms/tf_saved_model_test_passes.h.inc",
     ],
     deps = [
         ":fake_session",
@@ -1228,6 +1261,7 @@ cc_library(
         ":mark_initialized_variables_lib",
         ":tensorflow",
         ":tf_saved_model_passes",
+        ":tf_saved_model_test_pass_inc_gen",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -1755,6 +1789,7 @@ cc_library(
         ":mlir_import_options",
         ":mlir_roundtrip_flags",
         "//tensorflow/cc/saved_model:bundle_v2",
+        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -2296,5 +2331,19 @@ cc_library(
         ":tensorflow",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "resource_value_typed_analyzer",
+    srcs = ["analysis/resource_value_typed_analyzer.cc"],
+    hdrs = ["analysis/resource_value_typed_analyzer.h"],
+    deps = [
+        ":tensorflow",
+        ":tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )

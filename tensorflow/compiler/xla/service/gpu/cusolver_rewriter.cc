@@ -46,7 +46,7 @@ void SetFortranLayout(Shape* shape) {
             shape->mutable_layout()->mutable_minor_to_major()->at(1));
 }
 
-StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
+StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
                                          HloInstruction* operand,
                                          const CholeskyOptions& options,
                                          const OpMetadata& metadata) {
@@ -126,10 +126,8 @@ StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
   return select;
 }
 
-}  // namespace
-
 // Tries to rewrite a single convolution into a call to cudnn.
-StatusOr<bool> RunOnInstruction(CusolverContext* context,
+StatusOr<bool> RunOnInstruction(GpuSolverContext* context,
                                 HloInstruction* instruction) {
   if (instruction->opcode() != HloOpcode::kCholesky) {
     return false;
@@ -148,9 +146,12 @@ StatusOr<bool> RunOnInstruction(CusolverContext* context,
   return true;
 }
 
+}  // namespace
+
 // Rewrites the convolutions in the given computation into calls to cudnn.
 // Returns true if it made any changes.
-StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
+StatusOr<bool> GpusolverRewriter::RunOnComputation(
+    HloComputation* computation) {
   std::vector<HloInstruction*> cusolver_calls;
   for (auto* hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kCholesky) {
@@ -162,8 +163,8 @@ StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(CusolverContext context,
-                      CusolverContext::Create(/*stream=*/nullptr));
+  TF_ASSIGN_OR_RETURN(GpuSolverContext context,
+                      GpuSolverContext::Create(/*stream=*/nullptr));
 
   bool changed = false;
   for (HloInstruction* instruction : cusolver_calls) {
@@ -173,9 +174,9 @@ StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
   return changed;
 }
 
-CusolverRewriter::CusolverRewriter() = default;
+GpusolverRewriter::GpusolverRewriter() = default;
 
-StatusOr<bool> CusolverRewriter::Run(HloModule* module) {
+StatusOr<bool> GpusolverRewriter::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));

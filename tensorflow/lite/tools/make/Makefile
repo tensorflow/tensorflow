@@ -63,7 +63,8 @@ LIBS := \
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
 CFLAGS := -O3 -DNDEBUG -DCPU_SETSIZE=__CPU_SETSIZE -fPIC $(EXTRA_CFLAGS)
-CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
+CXXSTANDARD := -std=c++11
+CXXFLAGS := $(CFLAGS) $(CXXSTANDARD) $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
@@ -139,6 +140,7 @@ $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/delegates/interpreter_utils.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
+$(wildcard tensorflow/lite/schema/schema_conversion_utils.cc) \
 $(wildcard tensorflow/lite/schema/schema_utils.cc) \
 $(wildcard tensorflow/lite/tools/make/downloads/ruy/ruy/*.cc)
 ifeq ($(TFLITE_HAVE_CPUINFO),true)

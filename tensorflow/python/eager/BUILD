@@ -615,6 +615,7 @@ py_library(
         "//tensorflow/python:func_graph",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",

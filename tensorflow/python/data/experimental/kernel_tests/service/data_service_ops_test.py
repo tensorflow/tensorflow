@@ -44,6 +44,8 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
@@ -144,13 +146,15 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, [v1, v2, default_value], requires_initialization=True)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testDifferentShuffleOrders(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(shuffle_seed=[None, 10])))
+  def testShuffleOrder(self, shuffle_seed):
     random_seed.set_random_seed(None)
     num_elements = 100
     cluster = data_service_test_base.TestCluster(num_workers=2)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.shuffle(num_elements)
+    ds = ds.shuffle(num_elements, seed=shuffle_seed)
     ds = self.make_distributed_dataset(ds, cluster)
     output = self.getDatasetOutput(ds)
 
@@ -164,7 +168,10 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         second_order[element] = len(second_order)
       else:
         first_order[element] = len(first_order)
-    self.assertNotEqual(first_order, second_order)
+    if shuffle_seed is None:
+      self.assertNotEqual(first_order, second_order)
+    else:
+      self.assertEqual(first_order, second_order)
 
   @combinations.generate(test_base.default_test_combinations())
   def testMultipleEpochs(self):
@@ -671,6 +678,26 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = dataset_ops.Dataset.from_tensors(tensor)
     ds = self.make_distributed_dataset(ds, cluster)
     self.assertDatasetProduces(ds, [tensor])
+
+  @combinations.generate(
+      combinations.times(test_base.graph_only_combinations(),
+                         combinations.combine(use_resource=False)) +
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(use_resource=True)))
+  def testVariables(self, use_resource):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    if not use_resource:
+      with variable_scope.variable_scope("foo", use_resource=False):
+        v = variables.VariableV1(10, dtype=dtypes.int64)
+    else:
+      v = variables.Variable(10, dtype=dtypes.int64)
+
+    ds = dataset_ops.Dataset.range(3)
+    ds = ds.map(lambda x: x + v)
+    ds = self.make_distributed_dataset(ds, cluster)
+    self.evaluate(v.initializer)
+    self.assertDatasetProduces(
+        ds, list(range(10, 13)), requires_initialization=True)
 
 
 if __name__ == "__main__":

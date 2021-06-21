@@ -123,9 +123,9 @@ class NcclTestBase : public ::testing::Test {
     }
     if (!dev_mgr_)
       dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
-    col_exec_ = new BaseCollectiveExecutor(
-        &col_exec_mgr_, /*remote_access=*/nullptr, kStepId, dev_mgr_.get(),
-        /*gpu_ring_order=*/nullptr, work_queue_);
+    col_exec_ =
+        new BaseCollectiveExecutor(&col_exec_mgr_, /*remote_access=*/nullptr,
+                                   kStepId, dev_mgr_.get(), work_queue_);
 
     // Initialize collective params.
     col_params_ = new CollectiveParams();

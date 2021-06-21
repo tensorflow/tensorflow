@@ -70,11 +70,40 @@ java_lite_proto_library(
     deps = [":configuration_proto"],
 )
 
-flatbuffer_cc_library(
-    name = "configuration_fbs",
-    srcs = [":configuration.fbs"],
+genrule(
+    name = "copy_configuration_h",
+    srcs = ["configuration_generated.h.prebuilt"],
+    outs = ["configuration_generated.h"],
+    cmd = "cp $(<) $(@)",
     compatible_with = get_compatible_with_portable(),
+)
+
+# TODO(b/191428000): The automatic generation is temporarily disabled until
+# https://github.com/google/flatbuffers/pull/6486 is landed and tensorflow
+# flatbuffer version updated.
+# Until that time you need to build configuration_for_generation_generated.h
+# and copy the result to configuration_generated.h.prebuilt
+genrule(
+    name = "copy_configuration_fbs",
+    srcs = ["configuration.fbs"],
+    outs = ["configuration_for_generation.fbs"],
+    cmd = "cp $(<) $(@)",
+)
+
+flatbuffer_cc_library(
+    name = "configuration_fbs_for_generation",
+    srcs = [":configuration_for_generation.fbs"],
     flatc_args = DEFAULT_FLATC_ARGS + ["--gen-compare"],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "configuration_fbs",
+    hdrs = [":configuration_generated.h"],
+    compatible_with = get_compatible_with_portable(),
+    includes = ["."],
+    linkstatic = True,
+    deps = ["@flatbuffers//:runtime_cc"],
 )
 
 flatbuffer_java_library(

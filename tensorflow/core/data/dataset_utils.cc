@@ -88,13 +88,9 @@ constexpr char kNoopEliminationOpt[] = "noop_elimination";
 constexpr char kMapParallelizationOpt[] = "map_parallelization";
 constexpr char kShuffleAndRepeatFusionOpt[] = "shuffle_and_repeat_fusion";
 constexpr char kFilterFusionOpt[] = "filter_fusion";
-constexpr char kFilterWithRandomUniformFusionOpt[] =
-    "filter_with_random_uniform_fusion";
-constexpr char kHoistRandomUniformOpt[] = "hoist_random_uniform";
 constexpr char kMapAndFilterFusionOpt[] = "map_and_filter_fusion";
 constexpr char kMapFusionOpt[] = "map_fusion";
 constexpr char kParallelBatchOpt[] = "parallel_batch";
-constexpr char kReorderDataDiscardingOpsOpt[] = "reorder_data_discarding_ops";
 constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
@@ -137,22 +133,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kFilterFusionOpt);
     } else {
       optimization_disabled->insert(kFilterFusionOpt);
-    }
-  }
-  if (optimization_options.optional_filter_with_random_uniform_fusion_case() ==
-      OptimizationOptions::kFilterWithRandomUniformFusion) {
-    if (optimization_options.filter_with_random_uniform_fusion()) {
-      optimization_enabled->insert(kFilterWithRandomUniformFusionOpt);
-    } else {
-      optimization_disabled->insert(kFilterWithRandomUniformFusionOpt);
-    }
-  }
-  if (optimization_options.optional_hoist_random_uniform_case() ==
-      OptimizationOptions::kHoistRandomUniform) {
-    if (optimization_options.hoist_random_uniform()) {
-      optimization_enabled->insert(kHoistRandomUniformOpt);
-    } else {
-      optimization_disabled->insert(kHoistRandomUniformOpt);
     }
   }
   if (optimization_options.optional_map_and_batch_fusion_case() ==
@@ -201,14 +181,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kParallelBatchOpt);
     } else {
       optimization_disabled->insert(kParallelBatchOpt);
-    }
-  }
-  if (optimization_options.optional_reorder_data_discarding_ops_case() ==
-      OptimizationOptions::kReorderDataDiscardingOps) {
-    if (optimization_options.reorder_data_discarding_ops()) {
-      optimization_enabled->insert(kReorderDataDiscardingOpsOpt);
-    } else {
-      optimization_disabled->insert(kReorderDataDiscardingOpsOpt);
     }
   }
   if (optimization_options.optional_shuffle_and_repeat_fusion_case() ==

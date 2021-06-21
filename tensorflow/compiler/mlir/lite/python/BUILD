@@ -78,6 +78,7 @@ cc_library(
     ],
     deps = [
         ":tf_tfl_flatbuffer_helpers",
+        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",

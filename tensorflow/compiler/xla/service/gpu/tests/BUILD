@@ -98,10 +98,12 @@ cc_library(
     name = "tfrt_exec_ctx_injector",
     testonly = True,
     srcs = ["tfrt_exec_ctx_injector.cc"],
+    tags = ["manual"],
     deps = [
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/core:lib",
         # copybara:uncomment_begin(target not open-sourced yet)
-        # "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        # "//tensorflow/core/tfrt/runtime:work_queue_interface",
         # copybara:uncomment_end
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:core_runtime",
@@ -151,6 +153,25 @@ tf_cc_test(
         ":mlir_gpu_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_all_reduce_scatter_creator_test",
+    srcs = ["gpu_all_reduce_scatter_creator_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service/gpu:gpu_all_reduce_scatter_creator",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 

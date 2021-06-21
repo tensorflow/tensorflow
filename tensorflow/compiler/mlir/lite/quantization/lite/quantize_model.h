@@ -16,14 +16,18 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_LITE_QUANTIZE_MODEL_H_
 
 #include <memory>
+#include <string>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
 namespace lite {
+
+using StringSet = absl::flat_hash_set<std::string>;
 
 // Quantize the `input_model` and write the result to a flatbuffer `builder`.
 // The `input_type`, `output_type` and `inference_type` can be
@@ -42,7 +46,9 @@ TfLiteStatus QuantizeModel(
     bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter, bool verify_numeric = false,
-    bool legacy_float_scale = true);
+    bool whole_model_verify = false, bool legacy_float_scale = true,
+    const StringSet& blocklisted_ops = {},
+    const StringSet& blocklisted_nodes = {});
 }  // namespace lite
 }  // namespace mlir
 

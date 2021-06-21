@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -24,7 +28,7 @@ namespace test_util {
 
 struct GraphDefTestCase {
   // Name for the test case.
-  string name;
+  std::string name;
   // A dataset graph.
   GraphDef graph_def;
   // The expected output from iterating over the dataset represented by the
@@ -32,10 +36,10 @@ struct GraphDefTestCase {
   std::vector<std::vector<Tensor>> output;
 };
 
-// Fills in the input test_case pointer with test case data representing the
-// dataset tf.data.Dataset.range(10).map(lambda x: x*x). Useful for testing
-// dataset graph execution.
-Status map_test_case(GraphDefTestCase* test_case);
+// Returns test data representing
+// tf.data.Dataset.range(range).map(lambda x: x*x). Useful for testing dataset
+// graph execution.
+StatusOr<GraphDefTestCase> map_test_case(int64 range);
 
 }  // namespace test_util
 }  // namespace data

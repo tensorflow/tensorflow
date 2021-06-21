@@ -1217,13 +1217,9 @@ StatusOr<absl::optional<std::string>> TfrtCpuExecutable::Fingerprint() const {
 
 Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
   TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
-                      GetParametersThatMustBeDonated(
+                      ComputeParametersThatMustBeDonated(
                           *cpu_executable_->shared_module(), tuple_inputs));
   return Status::OK();
-}
-
-bool TfrtCpuExecutable::MustDonateParameter(int parameter) const {
-  return parameters_that_must_be_donated_.contains(parameter);
 }
 
 // The following few helpers are adapted from XLA:CPU to create a buffer table
@@ -1364,6 +1360,9 @@ TfrtCpuExecutable::ExecuteHelper(
   // single definition event.
   std::vector<tfrt::AsyncValueRef<CpuEvent>> input_deps;
   input_deps.reserve(argument_handles.size());
+
+  auto donate_it = parameters_that_must_be_donated_.begin();
+
   for (int i = 0; i < argument_handles.size(); ++i) {
     PjRtBuffer* handle = argument_handles[i];
     auto* tfrt_buffer = tensorflow::down_cast<TfrtCpuBuffer*>(handle);
@@ -1375,7 +1374,11 @@ TfrtCpuExecutable::ExecuteHelper(
           device->DebugString());
     }
 
-    bool must_donate = MustDonateParameter(i);
+    bool must_donate =
+        donate_it != parameters_that_must_be_donated_.end() && *donate_it == i;
+    if (must_donate) {
+      ++donate_it;
+    }
     device_buffers.emplace_back(tfrt_buffer->GetBufferWithHold(
         must_donate ? TfrtCpuBuffer::ScopedHold::kDonation
                     : TfrtCpuBuffer::ScopedHold::kUsage));

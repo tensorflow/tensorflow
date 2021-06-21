@@ -421,7 +421,26 @@ class IntegerLookupVocabularyTest(
       layer = integer_lookup.IntegerLookup()
       layer([[1]])
 
-  def test_binary_output(self):
+  def test_one_hot_output(self):
+    vocab_data = [2, 3, 4, 5]
+    input_array = np.array([2, 3, 4, 5, 6])
+    expected_output = [
+        [0, 1, 0, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0],
+    ]
+
+    input_data = keras.Input(shape=(1,), dtype=dtypes.int64)
+    layer = integer_lookup.IntegerLookup(
+        vocabulary=vocab_data, output_mode="one_hot")
+    res = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=res)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_multi_hot_output(self):
     vocab_data = [2, 3, 4, 5]
     input_array = np.array([[2, 2, 3, 4], [0, 1, 5, 2]])
     expected_output = [[0, 1, 1, 1, 0], [1, 1, 0, 0, 1]]

@@ -107,17 +107,13 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_isa_version
         << ", but was " << stream_isa_version;
   } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
-    std::pair<int, int> stream_compute_compatibility;
-    main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
-        &stream_compute_compatibility.first,
-        &stream_compute_compatibility.second);
-    GpuVersion nvidia_compute_compatibility = stream_compute_compatibility;
-    TF_RET_CHECK(nvidia_compute_compatibility == gpu_version_)
+    GpuVersion cc = main_stream->GetCudaComputeCapability();
+    TF_RET_CHECK(absl::get<se::CudaComputeCapability>(cc) ==
+                 absl::get<se::CudaComputeCapability>(gpu_version_))
         << "Compute capability mismatch; expected {"
-        << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
-        << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
-        << stream_compute_compatibility.first << ", "
-        << stream_compute_compatibility.second << "}";
+        << absl::get<se::CudaComputeCapability>(gpu_version_).ToString()
+        << "}, but was {" << absl::get<se::CudaComputeCapability>(cc).ToString()
+        << "}";
   } else {
     return InternalError("Unknown platform: %d", platform_kind);
   }

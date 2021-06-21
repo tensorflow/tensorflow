@@ -52,6 +52,7 @@ using absl::flat_hash_map;
 using absl::flat_hash_set;
 using absl::StrAppend;
 using absl::StrAppendFormat;
+using memory_space_assignment::PresetAssignments;
 using ::tensorflow::strings::HumanReadableNumBytes;
 
 // Given the interference map of a graph (the list of interfering node indices

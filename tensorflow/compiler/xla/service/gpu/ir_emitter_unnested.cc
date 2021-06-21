@@ -124,9 +124,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -1093,11 +1093,11 @@ Status IrEmitterUnnested::EmitCustomCall(mlir::Operation* op) {
     return EmitBatchNormThunk(op);
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
     return EmitCholeskyThunk(op);
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        MlirToString(op));
@@ -1557,7 +1557,7 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
   return Unimplemented("Unsupported batch norm operation");
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   auto cholesky_op = mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(op);
 
@@ -1603,7 +1603,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
 
   return Status::OK();
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
   auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
@@ -5036,22 +5036,18 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   bool tile_fit = reduction_dimensions.dimensions[kDimX] %
                       (reduction_tiling[2] * num_threads_x) ==
                   0;
-
-  int cc_major = 0;
-  if (ir_emitter_context_->cuda_compute_capability()) {
-    cc_major = ir_emitter_context_->cuda_compute_capability()->cc_major;
-  }
+  se::CudaComputeCapability cc = ir_emitter_context_->cuda_compute_capability();
 
   int num_partial_results = 1;
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
     if (reduction_dimensions.is_row_reduction &&
         // P100, only try to vectorize+coales memory access when the
         // tile size fits exactly and dtypes <= 32 bits
-        ((cc_major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
+        ((cc.major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
          // On V100, only try to vectorize+coales memory access for
          // rows of even size.  For odd row sizes, every other row
          // isn't aligned, so it can't be vectorized.
-         (cc_major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
+         (cc.major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
       return kStridedLinearIndexingX;
     } else if (!reduction_dimensions.is_row_reduction &&
                IsUnrollingColumnReductionBeneficial(
@@ -5565,7 +5561,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     return EmitBatchNormThunk(op);
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
     return EmitCholeskyThunk(op);
   }
@@ -5627,6 +5623,11 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
     return EmitNcclThunk<NcclAllReduceThunk, mlir::lmhlo::AllReduceOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo::AllReduceScatterOp>(op)) {
+    return EmitNcclThunk<NcclAllReduceScatterThunk,
+                         mlir::lmhlo::AllReduceScatterOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo::AllToAllOp>(op)) {

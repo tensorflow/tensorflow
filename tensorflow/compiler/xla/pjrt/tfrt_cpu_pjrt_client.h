@@ -576,8 +576,6 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 
   Status SetUpDonation(bool tuple_inputs);
 
-  bool MustDonateParameter(int parameter) const;
-
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
   Status CheckBufferCompatibilities(
@@ -611,9 +609,9 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   // for performance reasons.
   std::vector<int64_t> input_buffer_sizes_in_bytes_;
 
-  // A set of parameters that have any aliased buffers and thus must be donated
-  // when executing the computation.
-  absl::flat_hash_set<int> parameters_that_must_be_donated_;
+  // A sorted vector of parameters that have any aliased buffers and thus must
+  // be donated when executing the computation.
+  std::vector<int> parameters_that_must_be_donated_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all

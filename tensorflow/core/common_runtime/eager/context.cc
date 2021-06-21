@@ -119,15 +119,8 @@ EagerContext::EagerContext(
   context_view_id_ = 0;
 #endif  // IS_MOBILE_PLATFORM
 
-  std::unique_ptr<DeviceResolverInterface> drl(
-      new DeviceResolverLocal(local_device_mgr()));
-  std::unique_ptr<ParamResolverInterface> cprl(new CollectiveParamResolverLocal(
-      opts.config, local_device_mgr(), drl.get(),
-      "/job:localhost/replica:0/task:0"));
-  collective_executor_mgr_.Reset(
-      new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
-                                std::move(cprl), MaybeCreateNcclCommunicator()),
-      /*owned=*/true);
+  collective_executor_mgr_.Reset(CreateProdLocalCollectiveExecutorMgr(
+      opts.config, local_device_mgr(), MaybeCreateNcclCommunicator()));
   global_rendezvous_for_functions_ =
       core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
 }

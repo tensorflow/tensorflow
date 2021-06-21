@@ -71,7 +71,7 @@ ErrorCollectorInstrumentation::ErrorCollectorInstrumentation(
           ConverterErrorData::ErrorCode_Parse(error_code, &error_code_enum);
       if (!op_name.empty() || has_valid_error_code) {
         error_collector_->ReportError(NewConverterErrorData(
-            pass_name_, diag.str(), error_code_enum, op_name));
+            pass_name_, diag.str(), error_code_enum, op_name, loc));
       } else {
         common_error_message_ += diag.str();
         common_error_message_ += "\n";
@@ -112,9 +112,9 @@ void ErrorCollectorInstrumentation::runAfterPassFailed(Pass *pass,
   // Create a new error if no errors collected yet.
   if (error_collector_->CollectedErrors().empty() &&
       !common_error_message_.empty()) {
-    error_collector_->ReportError(
-        NewConverterErrorData(pass_name_, common_error_message_,
-                              ConverterErrorData::UNKNOWN, /*op_name=*/""));
+    error_collector_->ReportError(NewConverterErrorData(
+        pass_name_, common_error_message_, ConverterErrorData::UNKNOWN,
+        /*op_name=*/"", module->getLoc()));
   }
 
   loc_to_name_.clear();

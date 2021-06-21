@@ -135,6 +135,20 @@ func @exp(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex_exp
+func @complex_exp(%input: memref<2x2xcomplex<f32>>,
+                  %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.exponential"(%input, %result)
+      : (memref<2x2xcomplex<f32>>, memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.exp %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
 // CHECK-LABEL: func @log
 func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.log"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -690,6 +704,22 @@ func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex_neg
+func @complex_neg(%input: memref<2x2xcomplex<f32>>,
+                  %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.negate"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                     memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.neg %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// -----
+
 // CHECK-LABEL: func @negi
 func @negi(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
   "lmhlo.negate"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
@@ -791,6 +821,20 @@ func @sign_i16(%input: memref<2x2xi16>, %result: memref<2x2xi16>) {
 // CHECK-NEXT:   %[[OR:.*]] = or %[[ASHR]], %[[C1]] : i16
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[C0]], %[[OR]] : i16
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i16
+
+// -----
+
+// CHECK-LABEL: func @sign_complex
+func @sign_complex(%input: memref<2x2xcomplex<f32>>,
+                   %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.sign"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                   memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.sign %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
 
 // -----
 

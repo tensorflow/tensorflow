@@ -1037,7 +1037,14 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           if (type == PostorderDFSNodeType::kBoundIsDynamic) {
             return CreatePredLiteral(false, Shape(root->shape()));
           } else {
-            return CreatePredLiteral(true, Shape(root->shape()));
+            if (root->literal().shape().element_type() == TUPLE) {
+              // First literal of SetBound contains bounds, second literal
+              // contains dynamism indicators.
+              return Literal::CreateFromProto(
+                  root->literal().tuple_literals(1));
+            } else {
+              return Literal::CreateFromProto(root->literal());
+            }
           }
         });
       } else {

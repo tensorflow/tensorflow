@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -132,7 +133,7 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
   int partition_count = device_assignment.computation_count();
 
   std::vector<ReplicaGroup> participating_replica_groups =
-      std::vector<ReplicaGroup>(replica_groups.begin(), replica_groups.end());
+      SpanToVector(replica_groups);
 
   // If replica groups are empty, assume a group with all replicas.
   if (replica_groups.empty()) {

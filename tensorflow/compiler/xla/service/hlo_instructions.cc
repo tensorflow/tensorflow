@@ -572,10 +572,10 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
 HloCollectiveInstruction::HloCollectiveInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      replica_groups_(replica_groups),
+      replica_groups_(SpanToVector(replica_groups)),
       constrain_layout_(constrain_layout) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -619,7 +619,7 @@ bool HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 
 HloAllGatherInstruction::HloAllGatherInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    int64 all_gather_dimension, const std::vector<ReplicaGroup>& replica_groups,
+    int64 all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
     bool constrain_layout, const absl::optional<int64>& channel_id,
     bool use_global_device_ids)
     : HloCollectiveInstruction(HloOpcode::kAllGather, shape, operands,
@@ -669,7 +669,7 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids)
     : HloCollectiveInstruction(opcode, shape, operands, replica_groups,
                                constrain_layout, channel_id),
@@ -730,7 +730,7 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
 HloAllReduceScatterInstruction::HloAllReduceScatterInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids,
     int64 scatter_dimension)
     : HloAllReduceInstructionBase(
@@ -774,7 +774,7 @@ HloAllReduceScatterInstruction::CloneWithNewOperandsImpl(
 
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id,
     const absl::optional<int64>& split_dimension)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,

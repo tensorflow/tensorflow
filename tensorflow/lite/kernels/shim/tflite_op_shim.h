@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_SHIM_TFLITE_OP_SHIM_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"

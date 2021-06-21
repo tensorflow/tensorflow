@@ -252,6 +252,14 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
     const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
     absl::Span<const DataType> result_types);
 
+// Use XlaCompiler to compile a single op into HLO.
+Status XlaSingleOpToHlo(XlaCompiler* compiler,
+                        const XlaCompiler::Options& options,
+                        const std::vector<XlaCompiler::Argument>& args,
+                        OpKernelContext* ctx,
+                        const XlaCompiler::CompileOptions& compile_options,
+                        XlaCompiler::CompilationResult* compilation_result);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
