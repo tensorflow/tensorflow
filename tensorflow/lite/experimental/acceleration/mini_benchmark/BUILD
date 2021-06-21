@@ -572,7 +572,7 @@ cc_binary(
 )
 
 cc_library(
-    name = "runner_unit_test_entry_points_for_non_android",
+    name = "runner_unit_test_entry_points_library",
     srcs = ["runner_test_entry_points.cc"],
     deps = [":status_codes"],
 )
@@ -608,7 +608,7 @@ cc_test(
             ":embedded_runner_unit_test_entry_points",
         ],
         "//conditions:default": [
-            ":runner_unit_test_entry_points_for_non_android",
+            ":runner_unit_test_entry_points_library",
         ],
     }),
 )
