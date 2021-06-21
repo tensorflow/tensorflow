@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 
@@ -395,7 +396,7 @@ Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
 Status VariantTensorDataWriter::WriteDatasetInternal(
     StringPiece n, StringPiece key, const DatasetBase* dataset) {
   GraphDef graph_def;
-  SerializationContext ctx({});
+  SerializationContext ctx((SerializationContext::Params()));
   TF_RETURN_IF_ERROR(AsGraphDef(nullptr, dataset, std::move(ctx), &graph_def));
   string output_node;
   for (const auto& node : graph_def.node()) {
@@ -416,8 +417,7 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
 Status AsGraphDefMinimal(OpKernelContext* ctx, const DatasetBase* input,
                          std::vector<std::pair<string, Tensor>>* input_list,
                          GraphDef* result, string* dataset_node) {
-  SerializationContext::Params params;
-  params.resource_mgr = ctx->resource_manager();
+  SerializationContext::Params params(ctx);
   params.input_list = input_list;
   params.external_state_policy =
       SerializationContext::ExternalStatePolicy::kIgnore;

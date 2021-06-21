@@ -1077,7 +1077,7 @@ void SerializeIteratorOp::Compute(OpKernelContext* ctx) {
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   IteratorVariantSerializer serializer;
-  SerializationContext::Params params;
+  SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
   SerializationContext serialization_ctx(params);
   OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(&serialization_ctx,

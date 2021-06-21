@@ -761,7 +761,7 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   } else {
     // Computes the hash of the preceding items in the graph.
     GraphDef graph_def;
-    SerializationContext::Params params;
+    SerializationContext::Params params(ctx);
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
     params.external_state_policy =
@@ -912,7 +912,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "path", &path));
 
-    SerializationContext::Params params;
+    SerializationContext::Params params(ctx);
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
     params.external_state_policy =

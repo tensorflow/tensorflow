@@ -581,6 +581,12 @@ class SerializationContext {
   }
 
   struct Params {
+    explicit Params() {}
+
+    explicit Params(OpKernelContext* ctx)
+        : resource_mgr(ctx->resource_manager()),
+          device_name(ctx->device()->attributes().name()) {}
+
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
     // Indicates what to do if the dataset depends on external state.
@@ -608,6 +614,9 @@ class SerializationContext {
 
     // A resource manager for looking up resources during serialization.
     ResourceMgr* resource_mgr;
+
+    // The name of the device doing the serialization.
+    std::string device_name;
   };
 
   explicit SerializationContext(Params params) : params_(params) {}
@@ -626,7 +635,9 @@ class SerializationContext {
 
   bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
 
-  ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
+  const ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
+
+  const std::string& device_name() const { return params_.device_name; }
 
  private:
   Params params_;
