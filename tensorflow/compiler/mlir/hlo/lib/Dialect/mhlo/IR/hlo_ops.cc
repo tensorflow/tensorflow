@@ -642,11 +642,33 @@ void DynamicIotaOp::getCanonicalizationPatterns(
   results.insert<DynamicIotaBroadcast>(context);
 }
 
+static Value castToIndexTensor(OpBuilder& builder, Location loc,
+                               Value shape_op) {
+  ShapedType result_ty = shape::getExtentTensorType(
+      builder.getContext(),
+      shape_op.getType().cast<ShapedType>().getDimSize(0));
+  if (shape_op.getType() == result_ty) return shape_op;  // Nothing to do.
+  // index_cast is not defined on tensors, so emit a tensor.generate instead.
+  return builder.create<tensor::GenerateOp>(
+      loc, result_ty,
+      result_ty.hasStaticShape()
+          ? ValueRange{}
+          : ValueRange{builder.create<memref::DimOp>(loc, shape_op, 0)},
+      [&](OpBuilder& b, Location loc, ValueRange args) {
+        Value dim = args.front();
+        Value extent = b.create<tensor::ExtractOp>(loc, shape_op, dim);
+        Value casted =
+            b.create<IndexCastOp>(loc, extent, result_ty.getElementType());
+        b.create<tensor::YieldOp>(loc, casted);
+      });
+}
+
 LogicalResult DynamicIotaOp::reifyReturnTypeShapes(
-    OpBuilder&, ValueRange operands,
+    OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   DynamicIotaOp::Adaptor adaptor(operands);
-  reifiedReturnShapes.push_back(adaptor.output_shape());
+  reifiedReturnShapes.push_back(
+      castToIndexTensor(builder, getLoc(), adaptor.output_shape()));
   return success();
 }
 
@@ -1192,10 +1214,11 @@ void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
 }
 
 LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
-    OpBuilder&, ValueRange operands,
+    OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   DynamicBroadcastInDimOp::Adaptor adaptor(operands);
-  reifiedReturnShapes.push_back(adaptor.output_dimensions());
+  reifiedReturnShapes.push_back(
+      castToIndexTensor(builder, getLoc(), adaptor.output_dimensions()));
   return success();
 }
 
@@ -1627,10 +1650,11 @@ static LogicalResult Verify(DynamicReshapeOp op) {
 }
 
 LogicalResult DynamicReshapeOp::reifyReturnTypeShapes(
-    OpBuilder&, ValueRange operands,
+    OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   DynamicReshapeOp::Adaptor adaptor(operands);
-  reifiedReturnShapes.push_back(adaptor.output_shape());
+  reifiedReturnShapes.push_back(
+      castToIndexTensor(builder, getLoc(), adaptor.output_shape()));
   return success();
 }
 
