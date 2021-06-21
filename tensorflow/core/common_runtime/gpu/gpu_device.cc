@@ -33,6 +33,8 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_split.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
@@ -536,6 +538,88 @@ string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                          stream_id, "]");
 }
 
+namespace {
+const absl::flat_hash_set<std::string>* GetOpsToLogFromEnv() {
+  auto* result = new absl::flat_hash_set<std::string>;
+  const char* env = getenv("TF_GPU_DEBUG_OPS_TO_LOG");
+  if (!env) {
+    return result;
+  }
+
+  std::vector<absl::string_view> ops = absl::StrSplit(env, ',');
+  LOG(INFO) << "Will log inputs & outputs from the following ops: ";
+  for (absl::string_view op : ops) {
+    result->insert(std::string(op));
+    LOG(INFO) << "  |" << op << "|";
+  }
+
+  return result;
+}
+
+bool ShouldLogInputsAndOutputs(OpKernel* op_kernel) {
+  static const absl::flat_hash_set<std::string>& ops_to_log =
+      *GetOpsToLogFromEnv();
+  return ops_to_log.count(op_kernel->type_string());
+}
+}  // namespace
+
+Tensor BaseGPUDevice::CopyGpuTensorToHostDebugOnly(const Tensor& gpu_tensor) {
+  Tensor host_tensor(gpu_tensor.dtype(), gpu_tensor.shape());
+  CHECK(device_context_->stream()
+            ->ThenMemcpy(host_tensor.data(),
+                         se::DeviceMemoryBase(gpu_tensor.data(),
+                                              gpu_tensor.TotalBytes()),
+                         gpu_tensor.TotalBytes())
+            .BlockHostUntilDone()
+            .ok());
+  return host_tensor;
+}
+
+void BaseGPUDevice::LogInputs(OpKernel* op_kernel, OpKernelContext* context) {
+  LOG(INFO) << "Inputs for " << op_kernel->name() << " (total "
+            << context->num_inputs() << "):";
+  for (int i = 0; i < context->num_inputs(); i++) {
+    if (!context->has_input(i)) {
+      LOG(INFO) << "input # " << i << " is absent";
+      continue;
+    }
+
+    Tensor input = context->input_memory_type(i) == DEVICE_MEMORY
+                       ? CopyGpuTensorToHostDebugOnly(context->input(i))
+                       : context->input(i);
+
+    LOG(INFO) << "input # " << i;
+    LOG(INFO) << input.DebugString(-1);
+  }
+  LOG(INFO) << "";
+}
+
+void BaseGPUDevice::LogOutputs(OpKernel* op_kernel, OpKernelContext* context) {
+  if (!context->status().ok()) {
+    LOG(INFO) << op_kernel->name()
+              << " failed: " << context->status().error_message();
+    return;
+  }
+
+  LOG(INFO) << "Outputs for " << op_kernel->name() << " (total "
+            << context->num_inputs() << "):";
+  for (int i = 0; i < context->num_outputs(); i++) {
+    Tensor* output_ptr = context->mutable_output(i);
+    if (output_ptr == nullptr) {
+      LOG(INFO) << "output # " << i << " is null";
+      continue;
+    }
+
+    Tensor output = context->output_memory_type(i) == DEVICE_MEMORY
+                        ? CopyGpuTensorToHostDebugOnly(*output_ptr)
+                        : *output_ptr;
+
+    LOG(INFO) << "output # " << i;
+    LOG(INFO) << output.DebugString(-1);
+  }
+  LOG(INFO) << "";
+}
+
 void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   // NOTE(tucker): We need to discriminate between Eigen GPU
   // operations and all others.  If an operation is Eigen
@@ -567,7 +651,18 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
   ScopedMemoryDebugAnnotation op_annotation(op_kernel->name_view().data(),
                                             context->step_id());
+  bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
+
+  if (should_log_inputs_and_outputs) {
+    LogInputs(op_kernel, context);
+  }
+
   op_kernel->Compute(context);
+
+  if (should_log_inputs_and_outputs) {
+    LogOutputs(op_kernel, context);
+  }
+
   if (context->status().ok()) {
     if (sync_every_op_) {
       // Note: GPUUtil::Sync() only syncs the default stream.
@@ -627,6 +722,18 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   VLOG(1) << "GpuDevice::ComputeAsync " << op_kernel->name() << " op "
           << op_kernel->type_string() << " on GPU" << tf_device_id_
           << " stream[" << stream_id << "]";
+
+  bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
+
+  if (should_log_inputs_and_outputs) {
+    LogInputs(op_kernel, context);
+    AsyncOpKernel::DoneCallback parent_done = done;
+    done = [this, parent_done, should_log_inputs_and_outputs, op_kernel,
+            context]() {
+      LogOutputs(op_kernel, context);
+      parent_done();
+    };
+  }
 
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, std::move(done));
