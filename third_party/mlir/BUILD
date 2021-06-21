@@ -1541,7 +1541,6 @@ td_library(
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
         ":VectorInterfacesTdFiles",
-        ":ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -2175,9 +2174,7 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOpsIncGen",
         ":Support",
-        ":TensorDialect",
         ":VectorInterfaces",
-        ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -3606,6 +3603,7 @@ td_library(
         ":ControlFlowInterfacesTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
+        ":ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -3649,8 +3647,10 @@ cc_library(
         ":ControlFlowInterfaces",
         ":IR",
         ":SideEffectInterfaces",
+        ":StandardOps",
         ":Support",
         ":TensorOpsIncGen",
+        ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -6009,6 +6009,7 @@ cc_library(
         ":QuantOps",
         ":SideEffectInterfaces",
         ":StandardOps",
+        ":TensorDialect",
         ":TosaDialectIncGen",
         ":TosaInterfacesIncGen",
         ":TosaPassIncGen",
