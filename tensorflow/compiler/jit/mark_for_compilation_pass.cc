@@ -1875,6 +1875,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Dequantize",
                                      "Diag",
                                      "DynamicStitch",
+                                     "DynamicPartition",
                                      "Einsum",
                                      "EmptyTensorList",
                                      "EnsureShape",
