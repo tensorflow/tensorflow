@@ -105,11 +105,14 @@ class ShardCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(
               elems=[10, 100], num_shards=[2, 5], index=[0, 1])))
-  def testCore(self, elems, num_shards, index):
-    self.run_core_tests(lambda: self._build_dataset(elems, num_shards, index),
-                        elems // num_shards)
+  def test(self, verify_fn, elems, num_shards, index):
+    verify_fn(
+        self,
+        lambda: self._build_dataset(elems, num_shards, index),
+        num_outputs=elems // num_shards)
 
 
 if __name__ == "__main__":

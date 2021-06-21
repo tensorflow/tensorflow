@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/test_cluster.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
@@ -74,12 +81,26 @@ Status TestCluster::AddWorker() {
   return Status::OK();
 }
 
-std::string TestCluster::DispatcherAddress() { return dispatcher_address_; }
+std::string TestCluster::DispatcherAddress() const {
+  return dispatcher_address_;
+}
 
-std::string TestCluster::WorkerAddress(int index) {
+std::string TestCluster::WorkerAddress(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, num_workers_);
+  DCHECK_LT(index, worker_addresses_.size());
   return worker_addresses_[index];
+}
+
+void TestCluster::StopWorker(size_t index) {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, worker_addresses_.size());
+  workers_[index]->Stop();
+}
+
+void TestCluster::StopWorkers() {
+  for (std::unique_ptr<WorkerGrpcDataServer>& worker : workers_) {
+    worker->Stop();
+  }
 }
 
 }  // namespace data

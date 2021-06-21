@@ -63,13 +63,6 @@ int64 FindMissingDnum(absl::Span<const int64> vals) {
 
 }  // anonymous namespace
 
-bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
-  int major, minor;
-  CHECK(stream_executor.GetDeviceDescription().cuda_compute_capability(&major,
-                                                                       &minor));
-  return major >= 7;
-}
-
 StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout input, FilterLayout filter,
@@ -454,8 +447,11 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       return InitializeTypedBuffer<double>(stream, buffer, rng_state);
     case xla::S8:
       return InitializeTypedBuffer<int8>(stream, buffer, rng_state);
+    case xla::S32:
+      return InitializeTypedBuffer<int32>(stream, buffer, rng_state);
     default:
-      LOG(FATAL) << "Unexpected type";
+      LOG(FATAL) << "Unexpected type: "
+                 << primitive_util::LowercasePrimitiveTypeName(buffer_type);
   }
 }
 

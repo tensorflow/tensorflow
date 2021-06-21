@@ -42,10 +42,6 @@ VAR_OP_TYPES = [
 ]
 
 
-# TODO(allenl): Remove this alias and migrate callers.
-copy_handle_data = handle_data_util.copy_handle_data
-
-
 @tf_export("custom_gradient")
 def custom_gradient(f=None):
   """Decorator to define a function with a custom gradient.
@@ -484,7 +480,7 @@ def _graph_mode_decorator(f, args, kwargs):
   tape_lib.record_operation(
       f.__name__, all_tensors, original_tensors, tape_grad_fn)
   for ot, t in zip(original_tensors, all_tensors):
-    copy_handle_data(ot, t)
+    handle_data_util.copy_handle_data(ot, t)
   return nest.pack_sequence_as(
       structure=result, flat_sequence=all_tensors[:flat_result_len])
 

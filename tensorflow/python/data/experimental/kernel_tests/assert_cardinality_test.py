@@ -88,14 +88,16 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
 class AssertCardinalityCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                       parameterized.TestCase):
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCardinality(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
 
     def build_dataset(num_elements):
       return dataset_ops.Dataset.range(num_elements).apply(
           cardinality.assert_cardinality(num_elements))
 
-    self.run_core_tests(lambda: build_dataset(200), 200)
+    verify_fn(self, lambda: build_dataset(200), num_outputs=200)
 
 
 if __name__ == "__main__":

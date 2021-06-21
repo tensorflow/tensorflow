@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// WARNING: Until b/191428000 is fixed you need to manually generate and update
+// the generated flatbuffer code when modifying this file. See BUILD for more
+// information.
+
 // This schema defines how to configure TFLite for delegation. These
 // definitions can be used in multiple ways: as output of a compatibility list,
 // in benchmarking tools and to decouple delegate instantiation from code.

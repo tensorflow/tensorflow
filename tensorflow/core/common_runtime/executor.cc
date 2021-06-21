@@ -1000,6 +1000,9 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
                 "to RunOptions for current allocation info. This isn't "
                 "available when running in Eager mode.\n"));
       }
+    } else if (s.code() == error::UNAVAILABLE &&
+               !item.is_distributed_communication) {
+      s = errors::ReplaceErrorFromNonCommunicationOps(s, item.kernel->name());
     }
     return s;
   }

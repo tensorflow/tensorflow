@@ -268,10 +268,9 @@ bool StreamExecutor::GetConvolveAlgorithms(
   if (!dnn_support) {
     return false;
   }
-  int cc_major, cc_minor;
-  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
-  return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused, cc_major,
-                                            cc_minor, out_algorithms);
+  return dnn_support->GetConvolveAlgorithms(
+      with_winograd_nonfused, GetDeviceDescription().cuda_compute_capability(),
+      out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveExecutionPlans(
@@ -325,10 +324,9 @@ bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
   if (!dnn_support) {
     return false;
   }
-  int cc_major, cc_minor;
-  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
   return dnn_support->GetConvolveBackwardDataAlgorithms(
-      with_winograd_nonfused, cc_major, cc_minor, out_algorithms);
+      with_winograd_nonfused, GetDeviceDescription().cuda_compute_capability(),
+      out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
@@ -338,10 +336,9 @@ bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
   if (!dnn_support) {
     return false;
   }
-  int cc_major, cc_minor;
-  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
   return dnn_support->GetConvolveBackwardFilterAlgorithms(
-      with_winograd_nonfused, cc_major, cc_minor, out_algorithms);
+      with_winograd_nonfused, GetDeviceDescription().cuda_compute_capability(),
+      out_algorithms);
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(

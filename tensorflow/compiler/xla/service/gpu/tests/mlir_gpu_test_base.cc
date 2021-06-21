@@ -53,6 +53,7 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
 
   se::StreamExecutor* stream_exec = stream->parent();
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+<<<<<<< HEAD
 
   absl::optional<CudaComputeCapability> cuda_compute_capability =
       [&]() -> absl::optional<CudaComputeCapability> {
@@ -72,6 +73,12 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr,
       backend_->platform()->Name(), gpu_device_info, cuda_compute_capability,
       amdgpu_arch,
+=======
+  IrEmitterContext ir_emitter_context(
+      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr,
+      backend_->platform()->Name(), gpu_device_info,
+      stream_exec->GetDeviceDescription().cuda_compute_capability(),
+>>>>>>> upstream/master
       /*profile_index_map=*/nullptr, /*mlir_context=*/nullptr,
       llvm_module.get());
 

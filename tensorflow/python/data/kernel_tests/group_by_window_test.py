@@ -377,15 +377,21 @@ class GroupByWindowCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     return dataset
 
   @combinations.generate(test_base.default_test_combinations())
-  def testCoreGroupByWindow(self):
+  def test(self):
     components = np.array([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0],
                           dtype=np.int64)
     self.verify_unused_iterator(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+        lambda: self._build_dataset(components),
+        num_outputs=12,
+        verify_exhausted=False)
     self.verify_multiple_breaks(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+        lambda: self._build_dataset(components),
+        num_outputs=12,
+        verify_exhausted=False)
     self.verify_reset_restored_iterator(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+        lambda: self._build_dataset(components),
+        num_outputs=12,
+        verify_exhausted=False)
 
 
 if __name__ == "__main__":

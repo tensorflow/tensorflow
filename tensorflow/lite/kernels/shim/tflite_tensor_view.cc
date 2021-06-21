@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/shim/tflite_tensor_view.h"
 
+#include <utility>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/variant.h"

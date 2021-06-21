@@ -154,6 +154,8 @@ const auto kStridedLinearIndexingX =
 // efficient.
 const int64 kMinDimensionToTransposeTiled = 16;
 
+constexpr char kDefaultLayoutAttrName[] = "minor_to_major";
+
 // Updates the launch dimensions in "thunk" and annotate the launch dimensions
 // of the corresponding IR kernel in "llvm_module".
 // Precondition: "thunk" must be a KernelThunk.
@@ -1801,7 +1803,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     auto arg = region->addArgument(load.getType());
     load.replaceAllUsesWith(arg);
     Shape shape = TypeToShape(load.getType());
-    if (auto attr = mlir::GetLayoutFromMlirHlo(load)) {
+    if (auto attr = load->getAttrOfType<mlir::DenseIntElementsAttr>(
+            kDefaultLayoutAttrName)) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
@@ -1818,7 +1821,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   std::vector<mlir::Value> returned_values;
   for (auto store : stores) {
     Shape shape = TypeToShape(store.memref().getType());
-    if (auto attr = mlir::GetLayoutFromMlirHlo(store)) {
+    if (auto attr = store->getAttrOfType<mlir::DenseIntElementsAttr>(
+            kDefaultLayoutAttrName)) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
@@ -5037,22 +5041,18 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   bool tile_fit = reduction_dimensions.dimensions[kDimX] %
                       (reduction_tiling[2] * num_threads_x) ==
                   0;
-
-  int cc_major = 0;
-  if (ir_emitter_context_->cuda_compute_capability()) {
-    cc_major = ir_emitter_context_->cuda_compute_capability()->cc_major;
-  }
+  se::CudaComputeCapability cc = ir_emitter_context_->cuda_compute_capability();
 
   int num_partial_results = 1;
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
     if (reduction_dimensions.is_row_reduction &&
         // P100, only try to vectorize+coales memory access when the
         // tile size fits exactly and dtypes <= 32 bits
-        ((cc_major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
+        ((cc.major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
          // On V100, only try to vectorize+coales memory access for
          // rows of even size.  For odd row sizes, every other row
          // isn't aligned, so it can't be vectorized.
-         (cc_major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
+         (cc.major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
       return kStridedLinearIndexingX;
     } else if (!reduction_dimensions.is_row_reduction &&
                IsUnrollingColumnReductionBeneficial(
@@ -5628,6 +5628,11 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
     return EmitNcclThunk<NcclAllReduceThunk, mlir::lmhlo::AllReduceOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo::AllReduceScatterOp>(op)) {
+    return EmitNcclThunk<NcclAllReduceScatterThunk,
+                         mlir::lmhlo::AllReduceScatterOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo::AllToAllOp>(op)) {

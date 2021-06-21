@@ -796,6 +796,73 @@ gentbl_cc_library(
 )
 
 ##---------------------------------------------------------------------------##
+# EmitC dialect.
+##---------------------------------------------------------------------------##
+
+td_library(
+    name = "EmitCTdFiles",
+    srcs = [
+        "include/mlir/Dialect/EmitC/IR/EmitC.td",
+        "include/mlir/Dialect/EmitC/IR/EmitCAttributes.td",
+        "include/mlir/Dialect/EmitC/IR/EmitCBase.td",
+        "include/mlir/Dialect/EmitC/IR/EmitCTypes.td",
+    ],
+    includes = ["include"],
+    deps = [
+        ":OpBaseTdFiles",
+        ":SideEffectInterfacesTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "EmitCAttributesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["--gen-attrdef-decls"],
+            "include/mlir/Dialect/EmitC/IR/EmitCAttributes.h.inc",
+        ),
+        (
+            ["--gen-attrdef-defs"],
+            "include/mlir/Dialect/EmitC/IR/EmitCAttributes.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/EmitC/IR/EmitCAttributes.td",
+    deps = [":EmitCTdFiles"],
+)
+
+gentbl_cc_library(
+    name = "EmitCOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-dialect-decls"],
+            "include/mlir/Dialect/EmitC/IR/EmitCDialect.h.inc",
+        ),
+        (
+            ["-gen-op-decls"],
+            "include/mlir/Dialect/EmitC/IR/EmitC.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir/Dialect/EmitC/IR/EmitC.cpp.inc",
+        ),
+        (
+            ["-gen-typedef-decls"],
+            "include/mlir/Dialect/EmitC/IR/EmitCTypes.h.inc",
+        ),
+        (
+            ["-gen-typedef-defs"],
+            "include/mlir/Dialect/EmitC/IR/EmitCTypes.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/EmitC/IR/EmitC.td",
+    deps = [":EmitCTdFiles"],
+)
+
+##---------------------------------------------------------------------------##
 # Async dialect.
 ##---------------------------------------------------------------------------##
 
@@ -1562,6 +1629,25 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "EmitC",
+    srcs = glob([
+        "lib/Dialect/EmitC/IR/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/EmitC/IR/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":Dialect",
+        ":EmitCAttributesIncGen",
+        ":EmitCOpsIncGen",
+        ":IR",
+        ":SideEffectInterfaces",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4606,6 +4692,7 @@ cc_library(
         ":ComplexToLLVM",
         ":ConversionPasses",
         ":DLTIDialect",
+        ":EmitC",
         ":GPUDialect",
         ":GPUPassIncGen",
         ":GPUToGPURuntimeTransforms",
@@ -6020,7 +6107,6 @@ td_library(
     deps = [
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
-        ":VectorInterfacesTdFiles",
     ],
 )
 
@@ -6128,6 +6214,20 @@ cc_library(
 exports_files(
     [
         "include/mlir/Bindings/Python/Attributes.td",
+        "include/mlir/Dialect/DLTI/DLTIBase.td",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Dialect/StandardOps/IR/Ops.td",
+        "include/mlir/Dialect/Vector/VectorOps.td",
+        "include/mlir/Dialect/X86Vector/X86Vector.td",
+        "include/mlir/IR/OpAsmInterface.td",
+        "include/mlir/IR/OpBase.td",
+        "include/mlir/IR/RegionKindInterface.td",
+        "include/mlir/IR/SymbolInterfaces.td",
+        "include/mlir/IR/TensorEncoding.td",
         "include/mlir/Interfaces/CallInterfaces.h",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/CastInterfaces.h",
@@ -6142,16 +6242,6 @@ exports_files(
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
-        "include/mlir/Dialect/DLTI/DLTIBase.td",
-        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
-        "include/mlir/Dialect/StandardOps/IR/Ops.td",
-        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
-        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "include/mlir/IR/OpAsmInterface.td",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/IR/RegionKindInterface.td",
-        "include/mlir/IR/SymbolInterfaces.td",
-        "include/mlir/IR/TensorEncoding.td",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     visibility = [":friends"],
@@ -6387,11 +6477,13 @@ cc_library(
     deps = [
         ":Affine",
         ":IR",
+        ":InferTypeOpInterface",
         ":MemRefDialect",
         ":MemRefPassIncGen",
         ":Pass",
         ":StandardOps",
         ":Support",
+        ":TensorDialect",
         ":Transforms",
         ":VectorOps",
         "@llvm-project//llvm:Support",
@@ -6500,11 +6592,7 @@ cc_binary(
         ":AllPassesAndDialects",
         ":IR",
         ":MlirReduceLib",
-        ":Parser",
         ":Pass",
-        ":Reducer",
-        ":Support",
-        ":Transforms",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir/test:TestDialect",
     ],

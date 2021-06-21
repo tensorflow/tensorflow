@@ -927,8 +927,6 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_registeration",
-        # TODO(b/155809683): Link only necessary dialects.
-        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -977,13 +975,6 @@ tf_cc_binary(
         ":tf_tfl_passes",
         ":tf_tfl_translate_cl_options",
         ":tf_to_tfl_flatbuffer",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        # TODO(b/155809683): Link only necessary dialects.
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
@@ -993,6 +984,11 @@ tf_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -1064,6 +1060,7 @@ cc_library(
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",
+        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -1080,7 +1077,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

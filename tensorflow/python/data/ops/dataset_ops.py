@@ -25,6 +25,7 @@ import threading
 import warnings
 import weakref
 
+from absl import logging
 import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
@@ -3657,14 +3658,6 @@ class Options(options_lib.OptionsBase):
       "frequency is determined by the number of devices attached to this "
       "input pipeline. If None, defaults to False.")
 
-  experimental_threading = options_lib.create_option(
-      name="experimental_threading",
-      ty=threading_options.ThreadingOptions,
-      docstring=
-      "The threading options associated with the dataset. See "
-      "`tf.data.experimental.ThreadingOptions` for more details.",
-      default_factory=threading_options.ThreadingOptions)
-
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
       ty=distribute_options.ExternalStatePolicy,
@@ -3674,6 +3667,29 @@ class Options(options_lib.OptionsBase):
       "IGNORE: External state is ignored without a warning; WARN: External "
       "state is ignored and a warning is logged; FAIL: External state results "
       "in an error.")
+
+  threading = options_lib.create_option(
+      name="threading",
+      ty=threading_options.ThreadingOptions,
+      docstring="The threading options associated with the dataset. See "
+      "`tf.data.ThreadingOptions` for more details.",
+      default_factory=threading_options.ThreadingOptions)
+
+  def __getattr__(self, name):
+    if name == "experimental_threading":
+      logging.warning("options.experimental_threading is deprecated. "
+                      "Use options.threading instead.")
+      return getattr(self, "threading")
+    else:
+      raise AttributeError("Attribute %s not found." % name)
+
+  def __setattr__(self, name, value):
+    if name == "experimental_threading":
+      logging.warning("options.experimental_threading is deprecated. "
+                      "Use options.threading instead.")
+      super(Options, self).__setattr__("threading", value)
+    else:
+      super(Options, self).__setattr__(name, value)
 
   def _to_proto(self):
     pb = dataset_options_pb2.Options()
@@ -3687,7 +3703,7 @@ class Options(options_lib.OptionsBase):
     pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
-    pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
+    pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
   def _from_proto(self, pb):
@@ -3701,7 +3717,7 @@ class Options(options_lib.OptionsBase):
     self.experimental_optimization._from_proto(pb.optimization_options)  # pylint: disable=protected-access
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
-    self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
+    self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -3709,7 +3725,7 @@ class Options(options_lib.OptionsBase):
     object.__setattr__(self, "_mutable", mutable)
     self.experimental_distribute._set_mutable(mutable)
     self.experimental_optimization._set_mutable(mutable)
-    self.experimental_threading._set_mutable(mutable)
+    self.threading._set_mutable(mutable)
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.

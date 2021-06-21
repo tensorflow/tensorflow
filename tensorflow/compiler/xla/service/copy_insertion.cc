@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
+#include <optional>
+#include <sstream>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/any.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -472,6 +477,7 @@ class LiveRangeRegions {
   // same computation, but the value use needs to be nested within the defining
   // computation.
   typedef absl::flat_hash_map<HloInstruction*, InstructionInfo> InstructionMap;
+  typedef std::pair<HloInstruction*, InstructionInfo> InstructionEntry;
   // Map each computation to its immediately contained instructions.
   typedef absl::flat_hash_map<const HloComputation*, InstructionMap>
       ComputationMap;
@@ -534,7 +540,7 @@ LiveRangeRegions ComputeLiveRangeRegions(
   return live_range;
 }
 
-namespace relative_location_analysis {
+namespace {
 // Represent relations between the locations of two regions of instructions,
 // each region can include 0-n instructions.
 class Relation {
@@ -562,160 +568,335 @@ class Relation {
     // some common instructions.
     kBeforeOrAfterOrOverlap = kBeforeStart | kAfterEnd | kSameInstr,
   };
-  Relation() : intercept_def_use_(false), order_(kNoOverlap) {}
+  Relation() : intercept_def_use_(false) {}
   explicit Relation(RuntimeOrder order, bool intercept_def_use = false)
-      : intercept_def_use_(intercept_def_use), order_(order) {}
+      : intercept_def_use_(intercept_def_use) {
+    orders_.push_back(order);
+  }
   Relation(const Relation& that)
-      : intercept_def_use_(that.intercept_def_use_), order_(that.order_) {}
+      : intercept_def_use_(that.intercept_def_use_), orders_(that.orders_) {}
 
-  RuntimeOrder order() const { return order_; }
-  bool InterceptDefuse() const { return intercept_def_use_; }
-  void SetInterceptDefuse(bool value) { intercept_def_use_ = value; }
+  // Return whether the runtime ordering may imply interception, assuming it
+  // models the relation between a modifying and a use instruction.
+  bool UseImpliesInterception() const {
+    CHECK_EQ(orders_.size(), 1);
+    return UseImpliesInterception(orders_[0]);
+  }
+  // Return whether the runtime ordering may imply interception, assuming it
+  // models the relation between a modifying and a definition instruction.
+  bool DefinitionImpliesInterception() const {
+    CHECK_EQ(orders_.size(), 1);
+    return DefinitionImpliesInterception(orders_[0]);
+  }
+  // Return whether the current relation models a modifying instruction that
+  // intercepts the dataflow of another live range region.
+  bool InterceptDefUse() const { return intercept_def_use_; }
+  // Update interception state to the given value.
+  void UpdateInterception(bool value) {
+    CHECK_EQ(orders_.size(), 1);
+    intercept_def_use_ = value;
+  }
+  // Return whether the current relation implies two overlapping regions.
+  bool RuntimeOrderOverlap() const {
+    return absl::c_any_of(orders_, ImpliesOverlap);
+  }
+  std::string ToString() const {
+    return absl::StrCat("Interception = ", intercept_def_use_, ";",
+                        absl::StrJoin(orders_, ","));
+  }
 
-  bool RuntimeOrderOverlap() {
-    return order_ >= RuntimeOrder::kBeforeStartOrAfterEnd;
+  // Summarize additional relations into a single runtime ordering, assuming
+  // both relations are modeling constraints of the same source instruction.
+  void UnionRelationFromSameSource(const Relation& rel) {
+    CHECK_LE(orders_.size(), 1);
+    CHECK_EQ(rel.orders_.size(), 1);
+    if (orders_.empty()) {
+      orders_.push_back(rel.orders_[0]);
+    } else {
+      orders_[0] = Union(orders_[0], rel.orders_[0]);
+    }
+    intercept_def_use_ = intercept_def_use_ || rel.intercept_def_use_;
+  }
+
+  // Summarize additional relations into disjoint runtime orderings, assuming
+  // the relations are modeling constraints of different source instructions.
+  void UnionRelationFromDifferentSource(const Relation& rel) {
+    CHECK_EQ(rel.orders_.size(), 1);
+    intercept_def_use_ = intercept_def_use_ || rel.intercept_def_use_;
+    for (auto& local_order : orders_) {
+      if (OverwriteIfSubsume(rel.orders_[0], &local_order)) {
+        return;
+      }
+    }
+    orders_.push_back(rel.orders_[0]);
   }
 
  private:
   // Indicate that the second region may intercept the def-use dataflow of the
   // first region, if their buffers are combined.
   bool intercept_def_use_;
-  RuntimeOrder order_;
+  // Remember the different runtime orderings of different instructions.
+  absl::InlinedVector<RuntimeOrder, 4> orders_;
+
+  static RuntimeOrder Union(RuntimeOrder o1, RuntimeOrder o2) {
+    return static_cast<Relation::RuntimeOrder>(o1 | o2);
+  }
+  static bool ImpliesOverlap(RuntimeOrder o) {
+    return o >= RuntimeOrder::kBeforeStartOrAfterEnd;
+  }
+  static bool DefinitionImpliesInterception(RuntimeOrder definition) {
+    // Here kAfterEnd is what we want. Alternatively we conservatively list
+    // kBeforeStartOrAfterEnd, which currently indicates the definition and
+    // the intercepting instruction are in exclusive branches, where
+    // kAfterEnd could happen if the branches are inside a loop. We don't
+    // include kBeforeOrAfterOrOverlap because it is currently not used to
+    // describe relations between individual instructions (see
+    // ComputeRuntimeOrdering).
+    return (definition == kAfterEnd || definition == kBeforeStartOrAfterEnd);
+  }
+  static bool UseImpliesInterception(RuntimeOrder use) {
+    // Here kBeforeStart is what we want, and kBeforeStartOrAfterEnd is listed
+    // conservatively, as explained above in DefinitionImpliesInterception.
+    return (use == kBeforeStart || use == kBeforeStartOrAfterEnd);
+  }
+  // Returns whether ordering constraint o1 includes o2 as a subset, when they
+  // represent runtime orderings (interleavings) of two different regions.
+  static bool Subsume(RuntimeOrder o1, RuntimeOrder o2) {
+    return Union(o1, o2) == o1;
+  }
+  // Overwrites o1 with o2 if o2 subsumes o1 (as defined above by the Subsume
+  // function). Return whether o2 is subsumed by the new value in o1.
+  static bool OverwriteIfSubsume(RuntimeOrder o2, RuntimeOrder* o1) {
+    if (*o1 == o2) {
+      return true;
+    }
+    CHECK_NE(o1, nullptr);
+    // Overwrite o1 with o2 if it is subsumed by o2.
+    if (Subsume(o2, *o1)) {
+      *o1 = o2;
+      return true;
+    } else if (Subsume(*o1, o2)) {
+      // If o2 is already subsumed by o1, do nothing.
+      return true;
+    }
+    // If neither o1 nor o2 is subsumed by the other, return false, so that o2
+    // will be inserted as a separate entry representing all possible orderings.
+    return false;
+  }
 };
 
-static Relation Union(const Relation& rel1, const Relation& rel2) {
-  return Relation(
-      static_cast<Relation::RuntimeOrder>(rel1.order() | rel2.order()),
-      rel1.InterceptDefuse() || rel2.InterceptDefuse());
-}
-static Relation ComputeRelativeLocation(const HloOrdering& ordering,
-                                        HloInstruction* instr1,
-                                        HloInstruction* instr2) {
-  auto constraint = ordering.GetExecutionConstraint(instr1, instr2);
-  switch (constraint) {
-    case HloOrdering::ExecutionConstraint::kIsSame:
-      return Relation(Relation::kSameInstr);
-    case HloOrdering::ExecutionConstraint::kRunBeforeEnd:
-      return Relation(Relation::kBeforeStartOrSameInstr);
-    case HloOrdering::ExecutionConstraint::kRunBeforeStart:
-      return Relation(Relation::kBeforeStart);
-    case HloOrdering::ExecutionConstraint::kRunAfter:
-      return Relation(Relation::kAfterEnd);
-    case HloOrdering::ExecutionConstraint::kRunExclusiveBefore:
-    case HloOrdering::ExecutionConstraint::kRunExclusiveAfter:
-    case HloOrdering::ExecutionConstraint::kUnordered:
-      return Relation(Relation::kBeforeStartOrAfterEnd);
-  }
-}
+class ComputeRelativeLocation {
+ public:
+  typedef LiveRangeRegions::InstructionEntry InstructionEntry;
+  typedef std::pair<bool, Relation> SavedRelation;
+  explicit ComputeRelativeLocation(const HloOrdering& ordering)
+      : ordering_(ordering) {}
 
-// Returns whether the given instr may intercept the def-use flow of another
-// ongoing live range if its buffer is combined with the other live range.
-// The function should return true if instr creates a new HloValue that could
-// overwrite an existing HloValue in the combined buffer.
-// More specifically, here we are looking for operations that create new values,
-// e.g., add, subtract, in contrast to HLOs that merely create aliasings among
-// existing values, e.g., tuple, get-tuple-element. Any of the new values
-// created by operations such as add or subtract, when included as definition
-// operations in a live range, are aliases of the buffer to be allocated to the
-// live range and so are treated as they may be modifying the targeting buffer.
-bool InstructionCanIntercept(HloInstruction* instr, LiveRangeRegions region) {
-  switch (instr->opcode()) {
-    // If the copy instruction is used to connect two live range regions,
-    // it does not overwrite the combined buffer with new values.
-    case HloOpcode::kCopy:
-      // Checking the copy simply copies from the other live range with no
-      // layout conflicts.
-      if (region.contains(instr->operand(0)) &&
-          ShapeUtil::Equal(instr->shape(), instr->operand(0)->shape())) {
-        return false;  // Cannot intercept.
+  // Compute locationing constraints between two instructions. Here entry2 is
+  // the source instruction, in that the returned value describes the relation
+  // of entry2 in terms of whether it is before or after entry1, and whether it
+  // can intercept the def-use data flow of entry1.
+  Relation Compute(const InstructionEntry& entry1,
+                   const InstructionEntry& entry2, bool instr2_can_modify) {
+    auto def = entry1.second.value_definition;
+    auto use = entry1.first;
+    auto rel = ComputeRuntimeOrdering(entry2, entry1);
+    if (def == nullptr || !instr2_can_modify) {
+      return Save(entry1, entry2, rel);
+    }
+    // If the definition and use are parameter and return (root) of the parent
+    // computation, then any modification is considered intercepting.
+    if (def->opcode() == HloOpcode::kParameter &&
+        use == use->parent()->root_instruction()) {
+      VLOG(3) << "Setting interception due to parameter/root relation\n";
+      rel.UpdateInterception(true);
+      return Save(entry1, entry2, rel);
+    }
+    if (rel.UseImpliesInterception()) {
+      VLOG(3) << "considering interception for " << def->ToString()
+              << " with use:" << entry1.first->ToString() << "\n";
+      LiveRangeRegions::InstructionInfo info;
+      info.is_definition = true;
+      LiveRangeRegions::InstructionEntry def_entry(def, info);
+      auto rel2 = ComputeRuntimeOrdering(entry2, def_entry);
+      VLOG(3) << "Intercepting relations: " << rel2.ToString() << " vs "
+              << rel.ToString();
+      if (rel2.DefinitionImpliesInterception()) {
+        rel.UpdateInterception(true);
       }
-      return true;
-    // The following operations merely create aliases among the HloValues.
-    case HloOpcode::kParameter:
-    case HloOpcode::kTuple:
-    case HloOpcode::kGetTupleElement:
-    // Here we consider all the compound operations (e.g., conditionals and
-    // while loops) as if they do not modify any HloValue, with the argument
-    // being that any value modifying operation contained inside will be
-    // considered separately to make sure the kIntercept relation being recorded
-    // as appropriate. Since the compound operations may or may not modify, not
-    // treating them as value modifying would make the algorithm less
-    // conservative.
-    case HloOpcode::kWhile:
-    case HloOpcode::kCall:
-    case HloOpcode::kConditional:
-    case HloOpcode::kTupleSelect:
-      VLOG(3) << "Skipping no-intercepting instruction:" << instr->ToString();
-      return false;
-    default:
-      VLOG(3) << "Found intercepting instruction:" << instr->ToString();
-      return true;
+    }
+    return Save(entry1, entry2, rel);
   }
-  return true;
-}
 
-// Return the relative locations (defined above) of range2 in relation to
-// instructions in range1. Return kNoOverlap if range2 is outside of range1.
-Relation ComputeRelativeLocation(const HloOrdering& ordering,
-                                 const LiveRangeRegions& range1,
-                                 const LiveRangeRegions& range2) {
-  absl::InlinedVector<Relation, 5> dir_src_dest(range1.size());
-  for (int64 index = 0; index < range1.size(); index++) {
-    auto* computation1 = range1.Computation(index);
-    for (const auto& computation_entry2 : range2) {
-      auto* computation2 = computation_entry2.first;
-      for (auto instr_entry2 : computation_entry2.second) {
-        if (!ordering.call_graph().Dominates(computation1, computation2)) {
-          continue;
-        }
-        HloInstruction* instr2 = instr_entry2.first;
-        VLOG(3) << "evaluating relative location for " << instr2->ToString();
-        bool instr2_can_modify = instr_entry2.second.is_definition &&
-                                 InstructionCanIntercept(instr2, range1);
-        // Saves relations between instr2 and other instructions in range1.
-        absl::flat_hash_map<HloInstruction*, Relation> saved_rels;
-        std::function<Relation(HloInstruction*, HloInstruction*)>
-            GetRelativeLocation =
-                [&](HloInstruction* instr1, HloInstruction* def) -> Relation {
-          auto p = saved_rels.find(instr1);
-          if (p != saved_rels.end()) {
-            return p->second;
+  // Return the relative locations (defined above) of range2 in relation to
+  // instructions in range1. Return kNoOverlap if range2 is outside of range1.
+  Relation Compute(const LiveRangeRegions& range1,
+                   const LiveRangeRegions& range2) {
+    Relation dir_src_dest;
+    for (int64 index = 0; index < range1.size(); index++) {
+      auto* computation1 = range1.Computation(index);
+      for (const auto& computation_entry2 : range2) {
+        auto* computation2 = computation_entry2.first;
+        for (auto instr_entry2 : computation_entry2.second) {
+          if (!ordering_.call_graph().Dominates(computation1, computation2)) {
+            continue;
           }
-          auto rel = ComputeRelativeLocation(ordering, instr2, instr1);
-          if (def != nullptr && instr2_can_modify) {
-            VLOG(3) << "considering interception for " << def->ToString()
-                    << " with use:" << instr1->ToString() << "\n";
-            auto rel2 = GetRelativeLocation(def, nullptr);
-            // Since rel is modeling use of an operand, which happens at the
-            // beginning of the use instruction, the interception happens only
-            // when rel is kBeforeStart.
-            if (rel2.order() == Relation::kAfterEnd &&
-                rel.order() == Relation::kBeforeStart) {
-              VLOG(3) << "Set Interception for relations = (" << rel.order()
-                      << "," << rel2.order() << ")\n";
-              rel.SetInterceptDefuse(true);
-            } else {
-              VLOG(3) << "Not intercepting as the relations are: "
-                      << rel.order() << " and " << rel2.order() << "\n";
-            }
+          VLOG(3) << "Locationing " << instr_entry2.first->ToString();
+          // Saves relations between instr2 and other instructions in range1.
+          bool instr2_can_modify =
+              InstructionCanIntercept(instr_entry2, range1);
+          Relation instr2_relation;
+          for (auto instr_entry1 : range1[computation1]) {
+            auto rel = Compute(instr_entry1, instr_entry2, instr2_can_modify);
+            VLOG(3) << "new relation with:" << instr_entry1.first->ToString()
+                    << " = " << rel.ToString() << "\n";
+            instr2_relation.UnionRelationFromSameSource(rel);
+            VLOG(3) << "instr2 relation:" << instr2_relation.ToString() << "\n";
           }
-          saved_rels[instr1] = rel;
-          return rel;
-        };
-        for (auto instr_entry1 : range1[computation1]) {
-          auto* instr1 = instr_entry1.first;
-          auto rel =
-              GetRelativeLocation(instr1, instr_entry1.second.value_definition);
-          dir_src_dest[index] = Union(dir_src_dest[index], rel);
+          dir_src_dest.UnionRelationFromDifferentSource(instr2_relation);
+          VLOG(3) << "Resulting relation : " << dir_src_dest.ToString() << "\n";
         }
       }
     }
+    return dir_src_dest;
   }
-  Relation rel = absl::c_accumulate(dir_src_dest, Relation(), Union);
-  return rel;
-}
 
-}  // namespace relative_location_analysis
+ private:
+  static bool AlwaysForceInterception(HloInstruction* instr) {
+    // The following communication operations can have some unexpected side
+    // effects, when synchronizing across processes. Therefore, we
+    // conservatively try provide dedicated buffers to these operations instead
+    // of allowing them to share buffers with other operations, as the reuse may
+    // cause unexpected interferences.
+    if (HloDataflowAnalysis::IsAsynchronousOperationStart(instr->opcode()) ||
+        HloDataflowAnalysis::IsAsynchronousOperationDone(instr->opcode())) {
+      return true;
+    }
+    switch (instr->opcode()) {
+      // TODO(b/190903339): It appears that collectivePermute needs to be
+      // followed by a copy when escaping through a computation root.
+      case HloOpcode::kCollectivePermute:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // Returns whether the given instr may intercept the def-use flow of another
+  // ongoing live range if its buffer is combined with the other live range.
+  // The function should return true if instr creates a new HloValue that could
+  // overwrite an existing HloValue in the combined buffer.
+  // More specifically, here we are looking for operations that create new
+  // values, e.g., add, subtract, in contrast to HLOs that merely create
+  // aliasings among existing values, e.g., tuple, get-tuple-element. Any of the
+  // new values created by operations such as add or subtract, when included as
+  // definition operations in a live range, are aliases of the buffer to be
+  // allocated to the live range and so are treated as they may be modifying the
+  // targeting buffer.
+  bool InstructionCanIntercept(const InstructionEntry& entry,
+                               const LiveRangeRegions& region) {
+    auto instr = entry.first;
+    if (!entry.second.is_definition) {
+      // If the instruction only uses the value, it can intercept only if it
+      // modifies the buffer in place.
+      return !HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr).empty();
+    }
+    switch (instr->opcode()) {
+      // If the copy instruction is used to connect two live range regions,
+      // it does not overwrite the combined buffer with new values.
+      case HloOpcode::kCopy:
+        // Checking the copy simply copies from the other live range with no
+        // layout conflicts.
+        if (region.contains(instr->operand(0)) &&
+            ShapeUtil::Equal(instr->shape(), instr->operand(0)->shape())) {
+          return false;  // Cannot intercept.
+        }
+        return true;
+      // The following operations merely create aliases among the HloValues.
+      case HloOpcode::kParameter:
+      case HloOpcode::kTuple:
+      case HloOpcode::kGetTupleElement:
+      // Here we consider all the compound operations (e.g., conditionals and
+      // while loops) as if they do not modify any HloValue, with the argument
+      // being that any value modifying operation contained inside will be
+      // considered separately to make sure the kIntercept relation being
+      // recorded as appropriate. Since the compound operations may or may not
+      // modify, not treating them as value modifying would make the algorithm
+      // less conservative.
+      case HloOpcode::kWhile:
+      case HloOpcode::kCall:
+      case HloOpcode::kConditional:
+      case HloOpcode::kTupleSelect:
+        return false;
+      default:
+        return true;
+    }
+    return true;
+  }
+
+  SavedRelation AlreadyComputed(const InstructionEntry& entry1,
+                                const InstructionEntry& entry2) {
+    auto p2 = saved_relations_.find(entry2.first);
+    if (p2 == saved_relations_.end()) {
+      return SavedRelation(false, Relation());
+    }
+    auto p1 = (*p2).second.find(entry1.first);
+    if (p1 == (*p2).second.end()) {
+      return SavedRelation(false, Relation());
+    }
+    return SavedRelation(true, (*p1).second);
+  }
+
+  const Relation& Save(const InstructionEntry& entry1,
+                       const InstructionEntry& entry2,
+                       const Relation& relation) {
+    auto map1 = saved_relations_[entry2.first];
+    map1[entry1.first] = relation;
+    return relation;
+  }
+
+  // Compute the runtime ordering constraints between two instructions.
+  Relation ComputeRuntimeOrdering(const InstructionEntry& instr1,
+                                  const InstructionEntry& instr2) {
+    auto saved_relation = AlreadyComputed(instr1, instr2);
+    if (saved_relation.first) {
+      return saved_relation.second;
+    }
+    bool intercept = AlwaysForceInterception(instr2.first);
+    auto constraint =
+        ordering_.GetExecutionConstraint(instr1.first, instr2.first);
+    switch (constraint) {
+      case HloOrdering::ExecutionConstraint::kIsSame:
+        return Save(
+            instr1, instr2,
+            Relation(
+                (instr1.second.is_definition == instr2.second.is_definition)
+                    ? Relation::kSameInstr
+                : (!instr1.second.is_definition) ? Relation::kBeforeStart
+                                                 : Relation::kAfterEnd,
+                intercept));
+      case HloOrdering::ExecutionConstraint::kRunBeforeEnd:
+        return Save(instr1, instr2,
+                    Relation(Relation::kBeforeStartOrSameInstr, intercept));
+      case HloOrdering::ExecutionConstraint::kRunBeforeStart:
+        return Save(instr1, instr2,
+                    Relation(Relation::kBeforeStart, intercept));
+      case HloOrdering::ExecutionConstraint::kRunAfter:
+        return Save(instr1, instr2, Relation(Relation::kAfterEnd, intercept));
+      case HloOrdering::ExecutionConstraint::kRunExclusiveBefore:
+      case HloOrdering::ExecutionConstraint::kRunExclusiveAfter:
+      case HloOrdering::ExecutionConstraint::kUnordered:
+        return Save(instr1, instr2,
+                    Relation(Relation::kBeforeStartOrAfterEnd, intercept));
+    }
+  }
+
+  const HloOrdering& ordering_;
+  absl::flat_hash_map<HloInstruction*,
+                      absl::flat_hash_map<HloInstruction*, Relation>>
+      saved_relations_;
+};
+}  // namespace
 
 // Class which tracks the HLO values within each HLO buffer in the module
 // during copy removal.
@@ -1233,14 +1414,15 @@ class CopyRemover {
                        CombineLiveRangeOption merge_location) {
     auto src_live_range = ComputeLiveRangeRegions(src_values);
     auto dest_live_range = ComputeLiveRangeRegions(dest_values);
-    auto rel1 = relative_location_analysis::ComputeRelativeLocation(
-        ordering_, src_live_range, dest_live_range);
-    VLOG(3) << "Location of dest in relation to src:" << rel1.order()
-            << " with interception set to " << rel1.InterceptDefuse() << "\n";
-    auto rel2 = relative_location_analysis::ComputeRelativeLocation(
-        ordering_, dest_live_range, src_live_range);
-    VLOG(3) << "Location of src in relation to dest:" << rel2.order()
-            << " with interception set to " << rel1.InterceptDefuse() << "\n";
+    ComputeRelativeLocation relative_location_analysis(ordering_);
+    auto rel1 =
+        relative_location_analysis.Compute(src_live_range, dest_live_range);
+    VLOG(3) << "Location of dest in relation to src:" << rel1.ToString()
+            << " with interception set to " << rel1.InterceptDefUse() << "\n";
+    auto rel2 =
+        relative_location_analysis.Compute(dest_live_range, src_live_range);
+    VLOG(3) << "Location of src in relation to dest:" << rel2.ToString()
+            << " with interception set to " << rel1.InterceptDefUse() << "\n";
     // If src and dest are interleaved with each other, they interfere.
     if (rel1.RuntimeOrderOverlap() && rel2.RuntimeOrderOverlap()) {
       VLOG(3) << "Both relations are overlap.\n";
@@ -1256,18 +1438,18 @@ class CopyRemover {
     if (!rel2.RuntimeOrderOverlap()) {
       CHECK(rel1.RuntimeOrderOverlap());
       VLOG(3) << "rel1 is overlap, with interception = "
-              << rel1.InterceptDefuse() << "\n";
-      return rel1.InterceptDefuse() ||
+              << rel1.InterceptDefUse() << "\n";
+      return rel1.InterceptDefUse() ||
              (merge_location != kMergeFirstDestInSource &&
-              rel2.InterceptDefuse());
+              rel2.InterceptDefUse());
     } else {
       CHECK(!rel1.RuntimeOrderOverlap());
       VLOG(3) << "rel2 is overlap, with interception = "
-              << rel2.InterceptDefuse() << "\n";
+              << rel2.InterceptDefUse() << "\n";
       // Here src is at the end of a nested computation inside dest.
-      return rel2.InterceptDefuse() ||
+      return rel2.InterceptDefUse() ||
              (merge_location != kMergeLastSourceInDest &&
-              rel1.InterceptDefuse());
+              rel1.InterceptDefUse());
     }
     return true;
   }

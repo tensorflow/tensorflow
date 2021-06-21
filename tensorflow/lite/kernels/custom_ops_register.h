@@ -22,6 +22,7 @@ namespace ops {
 namespace custom {
 
 TfLiteRegistration* Register_ATAN2();
+TfLiteRegistration* Register_AVG_POOL_3D();
 TfLiteRegistration* Register_HASHTABLE();
 TfLiteRegistration* Register_HASHTABLE_FIND();
 TfLiteRegistration* Register_HASHTABLE_IMPORT();

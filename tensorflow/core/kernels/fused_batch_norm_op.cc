@@ -913,8 +913,8 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
         StreamExecutorUtil::AsDeviceMemory<U>(estimated_variance);
     auto side_input_ptr =
         side_input != nullptr
-            ? StreamExecutorUtil::AsDeviceMemory<U>(*side_input)
-            : se::DeviceMemory<U>();
+            ? StreamExecutorUtil::AsDeviceMemory<T>(*side_input)
+            : se::DeviceMemory<T>();
     auto batch_mean_ptr = StreamExecutorUtil::AsDeviceMemory<U>(*batch_mean);
 
     auto batch_var_ptr = StreamExecutorUtil::AsDeviceMemory<U>(*batch_var);

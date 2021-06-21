@@ -101,7 +101,7 @@ class ObjectReader {
           std::transform(out.begin(), out.end(), tensor->data.begin(),
                          [](const Eigen::half& x) {
                            return fp16_ieee_to_fp32_value(
-                               Eigen::half_impl::raw_half_as_uint16(x));
+                               Eigen::numext::bit_cast<uint16_t>(x));
                          });
           break;
         }

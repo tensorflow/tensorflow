@@ -80,7 +80,11 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
+<<<<<<< HEAD
   pipeline.AddPass<CusolverRewriter>();
+=======
+  pipeline.AddPass<GpusolverRewriter>();
+>>>>>>> upstream/master
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
 

@@ -17,9 +17,14 @@ limitations under the License.
 #define CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
 
 #include <functional>
+#include <string>
 
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -43,6 +48,13 @@ OpTypeConstructor UnaryGeneric(FullTypeId t);
 // Note: Unary refers to a parametric type of a single argument, not to the
 // number of an op's return values.
 OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype);
+
+// Type specialization and inference logic. This function narrows the type
+// specified in an op definition. Such types are usually generic and dependent
+// on input types. This function resolves the output types based on the input
+// types specified in a given node def.
+StatusOr<FullTypeDef> SpecializeType(const AttrSlice& attrs,
+                                     const OpDef& op_def);
 
 }  // namespace full_type
 

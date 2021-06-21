@@ -592,6 +592,35 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
 
   Returns:
     A list of `Tensor` or a single `Tensor` which `func` computes.
+
+  @compatibility(TF2)
+
+  This name was deprecated and removed in TF2, but `tf.numpy_function` is a
+  near-exact replacement, just drop the `stateful` argument (all
+  `tf.numpy_function` calls are considered stateful). It is compatible with
+  eager execution and `tf.function`.
+
+  `tf.py_function` is a close but not an exact replacement, passing TensorFlow
+  tensors to the wrapped function instead of NumPy arrays, which provides
+  gradients and can take advantage of accelerators.
+
+  Before:
+
+  >>> def fn_using_numpy(x):
+  ...   x[0] = 0.
+  ...   return x
+  >>> tf.compat.v1.py_func(fn_using_numpy, inp=[tf.constant([1., 2.])],
+  ...     Tout=tf.float32, stateful=False)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0., 2.], dtype=float32)>
+
+  After:
+
+  >>> tf.numpy_function(fn_using_numpy, inp=[tf.constant([1., 2.])],
+  ...     Tout=tf.float32)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0., 2.], dtype=float32)>
+
+  @end_compatibility
+
   """
   if context.executing_eagerly():
     result = func(*[np.array(x) for x in inp])

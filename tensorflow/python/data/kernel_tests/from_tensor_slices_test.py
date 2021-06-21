@@ -300,19 +300,30 @@ class FromTensorSlicesCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   def _build_tensor_slices_dataset(self, components):
     return dataset_ops.Dataset.from_tensor_slices(components)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFromTensorSlicesCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     # Equal length components
     components = (np.tile(np.array([[1], [2], [3], [4]]),
                           20), np.tile(np.array([[12], [13], [14], [15]]),
                                        22), np.array([37.0, 38.0, 39.0, 40.0]))
 
+    verify_fn(
+        self,
+        lambda: self._build_tensor_slices_dataset(components),
+        num_outputs=4)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testDict(self, verify_fn):
     dict_components = {"foo": [1, 2, 3], "bar": [[4.0], [5.0], [6.0]]}
 
-    self.run_core_tests(lambda: self._build_tensor_slices_dataset(components),
-                        4)
-    self.run_core_tests(
-        lambda: self._build_tensor_slices_dataset(dict_components), 3)
+    verify_fn(
+        self,
+        lambda: self._build_tensor_slices_dataset(dict_components),
+        num_outputs=3)
 
 
 if __name__ == "__main__":

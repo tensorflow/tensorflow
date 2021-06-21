@@ -866,6 +866,19 @@ class DefFunctionTest(xla_test.XLATestCase):
             stage=stage, device_name=f'/device:{self.device}:0')
         self.assertIsInstance(hlo, bytes)
 
+  def testDotOptimizedHlo(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      a = random_ops.random_normal([100, 100])
+      b = random_ops.random_normal([100, 100])
+
+      @def_function.function(jit_compile=True)
+      def f(a, b):
+        return math_ops.matmul(a, b)
+
+      self.assertRegex(f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
+                       '(dot)|(convolution)')
+
   def testConstantOnWrongDevice(self):
     with ops.device('device:{}:0'.format(self.device)):
 

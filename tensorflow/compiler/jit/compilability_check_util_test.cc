@@ -84,6 +84,7 @@ class CompilabilityCheckUtilTest : public ::testing::Test {
     op_filter_.allow_ops_producing_or_consuming_variant = false;
     op_filter_.allow_inaccurate_ops = false;
     op_filter_.allow_slow_ops = false;
+    op_filter_.allow_outside_compiled = false;
 
     checker_ = CreateCompilabilityChecker();
   }
@@ -144,6 +145,35 @@ TEST_F(CompilabilityCheckUtilTest, CheckNonFunctionalNodes) {
                                 "unsupported op"));
   ASSERT_EQ(1, uncompilable_node_info.stack_trace.size());
   ASSERT_EQ("", uncompilable_node_info.stack_trace.at(0).function_name);
+}
+
+TEST_F(CompilabilityCheckUtilTest, CheckOutsideCompiledNode) {
+  GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+  auto opts = builder.opts();
+  Node* const0 = ops::SourceOp("InputFloatOp", opts);
+  Node* uncompilable_op = ops::UnaryOp("MissingKernel", const0, opts);
+  uncompilable_op->AddAttr("_xla_outside_compilation", "0");
+  GraphDef graph_def;
+  TF_EXPECT_OK(builder.ToGraphDef(&graph_def));
+
+  auto* flib_runtime = GetFunctionLibraryRuntime();
+
+  // Outside compiled ops are considered by default..
+  EXPECT_FALSE(checker_->IsCompilableNode(*uncompilable_op, flib_runtime));
+
+  const auto uncompilable_nodes =
+      checker_->FindUncompilableNodes(*uncompilable_op, flib_runtime);
+  ASSERT_EQ(1, uncompilable_nodes.size());
+
+  op_filter_.allow_outside_compiled = true;
+  checker_ = CreateCompilabilityChecker();
+  // With filter option outside compiled ops are ignored and considered
+  // compilable.
+  EXPECT_TRUE(checker_->IsCompilableNode(*uncompilable_op, flib_runtime));
+
+  const auto uncompilable_nodes2 =
+      checker_->FindUncompilableNodes(*uncompilable_op, flib_runtime);
+  ASSERT_EQ(0, uncompilable_nodes2.size());
 }
 
 TEST_F(CompilabilityCheckUtilTest, CheckSimpleFunctionNode) {

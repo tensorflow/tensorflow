@@ -567,7 +567,6 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:mhlo_to_mhlo_lowering_patterns",
         "//tensorflow/compiler/mlir/hlo:sink_constants_to_control_flow",
         "//tensorflow/compiler/mlir/hlo:test_passes",
-        "//tensorflow/compiler/mlir/hlo:transform_unranked_hlo",
     ],
 )
 

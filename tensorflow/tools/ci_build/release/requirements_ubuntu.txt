@@ -2,4 +2,4 @@
 
 # Dependencies only required for Ubuntu
 # Needs to be addressed. Unblocked 2.4 branchcut cl/338377048
-PyYAML ~= 5.3.1
+PyYAML ~= 5.4.1

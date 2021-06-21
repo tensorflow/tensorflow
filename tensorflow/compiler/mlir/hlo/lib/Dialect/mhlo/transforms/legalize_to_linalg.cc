@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -406,6 +407,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     if (!VerifyHloOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
     auto result_type = GetHloOpResultType<isLHLO>(op);
+    result_type = this->typeConverter->convertType(result_type)
+                      .template cast<ShapedType>();
 
     SmallVector<AffineMap, 2> indexing_maps =
         Derived::getIndexingMaps(op, &rewriter);
@@ -1580,8 +1583,7 @@ struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     // Only convert the body of reduction ops to std ops.
     auto parent_op = op.getOperation()->getParentRegion()->getParentOp();
-    if (!isa<mhlo::ReduceOp, linalg::GenericOp, linalg::IndexedGenericOp>(
-            parent_op)) {
+    if (!isa<mhlo::ReduceOp, linalg::GenericOp>(parent_op)) {
       return failure();
     }
     if (!op.getResult().getType().template isa<TensorType>()) return failure();
@@ -2102,7 +2104,7 @@ struct ReduceWindowOpOnTensorsConversion
   }
 };
 
-/// Converts xla-hlo.torch_index_select op to a linalg.indexed_generic op.
+/// Converts xla-hlo.torch_index_select op to a linalg.generic op.
 struct TorchIndexSelectOpOnTensorsConversion
     : public OpConversionPattern<mhlo::TorchIndexSelectOp> {
   using OpConversionPattern<mhlo::TorchIndexSelectOp>::OpConversionPattern;
@@ -2426,7 +2428,7 @@ class RemoveSignTypeConverter : public TypeConverter {
 //     iterator_types = ["parallel", "parallel"],
 // } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 struct LhloLegalizeToLinalgPass
-    : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
+    : public lmhlo::LhloLegalizeToLinalgPassBase<LhloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<AffineDialect, complex::ComplexDialect, linalg::LinalgDialect,
@@ -2452,7 +2454,7 @@ struct LhloLegalizeToLinalgPass
 };
 
 struct HloLegalizeToLinalgPass
-    : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
+    : public mhlo::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<linalg::LinalgDialect, scf::SCFDialect, complex::ComplexDialect,

@@ -451,7 +451,8 @@ def tridiagonal_solve(diagonals,
                       transpose_rhs=False,
                       conjugate_rhs=False,
                       name=None,
-                      partial_pivoting=True):
+                      partial_pivoting=True,
+                      perturb_singular=False):
   r"""Solves tridiagonal systems of equations.
 
   The input can be supplied in various formats: `matrix`, `sequence` and
@@ -529,25 +530,42 @@ def tridiagonal_solve(diagonals,
       Partial pivoting makes the procedure more stable, but slower. Partial
       pivoting is unnecessary in some cases, including diagonally dominant and
       symmetric positive definite matrices (see e.g. theorem 9.12 in [1]).
+    perturb_singular: whether to perturb singular matrices to return a finite
+      result. `False` by default. If true, solutions to systems involving
+      a singular matrix will be computed by perturbing near-zero pivots in
+      the partially pivoted LU decomposition. Specifically, tiny pivots are
+      perturbed by an amount of order `eps * max_{ij} |U(i,j)|` to avoid
+      overflow. Here `U` is the upper triangular part of the LU decomposition,
+      and `eps` is the machine precision. This is useful for solving
+      numerically singular systems when computing eigenvectors by inverse
+      iteration.
+      If `partial_pivoting` is `False`, `perturb_singular` must be `False` as
+      well.
 
   Returns:
     A `Tensor` of shape [..., M] or [..., M, K] containing the solutions.
     If the input matrix is singular, the result is undefined.
 
   Raises:
-    ValueError: An unsupported type is provided as input, or when the input
-      tensors have incorrect shapes.
+    ValueError: Is raised if any of the following conditions hold:
+      1. An unsupported type is provided as input,
+      2. the input tensors have incorrect shapes,
+      3. `perturb_singular` is `True` but `partial_pivoting` is not.
     UnimplementedError: Whenever `partial_pivoting` is true and the backend is
-      XLA.
+      XLA, or whenever `perturb_singular` is true and the backend is
+      XLA or GPU.
 
   [1] Nicholas J. Higham (2002). Accuracy and Stability of Numerical Algorithms:
   Second Edition. SIAM. p. 175. ISBN 978-0-89871-802-7.
 
   """
+  if perturb_singular and not partial_pivoting:
+    raise ValueError('partial_pivoting must be True if perturb_singular is.')
+
   if diagonals_format == 'compact':
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
                                              conjugate_rhs, partial_pivoting,
-                                             name)
+                                             perturb_singular, name)
 
   if diagonals_format == 'sequence':
     if not isinstance(diagonals, (tuple, list)) or len(diagonals) != 3:
@@ -580,7 +598,7 @@ def tridiagonal_solve(diagonals,
     diagonals = array_ops.stack((superdiag, maindiag, subdiag), axis=-2)
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
                                              conjugate_rhs, partial_pivoting,
-                                             name)
+                                             perturb_singular, name)
 
   if diagonals_format == 'matrix':
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
@@ -592,14 +610,16 @@ def tridiagonal_solve(diagonals,
     m = m1 or m2
     diagonals = array_ops.matrix_diag_part(
         diagonals, k=(-1, 1), padding_value=0., align='LEFT_RIGHT')
-    return _tridiagonal_solve_compact_format(
-        diagonals, rhs, transpose_rhs, conjugate_rhs, partial_pivoting, name)
+    return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
+                                             conjugate_rhs, partial_pivoting,
+                                             perturb_singular, name)
 
   raise ValueError('Unrecognized diagonals_format: {}'.format(diagonals_format))
 
 
 def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
-                                      conjugate_rhs, partial_pivoting, name):
+                                      conjugate_rhs, partial_pivoting,
+                                      perturb_singular, name):
   """Helper function used after the input has been cast to compact form."""
   diags_rank, rhs_rank = diagonals.shape.rank, rhs.shape.rank
 
@@ -634,8 +654,8 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
     rhs = array_ops.expand_dims(rhs, -1)
     check_num_lhs_matches_num_rhs()
     return array_ops.squeeze(
-        linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name),
-        -1)
+        linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting,
+                                     perturb_singular, name), -1)
 
   if transpose_rhs:
     rhs = array_ops.matrix_transpose(rhs, conjugate=conjugate_rhs)
@@ -643,7 +663,8 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
     rhs = math_ops.conj(rhs)
 
   check_num_lhs_matches_num_rhs()
-  return linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
+  return linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting,
+                                      perturb_singular, name)
 
 
 @tf_export('linalg.tridiagonal_matmul')

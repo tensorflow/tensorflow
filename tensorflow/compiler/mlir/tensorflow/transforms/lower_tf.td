@@ -49,6 +49,9 @@ def IsI32 : NativeCodeCall<
 def CreateTFCastOpF32 : NativeCodeCall<
     "CreateTFCastOpF32(&$_builder, $0.getLoc(), $1, $2)">;
 
+def CreateTensorScatterNdOp : NativeCodeCall<
+    "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
+
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
 //===----------------------------------------------------------------------===//
@@ -465,3 +468,18 @@ def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
                           (TF_SubOp $x, $x),
                           (TF_ConstOp (GetScalarOfType<0> $x)),
                           /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
+// TensorScatterUpdate op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_AddOp
+             (TF_MulOp
+                (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
+                   (CreateTensorScatterNdOp $input, $indices,
+                      (TF_OnesLikeOp $updates),
+                   (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+             $input),
+           (CreateTensorScatterNdOp $input, $indices, $updates,
+              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue)))>;
