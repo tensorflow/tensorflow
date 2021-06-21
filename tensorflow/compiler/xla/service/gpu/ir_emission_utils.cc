@@ -317,14 +317,16 @@ FusionLayoutAnalysis::FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op) {
                    TypeToShape(store.memref().getType()).layout());
       }
     } else if (auto bitcast = mlir::dyn_cast<mlir::mhlo::BitcastOp>(op)) {
-      auto attr = GetLayoutFromMlirHlo(bitcast, "result_layout");
+      auto attr =
+          bitcast->getAttrOfType<mlir::DenseIntElementsAttr>("result_layout");
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
           std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
       add_layout(bitcast, LayoutUtil::MakeLayout(minor_to_major));
 
-      attr = GetLayoutFromMlirHlo(bitcast, "source_layout");
+      attr =
+          bitcast->getAttrOfType<mlir::DenseIntElementsAttr>("source_layout");
       minor_to_major.clear();
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),

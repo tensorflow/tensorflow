@@ -154,6 +154,8 @@ const auto kStridedLinearIndexingX =
 // efficient.
 const int64 kMinDimensionToTransposeTiled = 16;
 
+constexpr char kDefaultLayoutAttrName[] = "minor_to_major";
+
 // Updates the launch dimensions in "thunk" and annotate the launch dimensions
 // of the corresponding IR kernel in "llvm_module".
 // Precondition: "thunk" must be a KernelThunk.
@@ -1800,7 +1802,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     auto arg = region->addArgument(load.getType());
     load.replaceAllUsesWith(arg);
     Shape shape = TypeToShape(load.getType());
-    if (auto attr = mlir::GetLayoutFromMlirHlo(load)) {
+    if (auto attr = load->getAttrOfType<mlir::DenseIntElementsAttr>(
+            kDefaultLayoutAttrName)) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
@@ -1817,7 +1820,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   std::vector<mlir::Value> returned_values;
   for (auto store : stores) {
     Shape shape = TypeToShape(store.memref().getType());
-    if (auto attr = mlir::GetLayoutFromMlirHlo(store)) {
+    if (auto attr = store->getAttrOfType<mlir::DenseIntElementsAttr>(
+            kDefaultLayoutAttrName)) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
