@@ -782,6 +782,7 @@ cc_library(
         "atan2.cc",
         "irfft2d.cc",
         "multinomial.cc",
+        "pooling3d.cc",
         "random_standard_normal.cc",
         "random_uniform.cc",
         "sign.cc",
@@ -795,10 +796,13 @@ cc_library(
         ":kernel_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:padding",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
+        "@flatbuffers",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -1766,6 +1770,20 @@ cc_test(
         "tflite_xnnpack",
     ],
     deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "pooling3d_test",
+    size = "small",
+    srcs = ["pooling3d_test.cc"],
+    deps = [
+        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",

@@ -49,6 +49,7 @@ from tensorflow.lite.experimental.mlir.testing.op_tests.irfft2d import make_irff
 from tensorflow.lite.experimental.mlir.testing.op_tests.is_finite import make_is_finite_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.max_pool_with_argmax import make_max_pool_with_argmax_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.parse_example import make_parse_example_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.pool3d import make_avg_pool3d_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.real import make_real_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.reciprocal import make_reciprocal_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.rfft import make_rfft_tests
