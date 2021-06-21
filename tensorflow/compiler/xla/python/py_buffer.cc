@@ -112,8 +112,8 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
       buffer_(std::move(buffer)),
       traceback_(std::move(traceback)) {
   CHECK(PyGILState_Check());
-  next_ = client_->buffers_[buffer_->device()->id()];
-  client_->buffers_[buffer_->device()->id()] = this;
+  next_ = client_->buffers_;
+  client_->buffers_ = this;
   prev_ = nullptr;
   if (next_) {
     next_->prev_ = this;
@@ -122,8 +122,8 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
 
 PyBuffer::~PyBuffer() {
   CHECK(PyGILState_Check());
-  if (client_->buffers_[device()->id()] == this) {
-    client_->buffers_[device()->id()] = next_;
+  if (client_->buffers_ == this) {
+    client_->buffers_ = next_;
   }
   if (prev_) {
     prev_->next_ = next_;
