@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_GOLDEN_TESTING_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_GOLDEN_TESTING_OPS_H_
 
@@ -28,6 +31,8 @@ Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTenso
 Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name);
 
 Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorHandle* const features, AbstractTensorHandle* const labels, AbstractTensorHandle** loss, AbstractTensorHandle** backprop, const char* name);
+
+Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name);
 
 }  // namespace ops
 }  // namespace tensorflow

@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_renderer.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_file_renderer.h"
 
-#include "tensorflow/c/experimental/ops/gen/common/renderer_util.h"
+#include "tensorflow/c/experimental/ops/gen/common/view_util.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/op_renderer.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/op_view.h"
 
@@ -40,16 +40,23 @@ limitations under the License.
 ==============================================================================*/
 )";
 
-CppRenderer::CppRenderer(RendererContext context,
-                         const std::vector<OpView> &ops)
+static const char *machine_generated =
+    "// This file is MACHINE GENERATED! Do not edit.";
+
+CppFileRenderer::CppFileRenderer(RendererContext context,
+                                 const std::vector<OpView> &ops)
     : Renderer(context),
       guard_(context),
       name_space_(context),
       includes_(context),
       ops_(ops) {}
 
-void CppRenderer::Render() {
+void CppFileRenderer::Render() {
   CodeLines(copyright);
+  BlankLine();
+  CodeLine(machine_generated);
+  BlankLine();
+
   if (context_.mode == RendererContext::kHeader) {
     guard_.Open();
   } else {

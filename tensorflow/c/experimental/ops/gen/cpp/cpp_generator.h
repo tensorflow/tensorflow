@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_CONTROLLER_H_
-#define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_CONTROLLER_H_
+#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_GENERATOR_H_
+#define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_GENERATOR_H_
 
 #include "tensorflow/c/experimental/ops/gen/common/controller.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_config.h"
@@ -22,21 +22,25 @@ limitations under the License.
 namespace tensorflow {
 namespace generator {
 
-class CppController : public Controller {
+class CppGenerator {
  public:
-  CppController(cpp::CppConfig cpp_config, PathConfig controller_config);
-  SourceCode HeaderFileContents();
-  SourceCode SourceFileContents();
-  string HeaderFileName();
-  string SourceFileName();
+  explicit CppGenerator(cpp::CppConfig cpp_config, PathConfig path_config);
+  SourceCode HeaderFileContents() const;
+  SourceCode SourceFileContents() const;
+  string HeaderFileName() const;
+  string SourceFileName() const;
+  void WriteHeaderFile() const;
+  void WriteSourceFile() const;
 
  private:
-  SourceCode GenerateOneFile(cpp::RendererContext::Mode mode);
+  SourceCode GenerateOneFile(cpp::RendererContext::Mode mode) const;
 
+  Controller controller_;
   cpp::CppConfig cpp_config_;
+  PathConfig path_config_;
 };
 
 }  // namespace generator
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_CONTROLLER_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_GENERATOR_H_

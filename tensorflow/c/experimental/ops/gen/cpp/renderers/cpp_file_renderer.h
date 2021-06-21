@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_RENDERER_H_
-#define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_RENDERER_H_
+#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_FILE_RENDERER_H_
+#define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_FILE_RENDERER_H_
 
 #include <vector>
 
@@ -28,9 +28,10 @@ namespace tensorflow {
 namespace generator {
 namespace cpp {
 
-class CppRenderer : public Renderer {
+class CppFileRenderer : public Renderer {
  public:
-  explicit CppRenderer(RendererContext context, const std::vector<OpView> &ops);
+  explicit CppFileRenderer(RendererContext context,
+                           const std::vector<OpView> &ops);
   void Render();
 
  private:
@@ -44,4 +45,4 @@ class CppRenderer : public Renderer {
 }  // namespace generator
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_RENDERER_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_FILE_RENDERER_H_
