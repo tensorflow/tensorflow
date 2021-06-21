@@ -37,10 +37,10 @@ OpView::OpView(OpSpec op)
   for (const auto& arg : op_.Outputs()) {
     all_arguments_.push_back(OpArgumentView(arg));
   }
-  all_arguments_.push_back(OpArgumentView("const char*", "name"));
   for (const auto& attr : op.Attributes()) {
     all_arguments_.push_back(OpArgumentView(attr));
   }
+  all_arguments_.push_back(OpArgumentView("const char*", "name", "nullptr"));
 }
 
 const std::vector<ArgView>& OpView::Inputs() const { return input_args_; }

@@ -25,24 +25,25 @@ namespace tensorflow {
 namespace ops {
 
 Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
-                AbstractTensorHandle** output, const char* name);
+                AbstractTensorHandle** output, const char* name = nullptr);
 
 Status IdentityN(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> input,
-                 absl::Span<AbstractTensorHandle*> output, const char* name);
+                 absl::Span<AbstractTensorHandle*> output,
+                 const char* name = nullptr);
 
 Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle** y, const char* name);
+                 AbstractTensorHandle** y, const char* name = nullptr);
 
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
-             AbstractTensorHandle** output, const char* name);
+             AbstractTensorHandle** output, const char* name = nullptr);
 
 Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
                   AbstractTensorHandle* const dim,
-                  AbstractTensorHandle** output, const char* name);
+                  AbstractTensorHandle** output, const char* name = nullptr);
 
 Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                AbstractTensorHandle** y, const char* name);
+                AbstractTensorHandle** y, const char* name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

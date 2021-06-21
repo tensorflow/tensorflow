@@ -24,15 +24,15 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
-Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHandle** y, const char* name);
+Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHandle** y, const char* name = nullptr);
 
-Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, const char* name, bool transpose_a = false, bool transpose_b = false);
+Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a = false, bool transpose_b = false, const char* name = nullptr);
 
-Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name);
+Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name = nullptr);
 
-Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorHandle* const features, AbstractTensorHandle* const labels, AbstractTensorHandle** loss, AbstractTensorHandle** backprop, const char* name);
+Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorHandle* const features, AbstractTensorHandle* const labels, AbstractTensorHandle** loss, AbstractTensorHandle** backprop, const char* name = nullptr);
 
-Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name);
+Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

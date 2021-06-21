@@ -106,7 +106,7 @@ Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   cublas.
 Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
               AbstractTensorHandle* const b, AbstractTensorHandle** product,
-              const char* name, bool transpose_a, bool transpose_b) {
+              bool transpose_a, bool transpose_b, const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -143,7 +143,7 @@ Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   length 1.
 Status Sum(AbstractContext* ctx, AbstractTensorHandle* const input,
            AbstractTensorHandle* const reduction_indices,
-           AbstractTensorHandle** output, const char* name, bool keep_dims) {
+           AbstractTensorHandle** output, bool keep_dims, const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Sum", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));

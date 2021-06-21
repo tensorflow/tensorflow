@@ -29,23 +29,24 @@ Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx,
                                            AbstractTensorHandle* const labels,
                                            AbstractTensorHandle** loss,
                                            AbstractTensorHandle** backprop,
-                                           const char* name);
+                                           const char* name = nullptr);
 
 Status ReluGrad(AbstractContext* ctx, AbstractTensorHandle* const gradients,
                 AbstractTensorHandle* const features,
-                AbstractTensorHandle** backprops, const char* name);
+                AbstractTensorHandle** backprops, const char* name = nullptr);
 
 Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
-            AbstractTensorHandle** activations, const char* name);
+            AbstractTensorHandle** activations, const char* name = nullptr);
 
 Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
                AbstractTensorHandle* const bias, AbstractTensorHandle** output,
-               const char* name, const char* data_format = "NHWC");
+               const char* data_format = "NHWC", const char* name = nullptr);
 
 Status BiasAddGrad(AbstractContext* ctx,
                    AbstractTensorHandle* const out_backprop,
-                   AbstractTensorHandle** output, const char* name,
-                   const char* data_format = "NHWC");
+                   AbstractTensorHandle** output,
+                   const char* data_format = "NHWC",
+                   const char* name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow
