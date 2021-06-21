@@ -536,6 +536,7 @@ py_test(
         ":lite",
         ":metrics_nonportable",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
