@@ -161,7 +161,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   std::vector<std::string> custom_opdefs(toco_flags.custom_opdefs().begin(),
                                          toco_flags.custom_opdefs().end());
-  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
+  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
   TF_ASSIGN_OR_RETURN(
       auto module, ImportSavedModel(model_flags.saved_model_dir(),
                                     model_flags.saved_model_version(), tags,

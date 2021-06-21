@@ -263,7 +263,8 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, context, options);
+        input_filename, tags, exported_names, context, options,
+        /*lift_variables=*/false, saved_model_bundle);
 
     if (!module_or.status().ok()) return module_or.status();
     return module_or.ConsumeValueOrDie();

@@ -125,17 +125,13 @@ CreateInsertCallOnceOpFromSessionInitializerPass();
 // TensorFlow Lite variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
 
+// Creates a pass which analyze the model whether it is safe to use
+// native TFLite variables or not.
+std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass();
+
 // Creates a pass which is responsible for legalizing TensorFlow static hash
 // tables to TensorFlow Lite hash tables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass();
-
-// Creates a pass which removes any unused bounded input arguments to functions
-// which corresponds to GlobalTensor.
-std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
-
-// Creates a pass which is responsible for initializing Tensorflow variables
-// as Tensorflow Lite variables.
-std::unique_ptr<OperationPass<ModuleOp>> CreateInitializeVariablesPass();
 
 // Creates get arithmetic count pass, which will calculate the arithmetic count
 // for each ops.
