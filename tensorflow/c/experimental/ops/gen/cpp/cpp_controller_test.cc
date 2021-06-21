@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/cpp_controller.h"
 
+#include <algorithm>
+
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -49,6 +51,14 @@ TEST(CppControllerTest, typical_usage) {
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    controller_config.tf_output_dir, "testing_ops.cc.golden");
   TF_CHECK_OK(ReadFileToString(env, source_file_name, &expected_source));
+
+  // Remove carriage returns (for Windows)
+  expected_header.erase(
+      std::remove(expected_header.begin(), expected_header.end(), '\r'),
+      expected_header.end());
+  expected_source.erase(
+      std::remove(expected_source.begin(), expected_source.end(), '\r'),
+      expected_source.end());
 
   EXPECT_EQ(expected_header, generated_header);
   EXPECT_EQ(expected_source, generated_source);
