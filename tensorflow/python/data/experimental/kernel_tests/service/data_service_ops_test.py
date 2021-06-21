@@ -44,8 +44,6 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
@@ -678,26 +676,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = dataset_ops.Dataset.from_tensors(tensor)
     ds = self.make_distributed_dataset(ds, cluster)
     self.assertDatasetProduces(ds, [tensor])
-
-  @combinations.generate(
-      combinations.times(test_base.graph_only_combinations(),
-                         combinations.combine(use_resource=False)) +
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(use_resource=True)))
-  def testVariables(self, use_resource):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    if not use_resource:
-      with variable_scope.variable_scope("foo", use_resource=False):
-        v = variables.VariableV1(10, dtype=dtypes.int64)
-    else:
-      v = variables.Variable(10, dtype=dtypes.int64)
-
-    ds = dataset_ops.Dataset.range(3)
-    ds = ds.map(lambda x: x + v)
-    ds = self.make_distributed_dataset(ds, cluster)
-    self.evaluate(v.initializer)
-    self.assertDatasetProduces(
-        ds, list(range(10, 13)), requires_initialization=True)
 
 
 if __name__ == "__main__":
