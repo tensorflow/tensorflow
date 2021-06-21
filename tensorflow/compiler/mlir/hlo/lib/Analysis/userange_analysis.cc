@@ -31,7 +31,7 @@ struct UserangeInfoBuilder {
   using OperationListT = Liveness::OperationListT;
   using ValueSetT = BufferViewFlowAnalysis::ValueSetT;
 
- public:
+public:
   /// Constructs an Userange builder.
   UserangeInfoBuilder(Liveness pLiveness, ValueSetT pValues,
                       OperationListT pOpList)
@@ -213,7 +213,8 @@ struct UserangeInfoBuilder {
       useOp = block->findAncestorOpInBlock(*useOp);
       // Check whether the use is in our block and after the current end
       // operation.
-      if (useOp && endOperation->isBeforeInBlock(useOp)) endOperation = useOp;
+      if (useOp && endOperation->isBeforeInBlock(useOp))
+        endOperation = useOp;
     }
     return endOperation;
   }
@@ -236,7 +237,7 @@ struct UserangeInfoBuilder {
   /// The current liveness info.
   Liveness liveness;
 };
-}  // namespace
+} // namespace
 
 UserangeAnalysis::UserangeAnalysis(Operation *op,
                                    const BufferPlacementAllocs &allocs,
@@ -269,7 +270,8 @@ UserangeAnalysis::UserangeAnalysis(Operation *op,
     // useIntervalMap.
     ValueSetT aliasSet = aliases.resolve(allocValue);
     for (Value alias : aliasSet) {
-      if (alias == allocValue) continue;
+      if (alias == allocValue)
+        continue;
       if (!aliasUseranges.count(alias)) {
         OperationListT aliasOperations;
         // If the alias is a BlockArgument then the value is live with the first
@@ -523,7 +525,8 @@ void UserangeAnalysis::dump(raw_ostream &os) {
       else
         return true;
     }
-    if (right.getDefiningOp()) return false;
+    if (right.getDefiningOp())
+      return false;
     return operationIds[&left.getParentBlock()->front()] <
            operationIds[&right.getParentBlock()->front()];
   });
