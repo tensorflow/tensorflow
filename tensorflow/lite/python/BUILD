@@ -592,13 +592,10 @@ py_test(
     name = "analyzer_test",
     srcs = ["analyzer_test.py"],
     data = [
+        "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
-        "//tensorflow/lite/python/testdata:interpreter_test_data",
     ],
     python_version = "PY3",
-    tags = [
-        "no_mac",  # b/191191684
-    ],
     deps = [
         ":analyzer",
         "//tensorflow/python:client_testlib",
