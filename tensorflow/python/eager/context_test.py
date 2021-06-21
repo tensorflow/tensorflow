@@ -136,8 +136,12 @@ class ContextTest(test.TestCase):
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
   def testGetMemoryInfoCPU(self):
-    info = context.context().get_memory_info('CPU:0')
-    self.assertEqual(info['current'], 0)
+    # MklCPUAllocator (mkl_cpu_allocator.h) does not throw exception.
+    # So skip the test.
+    # TODO(gzmkl) work with Google team to address design issue in allocator.h
+    if not test_util.IsMklEnabled():
+      with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
+        context.context().get_memory_info('CPU:0')
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
   def testGetMemoryInfoUnknownDevice(self):
