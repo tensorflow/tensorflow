@@ -691,15 +691,20 @@ cc_library(
             "//tensorflow/compiler/mlir/hlo:lhlo",
             # copybara:uncomment_begin(target not open-sourced yet)
             # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            # "//tensorflow/core/tfrt/gpu:gpu_shared_context",
+            # "//tensorflow/core/tfrt/runtime:work_queue_interface",
             # copybara:uncomment_end
             "//tensorflow/stream_executor/cuda:cublas_plugin",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
+            "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             # copybara:uncomment_begin(breaks bazel query)
+            # "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             # "@tf_runtime//backends/gpu:gpu_types",
             # copybara:uncomment_end
         ],
