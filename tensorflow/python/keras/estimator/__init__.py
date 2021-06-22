@@ -159,7 +159,7 @@ def model_to_estimator(
   """
 
   try:
-    from tensorflow_estimator.python.estimator import keras as keras_lib  # pylint: disable=g-import-not-at-top
+    from tensorflow_estimator.python.estimator import keras_lib  # pylint: disable=g-import-not-at-top
   except ImportError:
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
