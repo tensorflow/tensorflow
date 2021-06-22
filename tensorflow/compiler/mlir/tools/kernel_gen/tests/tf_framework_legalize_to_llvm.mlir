@@ -82,10 +82,10 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 // -----
 
 // CHECK-LABEL: llvm.func @_mlir_ciface_tf_report_error(!llvm.ptr<i8>, i32, !llvm.ptr<i8>)
-// CHECK: llvm.mlir.global internal constant [[MSG_CONST:@error_message_[0-9]+]]
+// CHECK: llvm.mlir.global internal constant [[MSG_CONST:@error_message_[0-9]+]]("Everything is awesome")
 
 func @report_error(%ctx: !tf_framework.op_kernel_context) {
-  tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome"
+  tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome" loc(unknown)
   return
 }
 // CHECK:     llvm.func @report_error([[CTX:%.*]]: !llvm.ptr<i8>)

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -286,12 +288,15 @@ class ReportErrorOpConverter
   Value GenerateErrorMessageConstant(Location loc, Operation *module,
                                      StringRef message,
                                      OpBuilder &builder) const {
-    std::string loc_str;
-    llvm::raw_string_ostream loc_stream(loc_str);
-    loc_stream << message << " at ";
-    loc.print(loc_stream);
+    std::string err_str;
+    llvm::raw_string_ostream err_stream(err_str);
+    err_stream << message;
+    if (!loc.isa<UnknownLoc>()) {
+      err_stream << " at ";
+      loc.print(err_stream);
+    }
 
-    StringRef generated_error(loc_stream.str().c_str());
+    StringRef generated_error(err_stream.str());
 
     std::string global_name =
         llvm::formatv("error_message_{0}", llvm::hash_value(generated_error));
