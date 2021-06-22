@@ -77,7 +77,7 @@ class SparseTensorDenseMatmulOpDeterminismExceptionsTest(test.TestCase):
   ops are enabled.
 
   This test assumes that sparse_tensor_dense_matmul_op_test.py runs equivalent
-  test cases when deterministic ops are not enavbled and will therefore detect
+  test cases when deterministic ops are not enabled and will therefore detect
   erroneous exception throwing in those cases.
   """
 
