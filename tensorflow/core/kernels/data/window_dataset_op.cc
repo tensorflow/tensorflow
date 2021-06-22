@@ -310,6 +310,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         buffer_[i].result.resize(vector_size);
         for (int64 j = 0; j < vector_size; j++) {
           TF_RETURN_IF_ERROR(reader->ReadTensor(
+              ctx->flr(),
               full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
               &buffer_[i].result[j]));
         }

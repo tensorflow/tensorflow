@@ -1297,7 +1297,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           for (size_t j = 0; j < num_return_values; j++) {
             result->return_values.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                iterator_name,
+                ctx->flr(), iterator_name,
                 absl::StrCat(kResultsSuffix, "[", i, "][", j, "]"),
                 &result->return_values.back()));
           }
@@ -1316,9 +1316,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             &inputs_size));
         element->inputs = std::make_unique<std::vector<Tensor>>(inputs_size);
         for (int i = 0; i < inputs_size; i++) {
-          TF_RETURN_IF_ERROR(reader->ReadTensor(
-              iterator_name, absl::StrCat(kInputsSuffix, "[", i, "]"),
-              &element->inputs->at(i)));
+          TF_RETURN_IF_ERROR(
+              reader->ReadTensor(ctx->flr(), iterator_name,
+                                 absl::StrCat(kInputsSuffix, "[", i, "]"),
+                                 &element->inputs->at(i)));
         }
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(iterator_name, kIdSuffix, &element->id));

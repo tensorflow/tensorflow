@@ -33,7 +33,7 @@ namespace {
 struct FloatToHalf {
   __host__ __device__ EIGEN_STRONG_INLINE Eigen::half operator()(
       const float& x) const {
-    return Eigen::half_impl::float_to_half_rtne(x);
+    return static_cast<Eigen::half>(x);
   }
 };
 

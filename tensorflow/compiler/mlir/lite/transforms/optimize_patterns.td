@@ -586,7 +586,7 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
       (ValueOp:$value (MoveOp:$move $input, $move_def)),
       (MoveOp (ValueOp $input), $move_def),
-      [(HasOneUse $move)]>;
+      [(SameElementType $input, $value), (HasOneUse $move)]>;
   }
 }
 

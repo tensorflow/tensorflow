@@ -22285,7 +22285,7 @@ func RandomStandardNormal(scope *Scope, shape tf.Output, dtype tf.DataType, opti
 	return op.Output(0)
 }
 
-// Computes the Gauss error function of `x` element-wise.
+// Computes the [Gauss error function](https://en.wikipedia.org/wiki/Error_function) of `x` element-wise. In statistics, for non-negative values of $x$, the error function has the following interpretation: for a random variable $Y$ that is normally distributed with mean 0 and variance $1/\sqrt{2}$, $erf(x)$ is the probability that $Y$ falls in the range $[−x, x]$.
 func Erf(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -41997,6 +41997,24 @@ func RegexReplace(scope *Scope, input tf.Output, pattern tf.Output, rewrite tf.O
 			input, pattern, rewrite,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Inverse of XlaSetDynamicDimensionSize. Make an xla bounded
+//
+//         dynamic dimension into a static dimension. The bound of the size of
+//         dimension `dim_index` becomes the static dimension size.
+func XlaRemoveDynamicDimensionSize(scope *Scope, input tf.Output, dim_index tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaRemoveDynamicDimensionSize",
+		Input: []tf.Input{
+			input, dim_index,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

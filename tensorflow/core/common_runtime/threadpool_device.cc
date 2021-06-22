@@ -26,12 +26,12 @@ info. It does not have any negative impact on performance. */
 #endif
 #endif  // ENABLE_ONEDNN_OPENMP && ENABLE_MKL &&_OPENMP
 
-#include "tensorflow/core/common_runtime/threadpool_device.h"
-
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
+#include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -132,6 +132,99 @@ void ThreadPoolDevice::CopyTensorInSameDevice(
   }
   tensor::DeepCopy(*input_tensor, output_tensor);
   done(Status::OK());
+}
+
+namespace {
+const absl::flat_hash_set<std::string>* GetOpsToLogFromEnv() {
+  auto* result = new absl::flat_hash_set<std::string>;
+  const char* env = getenv("TF_CPU_DEBUG_OPS_TO_LOG");
+  if (!env) {
+    return result;
+  }
+
+  std::vector<absl::string_view> ops = absl::StrSplit(env, ',');
+  LOG(INFO) << "Will log inputs & outputs from the following ops: ";
+  for (absl::string_view op : ops) {
+    result->insert(std::string(op));
+    LOG(INFO) << "  |" << op << "|";
+  }
+
+  return result;
+}
+
+bool ShouldLogInputsAndOutputs(OpKernel* op_kernel) {
+  static const absl::flat_hash_set<std::string>& ops_to_log =
+      *GetOpsToLogFromEnv();
+  return ops_to_log.count(op_kernel->type_string());
+}
+}  // namespace
+
+void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
+  bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
+
+  if (should_log_inputs_and_outputs) {
+    LogInputs(op_kernel, context);
+  }
+
+  op_kernel->Compute(context);
+
+  if (should_log_inputs_and_outputs) {
+    LogOutputs(op_kernel, context);
+  }
+}
+
+void ThreadPoolDevice::ComputeAsync(AsyncOpKernel* op_kernel,
+                                    OpKernelContext* context,
+                                    AsyncOpKernel::DoneCallback done) {
+  bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
+
+  if (should_log_inputs_and_outputs) {
+    LogInputs(op_kernel, context);
+    AsyncOpKernel::DoneCallback parent_done = done;
+    done = [this, parent_done, op_kernel, context]() {
+      LogOutputs(op_kernel, context);
+      parent_done();
+    };
+  }
+
+  op_kernel->ComputeAsync(context, done);
+}
+
+void ThreadPoolDevice::LogInputs(OpKernel* op_kernel,
+                                 OpKernelContext* context) {
+  LOG(INFO) << "Inputs for " << op_kernel->name() << " (total "
+            << context->num_inputs() << "):";
+  for (int i = 0; i < context->num_inputs(); i++) {
+    if (!context->has_input(i)) {
+      LOG(INFO) << "input # " << i << " is absent";
+      continue;
+    }
+    LOG(INFO) << "input # " << i;
+    LOG(INFO) << context->input(i).DebugString(-1);
+  }
+  LOG(INFO) << "";
+}
+
+void ThreadPoolDevice::LogOutputs(OpKernel* op_kernel,
+                                  OpKernelContext* context) {
+  if (!context->status().ok()) {
+    LOG(INFO) << op_kernel->name()
+              << " failed: " << context->status().error_message();
+    return;
+  }
+
+  LOG(INFO) << "Outputs for " << op_kernel->name() << " (total "
+            << context->num_inputs() << "):";
+  for (int i = 0; i < context->num_outputs(); i++) {
+    Tensor* output = context->mutable_output(i);
+    if (output == nullptr) {
+      LOG(INFO) << "output # " << i << " is null";
+    } else {
+      LOG(INFO) << "output # " << i;
+      LOG(INFO) << output->DebugString(-1);
+    }
+  }
+  LOG(INFO) << "";
 }
 
 #ifdef INTEL_MKL

@@ -601,6 +601,7 @@ cc_library(
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "//tensorflow/core/common_runtime:lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + [":tensorflow_" + target["name"] for target in tf_ops_category_list],

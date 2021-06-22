@@ -17,8 +17,8 @@
 This module contains:
 
 1. tf.data server implementations for running the tf.data service.
-2. A `distribute` dataset transformation that moves a dataset's preprocessing
-   to happen in the tf.data service.
+2. APIs for registering datasets with the tf.data service and reading from
+   the registered datasets.
 
 The tf.data service offers a way to improve training speed when the host
 attached to a training device can't keep up with the data consumption of the
@@ -31,26 +31,46 @@ the tf.data service to generate 200 examples/second.
 There are a few things to do before using the tf.data service to speed up
 training.
 
-### Understand processing_mode
+### Decide which processing mode to use.
 
 The tf.data service uses a cluster of workers to prepare data for training your
-model. The `processing_mode` argument to
-`tf.data.experimental.service.distribute` describes how to leverage multiple
-workers to process the input dataset. Currently, there are two processing modes
-to choose from: "distributed_epoch" and "parallel_epochs".
+model. The processing mode describes how to leverage multiple workers for
+dataset processing. Currently, there are two processing modes to choose from:
+"distributed_epoch" and "parallel_epochs".
 
-"distributed_epoch" means that the dataset will be split across all tf.data
+#### Distributed Epoch Mode
+
+In "distributed_epoch" mode, the dataset will be split across all tf.data
 service workers. The dispatcher produces "splits" for the dataset and sends them
 to workers for further processing. For example, if a dataset begins with a list
 of filenames, the dispatcher will iterate through the filenames and send the
 filenames to tf.data workers, which will perform the rest of the dataset
 transformations on those files. "distributed_epoch" is useful when your model
-needs to see each element of the dataset exactly once, or if it needs to see the
+needs to see each element of the dataset at most once, or if it needs to see the
 data in a generally-sequential order. "distributed_epoch" only works for
 datasets with splittable sources, such as `Dataset.from_tensor_slices`,
-`Dataset.list_files`, or `Dataset.range`.
+`Dataset.list_files`, or `Dataset.range`. Datasets which combine
+multiple source datasets such as `Dataset.sample_from_datasets` and
+`Dataset.zip` are not currently supported. To use "distributed_epoch"
+processing for such datasets, you can apply the `distribute` transformation to
+the input(s) of the transformation that does not support "distributed_epoch"
+instead.
 
-"parallel_epochs" means that the entire input dataset will be processed
+##### Visitation Guarantees
+
+If no workers are restarted during training, "distributed_epoch" mode will visit
+every example exactly once. If workers are restarted during training, the splits
+they were processing will not be fully visited. The dispatcher maintains a
+cursor through the dataset's splits, storing cursor state in write-ahead logs so
+that the cursor can be restored in case the dispatcher is restarted
+mid-training. This provides an at-most-once visitation guarantee in the presence
+of server restarts. To enable the dispatcher to maintain cursor state across
+restarts, configure the dispatcher with `fault_tolerant_mode=True` and configure
+an appropriate `work_dir` (see Fault Tolerance below for more detail).
+
+#### Parallel Epochs Mode
+
+In "parallel_epochs" mode, the entire input dataset will be processed
 independently by each of the tf.data service workers. For this
 reason, it is important to shuffle data (e.g. filenames) non-deterministically,
 so that each worker will process the elements of the dataset in a different

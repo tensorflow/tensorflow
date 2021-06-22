@@ -672,15 +672,11 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
 
 // Returns whether the context's GPU supports efficient fp16 math.
 inline bool HasFastHalfMath(OpKernelContext* ctx) {
-  int major, minor;
-  ctx->op_device_context()
-      ->stream()
-      ->parent()
-      ->GetDeviceDescription()
-      .cuda_compute_capability(&major, &minor);
-  auto cuda_arch = major * 100 + minor * 10;
+  se::CudaComputeCapability compute_capability =
+      ctx->op_device_context()->stream()->GetCudaComputeCapability();
   // GPUs before sm_53 don't support fp16 math, and sm_61's fp16 math is slow.
-  return cuda_arch >= 530 && cuda_arch != 610;
+  return compute_capability.IsAtLeast(5, 3) &&
+         compute_capability != se::CudaComputeCapability{6, 1};
 }
 
 template <typename T, DepthwiseConv2dDirection kDirection,

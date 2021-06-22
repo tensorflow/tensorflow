@@ -751,6 +751,17 @@ func @NotReorderElementwiseValueOpAndMoveOp(%arg0: tensor<40x40x1xf32>) -> (tens
   // CHECK: return %[[rs1]], %[[rs2]]
 }
 
+// CHECK-LABEL: @NotReorderElementwiseValueOpAndMoveOpDifferentQuantParams
+func @NotReorderElementwiseValueOpAndMoveOpDifferentQuantParams(%arg0: tensor<40x40x1x!quant.uniform<u8:f32, 0.024701418355107307:175>>) -> (tensor<40x40x!quant.uniform<u8:f32, 3.906250e-03>>) {
+  %shape = constant dense<[40, 40]> : tensor<2xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<40x40x1x!quant.uniform<u8:f32, 0.024701418355107307:175>>, tensor<2xi32>) -> tensor<40x40x!quant.uniform<u8:f32, 0.024701418355107307:175>>
+  %2 = "tfl.logistic"(%1) : (tensor<40x40x!quant.uniform<u8:f32, 0.024701418355107307:175>>) -> tensor<40x40x!quant.uniform<u8:f32, 3.906250e-03>>
+  return %2 : tensor<40x40x!quant.uniform<u8:f32, 3.906250e-03>>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = "tfl.logistic"(%[[rs1]]
+  // CHECK: return %[[rs2]]
+}
 
 // CHECK-LABEL: @FuseFullyConnectedRelu
 func @FuseFullyConnectedRelu(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32>, %arg2: tensor<128xf32>) -> tensor<1x128xf32> {

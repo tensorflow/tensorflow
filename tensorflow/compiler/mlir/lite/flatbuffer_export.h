@@ -38,6 +38,8 @@ struct FlatbufferExportOptions {
   // OpOrArgNameMapper to convert location of the op to name in flatbuffer.
   // If not set, a default mapper will be used.
   tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper = nullptr;
+  // If set to true, then allow pass through of TF ops as select Tensorflow ops.
+  bool allow_all_select_tf_ops = false;
 };
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the

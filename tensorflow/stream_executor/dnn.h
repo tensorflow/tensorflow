@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/stream_executor/data_type.h"
+#include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -1295,7 +1296,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual bool GetConvolveExecutionPlans(
@@ -1407,7 +1409,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Enqueues a single-precision backward convolution (for filter) operation
@@ -1454,7 +1457,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Enqueues a single-precision backward convolution (for bias) operation onto

@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -745,7 +749,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       if (reader->Contains(full_name(kCacheCompleted))) {
         std::vector<std::vector<Tensor>> temp_cache;
         TF_RETURN_IF_ERROR(
-            ReadElementsFromCheckpoint(reader, prefix(), &temp_cache));
+            ReadElementsFromCheckpoint(ctx, reader, prefix(), &temp_cache));
         cache_->Complete(std::move(temp_cache));
       }
       TF_RETURN_IF_ERROR(InitializeIterator(ctx));
@@ -816,7 +820,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name(kCacheCompleted))) {
           TF_RETURN_IF_ERROR(
-              ReadElementsFromCheckpoint(reader, prefix(), &temp_cache_));
+              ReadElementsFromCheckpoint(ctx, reader, prefix(), &temp_cache_));
         }
         return RestoreInput(ctx, reader, input_impl_);
       }

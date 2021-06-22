@@ -497,7 +497,7 @@ REGISTER_OP("DivNoNan")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {half, float, double, complex64, complex128}")
+    .Attr("T: {half, float, bfloat16, double, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("FloorDiv")

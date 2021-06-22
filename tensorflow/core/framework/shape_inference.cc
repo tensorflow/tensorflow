@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -166,6 +168,11 @@ Status InferenceContext::output(StringPiece output_name,
 void InferenceContext::PreInputInit(
     const OpDef& op_def, const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes) {
+  // TODO(mdan): This is also done at graph construction. Run only here instead?
+  const auto ret = full_type::SpecializeType(attrs_, op_def);
+  DCHECK(ret.status().ok()) << "while instantiating types: " << ret.status();
+  ret_types_ = ret.ValueOrDie();
+
   input_tensors_ = input_tensors;
   input_tensors_as_shapes_ = input_tensors_as_shapes;
 

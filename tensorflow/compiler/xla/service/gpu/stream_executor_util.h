@@ -35,9 +35,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
-bool IsVoltaOrLater(const se::StreamExecutor& stream_exec);
-
 // Returns (input, filter, output) XLA Layout protos given the StreamExecutor
 // layouts.
 StatusOr<std::tuple<Layout, Layout, Layout>>

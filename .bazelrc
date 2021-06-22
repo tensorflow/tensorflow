@@ -348,6 +348,8 @@ build:windows --verbose_failures
 
 # On windows, we never cross compile
 build:windows --distinct_host_configuration=false
+# On linux, don't cross compile by default
+build:linux --distinct_host_configuration=false
 
 # Configure short or long logs
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
@@ -554,6 +556,7 @@ try-import %workspace%/.bazelrc.user
 # Here are bazelrc configs for release builds
 build:release_base --config=v2
 build:release_base --distinct_host_configuration=false
+build:release_base --subcommands --verbose_failures
 test:release_base --flaky_test_attempts=3
 test:release_base --test_size_filters=small,medium
 

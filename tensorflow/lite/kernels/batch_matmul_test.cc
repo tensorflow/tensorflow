@@ -464,6 +464,38 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, SimpleTestQuantizedInt8) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
 }
 
+TEST_P(HybridAsymmetricBatchMatMulOpTest, MultipleNumBatchQuantizedInt8) {
+  // need 4 scale factors
+  HybridBatchMatMulOpModel m(
+      /*units=*/10, /*batches=*/4,
+      /*lhs=*/{TensorType_FLOAT32, {1, 2, 2, 3}},
+      /*rhs=*/{TensorType_INT8, {3, 10}, 0, 0, 10.0 / 127.0, 0});
+
+  m.SetSignedWeights({
+      1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3,
+      1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3,
+  });
+
+  m.SetInput({
+      11, 12, 13,  // batch 1, 0
+      11, 12, 13,  // batch 1, 1
+      11, 12, 13,  // batch 1, 2
+      11, 12, 13,  // batch 1, 3
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73,
+                      73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73,
+                      73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73,
+                  },
+                  /*max_abs_error=*/0.64f)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 10}));
+}
+
 TEST_P(HybridAsymmetricBatchMatMulOpTest, RegressionTestQuantizedInt8) {
   HybridBatchMatMulOpModel m(
       /*units=*/10, /*batches=*/2,

@@ -47,9 +47,9 @@ PYBIND11_MODULE(_math_ops, m) {
     if (!name) {
       name = "MatMul";
     }
-    MaybeRaiseRegisteredFromStatus(ops::MatMul(ctx, a, b, &output, name,
+    MaybeRaiseRegisteredFromStatus(ops::MatMul(ctx, a, b, &output,
                                                /*transpose_a=*/false,
-                                               /*transpose_b=*/false));
+                                               /*transpose_b=*/false, name));
     return output;
   });
   m.def("neg",

@@ -668,6 +668,11 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     SerializationContext* ctx, const Tensor& t, Node** output) {
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
+  if (ctx->device_name() != handle.device()) {
+    return errors::InvalidArgument("Trying to access resource ", handle.name(),
+                                   " located in device ", handle.device(),
+                                   " from device ", ctx->device_name());
+  }
   ResourceBase* resource;
   TF_RETURN_IF_ERROR(ctx->resource_mgr()->Lookup(handle, &resource));
   core::ScopedUnref unref(resource);
