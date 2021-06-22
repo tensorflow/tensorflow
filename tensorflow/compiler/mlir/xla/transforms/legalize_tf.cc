@@ -3379,13 +3379,14 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
 };
 
 // Converts the tf.Slice op into mhlo.real_dynamic_slice
-// TODO: To recover static special case's performance with folding and canonicalization.
+// TODO(disc): To recover static special case's performance with folding and
+// canonicalization.
 class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TF::SliceOp op,
-                                     PatternRewriter& rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     Location loc = op.getLoc();
     Value input = op.input();
     Value begin_indices = op.begin();
@@ -3398,6 +3399,12 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
     if (!input_ty || !begin_type || !size_type ||
         !begin_type.hasStaticShape() || !size_type.hasStaticShape() ||
         begin_type.getRank() != 1 || size_type.getRank() != 1) {
+      return failure();
+    }
+    // TODO(disc): remove static shape check once folding/canonicalization func
+    // added
+    DenseIntElementsAttr size_attr;
+    if (matchPattern(op.size(), m_Constant(&size_attr))) {
       return failure();
     }
 
@@ -3420,11 +3427,12 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
                                                   size_value, minus_one);
       Value end_value = rewriter.create<AddIOp>(loc, begin_value, size_value);
       auto dim_value = rewriter.create<IndexCastOp>(
-          loc, rewriter.create<memref::DimOp>(loc, input, i), shape_scalar_type);
+          loc, rewriter.create<memref::DimOp>(loc, input, i),
+          shape_scalar_type);
       end_value = rewriter.create<mlir::SelectOp>(loc, is_minus_one, dim_value,
                                                   end_value);
-      auto end_value_casted = rewriter.create<IndexCastOp>(
-          loc, rewriter.getIndexType(), end_value);
+      auto end_value_casted =
+          rewriter.create<IndexCastOp>(loc, rewriter.getIndexType(), end_value);
       end_values.push_back(end_value_casted);
 
       auto begin_value_casted = rewriter.create<IndexCastOp>(
@@ -3659,24 +3667,20 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
   }
 };
 
-// Converts the tf.Split op into a series of mhlo.real_dynamic_slice ops the dimension to
-// split is a constant.
-// TODO: To recover static special case's performance with folding and canonicalization.
-// delete ConvertSplitOp
+// Converts the tf.Split op into a series of mhlo.real_dynamic_slice ops the
+// dimension to split is a constant.
+// TODO(disc): To recover static special case's performance with folding and
+// canonicalization. delete ConvertSplitOp
 class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TF::SplitOp op,
-                                     PatternRewriter& rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     Location loc = op.getLoc();
     Value input = op.value();
     auto input_type = input.getType().dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
-    // TODO: remove static shape check once folding/canonicalization func added  
-    // and ConvertSplitOp deleted
-    if (input_type.hasStaticShape()) return failure();
-
     // We can only match when the split dimension is a constant scalar.
     DenseIntElementsAttr split_dim_attr;
     if (!matchPattern(op.split_dim(), m_Constant(&split_dim_attr)))
@@ -3687,12 +3691,20 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
     if (dim_index < 0) dim_index += input_rank;
 
+    // TODO(disc): remove static shape check once folding/canonicalization func
+    // added and ConvertSplitOp deleted. Calculate the dimension size for each
+    // slice along the split dimension. We are splitting along the dynamic
+    // dimension, or using static pattern transform
+    int64_t c_input_dim_size = input_type.getDimSize(dim_index);
+    if (!TensorType::isDynamic(c_input_dim_size)) return failure();
+
     auto shape_scalar_type = rewriter.create<ConstantIndexOp>(loc, 32);
-    Value input_dim_size = rewriter.create<memref::DimOp>(loc, input, dim_index);
+    Value input_dim_size =
+        rewriter.create<memref::DimOp>(loc, input, dim_index);
     // Calculate the dimension size for each slice along the split dimension.
     int num_splits = op.getNumResults();
-    Value num_splits_value = rewriter.create<ConstantOp>(
-        loc, rewriter.getIndexAttr(num_splits));
+    Value num_splits_value =
+        rewriter.create<ConstantOp>(loc, rewriter.getIndexAttr(num_splits));
     Value slice_size =
         rewriter.create<SignedDivIOp>(loc, input_dim_size, num_splits_value);
 
@@ -3713,20 +3725,15 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
 
     for (int i = 0; i < num_splits; ++i) {
       begin_indices[dim_index] = rewriter.create<MulIOp>(
-          loc, slice_size,
-          rewriter.create<ConstantIndexOp>(loc, i));
+          loc, slice_size, rewriter.create<ConstantIndexOp>(loc, i));
       end_indices[dim_index] = rewriter.create<MulIOp>(
-          loc, slice_size,
-          rewriter.create<ConstantIndexOp>(loc, i + 1));
+          loc, slice_size, rewriter.create<ConstantIndexOp>(loc, i + 1));
       auto begin_value = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getIndexType(),
-          begin_indices);
+          loc, rewriter.getIndexType(), begin_indices);
       auto end_value = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getIndexType(),
-          end_indices);
+          loc, rewriter.getIndexType(), end_indices);
       auto stride_value = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getIndexType(),
-          strides);
+          loc, rewriter.getIndexType(), strides);
       slices.push_back(rewriter.create<RealDynamicSliceOp>(
           loc, op.getOperation()->getResult(i).getType(), input, begin_value,
           end_value, stride_value));
