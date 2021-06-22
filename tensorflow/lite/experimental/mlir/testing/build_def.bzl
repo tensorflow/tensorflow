@@ -21,7 +21,6 @@ def mlir_generated_test_denylisted_models():
 # Test cases which only work with MLIR-based conversion now.
 def mlir_only_generated_test_models():
     return [
-        "avg_pool3d",
         "batchmatmul",
         "broadcast_to",
         "broadcast_gradient_args",
@@ -44,7 +43,6 @@ def mlir_only_generated_test_models():
         "imag",
         "irfft2d",
         "is_finite",
-        "max_pool3d",
         "max_pool_with_argmax",
         "parse_example",
         "real",
