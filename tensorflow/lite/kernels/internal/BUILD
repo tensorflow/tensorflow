@@ -349,7 +349,6 @@ cc_library(
     name = "optimized_eigen",
     hdrs = [
         "optimized/eigen_spatial_convolutions.h",
-        "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -1110,8 +1109,6 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-
-exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
 
 filegroup(
     name = "optimized_op_headers",
