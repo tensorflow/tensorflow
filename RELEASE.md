@@ -50,6 +50,13 @@
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
+    *   `tf.keras.experimental.SidecarEvaluator` is now available for a program
+        intended to be run on an evaluator task, which is commonly used to
+        supplement a training cluster running with
+        `tf.distribute.experimental.ParameterServerStrategy` (see
+        https://www.tensorflow.org/tutorials/distribute/parameter_server_training).
+        It can also be used with single-worker training or other strategies.
+        See docstring for more info.
     *   Updates to Preprocessing layers API for consistency and clarity:
         *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
             to `None`. This matches the default masking behavior of `Hashing`
