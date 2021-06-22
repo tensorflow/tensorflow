@@ -52,7 +52,9 @@ FLAGS = flags.FLAGS
 # pylint: disable=g-complex-comprehension
 
 
-def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
+def TestFactory(xla_backend,
+                cloud_tpu=False,
+                tfrt_tpu=False,
                 external_tpu=False):
   tests = []
 
@@ -2071,29 +2073,40 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
       self.backend = xla_backend()
       if self.backend.platform not in ("cpu", "gpu"):
         self.skipTest("DLPack requires CPU or GPU")
+      self.cpu_backend = (
+          self.backend
+          if self.backend.platform == "cpu" else xla_client.make_cpu_client())
+      self.gpu_backend = (
+          self.backend if self.backend.platform == "gpu" else None)
 
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
     @parameterized.named_parameters({
-        "testcase_name": "{}_own={}".format(FormatShapeAndDtype(shape, dtype),
-                                            take_ownership),
+        "testcase_name": "{}_own={}_gpu={}".format(
+            FormatShapeAndDtype(shape, dtype), take_ownership, gpu),
         "dtype": dtype,
         "shape": shape,
-        "take_ownership": take_ownership
+        "take_ownership": take_ownership,
+        "gpu": gpu
     } for dtype in dlpack_dtypes for shape in testcase_shapes
-                                    for take_ownership in [False, True])
+                                    for take_ownership in [False, True]
+                                    for gpu in [False, True])
     # pyformat: enable
-    def testRoundTrip(self, dtype, shape, take_ownership):
+    def testRoundTrip(self, dtype, shape, take_ownership, gpu):
+      if gpu and self.gpu_backend is None:
+        raise unittest.SkipTest("Test not running with GPU support")
+      backend = self.gpu_backend if gpu else self.cpu_backend
       if dtype == np.bool_:
         x = np.random.randint(0, 2, size=shape).astype(np.bool_)
       else:
         x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
-      buffer = self.backend.buffer_from_pyval(x)
+      buffer = backend.buffer_from_pyval(x)
       dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
           buffer, take_ownership=take_ownership)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
-      y = xla_client._xla.dlpack_managed_tensor_to_buffer(dlt, self.backend)
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
+          dlt, self.cpu_backend, self.gpu_backend)
       np.testing.assert_array_equal(
           x.astype(np.uint8) if dtype == np.bool_ else x, y.to_py())
 
