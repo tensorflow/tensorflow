@@ -792,22 +792,16 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   }
   TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, *amdgpu_version,
                                           device_bitcode_dir_path));
-  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
-    for (llvm::Function& fn : *module) {
-      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
-    }
-  }
 
-  // If ftz is enabled, set it as an attribute on every function in the module.
-  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
-    for (llvm::Function& fn : *module) {
-      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
-    }
-  }
-
+  // For rocm, we always enable flush to zero. (for cuda, this is determined
+  // via environemnt variables). This deceision was based on the observation
+  // Eugene had that the AMD GPU llvm backend has not picked up the atomic add
+  // instructions correctly without ftz enabled. We concluded that this should
+  // not has major impact as the hipcc path by default enables flush to zero for
+  // compilation.
   for (llvm::Function& fn : *module) {
       // may be necessary for the compiler to generate atomics (confirm!)
-      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign,preserve-sign");
+      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
       fn.addFnAttr("amdgpu-unsafe-fp-atomics", "true");
   }
 
