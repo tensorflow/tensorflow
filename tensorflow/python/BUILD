@@ -2304,7 +2304,6 @@ py_library(
         ":special_math_ops_gen",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/python/framework:for_generated_wrappers",
-        "@functools32_archive//:functools32",
         "@opt_einsum_archive//:opt_einsum",
     ],
 )
