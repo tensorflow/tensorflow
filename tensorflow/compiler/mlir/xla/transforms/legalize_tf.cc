@@ -6668,16 +6668,10 @@ class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
       dims[i >= inserted_dim ? i + 1 : i] = dim;
     }
 
-    auto from_extents = rewriter.create<shape::FromExtentsOp>(
-        op.getLoc(), shape::ShapeType::get(op.getContext()), dims);
-
-    auto to_extent_tensor = rewriter.create<shape::ToExtentTensorOp>(
-        op.getLoc(),
-        RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType()),
-        from_extents);
-
+    auto from_extents =
+        rewriter.create<tensor::FromElementsOp>(op.getLoc(), dims);
     rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_ty, input,
-                                                        to_extent_tensor);
+                                                        from_extents);
     return success();
   }
 };
