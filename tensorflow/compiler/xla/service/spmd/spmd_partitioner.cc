@@ -3017,45 +3017,59 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
-  // TODO(b/73062247) Variadic reduce window not yet supported in partitioner.
-  if (hlo->shape().IsTuple()) {
-    return DefaultAction(hlo);
-  }
-  auto& operand = GetPartitionedHlo(hlo->operand(0));
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
-
-  // Replicate init
-  auto replicated_init = GetPartitionedHlo(hlo->mutable_operand(1))
-                             .Reshard(HloSharding::Replicate());
-  auto resharded_operand_and_window = operand.ReshardAsWindowedInput(
-      hlo->window(), hlo->sharding(), replicated_init.hlo());
-  if (!resharded_operand_and_window.has_value()) {
-    return DefaultAction(hlo);
+  HloReduceWindowInstruction* reduce_window =
+      Cast<HloReduceWindowInstruction>(hlo);
+  absl::Span<HloInstruction* const> input_arrays = reduce_window->inputs();
+  absl::Span<HloInstruction* const> init_values = reduce_window->init_values();
+  int64 input_idx = 0;
+  absl::InlinedVector<PartitionedHlo::WindowedInputShardReturnValue, 2>
+      sharded_results;
+  absl::InlinedVector<const Shape*, 2> sharded_input_shapes,
+      replicated_init_shapes;
+  absl::InlinedVector<HloInstruction*, 2> sharded_inputs, replicated_inits;
+  for (const HloInstruction* input_array : input_arrays) {
+    PartitionedHlo& operand = GetPartitionedHlo(input_array);
+    // Replicate init
+    PartitionedHlo replicated_init = GetPartitionedHlo(init_values[input_idx++])
+                                         .Reshard(HloSharding::Replicate());
+    auto resharded_operand_and_window = operand.ReshardAsWindowedInput(
+        hlo->window(), hlo->sharding(), replicated_init.hlo());
+    if (!resharded_operand_and_window.has_value()) {
+      return DefaultAction(hlo);
+    }
+    sharded_results.push_back(resharded_operand_and_window.value());
+    sharded_inputs.push_back(resharded_operand_and_window->sharded_input);
+    sharded_input_shapes.push_back(&sharded_inputs.back()->shape());
+    replicated_inits.push_back(replicated_init.hlo());
+    replicated_init_shapes.push_back(&replicated_inits.back()->shape());
   }
-
   TF_ASSIGN_OR_RETURN(Shape sharded_rw_shape,
                       ShapeInference::InferReduceWindowShape(
-                          resharded_operand_and_window->sharded_input->shape(),
-                          replicated_init.hlo()->shape(),
-                          resharded_operand_and_window->shard_window,
+                          sharded_input_shapes, replicated_init_shapes,
+                          sharded_results[0].shard_window,
                           hlo->to_apply()->ComputeProgramShape()));
-  auto shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
+  HloSharding result_sharding =
+      (hlo->shape().IsTuple())
+          ? hlo->sharding().GetTupleSharding(hlo->shape()).ValueOrDie()
+          : hlo->sharding();
+  Shape shard_shape = MakePartitionedShape(hlo->shape(), result_sharding);
   *sharded_rw_shape.mutable_layout() = shard_shape.layout();
   SetPartitionedHlo(hlo, [&]() {
-    auto sharded_rw = b_.AddInstruction(HloInstruction::CreateReduceWindow(
-        sharded_rw_shape, resharded_operand_and_window->sharded_input,
-        replicated_init.hlo(), resharded_operand_and_window->shard_window,
-        hlo->to_apply()));
-    if (!resharded_operand_and_window->dynamic_slice_index_on_output
-             .has_value()) {
-      CHECK(ShapeUtil::Compatible(shard_shape, sharded_rw->shape()));
+    HloInstruction* sharded_rw =
+        b_.AddInstruction(HloInstruction::CreateReduceWindow(
+            sharded_rw_shape, sharded_inputs, replicated_inits,
+            sharded_results[0].shard_window, hlo->to_apply()));
+    if (!sharded_results[0].dynamic_slice_index_on_output.has_value()) {
+      CHECK(ShapeUtil::Compatible(shard_shape, sharded_rw->shape()))
+          << shard_shape << " vs " << sharded_rw->shape() << "\n";
       return sharded_rw;
     }
     return b_.AddInstruction(HloInstruction::CreateDynamicSlice(
         shard_shape, sharded_rw,
-        *resharded_operand_and_window->dynamic_slice_index_on_output,
+        *sharded_results[0].dynamic_slice_index_on_output,
         shard_shape.dimensions()));
   });
   return Status::OK();
