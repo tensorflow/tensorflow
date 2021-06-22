@@ -41,6 +41,7 @@
 #     asan:             Build with the clang address sanitizer
 #     msan:             Build with the clang memory sanitizer
 #     ubsan:            Build with the clang undefined behavior sanitizer
+#     dbg:              Build with debug info
 #
 #
 # TF version options;
