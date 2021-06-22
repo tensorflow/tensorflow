@@ -528,6 +528,17 @@ gpu_kernel_library(
     ],
 )
 
+gpu_kernel_library(
+    name = "gpu_elu_kernels",
+    op = "elu",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
 # TODO(b/25387198): Add an int32 kernel.
 gpu_kernel_library(
     name = "gpu_abs_kernels",

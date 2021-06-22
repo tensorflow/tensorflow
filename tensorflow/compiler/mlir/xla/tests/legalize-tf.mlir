@@ -1611,13 +1611,24 @@ func @stateful_pcall_multi_in_out(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (te
 
 // CHECK-LABEL: func @elu
 func @elu(%arg0: tensor<1xf32>) -> tensor<1xf32> {
-  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK-DAG: %[[PRED:.*]] = chlo.broadcast_compare %arg0, %[[ZERO]] {broadcast_dimensions = dense<> : tensor<0xi64>, comparison_direction = "GT"}
+  // CHECK-DAG: %[[ZERO:.*]] = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<1xf32>) -> tensor<1xf32>
+  // CHECK-DAG: %[[PRED:.*]] = "mhlo.compare"(%arg0, %[[ZERO]]) {comparison_direction = "GT"}
   // CHECK-DAG: %[[EXP:.*]] = "mhlo.exponential_minus_one"(%arg0)
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[PRED]], %arg0, %[[EXP]])
   // CHECK: return %[[RESULT]]
   %0 = "tf.Elu"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
   return %0: tensor<1xf32>
+}
+
+// CHECK-LABEL: func @elu_unranked
+func @elu_unranked(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-DAG: %[[ZERO:.*]] = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<?xf32>) -> tensor<?xf32>
+  // CHECK-DAG: %[[PRED:.*]] = "mhlo.compare"(%arg0, %[[ZERO]]) {comparison_direction = "GT"}
+  // CHECK-DAG: %[[EXP:.*]] = "mhlo.exponential_minus_one"(%arg0)
+  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[PRED]], %arg0, %[[EXP]])
+  // CHECK: return %[[RESULT]]
+  %0 = "tf.Elu"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0: tensor<?xf32>
 }
 
 // CHECK-LABEL: func @elu_grad
