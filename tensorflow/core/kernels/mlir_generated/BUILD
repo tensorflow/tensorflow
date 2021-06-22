@@ -1097,8 +1097,7 @@ gpu_kernel_library(
         "floor",
         "log",
         "log1p",
-        # TODO(akuegel): Re-enable once relu_grad codegen supports unranked.
-        #"relu_grad",
+        "relu_grad",
         "rsqrt",
         "sqrt",
         "tanh",
