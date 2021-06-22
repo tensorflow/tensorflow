@@ -1199,6 +1199,9 @@ table SignatureDef {
 
   // Key value which was in the Tensorflow SavedModel SignatureDef map.
   key:string;
+
+  // Subgraph index of the exported method.
+  subgraph_index:uint;
 }
 
 table Model {
