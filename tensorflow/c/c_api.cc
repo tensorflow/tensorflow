@@ -645,11 +645,11 @@ TF_DEVICELIST_METHOD(uint64_t, TF_DeviceListIncarnation, incarnation(), 0);
 
 // Helper functions -----------------------------------------------------------
 
+namespace {
+
 TF_Operation* ToOperation(Node* node) {
   return static_cast<TF_Operation*>(static_cast<void*>(node));
 }
-
-namespace {
 
 string OutputName(const TF_Output& output) {
   return StrCat(output.oper->node.name(), ":", output.index);
