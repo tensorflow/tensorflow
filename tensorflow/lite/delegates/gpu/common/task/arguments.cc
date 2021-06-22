@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 
+#include <algorithm>
+#include <string>
+#include <utility>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -196,6 +200,16 @@ int Arguments::GetWriteTexturesCount(const GpuInfo& gpu_info) const {
     counter += t.second->GetGPUResources(gpu_info).GetWriteImagesCount();
   }
   return counter;
+}
+
+void Arguments::SetStateValueForAllObjects(const std::string& key,
+                                           const std::string& value) {
+  for (auto& obj : object_refs_) {
+    obj.second->SetStateVar(key, value);
+  }
+  for (auto& obj : objects_) {
+    obj.second->SetStateVar(key, value);
+  }
 }
 
 }  // namespace gpu
