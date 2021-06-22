@@ -57,11 +57,26 @@
         https://www.tensorflow.org/tutorials/distribute/parameter_server_training).
         It can also be used with single-worker training or other strategies.
         See docstring for more info.
+    *   Preprocessing layers moved from experimental to core.
+        *   Import paths moved from
+            `tf.keras.layers.preprocessing.experimental` to `tf.keras.layers`.
     *   Updates to Preprocessing layers API for consistency and clarity:
         *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
             to `None`. This matches the default masking behavior of `Hashing`
             and `Embedding` layers. To keep existing behavior, pass
             `mask_token=""` during layer creation.
+        *   Renamed `"binary"` output mode to `"multi_hot"` for
+            `CategoryEncoding`, `StringLookup`, `IntegerLookup`, and
+            `TextVectorization`. Multi-hot encoding will no longer
+            automatically uprank rank 1 inputs, so these layers can now
+            multi-hot encode unbatched multi-dimensional samples.
+        *   Added a new output mode `"one_hot"` for `CategoryEncoding`,
+            `StringLookup`, `IntegerLookup`, which will encode each element in
+            an input batch individually, and automatically append a new output
+            dimension if necessary. Use this mode on rank 1 inputs for the old
+            `"binary"` behavior of one-hot encoding a batch of scalars.
+        *   `Normalization` will no longer automatically uprank rank 1 inputs,
+            allowing normalization of unbatched multi-dimensional samples.
 
 * `tf.lite`:
     *   The recommended Android NDK version for building TensorFlow Lite has
