@@ -152,7 +152,10 @@ PYBIND11_MODULE(xla_extension, m) {
                TF_RETURN_IF_ERROR(device.TransferFromOutfeed(literal.get()));
              }
              return LiteralToPython(std::move(literal));
-           });
+           })
+      .def("live_buffers", [](const ClientAndPtr<PjRtDevice>& device) {
+        return device.client->LiveBuffersOnDevice(device.get());
+      });
 
   py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
       .def("__repr__", [](const CpuDevice& device) {
