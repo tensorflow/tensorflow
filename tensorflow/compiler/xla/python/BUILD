@@ -113,6 +113,22 @@ py_test(
 )
 
 cc_library(
+    name = "status_casters",
+    hdrs = ["status_casters.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
@@ -124,6 +140,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":absl_casters",
+        ":status_casters",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
