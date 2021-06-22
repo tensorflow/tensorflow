@@ -1259,6 +1259,32 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_loop_variant_scatter_indices(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 10, dtypes.int32)
+      handle = list_ops.tensor_list_scatter(
+          [[1, i], [i + 1, 2]],
+          [i, i + 5], input_handle=handle)
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_duplicate_indices(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 10, dtypes.int32)
+      handle = list_ops.tensor_list_scatter(
+          [[1, i], [1, i + 1], [i + 2, 3]],
+          [i, i, i + 2], input_handle=handle)
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 5)
+
   def test_create_outside_and_gather(self):
     handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
     handle = list_ops.tensor_list_scatter([[2, 3]], [0], input_handle=handle)
