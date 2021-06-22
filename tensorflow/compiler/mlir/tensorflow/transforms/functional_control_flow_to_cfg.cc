@@ -36,10 +36,6 @@ namespace {
 
 struct FunctionalControlFlowToCFG
     : public PassWrapper<FunctionalControlFlowToCFG, FunctionPass> {
-  void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<tensor::TensorDialect>();
-  }
-
   void runOnFunction() override;
 };
 

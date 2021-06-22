@@ -120,7 +120,7 @@ struct ComputeOpAndFuncBufferizePass
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect, math::MathDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
+    target.addIllegalOp<SubTensorOp, SubTensorInsertOp>();
 
     CustomBufferizeTypeConverter converter;
     // Configure bufferize pattern for functions and lhlo.

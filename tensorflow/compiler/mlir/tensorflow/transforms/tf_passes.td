@@ -890,7 +890,6 @@ def TensorArrayOpsDecompositionPass : Pass<"tf-tensor-array-ops-decomposition", 
     or that can be inferred from a later write, and 3) all elements have the same
     shape.
   }];
-  let dependentDialects = ["tensor::TensorDialect"];
 
   let constructor = "TF::CreateTensorArrayOpsDecompositionPass()";
 }
