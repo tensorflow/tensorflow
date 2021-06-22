@@ -122,7 +122,8 @@ func @test_rcp(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_div
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.div"(%arg0, %arg1)
+// CHECK-DAG: %[[RESHAPE:.*]] = "tosa.reshape"(%arg1)
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.div"(%arg0, %[[RESHAPE]])
 // CHECK: return %[[VAR0]]
 func @test_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<13x21x3xi32> {
   %0 = "tfl.div"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xi32>, tensor<i32>) -> tensor<13x21x3xi32>
@@ -132,7 +133,8 @@ func @test_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<13x21x3
 // -----
 
 // CHECK-LABEL: test_floor_div
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.div"(%arg0, %arg1)
+// CHECK-DAG: %[[RESHAPE:.*]] = "tosa.reshape"(%arg1)
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.div"(%arg0, %[[RESHAPE]])
 // CHECK: return %[[VAR0]]
 func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<13x21x3xi32> {
   %0 = "tfl.floor_div"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xi32>, tensor<i32>) -> tensor<13x21x3xi32>
