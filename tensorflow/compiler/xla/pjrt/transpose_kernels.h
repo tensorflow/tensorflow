@@ -34,8 +34,8 @@ namespace xla {
 // lda, ldb are strides in bytes.
 template <typename T, int bs>
 struct TransposeMicroKernel {
-  static void Apply(const char* __restrict__ a, int64_t lda,
-                    char* __restrict__ b, int64_t ldb) {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
     for (int i = 0; i < bs; ++i) {
       for (int j = 0; j < bs; ++j) {
         *reinterpret_cast<T*>(b + i * ldb + j * sizeof(T)) =
@@ -53,8 +53,8 @@ struct TransposeMicroKernel {
 
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
-  static void Apply(const char* __restrict__ a, int64_t lda,
-                    char* __restrict__ b, int64_t ldb) {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
     __m128i x = _mm_set_epi32(*reinterpret_cast<const uint32_t*>(a + lda * 0),
                               *reinterpret_cast<const uint32_t*>(a + lda * 1),
                               *reinterpret_cast<const uint32_t*>(a + lda * 2),
@@ -75,8 +75,8 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
 // and call it here rather than using AVX intrinsics.
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
-  static void Apply(const char* __restrict__ a, int64_t lda,
-                    char* __restrict__ b, int64_t ldb) {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
     std::array<__m128i, 16> packet;
     for (int i = 0; i < 16; ++i) {
       packet[i] =
@@ -187,8 +187,8 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
 
 template <>
 struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
-  static void Apply(const char* __restrict__ a, int64_t lda,
-                    char* __restrict__ b, int64_t ldb) {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
     using Eigen::internal::Packet8h;
     using Eigen::internal::PacketBlock;
     constexpr int bs = 8;
@@ -207,8 +207,8 @@ struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
 
 template <>
 struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
-  static void Apply(const char* __restrict__ a, int64_t lda,
-                    char* __restrict__ b, int64_t ldb) {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
     using Eigen::internal::Packet4f;
     using Eigen::internal::PacketBlock;
     constexpr int bs = 4;
@@ -227,8 +227,8 @@ struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
 
 template <>
 struct TransposeMicroKernel<uint32_t, /*bs=*/8> {
-  static void Apply(const char* __restrict__ a, int64_t lda,
-                    char* __restrict__ b, int64_t ldb) {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
     using Eigen::internal::Packet8f;
     using Eigen::internal::PacketBlock;
     constexpr int bs = 8;
@@ -247,8 +247,8 @@ struct TransposeMicroKernel<uint32_t, /*bs=*/8> {
 
 template <>
 struct TransposeMicroKernel<uint64_t, /*bs=*/2> {
-  static void Apply(const char* __restrict__ a, int64_t lda,
-                    char* __restrict__ b, int64_t ldb) {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
     using Eigen::internal::Packet2d;
     using Eigen::internal::PacketBlock;
     constexpr int bs = 2;
@@ -267,8 +267,8 @@ struct TransposeMicroKernel<uint64_t, /*bs=*/2> {
 
 template <>
 struct TransposeMicroKernel<uint64_t, /*bs=*/4> {
-  static void Apply(const char* __restrict__ a, int64_t lda,
-                    char* __restrict__ b, int64_t ldb) {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
     using Eigen::internal::Packet4d;
     using Eigen::internal::PacketBlock;
     constexpr int bs = 4;

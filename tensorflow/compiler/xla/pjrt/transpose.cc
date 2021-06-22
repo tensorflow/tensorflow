@@ -107,8 +107,8 @@ struct TransposePlan::Node {
 };
 
 template <typename T, int inner_bs>
-void MacroKernelBlocked(const char* __restrict__ a, int64_t lda, int outer_bs_a,
-                        char* __restrict__ b, int64_t ldb, int outer_bs_b) {
+void MacroKernelBlocked(const char* __restrict a, int64_t lda, int outer_bs_a,
+                        char* __restrict b, int64_t ldb, int outer_bs_b) {
   DVLOG(10) << "MacroKernelBlocked lda=" << lda << " ldb=" << ldb
             << " outer_bs_a=" << outer_bs_a << " outer_bs_b=" << outer_bs_b
             << " inner_bs=" << inner_bs;
@@ -126,7 +126,7 @@ void MacroKernelBlocked(const char* __restrict__ a, int64_t lda, int outer_bs_a,
 // Transpose() is a driver function that implements a multidimensional loop nest
 // following by iterating over the linked Node data structure.
 template <typename T, int inner_bs>
-void Transpose(const char* __restrict__ a, int outer_bs_a, char* __restrict__ b,
+void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
                int outer_bs_b, TransposePlan::Node* node) {
   DVLOG(10) << "Transpose " << outer_bs_a << " " << outer_bs_b;
   DCHECK_GT(outer_bs_a, 0);
@@ -226,7 +226,7 @@ void Transpose(const char* __restrict__ a, int outer_bs_a, char* __restrict__ b,
 }
 
 template <typename T>
-void TransposeConstStride1(const char* __restrict__ a, char* __restrict__ b,
+void TransposeConstStride1(const char* __restrict a, char* __restrict b,
                            TransposePlan::Node* node) {
   const int64_t start = node->start;
   const int64_t end = node->end;
