@@ -288,7 +288,8 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           buffer_[i].resize(vector_size);
           for (int64 j = 0; j < vector_size; j++) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                strings::StrCat("buffer[", i, "][", j, "]"), &buffer_[i][j]));
+                ctx->flr(), strings::StrCat("buffer[", i, "][", j, "]"),
+                &buffer_[i][j]));
           }
         }
         return Status::OK();

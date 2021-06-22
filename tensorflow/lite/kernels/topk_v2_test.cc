@@ -38,12 +38,10 @@ class TopKV2OpModel : public SingleOpModel {
   TopKV2OpModel(int top_k, std::initializer_list<int> input_shape,
                 std::initializer_list<InputType> input_data,
                 TestType input_tensor_types) {
+    input_ = AddInput(GetTensorType<InputType>());
     if (input_tensor_types == TestType::kDynamic) {
-      input_ = AddInput(GetTensorType<InputType>());
       top_k_ = AddInput(TensorType_INT32);
     } else {
-      input_ =
-          AddConstInput(GetTensorType<InputType>(), input_data, input_shape);
       top_k_ = AddConstInput(TensorType_INT32, {top_k}, {1});
     }
     output_values_ = AddOutput(GetTensorType<InputType>());
@@ -51,8 +49,8 @@ class TopKV2OpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_TOPK_V2, BuiltinOptions_TopKV2Options, 0);
     BuildInterpreter({input_shape, {1}});
 
+    PopulateTensor<InputType>(input_, input_data);
     if (input_tensor_types == TestType::kDynamic) {
-      PopulateTensor<InputType>(input_, input_data);
       PopulateTensor<int32_t>(top_k_, {top_k});
     }
   }

@@ -37,6 +37,11 @@ PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
 PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
 
+PyClient::~PyClient() {
+  py::gil_scoped_release gil;
+  pjrt_client_ = nullptr;
+}
+
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
   auto span = pjrt_client_->devices();

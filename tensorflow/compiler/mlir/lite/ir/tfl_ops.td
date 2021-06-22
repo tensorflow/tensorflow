@@ -4774,9 +4774,7 @@ this value or a subsequent newer value of the variable.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id,
+    TFL_ResourceTensor:$resource_id,
     TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$value
   );
 
@@ -4791,9 +4789,7 @@ Read variable data identified by 'resource_id'.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id
+    TFL_ResourceTensor:$resource_id
   );
 
   let results = (outs TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$result);

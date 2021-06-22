@@ -602,9 +602,8 @@ TEST_F(QuantizationUtilsTest, QuantizeFloat16Clamp) {
   auto weightsf16 = reinterpret_cast<Eigen::half*>(
       model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data.data());
   std::vector<float> wf32(kNumElements);
-  std::transform(weightsf16, weightsf16 + 6, wf32.begin(), [](Eigen::half a) {
-    return Eigen::half_impl::half_to_float(a);
-  });
+  std::transform(weightsf16, weightsf16 + 6, wf32.begin(),
+                 [](Eigen::half a) { return static_cast<float>(a); });
 
   EXPECT_THAT(wf32,
               ElementsAreArray({2.0, 1.0, 65504., 65504., -65504., -65504.}));

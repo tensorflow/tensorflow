@@ -3768,7 +3768,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )

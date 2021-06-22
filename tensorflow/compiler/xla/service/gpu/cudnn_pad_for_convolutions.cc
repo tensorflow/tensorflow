@@ -433,7 +433,7 @@ StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
       // On Turing and later (sm75+), pad to multiples of 32 bytes if possible,
       // because that lets us use the fast int8x32 data type.
       bool local_changed = false;
-      if (IsTuringOrLater()) {
+      if (compute_capability_.IsAtLeast(7, 5)) {
         TF_ASSIGN_OR_RETURN(
             local_changed,
             ResolveAndPad(
@@ -449,7 +449,7 @@ StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
       }
       changed |= local_changed;
     }
-    if (IsVoltaOrLater()) {
+    if (compute_capability_.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
       for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
         TF_ASSIGN_OR_RETURN(
             bool local_changed,

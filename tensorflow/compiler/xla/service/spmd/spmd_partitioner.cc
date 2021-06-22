@@ -363,6 +363,8 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
   state_.reshard_cache->per_hlo_cache[resharded.hlo()]
       .reshard_cache.emplace_back(sharding(), *this);
   if (use_cache) {
+    // Get the cache again as it might be invalidated by the insertion above.
+    auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
     cache.emplace_back(target, std::move(resharded));
     return cache.back().second;
   }
@@ -831,7 +833,8 @@ PartitionedHlo PartitionedHlo::Replicate() {
       }
     }
   }
-  const HloSharding& sharding = hlo_->sharding();
+  // Do not use a reference as the HLO's sharding can be temporarily replaced.
+  const HloSharding sharding = hlo_->sharding();
   const Shape& shape = hlo_->shape();
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
 
@@ -846,6 +849,8 @@ PartitionedHlo PartitionedHlo::Replicate() {
   auto update_cache = [&](PartitionedHlo resharded) {
     state_.reshard_cache->per_hlo_cache[resharded.hlo()]
         .reshard_cache.emplace_back(sharding, *this);
+    // Get the cache again as it might be invalidated by the insertion above.
+    auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
     if (state_.partitioner->options().cache_all_gather) {
       cache.emplace_back(HloSharding::Replicate(), std::move(resharded));
       return cache.back().second;
@@ -870,17 +875,57 @@ HloInstruction* PartitionedHlo::ReplicatePartial(absl::Span<const int64> dims) {
   const Shape& shard_shape = hlo()->shape();
   Shape target_shape = shard_shape;
   Shape padded_target_shape = shard_shape;
+  std::vector<int64> broadcast_dims;
+  std::vector<int64> ag_dims;
+  // Find dimensions that can be replicated with Broadcast() (shard size 1) and
+  // others that need all-gather.
   for (int64 i : dims) {
-    padded_target_shape.set_dimensions(
-        i, shard_shape.dimensions(i) * sharding().tile_assignment().dim(i));
+    if (sharding().tile_assignment().dim(i) == 1) {
+      continue;
+    }
     target_shape.set_dimensions(i, base_shape().dimensions(i));
+    if (target_shape.dimensions(i) == shard_shape.dimensions(i)) {
+      broadcast_dims.push_back(i);
+    } else {
+      padded_target_shape.set_dimensions(
+          i, shard_shape.dimensions(i) * sharding().tile_assignment().dim(i));
+      ag_dims.push_back(i);
+    }
+  }
+
+  HloInstruction* broadcast = hlo_;
+  if (!broadcast_dims.empty()) {
+    std::vector<int64> other_dims;
+    for (int64 i = 0; i < sharding().tile_assignment().num_dimensions(); ++i) {
+      if (!absl::c_linear_search(broadcast_dims, i)) {
+        other_dims.push_back(i);
+      }
+    }
+    HloSharding original_sharding = sharding();
+    auto grouped = GroupShardingOnDims(original_sharding, other_dims);
+    std::vector<int64> dev_indices(
+        original_sharding.tile_assignment().num_dimensions(), 0);
+    hlo_->set_sharding(HloSharding::AssignDevice(
+        grouped.sharding.tile_assignment()(dev_indices)));
+    auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+        state(), grouped.device_groups, state().b);
+    auto partial_replicate_hlo =
+        PartitionedHlo(hlo_, shard_shape, per_group_partitioner_state)
+            .Broadcast();
+    hlo_->set_sharding(original_sharding);
+    partial_replicate_hlo.hlo()->clear_sharding();
+    broadcast = partial_replicate_hlo.hlo();
+  }
+
+  if (ag_dims.empty()) {
+    return broadcast;
   }
 
   HloInstruction* result = nullptr;
   if (state_.collective_ops_creator.create_cross_partition_all_gather) {
-    result = state_.partitioner->AllGatherShards(state_.b, hlo_, sharding(),
-                                                 state_.next_channel_id, dims,
-                                                 state_.collective_ops_creator);
+    result = state_.partitioner->AllGatherShards(
+        state_.b, broadcast, sharding(), state_.next_channel_id, ag_dims,
+        state_.collective_ops_creator);
   }
   if (result == nullptr) {
     auto zero = state_.b->AddInstruction(HloInstruction::CreateConstant(
@@ -888,14 +933,14 @@ HloInstruction* PartitionedHlo::ReplicatePartial(absl::Span<const int64> dims) {
     auto zero_bcast = state_.b->AddInstruction(
         HloInstruction::CreateBroadcast(padded_target_shape, zero, {}));
     auto offsets = MakePartitionOffsets(padded_target_shape, sharding(),
-                                        state_.partition_id, state_.b, dims);
+                                        state_.partition_id, state_.b, ag_dims);
     auto dus =
         state_.b->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            padded_target_shape, zero_bcast, hlo_, offsets));
+            padded_target_shape, zero_bcast, broadcast, offsets));
     HloComputation* reduction =
         MakeBinaryAdd(shard_shape.element_type(), state_.module);
     result = state_.partitioner->AllReduceAlongShardingDims(
-        state_.b, dus, sharding(), state_.next_channel_id, dims,
+        state_.b, dus, sharding(), state_.next_channel_id, ag_dims,
         state_.collective_ops_creator, reduction);
   }
   if (!ShapeUtil::Compatible(target_shape, padded_target_shape)) {

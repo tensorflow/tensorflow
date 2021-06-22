@@ -452,6 +452,12 @@ set_bound = gen_xla_ops.xla_set_bound
 set_dynamic_dimension_size = gen_xla_ops.xla_set_dynamic_dimension_size
 
 
+# Inverse of xla_set_dynamic_dimension_size. Make an xla bounded dynamic
+# dimension into a static dimension. The bound of the size of dimension
+# `dim_index` becomes the static dimension size.
+remove_dynamic_dimension_size = gen_xla_ops.xla_remove_dynamic_dimension_size
+
+
 def reshape(x, new_sizes, dimensions=None, name=None):
   if dimensions is not None:
     x = array_ops.transpose(x, dimensions)

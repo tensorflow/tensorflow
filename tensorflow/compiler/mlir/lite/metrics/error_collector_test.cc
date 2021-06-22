@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 
 #include <cstddef>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
@@ -97,8 +99,7 @@ StatusOr<OwningModuleRef> LoadModule(MLIRContext* context,
 
 TEST(ErrorCollectorTest, TessSuccessPass) {
   std::string input_file = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/compiler/mlir/lite/metrics/testdata/"
-      "strided_slice.mlir");
+      "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir");
   MLIRContext context;
   context.allowUnregisteredDialects();
   context.enableMultithreading();
@@ -118,14 +119,17 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
 }
 
 TEST(ErrorCollectorTest, TessFailurePass) {
-  std::string input_file = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/compiler/mlir/lite/metrics/testdata/"
-      "strided_slice.mlir");
+  using tflite::metrics::ConverterErrorData;
   MLIRContext context;
+  const std::string input_file =
+      "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
+  auto input_file_id = Identifier::get(input_file, &context);
+
   context.allowUnregisteredDialects();
   context.enableMultithreading();
 
-  auto module = LoadModule(&context, input_file);
+  auto module =
+      LoadModule(&context, tensorflow::GetDataDependencyFilepath(input_file));
   EXPECT_EQ(module.ok(), true);
 
   PassManager pm(&context, OpPassManager::Nesting::Implicit);
@@ -141,14 +145,28 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   EXPECT_EQ(collected_errors.size(), 2);
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
                 "MockFailurePass", "Failed at tf.Const op",
-                tflite::metrics::ConverterErrorData::ERROR_NEEDS_FLEX_OPS,
-                "tf.Const")),
+                ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.Const",
+                mlir::FileLineColLoc::get(input_file_id, 2, 9))),
             1);
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
                 "MockFailurePass", "Failed at tf.StridedSlice op",
-                tflite::metrics::ConverterErrorData::ERROR_NEEDS_FLEX_OPS,
-                "tf.StridedSlice")),
+                ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.StridedSlice",
+                mlir::FileLineColLoc::get(input_file_id, 4, 10))),
             1);
+
+  // Check the location information.
+  std::vector<std::string> locations;
+  for (const auto& error : collected_errors) {
+    EXPECT_TRUE(error.has_location());
+    locations.push_back(error.location().DebugString());
+  }
+
+  EXPECT_THAT(locations, Each(testing::HasSubstr("CALLSITELOC")));
+  EXPECT_THAT(locations, Each(testing::HasSubstr(input_file)));
+  EXPECT_THAT(locations, Contains(testing::HasSubstr("line: 2")));
+  EXPECT_THAT(locations, Contains(testing::HasSubstr("column: 9")));
+  EXPECT_THAT(locations, Contains(testing::HasSubstr("line: 4")));
+  EXPECT_THAT(locations, Contains(testing::HasSubstr("column: 10")));
 }
 }  // namespace
 }  // namespace TFL

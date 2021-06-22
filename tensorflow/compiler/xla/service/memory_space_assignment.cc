@@ -23,14 +23,12 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 namespace xla {
 
+namespace memory_space_assignment {
+
 namespace {
 // Define a dummy chunk for chunks that will be allocated in the default memory
 // space and for keeping track of number of asynchronous copies.
 const HeapSimulator::Chunk kDummyChunk{-1, -1};
-// This variable is used by the cost analysis in estimating how many times each
-// while loop will execute. Nested loops will be assumed to have executed
-// pow(kWhileExecutionCount, nesting_level) times.
-const int kWhileExecutionCount = 5;
 
 bool LooksLikeAnActivation(const HloInstruction* inst) {
   for (HloInstruction* user : inst->users()) {
@@ -63,8 +61,8 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
   return false;
 }
 
-bool IsCrossProgramPrefetchCandidate(
-    const HloValue& value, const MemorySpaceAssignment::Options& options) {
+bool IsCrossProgramPrefetchCandidate(const HloValue& value,
+                                     const Options& options) {
   return value.instruction()->parent() ==
              value.instruction()->GetModule()->entry_computation() &&
          value.instruction()->opcode() == HloOpcode::kParameter &&
@@ -93,9 +91,9 @@ bool IsCrossProgramPrefetchCandidate(
 }
 
 absl::optional<MemorySpaceAssignment::BufferInterval>
-FindCrossProgramPrefetchCandidate(
-    const HloAliasAnalysis& alias_analysis, const HloLiveRange& hlo_live_range,
-    const MemorySpaceAssignment::Options& options) {
+FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
+                                  const HloLiveRange& hlo_live_range,
+                                  const Options& options) {
   std::vector<MemorySpaceAssignment::BufferInterval> candidates;
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
@@ -147,18 +145,16 @@ FindCrossProgramPrefetchCandidate(
 }  // namespace
 
 /*static*/ StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>>
-MemorySpaceAssignmentCostAnalysis::Create(
-    const HloCostAnalysis& cost_analysis,
-    float async_copy_bandwidth_bytes_per_second,
-    float alternate_mem_bandwidth_bytes_per_second, const HloModule& module) {
+MemorySpaceAssignmentCostAnalysis::Create(const HloCostAnalysis& cost_analysis,
+                                          const Options& options,
+                                          const HloModule& module) {
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
   TF_ASSIGN_OR_RETURN(auto hlo_live_range,
                       HloLiveRange::Run(module.schedule(), *alias_analysis,
                                         module.entry_computation()));
   auto call_graph = CallGraph::Build(&module);
   return absl::WrapUnique(new MemorySpaceAssignmentCostAnalysis(
-      cost_analysis, async_copy_bandwidth_bytes_per_second,
-      alternate_mem_bandwidth_bytes_per_second, std::move(alias_analysis),
+      cost_analysis, options, std::move(alias_analysis),
       std::move(hlo_live_range), std::move(call_graph)));
 }
 
@@ -179,14 +175,14 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
         while_nest_multiplier = it->second;
       } else {
         while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
-            kWhileExecutionCount,
+            options_.xla_tpu_memory_space_assignment_while_execution_count,
             CalculateComputationNestLevel(&instruction,
                                           /*while_only=*/true));
         cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
       }
     } else {
       while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
-          kWhileExecutionCount,
+          options_.xla_tpu_memory_space_assignment_while_execution_count,
           CalculateComputationNestLevel(&instruction,
                                         /*while_only=*/true));
     }
@@ -292,7 +288,7 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
   }
   float elapsed_due_to_alternate_mem =
       bytes_accessed_from_alternate_mem /
-      alternate_mem_bandwidth_bytes_per_second_;
+      options().alternate_mem_bandwidth_bytes_per_second;
   float elapsed_due_to_default_mem =
       (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
       cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
@@ -319,7 +315,7 @@ float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
     const Shape& shape) const {
   int64 size_in_bytes = cost_analysis_.GetShapeSize(shape);
   return static_cast<float>(size_in_bytes) /
-         async_copy_bandwidth_bytes_per_second_;
+         options().async_copy_bandwidth_bytes_per_second;
 }
 
 int64 MemorySpaceAssignmentCostAnalysis::GetScheduleEndTime() const {
@@ -398,9 +394,9 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
       &cost_analysis_.hlo_live_range().instruction_schedule();
 
   // Create a vector of elapsed times and while nesting levels of HLO
-  // instructions. The elapsed times are multiplied by pow(kWhileExecutionCount,
-  // nest_level) to account for executing the HLOs multiple times in while
-  // loops.
+  // instructions. The elapsed times are multiplied by
+  // pow(while_execution_count, nest_level) to account for executing the HLOs
+  // multiple times in while loops.
   std::vector<float> instructions_elapsed_time(instruction_schedule_->size(),
                                                0.0);
   for (const auto& instruction_and_logical_time : *instruction_schedule_) {
@@ -425,8 +421,11 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     float elapsed_time = cost_analysis_.GetInstructionElapsed(
         *instruction_and_logical_time.first);
     instructions_elapsed_time[logical_time] =
-        elapsed_time * tensorflow::MathUtil::IPow<float>(kWhileExecutionCount,
-                                                         while_nest_level);
+        elapsed_time *
+        tensorflow::MathUtil::IPow<float>(
+            cost_analysis_.options()
+                .xla_tpu_memory_space_assignment_while_execution_count,
+            while_nest_level);
   }
   // As an optimization, create a cumulative sum vector of elapsed time.
   float cumsum = 0.0;
@@ -687,8 +686,10 @@ float CostAnalysisPrefetchIntervalPicker::GetLogicalIntervalElapsed(
   int interval_while_nest_level = GetMinWhileNestLevel(start_time, end_time);
   return (elapsed_time_cumsum_[end_time - 1] -
           elapsed_time_cumsum_[start_time]) /
-         tensorflow::MathUtil::IPow<float>(kWhileExecutionCount,
-                                           interval_while_nest_level);
+         tensorflow::MathUtil::IPow<float>(
+             cost_analysis_.options()
+                 .xla_tpu_memory_space_assignment_while_execution_count,
+             interval_while_nest_level);
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
@@ -2948,7 +2949,7 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
             *instruction, operands_in_alternate_memory,
             outputs_in_alternate_memory);
     float while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
-        kWhileExecutionCount,
+        options_.xla_tpu_memory_space_assignment_while_execution_count,
         options_.cost_analysis->CalculateComputationNestLevel(
             instruction,
             /*while_only=*/true));
@@ -3394,8 +3395,6 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
                  std::forward_as_tuple(second->copy_done_schedule_before(),
                                        second->copy_start_schedule_after());
         });
-
-    CopyAllocation* prev_copy_allocation = nullptr;
     for (CopyAllocation* copy_allocation : copy_allocations) {
       // If the copy start doesn't happen to be scheduled at the correct
       // computation, delay it until the correct computation starts.
@@ -3417,7 +3416,6 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
           copy_allocation->copy_start());
       schedule_before_[copy_allocation->copy_done_schedule_before()].push_back(
           copy_allocation->copy_done());
-      prev_copy_allocation = copy_allocation;
     }
   }
 }
@@ -3707,5 +3705,5 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 
   return Status::OK();
 }
-
+}  // namespace memory_space_assignment
 }  // namespace xla

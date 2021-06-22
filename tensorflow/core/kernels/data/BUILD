@@ -87,6 +87,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -107,6 +108,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -298,9 +300,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -440,6 +444,7 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:root_dataset",
+        "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
@@ -993,6 +998,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -1042,6 +1048,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -1060,6 +1067,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -1124,6 +1132,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -1183,6 +1192,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -1216,6 +1226,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -1328,6 +1339,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
     ],
 )
 
@@ -1378,6 +1390,8 @@ filegroup(
         "//tensorflow/core/data:rewrite_utils.h",
         "//tensorflow/core/data:root_dataset.cc",
         "//tensorflow/core/data:root_dataset.h",
+        "//tensorflow/core/data:serialization_utils.cc",
+        "//tensorflow/core/data:serialization_utils.h",
         "//tensorflow/core/data:split_utils.cc",
         "//tensorflow/core/data:split_utils.h",
         "//tensorflow/core/data:stats_utils.cc",

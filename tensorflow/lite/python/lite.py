@@ -1414,6 +1414,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self.dump_graphviz_video = False
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
+    self._experimental_allow_all_select_tf_ops = False
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
@@ -1585,6 +1586,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
+        "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
     })
 
     if not self.experimental_new_converter:

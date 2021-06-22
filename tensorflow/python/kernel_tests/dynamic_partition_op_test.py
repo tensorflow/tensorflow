@@ -105,10 +105,10 @@ class DynamicPartitionTest(test.TestCase):
     for i in range(rows):
       data_list[i] = [i for _ in range(cols)]
     num_partitions = 97
-    indices_list = [(i ** 2) % num_partitions for i in range(rows)]
+    indices_list = [(i**2) % num_partitions for i in range(rows)]
     parts = [[] for _ in range(num_partitions)]
     for i in range(rows):
-      parts[(i ** 2) % num_partitions].append(data_list[i])
+      parts[(i**2) % num_partitions].append(data_list[i])
     with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
@@ -146,15 +146,15 @@ class DynamicPartitionTest(test.TestCase):
       partition_vals = self.evaluate(partitions)
 
     self.assertEqual(4, len(partition_vals))
-    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
-                        partition_vals[0])
-    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
-                        partition_vals[1])
-    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
-                        partition_vals[2])
-    self.assertAllEqual(np.array([10, 13, 12, 11],
-                                 dtype=np.float64).reshape(-1, 4),
-                        partition_vals[3])
+    self.assertAllEqual(
+        np.array([], dtype=np.float64).reshape(-1, 4), partition_vals[0])
+    self.assertAllEqual(
+        np.array([], dtype=np.float64).reshape(-1, 4), partition_vals[1])
+    self.assertAllEqual(
+        np.array([], dtype=np.float64).reshape(-1, 4), partition_vals[2])
+    self.assertAllEqual(
+        np.array([10, 13, 12, 11], dtype=np.float64).reshape(-1, 4),
+        partition_vals[3])
 
   @test_util.run_deprecated_v1
   def testHigherRank(self):
@@ -294,6 +294,7 @@ class DynamicPartitionTest(test.TestCase):
       self.assertAllEqual([], partition_vals[i])
 
   @test_util.run_deprecated_v1
+  @test_util.no_xla_auto_jit("xla doesn't raise out-of-range exceptions")
   def testErrorIndexOutOfRange(self):
     with self.cached_session():
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
@@ -305,6 +306,7 @@ class DynamicPartitionTest(test.TestCase):
         self.evaluate(partitions)
 
   @test_util.run_deprecated_v1
+  @test_util.no_xla_auto_jit("xla doesn't raise out-of-range exceptions")
   def testScalarIndexOutOfRange(self):
     # GPU kernels don't throw exceptions.
     with self.cached_session(use_gpu=False):
@@ -315,6 +317,7 @@ class DynamicPartitionTest(test.TestCase):
         self.evaluate(partitions)
 
   @test_util.run_deprecated_v1
+  @test_util.no_xla_auto_jit("xla doesn't raise out-of-range exceptions")
   def testHigherRankIndexOutOfRange(self):
     # GPU kernels don't throw exceptions.
     with self.cached_session(use_gpu=False) as sess:
@@ -341,9 +344,13 @@ class DynamicPartitionTest(test.TestCase):
   #  see https://github.com/tensorflow/tensorflow/issues/17106
   def testCUBBug(self):
     x = constant_op.constant(np.random.randn(3072))
-    inds = [0]*189 + [1]*184 + [2]*184 + [3]*191 + [4]*192 + [5]*195 + [6]*195
-    inds += [7]*195 + [8]*188 + [9]*195 + [10]*188 + [11]*202 + [12]*194
-    inds += [13]*194 + [14]*194 + [15]*192
+    inds = [0] * 189 + [1] * 184 + [2] * 184 + [3] * 191 + [4] * 192 + [
+        5
+    ] * 195 + [6] * 195
+    inds += [7] * 195 + [8] * 188 + [9] * 195 + [10] * 188 + [11] * 202 + [
+        12
+    ] * 194
+    inds += [13] * 194 + [14] * 194 + [15] * 192
     self.assertEqual(len(inds), x.shape[0])
     partitioned = data_flow_ops.dynamic_partition(x, inds, 16)
     with self.cached_session():
@@ -362,7 +369,6 @@ class DynamicPartitionTest(test.TestCase):
         results.append(self.evaluate(result))
     if device_list:
       self.assertAllEqual(results, np.zeros((len(device_list), 10, 100)))
-
 
 if __name__ == "__main__":
   test.main()

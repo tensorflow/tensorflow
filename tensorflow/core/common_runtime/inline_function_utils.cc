@@ -220,6 +220,7 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     return caller_device_;
   }
   absl::optional<string> BodyNodeDevice(const NodeDef& ndef) const override {
+    // LINT.IfChange
     // TODO(ezhulenev): If function would have been instantiated as a
     // multi-device function and executed via FunctionLibraryRuntime, it could
     // be potentially placed on any available device. However there are multiple
@@ -235,6 +236,7 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     DeviceNameUtils::MergeUnsetDevNames(&ndef_parsed_device,
                                         caller_parsed_device_);
     return DeviceNameUtils::ParsedNameToString(ndef_parsed_device);
+    // LINT.ThenChange(../../compiler/mlir/tensorflow/ir/tf_ops.cc)
   }
 
  private:

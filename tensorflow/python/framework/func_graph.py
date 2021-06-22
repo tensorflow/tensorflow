@@ -192,7 +192,7 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.control_outputs = []
-    self.control_captures = set()
+    self.control_captures = object_identity.ObjectIdentitySet()
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []

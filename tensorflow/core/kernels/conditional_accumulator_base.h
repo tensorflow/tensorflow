@@ -193,9 +193,7 @@ class TypeConverter {
 template <typename U>
 class TypeConverter<Eigen::half, U> {
  public:
-  static Eigen::half ConvertUToT(U c) {
-    return Eigen::half_impl::float_to_half_rtne(c);
-  }
+  static Eigen::half ConvertUToT(U c) { return static_cast<Eigen::half>(c); }
 };
 
 }  // namespace tensorflow

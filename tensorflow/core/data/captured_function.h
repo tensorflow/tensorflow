@@ -58,10 +58,6 @@ Status MakeIteratorFromInputElement(
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node);
 
-// Determines whether the given node is stateful.
-Status IsNodeStateful(const FunctionLibraryDefinition& library,
-                      const NodeDef& node);
-
 struct ShortCircuitInfo {
   std::vector<int> indices;
   std::vector<bool> can_move;
