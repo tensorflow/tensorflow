@@ -610,14 +610,14 @@ class DeviceTest(test.TestCase):
 
   @reset_eager
   def testGetMemoryInfoCPU(self):
-    # MklCPUAllocator (mkl_cpu_allocator.h) does not throw exception.
-    # So skip the test.
-    # TODO(gzmkl) work with Google team to address design issue in allocator.h
-    if not test_util.IsMklEnabled():
-      with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
-        config.get_memory_info('CPU:0')
-      with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
-        config.get_memory_usage('CPU:0')
+    if test_util.IsMklEnabled():
+      # TODO(gzmkl) work with Google team to address design issue in allocator.h
+      self.skipTest("MklCPUAllocator does not throw exception. So skip test.")
+
+    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
+      config.get_memory_info('CPU:0')
+    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
+      config.get_memory_usage('CPU:0')
 
   @reset_eager
   def testGetMemoryInfoUnknownDevice(self):
@@ -671,11 +671,12 @@ class DeviceTest(test.TestCase):
 
   @reset_eager
   def testResetMemoryStatsCPU(self):
-    # MklCPUAllocator (mkl_cpu_allocator.h) does not throw exception.
-    # So skip the test.
-    if not test_util.IsMklEnabled():
-      with self.assertRaisesRegex(ValueError, 'Cannot reset memory stats'):
-        config.reset_memory_stats('CPU:0')
+    if test_util.IsMklEnabled():
+      # TODO(gzmkl) work with Google team to address design issue in allocator.h
+      self.skipTest("MklCPUAllocator does not throw exception. So skip test.")
+
+    with self.assertRaisesRegex(ValueError, 'Cannot reset memory stats'):
+      config.reset_memory_stats('CPU:0')
 
   @reset_eager
   def testResetMemoryStatsUnknownDevice(self):
