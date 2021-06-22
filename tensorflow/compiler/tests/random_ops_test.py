@@ -108,8 +108,9 @@ class RandomOpsTest(xla_test.XLATestCase):
           x = random_ops.random_uniform(
               shape=[1000], dtype=dtype, minval=-2, maxval=33)
         y = self.evaluate(x)
-        self.assertTrue((y >= -2).sum() == 1000)
-        self.assertTrue((y < 33).sum() == 1000)
+        msg = str(y) + str(dtype)
+        self.assertEqual((y >= -2).sum(), 1000, msg)
+        self.assertEqual((y < 33).sum(), 1000, msg)
 
   def testTruncatedNormalIsNotConstant(self):
 
@@ -254,5 +255,5 @@ class RandomOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(set(result.flatten()), set(expected))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   googletest.main()
