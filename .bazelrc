@@ -556,7 +556,6 @@ try-import %workspace%/.bazelrc.user
 # Here are bazelrc configs for release builds
 build:release_base --config=v2
 build:release_base --distinct_host_configuration=false
-build:release_base --subcommands --verbose_failures
 test:release_base --flaky_test_attempts=3
 test:release_base --test_size_filters=small,medium
 
