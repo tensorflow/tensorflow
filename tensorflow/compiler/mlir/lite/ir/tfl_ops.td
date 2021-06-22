@@ -4748,7 +4748,7 @@ the dimension is padded with zeros.
   );
 }
 
-def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
+def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   let summary = "Returns a handle to a variable resource from its name.";
 
   let description = [{

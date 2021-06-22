@@ -373,6 +373,9 @@ enum BuiltinOperator : int32 {
   HASHTABLE_SIZE = 139,
   REDUCE_ALL = 140,
   CONV_3D_TRANSPOSE = 141,
+  VAR_HANDLE = 142,
+  READ_VARIABLE = 143,
+  ASSIGN_VARIABLE = 144,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -488,6 +491,9 @@ union BuiltinOptions {
   HashtableFindOptions,
   HashtableImportOptions,
   HashtableSizeOptions,
+  VarHandleOptions,
+  ReadVariableOptions,
+  AssignVariableOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -1060,6 +1066,17 @@ table HashtableImportOptions {
 }
 
 table HashtableSizeOptions {
+}
+
+table VarHandleOptions {
+  container:string;
+  shared_name:string;
+}
+
+table ReadVariableOptions {
+}
+
+table AssignVariableOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

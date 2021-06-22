@@ -1105,6 +1105,27 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
+  def testNativeVariablesModel(self):
+    """Test a basic model with Variables with saving/loading the SavedModel."""
+    root = self._getSimpleModelWithVariables()
+    input_data = tf.constant(1., shape=[1, 10])
+    to_save = root.assign_add.get_concrete_function(input_data)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, to_save)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    converter.experimental_enable_resource_variables = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.assign_add(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    for tf_result, tflite_result in zip(expected_value, actual_value[0]):
+      self.assertAllClose(tf_result, tflite_result, atol=1e-05)
+
+  @test_util.run_v2_only
   def testSignatures(self):
     """Test values for `signature_keys` argument."""
     root = self._getSimpleVariableModel()
