@@ -70,7 +70,8 @@ class GuaranteeAllFuncsOneUse
     // This value needs to be low enough to actually stop compilation in a
     // reasonable time, but not too low that it blocks real programs.
     // This number was chosen semi-randomly.
-    const int k_max_clones = 1000;
+    // TODO(jpienaar): Switch to a more context aware heuristic.
+    const int kMaxClones = 10000;
     int num_clones = 0;
     do {
       SymbolUserMap symbol_users(symbol_table_collection, module);
@@ -85,7 +86,7 @@ class GuaranteeAllFuncsOneUse
         // At this point, we know we are going to change the module.
         made_changes = true;
         for (Operation *user : users.drop_front()) {
-          if (num_clones++ > k_max_clones) {
+          if (num_clones++ > kMaxClones) {
             return func.emitError()
                    << "reached cloning limit (likely recursive call graph or "
                       "repeated diamond-like call structure "
