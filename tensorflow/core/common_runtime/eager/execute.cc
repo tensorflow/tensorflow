@@ -756,6 +756,7 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
       (*ndef->mutable_attr())[attr.name()].set_placeholder(attr.name());
     }
 
+#ifdef INTEL_MKL
     if (IsMklEnabled() &&
         absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
       // All MKL eager ops have `_kernel` private attribute that needs to be set
@@ -764,6 +765,7 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
       attr_kernel.set_s(mkl_op_registry::kMklNameChangeOpLabel);
       (*ndef->mutable_attr()).insert({"_kernel", attr_kernel});
     }
+#endif  // INTEL_MKL
 
     // Set `ret` map.
     TF_RETURN_IF_ERROR(
