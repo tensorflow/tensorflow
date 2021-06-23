@@ -47,7 +47,7 @@ this Person detection example.
 2.  Execute config.py to configure for this example.
 
     ```
-    ./tools/config.py examples/tf_example_persondetection
+    ./tools/config.py examples/tf_example_persondetect
     ```
 
 This command creates .config file in spesense/nuttx directory.
