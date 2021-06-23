@@ -3,6 +3,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     default_visibility =
@@ -75,18 +79,34 @@ tf_cc_test(
     ],
 )
 
+# Linked directly into ":tensorflow_framework".
+cc_library(
+    name = "metrics_impl",
+    srcs = [
+        "metrics.cc",
+        "metrics.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = True,
+)
+
 cc_library(
     name = "metrics",
-    srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     visibility = [
         "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
+    deps = if_static([
+        ":metrics_impl",
+    ]) + ["//tensorflow/core:lib"],
 )
 
 tf_cc_test(
