@@ -67,11 +67,15 @@ class GuaranteeAllFuncsOneUse
     SymbolTable &symbol_table = symbol_table_collection.getSymbolTable(module);
     bool made_changes = false;
 
-    // This value needs to be low enough to actually stop compilation in a
-    // reasonable time, but not too low that it blocks real programs.
-    // This number was chosen semi-randomly.
-    // TODO(jpienaar): Switch to a more context aware heuristic.
-    const int kMaxClones = 10000;
+    // The maximum number of clones value needs to be low enough to actually
+    // stop compilation in a reasonable time, but not too low that it blocks
+    // real programs. This number was chosen semi-randomly.
+    int number_of_functions = [&]() -> int {
+      auto fn_range = module.getOps<FuncOp>();
+      return std::distance(fn_range.begin(), fn_range.end());
+    }();
+    const int kMaxClones = 4 * number_of_functions;
+
     int num_clones = 0;
     do {
       SymbolUserMap symbol_users(symbol_table_collection, module);
