@@ -918,14 +918,14 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
 #elif TENSORFLOW_USE_ROCM
 
-     const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
-     gpusparseMatDescr_t descrA;
-     TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descrA));
-     TF_RETURN_IF_GPUSPARSE_ERROR(
-		     wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
-     TF_RETURN_IF_GPUSPARSE_ERROR(
-		     wrap::hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
+      const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
 
+      gpusparseMatDescr_t descrA;
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          wrap::hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
 #endif  // GOOGLE_CUDA
 
       TF_RETURN_IF_ERROR(
