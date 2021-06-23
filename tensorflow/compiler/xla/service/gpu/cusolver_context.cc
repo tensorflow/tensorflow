@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
+#if TENSORFLOW_USE_ROCM
+
 namespace rocblas_wrap {
 
 using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
@@ -74,6 +76,8 @@ using tensorflow::Env;
 FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
 
 }  // namespace rocblas_wrap
+
+#endif  // TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
