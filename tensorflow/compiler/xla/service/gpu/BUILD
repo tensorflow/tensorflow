@@ -1575,12 +1575,12 @@ tf_cc_test(
 
 cc_library(
     name = "amdgpu_compiler",
-    srcs = [
+    srcs = if_rocm_is_configured([
         "amdgpu_compiler_registration.cc",
-    ],
-    deps = [
+    ]),
+    deps = if_rocm_is_configured([
         ":amdgpu_compiler_impl",
-    ],
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 
