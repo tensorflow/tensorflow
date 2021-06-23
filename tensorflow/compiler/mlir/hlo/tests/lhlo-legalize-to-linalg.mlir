@@ -1066,7 +1066,7 @@ func @reduce_add(%arg: memref<100x10xf32>,
   return
 }
 // CHECK: %[[INIT_VAL:.*]] = memref.load %arg1[] : memref<f32>
-// CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
+// CHECK: linalg.fill(%[[INIT_VAL]], %arg2)
 // CHECK: linalg.generic {
 // CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
 // CHECK-SAME: iterator_types = ["parallel", "reduction"]}
@@ -1102,7 +1102,7 @@ func @reduce_maximum(%arg: memref<100x10xf32>,
   return
 }
 // CHECK: %[[INIT_VAL:.*]] = memref.load %arg1[] : memref<f32>
-// CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
+// CHECK: linalg.fill(%[[INIT_VAL]], %arg2)
 // CHECK: linalg.generic {
 // CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
 // CHECK-SAME: iterator_types = ["parallel", "reduction"]}
