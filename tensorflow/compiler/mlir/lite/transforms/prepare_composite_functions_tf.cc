@@ -189,6 +189,8 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
 
     if (result.wasInterrupted()) return failure();
   }
+  // Current UnidirectionalSequenceLSTMOp doesn't support mask input.
+  if (lstm_func.getNumArguments() == 7) return failure();
 
   // We should know the batch size in advance for the lstm fusion.
   // A good indicator of batch size is both cell state and input state (indices

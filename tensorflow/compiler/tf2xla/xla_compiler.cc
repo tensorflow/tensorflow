@@ -1157,8 +1157,10 @@ Status XlaCompiler::BuildArguments(
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
           if (arg.value_bound) {
-            // Propagate upper bound to arg_expression.
+            TF_RET_CHECK(arg.value_dynamism);
+            // Propagate upper bound and value dynamism to arg_expression.
             arg_expression.set_value_bound(arg.value_bound.value());
+            arg_expression.set_value_dynamism(arg.value_dynamism.value());
           }
         }
         break;

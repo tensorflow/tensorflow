@@ -604,6 +604,26 @@ func @decompose_resource_apply_RMS_prop(%arg0: tensor<*x!tf.resource>, %arg1: te
 }
 
 
+// Tests that composite tf.ResourceScatterAdd operation is decomposed.
+
+// CHECK-LABEL: @decompose_resource_scatter_add_op
+// CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
+func @decompose_resource_scatter_add_op(%indices : tensor<2x?xi32>, %updates: tensor<?x?x?xi32>) {
+  "tf_device.cluster"() ({
+    // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+    %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
+
+    // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterAdd"([[READ]], [[INDEX]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
+    // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
+    "tf.ResourceScatterAdd"(%resource, %indices, %updates) : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()
+
+    tf_device.return
+  }) : () -> ()
+  return
+}
+
+
 // Tests that composite tf.ResourceScatterUpdate operation is decomposed.
 
 // CHECK-LABEL: @decompose_resource_scatter_update_op

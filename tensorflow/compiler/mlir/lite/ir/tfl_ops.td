@@ -1128,6 +1128,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
 def TFL_GatherNdOp : TFL_Op<"gather_nd", [
     NoSideEffect,
+    SameOperandsAndResultsScale,
     PredOpTrait<"params and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Gather_nd operator";
@@ -1148,6 +1149,7 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
 
 def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
     NoSideEffect,
+    SameOperandsAndResultsScale,
     TFL_OperandHasAtleastRank<0, 1>,
     TFL_OperandHasAtleastRank<1, 1>,
     PredOpTrait<"updates and output must have same element type",
@@ -4746,7 +4748,7 @@ the dimension is padded with zeros.
   );
 }
 
-def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
+def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   let summary = "Returns a handle to a variable resource from its name.";
 
   let description = [{
@@ -4761,6 +4763,8 @@ def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
   );
 
   let results = (outs TFL_ResourceTensor:$resource_handle);
+
+  let hasOptions = 1;
 }
 
 def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
@@ -4772,9 +4776,7 @@ this value or a subsequent newer value of the variable.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id,
+    TFL_ResourceTensor:$resource_id,
     TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$value
   );
 
@@ -4789,9 +4791,7 @@ Read variable data identified by 'resource_id'.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id
+    TFL_ResourceTensor:$resource_id
   );
 
   let results = (outs TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$result);

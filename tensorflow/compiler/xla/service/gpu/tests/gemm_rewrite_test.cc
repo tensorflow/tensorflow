@@ -51,6 +51,14 @@ class GemmRewriteTest : public GpuCodegenTest {
         gpu_executable->GetAllocations();
     CHECK_EQ(allocations.size(), expected_number_of_allocations);
   }
+
+  bool IsVoltaOrLater() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability()
+        .IsAtLeast(se::CudaComputeCapability::VOLTA);
+  }
 };
 
 TEST_F(GemmRewriteTest, SimpleRewrite) {
@@ -366,7 +374,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsVoltaOrLater(*backend().default_stream_executor())) {
+  if (IsVoltaOrLater()) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm"
@@ -397,7 +405,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsVoltaOrLater(*backend().default_stream_executor())) {
+  if (IsVoltaOrLater()) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0
@@ -427,7 +435,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsVoltaOrLater(*backend().default_stream_executor())) {
+  if (IsVoltaOrLater()) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0
@@ -455,7 +463,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsVoltaOrLater(*backend().default_stream_executor())) {
+  if (IsVoltaOrLater()) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: s32[16,12]{1,0} custom-call(s8[16,4]{1,0} %pad, s8[4,12]{1,0} %pad.1)

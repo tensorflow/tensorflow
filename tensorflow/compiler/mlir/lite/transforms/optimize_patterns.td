@@ -39,7 +39,8 @@ def ExtractSingleElementAsFloat : NativeCodeCall<
 
 // Checks if the value has rank at most 'n'.
 class HasRankAtMost<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
@@ -586,7 +587,7 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
       (ValueOp:$value (MoveOp:$move $input, $move_def)),
       (MoveOp (ValueOp $input), $move_def),
-      [(HasOneUse $move)]>;
+      [(SameElementType $input, $value), (HasOneUse $move)]>;
   }
 }
 
@@ -871,3 +872,53 @@ def OptimizeSliceOp : Pat<
   (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
   (replaceWithValue $input),
   [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
+
+def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
+
+def IsLastElementEqualsOne : Constraint<CPred<
+  "TFL::IsLastElementEqualsOne($0)">>;
+
+def IsOneHotIndexAttribute : Constraint<CPred<
+  "TFL::IsOneHotIndexAttribute($0)">>;
+
+// Replace
+//   Equal(Reshape(X, shape), indices)
+// With
+//   OneHot(X, N, true, false, -1)
+// where
+//  - last value in shape is 1
+//  - indices is a incrementing series from 0 to N-1. (N elements total.)
+def ReshapeEqualOpToOneHotOp : Pat<
+  (TFL_EqualOp (TFL_ReshapeOp $x, (ConstantOp $shape)),
+               (ConstantOp $series)),
+  (TFL_OneHotOp $x,
+                (ConstantOp (GetNumElementsOrOne $series)),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
+                ConstantAttr<I32Attr, "-1">),
+  [(IsLastElementEqualsOne $shape),
+   (IsOneHotIndexAttribute $series)]>;
+
+def F32ElementsVal : Constraint<CPred<
+  "$0.getType().cast<TensorType>().getElementType().isF32()">,
+  "32 bit float tensor">;
+
+def ConvertSingleElementAttrToFloatAttr :
+  NativeCodeCall<"ConvertSingleElementAttrToFloatAttr($0)">;
+
+// Replace
+//   (float)OneHot(index, depth, on_val, off_val, axis)
+// With
+//   OneHot(index, depth, (float)on_val, (float)off_val, axis)
+def FuseOneHotAndCastToFloat : Pat<
+  (TFL_CastOp:$output (TFL_OneHotOp $indices,
+                                    $depth,
+                                    (ConstantOp $on_val),
+                                    (ConstantOp $off_val),
+                                    $axis)),
+  (TFL_OneHotOp $indices,
+                $depth,
+                (ConstantOp (ConvertSingleElementAttrToFloatAttr $on_val)),
+                (ConstantOp (ConvertSingleElementAttrToFloatAttr $off_val)),
+                $axis),
+  [(F32ElementsVal $output)]>;

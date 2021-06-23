@@ -90,6 +90,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
   explicit PyClient(std::unique_ptr<PjRtClient> pjrt_client);
   explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
+  ~PyClient();
 
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
   std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
@@ -116,6 +117,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
   std::vector<pybind11::object> LiveBuffers();
+  std::vector<pybind11::object> LiveBuffersOnDevice(PjRtDevice* device);
 
   // Returns a vector of live PyExecutable objects.
   // note: must return std::shared_ptr instead of raw ptrs
@@ -160,7 +162,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // Pointers to intrusive doubly-linked lists of buffers and executables, used
   // to iterate over all known objects when heap profiling. The list structure
   // is protected by the GIL.
-  PyBuffer* buffers_ = nullptr;
+
+  // buffers_ is a per-device list, indexed by device->id().
+  std::vector<PyBuffer*> buffers_;
   PyExecutable* executables_ = nullptr;
 };
 

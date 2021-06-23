@@ -23,10 +23,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow_estimator.python.estimator import keras
+from tensorflow_estimator.python.estimator import keras_lib
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
-keras.__all__ = [s for s in dir(keras) if not s.startswith('__')]
+keras_lib.__all__ = [s for s in dir(keras_lib) if not s.startswith('__')]
 
-from tensorflow_estimator.python.estimator.keras import *
+from tensorflow_estimator.python.estimator.keras_lib import *

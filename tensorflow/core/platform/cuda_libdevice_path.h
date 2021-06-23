@@ -41,6 +41,9 @@ inline std::vector<string> CandidateCudaRoots(
   return candidates;
 }
 
+// Returns true if we should prefer ptxas from PATH.
+bool PreferPtxasFromPath();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_

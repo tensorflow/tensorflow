@@ -3563,6 +3563,72 @@ ENTRY entry {
               AllOf(op::Copy(op::Parameter()), op::Shape("f32[2,5]")));
 }
 
+TEST_F(SpmdPartitioningTest, ConditionalManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+Negate {
+  x = f32[4,5] parameter(0), sharding={manual}
+  ROOT negate = f32[4,5] negate(x), sharding={manual}
+}
+
+Identity {
+  y = f32[4,5] parameter(0), sharding={manual}
+  ROOT copy = f32[4,5] copy(y), sharding={manual}
+}
+
+ENTRY entry {
+  %param.0 = pred[] parameter(0), sharding={manual}
+  %param.1 = f32[4,5] parameter(1), sharding={manual}
+  %param.2 = f32[4,5] parameter(2), sharding={manual}
+  ROOT cond = f32[4,5] conditional(%param.0, %param.1, %param.2),
+    true_computation=Negate, false_computation=Identity, sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("pred[]"));
+  auto param1 = AllOf(op::Parameter(1), op::Shape("f32[4,5]"));
+  auto param2 = AllOf(op::Parameter(2), op::Shape("f32[4,5]"));
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Conditional(param0, param1, param2),
+                          op::Shape("f32[4,5]")));
+}
+
+TEST_F(SpmdPartitioningTest, WhileManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+LoopCond {
+  x = s32[] parameter(0), sharding={manual}
+  const = s32[] constant(5), sharding={manual}
+  ROOT lt = pred[] compare(x, const), direction=LT, sharding={manual}
+}
+
+Inc {
+  x = s32[] parameter(0), sharding={manual}
+  const = s32[] constant(1), sharding={manual}
+  ROOT add = s32[] add(x, const), sharding={manual}
+}
+
+ENTRY entry {
+  zero = s32[] parameter(0), sharding={manual}
+  ROOT while = s32[] while(zero), body=Inc, condition=LoopCond,
+    sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto zero = AllOf(op::Parameter(0), op::Shape("s32[]"));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
+}
+
 TEST_F(SpmdPartitioningTest, SelectAndScatter_RetinaNet) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6933,8 +6999,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   auto slice = AllOf(op::Shape("f32[1,1]"),
                      op::Copy(op::DynamicSlice(op::Constant(), _, _)));
-  EXPECT_THAT(root, op::Reshape(op::Slice(op::AllReduce(op::DynamicUpdateSlice(
-                        op::Broadcast(), slice, _, _)))));
+  EXPECT_THAT(root, op::Reshape(op::AllReduce(op::Select(_, slice, _))));
 }
 
 TEST_F(SpmdPartitioningTest, GatherParallelDimRedistributionOperand) {
@@ -7934,6 +7999,48 @@ ENTRY entry {
       }
     }
   }
+}
+
+TEST_F(SpmdPartitioningTest, BroadcastAsReplicate) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[1,1] parameter(0), sharding={devices=[2,2]0,1,2,3}
+  ROOT %copy = f32[1,1] copy(%param0), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1,1]"));
+  EXPECT_THAT(root, AllOf(op::Copy(op::AllReduce(op::Select(_, param0, _))),
+                          op::Shape("f32[1,1]")));
+}
+
+TEST_F(SpmdPartitioningTest, BroadcastAsReplicate2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[1,2] parameter(0), sharding={devices=[2,2]0,1,2,3}
+  ROOT %copy = f32[1,2] copy(%param0), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1,1]"));
+  auto broadcast =
+      AllOf(op::AllReduce(op::Select(_, param0, _)), op::Shape("f32[1,1]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Copy(op::AllReduce(op::DynamicUpdateSlice(_, broadcast, _, _))),
+            op::Shape("f32[1,2]")));
 }
 
 }  // namespace

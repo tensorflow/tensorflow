@@ -3382,8 +3382,8 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
 
   ND = indices_type.getShape()[indices_rank - 1];
 
-  if (ND >= params_rank) {
-    op->emitOpError("Size of last dimension on indices must be < params rank");
+  if (ND > params_rank) {
+    op->emitOpError("Size of last dimension on indices must be <= params rank");
     return llvm::None;
   }
 
@@ -3419,9 +3419,13 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
 
   SmallVector<int32_t> flattened_coeff_vec;
   for (int i = 1; i < ND; i++) {
-    flattened_coeff_vec.push_back(indices_type.getShape()[i]);
+    flattened_coeff_vec.push_back(params_type.getShape()[i]);
   }
   flattened_coeff_vec.push_back(1);
+
+  for (int i = ND - 1; i > 0; i--) {
+    flattened_coeff_vec[i - 1] *= flattened_coeff_vec[i];
+  }
 
   llvm::Optional<Value> flattened_coeff_value = getConstTensor<int32_t>(
       rewriter, op, flattened_coeff_vec,

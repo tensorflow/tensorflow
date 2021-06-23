@@ -68,10 +68,6 @@ class HLOClient_NativeOpTrait<string name> : NativeOpTrait<name> {
 def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
 }
 
-def HLOClient_BroadcastingElementwise
-    : HLOClient_NativeOpTrait<"BroadcastingElementwise"> {
-}
-
 //===----------------------------------------------------------------------===//
 // CHLO binary elementwise op definitions.
 // From the client perspective, each of these support both explicit rank
@@ -89,7 +85,7 @@ def HLOClient_BroadcastingElementwise
 
 class HLOClient_BroadcastBinaryElementwiseOp<
   string mnemonic, list<OpTrait> traits> : HLOClient_Op<mnemonic, traits # [
-      HLOClient_BroadcastingElementwise, HLOClient_Broadcasting,
+      HLO_BroadcastingElementwise, HLOClient_Broadcasting,
       DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
       "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   let arguments = (ins
@@ -581,7 +577,7 @@ def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
 }
 
 def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
-    [NoSideEffect, HLOClient_Broadcasting, HLOClient_BroadcastingElementwise,
+    [NoSideEffect, HLOClient_Broadcasting, HLO_BroadcastingElementwise,
      SameOperandsAndResultShape, InferTypeOpInterface,
      DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
          ["inferReturnTypeComponents"]>,
@@ -711,7 +707,7 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
 def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
     NoSideEffect,
     HLOClient_Broadcasting,
-    HLOClient_BroadcastingElementwise,
+    HLO_BroadcastingElementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
     "inferReturnTypeComponents"]>]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";

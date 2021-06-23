@@ -28,7 +28,7 @@ import numpy as np
 import six
 
 from tensorflow.compiler.tf2xla.python import xla
-from tensorflow.core.framework import types_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
@@ -43,7 +43,6 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -56,6 +55,7 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import manip_ops
@@ -106,8 +106,8 @@ def _is_variant_with_internal_stacking(t):
     # TODO(b/169968286): Identify all variant tensors (e.g. maps) and we can
     # make this an error instead of assuming TensorLists have handle data.
     return None  # Presumed not a TensorList/Optional
-  return (shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST or
-          shapes_and_types[0].specialized_type == types_pb2.ST_OPTIONAL)
+  type_id = shapes_and_types[0].type.type_id
+  return type_id in (full_type_pb2.TFT_ARRAY, full_type_pb2.TFT_OPTIONAL)
 
 
 def _parse_variant_shapes_and_types(t):
@@ -115,10 +115,10 @@ def _parse_variant_shapes_and_types(t):
   shapes_and_types = _variant_handle_data(t)
   if shapes_and_types is None or not shapes_and_types:
     raise ValueError("Required handle data not set for {!r}".format(t))
-  if shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST:
+  if shapes_and_types[0].type.type_id == full_type_pb2.TFT_ARRAY:
     return shapes_and_types
   else:
-    if shapes_and_types[0].specialized_type != types_pb2.ST_INVALID:
+    if shapes_and_types[0].type.type_id == full_type_pb2.TFT_UNSET:
       return shapes_and_types
     else:
       raise ValueError(
@@ -135,7 +135,7 @@ def _stack(t, length):
   # of the variant.
   if t.dtype == dtypes.variant:
     shapes_and_types = _parse_variant_shapes_and_types(t)
-    if shapes_and_types[0].specialized_type == types_pb2.ST_TENSOR_LIST:
+    if shapes_and_types[0].type.type_id == full_type_pb2.TFT_ARRAY:
       if len(shapes_and_types) != 1:
         raise ValueError(
             "Expected handle data of length 1, got {!r} of length {}"
@@ -146,7 +146,7 @@ def _stack(t, length):
     else:
       raise ValueError(
           ("Attempted to stack an unhandled variant-dtype tensor of "
-           "type {!r} ({!r})").format(shapes_and_types[0].specialized_type, t))
+           "type {!r} ({!r})").format(shapes_and_types[0].type, t))
   ones = array_ops.ones_like(array_ops.shape(t))
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
@@ -1577,7 +1577,7 @@ class PFor(object):
           else:
             new_outputs = []
             for old_output, new_output in zip(y_op.outputs, new_op.outputs):
-              custom_gradient.copy_handle_data(old_output, new_output)
+              handle_data_util.copy_handle_data(old_output, new_output)
               new_outputs.append(wrap(new_output, False))
         else:
           # Either some inputs are not loop invariant or op is stateful.
@@ -1588,7 +1588,11 @@ class PFor(object):
           if converter is None:
             has_variant_outputs = any(x.dtype == dtypes.variant for x in
                                       y_op.outputs)
-            if self._fallback_to_while_loop and not has_variant_outputs:
+            has_vectorized_variant_inputs = any(
+                _is_variant_with_internal_stacking(x) for x in
+                y_op.inputs)
+            if (self._fallback_to_while_loop and not has_variant_outputs
+                and not has_vectorized_variant_inputs):
               converter = _fallback_converter
             else:
               message = ("No pfor vectorization defined for %s\n"
@@ -1607,7 +1611,11 @@ class PFor(object):
             try:
               new_outputs = converter(pfor_inputs)
             except ConversionNotImplementedError as e:
-              if self._fallback_to_while_loop:
+              has_vectorized_variant_inputs = any(
+                  _is_variant_with_internal_stacking(x) for x in
+                  y_op.inputs)
+              if (self._fallback_to_while_loop
+                  and not has_vectorized_variant_inputs):
                 new_outputs = _fallback_converter(pfor_inputs)
               else:
                 six.reraise(ValueError, ValueError(str(e)), sys.exc_info()[2])
@@ -3415,6 +3423,25 @@ def _convert_print(pfor_input):
   return [wrap(x, True) for x in outputs]
 
 
+@RegisterPFor("PrintV2")
+def _convert_print_v2(pfor_input):
+  # Print the full input Tensor(s), including the batch dimension if stacked.
+  return _create_op(
+      "PrintV2", [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr)
+
+
+@RegisterPFor("StringFormat")
+def _convert_string_format(pfor_input):
+  # Format using the full input Tensor(s), including the batch dimension if
+  # stacked.
+  return _create_op(
+      "StringFormat", [x.t for x in pfor_input.inputs],
+      [x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
+
+
 # data_flow_ops
 
 # TensorArray conversion is tricky since we don't support arrays of
@@ -3754,7 +3781,7 @@ def _tile_variant_with_length(t, length):
     result = array_ops.tile(t, length)
     # TODO(b/169968286): Should regular shape functions do handle data
     # propagation here?
-    custom_gradient.copy_handle_data(original_tensor, result)
+    handle_data_util.copy_handle_data(original_tensor, result)
     return result
 
 
@@ -4062,8 +4089,7 @@ def _convert_tensor_list_scatter(pfor_input):
   pfor_input.stack_inputs([1])
   handle, handle_stacked, _ = pfor_input.input(0)
   item = pfor_input.stacked_input(1)
-  # TODO(agarwal): handle stacked indices.
-  indices = pfor_input.unstacked_input(2)
+  indices, indices_stacked, _ = pfor_input.input(2)
   if handle_stacked:
     handle = _untile_variant(handle)
   else:
@@ -4071,7 +4097,47 @@ def _convert_tensor_list_scatter(pfor_input):
                                 pfor_input.pfor.loop_len_vector)
 
   item = _transpose_first_two_dims(item)
-  handle = list_ops.tensor_list_scatter(item, indices, input_handle=handle)
+  if indices_stacked:
+    # Pretend the list is a dense tensor:
+    #   list_as_dense: Tensor[list_len, loop_len, ...]
+    # And indices are a tensor with shape (before transpose):
+    #   indices: Tensor[loop_len, num_scatters]
+    # The item to scatter has shape (before transpose):
+    #   item: Tensor[loop_len, num_scatters, ...]
+    #
+    # We want list_as_dense[indices[i, j], i] = item[i, j]
+    #
+    # Since we're not just indexing along the first axis of `list_as_dense`, we
+    # need to first extract the relevant list entries based on `indices`,
+    # scatter into them according to the loop index, and re-scatter the chunks
+    # we updated back into the list.
+    indices = _transpose_first_two_dims(indices)
+    indices_flat = array_ops.reshape(indices, [-1])
+    # In many cases `indices` will be unique across pfor iterations, but this is
+    # not guaranteed. If there are duplicates, we need to map multiple updates
+    # to a single chunk extracted from the list. The last update should win.
+    unique_indices = array_ops.unique(indices_flat)
+    gathered_items = list_ops.tensor_list_gather(
+        handle, unique_indices.y, element_dtype=item.dtype,
+        element_shape=array_ops.shape(item)[1:])
+    loop_idx = math_ops.range(pfor_input.pfor.loop_len_vector[0])
+    scatters_per_op = array_ops.shape(indices)[0]
+
+    unique_indices_loop_idx = array_ops.reshape(array_ops.tile(
+        loop_idx[None, :], [scatters_per_op, 1]), [-1])
+    scatter_indices = array_ops.stack(
+        [unique_indices.idx, unique_indices_loop_idx],
+        axis=1)
+    # This op does *not* guarantee last-update-wins on GPU, so semantics may not
+    # be exactly preserved for duplicate updates there.
+    scattered = array_ops.tensor_scatter_nd_update(
+        tensor=gathered_items,
+        indices=scatter_indices,
+        updates=_flatten_first_two_dims(item))
+    handle = list_ops.tensor_list_scatter(
+        scattered, unique_indices.y, input_handle=handle)
+  else:
+    handle = list_ops.tensor_list_scatter(item, indices, input_handle=handle)
   return wrap(_tile_variant(handle, pfor_input), True)
 
 

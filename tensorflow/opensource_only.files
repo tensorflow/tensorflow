@@ -26,7 +26,8 @@ tensorflow/lite/core/shims/cc_library_with_tflite.bzl
 tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
-tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h
+tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl
 tensorflow/lite/java/src/main/native/BUILD
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
@@ -269,6 +270,7 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/win/BUILD
 tensorflow/third_party/toolchains/preconfig/win/bazel_211/BUILD
 tensorflow/third_party/toolchains/preconfig/win/tf_win_06152021/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_06212021/BUILD
 tensorflow/third_party/toolchains/preconfig/win/tf_win_08062020/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD

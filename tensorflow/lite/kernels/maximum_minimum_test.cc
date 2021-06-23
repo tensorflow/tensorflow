@@ -42,11 +42,10 @@ class MaxMinOpModel : public SingleOpModel {
   }
 
   MaxMinOpModel(tflite::BuiltinOperator op, const TensorData& input1,
-                std::initializer_list<T> input1_values,
                 const TensorData& input2,
                 std::initializer_list<T> input2_values,
                 const TensorType& output) {
-    input1_ = AddConstInput<T>(input1, input1_values);
+    input1_ = AddInput(input1);
     input2_ = AddConstInput<T>(input2, input2_values);
     output_ = AddOutput(output);
     SetBuiltinOp(op, BuiltinOptions_MaximumMinimumOptions,
@@ -80,14 +79,14 @@ void TestModel(tflite::BuiltinOperator op, const TensorData& input1,
                int is_constant = false) {
   std::unique_ptr<MaxMinOpModel<data_type>> m;
   if (is_constant) {
-    m = std::make_unique<MaxMinOpModel<data_type>>(
-        op, input1, input1_values, input2, input2_values, output.type);
+    m = std::make_unique<MaxMinOpModel<data_type>>(op, input1, input2,
+                                                   input2_values, output.type);
   } else {
     m = std::make_unique<MaxMinOpModel<data_type>>(op, input1, input2,
                                                    output.type);
-    m->SetInput1(input1_values);
     m->SetInput2(input2_values);
   }
+  m->SetInput1(input1_values);
 
   m->Invoke();
   EXPECT_THAT(m->GetOutputShape(), ElementsAreArray(output.shape));

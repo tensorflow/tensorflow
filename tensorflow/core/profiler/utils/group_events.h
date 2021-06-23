@@ -123,7 +123,11 @@ class EventNode {
 
   bool IsAsync() const { return is_async_; }
 
-  bool StartsBefore(const EventNode& other) const;
+  // Compare two EventNodes based on start timestamp.
+  bool operator<(const EventNode& other) const {
+    return GetEventVisitor().TimestampPs() <
+           other.GetEventVisitor().TimestampPs();
+  }
 
  private:
   XStat* FindOrAddStatByType(int64 stat_type);

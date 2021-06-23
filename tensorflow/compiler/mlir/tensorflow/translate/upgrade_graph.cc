@@ -82,8 +82,10 @@ Status GenerateResourceSharedNameIfEmpty(
       auto func_name = fdef.signature().name();
       for (auto& node_def : *fdef.mutable_node_def()) {
         const OpDef* op_def = nullptr;
-        TF_RETURN_IF_ERROR(flib_def->LookUpOpDef(node_def.op(), &op_def));
-        if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
+        // With lazy loading, some functions might not be executed, thus we skip
+        // the node if the op is not registered.
+        if (flib_def->LookUpOpDef(node_def.op(), &op_def).ok() &&
+            is_resource_op_with_empty_shared_name(node_def, *op_def)) {
           // Use the concat of function name and node name for such ops in a
           // function as the shared_name. "@" is used as the separator because
           // it is not allowed in the function name or the node name.

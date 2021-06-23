@@ -79,7 +79,10 @@ class GrpcServer : public ServerInterface {
              Env* env);
   // Allow children classes to override this and provide custom args to the
   // server before it is constructed. Default behavior is to do nothing.
-  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder);
+  // requested_port provides the port requested by caller as bound_port() is
+  // not available till BuildAndStart has been called.
+  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder,
+                                  int requested_port) {}
 
  public:
   static Status Create(const ServerDef& server_def, Env* env,

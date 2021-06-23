@@ -861,6 +861,7 @@ tf_py_test(
     srcs = ["snapshot_test.py"],
     shard_count = 16,
     tags = [
+        "no_tsan",  # TODO(b/191433147): reenable
         "no_windows",  # TODO(b/182379890)
     ],
     deps = [

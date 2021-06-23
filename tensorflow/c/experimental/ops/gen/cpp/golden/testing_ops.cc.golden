@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
 #include "tensorflow/c/experimental/ops/gen/cpp/golden/testing_ops.h"
 
 #include "tensorflow/c/eager/abstract_context.h"
@@ -42,7 +45,7 @@ Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHa
 // Summary:
 //
 // Description:
-Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, const char* name, bool transpose_a, bool transpose_b) {
+Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a, bool transpose_b, const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -83,6 +86,21 @@ Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorH
   *loss = temp_outputs[0];
   *backprop = temp_outputs[1];
   return status;
+}
+
+// Op: AccumulatorApplyGradient()
+// Summary:
+//
+// Description:
+Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name) {
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("AccumulatorApplyGradient", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(handle));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(local_step));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(gradient));
+  int num_retvals = 0;
+  return op_ptr->Execute(nullptr, &num_retvals);
 }
 
 }  // namespace ops

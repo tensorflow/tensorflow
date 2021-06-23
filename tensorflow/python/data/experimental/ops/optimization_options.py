@@ -90,20 +90,6 @@ class OptimizationOptions(options.OptionsBase):
       docstring=
       "Whether to fuse filter transformations. If None, defaults to False.")
 
-  filter_with_random_uniform_fusion = options.create_option(
-      name="filter_with_random_uniform_fusion",
-      ty=bool,
-      docstring=
-      "Whether to fuse filter dataset that predicts random_uniform < rate into "
-      "a sampling dataset. If None, defaults to False.")
-
-  hoist_random_uniform = options.create_option(
-      name="hoist_random_uniform",
-      ty=bool,
-      docstring=
-      "Whether to hoist `tf.random_uniform()` ops out of map transformations. "
-      "If None, defaults to False.")
-
   map_and_batch_fusion = options.create_option(
       name="map_and_batch_fusion",
       ty=bool,
@@ -148,17 +134,6 @@ class OptimizationOptions(options.OptionsBase):
       "batching and b) you have validated that this optimization improves "
       "performance. If None, defaults to False.")
 
-  reorder_data_discarding_ops = options.create_option(
-      name="reorder_data_discarding_ops",
-      ty=bool,
-      docstring="Whether to reorder ops that will discard data to the front of "
-      "unary cardinality preserving transformations, e.g. "
-      "dataset.map(...).take(3) will be optimized to dataset.take(3).map(...). "
-      "For now this optimization will move `skip`, `shard` and `take` to the "
-      "front of `map` and `prefetch`. This optimization is only for "
-      "performance; it will not affect the output of the dataset. "
-      "If None, defaults to True.")
-
   shuffle_and_repeat_fusion = options.create_option(
       name="shuffle_and_repeat_fusion",
       ty=bool,
@@ -179,11 +154,6 @@ class OptimizationOptions(options.OptionsBase):
       pb.autotune_ram_budget = self.autotune_ram_budget
     if self.filter_fusion is not None:
       pb.filter_fusion = self.filter_fusion
-    if self.filter_with_random_uniform_fusion is not None:
-      pb.filter_with_random_uniform_fusion = (
-          self.filter_with_random_uniform_fusion)
-    if self.hoist_random_uniform is not None:
-      pb.hoist_random_uniform = self.hoist_random_uniform
     if self.map_and_batch_fusion is not None:
       pb.map_and_batch_fusion = self.map_and_batch_fusion
     if self.map_and_filter_fusion is not None:
@@ -196,8 +166,6 @@ class OptimizationOptions(options.OptionsBase):
       pb.noop_elimination = self.noop_elimination
     if self.parallel_batch is not None:
       pb.parallel_batch = self.parallel_batch
-    if self.reorder_data_discarding_ops is not None:
-      pb.reorder_data_discarding_ops = self.reorder_data_discarding_ops
     if self.shuffle_and_repeat_fusion is not None:
       pb.shuffle_and_repeat_fusion = self.shuffle_and_repeat_fusion
     return pb
@@ -215,11 +183,6 @@ class OptimizationOptions(options.OptionsBase):
       self.autotune_ram_budget = pb.autotune_ram_budget
     if pb.WhichOneof("optional_filter_fusion") is not None:
       self.filter_fusion = pb.filter_fusion
-    if pb.WhichOneof("optional_filter_with_random_uniform_fusion") is not None:
-      self.filter_with_random_uniform_fusion = (
-          pb.filter_with_random_uniform_fusion)
-    if pb.WhichOneof("optional_hoist_random_uniform") is not None:
-      self.hoist_random_uniform = pb.hoist_random_uniform
     if pb.WhichOneof("optional_map_and_batch_fusion") is not None:
       self.map_and_batch_fusion = pb.map_and_batch_fusion
     if pb.WhichOneof("optional_map_and_filter_fusion") is not None:
@@ -232,8 +195,6 @@ class OptimizationOptions(options.OptionsBase):
       self.noop_elimination = pb.noop_elimination
     if pb.WhichOneof("optional_parallel_batch") is not None:
       self.parallel_batch = pb.parallel_batch
-    if pb.WhichOneof("optional_reorder_data_discarding_ops") is not None:
-      self.reorder_data_discarding_ops = pb.reorder_data_discarding_ops
     if pb.WhichOneof("optional_shuffle_and_repeat_fusion") is not None:
       self.shuffle_and_repeat_fusion = pb.shuffle_and_repeat_fusion
 

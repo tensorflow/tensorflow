@@ -40,17 +40,12 @@ int64 GetTotalGPUMemory(PlatformDeviceId gpu_id) {
   return total_memory;
 }
 
-Status GetComputeCapability(PlatformDeviceId gpu_id, int* cc_major,
-                            int* cc_minor) {
-  se::StreamExecutor* se =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .ValueOrDie();
-  if (!se->GetDeviceDescription().cuda_compute_capability(cc_major, cc_minor)) {
-    *cc_major = 0;
-    *cc_minor = 0;
-    return errors::Internal("Failed to get compute capability for device.");
-  }
-  return Status::OK();
+se::CudaComputeCapability GetComputeCapability() {
+  return DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+                                                   PlatformDeviceId(0))
+      .ValueOrDie()
+      ->GetDeviceDescription()
+      .cuda_compute_capability();
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
@@ -349,10 +344,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithPriority) {
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
 // error.
 TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
-  int cc_major, cc_minor;
-  TF_ASSERT_OK(GetComputeCapability(PlatformDeviceId(0), &cc_major, &cc_minor));
-  // Exit early while running on Pascal or later GPUs.
-  if (cc_major >= 6) {
+  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
     return;
   }
 
@@ -373,10 +365,8 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr double kGpuMemoryFraction = 1.2;
   static constexpr PlatformDeviceId kPlatformDeviceId(0);
 
-  int cc_major, cc_minor;
-  TF_ASSERT_OK(GetComputeCapability(kPlatformDeviceId, &cc_major, &cc_minor));
   // Exit early if running on pre-Pascal GPUs.
-  if (cc_major < 6) {
+  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
     LOG(INFO)
         << "Unified memory allocation is not supported with pre-Pascal GPUs.";
     return;

@@ -236,6 +236,7 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
 struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
   void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<memref::MemRefDialect>();
     registry.insert<mhlo::MhloDialect>();
     registry.insert<mlir::StandardOpsDialect>();
     registry.insert<shape::ShapeDialect>();

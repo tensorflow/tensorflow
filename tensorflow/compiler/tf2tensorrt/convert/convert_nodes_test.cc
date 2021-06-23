@@ -255,8 +255,7 @@ void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
                      absl::Span<const Eigen::half> rhs) {
   ASSERT_EQ(lhs.size(), rhs.size());
   for (int i = 0; i < lhs.size(); i++) {
-    EXPECT_FLOAT_EQ(Eigen::half_impl::half_to_float(lhs[i]),
-                    Eigen::half_impl::half_to_float(rhs[i]));
+    EXPECT_FLOAT_EQ(static_cast<float>(lhs[i]), static_cast<float>(rhs[i]));
   }
 }
 
@@ -277,9 +276,8 @@ void ExpectArrayAlmostEqual(const std::vector<Eigen::half>& lhs,
                             Eigen::half tolerance) {
   ASSERT_EQ(lhs.size(), rhs.size());
   for (int i = 0; i < lhs.size(); i++) {
-    EXPECT_NEAR(Eigen::half_impl::half_to_float(lhs[i]),
-                Eigen::half_impl::half_to_float(rhs[i]),
-                Eigen::half_impl::half_to_float(tolerance));
+    EXPECT_NEAR(static_cast<float>(lhs[i]), static_cast<float>(rhs[i]),
+                static_cast<float>(tolerance));
   }
 }
 
@@ -2819,6 +2817,11 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
     auto einsum = ops::Einsum(s.WithOpName("my_einsum"), inputs, eq);
     return einsum.operation.node()->def();
   };
+
+  // TODO(b/191407966): re-enable the test for kExplicitBatch.
+  if (trt_mode_ == TrtTestMode::kExplicitBatch) {
+    return;
+  }
 
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
     Reset();

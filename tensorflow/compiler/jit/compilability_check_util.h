@@ -135,6 +135,12 @@ class RecursiveCompilabilityChecker {
 
     // Whether to allow the compilation of CollectiveReduceV2Op.
     bool allow_collective_reduce_v2 = true;
+
+    // Whether ops that are marked as outside compiled are always considered
+    // compilable.
+    // TODO(b/191502757):  Make this behavior true by default and remove this
+    // option once inference converter supports outside compilation.
+    bool allow_outside_compiled = false;
   };
 
   RecursiveCompilabilityChecker(OperationFilter op_filter,

@@ -22,28 +22,36 @@ namespace generator {
 namespace cpp {
 namespace {
 
-TEST(CodeLines, typical_usage) {
-  SourceCode code;
-  RendererContext context{RendererContext::kSource, code, CppConfig(),
-                          PathConfig()};
-  Renderer renderer(context);
-  renderer.CommentLine("File level comment.");
-  renderer.CodeLine("#include \"header.h\"");
-  renderer.BlankLine();
-  renderer.BlockOpen("void TestFunction()");
-  {
-    renderer.Statement("int i = 1");
-    renderer.BlankLine();
-    renderer.BlockOpen("while (i == 1)");
-    {
-      renderer.CommentLine("Do nothing, really....");
-      renderer.CodeLine("#if 0");
-      renderer.Statement("call()");
-      renderer.CodeLine("#endif");
-      renderer.BlockClose();
+TEST(Renderer, typical_usage) {
+  class TestRenderer : Renderer {
+   public:
+    explicit TestRenderer(SourceCode& code)
+        : Renderer(
+              {RendererContext::kSource, code, CppConfig(), PathConfig()}) {}
+
+    void Render() {
+      CommentLine("File level comment.");
+      CodeLine("#include \"header.h\"");
+      BlankLine();
+      BlockOpen("void TestFunction()");
+      {
+        Statement("int i = 1");
+        BlankLine();
+        BlockOpen("while (i == 1)");
+        {
+          CommentLine("Do nothing, really....");
+          CodeLine("#if 0");
+          Statement("call()");
+          CodeLine("#endif");
+          BlockClose();
+        }
+        BlockClose("  // comment ending TestFunction");
+      }
     }
-    renderer.BlockClose("  // comment ending TestFunction");
-  }
+  };
+
+  SourceCode code;
+  TestRenderer(code).Render();
 
   string expected = R"(// File level comment.
 #include "header.h"

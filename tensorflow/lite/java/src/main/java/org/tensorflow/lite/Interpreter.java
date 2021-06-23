@@ -79,10 +79,10 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * <p>The TFLite library is built against NDK API 19. It may work for Android API levels below 19,
  * but is not guaranteed.
  */
-public final class Interpreter implements AutoCloseable {
+public final class Interpreter implements InterpreterApi {
 
   /** An options class for controlling runtime interpreter behavior. */
-  public static class Options {
+  public static class Options extends InterpreterApi.Options {
     public Options() {}
 
     /**
@@ -93,14 +93,16 @@ public final class Interpreter implements AutoCloseable {
      * unspecified, or set to the value -1, the number of threads used will be
      * implementation-defined and platform-dependent.
      */
+    @Override
     public Options setNumThreads(int numThreads) {
-      this.numThreads = numThreads;
+      super.setNumThreads(numThreads);
       return this;
     }
 
     /** Sets whether to use NN API (if available) for op execution. Defaults to false (disabled). */
+    @Override
     public Options setUseNNAPI(boolean useNNAPI) {
-      this.useNNAPI = useNNAPI;
+      super.setUseNNAPI(useNNAPI);
       return this;
     }
 
@@ -149,8 +151,9 @@ public final class Interpreter implements AutoCloseable {
      *
      * @see #setCancelled(boolean).
      */
+    @Override
     public Options setCancellable(boolean allow) {
-      this.allowCancellation = allow;
+      super.setCancellable(allow);
       return this;
     }
 
@@ -180,11 +183,8 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
-    int numThreads = -1;
-    Boolean useNNAPI;
     Boolean allowFp16PrecisionForFp32;
     Boolean allowBufferHandleOutput;
-    Boolean allowCancellation;
 
     // TODO(b/171856982): update the comment when applying XNNPACK delegate by default is
     // enabled for C++ TfLite library on Android platform.
@@ -288,6 +288,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
    *     interrupted by {@code setCancelled(true)}.
    */
+  @Override
   public void run(Object input, Object output) {
     Object[] inputs = {input};
     Map<Integer, Object> outputs = new HashMap<>();
@@ -336,6 +337,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} is
    *     null, or if an error occurs when running inference.
    */
+  @Override
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
     checkNotClosed();
@@ -413,6 +415,7 @@ public final class Interpreter implements AutoCloseable {
    *
    * @throws IllegalStateException if the graph's tensors could not be successfully allocated.
    */
+  @Override
   public void allocateTensors() {
     checkNotClosed();
     wrapper.allocateTensors();
@@ -424,6 +427,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
    *     model inputs; or if error occurs when resizing the idx-th input.
    */
+  @Override
   public void resizeInput(int idx, @NonNull int[] dims) {
     checkNotClosed();
     wrapper.resizeInput(idx, dims, false);
@@ -439,12 +443,14 @@ public final class Interpreter implements AutoCloseable {
    *     model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
    *     occurs when attempting to resize a tensor with fixed dimensions when `struct` is True.
    */
+  @Override
   public void resizeInput(int idx, @NonNull int[] dims, boolean strict) {
     checkNotClosed();
     wrapper.resizeInput(idx, dims, strict);
   }
 
   /** Gets the number of input tensors. */
+  @Override
   public int getInputTensorCount() {
     checkNotClosed();
     return wrapper.getInputTensorCount();
@@ -456,6 +462,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code opName} does not match any input in the model used
    *     to initialize the {@link Interpreter}.
    */
+  @Override
   public int getInputIndex(String opName) {
     checkNotClosed();
     return wrapper.getInputIndex(opName);
@@ -467,6 +474,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code inputIndex} is negtive or is not smaller than the
    *     number of model inputs.
    */
+  @Override
   public Tensor getInputTensor(int inputIndex) {
     checkNotClosed();
     return wrapper.getInputTensor(inputIndex);
@@ -528,6 +536,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /** Gets the number of output Tensors. */
+  @Override
   public int getOutputTensorCount() {
     checkNotClosed();
     return wrapper.getOutputTensorCount();
@@ -539,6 +548,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code opName} does not match any output in the model used
    *     to initialize the {@link Interpreter}.
    */
+  @Override
   public int getOutputIndex(String opName) {
     checkNotClosed();
     return wrapper.getOutputIndex(opName);
@@ -557,6 +567,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code outputIndex} is negtive or is not smaller than the
    *     number of model outputs.
    */
+  @Override
   public Tensor getOutputTensor(int outputIndex) {
     checkNotClosed();
     return wrapper.getOutputTensor(outputIndex);
@@ -599,6 +610,7 @@ public final class Interpreter implements AutoCloseable {
    *
    * @throws IllegalArgumentException if the model is not initialized by the {@link Interpreter}.
    */
+  @Override
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
     return wrapper.getLastNativeInferenceDurationNanoseconds();

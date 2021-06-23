@@ -1279,7 +1279,6 @@ py_library(
         ":array_ops",
         ":control_flow_util_v2",
         ":functional_ops_gen",
-        ":gradients",
         ":gradients_util",
         ":handle_data_util",
         ":pywrap_tensorflow",
@@ -1310,6 +1309,7 @@ py_library(
         ":control_flow_util_v2",
         ":functional_ops_gen",
         ":gradients_util",
+        ":handle_data_util",
         ":list_ops",
         ":map_ops",
         ":tensor_array_ops",
@@ -2304,7 +2304,6 @@ py_library(
         ":special_math_ops_gen",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/python/framework:for_generated_wrappers",
-        "@functools32_archive//:functools32",
         "@opt_einsum_archive//:opt_einsum",
     ],
 )
@@ -3768,7 +3767,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )

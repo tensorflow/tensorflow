@@ -93,26 +93,6 @@ tf_cc_test(
     ],
 )
 
-# Target that injects a tfrt::ExecutionContext to execute BefThunks.
-# copybara:uncomment_begin(target is broken in OSS, no dependencies)
-# cc_library(
-#     name = "tfrt_exec_ctx_injector",
-#     testonly = True,
-#     srcs = ["tfrt_exec_ctx_injector.cc"],
-#     deps = [
-#         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
-#         "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
-#         "@tf_runtime//:basic_kernels_alwayslink",
-#         "@tf_runtime//:core_runtime",
-#         "@tf_runtime//:hostcontext",
-#         "@com_google_googletest//:gtest",
-#     ] + if_cuda_is_configured([
-#         "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-#     ]),
-#     alwayslink = True,
-# )
-# copybara:uncomment_end
-
 tf_cc_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
@@ -122,12 +102,7 @@ tf_cc_test(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ] + select({
-        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
-            ":tfrt_exec_ctx_injector",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 tf_cc_test(
@@ -149,6 +124,25 @@ tf_cc_test(
         ":mlir_gpu_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_all_reduce_scatter_creator_test",
+    srcs = ["gpu_all_reduce_scatter_creator_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service/gpu:gpu_all_reduce_scatter_creator",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -198,7 +192,6 @@ tf_cc_test(
     ],
     deps = [
         ":gpu_codegen_test",
-        "@com_google_absl//absl/memory",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -216,12 +209,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
-    ] + select({
-        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
-            ":tfrt_exec_ctx_injector",
-        ],
-        "//conditions:default": [],
-    }),
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 tf_cc_test(

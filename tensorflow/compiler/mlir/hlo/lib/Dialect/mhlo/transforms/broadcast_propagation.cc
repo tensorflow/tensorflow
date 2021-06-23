@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -177,8 +178,8 @@ struct MoveElementwiseOpsIntoAssumingOpPattern : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Apply to all elementwise and broadcasting elementwise operations.
-    if (!op->hasTrait<OpTrait::Elementwise>() &&
-        !op->hasTrait<chlo::OpTrait::BroadcastingElementwise>())
+    if (!op->hasTrait<mlir::OpTrait::Elementwise>() &&
+        !op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>())
       return failure();
 
     return MoveIntoAssumingOpMatchAndRewrite(op, rewriter);
@@ -336,8 +337,8 @@ struct EarlyBroadcastInDimOpPattern
                                 PatternRewriter &rewriter) const override {
     Operation *producer_op = bcast_op.operand().getDefiningOp();
     if (!producer_op ||
-        !producer_op->hasTrait<OpTrait::SameOperandsAndResultShape>() ||
-        !producer_op->hasTrait<OpTrait::Elementwise>()) {
+        !producer_op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() ||
+        !producer_op->hasTrait<mlir::OpTrait::Elementwise>()) {
       return failure();
     }
 
@@ -376,7 +377,7 @@ struct EarlyBroadcastInDimOpPattern
 };
 
 struct BroadcastPropagationPass
-    : public PassWrapper<BroadcastPropagationPass, FunctionPass> {
+    : public BroadcastPropagationPassBase<BroadcastPropagationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }

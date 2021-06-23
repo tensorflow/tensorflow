@@ -80,7 +80,7 @@ from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.lib.io import file_io as _file_io
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader_impl as _loader_impl
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
@@ -445,6 +445,7 @@ class TFLiteConverterBase(object):
     self.allow_custom_ops = False
     self.experimental_new_converter = True
     self.experimental_new_quantizer = True
+    self.experimental_enable_resource_variables = False
     self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
@@ -984,7 +985,8 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     converter_kwargs = {
         "enable_tflite_resource_variables":
-            self._enable_tflite_resource_variables
+            (self._enable_tflite_resource_variables or
+             self.experimental_enable_resource_variables)
     }
     converter_kwargs.update(self._get_base_converter_args())
     converter_kwargs.update(quant_mode.converter_flags())
@@ -1242,6 +1244,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
+    experimental_enable_resource_variables: Experimental flag, subject to
+      change. Enables resource variables to be converted by this converter.
+      This is only allowed if from_saved_model interface is used.
+      (default False)
 
   Example usage:
 
@@ -1414,6 +1420,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self.dump_graphviz_video = False
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
+    self._experimental_allow_all_select_tf_ops = False
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
@@ -1585,6 +1592,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
+        "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
     })
 
     if not self.experimental_new_converter:
@@ -2160,9 +2168,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     with _ops.Graph().as_default():
       with _session.Session() as sess:
         # Read GraphDef from file.
-        if not _file_io.file_exists(graph_def_file):
+        if not gfile.Exists(graph_def_file):
           raise IOError("File '{0}' does not exist.".format(graph_def_file))
-        with _file_io.FileIO(graph_def_file, "rb") as f:
+        with gfile.GFile(graph_def_file, "rb") as f:
           file_content = f.read()
 
         try:

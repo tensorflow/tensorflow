@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// WARNING: Until b/191428000 is fixed you need to manually generate and update
+// the generated flatbuffer code when modifying this file. See BUILD for more
+// information.
+
 // This schema defines how to configure TFLite for delegation. These
 // definitions can be used in multiple ways: as output of a compatibility list,
 // in benchmarking tools and to decouple delegate instantiation from code.
@@ -87,6 +91,9 @@ message ComputeSettings {
   // Identifiers to use for instrumentation and telemetry.
   optional string model_namespace_for_statistics = 3;
   optional string model_identifier_for_statistics = 4;
+
+  // 'Maybe' acceleration: use mini-benchmark to select settings.
+  optional MinibenchmarkSettings settings_to_test_locally = 5;
 }
 
 // NNAPI delegate settings.
@@ -532,4 +539,51 @@ message BestAccelerationDecision {
 
   // Min latency as read from min_latency_event.
   optional int64 min_inference_time_us = 3;
+}
+
+// How to access the model for mini-benchmark.
+// Since mini-benchmark runs in a separate process, it can not access an
+// in-memory model. It can read the model either from a file or from a file
+// descriptor. The file descriptor typically comes from the Android asset
+// manager.
+//
+// Users should set either filename, or all of fd, offset and length.
+message ModelFile {
+  // Filename for reading model from.
+  optional string filename = 1;
+  // File descriptor to read model from.
+  optional int64 fd = 2;
+  // Offset for model in file descriptor.
+  optional int64 offset = 3;
+  // Length of model in file descriptor.
+  optional int64 length = 4;
+}
+
+// Where to store mini-benchmark state.
+message BenchmarkStoragePaths {
+  // Base path to the files used to to store benchmark results in. Two files
+  // will be generated: one with the given path and an extra file to store
+  // the best acceleration results events at path storage_file_path +
+  // ".best.fb". Must be specific to the model.
+  // Note on Android, this should be the code cache directory.
+  optional string storage_file_path = 1;
+
+  // Path to a directory for intermediate files (lock files, extracted
+  // binaries).
+  // Note on Android, this typically is the data cache directory (i.e. the one
+  // returned by `getCacheDir()`).
+  optional string data_directory_path = 2;
+}
+
+// How to run a minibenchmark.
+message MinibenchmarkSettings {
+  // Which settings to test. This would typically be filled in from an
+  // allowlist.
+  repeated TFLiteSettings settings_to_test = 1;
+  // How to access the model. This would typically be set dynamically, as it
+  // depends on the application folder and/or runtime state.
+  optional ModelFile model_file = 2;
+  // Where to store state. This would typically be set dynamically, as it
+  // depends on the application folder.
+  optional BenchmarkStoragePaths storage_paths = 3;
 }

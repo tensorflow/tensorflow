@@ -411,7 +411,8 @@ CreateTPUParallelExecuteSinkResourceWritePass();
 // Creates a pass that merges device variable reads/updates into the surrounded
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUMergeVariablesWithExecutePass();
 
 // Creates a pass that wraps ReadVariableOp/AssignVariable op that consumes a
 // packed tensor to have same device placement as underlying TPU device.

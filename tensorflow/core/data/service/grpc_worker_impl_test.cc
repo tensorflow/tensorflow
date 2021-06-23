@@ -105,9 +105,8 @@ class GrpcWorkerImplTest : public ::testing::Test {
   }
 
   StatusOr<GetOrRegisterDatasetResponse> RegisterDataset() {
-    test_util::GraphDefTestCase graph_def_test_case;
-    TF_RETURN_IF_ERROR(map_test_case(&graph_def_test_case));
-
+    TF_ASSIGN_OR_RETURN(test_util::GraphDefTestCase graph_def_test_case,
+                        test_util::map_test_case(/*range=*/10));
     GetOrRegisterDatasetRequest request;
     GetOrRegisterDatasetResponse response;
     *request.mutable_dataset()->mutable_graph() = graph_def_test_case.graph_def;

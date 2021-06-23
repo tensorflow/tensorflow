@@ -111,6 +111,14 @@ gentbl_cc_library(
     strip_include_prefix = "lib/Dialect/Test",
     tbl_outs = [
         (
+            ["-gen-attr-interface-decls"],
+            "lib/Dialect/Test/TestAttrInterfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "lib/Dialect/Test/TestAttrInterfaces.cpp.inc",
+        ),
+        (
             ["-gen-type-interface-decls"],
             "lib/Dialect/Test/TestTypeInterfaces.h.inc",
         ),
@@ -224,6 +232,7 @@ cc_library(
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],

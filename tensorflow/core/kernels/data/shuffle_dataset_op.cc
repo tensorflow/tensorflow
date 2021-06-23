@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -357,7 +358,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
           this->dataset()->buffer_size_);
       TF_RETURN_IF_ERROR(
-          ReadElementsFromCheckpoint(reader, prefix(), buffer_.get()));
+          ReadElementsFromCheckpoint(ctx, reader, prefix(), buffer_.get()));
       slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;

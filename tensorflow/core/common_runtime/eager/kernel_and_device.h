@@ -241,6 +241,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
  private:
   std::unique_ptr<OpKernel> kernel_;
+  bool is_distributed_communication_op_;
   gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
   std::vector<Device*> input_devices_;
   gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;

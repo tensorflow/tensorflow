@@ -31,6 +31,7 @@ namespace data {
 /* static */ constexpr const char* const FinalizeDatasetOp::kInputDataset;
 /* static */ constexpr const char* const FinalizeDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const FinalizeDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const FinalizeDatasetOp::kHasCapturedRef;
 
 namespace {
 

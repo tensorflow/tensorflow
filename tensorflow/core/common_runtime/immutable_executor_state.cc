@@ -194,6 +194,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     item->is_initialization_op = IsInitializationOp(n);
     item->is_recv_or_switch = IsRecv(n) || IsSwitch(n);
     item->is_next_iteration = IsNextIteration(n);
+    item->is_distributed_communication = IsDistributedCommunication(n);
 
     // Compute the maximum values we'll store for this node in the
     // pending counts data structure, and allocate a handle in

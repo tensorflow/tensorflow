@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/stream_executor/data_type.h"
+#include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -1080,7 +1081,8 @@ class DnnSupport {
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
       const DeviceMemory<float>& estimated_mean,
       const DeviceMemory<float>& estimated_variance,
-      const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<Eigen::half>& side_input,
+      const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
@@ -1189,98 +1191,20 @@ class DnnSupport {
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
   virtual port::Status DoFusedConvolve(
-      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-      const DeviceMemory<double>& conv_input_data, double conv_input_scale,
+      Stream* stream, DataType input_type, DataType side_input_type,
+      DataType bias_type, DataType output_type,
+      const dnn::BatchDescriptor& conv_input_descriptor,
+      DeviceMemoryBase conv_input_data, double conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<double>& filter_data,
+      DeviceMemoryBase filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const DeviceMemory<double>& side_input_data, double side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const DeviceMemory<double>& biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
-  }
-
-  // This is the float version of DoFusedConvolve.
-  virtual port::Status DoFusedConvolve(
-      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-      const DeviceMemory<float>& conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<float>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const DeviceMemory<float>& side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
-  }
-
-  // This is the Eigen::half version of DoFusedConvolve.
-  // The scaling parameters are still floats.
-  virtual port::Status DoFusedConvolve(
-      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-      const DeviceMemory<Eigen::half>& conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<Eigen::half>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const DeviceMemory<Eigen::half>& side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const DeviceMemory<Eigen::half>& biases,
+      DeviceMemoryBase side_input_data, double side_input_scale,
+      const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
       dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Eigen::half>* output_data,
-      ScratchAllocator* scratch_allocator,
+      DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
-  }
-
-  // This is the int8 version of DoFusedConvolve.
-  // The bias input and scaling parameters are floats.
-  virtual port::Status DoFusedConvolve(
-      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-      const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int8>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const DeviceMemory<int8>& side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<int8>* output_data, ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
-        "DnnSupport::DoFusedConvolve not implemented on this platform.");
-  }
-
-  // This is the int8 version of DoFusedConvolve.
-  // The output, bias input and scaling parameters are floats.
-  virtual port::Status DoFusedConvolve(
-      Stream* /*stream*/, const dnn::BatchDescriptor& /*conv_input_descriptor*/,
-      const DeviceMemory<int8>& /*conv_input_data*/, float /*conv_input_scale*/,
-      const dnn::FilterDescriptor& /*filter_descriptor*/,
-      const DeviceMemory<int8>& /*filter_data*/,
-      const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
-      const DeviceMemory<float>& /*side_input_data*/,
-      float /*side_input_scale*/,
-      const dnn::BatchDescriptor& /*bias_descriptor*/,
-      const DeviceMemory<float>& /*biases*/,
-      dnn::ActivationMode /*activation_mode*/,
-      const dnn::BatchDescriptor& /*output_descriptor*/,
-      DeviceMemory<float>* /*output_data*/,
-      ScratchAllocator* /*scratch_allocator*/,
-      const dnn::AlgorithmConfig& /*algorithm_config*/,
-      dnn::ProfileResult* /*output_profile_result*/) {
     return port::UnimplementedError(
         "DnnSupport::DoFusedConvolve not implemented on this platform.");
   }
@@ -1372,7 +1296,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual bool GetConvolveExecutionPlans(
@@ -1484,7 +1409,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Enqueues a single-precision backward convolution (for filter) operation
@@ -1531,7 +1457,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused,
+      CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Enqueues a single-precision backward convolution (for bias) operation onto

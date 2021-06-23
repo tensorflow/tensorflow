@@ -458,12 +458,11 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
 // Elu op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_EluOp AnyRankedTensor:$features),
+def : Pat<(TF_EluOp AnyTensor:$features),
           (HLO_SelectOp
-           (HLOClient_BroadcastCompareOp
+           (HLO_CompareOp
               $features,
-              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
-              (BinBroadcastDimensions $zero, $features),
+              (HLO_ConstantLike<"0">:$zero $features),
               HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
            $features,
            (HLO_Expm1Op $features))>;

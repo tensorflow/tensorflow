@@ -665,6 +665,12 @@ inline bool Shape::set(Axis axis, int32_t t) {
                           internal_shape::DimensionSetterFunc{axis, this, t});
 }
 
+template <Layout T>
+std::ostream& operator<<(std::ostream& ostream, const StrongShape<T>& shape) {
+  ostream << ToString(shape);
+  return ostream;
+}
+
 }  // namespace gpu
 }  // namespace tflite
 
