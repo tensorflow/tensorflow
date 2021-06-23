@@ -639,9 +639,10 @@ class Worker(object):
           on_recovery_fn=self._set_resources_aborted,
           worker_device_name=self.device_name):
         closure.execute_on(self)
-        # TODO(yuefengz): we don't have to materialize results every step.
         with metric_utils.monitored_timer("remote_value_fetch"):
-          closure.output_remote_value.fetch()
+          # Copy the remote tensor to local (the coordinator) in case worker
+          # becomes unavailable at a later time.
+          closure.output_remote_value.get()
         self._cluster._closure_queue.mark_finished()  # pylint: disable=protected-access
     except Exception as e:  # pylint: disable=broad-except
       # Avoid logging the derived cancellation error
