@@ -101,7 +101,6 @@ cc_library(
 tf_cc_test(
     name = "data_service_test",
     srcs = ["data_service_test.cc"],
-    tags = ["no_windows"],
     deps = [
         ":data_service",
         ":dispatcher_client",
@@ -756,7 +755,6 @@ cc_library(
 tf_cc_test(
     name = "worker_impl_test",
     srcs = ["worker_impl_test.cc"],
-    tags = ["no_windows"],  # Windows triggers grpc connection failures, causing test timeout.
     deps = [
         ":local_credentials_factory",
         ":test_cluster",
