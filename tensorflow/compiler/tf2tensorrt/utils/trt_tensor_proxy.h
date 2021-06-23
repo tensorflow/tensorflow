@@ -427,22 +427,22 @@ public:
   ITensorProxyPtr(const nvinfer1::Dims& dims) : p_(new ITensorProxy(dims)) {}
   ITensorProxyPtr(const std::vector<int>& dims) : p_(new ITensorProxy(dims)) {}
 
-  ITensorProxy* p_{nullptr};
+  std::shared_ptr<ITensorProxy> p_{nullptr};
   ITensorProxy* operator->()
   {
-    return p_;
+    return p_.get();
   }
   ITensorProxy* operator->() const
   {
-    return p_;
+    return p_.get();
   }
   ITensorProxy* operator*()
   {
-    return p_;
+    return p_.get();
   }
   ITensorProxy* operator*() const
   {
-    return p_;
+    return p_.get();
   }
 };
 
@@ -467,7 +467,7 @@ struct ITensorProxyHash
 {
   size_t operator() (const ITensorProxyPtr& tensor) const
   {
-    return reinterpret_cast<std::uintptr_t>(tensor.p_);
+    return reinterpret_cast<std::uintptr_t>(tensor.p_.get());
   }
 };
 

@@ -109,10 +109,6 @@ const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
     ADD_LAYER(CONCATENATION)
     ADD_LAYER(ELEMENTWISE)
     ADD_LAYER(PLUGIN)
-#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
-    // The TRT IRNNv2Layer has been deprecated in favor of the loop API
-    ADD_LAYER(RNN)
-#endif
     ADD_LAYER(UNARY)
     ADD_LAYER(PADDING)
     ADD_LAYER(SHUFFLE)
@@ -138,6 +134,13 @@ const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
     ADD_LAYER(LOOP_OUTPUT)
     ADD_LAYER(SELECT)
     ADD_LAYER(FILL)
+#endif
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+    // The TRT IRNNv2Layer has been deprecated in favor of the loop API
+    ADD_LAYER(RNN)
+#else
+    ADD_LAYER(QUANTIZE)
+    ADD_LAYER(DEQUANTIZE)
 #endif
   }
   return "UNKNOWN_LAYER";
