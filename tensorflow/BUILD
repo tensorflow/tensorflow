@@ -937,6 +937,7 @@ tf_cc_shared_object(
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
         "//tensorflow/c:kernels",
+        "//tensorflow/c:kernels_experimental",
         "//tensorflow/c:logging",
         "//tensorflow/c:ops",
         "//tensorflow/cc/saved_model:loader_lite_impl",

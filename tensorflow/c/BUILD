@@ -596,6 +596,32 @@ tf_cuda_library(
     }),
 )
 
+cc_library(
+    name = "kernels_experimental_hdrs",
+    hdrs = ["kernels_experimental.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [":kernels_hdrs"],
+)
+
+tf_cuda_library(
+    name = "kernels_experimental",
+    srcs = ["kernels_experimental.cc"],
+    hdrs = ["kernels_experimental.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernels",
+        ":tf_status_helper",
+        ":tf_status_internal",
+        ":tf_tensor_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:refcount",
+    ],
+)
+
 tf_cuda_library(
     name = "ops",
     srcs = [
