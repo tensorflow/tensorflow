@@ -4763,6 +4763,8 @@ def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   );
 
   let results = (outs TFL_ResourceTensor:$resource_handle);
+
+  let hasOptions = 1;
 }
 
 def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
