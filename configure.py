@@ -1466,7 +1466,7 @@ def main():
   config_info_line(
       'dynamic_kernels',
       '(Experimental) Build kernels into separate shared objects.')
-  config_info_line('v2', 'Build TensorFlow 2.x instead of 1.x.')
+  config_info_line('v1', 'Build with TensorFlow 1 API instead of TF 2 API.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('nogcp', 'Disable GCP support.')
