@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/xla_executor_state.h"
@@ -28,6 +29,56 @@ namespace gpu {
 InfeedManager::InfeedManager(se::StreamExecutor *executor)
     : stream_(absl::make_unique<se::Stream>(executor)) {
   stream_->Init();
+}
+
+static StatusOr<se::ScopedDeviceMemory<uint8>> CopyBufferToDevice(
+    se::Stream* stream, int64 size, const void* source) {
+  if (size > std::numeric_limits<int32>::max()) {
+    return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
+                           size, std::numeric_limits<int32>::max());
+  }
+
+  if (size == 0) {
+    return InvalidArgument("Infeed shape needs 0 bytes");
+  }
+
+  se::StreamExecutor* executor = stream->parent();
+  se::ScopedDeviceMemory<uint8> buffer(executor,
+                                       executor->AllocateArray<uint8>(size));
+  stream->ThenMemcpy(buffer.ptr(), source, size);
+
+  return std::move(buffer);
+}
+
+Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                              const LiteralSlice& literal) {
+  const Shape& literal_shape = literal.shape();
+  VLOG(2) << "Transferring literal to infeed with shape: "
+          << ShapeUtil::HumanString(literal_shape);
+
+  // For a tuple, we transfer each of its elements to the device and enqueue the
+  // resulting destination device addresses with the infeed manager.
+  ShapeTree<se::ScopedDeviceMemory<uint8>> buffer_tree(literal_shape);
+  for (auto& leaf : buffer_tree.leaves()) {
+    const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
+    CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);
+    TF_ASSIGN_OR_RETURN(
+        leaf.second,
+        CopyBufferToDevice(stream(), ShapeUtil::ByteSizeOf(sub_shape),
+                           literal.untyped_data(leaf.first)));
+  }
+
+  // TODO(b/30467474): Since this stream is shared across different infeed
+  // requests, blocking on the stream might be heavy-handed. Figure out if
+  // finer-grained acknowledgement is possible.
+  Status block_status = stream()->BlockHostUntilDone();
+  if (!block_status.ok()) {
+    return InternalError("Failed to complete data transfer on stream %p: %s",
+                         stream(), block_status.error_message());
+  }
+
+  EnqueueDestination(std::move(buffer_tree));
+  return Status::OK();
 }
 
 InfeedManager *GetOrCreateInfeedManager(se::StreamExecutor *executor) {

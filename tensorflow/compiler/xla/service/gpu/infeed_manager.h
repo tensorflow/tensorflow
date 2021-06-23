@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
 #include "absl/base/thread_annotations.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/xfeed_queue.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -41,35 +42,18 @@ namespace gpu {
 // memory. Potential solution is to pre-allocate a fixed amount of
 // memory and block when that memory is full.
 
-// Defines an infeed buffer that is passed to the runtime by
-// the client. The client manages the memory of the buffer.
-class InfeedBuffer {
- public:
-  InfeedBuffer() = default;
-  InfeedBuffer(se::StreamExecutor* executor, int64 length)
-      : device_memory_(executor, executor->AllocateArray<uint8>(length)),
-        length_(length) {
-    CHECK(!device_memory_->is_null());
-  }
-
-  int64 length() const { return length_; }
-
-  se::DeviceMemoryBase* device_memory() { return device_memory_.ptr(); }
-
- private:
-  se::ScopedDeviceMemory<uint8> device_memory_;
-  int64 length_;
-};
-
 // Client-side class used to enqueue infeed buffers.
-class InfeedManager : public XfeedQueue<ShapeTree<InfeedBuffer>> {
+class InfeedManager
+    : public XfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8>>> {
  public:
   explicit InfeedManager(se::StreamExecutor* executor);
 
-  // Returns a stream for this infeed manager.
-  se::Stream* GetStream() const { return stream_.get(); }
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal);
 
  private:
+  se::Stream* stream() const { return stream_.get(); }
+
   // Stream used to enqueue infeed device copies.
   std::unique_ptr<se::Stream> stream_;
 };
