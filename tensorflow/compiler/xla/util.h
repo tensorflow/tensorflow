@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_UTIL_H_
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -463,6 +464,71 @@ inline T LsbMask(int width) {
 template <typename T>
 inline T ClearUpperBits(T value, int width) {
   return value & LsbMask<T>(width);
+}
+
+template <size_t>
+struct UnsignedIntegerTypeForSize;
+
+template <>
+struct UnsignedIntegerTypeForSize<1> {
+  using type = uint8_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<2> {
+  using type = uint16_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<4> {
+  using type = uint32_t;
+};
+
+template <>
+struct UnsignedIntegerTypeForSize<8> {
+  using type = uint64_t;
+};
+
+template <typename T>
+constexpr int NanPayloadBits() {
+  // Floating point types with NaNs have payloads.
+  if (!std::numeric_limits<T>::has_quiet_NaN) {
+    return 0;
+  }
+  return std::numeric_limits<T>::digits - 1;
+}
+
+template <typename T>
+constexpr uint64_t QuietNanWithoutPayload() {
+  if (const int bits = NanPayloadBits<T>()) {
+    return uint64_t{1} << (bits - 1);
+  }
+  return 0;
+}
+
+template <typename T>
+constexpr uint64_t NanPayloadBitMask() {
+  if (const int bits = NanPayloadBits<T>()) {
+    return LsbMask<uint64_t>(bits);
+  }
+  return 0;
+}
+
+template <typename T>
+T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
+  using RepT = typename UnsignedIntegerTypeForSize<sizeof(T)>::type;
+  const T val = std::numeric_limits<T>::quiet_NaN();
+  auto rep = absl::bit_cast<RepT>(val);
+  rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);
+  rep |= uint64_t{sign} << (std::numeric_limits<RepT>::digits - 1);
+  constexpr int kPayloadBits = NanPayloadBits<T>();
+  if (kPayloadBits > 0) {
+    // Clear rep's NaN payload.
+    rep &= ~NanPayloadBitMask<T>();
+    CHECK_NE(nan_payload, 0);
+    rep |= nan_payload;
+  }
+  return absl::bit_cast<T>(rep);
 }
 
 // Utility for performing a static_cast<> on a std::unique_ptr<>.
