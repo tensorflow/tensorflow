@@ -57,7 +57,9 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.pb.h"
+#ifdef INTEL_MKL
 #include "tensorflow/core/graph/mkl_graph_util.h"
+#endif  // INTEL_MKL
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
