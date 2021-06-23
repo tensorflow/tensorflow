@@ -68,12 +68,25 @@ class MLIRGraphDefImportTest(test.TestCase):
         input_data_types=["DT_FLOAT", "DT_FLOAT"],
         input_data_shapes=["10,10", "10,10"],
         output_names=["Add"])
-
     # Check whether the mlir-function signature has the mentioned
     # inputs and outputs.
-    self.assertRegex(mlir_tf, r"func @main")
+    self.assertRegex(
+        mlir_tf,
+        r"func @main\(%arg0: tensor<10x10xf32>, %arg1: tensor<10x10xf32>")
     self.assertRegex(mlir_tf, r'inputs = "lhs,rhs"')
     self.assertRegex(mlir_tf, r'outputs = "Add"')
+
+    # Same check with scalar input (empty input shape).
+    mlir_tf = import_graphdef(
+        tf_graph_def,
+        "tf-standard-pipeline",
+        False,
+        input_names=["lhs", "rhs"],
+        input_data_types=["DT_FLOAT", "DT_FLOAT"],
+        input_data_shapes=["", ""],
+        output_names=["Add"])
+    self.assertRegex(mlir_tf,
+                     r"func @main\(%arg0: tensor<f32>, %arg1: tensor<f32>")
 
     # Test invalid test cases where no. of input names is invalid/wrong.
     with self.assertRaisesRegex(
