@@ -1575,15 +1575,19 @@ class DotGeneralOpOnTensorsConversion
   }
 };
 
+bool IsInBodyOfLinalgOps(Operation* op) {
+  auto parent_op = op->getParentRegion()->getParentOp();
+  return parent_op->getDialect() ==
+         parent_op->getContext()->getLoadedDialect<linalg::LinalgDialect>();
+}
+
 template <typename OpTy>
 struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
   using OpConversionPattern<OpTy>::OpConversionPattern;
   LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    // Only convert the body of reduction ops to std ops.
-    auto parent_op = op.getOperation()->getParentRegion()->getParentOp();
-    if (!isa<mhlo::ReduceOp, linalg::GenericOp>(parent_op)) {
+    if (!IsInBodyOfLinalgOps(op)) {
       return failure();
     }
     if (!op.getResult().getType().template isa<TensorType>()) return failure();
@@ -1624,6 +1628,9 @@ class ReduceRegionReturnOpConversion
   LogicalResult matchAndRewrite(
       mhlo::ReturnOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
+    if (!IsInBodyOfLinalgOps(op)) {
+      return failure();
+    }
     rewriter.replaceOpWithNewOp<linalg::YieldOp>(op, args);
     return success();
   }
