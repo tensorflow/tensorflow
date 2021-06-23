@@ -191,9 +191,6 @@
         methods to skip the cached function and generate a new one. This is
 	useful to regenerate in a single call the compiled training function
 	when any `.trainable` attribute of any model's layer has changed.
-    *   Models now have a `save_spec` property which contains the `TensorSpec`
-        specs for calling the model. This spec is automatically saved when
-        the model is called for the first time.
 *   `tf.linalg`:
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:

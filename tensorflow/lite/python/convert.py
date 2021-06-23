@@ -203,7 +203,9 @@ def mlir_quantize(input_data_str,
                   inference_type=_types_pb2.QUANTIZED_INT8,
                   input_data_type=dtypes.float32,
                   output_data_type=dtypes.float32,
-                  enable_numeric_verify=False):
+                  enable_numeric_verify=False,
+                  blocklisted_ops=None,
+                  blocklisted_nodes=None):
   """Quantize `input_data_str` with calibration results.
 
   Args:
@@ -218,7 +220,9 @@ def mlir_quantize(input_data_str,
     output_data_type: Data type for the outputs. The default value is float32.
     enable_numeric_verify: Experimental. Subject to change. Bool indicating
       whether to add NumericVerify ops into the debug mode quantized model.
-
+    blocklisted_ops: Experimental. Subject to change. Set of ops to blocklist.
+    blocklisted_nodes: Experimental. Subject to change. Set of notes to
+      blocklist.
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
@@ -227,7 +231,7 @@ def mlir_quantize(input_data_str,
       input_data_str, disable_per_channel, fully_quantize, inference_type,
       convert_tensor_tf_type_to_tflite_type(input_data_type),
       convert_tensor_tf_type_to_tflite_type(output_data_type),
-      enable_numeric_verify)
+      enable_numeric_verify, blocklisted_ops, blocklisted_nodes)
 
 
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.SPARSIFY)
