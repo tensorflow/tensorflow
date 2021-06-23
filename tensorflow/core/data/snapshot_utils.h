@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/io/compression.h"
@@ -166,6 +167,36 @@ class CustomWriter : public Writer {
 // Interface class for reading snapshot files previous written with Writer.
 class Reader {
  public:
+  // Op kernel that creates an instance of `Reader::Dataset` needed to support
+  // serialization and deserialization of `Reader::Dataset`.
+  class DatasetOp : public DatasetOpKernel {
+   public:
+    explicit DatasetOp(OpKernelConstruction* ctx);
+
+   protected:
+    void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
+
+   private:
+    DataTypeVector output_types_;
+    std::vector<PartialTensorShape> output_shapes_;
+    std::string compression_;
+    int64 version_;
+  };
+
+  // Op kernel that creates an instance of `Reader::NestedDataset` needed to
+  // support serialization and deserialization of `Reader::NestedDataset`.
+  class NestedDatasetOp : public DatasetOpKernel {
+   public:
+    explicit NestedDatasetOp(OpKernelConstruction* ctx);
+
+   protected:
+    void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
+
+   private:
+    DataTypeVector output_types_;
+    std::vector<PartialTensorShape> output_shapes_;
+  };
+
   // Creates a new Reader object that reads data from `filename`. Note that
   // the `version`, `compression_type`, and `dtypes` arguments passed into
   // `Writer` and `Reader` must be the same for the reading to succeed.

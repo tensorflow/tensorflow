@@ -237,36 +237,41 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-  Status AddDataset(const DatasetBase* dataset,
-                    const std::vector<Node*>& inputs, Node** output) {
-    return AddDataset(dataset, inputs, {}, output);
-  }
-
-  // Adds a node corresponding to the `DatasetType` to the Graph.
-  // Return value of `DatasetType::type_string()` is used as the op type for the
-  // node.
-  // Values for the output_types and output_shapes node attributes are also
-  // written if those attributes are defined in the OpDef.
+  // Adds a node for the given dataset to the `Graph`. The value of
+  // `DatasetBase::type_string()` is used as the op type for the node. Values
+  // for the `output_types` and `output_shapes` node attributes are also written
+  // if those attributes are defined in the `OpDef`.
+  //
+  // If `use_dataset_name` is set, the value of `DatasetBase::node_name()` is
+  // used as the op name for the node. This argument should only be set when
+  // serializing `DatasetBase` instances which might not have been created
+  // through op kernel execution to make sure the dataset op name is preserved
+  // across serialization boundaries, which is in turn needed to make sure
+  // iterator checkpoints are valid across serialization boundaries. When
+  // `use_dataset_name` is set, the caller is responsible for making sure that
+  // the op name is unique across the graph.
+  //
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
-  // non-null if the method returns with an OK status.
-  // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  // non-null if the method returns with an OK status. The returned `Node`
+  // pointer is owned by the backing `Graph` of `GraphDefBuilder`.
+  Status AddDataset(const DatasetBase* dataset,
+                    const std::vector<Node*>& inputs, Node** output);
   Status AddDataset(const DatasetBase* dataset,
                     const std::vector<Node*>& inputs,
                     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
-                    Node** output) {
-    std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
-    for (size_t i = 0; i < inputs.size(); i++) {
-      enumerated_inputs[i] = std::make_pair(i, inputs[i]);
-    }
-    return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
-  }
-
+                    Node** output);
   Status AddDataset(
       const DatasetBase* dataset,
       const std::vector<std::pair<size_t, Node*>>& inputs,
       const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
       const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
       Node** output);
+  Status AddDataset(
+      const DatasetBase* dataset,
+      const std::vector<std::pair<size_t, Node*>>& inputs,
+      const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+      const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+      bool use_dataset_name, Node** output);
 
   // Adds a user-defined function with name `function_name` to the graph and
   // recursively adds all functions it references. If a function with a matching
