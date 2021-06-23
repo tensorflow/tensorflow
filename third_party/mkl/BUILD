@@ -96,7 +96,7 @@ cc_library(
 cc_library(
     name = "mkl_libs_windows",
     srcs = [
-        "@llvm_openmp//:libiomp5.dll",
+        "@llvm_openmp//:libiomp5md.dll",
     ],
     hdrs = ["@llvm_openmp//:config_omp"],
     visibility = ["//visibility:public"],
