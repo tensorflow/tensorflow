@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
@@ -2370,19 +2369,6 @@ TEST_F(HloParserTest, NegativeNan) {
 
 ENTRY %NegativeNan () -> bf16[2] {
   ROOT %constant = bf16[2]{0} constant({-nan, -nan})
-}
-
-)";
-  auto result = ParseAndReturnUnverifiedModule(original);
-  EXPECT_EQ(Status::OK(), result.status());
-  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
-}
-
-TEST_F(HloParserTest, NanPayload) {
-  const string original = R"(HloModule NanPayload_module
-
-ENTRY %NanPayload () -> bf16[2] {
-  ROOT %constant = bf16[2]{0} constant({-nan(0x7f), -nan(0x3f)})
 }
 
 )";
