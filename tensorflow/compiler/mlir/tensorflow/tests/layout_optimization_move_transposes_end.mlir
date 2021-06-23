@@ -49,6 +49,23 @@ func @move_across_multi_operand_op(%arg0: tensor<1x4x4x8xf32>, %arg1: tensor<1x4
   return %3 : tensor<1x8x4x4xf32>
 }
 
+// CHECK-LABEL: func @move_across_broadcastable_op
+func @move_across_broadcastable_op(%arg0: tensor<1x4x1x8xf32>, %arg1: tensor<1x4x4x8xf32>) -> tensor<1x8x4x4xf32> {
+
+  // CHECK: %[[RES_PERM:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>}
+  // CHECK: %[[ADD:[0-9]*]] = "tf.AddV2"(%arg0, %arg1) : (tensor<1x4x1x8xf32>, tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32>
+  // CHECK: %[[RES_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%[[ADD]], %[[RES_PERM]])
+  // CHECK: return %[[RES_TRANSPOSE]]
+
+  %0 = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %1 = "tf.Transpose"(%arg0, %0) : (tensor<1x4x1x8xf32>, tensor<4xi32>) -> tensor<1x8x4x1xf32>
+  %2 = "tf.Transpose"(%arg1, %0) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
+  %3 = "tf.AddV2"(%1, %2) : (tensor<1x8x4x1xf32>, tensor<1x8x4x4xf32>) -> tensor<1x8x4x4xf32>
+
+  return %3 : tensor<1x8x4x4xf32>
+}
+
+
 // CHECK-LABEL: func @fold_into_max_pool
 func @fold_into_max_pool(%arg0: tensor<1x64x112x112xf32>) -> tensor<1x56x56x64xf32> {
 
