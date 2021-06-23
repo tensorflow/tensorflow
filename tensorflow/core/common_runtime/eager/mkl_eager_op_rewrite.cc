@@ -156,9 +156,11 @@ Status MklEagerOpRewrite::SetupNewOp(
     (*new_mkl_op)->MutableAttrs()->Set(attr.first, attr.second);
   }
 
-  (*new_mkl_op)
-      ->MutableAttrs()
-      ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
+  if (!orig_op->EagerContext().RunEagerOpAsFunction()) {
+    (*new_mkl_op)
+        ->MutableAttrs()
+        ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
+  }
 
   string device_name = orig_op->DeviceName();
   return (*new_mkl_op)->SetDeviceName(device_name.c_str());
