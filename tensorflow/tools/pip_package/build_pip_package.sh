@@ -146,9 +146,9 @@ function prepare_src() {
       "${XLA_AOT_RUNTIME_SOURCES}/"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
     # If oneDNN was built with openMP then copy the omp libs over
-    if [ -f "bazel-bin/external/llvm_openmp/libiomp5md.dll" ]; then
-      cp bazel-bin/external/llvm_openmp/libiomp5md.dll ${TMPDIR}/tensorflow/python
-      cp bazel-bin/external/llvm_openmp/libiomp5md.dll.if.lib ${TMPDIR}/tensorflow/python
+    if [ -f "bazel-bin/external/llvm_openmp/libiomp5.dll" ]; then
+      cp bazel-bin/external/llvm_openmp/libiomp5.dll ${TMPDIR}/tensorflow/python
+      cp bazel-bin/external/llvm_openmp/libiomp5.dll.if.lib ${TMPDIR}/tensorflow/python
     fi
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
