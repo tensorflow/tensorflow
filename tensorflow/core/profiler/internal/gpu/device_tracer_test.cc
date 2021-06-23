@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -509,6 +510,28 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   EXPECT_TRUE(found_activity_memory_host);
 #endif
 }
+
+void BM_CuptiTracer_ActivityBufferOverhead(::testing::benchmark::State& state) {
+  auto tracer = CreateGpuTracer();
+  CHECK_NOTNULL(tracer);
+
+  TF_EXPECT_OK(tracer->Start());
+  for (auto s : state) {
+    cudaFree(nullptr);
+  }
+  TF_EXPECT_OK(tracer->Stop());
+}
+
+BENCHMARK(BM_CuptiTracer_ActivityBufferOverhead);
+
+void BM_CudaFree(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    cudaFree(nullptr);
+  }
+}
+
+BENCHMARK(BM_CudaFree);
+
 #endif  // GOOGLE_CUDA
 
 }  // namespace
