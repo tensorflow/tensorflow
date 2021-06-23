@@ -781,7 +781,7 @@ def list_directory_v2(path):
 
 @tf_export("io.gfile.join")
 def join(path, *paths):
-  """Join one or more path components intelligently.
+  r"""Join one or more path components intelligently.
 
   TensorFlow specific filesystems will be joined
   like a url (using "/" as the path seperator) on all platforms:
