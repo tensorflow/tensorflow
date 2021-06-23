@@ -91,6 +91,7 @@ cc_library(
         "kernel_lowering_passes.cc",
         "map_parallel_loops_to_gpu.cc",
         "parallel_loops_to_sequential.cc",
+        "rewrite_tf_framework_assert.cc",
         "same_shape_propagation.cc",
         "shape_simplification.cc",
         "shape_to_descriptors_pass.cc",
