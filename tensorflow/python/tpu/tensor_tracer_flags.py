@@ -288,6 +288,10 @@ class TTParameters(object):
             '\n%s' % (flag_name, FLAGS_ENV_VAR, valid_flag_names))
       pos = match.end()
 
+  def _supported_signatures(self):
+    """Returns a tuple of supported signatures."""
+    return TT_SUMMARY_SIGNATURES
+
   def _get_summary_signatures(self):
     """Verifies and returns the summary signatures.
 
@@ -296,17 +300,18 @@ class TTParameters(object):
       computed when trace_mode is summary.
     """
     signatures = self._flag_value_as_list(FLAG_NAME_SUMMARY_SIGNATURES)
+    supported_signatures = self._supported_signatures()
 
     tt_signatures = []
     for signature in signatures:
       signature_with_prefix = '%s_%s' % (_TT_PREFIX, signature)
-      if signature in TT_SUMMARY_SIGNATURES:
+      if signature in supported_signatures:
         tt_signatures.append(signature)
-      elif signature_with_prefix in TT_SUMMARY_SIGNATURES:
+      elif signature_with_prefix in supported_signatures:
         tt_signatures.append(signature_with_prefix)
       else:
-        logging.warning('Unknown signature:%s. Supported signatures: %s' % (
-            signature, TT_SUMMARY_SIGNATURES))
+        logging.warning('Unknown signature:%s. Supported signatures: %s' %
+                        (signature, supported_signatures))
     if not tt_signatures:
       # Default case collects norm and max only.
       return {TT_SUMMARY_MAX_ABS: 0, TT_SUMMARY_NORM: 1}
