@@ -774,8 +774,7 @@ func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32
 func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.quantize"(%arg0)  {qtype = tensor<13x21x3x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>}  : (tensor<13x21x3xf32>) -> tensor<13x21x3x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>
   %1 = "tfl.dequantize"(%0) : (tensor<13x21x3x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>) -> tensor<13x21x3xf32>
-  %2 = "tfl.dequantize"(%0) : (tensor<13x21x3x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>) -> tensor<13x21x3xf32>
-  return %2 : tensor<13x21x3xf32>
+  return %1 : tensor<13x21x3xf32>
 }
 
 // -----
