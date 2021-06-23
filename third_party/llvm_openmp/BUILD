@@ -206,7 +206,7 @@ common_includes = [
     "include/",
 ]
 
-#Expand libiomp build rule based on platform.
+# Expand libiomp build rule based on platform.
 if_linux_x86_64(libiomp5_cc_binary(
     "libiomp5.so",
     cppsources,

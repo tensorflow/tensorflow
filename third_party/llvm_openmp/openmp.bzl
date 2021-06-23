@@ -39,8 +39,12 @@ def select_os_specific(L, M, W):
         "//conditions:default": L,
     })
 
+def select_os_specific_2(LM, W):
+    return select_os_specific(L = LM, M = LM, W = W)
+
 def libname_os_specific():
     return "" + select_os_specific(L = "libiomp5.so", M = "libiomp5.dylib", W = "libiomp5md.dll")
+
 
 # TODO(Intel-tf) Replace the following calls to cc_binary with cc_library.
 # cc_library should be used for files that are not independently executed. Using
@@ -60,14 +64,8 @@ def libiomp5_cc_binary(libname, cppsources, srcdeps, common_includes):
     cc_binary(
         name = libname,
         srcs = cppsources + srcdeps +
-            select_os_specific(
-            L = [
-                #linux & macos specific files
-                "runtime/src/z_Linux_util.cpp",
-                "runtime/src/kmp_gsupport.cpp",
-                "runtime/src/z_Linux_asm.S",
-            ],
-            M = [
+            select_os_specific_2(
+            LM = [
                 #linux & macos specific files
                 "runtime/src/z_Linux_util.cpp",
                 "runtime/src/kmp_gsupport.cpp",
@@ -79,21 +77,18 @@ def libiomp5_cc_binary(libname, cppsources, srcdeps, common_includes):
                 "runtime/src/z_Windows_NT-586_util.cpp",
                 ":openmp_asm",
             ]),
-        copts = select_os_specific(
-            L = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
-            M = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
+        copts = select_os_specific_2(
+            LM = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
             W = ["/Domp_EXPORTS /D_M_AMD64 /DOMPT_SUPPORT=0 /D_WINDOWS /D_WINNT /D_USRDLL"],
         ),
         includes = common_includes,
-        linkopts = select_os_specific(
-            L = ["-lpthread -ldl -Wl,--version-script=$(location :ldscript)"],
-            M = ["-lpthread -ldl -Wl,--version-script=$(location :ldscript)"],
+        linkopts = select_os_specific_2(
+            LM = ["-lpthread -ldl -Wl,--version-script=$(location :ldscript)"],
             W = ["/MACHINE:X64"],
         ),
         linkshared = True,
-        additional_linker_inputs = select_os_specific(
-            L = [":ldscript"],
-            M = [":ldscript"],
+        additional_linker_inputs = select_os_specific_2(
+            LM = [":ldscript"],
             W = [":generate_def"],
         ),
         win_def_file = ":generate_def",  # This will be ignored for non Windows builds
