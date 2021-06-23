@@ -37,15 +37,16 @@ class SimpleITensor {
   SimpleITensor(nvinfer1::DataType trt_dtype, const nvinfer1::Dims& trt_dims)
       : trt_dtype_(trt_dtype), trt_dims_(trt_dims) {}
 
-  SimpleITensor() : dynamic_range_(0.0f) {}
-  SimpleITensor(const nvinfer1::Dims& dims) : trt_dims_(dims), dynamic_range_(0.0f) {}
+  SimpleITensor() : dynamic_range_min_(0.0f), dynamic_range_max_(0.0f) {}
+  SimpleITensor(const nvinfer1::Dims& dims) : trt_dims_(dims), dynamic_range_min_(0.0f), dynamic_range_max_(0.0f) {}
 
   SimpleITensor(const std::vector<int>& dims) {
     trt_dims_.nbDims = dims.size();
     for (int i = 0; i < dims.size(); ++i) {
       trt_dims_.d[i] = dims[i];
     }
-    dynamic_range_ = 0.0f;
+    dynamic_range_min_ = 0.0f;
+    dynamic_range_max_ = 0.0f;
   }
 
   void setName(const char* name) {}
@@ -78,17 +79,18 @@ class SimpleITensor {
     location_ = location;
   }
   bool setDynamicRange(float min, float max) {
-    dynamic_range_ = std::max(std::abs(min), std::abs(max));
+    dynamic_range_max_ = max;
+    dynamic_range_min_ = min;
     return true;
   }
   
-  float getDynamicRange() const { return dynamic_range_; }
+  float getDynamicRange() const { return (std::abs(dynamic_range_min_) + dynamic_range_max_)/2.f; }
   bool dynamicRangeIsSet() const { return true; }
 
-  void resetDynamicRange() {}
-  float getDynamicRangeMin() const { return 0.f; }
+  void resetDynamicRange() { dynamic_range_min_ = 0.f; dynamic_range_max_ = 0.f; }
+  float getDynamicRangeMin() const { return dynamic_range_min_; }
 
-  float getDynamicRangeMax() const { return 0.f; }
+  float getDynamicRangeMax() const { return dynamic_range_max_; }
 
   void setAllowedFormats(nvinfer1::TensorFormats formats) {}
 
@@ -102,7 +104,8 @@ class SimpleITensor {
   nvinfer1::Dims trt_dims_;
   std::string name_;
   nvinfer1::TensorLocation location_;
-  float dynamic_range_;
+  float dynamic_range_min_;
+  float dynamic_range_max_;
 };
 
 enum class TensorType : int
