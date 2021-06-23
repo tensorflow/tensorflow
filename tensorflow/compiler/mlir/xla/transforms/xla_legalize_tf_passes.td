@@ -48,8 +48,9 @@ def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
-  let dependentDialects = ["chlo::HloClientDialect", "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "StandardOpsDialect"];
+  let dependentDialects = ["chlo::HloClientDialect", "memref::MemRefDialect",
+                           "mhlo::MhloDialect", "shape::ShapeDialect",
+                           "StandardOpsDialect"];
 }
 
 def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {

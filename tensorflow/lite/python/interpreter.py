@@ -710,7 +710,7 @@ class Interpreter(object):
     Example,
     ```
     input_data = np.array([1.2, 1.4], np.float32)
-    signatures = interpreter.get_signature_list()
+    signatures = interpreter._get_full_signature_list()
     print(signatures)
     # {
     #   'add': {'inputs': {'x': 1, 'y': 0}, 'outputs': {'output_0': 4}}

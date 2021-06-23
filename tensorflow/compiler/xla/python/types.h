@@ -26,6 +26,7 @@ limitations under the License.
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,16 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
-
-// Helper that converts a failing StatusOr to an exception.
-// For use only inside pybind11 code.
-template <typename T>
-T ValueOrThrow(StatusOr<T> v) {
-  if (!v.ok()) {
-    throw std::runtime_error(v.status().ToString());
-  }
-  return v.ConsumeValueOrDie();
-}
 
 // Converts a NumPy dtype to a PrimitiveType.
 StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
@@ -132,40 +123,6 @@ absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 // the exceptions are local to the binding code.
 namespace pybind11 {
 namespace detail {
-
-// Status, StatusOr. Failing statuses become Python exceptions; Status::OK()
-// becomes None.
-template <>
-struct type_caster<xla::Status> {
- public:
-  PYBIND11_TYPE_CASTER(xla::Status, _("Status"));
-
-  static handle cast(xla::Status src, return_value_policy /* policy */,
-                     handle /* parent */) {
-    if (!src.ok()) {
-      throw std::runtime_error(src.ToString());
-    }
-    return none().inc_ref();
-  }
-};
-
-template <typename T>
-struct type_caster<xla::StatusOr<T>> {
- public:
-  using value_conv = make_caster<T>;
-
-  PYBIND11_TYPE_CASTER(xla::StatusOr<T>,
-                       _("StatusOr[") + value_conv::name + _("]"));
-
-  static handle cast(xla::StatusOr<T> src, return_value_policy policy,
-                     handle parent) {
-    if (!src.ok()) {
-      throw std::runtime_error(src.status().ToString());
-    }
-    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).ValueOrDie(),
-                            policy, parent);
-  }
-};
 
 // Literals.
 // Literal data can be passed to XLA as a NumPy array; its value can be

@@ -384,6 +384,21 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testNested(self, verify_fn, num_parallel_calls):
+
+    def build_ds():
+
+      inner_ds = dataset_ops.Dataset.from_tensor_slices(range(10))
+      ds = dataset_ops.Dataset.from_tensors(inner_ds).repeat(10)
+      return ds.interleave(
+          lambda x: x, cycle_length=5, num_parallel_calls=num_parallel_calls)
+
+    verify_fn(self, build_ds, num_outputs=100)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
                          checkpoint_test_base.default_test_combinations()))
   def testSparse(self, verify_fn):
 

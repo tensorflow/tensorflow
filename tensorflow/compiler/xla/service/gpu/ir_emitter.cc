@@ -460,6 +460,14 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
 
   llvm::Value* cas_new_output = Load(cas_new_output_address, "cas_new_output");
 
+  // If cas_new_output == cas_old_output, we're not asking for anything to
+  // change, so we're done here!
+  llvm::Value* old_eq_new = ICmpEQ(cas_old_output, cas_new_output);
+  llvm::BasicBlock* loop_cas_bb = llvm::BasicBlock::Create(
+      b_.getContext(), "atomic_op_loop_cas", b_.GetInsertBlock()->getParent());
+  CondBr(old_eq_new, loop_exit_bb, loop_cas_bb);
+  b_.SetInsertPoint(loop_cas_bb);
+
   // Emit code to perform the atomicCAS operation
   // (cas_old_output, success) = atomicCAS(memory_address, cas_old_output,
   //                                       cas_new_output);

@@ -49,6 +49,7 @@ add_mlir_library(ChloPasses
 
 add_mlir_library(MhloPasses
   broadcast_propagation.cc
+  legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select.cc
   legalize_trigonometric_to_approximation.cc
   lower_complex.cc
@@ -158,6 +159,7 @@ add_mlir_library(LmhloPasses
 
 add_mlir_library(DiscRalPasses
   ral_inject_execution_context.cc
+  ral_lower_to_library_call.cc
 
   DEPENDS
   MLIRdisc_ral_opsIncGen

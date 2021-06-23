@@ -18,7 +18,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "embedded_binary")
-load("special_rules.bzl", "libjpeg_deps")
+load("special_rules.bzl", "jpeg_copts", "libjpeg_deps")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -143,6 +143,7 @@ cc_library(
     hdrs = [
         "libjpeg_handle.h",
     ],
+    copts = jpeg_copts(),
     deps = [
         ":decode_jpeg_status",
         ":jpeg_common",
@@ -572,7 +573,7 @@ cc_binary(
 )
 
 cc_library(
-    name = "runner_unit_test_entry_points_for_non_android",
+    name = "runner_unit_test_entry_points_library",
     srcs = ["runner_test_entry_points.cc"],
     deps = [":status_codes"],
 )
@@ -608,7 +609,7 @@ cc_test(
             ":embedded_runner_unit_test_entry_points",
         ],
         "//conditions:default": [
-            ":runner_unit_test_entry_points_for_non_android",
+            ":runner_unit_test_entry_points_library",
         ],
     }),
 )

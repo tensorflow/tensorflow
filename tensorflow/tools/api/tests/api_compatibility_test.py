@@ -177,11 +177,6 @@ def _FilterNonCoreGoldenFiles(golden_file_list):
   return _FilterGoldenFilesByPrefix(golden_file_list, _NON_CORE_PACKAGES)
 
 
-# TODO(scottzhu): Remove this once we submit the conversion CL.
-def _FilterKerasGoldenFiles(golden_file_list):
-  return _FilterGoldenFilesByPrefix(golden_file_list, ['keras'])
-
-
 def _FilterV1KerasRelatedGoldenFiles(golden_file_list):
   return _FilterGoldenFilesByPrefix(golden_file_list, _V1_APIS_FROM_KERAS)
 
@@ -405,8 +400,6 @@ class ApiCompatibilityTest(test.TestCase):
 
     # Read all golden files.
     golden_file_list = file_io.get_matching_files(golden_file_patterns)
-    # Filter Keras APIs since the APIs are tracked in Keras package
-    golden_file_list = _FilterKerasGoldenFiles(golden_file_list)
     if FLAGS.only_test_core_api:
       golden_file_list = _FilterNonCoreGoldenFiles(golden_file_list)
       if api_version == 2:

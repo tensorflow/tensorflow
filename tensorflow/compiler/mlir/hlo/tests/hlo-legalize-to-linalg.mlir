@@ -1762,7 +1762,7 @@ func @slice_whole_stride(%arg0: tensor<3x4xi32>) -> tensor<1x4xi32> {
   return %0 : tensor<1x4xi32>
 }
 // CHECK-LABEL: func @slice_whole_stride
-//       CHECK:   subtensor %{{.*}}[1, 0] [1, 4] [1, 1] : tensor<3x4xi32> to tensor<1x4xi32>
+//       CHECK:   tensor.extract_slice %{{.*}}[1, 0] [1, 4] [1, 1] : tensor<3x4xi32> to tensor<1x4xi32>
 
 // -----
 
@@ -1775,7 +1775,7 @@ func @slice_stride_part(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
   return %0 : tensor<1x2xi32>
 }
 // CHECK-LABEL: func @slice_stride_part
-//       CHECK:   subtensor %{{.*}}[1, 1] [1, 2] [1, 1]  : tensor<3x4xi32> to tensor<1x2xi32>
+//       CHECK:   tensor.extract_slice %{{.*}}[1, 1] [1, 2] [1, 1]  : tensor<3x4xi32> to tensor<1x2xi32>
 
 // -----
 
@@ -1804,7 +1804,7 @@ func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: tensor
 // CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i64
 // CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i64
 // CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i64 to index
-// CHECK:           subtensor %[[ARG0]][%[[START1]], %[[START2]]] [1, 4] [1, 1]
+// CHECK:           tensor.extract_slice %[[ARG0]][%[[START1]], %[[START2]]] [1, 4] [1, 1]
 
 // -----
 
@@ -1835,7 +1835,7 @@ func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, %star
 // CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i64
 // CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i64
 // CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i64 to index
-// CHECK:           subtensor %[[SIGNLESS_ARG0]][%[[START1]], %[[START2]]] [1, 4] [1, 1]
+// CHECK:           tensor.extract_slice %[[SIGNLESS_ARG0]][%[[START1]], %[[START2]]] [1, 4] [1, 1]
 
 // -----
 
@@ -1863,7 +1863,7 @@ func @dynamic_update_slice(%target: tensor<3x3xi32>, %update: tensor<2x2xi32>, %
 // CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i32
 // CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i32
 // CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i32 to index
-// CHECK:         %[[RES:.*]] = subtensor_insert %[[ARG1]] into %[[ARG0]]
+// CHECK:         %[[RES:.*]] = tensor.insert_slice %[[ARG1]] into %[[ARG0]]
 // CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
 // CHECK:         return %[[RES]] : tensor<3x3xi32>
@@ -1896,7 +1896,7 @@ func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: tensor<2
 // CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i32
 // CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i32
 // CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i32 to index
-// CHECK:         %[[SIGNLESS_RES:.*]] = subtensor_insert %[[SIGNLESS_UPDATE]] into %[[SIGNLESS_TARGET]]
+// CHECK:         %[[SIGNLESS_RES:.*]] = tensor.insert_slice %[[SIGNLESS_UPDATE]] into %[[SIGNLESS_TARGET]]
 // CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
 // CHECK:         %[[RES:.*]] = unrealized_conversion_cast %[[SIGNLESS_RES]] : tensor<3x3xi32> to tensor<3x3xui32>
@@ -1930,7 +1930,7 @@ func @dynamic_update_slice_float(%target: tensor<3x3xf32>,
 // CHECK:         %[[COND4:.*]] = cmpi sgt, %[[T2]], %[[C0]] : i32
 // CHECK:         %[[CLAMPED2:.*]] = select %[[COND4]], %[[T2]], %[[C0]] : i32
 // CHECK:         %[[START2:.*]] = index_cast %[[CLAMPED2]] : i32 to index
-// CHECK:         %[[RES:.*]] = subtensor_insert %[[ARG1]] into %[[ARG0]]
+// CHECK:         %[[RES:.*]] = tensor.insert_slice %[[ARG1]] into %[[ARG0]]
 // CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xf32> into tensor<3x3xf32>
 // CHECK:         return %[[RES]] : tensor<3x3xf32>

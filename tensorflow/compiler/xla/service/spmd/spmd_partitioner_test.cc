@@ -6999,8 +6999,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   auto slice = AllOf(op::Shape("f32[1,1]"),
                      op::Copy(op::DynamicSlice(op::Constant(), _, _)));
-  EXPECT_THAT(root, op::Reshape(op::Slice(op::AllReduce(op::DynamicUpdateSlice(
-                        op::Broadcast(), slice, _, _)))));
+  EXPECT_THAT(root, op::Reshape(op::AllReduce(op::Select(_, slice, _))));
 }
 
 TEST_F(SpmdPartitioningTest, GatherParallelDimRedistributionOperand) {
@@ -8000,6 +7999,48 @@ ENTRY entry {
       }
     }
   }
+}
+
+TEST_F(SpmdPartitioningTest, BroadcastAsReplicate) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[1,1] parameter(0), sharding={devices=[2,2]0,1,2,3}
+  ROOT %copy = f32[1,1] copy(%param0), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1,1]"));
+  EXPECT_THAT(root, AllOf(op::Copy(op::AllReduce(op::Select(_, param0, _))),
+                          op::Shape("f32[1,1]")));
+}
+
+TEST_F(SpmdPartitioningTest, BroadcastAsReplicate2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[1,2] parameter(0), sharding={devices=[2,2]0,1,2,3}
+  ROOT %copy = f32[1,2] copy(%param0), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1,1]"));
+  auto broadcast =
+      AllOf(op::AllReduce(op::Select(_, param0, _)), op::Shape("f32[1,1]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Copy(op::AllReduce(op::DynamicUpdateSlice(_, broadcast, _, _))),
+            op::Shape("f32[1,2]")));
 }
 
 }  // namespace

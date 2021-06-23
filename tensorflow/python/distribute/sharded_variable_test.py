@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -143,6 +144,23 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(self.evaluate(s.variables[1]), [[0, 0], [1, 1]])
     self.assertAllEqual(self.evaluate(s.variables[2]), [[0, 0]])
     self.assertIs(ret, s)
+
+  def test_control_dep_on_assign(self):
+    v0 = variables_lib.Variable([[0, 0]])
+    v1 = variables_lib.Variable([[1, 1], [2, 2]])
+    v2 = variables_lib.Variable([[3, 3]])
+    s = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    @def_function.function
+    def func():
+      ret = s.assign([[4, 4], [5, 5], [6, 6], [7, 7]])
+      with ops.control_dependencies([ret]):
+        a = array_ops.ones((1, 1))
+      with ops.control_dependencies([control_flow_ops.group(ret)]):
+        b = array_ops.ones((1, 1))
+      return a, b
+
+    func()
 
   def test_convert_to_tensor(self):
     v0 = variables_lib.Variable([[0, 0]])

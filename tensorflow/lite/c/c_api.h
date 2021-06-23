@@ -96,6 +96,10 @@ typedef struct TfLiteTensor TfLiteTensor;
 TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
 
 // Returns a model from the provided buffer, or null on failure.
+//
+// NOTE: The caller retains ownership of the `model_data` and should ensure that
+// the lifetime of the `model_data` must be at least as long as the lifetime
+// of the `TfLiteModel`.
 TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreate(const void* model_data,
                                                       size_t model_size);
 
@@ -132,7 +136,7 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddDelegate(
 //
 // * `reporter` takes the provided `user_data` object, as well as a C-style
 //   format string and arg list (see also vprintf).
-// * `user_data` is optional. If provided, it is owned by the client and must
+// * `user_data` is optional. If non-null, it is owned by the client and must
 //   remain valid for the duration of the interpreter lifetime.
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetErrorReporter(
     TfLiteInterpreterOptions* options,
@@ -170,7 +174,11 @@ TFL_CAPI_EXPORT extern TfLiteTensor* TfLiteInterpreterGetInputTensor(
 //
 // NOTE: After a resize, the client *must* explicitly allocate tensors before
 // attempting to access the resized tensor data or invoke the interpreter.
+//
 // REQUIRES: 0 <= input_index < TfLiteInterpreterGetInputTensorCount(tensor)
+//
+// This function makes a copy of the input dimensions, so the client can safely
+// deallocate `input_dims` immediately after this function returns.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResizeInputTensor(
     TfLiteInterpreter* interpreter, int32_t input_index, const int* input_dims,
     int32_t input_dims_size);
