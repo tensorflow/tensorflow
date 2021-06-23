@@ -3209,7 +3209,7 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
       [this, literal, index, loc](
           ParsedElemComponentT parsed_value_component,
           LiteralNativeComponentT* literal_value_component) {
-        if (!std::isnan(parsed_value_component)) {
+        if (!std::isnan(static_cast<double>(parsed_value_component))) {
           return true;
         }
         auto nan_payload = GetNanPayload(parsed_value_component);
@@ -3229,7 +3229,8 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
         }
         *literal_value_component =
             NanWithSignAndPayload<LiteralNativeComponentT>(
-                /*sign=*/std::signbit(parsed_value_component),
+                /*sign=*/std::signbit(
+                    static_cast<double>(parsed_value_component)),
                 /*nan_payload=*/nan_payload);
         return true;
       };
