@@ -31,6 +31,7 @@ package_group(
         "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/darwinn/contrib/waymo/...",
         "//platforms/xla/sparse_core/...",
+        "//waymo/ml/compiler/...",
     ]),
 )
 
