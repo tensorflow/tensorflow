@@ -946,6 +946,17 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_canonicalize_reduction",
+    srcs = ["lib/Dialect/mhlo/transforms/hlo_canonicalize_reduction.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        ":pass_details",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_lhlo.cc"],
     hdrs = [
@@ -1293,6 +1304,7 @@ cc_library(
         ":MhloPassIncGen",
         ":broadcast_propagation",
         ":chlo_legalize_to_hlo",
+        ":hlo_canonicalize_reduction",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
         ":legalize_gather_to_torch_index_select",
