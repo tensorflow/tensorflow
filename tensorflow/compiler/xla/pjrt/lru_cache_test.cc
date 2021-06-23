@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/python/lru_cache.h"
+#include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 
 #include <random>
 

@@ -274,4 +274,27 @@ void BM_Transpose_float(::testing::benchmark::State& state) {
 BENCHMARK(BM_Transpose_uint8)->Range(0, benchmark_cases->size() - 1);
 BENCHMARK(BM_Transpose_float)->Range(0, benchmark_cases->size() - 1);
 
+TEST(TransposePlanCache, Basics) {
+  TransposePlanCache cache(2);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto p1, cache.GetOrCreate(/*elem_size_in_bytes=*/4, /*dims=*/{1, 2, 3},
+                                 /*permutation=*/{2, 1, 0}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto p1a, cache.GetOrCreate(/*elem_size_in_bytes=*/4, /*dims=*/{1, 2, 3},
+                                  /*permutation=*/{2, 1, 0}));
+  EXPECT_TRUE(p1.get() == p1a.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto p2, cache.GetOrCreate(/*elem_size_in_bytes=*/4, /*dims=*/{1, 2, 3},
+                                 /*permutation=*/{1, 2, 0}));
+  EXPECT_TRUE(p1.get() != p2.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto p3, cache.GetOrCreate(/*elem_size_in_bytes=*/4, /*dims=*/{1, 2, 3},
+                                 /*permutation=*/{0, 1, 2}));
+  EXPECT_TRUE(p3.get() != p1.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto p1b, cache.GetOrCreate(/*elem_size_in_bytes=*/4, /*dims=*/{1, 2, 3},
+                                  /*permutation=*/{2, 1, 0}));
+  EXPECT_TRUE(p1.get() != p1b.get());
+}
+
 }  // namespace xla

@@ -395,6 +395,17 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
 
   auto plan = std::make_unique<TransposePlan>();
   plan->elem_size_in_bytes_ = elem_size_in_bytes;
+  switch (elem_size_in_bytes) {
+    case 1:
+    case 2:
+    case 4:
+    case 8:
+    case 16:
+      break;
+    default:
+      return InvalidArgument("Unsupported elem_size_in_bytes=%d",
+                             elem_size_in_bytes);
+  }
   plan->num_elems_ = std::accumulate(dims.begin(), dims.end(), int64_t{1},
                                      std::multiplies<int64_t>());
   plan->original_b_dims_ = Permute(dims, permutation);
@@ -596,7 +607,7 @@ void TransposePlan::Execute(const void* a, void* b) const {
       ExecuteTyped<uint128>(static_cast<const char*>(a), static_cast<char*>(b));
       break;
     default:
-      LOG(FATAL) << "Unimplemented";
+      LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes_;
   }
 }
 
@@ -623,6 +634,52 @@ std::string TransposePlan::ToString() const {
       absl::StrJoin(permutation_, ","), absl::StrJoin(lda_, ","),
       absl::StrJoin(ldb_, ","), absl::StrJoin(loop_order_, ","),
       outer_block_elems_a_, outer_block_elems_b_, inner_block_elems_, nodes);
+}
+
+TransposePlanCache::TransposePlanCache(int capacity)
+    : lru_list_(capacity), cache_(&lru_list_) {}
+
+StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
+    size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
+    absl::Span<int64_t const> permutation,
+    absl::optional<absl::Span<int64_t const>> input_strides_in_bytes) {
+  Key key;
+  key.elem_size_in_bytes = elem_size_in_bytes;
+  key.dims.resize(dims.size());
+  absl::c_copy(dims, key.dims.begin());
+  key.permutation.resize(permutation.size());
+  absl::c_copy(permutation, key.permutation.begin());
+  if (input_strides_in_bytes) {
+    key.input_strides_in_bytes = absl::InlinedVector<int64_t, 4>(
+        input_strides_in_bytes->begin(), input_strides_in_bytes->end());
+  }
+  return cache_.GetOrCreateIfAbsent(
+      key, [&](const Key& key) -> StatusOr<std::shared_ptr<TransposePlan>> {
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<TransposePlan> plan,
+            TransposePlan::Create(elem_size_in_bytes, dims, permutation,
+                                  input_strides_in_bytes));
+        return std::shared_ptr<TransposePlan>(std::move(plan));
+      });
+}
+
+bool TransposePlanCache::Key::operator==(const Key& other) const {
+  return elem_size_in_bytes == other.elem_size_in_bytes && dims == other.dims &&
+         permutation == other.permutation &&
+         input_strides_in_bytes == other.input_strides_in_bytes;
+}
+
+template <typename H>
+H AbslHashValue(H h, const TransposePlanCache::Key& key) {
+  h = H::combine(std::move(h), key.elem_size_in_bytes);
+  h = H::combine_contiguous(std::move(h), key.dims.data(), key.dims.size());
+  h = H::combine_contiguous(std::move(h), key.permutation.data(),
+                            key.permutation.size());
+  if (key.input_strides_in_bytes) {
+    h = H::combine_contiguous(std::move(h), key.input_strides_in_bytes->data(),
+                              key.input_strides_in_bytes->size());
+  }
+  return h;
 }
 
 }  // namespace xla

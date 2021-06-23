@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -45,7 +46,7 @@ class TransposePlan {
   // input_strides_in_bytes: optional; the strides of the input array in
   //   bytes. (N.B. not elements). If omitted, the array is assumed to be in
   //   a dense major-to-minor layout.
-  static xla::StatusOr<std::unique_ptr<TransposePlan>> Create(
+  static StatusOr<std::unique_ptr<TransposePlan>> Create(
       size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
       absl::Span<int64_t const> permutation,
       absl::optional<absl::Span<int64_t const>> input_strides_in_bytes =
@@ -154,6 +155,33 @@ class TransposePlan {
   // cache blocking and need not be equal between input and output.
   int outer_block_elems_a_ = 4;
   int outer_block_elems_b_ = 4;
+};
+
+// An LRU cache for transpose plans. Not thread-safe.
+class TransposePlanCache {
+ public:
+  explicit TransposePlanCache(int capacity);
+
+  // Creates or returns a cached copy of a transpose plan.
+  StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
+      size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
+      absl::Span<int64_t const> permutation,
+      absl::optional<absl::Span<int64_t const>> input_strides_in_bytes =
+          absl::nullopt);
+
+ private:
+  struct Key {
+    size_t elem_size_in_bytes;
+    absl::InlinedVector<int64_t, 4> dims;
+    absl::InlinedVector<int64_t, 4> permutation;
+    absl::optional<absl::InlinedVector<int64_t, 4>> input_strides_in_bytes;
+
+    bool operator==(const Key& other) const;
+  };
+  template <typename H>
+  friend H AbslHashValue(H h, const Key& key);
+  LRUCache<Key, StatusOr<std::shared_ptr<TransposePlan>>>::LRUList lru_list_;
+  LRUCache<Key, StatusOr<std::shared_ptr<TransposePlan>>> cache_;
 };
 
 }  // namespace xla

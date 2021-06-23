@@ -423,6 +423,28 @@ cc_library(
 )
 
 cc_library(
+    name = "lru_cache",
+    hdrs = ["lru_cache.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "lru_cache_test",
+    srcs = ["lru_cache_test.cc"],
+    deps = [
+        ":lru_cache",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:logging",
+    ],
+)
+
+cc_library(
     name = "transpose",
     srcs = [
         "transpose.cc",
@@ -430,6 +452,7 @@ cc_library(
     ],
     hdrs = ["transpose.h"],
     deps = [
+        ":lru_cache",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
