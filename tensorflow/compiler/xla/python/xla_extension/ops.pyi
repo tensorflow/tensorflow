@@ -68,6 +68,15 @@ def AllReduce(
     replica_groups: Sequence[_ReplicaGroup] = ...,
     channel_id: Optional[ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...) -> XlaOp: ...
+def AllReduceScatter(
+    operand: XlaOp,
+    computation: XlaComputation,
+    scatter_dimension: int,
+    shard_count: int,
+    replica_groups: Sequence[_ReplicaGroup] = ...,
+    channel_id: Optional[ChannelHandle] = ...,
+    layout: Optional[_Layout] = ...,
+    use_global_device_ids: Optional[bool] = ...) -> XlaOp: ...
 def AllToAll(
     operand: XlaOp,
     split_dimension: int,
