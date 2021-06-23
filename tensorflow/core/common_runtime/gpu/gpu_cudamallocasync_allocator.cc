@@ -223,14 +223,49 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     if (auto stats = GetStats())
       LOG(ERROR) << "Stats: " << stats->DebugString();
 
-    VLOG(ERROR) << "Histogram of current allocation: allocation_size_in_bytes, nb_allocation;";
     std::map<size_t, int> size_map_historgram;
-    for (auto p: size_map_) {
+    std::vector<string> ptr_size_string;
+    for (auto p : size_map_) {
+      if (VLOG_IS_ON(8)) {
+	ptr_size_string.push_back(
+            absl::StrCat("(", absl::Hex(p.first), ",", p.second) + ")");
+      }
       size_map_historgram[p.second]++;
     }
-    for (auto p: size_map_historgram) {
+    VLOG(ERROR)
+      << "Histogram of current allocation: (allocation_size_in_bytes, "
+      << "nb_allocation_of_that_sizes), ...;";
+    for (auto p : size_map_historgram) {
       VLOG(ERROR) << p.first << ", " << p.second;
     }
+
+    VLOG(8) << "\nThe sorted list of (ptr,size):";
+    VLOG(8) << absl::StrJoin(ptr_size_string, ",");
+
+    cuuint64_t mem_reserved_current;
+    if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT, &mem_reserved_current)) {
+      VLOG(ERROR) << "Error while fethcing extra cudaMallocAsync pool attribute: "
+                  << GetCudaErrorMessage(result);
+    }
+    cuuint64_t mem_used_current;
+    if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_USED_MEM_CURRENT, &mem_used_current)) {
+      VLOG(ERROR) << "Error while fethcing extra cudaMallocAsync pool attribute: "
+                  << GetCudaErrorMessage(result);
+    }
+    cuuint64_t mem_reserved_high;
+    if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH, &mem_reserved_high)) {
+      VLOG(ERROR) << "Error while fethcing extra cudaMallocAsync pool attribute: "
+                  << GetCudaErrorMessage(result);
+    }
+    cuuint64_t mem_used_high;
+    if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_USED_MEM_HIGH, &mem_used_high)) {
+      VLOG(ERROR) << "Error while fethcing extra cudaMallocAsync pool attribute: "
+                  << GetCudaErrorMessage(result);
+    }
+    VLOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT: " << mem_reserved_current;
+    VLOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_CURRENT: " << mem_used_current;
+    VLOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
+    VLOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
 
     return nullptr;
   }
