@@ -135,6 +135,10 @@ private:
       // If the successor is the startBlock, we found a loop and only have to
       // add the operations from the block front to the first use of the
       // value.
+      if (!llvm::any_of(values, [&](Value v) {
+            return liveness.getLiveness(successor)->isLiveIn(v);
+          }))
+        continue;
       if (successor == startBlock) {
         start = &successor->front();
         end = getStartOperation(successor);
@@ -142,12 +146,7 @@ private:
           addAllOperationsBetween(start, end->getPrevNode());
         // Else we need to check if the value is live in and the successor
         // has not been visited before. If so we also need to process it.
-      } else if (llvm::any_of(
-                     values,
-                     [&](Value v) {
-                       return liveness.getLiveness(successor)->isLiveIn(v);
-                     }) &&
-                 visited.insert(successor).second)
+      } else if (visited.insert(successor).second)
         blocksToProcess.emplace_back(successor);
     }
   }
@@ -256,7 +255,6 @@ UserangeAnalysis::UserangeAnalysis(Operation *op,
     OperationListT useList;
     for (auto &use : allocValue.getUses())
       useList.emplace_back(use.getOwner());
-    useMap.insert(std::make_pair(allocValue, useList));
     UserangeInfoBuilder builder(liveness, {allocValue}, useList);
     OperationListT liveOperations = builder.computeUserange();
 
@@ -317,26 +315,8 @@ bool UserangeAnalysis::rangesInterfere(Value itemA, Value itemB) const {
 /// Note: This assumes that there is no interference between the two
 /// ranges.
 void UserangeAnalysis::unionRanges(Value itemA, Value itemB) {
-  OperationListT unionList = useMap[itemA];
-  for (Operation *op : useMap[itemB])
-    unionList.emplace_back(op);
-  useMap[itemA] = unionList;
-
-  replaceMap[itemA].insert(itemB);
-  UserangeInfoBuilder builder(liveness, replaceMap[itemA], useMap[itemA]);
-  OperationListT liveOperations = builder.computeUserange();
-
-  // Sort the operation list by ids.
-  std::sort(liveOperations.begin(), liveOperations.end(),
-            [&](Operation *left, Operation *right) {
-              return operationIds[left] < operationIds[right];
-            });
-
-  for (Operation *op : liveOperations) {
-    if (opReadWriteMap.find(op) == opReadWriteMap.end())
-      gatherMemoryEffects(op);
-  }
-  IntervalVector unionInterval = computeInterval(itemA, liveOperations);
+  IntervalVector unionInterval =
+      std::get<0>(intervalMerge(useIntervalMap[itemA], useIntervalMap[itemB]));
 
   llvm::set_union(aliasCache[itemA], aliasCache[itemB]);
   for (Value alias : aliasCache[itemA])
@@ -415,27 +395,54 @@ std::pair<UserangeAnalysis::IntervalVector, bool>
 UserangeAnalysis::intervalMerge(const IntervalVector &intervalA,
                                 const IntervalVector &intervalB) const {
   IntervalVector mergeResult;
-  std::set_union(intervalA.begin(), intervalA.end(), intervalB.begin(),
-                 intervalB.end(), std::back_inserter(mergeResult),
-                 [&](UseInterval left, UseInterval right) {
-                   if (left.first == right.first)
-                     return left.second < right.second;
-                   return left.first < right.first;
-                 });
 
   bool interference = false;
-  // Merge consecutive intervals that have no gap between each other.
-  for (auto it = mergeResult.begin(); it != mergeResult.end() - 1;) {
-    int diff = ((it + 1)->first) - (it->second);
-    if (diff <= 2) {
-      if (diff <= 0)
-        interference = true;
-      if ((it + 1)->second < it->second)
-        (it + 1)->second = it->second;
-      (it + 1)->first = it->first;
-      it = mergeResult.erase(it);
-    } else
-      ++it;
+  auto iterA = intervalA.begin();
+  auto iterB = intervalB.begin();
+  auto endA = intervalA.end();
+  auto endB = intervalB.end();
+  UseInterval current;
+  while (iterA != endA || iterB != endB) {
+    // Only intervals from intervalB are left.
+    if (iterA == endA) {
+      current = *iterB;
+      ++iterB;
+    }
+    // Only intervals from intervalA are left.
+    else if (iterB == endB) {
+      current = *iterA;
+      ++iterA;
+    }
+    // A is strict before B: A(0,2), B(4,6)
+    else if (iterA->second < iterB->first) {
+      current = *iterA;
+      ++iterA;
+    }
+    // B is strict before A: A(6,8), B(2,4)
+    else if (iterB->second < iterA->first) {
+      current = *iterB;
+      ++iterB;
+    }
+    // A and B interfere.
+    else {
+      interference = true;
+      current = UseInterval(std::min(iterA->first, iterB->first),
+                            std::max(iterA->second, iterB->second));
+      ++iterA;
+      ++iterB;
+    }
+    // Merge current with last element in mergeResult, if the intervals are
+    // consecutive and there is no gap.
+    if (mergeResult.size() == 0) {
+      mergeResult.emplace_back(current);
+      continue;
+    }
+    UseInterval *mergeResultLast = (mergeResult.end() - 1);
+    int diff = current.first - mergeResultLast->second;
+    if (diff <= 2 && mergeResultLast->second < current.second)
+      mergeResultLast->second = current.second;
+    else if (diff > 2)
+      mergeResult.emplace_back(current);
   }
 
   return std::make_pair(mergeResult, interference);

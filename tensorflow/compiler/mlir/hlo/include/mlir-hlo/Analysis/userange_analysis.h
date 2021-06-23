@@ -101,12 +101,6 @@ private:
   DenseMap<Operation *, std::pair<SmallPtrSet<Value, 2>, SmallPtrSet<Value, 2>>>
       opReadWriteMap;
 
-  /// Maps a value to its uses.
-  DenseMap<Value, OperationListT> useMap;
-
-  /// Maps which values are replaced by value.
-  DenseMap<Value, ValueSetT> replaceMap;
-
   /// Maps aliasValues to their use ranges. This is necessary to prevent
   /// recomputations of the use range intervals of the aliases.
   DenseMap<Value, OperationListT> aliasUseranges;
