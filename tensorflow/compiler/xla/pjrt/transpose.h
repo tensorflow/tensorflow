@@ -158,9 +158,20 @@ class TransposePlan {
 };
 
 // An LRU cache for transpose plans. Not thread-safe.
+struct TransposePlanCacheKey;
+
+template <typename H>
+H AbslHashValue(H h, const TransposePlanCacheKey& key);
+
 class TransposePlanCache {
  public:
   explicit TransposePlanCache(int capacity);
+  ~TransposePlanCache();
+
+  TransposePlanCache(const TransposePlanCache&) = delete;
+  TransposePlanCache(TransposePlanCache&&) = delete;
+  TransposePlanCache& operator=(const TransposePlanCache&) = delete;
+  TransposePlanCache& operator=(TransposePlanCache&&) = delete;
 
   // Creates or returns a cached copy of a transpose plan.
   StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
@@ -170,18 +181,10 @@ class TransposePlanCache {
           absl::nullopt);
 
  private:
-  struct Key {
-    size_t elem_size_in_bytes;
-    absl::InlinedVector<int64_t, 4> dims;
-    absl::InlinedVector<int64_t, 4> permutation;
-    absl::optional<absl::InlinedVector<int64_t, 4>> input_strides_in_bytes;
-
-    bool operator==(const Key& other) const;
-  };
-  template <typename H>
-  friend H AbslHashValue(H h, const Key& key);
-  LRUCache<Key, StatusOr<std::shared_ptr<TransposePlan>>>::LRUList lru_list_;
-  LRUCache<Key, StatusOr<std::shared_ptr<TransposePlan>>> cache_;
+  LRUCache<TransposePlanCacheKey,
+           StatusOr<std::shared_ptr<TransposePlan>>>::LRUList lru_list_;
+  LRUCache<TransposePlanCacheKey, StatusOr<std::shared_ptr<TransposePlan>>>
+      cache_;
 };
 
 }  // namespace xla

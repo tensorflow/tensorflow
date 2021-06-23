@@ -636,14 +636,45 @@ std::string TransposePlan::ToString() const {
       outer_block_elems_a_, outer_block_elems_b_, inner_block_elems_, nodes);
 }
 
+struct TransposePlanCacheKey {
+  size_t elem_size_in_bytes;
+  absl::InlinedVector<int64_t, 4> dims;
+  absl::InlinedVector<int64_t, 4> permutation;
+  absl::optional<absl::InlinedVector<int64_t, 4>> input_strides_in_bytes;
+
+  bool operator==(const TransposePlanCacheKey& other) const;
+};
+
+bool TransposePlanCacheKey::operator==(
+    const TransposePlanCacheKey& other) const {
+  return elem_size_in_bytes == other.elem_size_in_bytes && dims == other.dims &&
+         permutation == other.permutation &&
+         input_strides_in_bytes == other.input_strides_in_bytes;
+}
+
+template <typename H>
+H AbslHashValue(H h, const TransposePlanCacheKey& key) {
+  h = H::combine(std::move(h), key.elem_size_in_bytes);
+  h = H::combine_contiguous(std::move(h), key.dims.data(), key.dims.size());
+  h = H::combine_contiguous(std::move(h), key.permutation.data(),
+                            key.permutation.size());
+  if (key.input_strides_in_bytes) {
+    h = H::combine_contiguous(std::move(h), key.input_strides_in_bytes->data(),
+                              key.input_strides_in_bytes->size());
+  }
+  return h;
+}
+
 TransposePlanCache::TransposePlanCache(int capacity)
     : lru_list_(capacity), cache_(&lru_list_) {}
+
+TransposePlanCache::~TransposePlanCache() = default;
 
 StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
     size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
     absl::Span<int64_t const> permutation,
     absl::optional<absl::Span<int64_t const>> input_strides_in_bytes) {
-  Key key;
+  TransposePlanCacheKey key;
   key.elem_size_in_bytes = elem_size_in_bytes;
   key.dims.resize(dims.size());
   absl::c_copy(dims, key.dims.begin());
@@ -654,32 +685,15 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
         input_strides_in_bytes->begin(), input_strides_in_bytes->end());
   }
   return cache_.GetOrCreateIfAbsent(
-      key, [&](const Key& key) -> StatusOr<std::shared_ptr<TransposePlan>> {
+      key,
+      [&](const TransposePlanCacheKey& key)
+          -> StatusOr<std::shared_ptr<TransposePlan>> {
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<TransposePlan> plan,
             TransposePlan::Create(elem_size_in_bytes, dims, permutation,
                                   input_strides_in_bytes));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });
-}
-
-bool TransposePlanCache::Key::operator==(const Key& other) const {
-  return elem_size_in_bytes == other.elem_size_in_bytes && dims == other.dims &&
-         permutation == other.permutation &&
-         input_strides_in_bytes == other.input_strides_in_bytes;
-}
-
-template <typename H>
-H AbslHashValue(H h, const TransposePlanCache::Key& key) {
-  h = H::combine(std::move(h), key.elem_size_in_bytes);
-  h = H::combine_contiguous(std::move(h), key.dims.data(), key.dims.size());
-  h = H::combine_contiguous(std::move(h), key.permutation.data(),
-                            key.permutation.size());
-  if (key.input_strides_in_bytes) {
-    h = H::combine_contiguous(std::move(h), key.input_strides_in_bytes->data(),
-                              key.input_strides_in_bytes->size());
-  }
-  return h;
 }
 
 }  // namespace xla
