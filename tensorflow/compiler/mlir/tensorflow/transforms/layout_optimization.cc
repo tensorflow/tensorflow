@@ -417,7 +417,9 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
           result.getType().cast<ShapedType>(), permutation));
 
     // Try to push transpose further down.
-    for (Operation* user : result.getUsers()) work_list->push_back(user);
+    for (Operation* user : result.getUsers()) {
+      if (!llvm::isa<TransposeOp>(user)) work_list->push_back(user);
+    }
 
     // Try to reuse operand transposes.
     TransposeOp transpose;
@@ -457,7 +459,7 @@ void MoveTransposesPass::runOnFunction() {
     } else {
       // Try to push transpose after the user operation.
       for (Operation* user : transpose.y().getUsers()) {
-        work_list.push_back(user);
+        if (!llvm::isa<TransposeOp>(user)) work_list.push_back(user);
       }
     }
   });
