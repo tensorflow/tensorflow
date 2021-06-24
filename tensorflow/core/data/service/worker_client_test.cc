@@ -137,8 +137,8 @@ TEST_F(WorkerClientTest, LocalRead) {
   LocalWorkers::Remove(GetWorkerAddress());
   EXPECT_THAT(
       GetElement(*client, task_id),
-      testing::TfStatusIs(error::CANCELLED,
-                          MatchesRegex("Worker.*is no longer available.*")));
+      testing::StatusIs(error::CANCELLED,
+                        MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
@@ -156,8 +156,8 @@ TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
   LocalWorkers::Remove(GetWorkerAddress());
   EXPECT_THAT(
       GetElement(*client, task_id),
-      testing::TfStatusIs(error::CANCELLED,
-                          MatchesRegex("Worker.*is no longer available.*")));
+      testing::StatusIs(error::CANCELLED,
+                        MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, GrpcRead) {
@@ -193,8 +193,8 @@ TEST_F(WorkerClientTest, LocalServerShutsDown) {
   test_cluster_->StopWorkers();
   EXPECT_THAT(
       GetElement(*client, task_id),
-      testing::TfStatusIs(error::CANCELLED,
-                          MatchesRegex("Worker.*is no longer available.*")));
+      testing::StatusIs(error::CANCELLED,
+                        MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, CancelClient) {
@@ -206,7 +206,7 @@ TEST_F(WorkerClientTest, CancelClient) {
 
   client->TryCancel();
   EXPECT_THAT(GetElement(*client, task_id),
-              testing::TfStatusIs(
+              testing::StatusIs(
                   error::CANCELLED,
                   MatchesRegex("Client for worker.*has been cancelled.")));
 }

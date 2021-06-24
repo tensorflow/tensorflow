@@ -49,7 +49,7 @@ TEST(DataService, ParseDistributedEpochProcessingMode) {
 TEST(DataService, ParseInvalidProcessingMode) {
   ProcessingMode mode;
   EXPECT_THAT(ParseProcessingMode("invalid", mode),
-              testing::TfStatusIs(error::INVALID_ARGUMENT));
+              testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST(DataService, ProcessingModeToString) {
@@ -61,24 +61,24 @@ TEST(DataService, ProcessingModeToString) {
 
 TEST(DataService, ParseTargetWorkers) {
   EXPECT_THAT(ParseTargetWorkers("AUTO"),
-              testing::TfIsOkAndHolds(TargetWorkers::AUTO));
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
   EXPECT_THAT(ParseTargetWorkers("Auto"),
-              testing::TfIsOkAndHolds(TargetWorkers::AUTO));
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
   EXPECT_THAT(ParseTargetWorkers("ANY"),
-              testing::TfIsOkAndHolds(TargetWorkers::ANY));
+              testing::IsOkAndHolds(TargetWorkers::ANY));
   EXPECT_THAT(ParseTargetWorkers("any"),
-              testing::TfIsOkAndHolds(TargetWorkers::ANY));
+              testing::IsOkAndHolds(TargetWorkers::ANY));
   EXPECT_THAT(ParseTargetWorkers("LOCAL"),
-              testing::TfIsOkAndHolds(TargetWorkers::LOCAL));
+              testing::IsOkAndHolds(TargetWorkers::LOCAL));
   EXPECT_THAT(ParseTargetWorkers("local"),
-              testing::TfIsOkAndHolds(TargetWorkers::LOCAL));
+              testing::IsOkAndHolds(TargetWorkers::LOCAL));
   EXPECT_THAT(ParseTargetWorkers(""),
-              testing::TfIsOkAndHolds(TargetWorkers::AUTO));
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
 }
 
 TEST(DataService, ParseInvalidTargetWorkers) {
   EXPECT_THAT(ParseTargetWorkers("UNSET"),
-              testing::TfStatusIs(error::INVALID_ARGUMENT));
+              testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST(DataService, TargetWorkersToString) {
