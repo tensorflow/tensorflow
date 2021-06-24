@@ -2081,24 +2081,23 @@ name=None))
     return dataset
 
   def window(self, size, shift=None, stride=1, drop_remainder=False):
-    """Returns a dataset of window datasets.
+    """Returns a dataset of "windows".
 
-    Each window dataset iterates over a range of the input dataset. These are
-    finite datasets of size `size` (or possibly fewer if there are not enough
-    input elements to fill the window and `drop_remainder` evaluates to
-    `False`).
+    Each "window" is a dataset that contains a subset of elements of the
+    input dataset. These are finite datasets of size `size` (or possibly fewer
+    if there are not enough input elements to fill the window and
+    `drop_remainder` evaluates to `False`).
 
     For example:
 
     >>> dataset = tf.data.Dataset.range(7).window(3)
     >>> for window in dataset:
     ...   print(window)
-    <_VariantDataset shapes: (), types: tf.int64>
-    <_VariantDataset shapes: (), types: tf.int64>
-    <_VariantDataset shapes: (), types: tf.int64>
+    <...Dataset shapes: (), types: tf.int64>
+    <...Dataset shapes: (), types: tf.int64>
+    <...Dataset shapes: (), types: tf.int64>
 
-    To use the contents of the window datasets you need to unpack them. You can
-    unpack them in python:
+    Since windows are datasets, they can be iterated over:
 
     >>> for window in dataset:
     ...   print([item.numpy() for item in window])
@@ -2106,32 +2105,9 @@ name=None))
     [3, 4, 5]
     [6]
 
-    Methods like `Dataset.flat_map` and `Dataset.intrerleave` can also
-    merge the window datasets back into a single dataset.
+    #### Shift
 
-    The argument to `flat_map` is a function that takes an item from the dataset
-    and returns a `Dataset`. `flat_map` chains together the resulting datasets.
-
-    So returning the window dataset unmodified joins the windows back into a
-    single dataset:
-
-    >>> flat = dataset.flat_map(lambda x: x)
-    >>> print(list(flat.as_numpy_iterator()))
-    [0, 1, 2, 3, 4, 5, 6]
-
-    To turn each window dataset into a single tensor batch apply `.batch(size)`
-    to the window dataset:
-
-    >>> batched = dataset.flat_map(lambda x: x.batch(3))
-    >>> for batch in batched:
-    ...   print(batch.numpy())
-    [0 1 2]
-    [3 4 5]
-    [6]
-
-    #### Shift and stride
-
-    The `shift` argument determines the number of input elements to step
+    The `shift` argument determines the number of input elements to shift
     between the start of each window. If windows and elements are both numbered
     starting at 0, the first element in window `k` will be element `k * shift`
     of the input dataset. In particular, the first element of the first window
@@ -2147,6 +2123,8 @@ name=None))
     [3, 4, 5]
     [4, 5, 6]
 
+    #### Stride
+
     The `stride` argument determines the stride between input elements within a
     window.
 
@@ -2160,9 +2138,10 @@ name=None))
 
     #### Nested elements
 
-    Note that when the `window` transformation is applied to a dataset of
-    nested elements, it produces a dataset of nested window datasets. The window
-    datasets do not contain nested elements.
+    When the `window` transformation is applied to a dataset whos elements are
+    nested structures, it produces a dataset where the elements have the same
+    nested structure but each leaf is replaced by a window. In other words,
+    the nesting is applied outside of the windows as opposed inside of them.
 
     The type signature is:
 
@@ -2172,15 +2151,15 @@ name=None))
     ) -> Dataset[Nest[Dataset[T]]]
     ```
 
-    Appling `window` to a `Dataset` of tuples gives a tuple of `Datasets`:
+    Applying `window` to a `Dataset` of tuples gives a tuple of windows:
 
     >>> dataset = tf.data.Dataset.from_tensor_slices(([1, 2, 3, 4, 5],
     ...                                               [6, 7, 8, 9, 10]))
     >>> dataset = dataset.window(2)
     >>> windows = next(iter(dataset))
     >>> windows
-    (<_VariantDataset shapes: (), types: tf.int32>,
-     <_VariantDataset shapes: (), types: tf.int32>)
+    (<...Dataset shapes: (), types: tf.int32>,
+     <...Dataset shapes: (), types: tf.int32>)
 
     >>> def to_numpy(ds):
     ...   return list(ds.as_numpy_iterator())
@@ -2191,7 +2170,7 @@ name=None))
     [3, 4] [8, 9]
     [5] [10]
 
-    Appling `window` to a `Dataset` of dictionaries gives a dictionary of
+    Applying `window` to a `Dataset` of dictionaries gives a dictionary of
     `Datasets`:
 
     >>> dataset = tf.data.Dataset.from_tensor_slices({'a': [1, 2, 3],
@@ -2200,16 +2179,40 @@ name=None))
     >>> dataset = dataset.window(2)
     >>> def to_numpy(ds):
     ...   return list(ds.as_numpy_iterator())
+    >>>
     >>> for windows in dataset:
     ...   print(tf.nest.map_structure(to_numpy, windows))
     {'a': [1, 2], 'b': [4, 5], 'c': [7, 8]}
     {'a': [3], 'b': [6], 'c': [9]}
 
+    #### Flatten a dataset of windows
+
+    The `Dataset.flat_map` and `Dataset.interleave` methods can be used to
+    flatten a dataset of windows into a single dataset.
+
+    The argument to `flat_map` is a function that takes an element from the
+    dataset and returns a `Dataset`. `flat_map` chains together the resulting
+    datasets sequentially.
+
+    For example, to turn each window into a dense tensor:
+
+    >>> size = 3
+    >>> dataset = tf.data.Dataset.range(7).window(size, shift=1,
+    ...                                           drop_remainder=True)
+    >>> batched = dataset.flat_map(lambda x:x.batch(3))
+    >>> for batch in batched:
+    ...   print(batch.numpy())
+    [0 1 2]
+    [1 2 3]
+    [2 3 4]
+    [3 4 5]
+    [4 5 6]
+
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
         of the input dataset to combine into a window. Must be positive.
       shift: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        number of input elements by which the start index moves between windows.
+        number of input elements by which the window moves in each iteration.
         Defaults to `size`. Must be positive.
       stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         stride of the input elements in the sliding window. Must be positive.
