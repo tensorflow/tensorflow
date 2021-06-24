@@ -141,6 +141,41 @@ func @cluster() -> tensor<i32> {
   return %cluster : tensor<i32>
 }
 ```
+### `-tf-device-convert-launch-func-to-tf-call`: Rewrites tf_device::LaunchFuncOp to TF::PartitionedCallOp
+This pass converts tf_device::LaunchFuncOp into an equivalent
+TF::PartitionedCallOp so that it can be exported to TensorFlow GraphDef.
+### `-tf-device-launch-outlining`: Outlines regions of tf_device.launch operations
+This pass outlines the body of a `tf_device.launch` into a function and
+replaces the `tf_device.launch` op with an equivalent `tf_device.launch_func`
+op. Implicit operands will be captured and materialized as explicit arguments to
+the newly created functions and associated `tf_device.launch_func` ops. The
+`device` attribute from the `launch` op is transferred to `launch_func`.
+
+For example, the following:
+
+```mlir
+func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+  %launch = "tf_device.launch"() ( {
+    %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %identity : tensor<i32>
+  }) {device = "some_device"} : () -> (tensor<i32>)
+  return %launch : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+  %launch = "tf_device.launch_func"(%arg0) {device = "some_device", func = @_func} : (tensor<i32>) -> tensor<i32>
+  return %launch : tensor<i32>
+}
+
+func @_func(%arg0: tensor<i32>) -> tensor<i32> {
+  %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+  return %identity : tensor<i32>
+}
+```
 ### `-tf-device-mark-input-output-aliases`: Marks device cluster inputs-output pairs that read/write to the same variable as aliases
 This pass analyzes the inputs and outputs to device cluster and marks those
 input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
