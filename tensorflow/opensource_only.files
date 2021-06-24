@@ -271,6 +271,7 @@ tensorflow/third_party/toolchains/preconfig/win/BUILD
 tensorflow/third_party/toolchains/preconfig/win/bazel_211/BUILD
 tensorflow/third_party/toolchains/preconfig/win/tf_win_06152021/BUILD
 tensorflow/third_party/toolchains/preconfig/win/tf_win_06212021/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_06242021/BUILD
 tensorflow/third_party/toolchains/preconfig/win/tf_win_08062020/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
