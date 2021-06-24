@@ -1605,6 +1605,7 @@ cc_library(
         ":reduction_layout_normalizer",
         ":target_constants",
         ":tree_reduction_rewriter",
+        "@llvm-project//mlir:IR",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:hlo",
