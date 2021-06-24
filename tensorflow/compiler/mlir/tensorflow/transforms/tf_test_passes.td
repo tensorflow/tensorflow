@@ -25,5 +25,17 @@ def FreezeVariablesTestPass : Pass<"tf-freeze-variables-test-pass",
     Test pass for freezing read only variables in the graph.
   }];
 
-  let constructor = "::mlir::tf_saved_model::CreateFreezeVariableTestPass()";
+  let constructor = "::mlir::tf_test::CreateFreezeVariableTestPass()";
+}
+
+def TestTensorFlowLowerTFPass : Pass<"test-tf-lower-tf", "FuncOp"> {
+  let summary = "Test pass for TF->TF lowerings";
+  let constructor = "::mlir::tf_test::CreateTestTFLowerTFPass()";
+
+  let options = [
+    Option<"default_patterns_", "default-patterns", "bool", /*default=*/"true",
+           "Activate the default TF->TF patterns">,
+    Option<"pre_hlo_patterns_", "pre-hlo-patterns", "bool", /*default=*/"true",
+           "Activate the pre-HLO TF->TF patterns">,
+  ];
 }

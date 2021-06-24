@@ -17,27 +17,34 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes_detail.h"
 
 namespace mlir {
-namespace TF {
+namespace tf_test {
 namespace {
 
 // Lowers some of the TensorFlow operations that can be represented using other
 // TensorFlow operations.
-struct LowerTF : public PassWrapper<LowerTF, FunctionPass> {
-  void runOnFunction() override {
+struct LowerTF : public TestTensorFlowLowerTFPassBase<LowerTF> {
+  void runOnOperation() override {
     // Add lowering patterns to the list.
     OwningRewritePatternList patterns(&getContext());
-    mlir::TF::PopulateLoweringTFPatterns(&getContext(), &patterns);
+    if (default_patterns_) {
+      mlir::TF::PopulateLoweringTFPatterns(&getContext(), &patterns);
+    }
+    if (pre_hlo_patterns_) {
+      mlir::TF::PopulateTFLoweringBeforeHLOPatterns(&getContext(), &patterns);
+    }
 
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 
 }  // namespace
-}  // namespace TF
-}  // namespace mlir
 
-static mlir::PassRegistration<mlir::TF::LowerTF> pass(
-    "test-tf-lower-tf",
-    "Lowers some of the TensorFlow ops to other TensorFlow ops");
+std::unique_ptr<OperationPass<FuncOp>> CreateTestTFLowerTFPass() {
+  return std::make_unique<LowerTF>();
+}
+
+}  // namespace tf_test
+}  // namespace mlir

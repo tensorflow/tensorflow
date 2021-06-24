@@ -444,33 +444,6 @@ static RankedTensorType GetExtentsTensorTypeFor(TensorType value_type) {
   return RankedTensorType::get({dim}, b.getIndexType());
 }
 
-// Broadcasts a 'lower_rank_value' to the shape of a 'higher_rank_value'
-// by assuming that the shape of the lower ranked is a broadcast compatible
-// prefix of the higher ranked.
-// Values must be RankedTensorType (this restriction derives from the
-// broadcast_dimensions attribute on DynamicBroadcastInDim).
-//
-// Example:
-//   CommonPrefixBroadcast(tensor<4x3x256>, tensor<4, 3>) will broadcast the
-//   lower rank value to [4, 3, 256] (i.e. the opposite of numpy-style
-//   implicit broadcasting).
-static Value CommonPrefixBroadcast(Location loc, Value higher_rank_value,
-                                   Value lower_rank_value, OpBuilder &builder) {
-  Value higher_rank_shape =
-      builder.create<shape::ShapeOfOp>(loc, higher_rank_value);
-  auto result_extents_type =
-      GetExtentsTensorTypeFor(higher_rank_value.getType().cast<TensorType>());
-  Value result_extents = builder.create<shape::ToExtentTensorOp>(
-      loc, result_extents_type, higher_rank_shape);
-
-  auto lower_rank_type = lower_rank_value.getType().cast<RankedTensorType>();
-  auto lower_rank = lower_rank_type.getRank();
-  auto prefix_dims = GetI64ElementsAttrForSeq(0, lower_rank, &builder);
-  return builder.create<DynamicBroadcastInDimOp>(
-      loc, higher_rank_value.getType(), lower_rank_value, result_extents,
-      prefix_dims);
-}
-
 // Given a value (broadcast_to) and a feature dimension, broadcasts a 1D
 // value (broadcast_from) along that feature dimension. This is a shortcut
 // for the cases where a 1D tensor must be broadcast along a specific feature
@@ -3295,89 +3268,6 @@ class ConvertSigmoidOp : public RewritePattern {
   }
 };
 
-// Converts Softmax and LogSoftmax to HLO ops, computing softmax with the
-// following formulas:
-//
-//     softmax = div(exp(logits), sum(exp(logits)))
-
-//     log_softmax = sub(logits, log(sum(exp(logits))))
-//
-// Sample result with 2-d f16 inputs with B batches of with N elements each.
-//
-//    %reduce_dim = tf.Const dense<[1]> : tensor<1xi64>
-//
-//    // Subtract each element by their batches' max to improve numerical
-//    // stability.
-//    %max = "tf.Max"(%input, %reduce_dim)
-//           : (tensor<BxNxf16>, tensor<1xi64>) -> tensor<Bxf16>
-//    %sub = "mhlo.subtract"(%inp, %max) {broadcast_dimensions = 0}
-//            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
-//
-//    %exp = "mhlo.exponential"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
-//    %sum = "tf.Sum"(%exp, %reduce_dim)
-//            : (tensor<BxNxf32>, tensor<1xi64>) -> tensor<Bxf32>
-//
-//    // Softmax computation:
-//    %softmax = "mhlo.divide"(%exp, %sum_f16) {broadcast_dimensions = 0}
-//            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
-template <typename OpTy, bool use_log = true>
-class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
- public:
-  using OpRewritePattern<OpTy>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(OpTy op,
-                                PatternRewriter &rewriter) const override {
-    // Softmax converter requires ranked type because the XLA reduce ops used
-    // while lowering requires dimensions attribute to reduce along.
-    // Note that the input and output shape is equivalent, so we use 'logits'
-    // and its type for shape calculations.
-    Value logits = op.logits();
-    RankedTensorType type = logits.getType().dyn_cast<RankedTensorType>();
-    if (!type) return failure();
-    auto loc = op.getLoc();
-    int rank = type.getRank();
-
-    // Note that the TensorFlow Softmax op verifies that the input rank is
-    // greater than or equal to one so the following sequence is valid.
-    auto reduce_dim = rewriter.create<TF::ConstOp>(
-        loc, GetI64ElementsAttr({rank - 1}, &rewriter));
-
-    // Exponential of input values and then their sum can be very large here.
-    // Division with large denominator is numerically unstable. To improve
-    // numerical stability, subtract each batch with their max element so that
-    // the maximum input value is zero. It can be shown that softmax computed
-    // after adding or subtracting all inputs in a batch using a common value
-    // gives mathematically equivalent result.
-    auto max_logits =
-        rewriter.create<TF::MaxOp>(loc, logits, reduce_dim,
-                                   /*keep_dims=*/rewriter.getBoolAttr(false));
-    auto max_logits_broadcast =
-        CommonPrefixBroadcast(loc, logits, max_logits, rewriter);
-    auto shifted_logits =
-        rewriter.create<mhlo::SubOp>(loc, type, logits, max_logits_broadcast);
-
-    // Exponentiate the inputs.
-    Value exp = rewriter.create<ExpOp>(loc, type, shifted_logits);
-
-    // Compute summation of the exponentials.
-    auto exp_sum =
-        rewriter.create<TF::SumOp>(loc, exp, reduce_dim,
-                                   /*keep_dims=*/rewriter.getBoolAttr(false));
-    Value sum = exp_sum.getResult();
-
-    if (use_log) {
-      Value log = rewriter.create<LogOp>(loc, sum);
-      auto log_broadcast = CommonPrefixBroadcast(loc, logits, log, rewriter);
-      rewriter.replaceOpWithNewOp<mhlo::SubOp>(op, shifted_logits,
-                                               log_broadcast);
-    } else {
-      auto sum_broadcast = CommonPrefixBroadcast(loc, logits, sum, rewriter);
-      rewriter.replaceOpWithNewOp<mhlo::DivOp>(op, exp, sum_broadcast);
-    }
-    return success();
-  }
-};
-
 static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                            Value *out_lhs, Value *out_rhs,
                                            PatternRewriter *rewriter) {
@@ -4247,8 +4137,8 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    // TODO(b/141785544): Update this to not require static shapes.
-    // Input shape needs to be static to convert negative indices in TensorFlow
+    // TODO(b/141785544): Update this to not require ranked shapes.
+    // Input shape needs to be ranked to convert negative indices in TensorFlow
     // to absolute indices required by HLO.
     auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
@@ -7477,8 +7367,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertSelectOp,
     ConvertSigmoidOp,
     ConvertShapeOp,
-    ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
-    ConvertSoftmaxOp<TF::SoftmaxOp, false>,
     ConvertSplitOp,
     ConvertSplitVOp,
     ConvertStridedSliceOp,
