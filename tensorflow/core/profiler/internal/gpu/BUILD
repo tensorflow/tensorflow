@@ -73,6 +73,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":device_tracer",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",

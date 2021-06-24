@@ -16,6 +16,7 @@ limitations under the License.
 #include <array>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -445,7 +446,9 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
             if (absl::StartsWith(detail, "num_bytes:")) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
             } else if (absl::StartsWith(detail, "addr:")) {
-              (void)absl::SimpleAtoi(name_value[1], &addr);
+              std::stringstream hex_string;
+              hex_string << std::hex << name_value[1];
+              hex_string >> addr;
             } else if (absl::StartsWith(detail, "kind:")) {
               kind = name_value[1];
             }
