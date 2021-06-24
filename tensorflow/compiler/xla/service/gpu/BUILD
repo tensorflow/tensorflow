@@ -1586,13 +1586,13 @@ cc_library(
 
 cc_library(
     name = "amdgpu_compiler_impl",
-    srcs = [
+    srcs = if_rocm_is_configured([
         "amdgpu_compiler.cc",
-    ],
-    hdrs = [
+    ]),
+    hdrs = if_rocm_is_configured([
         "amdgpu_compiler.h",
-    ],
-    deps = [
+    ]),
+    deps = if_rocm_is_configured([
         ":cusolver_rewriter",
         ":gemm_rewriter",
         ":gpu_compiler",
@@ -1617,7 +1617,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core/platform:rocm_rocdl_path",
-    ],
+    ]),
 )
 
 cc_library(
