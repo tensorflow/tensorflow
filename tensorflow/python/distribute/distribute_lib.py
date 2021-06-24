@@ -2873,7 +2873,6 @@ class StrategyExtendedV1(StrategyExtendedV2):
     """
     raise NotImplementedError("must be implemented in descendants")
 
- 
   def update_non_slot(
       self, colocate_with, fn, args=(), kwargs=None, group=True):
     """Runs `fn(*args, **kwargs)` on `colocate_with` devices.
