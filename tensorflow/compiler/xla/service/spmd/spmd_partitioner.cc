@@ -904,7 +904,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(absl::Span<const int64> dims) {
     HloSharding original_sharding = sharding();
     auto grouped = GroupShardingOnDims(original_sharding, other_dims);
     std::vector<int64> dev_indices(
-        original_sharding.tile_assignment().num_dimensions(), 0);
+        grouped.sharding.tile_assignment().num_dimensions(), 0);
     hlo_->set_sharding(HloSharding::AssignDevice(
         grouped.sharding.tile_assignment()(dev_indices)));
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
