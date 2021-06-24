@@ -41,5 +41,11 @@ REGISTER_KERNEL_BUILDER(Name("Square")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::square<int32>>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("Square")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .TypeConstraint<int32>("T"),
+                        UnaryOp<CPUDevice, functor::square<int32>>);
 
 }  // namespace tensorflow
