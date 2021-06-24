@@ -41,6 +41,10 @@ load(
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_openmp",
 )
+load(
+    "//third_party/llvm_openmp:openmp.bzl",
+    "windows_llvm_openmp_linkopts",
+)
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
@@ -402,8 +406,16 @@ def tf_openmp_copts():
         # "//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
         # copybara:uncomment_end_and_comment_begin
         "@org_tensorflow//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
-        "@org_tensorflow//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        "@org_tensorflow//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp:llvm"],
         # copybara:comment_end
+        "//conditions:default": [],
+    })
+
+def tf_openmp_lopts():
+    # When compiling on Windows, force MSVC to use libiomp that was compiled
+    # as part of this build.
+    return select({
+        "//third_party/mkl:build_with_mkl_windows_openmp": [windows_llvm_openmp_linkopts()],
         "//conditions:default": [],
     })
 
@@ -1323,7 +1335,7 @@ def tf_cc_test_mkl(
                     "-lpthread",
                     "-lm",
                 ],
-            }) + _rpath_linkopts(src_to_test_name(src)),
+            }) + _rpath_linkopts(src_to_test_name(src)) + tf_openmp_lopts(),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
             data = data + tf_binary_dynamic_kernel_dsos(),
             exec_properties = tf_exec_properties({"tags": tags}),
@@ -1587,7 +1599,8 @@ def tf_mkl_kernel_library(
         alwayslink = 1,
         # Adding an explicit `-fexceptions` because `allow_exceptions = True`
         # in `tf_copts` doesn't work internally.
-        copts = tf_copts() + ["-fexceptions"] + tf_openmp_copts()):
+        copts = tf_copts() + ["-fexceptions"] + tf_openmp_copts(),
+        linkopts = tf_openmp_lopts()):
     """A rule to build MKL-based TensorFlow kernel libraries."""
 
     if not bool(srcs):
@@ -1613,6 +1626,7 @@ def tf_mkl_kernel_library(
         srcs = if_mkl(srcs),
         hdrs = hdrs,
         deps = deps,
+        linkopts = linkopts,
         alwayslink = alwayslink,
         copts = copts + if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
         features = disable_header_modules,
