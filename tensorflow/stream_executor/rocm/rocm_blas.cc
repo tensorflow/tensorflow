@@ -1796,7 +1796,8 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   if (ROCMBlasTranspose(transa) == rocblas_operation_none) {
     assert(lda >= m);
     batch_stride_a = lda * k;
-  } else {    assert(lda >= k);
+  } else {
+    assert(lda >= k);
     batch_stride_a = lda * m;
   }
 

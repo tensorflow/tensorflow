@@ -17,44 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
-// we can't include core/util/gpu_device_functions.h (where these are defined),
-// because this file is not compiled with hipcc
-#if GOOGLE_CUDA
-using gpuFloatComplex = cuFloatComplex;
-using gpuDoubleComplex = cuDoubleComplex;
-using gpuStream_t = gpuStream_t;
-using gpuEvent_t = cudaEvent_t;
-#define gpuEventRecord cudaEventRecord
-#define gpuEventSynchronize cudaEventSynchronize
-#define gpuEventDestroy cudaEventDestroy
-#define gpuEventCreate cudaEventCreate
-#define gpuEventCreateWithFlags cudaEventCreateWithFlags
-#define gpuEventDisableTiming cudaEventDisableTiming
-#define gpuDeviceSynchronize cudaDeviceSynchronize
-#define gpuFree cudaFree
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/hip/hip_complex.h"
-
-using gpuFloatComplex = hipFloatComplex;
-using gpuDoubleComplex = hipDoubleComplex;
-using gpuStream_t = hipStream_t;
-using gpuEvent_t = hipEvent_t;
-using cudaError = int;
-using cudaError_t = int;
-#define cudaSuccess 0
-/*
-#define cudaGetLastError hipGetLastError
-#define gpuEventRecord hipEventRecord
-#define gpuEventDestroy hipEventDestroy
-#define gpuEventSynchronize hipEventSynchronize
-#define gpuEventCreate hipEventCreate
-#define gpuEventCreateWithFlags hipEventCreateWithFlags
-#define gpuEventDisableTiming hipEventDisableTiming
-#define gpuDeviceSynchronize hipDeviceSynchronize
-#define gpuFree hipFree
-*/
-using cublasFillMode_t = rocblas_fill;
-using cusolverStatus_t = rocsolver_status;
+#ifdef TENSORFLOW_USE_ROCM
 
 namespace rocblas_wrap {
 
@@ -114,16 +77,7 @@ FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
 
 }  // namespace rocblas_wrap
 
-#define cusolverDnCreate rocblas_wrap::rocblas_create_handle
-#define cusolverDnSetStream rocblas_wrap::rocblas_set_stream
-#define cusolverDnDestroy rocblas_wrap::rocblas_destroy_handle
-
-#define CUBLAS_FILL_MODE_UPPER rocblas_fill_upper
-#define CUBLAS_FILL_MODE_LOWER rocblas_fill_lower
-
-#endif
-
-
+#endif  // TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -156,9 +110,9 @@ struct GpuComplexT<std::complex<double>> {
 
 using gpuStream_t = hipStream_t;
 
-#define GpuSolverCreate rocblas_create_handle
-#define GpuSolverSetStream rocblas_set_stream
-#define GpuSolverDestroy rocblas_destroy_handle
+#define GpuSolverCreate rocblas_wrap::rocblas_create_handle
+#define GpuSolverSetStream rocblas_wrap::rocblas_set_stream
+#define GpuSolverDestroy rocblas_wrap::rocblas_destroy_handle
 
 template <>
 struct GpuComplexT<std::complex<float>> {

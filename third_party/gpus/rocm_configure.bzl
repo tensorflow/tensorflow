@@ -615,7 +615,7 @@ def _create_local_rocm_repository(repository_ctx):
                 name = "hiprand-include",
                 src_dir = rocm_toolkit_path + "/hiprand/include",
                 out_dir = "rocm/include/hiprand",
-            )
+            ),
         )
 
     rocrand_include = ""
@@ -629,7 +629,7 @@ def _create_local_rocm_repository(repository_ctx):
                 name = "rocrand-include",
                 src_dir = rocm_toolkit_path + "/rocrand/include",
                 out_dir = "rocm/include/rocrand",
-            )
+            ),
         )
 
     rocm_libs = _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin)
