@@ -4153,48 +4153,21 @@ def softmax_cross_entropy_with_logits(
   return softmax_cross_entropy_with_logits_v2(
       labels=labels, logits=logits, axis=dim, name=name)
 
-# The following function is to be either developed further or deleted prior to
-# the PR merge.
-def _sparse_softmax_cross_entropy_check_for_valid_labels_on_cpu(logits, labels):
-  test = math_ops.add(1, 2)
-  if re.match(".*cpu.*", test.device, re.IGNORECASE):
-    # raise Exception("running on CPU")
-    # Example original exception message: "Received a label value of -1 which is outside the valid range of [0, 4).  Label values: 4 3 0 -1"
-    # Would need to make this exception work in both graph and eager mode
-    pass
-
-
-@custom_gradient.custom_gradient
-def _sparse_softmax_cross_entropy_gradient_nan_injector(logits, labels):
-  logits_shape = array_ops.shape(logits)
-  class_count = math_ops.cast(logits_shape[-1], labels.dtype)
-  nan_tensor = constant_op.constant(float('Nan'), dtype=logits.dtype)
-  def grad(upstream_gradient):
-    logits_all_nans = array_ops.broadcast_to(nan_tensor, logits_shape)
-    labels_on_logits = array_ops.transpose(
-        labels * array_ops.transpose(
-            [array_ops.ones(logits_shape[1], dtype=labels.dtype)]))
-    logits_grad = array_ops.where(
-        math_ops.logical_or(
-            math_ops.less(labels_on_logits, 0),
-            math_ops.greater_equal(labels_on_logits, class_count)),
-        logits_all_nans, upstream_gradient)
-    labels_grad = None
-    return [logits_grad, labels_grad]
-  return logits, grad
-
 
 def _sparse_softmax_cross_entropy_with_rank_2_logits(logits, labels, name):
   if _tf_deterministic_ops():
-    # Handle invalid labels before running the op
-    _sparse_softmax_cross_entropy_check_for_valid_labels_on_cpu(logits, labels)
-    logits = _sparse_softmax_cross_entropy_gradient_nan_injector(logits, labels)
+    # TODO(duncanriach): Implement a GPU-deterministic version of this op at
+    #     the C++/CUDA level.
 
     # The actual op functionality
     log_probs = log_softmax_v2(logits)
     cost = math_ops.negative(array_ops.gather(log_probs, labels, batch_dims=1))
 
-    # Force the output to be NaN when the corresponding label is invalid
+    # Force the output to be NaN when the corresponding label is invalid.
+    # Without the selective gradient gating provided by the following code,
+    # backprop into the actual op functionality above, when there are invalid
+    # labels, leads to corruption of the gradients associated with valid labels.
+    # TODO(duncanriach): Uncover the source of the aforementioned corruption.
     nan_tensor = constant_op.constant(float('Nan'), dtype=logits.dtype)
     cost_all_nans = array_ops.broadcast_to(nan_tensor, array_ops.shape(cost))
     class_count = math_ops.cast(array_ops.shape(logits)[-1], labels.dtype)

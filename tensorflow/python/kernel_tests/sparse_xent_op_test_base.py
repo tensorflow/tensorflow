@@ -81,7 +81,8 @@ class SparseXentOpTestBase(test.TestCase):
       self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
       self.assertAllClose([[0.0], [0.0], [0.0]], tf_gradient)
 
-  def _testInvalidLabelNans(self):
+  @test_util.run_gpu_only()
+  def _testInvalidLabelGPU(self, invalid_label_gradient=np.nan):
     labels = [4, 3, 0, -1]
     logits = [[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 2., 3., 4.],
               [1., 2., 3., 4.]]
@@ -90,34 +91,33 @@ class SparseXentOpTestBase(test.TestCase):
                         loss,
                         rtol=1e-3,
                         atol=1e-3)
-    self.assertAllClose([[np.nan] * 4,
+    self.assertAllClose([[invalid_label_gradient] * 4,
                          [0.25, 0.25, 0.25, -0.75],
                          [-0.968, 0.087, 0.237, 0.6439],
-                         [np.nan] * 4],
+                         [invalid_label_gradient] * 4],
                         gradient,
                         rtol=1e-3,
                         atol=1e-3)
 
-  @test_util.run_gpu_only()
-  def testInvalidLableNans(self):
+  def testInvalidLabelGPU(self):
     """This method is structured to be easily overridden by a child class."""
-    self._testInvalidLabelNans()
+    self._testInvalidLabelGPU()
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   @test_util.disable_xla("XLA cannot assert inside of a kernel.")
-  def _testInvalidLabelException(self):
+  def _testInvalidLabelCPU(self, expected_regex="Received a label value of"):
     labels = [4, 3, 0, -1]
     logits = [[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 2., 3., 4.],
                 [1., 2., 3., 4.]]
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, errors_impl.UnknownError),
-        "Received a label value of"):
+        expected_regex):
       self.evaluate(nn_ops.sparse_softmax_cross_entropy_with_logits_v2(
           labels=labels, logits=logits))
 
-  def testInvalidLabelException(self):
+  def testInvalidLabelCPU(self):
     """This method is structured to be easily overridden by a child class."""
-    self._testInvalidLabelException()
+    self._testInvalidLabelCPU()
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.

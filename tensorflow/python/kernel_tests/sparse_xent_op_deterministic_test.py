@@ -143,27 +143,28 @@ class SparseXentOpDeterministicTest(
   # Modifications to the parent class
   # (sparse_xent_op_test_base.SparseXentOpTestBase) follow
 
-  def testInvalidLabelNans(self):
-    """Modified test for invalid label NaNs.
+  def testInvalidLabelGPU(self):
+    """Modified test for invalid labels on GPU.
 
-    The pre-existing, nondeterministic implementation throws an exception when
-    any of the label values are invalid (less than zero or greater than the
-    number of classes minus one) when running on CPU but introduces NaNs when
-    running on GPU. The deterministic implementation introduces NaNs on both CPU
-    and GPU.
+    When running on GPU, the pre-existing, nondeterministic implementation
+    produces NaN (in both the forward and backward directions) for results
+    associated with invalid labels (less than zero or greater than the number of
+    classes minus one). However, while the deterministic implementation also
+    produces NaN in the forward direction, it produces zeros in the backward
+    direction.
     """
-    self._testInvalidLabelNans()
+    self._testInvalidLabelGPU(invalid_label_gradient=0.0)
 
-  def testInvalidLabelException(self):
-    """Modified test for invalid label exception.
+  def testInvalidLabelCPU(self):
+    """Modified test for invalid labels on CPU.
 
-    The pre-existing, nondeterministic implementation throws an exception when
-    any of the label values are invalid (less than zero or greater than the
-    number of classes minus one) when running on CPU but introduces NaNs when
-    running on GPU. The deterministic implementation introduces NaNs on both CPU
-    and GPU.
+    When running on CPU, the pre-existing, nondeterministic implementation
+    throws a custom exception when any of the label values are invalid (less
+    than zero or greater than the number of classes minus one). However, in the
+    deterministic implementation, tf.gather throws an exception instead.
     """
-    pass
+    self._testInvalidLabelCPU(
+        expected_regex="indices\[0\] = 4 is not in \[0, 4\)")
 
   def testLabelsPlaceholderScalar(self):
     """Test exception-throwing for non-statically-shaped, zero-rank labels.
@@ -192,7 +193,7 @@ class SparseXentOpDeterministicTest(
 if __name__ == "__main__":
   # TODO(reedwm): Merge this test with sparse_xent_op_test.py.
   config.enable_deterministic_ops(True)
-  # The following instruction is to be deleted after
+  # DO NOT SUBMIT: The following instruction is to be deleted after
   # tf.math.unsorted_segment_sum operates deterministically in top-of-tree (and
   # therefore doesn't throw d9m-unimplemented exceptions), and before the
   # current PR is merged.
