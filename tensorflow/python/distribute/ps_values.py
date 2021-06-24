@@ -200,6 +200,8 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
 
   # TODO(josh11b): Test saving & restoring.
   def _gather_saveables_for_checkpoint(self):
+    if isinstance(self._v, CachingVariable):
+      return self._v._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
     return {trackable.VARIABLE_VALUE_KEY: self._v}
 
   def _map_resources(self, save_options):
