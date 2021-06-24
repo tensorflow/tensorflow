@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -152,6 +153,25 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       const XlaComputation& computation, CompileOptions options);
 
   StatusOr<pybind11::bytes> HeapProfile();
+
+  // Adds code to `builder` to call Python host function `callable` with
+  // `operands`, returning a result of `result_shape`. If desired, the operand
+  // layouts can be constrained by `operand_layouts`. Returns a pair of the
+  // output XlaOp, together with an object that must be kept alive as long as
+  // the Python callback may be called. Typically the callback may be kept
+  // alive by attaching it to the executable built from this computation.
+  //
+  // Callable receives as arguments NumPy arrays for arguments with array types,
+  // and None for Token argument. The callable must return a tuple of either
+  // arrays or None values.
+  //
+  // This is a method of PyClient since different platforms may implement this
+  // functionality in different ways.
+  StatusOr<std::pair<XlaOp, pybind11::object>> EmitPythonCallback(
+      pybind11::function callable, XlaBuilder& builder,
+      absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
+      absl::optional<std::vector<Shape const>> operand_layouts,
+      bool has_side_effect);
 
  private:
   friend class PyBuffer;

@@ -133,6 +133,8 @@ int BitWidth(PrimitiveType type) {
   }
 }
 
+int ByteWidth(PrimitiveType type) { return CeilOfRatio(BitWidth(type), 8); }
+
 xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth) {
   switch (src_bitwidth) {
     case 8:

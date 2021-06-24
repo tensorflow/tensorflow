@@ -152,6 +152,9 @@ bool IsArrayType(PrimitiveType primitive_type);
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
 
+// Returns the number of bytes in the representation for a given type.
+int ByteWidth(PrimitiveType type);
+
 PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
 
 PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth);

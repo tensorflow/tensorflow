@@ -237,7 +237,11 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("compile_options") = CompileOptions())
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
-      .def("defragment", &PyClient::Defragment);
+      .def("defragment", &PyClient::Defragment)
+      .def("emit_python_callback", &PyClient::EmitPythonCallback,
+           py::arg("callable"), py::arg("builder"), py::arg("operands"),
+           py::arg("result_shapes"), py::arg("operand_layouts") = absl::nullopt,
+           py::arg("has_side_effects") = false);
 
   m.def(
       "get_cpu_client",
