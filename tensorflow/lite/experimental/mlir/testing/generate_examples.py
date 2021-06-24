@@ -89,7 +89,6 @@ MLIR_CONVERTER_KNOWN_BUGS = {
     # int64.
     r"div.*dtype=tf\.int64": "119126484",
     r"floor_div.*dtype=tf\.int64": "119126484",
-    r"mul.*dtype=tf\.int64": "119126484",
     r"relu.*dtype=tf\.int64": "119126484",
     r"squared_difference.*dtype=tf\.int64": "119126484",
     # Post-training quantization support missing for below op in mlir.
