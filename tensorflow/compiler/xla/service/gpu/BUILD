@@ -1586,13 +1586,13 @@ cc_library(
 
 cc_library(
     name = "amdgpu_compiler_impl",
-    srcs = if_rocm_is_configured([
+    srcs = [
         "amdgpu_compiler.cc",
-    ]),
-    hdrs = if_rocm_is_configured([
+    ],
+    hdrs = [
         "amdgpu_compiler.h",
-    ]),
-    deps = if_rocm_is_configured([
+    ],
+    deps = [
         ":cusolver_rewriter",
         ":gemm_rewriter",
         ":gpu_compiler",
@@ -1605,7 +1605,6 @@ cc_library(
         ":reduction_layout_normalizer",
         ":target_constants",
         ":tree_reduction_rewriter",
-        "@llvm-project//mlir:IR",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1618,7 +1617,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core/platform:rocm_rocdl_path",
-    ]),
+        "@llvm-project//mlir:IR",
+    ],
 )
 
 cc_library(
