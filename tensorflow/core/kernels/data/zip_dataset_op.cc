@@ -14,9 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/zip_dataset_op.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -58,6 +65,12 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     return absl::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
+  }
+
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
+    return Status::OK();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -125,10 +138,12 @@ class ZipDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
+      TF_ASSIGN_OR_RETURN(input_contexts_,
+                          CreateInputIteratorContexts(ctx, dataset()));
       input_impls_.resize(dataset()->inputs_.size());
       for (size_t i = 0; i < input_impls_.size(); ++i) {
         TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-            ctx, this, strings::StrCat(prefix(), "[", i, "]"),
+            &input_contexts_[i], this, strings::StrCat(prefix(), "[", i, "]"),
             &input_impls_[i]));
       }
       return Status::OK();
@@ -150,7 +165,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         const auto& input_impl = input_impls_[i];
         std::vector<Tensor> input_tensors;
         bool component_end_of_sequence = false;
-        status.Update(input_impl->GetNext(ctx, &input_tensors,
+        status.Update(input_impl->GetNext(&input_contexts_[i], &input_tensors,
                                           &component_end_of_sequence));
         *end_of_sequence |= component_end_of_sequence;
         // Even if an error is encountered for one of the components,
@@ -163,8 +178,9 @@ class ZipDatasetOp::Dataset : public DatasetBase {
           // same number of times for each input. This will finalize caches
           // when cached datasets of the same size are zipped together.
           for (int j = i + 1; j < input_impls_.size(); ++j) {
-            Status s = input_impls_[j]->GetNext(ctx, &input_tensors,
-                                                &component_end_of_sequence);
+            Status s =
+                input_impls_[j]->GetNext(&input_contexts_[j], &input_tensors,
+                                         &component_end_of_sequence);
           }
           break;
         }
@@ -218,6 +234,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
    private:
     mutex mu_;
     std::vector<std::unique_ptr<IteratorBase>> input_impls_ TF_GUARDED_BY(mu_);
+    std::vector<IteratorContext> input_contexts_;
   };
 
   const std::vector<DatasetBase*> inputs_;

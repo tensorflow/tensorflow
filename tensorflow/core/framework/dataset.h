@@ -386,7 +386,7 @@ class IteratorContext {
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
-          split_provider(ctx->split_provider()),
+          split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
           thread_pool(ctx->thread_pool()) {}
@@ -454,8 +454,9 @@ class IteratorContext {
     // Number of threads used for executing user-defined functions.
     int32 runner_threadpool_size = 0;
 
-    // An optional split provider indicating which splits to process.
-    std::shared_ptr<SplitProvider> split_provider = nullptr;
+    // Split providers indicating which splits to process. May be empty,
+    // indicating that the iterator should process all splits.
+    std::vector<std::shared_ptr<SplitProvider>> split_providers;
 
     // The `StatsAggregator` object to record statistics about the iterator.
     //
@@ -506,8 +507,8 @@ class IteratorContext {
 
   int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
 
-  std::shared_ptr<SplitProvider> split_provider() {
-    return params_.split_provider;
+  std::vector<std::shared_ptr<SplitProvider>> split_providers() {
+    return params_.split_providers;
   }
 
   std::shared_ptr<StatsAggregator> stats_aggregator() {
@@ -873,13 +874,12 @@ class DatasetBase : public core::RefCounted {
   // the graph.
   const string& node_name() const { return node_name_; }
 
-  // Merges options from inputs to this dataset. If there is a conflict in a
-  // field value, the options set on this dataset takes precedence over those in
-  // the inputs. The order of precedence on the inputs is in the same order as
-  // how they appear for this dataset.
-  Status MergeOptionsFromInputs();
+  // Initializes the dataset.
+  void Initialize();
 
   const Options& options() const { return options_; }
+
+  int64 num_sources() const { return num_sources_; }
 
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
@@ -924,8 +924,8 @@ class DatasetBase : public core::RefCounted {
   // Returns a split provider which partitions the dataset's data into splits
   // and provides them in a sequence. The split provider is stored in
   // `*split_provider`.
-  virtual Status MakeSplitProvider(
-      std::unique_ptr<SplitProvider>* split_provider) const;
+  virtual Status MakeSplitProviders(
+      std::vector<std::unique_ptr<SplitProvider>>* split_providers) const;
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -1008,9 +1008,22 @@ class DatasetBase : public core::RefCounted {
   void set_options(const Options& options) { options_ = options; }
 
  private:
+  // Computes the number of source datasets feeding into this dataset. A source
+  // dataset is a leaf in the subtree of dataset inputs.
+  Status ComputeNumSources();
+
+  // Merges options from inputs to this dataset. If there is a conflict in a
+  // field value, the options set on this dataset takes precedence over those in
+  // the inputs. The order of precedence on the inputs is in the same order as
+  // how they appear for this dataset.
+  Status MergeOptionsFromInputs();
+
   const string type_string_;
   const string node_name_;
   Options options_;
+  // The number of source datasets feeding into the dataset. A source dataset is
+  // a leaf in the subtree of dataset inputs.
+  int64 num_sources_ = -1;
 };
 
 // Represents an iterator that is associated with a particular dataset.
