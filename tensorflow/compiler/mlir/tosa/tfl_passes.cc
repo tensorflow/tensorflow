@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 namespace mlir {
@@ -30,6 +31,9 @@ void createTFLtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   // Inline all functions into main and then delete the functions themselves.
   pm.addPass(mlir::createInlinerPass());
+
+  // Add pass to decompose TFLite mixed quantization to non-quantized variants.
+  pm.addPass(TFL::CreateDecomposeHybridQuantizationPass());
 
   // Now that there is only one function, run some MLIR passes on it.
   pm.addPass(mlir::createCanonicalizerPass());

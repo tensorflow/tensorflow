@@ -1070,3 +1070,18 @@ func @test_fakequant(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   return %2 : tensor<13x21x3xf32>
 }
 
+// -----
+
+// CHECK-LABEL: @test_fullyconnected_hybrid
+func @test_fullyconnected_hybrid(%arg0: tensor<14x19xf32>) -> tensor<14x28xf32> {
+  // This verifies that the constant is decomposed into a dequantization via a
+  // cast, subtract, and multiplication.
+  // CHECK: "tosa.cast"
+  // CHECK: "tosa.sub"
+  // CHECK: "tosa.mul"
+  // CHECK: "tosa.fully_connected"
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<36x36x!quant.uniform<i8:f32, 1.0>>, value = dense<42> : tensor<28x19xi8>} : () -> tensor<28x19x!quant.uniform<i8:f32, 1.0>>
+  %1 = "tfl.pseudo_const"() {value = dense<0.0> : tensor<28xf32>} : () -> tensor<28xf32>
+  %2 = "tfl.fully_connected"(%arg0, %0, %1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<14x19xf32>, tensor<28x19x!quant.uniform<i8:f32, 1.0>>, tensor<28xf32>) -> tensor<14x28xf32>
+  return %2 : tensor<14x28xf32>
+}
