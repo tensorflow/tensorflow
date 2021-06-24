@@ -3479,6 +3479,18 @@ def make_one_shot_iterator(dataset):
 
   Returns:
     A `tf.data.Iterator` for elements of `dataset`.
+
+  @compatibility(TF2)
+  This is a legacy API for consuming dataset elements and should only be used
+  during transition from TF 1 to TF 2. Note that using this API should be
+  a transient state of your code base as there are in general no guarantees
+  about the interoperability of TF 1 and TF 2 code.
+
+  In TF 2 datasets are Python iterables which means you can consume their
+  elements using `for elem in dataset: ...` or by explicitly creating iterator
+  via `iterator = iter(dataset)` and fetching its elements via
+  `values = next(iterator)`.
+  @end_compatibility
   """
   try:
     # Call the defined `_make_one_shot_iterator()` if there is one, because some
@@ -3513,6 +3525,18 @@ def make_initializable_iterator(dataset, shared_name=None):
 
   Raises:
     RuntimeError: If eager execution is enabled.
+
+  @compatibility(TF2)
+  This is a legacy API for consuming dataset elements and should only be used
+  during transition from TF 1 to TF 2. Note that using this API should be
+  a transient state of your code base as there are in general no guarantees
+  about the interoperability of TF 1 and TF 2 code.
+
+  In TF 2 datasets are Python iterables which means you can consume their
+  elements using `for elem in dataset: ...` or by explicitly creating iterator
+  via `iterator = iter(dataset)` and fetching its elements via
+  `values = next(iterator)`.
+  @end_compatibility
   """
   try:
     # Call the defined `_make_initializable_iterator()` if there is one, because
@@ -3557,6 +3581,11 @@ def get_legacy_output_classes(dataset_or_iterator):
     A (nested) structure of Python `type` objects matching the structure of the
     dataset / iterator elements and specifying the class of the individual
     components.
+
+  @compatibility(TF2)
+  This is a legacy API for inspecting the type signature of dataset elements. In
+  TF 2, you should use the `tf.data.Dataset.element_spec` attribute instead.
+  @end_compatibility
   """
   return nest.map_structure(
       lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
@@ -3574,6 +3603,11 @@ def get_legacy_output_shapes(dataset_or_iterator):
     A (nested) structure of `tf.TensorShape` objects matching the structure of
     the dataset / iterator elements and specifying the shape of the individual
     components.
+
+  @compatibility(TF2)
+  This is a legacy API for inspecting the type signature of dataset elements. In
+  TF 2, you should use the `tf.data.Dataset.element_spec` attribute instead.
+  @end_compatibility
   """
   return nest.map_structure(
       lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
@@ -3591,6 +3625,11 @@ def get_legacy_output_types(dataset_or_iterator):
     A (nested) structure of `tf.DType` objects matching the structure of
     dataset / iterator elements and specifying the shape of the individual
     components.
+
+  @compatibility(TF2)
+  This is a legacy API for inspecting the type signature of dataset elements. In
+  TF 2, you should use the `tf.data.Dataset.element_spec` attribute instead.
+  @end_compatibility
   """
   return nest.map_structure(
       lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
