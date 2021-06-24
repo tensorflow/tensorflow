@@ -714,8 +714,12 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       return
     self.assertEqual(num_quantized_tensors, 4)  # quant, filter, bias, dequant
 
+  @parameterized.named_parameters(
+      ('_SingleLayer', False),
+      ('_WholeModel', True),
+  )
   @test_util.run_v2_only
-  def testNewQuantizerNumericVerificationDebugMode(self):
+  def testNewQuantizerNumericVerificationDebugMode(self, whole_model_verify):
     """Test the model quantized by the new converter with numeric verify ops."""
     func, calibration_gen = self._getIntegerQuantizeModel()
 
@@ -732,7 +736,10 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Create a TFLite model with new quantizer and numeric verify ops.
     quantized_converter._experimental_calibrate_only = True
     calibrated = quantized_converter.convert()
-    debug_mode_tflite = mlir_quantize(calibrated, enable_numeric_verify=True)
+    debug_mode_tflite = mlir_quantize(
+        calibrated,
+        enable_numeric_verify=True,
+        enable_whole_model_verify=whole_model_verify)
 
     # Check if adding debug mode should output a different flatbuffer.
     self.assertNotEqual(production_tflite, debug_mode_tflite)

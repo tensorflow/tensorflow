@@ -44,6 +44,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool fully_quantize, int inference_type,
                             int input_data_type, int output_data_type,
                             bool enable_numeric_verify = false,
+                            bool enable_whole_model_verify = false,
                             PyObject* op_blocklist = nullptr,
                             PyObject* node_blocklist = nullptr);
 

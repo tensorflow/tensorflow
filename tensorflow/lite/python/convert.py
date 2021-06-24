@@ -204,6 +204,7 @@ def mlir_quantize(input_data_str,
                   input_data_type=dtypes.float32,
                   output_data_type=dtypes.float32,
                   enable_numeric_verify=False,
+                  enable_whole_model_verify=False,
                   blocklisted_ops=None,
                   blocklisted_nodes=None):
   """Quantize `input_data_str` with calibration results.
@@ -220,6 +221,11 @@ def mlir_quantize(input_data_str,
     output_data_type: Data type for the outputs. The default value is float32.
     enable_numeric_verify: Experimental. Subject to change. Bool indicating
       whether to add NumericVerify ops into the debug mode quantized model.
+    enable_whole_model_verify: Experimental. Subject to change. Bool indicating
+    whether to add verification for layer by layer, or on whole model. When
+    disabled (per-layer) float and quantized ops will be run from same input
+    (output of previous quantized layer). When enabled, float and quantized ops
+    will run with respective float and quantized output of previous ops.
     blocklisted_ops: Experimental. Subject to change. Set of ops to blocklist.
     blocklisted_nodes: Experimental. Subject to change. Set of notes to
       blocklist.
@@ -231,7 +237,8 @@ def mlir_quantize(input_data_str,
       input_data_str, disable_per_channel, fully_quantize, inference_type,
       convert_tensor_tf_type_to_tflite_type(input_data_type),
       convert_tensor_tf_type_to_tflite_type(output_data_type),
-      enable_numeric_verify, blocklisted_ops, blocklisted_nodes)
+      enable_numeric_verify, enable_whole_model_verify, blocklisted_ops,
+      blocklisted_nodes)
 
 
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.SPARSIFY)

@@ -276,8 +276,9 @@ int ToStringSet(PyObject* py_blocklist, StringSet* string_set) {
 PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool fully_quantize, int inference_type,
                             int input_data_type, int output_data_type,
-                            bool enable_numeric_verify, PyObject* op_blocklist,
-                            PyObject* node_blocklist) {
+                            bool enable_numeric_verify,
+                            bool enable_whole_model_verify,
+                            PyObject* op_blocklist, PyObject* node_blocklist) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -320,7 +321,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto status = mlir::lite::QuantizeModel(
       *tflite_model, input_type, output_type, inference_tensor_type, {},
       disable_per_channel, fully_quantize, &builder, error_reporter.get(),
-      enable_numeric_verify, /*whole_model_verify=*/false,
+      enable_numeric_verify, enable_whole_model_verify,
       /*legacy_float_scale=*/true, blocklisted_ops, blocklisted_nodes);
 
   if (status != kTfLiteOk) {

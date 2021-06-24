@@ -51,16 +51,19 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       [](py::object input_contents_txt_raw, bool disable_per_channel,
          bool fully_quantize, int inference_type, int input_data_type,
          int output_data_type, bool enable_numeric_verify,
-         py::object op_blocklist, py::object node_blocklist) {
+         bool enable_whole_model_verify, py::object op_blocklist,
+         py::object node_blocklist) {
         return tensorflow::PyoOrThrow(toco::MlirQuantizeModel(
             input_contents_txt_raw.ptr(), disable_per_channel, fully_quantize,
             inference_type, input_data_type, output_data_type,
-            enable_numeric_verify, op_blocklist.ptr(), node_blocklist.ptr()));
+            enable_numeric_verify, enable_whole_model_verify,
+            op_blocklist.ptr(), node_blocklist.ptr()));
       },
       py::arg("input_contents_txt_raw"), py::arg("disable_per_channel") = false,
       py::arg("fully_quantize") = true, py::arg("inference_type") = 9,
       py::arg("input_data_type") = 0, py::arg("output_data_type") = 0,
       py::arg("enable_numeric_verify") = false,
+      py::arg("enable_whole_model_verify") = false,
       py::arg("op_blocklist") = py::none(),
       py::arg("node_blocklist") = py::none(),
       R"pbdoc(
