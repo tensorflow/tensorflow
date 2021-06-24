@@ -6606,7 +6606,6 @@ cc_library(
         "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
-    features = ["-no_undefined"],
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
