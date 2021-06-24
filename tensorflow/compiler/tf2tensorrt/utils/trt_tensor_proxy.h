@@ -163,7 +163,7 @@ class ITensorProxy {
 
   SimpleITensor* simple_tensor() const {
     assert(simple_tensor_ != nullptr);
-    assert(ttype_ == TensorType::kTRT);
+    assert(ttype_ == TensorType::kSIMPLE);
     return simple_tensor_.get();
   }
 
