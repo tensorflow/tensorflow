@@ -1061,7 +1061,9 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
-      v = variables.Variable(initial_value=1.)
+      v = variables.Variable(
+          initial_value=1.,
+          aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
 
       # Test read value inside caching scope
       with distribute_utils.cache_variable_reads():
