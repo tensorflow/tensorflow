@@ -3182,6 +3182,11 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   let verifier = [{ return Verify(*this); }];
 
   let hasFolder = 1;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input, "Value":$perm),
+    [{ BuildTransposeOp(&$_builder, $_state, input, perm); }]>
+  ];
 }
 
 def TFL_UnpackOp : TFL_Op<"unpack", [
