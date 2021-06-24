@@ -1304,6 +1304,7 @@ cc_library(
     hdrs = ["window_dataset.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",

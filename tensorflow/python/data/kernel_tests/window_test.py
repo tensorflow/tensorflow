@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -249,6 +250,21 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         expected_output=[[[y + 30 * x for y in range(30)] for x in range(3)]])
+
+
+class WindowCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                           parameterized.TestCase):
+
+  def _build_dataset(self):
+    dataset = dataset_ops.Dataset.range(42).window(6).interleave(
+        lambda x: x, cycle_length=2, num_parallel_calls=2)
+    return dataset
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(self, self._build_dataset, num_outputs=42)
 
 
 if __name__ == "__main__":
