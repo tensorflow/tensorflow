@@ -794,6 +794,7 @@ package_group(
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/py/envlogger/...",
         "//third_party/yggdrasil_decision_forests/...",
     ],
 )

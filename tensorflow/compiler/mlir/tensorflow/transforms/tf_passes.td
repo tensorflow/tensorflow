@@ -890,6 +890,7 @@ def TensorArrayOpsDecompositionPass : Pass<"tf-tensor-array-ops-decomposition", 
     or that can be inferred from a later write, and 3) all elements have the same
     shape.
   }];
+  let dependentDialects = ["tensor::TensorDialect"];
 
   let constructor = "TF::CreateTensorArrayOpsDecompositionPass()";
 }
@@ -948,7 +949,7 @@ def PromoteVarHandlesToArgsPass : Pass<"tf-promote-var-handles-to-args", "Module
   let constructor = "TF::CreatePromoteVarHandlesToArgsPass()";
 }
 
-def TPUMergeVariablesWithExecutePass : FunctionPass<"tf-tpu-merge-variables-with-execute"> {
+def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute", "ModuleOp"> {
   let summary = "Merges device variable reads and updates into TPU execute ops";
 
   let description = [{

@@ -36,6 +36,10 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 
+constexpr const char* TfLiteValidationFunctionName() {
+  return "Java_org_tensorflow_lite_acceleration_validation_entrypoint";
+}
+
 // Class that runs mini-benchmark validation in a separate process and gives
 // access to the results.
 //
@@ -55,10 +59,14 @@ class ValidatorRunner {
   ValidatorRunner(const std::string& model_path,
                   const std::string& storage_path,
                   const std::string& data_directory_path,
+                  const std::string validation_function_name =
+                      TfLiteValidationFunctionName(),
                   ErrorReporter* error_reporter = DefaultErrorReporter());
   ValidatorRunner(int model_fd, size_t model_offset, size_t model_size,
                   const std::string& storage_path,
                   const std::string& data_directory_path,
+                  const std::string validation_function_name =
+                      TfLiteValidationFunctionName(),
                   ErrorReporter* error_reporter = DefaultErrorReporter());
   MinibenchmarkStatus Init();
 
@@ -91,6 +99,7 @@ class ValidatorRunner {
   std::string storage_path_;
   std::string data_directory_path_;
   FlatbufferStorage<BenchmarkEvent> storage_;
+  std::string validation_function_name_;
   ErrorReporter* error_reporter_;
   bool triggered_ = false;
 };

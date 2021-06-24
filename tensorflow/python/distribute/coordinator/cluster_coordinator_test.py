@@ -455,6 +455,12 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     cls.coordinator = make_coordinator(num_workers=5, num_ps=2)
     cls.strategy = cls.coordinator.strategy
 
+  def testClusterCoordinatorOnlyInitOnce(self):
+    cluster = self.coordinator._cluster
+    same_coordinator = coordinator_lib.ClusterCoordinator(self.strategy)
+    self.assertIs(self.coordinator, same_coordinator)
+    self.assertIs(cluster, same_coordinator._cluster)
+
   def testFnReturnNestedValues(self):
     x = constant_op.constant(1)
 

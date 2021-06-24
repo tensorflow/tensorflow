@@ -36,6 +36,7 @@ tf_kernel_library(
         "dequantize_op.cc",
         "device_index_op.cc",
         "diag_op.cc",
+        "dynamic_partition_op.cc",
         "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
         "einsum_op.cc",

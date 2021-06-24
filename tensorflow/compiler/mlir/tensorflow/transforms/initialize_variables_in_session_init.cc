@@ -160,8 +160,10 @@ void InitializeVariablesInSessionInitializerPass::runOnOperation() {
     auto handle = resource_tensor.scalar<tensorflow::ResourceHandle>()();
     auto* var_ptr = GetVariableFromSession(var_op, handle.device(), mgr);
     if (!var_ptr) {
-      module.emitError("failed to fetch variable from Session");
-      return signalPassFailure();
+      // If no value in session, then just skip this variable.
+      // This can happen if the variable is not saved in checkpoint.
+      // For example, when the variable is created on every call.
+      continue;
     }
     tensorflow::core::RefCountPtr<tensorflow::Var> var(var_ptr);
     auto* tensor = var_ptr->tensor();

@@ -104,6 +104,25 @@ def TFFramework_TFAllocOp : TFFramework_Op<"alloc",
 }
 
 //===----------------------------------------------------------------------===//
+// TFAssertOp
+//===----------------------------------------------------------------------===//
+def TFFramework_TFAssertOp : TFFramework_Op<"assert"> {
+  let summary = "Assert operation with message attribute and error code";
+  let description = [{
+    Assert operation that propagates the error message to TF Framework.
+  }];
+
+  let arguments = (ins
+    TFFramework_OpKernelContextType:$ctx,
+    I1:$arg,
+    TFFramework_ErrorCodeAttr:$error_code,
+    StrAttr:$msg
+  );
+
+  let assemblyFormat = "$ctx `,` $arg `,` $error_code `,` $msg attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // TFDeallocOp
 //===----------------------------------------------------------------------===//
 def TFFramework_TFDeallocOp : TFFramework_Op<"dealloc",
@@ -124,6 +143,27 @@ def TFFramework_TFDeallocOp : TFFramework_Op<"dealloc",
 }
 
 //===----------------------------------------------------------------------===//
+// IsValidMemRefOp
+//===----------------------------------------------------------------------===//
+def TFFramework_IsValidMemRefOp : TFFramework_Op<"is_valid_memref", []> {
+  let summary = "Op to check if the memref is valid.";
+  let description = [{
+    The op checks if the allocation was successful so that the underlying ptr
+    in the descriptor is not equal to NULL. Also, we check if the number of
+    elements is not zero to support empty shapes inputs correctly.
+
+    is_valid_memref(memref) = ptr(memref) != NULL || num_elements(memref) == 0
+  }];
+
+  let arguments = (ins AnyMemRef:$arg);
+  let results = (outs I1:$result);
+  let assemblyFormat = [{
+    `(` $arg `)` attr-dict `:` type($arg) `->` type($result)
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // NullContextOp
 //===----------------------------------------------------------------------===//
 def TFFramework_NullContextOp : TFFramework_Op<"null_context",
@@ -141,11 +181,13 @@ def TFFramework_NullMemRefOp : TFFramework_Op<"null_memref", []> {
   let summary = "Op to construct unranked memref with 0-rank";
   let description = [{
     The op is needed to construct a throw-away result after error reporting
-    happened. It constructs an unranked memref descriptor with 0-rank and
+    happened. It constructs a ranked memref descriptor with 0-rank and
     {NULL, NULL, 0} underlying ranked descriptor of type memref<elem_type>.
+    In ranked case it constructs a ranked memref descriptor depending on the
+    result type, but sets both allocated and aligned pointers to NULL.
   }];
 
-  let results = (outs AnyUnrankedMemRef:$result);
+  let results = (outs AnyRankedOrUnrankedMemRef:$result);
   let assemblyFormat = "attr-dict `:` type($result)";
 }
 

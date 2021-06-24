@@ -445,6 +445,7 @@ class TFLiteConverterBase(object):
     self.allow_custom_ops = False
     self.experimental_new_converter = True
     self.experimental_new_quantizer = True
+    self.experimental_enable_resource_variables = False
     self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
@@ -984,7 +985,8 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     converter_kwargs = {
         "enable_tflite_resource_variables":
-            self._enable_tflite_resource_variables
+            (self._enable_tflite_resource_variables or
+             self.experimental_enable_resource_variables)
     }
     converter_kwargs.update(self._get_base_converter_args())
     converter_kwargs.update(quant_mode.converter_flags())
@@ -1242,6 +1244,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
+    experimental_enable_resource_variables: Experimental flag, subject to
+      change. Enables resource variables to be converted by this converter.
+      This is only allowed if from_saved_model interface is used.
+      (default False)
 
   Example usage:
 
@@ -1414,6 +1420,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self.dump_graphviz_video = False
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
+    self._experimental_allow_all_select_tf_ops = False
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
@@ -1585,6 +1592,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
+        "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
     })
 
     if not self.experimental_new_converter:

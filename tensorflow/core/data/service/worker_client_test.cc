@@ -48,7 +48,7 @@ namespace {
 
 using ::testing::MatchesRegex;
 
-constexpr const char kProtocol[] = "grpc+local";
+constexpr const char kProtocol[] = "grpc";
 
 class WorkerClientTest : public ::testing::Test {
  protected:

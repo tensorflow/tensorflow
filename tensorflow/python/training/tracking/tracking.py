@@ -38,17 +38,6 @@ from tensorflow.python.util.tf_export import tf_export
 _RESOURCE_TRACKER_STACK = []
 
 
-class NotTrackable(object):
-  """Marks instances of child classes as unsaveable using an object-based API.
-
-  Useful for marking objects which would otherwise look trackable because
-  of inheritance (e.g. through `Layer`) as not trackable. Inheriting from
-  `NotTrackable` does not prevent an object from being assigned to any
-  attributes, but will throw an error on save/restore.
-  """
-  pass
-
-
 @tf_export("__internal__.tracking.AutoTrackable", v1=[])
 class AutoTrackable(base.Trackable):
   """Manages dependencies on other objects.

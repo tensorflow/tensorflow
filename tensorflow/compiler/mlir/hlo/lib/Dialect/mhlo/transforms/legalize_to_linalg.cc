@@ -1270,8 +1270,8 @@ class SliceConverter : public OpConversionPattern<OpTy> {
       rewriter.create<linalg::CopyOp>(loc, linalg_op, args[1]);
       rewriter.eraseOp(slice_op);
     } else {
-      rewriter.replaceOpWithNewOp<SubTensorOp>(slice_op, args[0], offsets,
-                                               sizes, strides);
+      rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+          slice_op, args[0], offsets, sizes, strides);
     }
     return success();
   }
@@ -1340,9 +1340,9 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
         this->typeConverter->convertType(dynamic_slice_op.getType())
             .cast<RankedTensorType>();
 
-    rewriter.replaceOpWithNewOp<SubTensorOp>(dynamic_slice_op, result_type,
-                                             adaptor.operand(), start_indices,
-                                             sizes, strides);
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        dynamic_slice_op, result_type, adaptor.operand(), start_indices, sizes,
+        strides);
     return success();
   }
 };
@@ -1410,7 +1410,7 @@ class DynamicUpdateSliceConverter
 
     int64_t rank = operand_type.getRank();
     SmallVector<OpFoldResult, 3> strides(rank, rewriter.getI64IntegerAttr(1));
-    rewriter.replaceOpWithNewOp<SubTensorInsertOp>(
+    rewriter.replaceOpWithNewOp<tensor::InsertSliceOp>(
         op, adaptor.update(), adaptor.operand(), start_indices, sizes, strides);
     return success();
   }
@@ -1575,15 +1575,19 @@ class DotGeneralOpOnTensorsConversion
   }
 };
 
+bool IsInBodyOfLinalgOps(Operation* op) {
+  auto parent_op = op->getParentRegion()->getParentOp();
+  return parent_op->getDialect() ==
+         parent_op->getContext()->getLoadedDialect<linalg::LinalgDialect>();
+}
+
 template <typename OpTy>
 struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
   using OpConversionPattern<OpTy>::OpConversionPattern;
   LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    // Only convert the body of reduction ops to std ops.
-    auto parent_op = op.getOperation()->getParentRegion()->getParentOp();
-    if (!isa<mhlo::ReduceOp, linalg::GenericOp>(parent_op)) {
+    if (!IsInBodyOfLinalgOps(op)) {
       return failure();
     }
     if (!op.getResult().getType().template isa<TensorType>()) return failure();
@@ -1624,6 +1628,9 @@ class ReduceRegionReturnOpConversion
   LogicalResult matchAndRewrite(
       mhlo::ReturnOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
+    if (!IsInBodyOfLinalgOps(op)) {
+      return failure();
+    }
     rewriter.replaceOpWithNewOp<linalg::YieldOp>(op, args);
     return success();
   }

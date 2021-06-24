@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/data/standalone.h"
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"

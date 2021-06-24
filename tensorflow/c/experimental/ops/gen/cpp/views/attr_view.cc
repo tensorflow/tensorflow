@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
-#include "tensorflow/c/experimental/ops/gen/common/renderer_util.h"
+#include "tensorflow/c/experimental/ops/gen/common/view_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

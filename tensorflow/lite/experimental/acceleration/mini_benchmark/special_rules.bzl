@@ -15,5 +15,9 @@
 """External-only build rules for mini-benchmark."""
 
 def libjpeg_deps():
-    """Defines the deps for the jpeg lib used in the mini-benchmark."""
+    """Returns the deps for the jpeg lib used in the mini-benchmark."""
     return ["//tensorflow/core/platform:jpeg"]
+
+def jpeg_copts():
+    """Returns copts for jpeg decoding code used in the mini-benchmark."""
+    return []

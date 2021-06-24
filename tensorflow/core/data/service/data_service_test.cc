@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr const char kProtocol[] = "grpc+local";
+constexpr const char kProtocol[] = "grpc";
 
 TEST(DataService, ParseParallelEpochsProcessingMode) {
   ProcessingMode mode;
